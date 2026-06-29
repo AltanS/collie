@@ -1,0 +1,25 @@
+# Reference systemd --user unit. `scripts/collie-ctl.sh start` generates a copy of this with
+# absolute paths filled in at ~/.config/systemd/user/collie.service. Edit + use this
+# directly only if you prefer to manage it by hand.
+#
+#   cp systemd/collie.service ~/.config/systemd/user/
+#   (edit the @PLACEHOLDERS@ below)
+#   systemctl --user daemon-reload && systemctl --user enable --now collie
+
+[Unit]
+Description=Collie
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=@PLUGIN_ROOT@
+ExecStart=@BUN@ run @PLUGIN_ROOT@/src/index.ts
+Restart=on-failure
+RestartSec=2
+Environment=HERDR_SOCKET_PATH=%h/.config/herdr/herdr.sock
+Environment=COLLIE_PORT=8787
+Environment=HERDR_PLUGIN_CONFIG_DIR=%h/.config/collie
+EnvironmentFile=-%h/.config/collie/.env
+
+[Install]
+WantedBy=default.target

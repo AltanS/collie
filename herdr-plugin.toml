@@ -1,0 +1,40 @@
+id = "herdr.collie"
+name = "Collie"
+version = "0.2.0"
+min_herdr_version = "0.7.0"
+description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
+platforms = ["linux", "macos"]
+
+# This plugin is a thin launcher. The actual bridge runs as a systemd --user service so it
+# outlives Herdr restarts (see DESIGN.md §3). The actions below shell out to
+# scripts/collie-ctl.sh, which gets HERDR_SOCKET_PATH / HERDR_PLUGIN_CONFIG_DIR injected.
+
+[[actions]]
+id = "start"
+title = "Start web bridge"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "start"]
+
+[[actions]]
+id = "stop"
+title = "Stop web bridge"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "stop"]
+
+[[actions]]
+id = "restart"
+title = "Restart web bridge"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "restart"]
+
+[[actions]]
+id = "url"
+title = "Show bridge URL"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "url"]
+
+[[actions]]
+id = "status"
+title = "Bridge status"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "status"]

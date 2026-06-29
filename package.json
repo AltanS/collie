@@ -1,0 +1,24 @@
+{
+  "name": "collie",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Collie — a mobile web UI to monitor and reply to your Herdr agent herd over Tailscale",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "build": "cd web && bun install && bun run build",
+    "build:web": "cd web && bun run build",
+    "web:dev": "cd web && bun run dev",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/web-push": "^3.6.4",
+    "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "web-push": "^3.6.7"
+  }
+}
