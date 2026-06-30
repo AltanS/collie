@@ -1,0 +1,72 @@
+id = "herdr.collie"
+name = "Collie"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
+platforms = ["linux", "macos"]
+
+# This plugin is a thin launcher. The actual bridge runs as a systemd --user service so it
+# outlives Herdr restarts (see ARCHITECTURE.md §3). The actions below shell out to
+# scripts/collie-ctl.sh, which gets HERDR_SOCKET_PATH / HERDR_PLUGIN_CONFIG_DIR injected.
+
+# Build the web UI at install time. Herdr runs [[build]] steps ONLY on `herdr plugin install`
+# (GitHub) — NOT on `herdr plugin link` (local dev), which instead builds lazily on first `start`
+# (collie-ctl.sh's ensure_build). Delegating to `collie-ctl.sh build` keeps a single build
+# definition (version gate → cd web && bun install && bun run build) shared with the `update` action.
+# Still needs Bun on PATH — building the frontend is the one unavoidable Bun step.
+[[build]]
+command = ["bash", "scripts/collie-ctl.sh", "build"]
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "start"
+title = "Start web bridge"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "start"]
+
+[[actions]]
+id = "stop"
+title = "Stop web bridge"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "stop"]
+
+[[actions]]
+id = "restart"
+title = "Restart web bridge"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "restart"]
+
+# Full teardown: stops + disables the service, removes the systemd --user unit, and resets
+# tailscale serve. Leaves the .env and the checkout (so `start` can bring it right back). See
+# scripts/collie-ctl.sh → cmd_uninstall.
+[[actions]]
+id = "uninstall"
+title = "Uninstall web bridge (remove service)"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "uninstall"]
+
+# Link-mode plugins ARE their on-disk git checkout (Herdr has no native `plugin update`), so this
+# action pulls + rebuilds + restarts in one step. See scripts/collie-ctl.sh → cmd_update.
+[[actions]]
+id = "update"
+title = "Update plugin"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "update"]
+
+[[actions]]
+id = "url"
+title = "Show bridge URL"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "url"]
+
+[[actions]]
+id = "status"
+title = "Bridge status"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "status"]
+
+[[actions]]
+id = "version"
+title = "Show version"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "version"]

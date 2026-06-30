@@ -1,0 +1,210 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.65rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  /* Agent lifecycle status palette — shared across themes. */
+  --status-blocked: oklch(0.66 0.21 24);
+  --status-working: oklch(0.78 0.15 80);
+  --status-done: oklch(0.7 0.16 152);
+  --status-idle: oklch(0.62 0.02 250);
+  --status-unknown: oklch(0.55 0.02 250);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+
+  --status-blocked: oklch(0.7 0.2 24);
+  --status-working: oklch(0.82 0.15 82);
+  --status-done: oklch(0.74 0.16 152);
+  --status-idle: oklch(0.65 0.02 250);
+  --status-unknown: oklch(0.6 0.02 250);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-blocked: var(--status-blocked);
+  --color-status-working: var(--status-working);
+  --color-status-done: var(--status-done);
+  --color-status-idle: var(--status-idle);
+  --color-status-unknown: var(--status-unknown);
+
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    /* Respect notches; keep the app glued to the viewport edges on mobile. */
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overscroll-behavior-y: none;
+  }
+}
+
+/* ── View transitions ───────────────────────────────────────────────────────────────────────────
+   Animate switches between views (lib/view-transition.ts). The app chrome (the sticky header,
+   tagged `view-transition-name: app-header`) is its own snapshot group, so it stays pinned and just
+   crossfades while the page content underneath slides. `data-vt` on <html> picks the direction:
+   forward = new view in from the right, backward = the reverse, absent = a plain crossfade for
+   lateral moves (sibling space / tab / pane switch). */
+
+/* Lateral move (no data-vt): a quick crossfade. The UA's default fade keyframes, our timing. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 160ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The pinned chrome: keep it brief and fade-only so it reads as "staying put". */
+::view-transition-old(app-header),
+::view-transition-new(app-header) {
+  animation-duration: 160ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-vt="forward"]::view-transition-old(root) {
+  animation: vt-slide-out-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html[data-vt="forward"]::view-transition-new(root) {
+  animation: vt-slide-in-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html[data-vt="backward"]::view-transition-old(root) {
+  animation: vt-slide-out-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html[data-vt="backward"]::view-transition-new(root) {
+  animation: vt-slide-in-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes vt-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes vt-slide-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+@keyframes vt-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes vt-slide-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+/* Honour reduced motion even when a transition is triggered (e.g. a React Router <Link>): kill every
+   snapshot animation so the swap is instant rather than a fade. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* The sticky app chrome opts into being its own transition group via this class. The name promotes
+   it to a standalone composited layer, though — so while a sheet/drawer is open we drop the name
+   (the sheet sets <html data-sheet-open>). Otherwise a poll repainting the live status pill can make
+   Chrome briefly composite the header ABOVE the modal backdrop. Nothing is transitioning while a
+   sheet is open anyway (every navigation closes the sheet first), so the group isn't needed then. */
+.app-header {
+  view-transition-name: app-header;
+}
+html[data-sheet-open] .app-header {
+  view-transition-name: none;
+}

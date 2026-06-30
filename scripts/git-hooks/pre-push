@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Pre-push guard: run the web test suite (Vitest) before anything leaves the machine.
+# Install with: scripts/install-hooks.sh (sets core.hooksPath).
+# Override a single push with: SKIP_TESTS=1 git push …
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+if [ "${SKIP_TESTS:-}" = "1" ]; then
+  echo "pre-push: SKIP_TESTS=1 — skipping test suite" >&2
+  exit 0
+fi
+
+echo "pre-push: running backend test suite (bun test ./bridge)…" >&2
+if ! (cd "$ROOT" && bun test ./bridge); then
+  cat >&2 <<'EOF'
+✗ pre-push: backend tests failed — push aborted.
+  Fix the failing tests, or override once with: SKIP_TESTS=1 git push
+EOF
+  exit 1
+fi
+
+echo "pre-push: running web test suite (vitest)…" >&2
+if ! (cd "$ROOT/web" && bun run test); then
+  cat >&2 <<'EOF'
+✗ pre-push: web tests failed — push aborted.
+  Fix the failing tests, or override once with: SKIP_TESTS=1 git push
+EOF
+  exit 1
+fi
+
+exit 0

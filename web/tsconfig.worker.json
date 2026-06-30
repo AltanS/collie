@@ -1,0 +1,13 @@
+{
+  // src/sw.ts runs in a service-worker context, not the DOM — type-check it against the WebWorker
+  // lib (where `ServiceWorkerGlobalScope`, `PushEvent`, `clients`, etc. live) instead of DOM, which
+  // the app tsconfig uses. `bun run typecheck` runs both. Mixing the two libs in one project would
+  // produce conflicting global declarations, so the SW gets its own pass.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/sw.ts"],
+  "exclude": []
+}

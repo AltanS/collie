@@ -1,0 +1,125 @@
+import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { VitePWA } from "vite-plugin-pwa";
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+// The bridge (Bun server) serves the built app from `web/dist` and proxies nothing — the
+// browser talks to the same origin for both static files and /api. In `vite dev`, proxy the
+// bridge so the SPA can hit the real socket-backed API while you iterate on the UI.
+const BRIDGE = process.env.COLLIE_DEV_TARGET ?? "http://127.0.0.1:8787";
+
+// Build stamp. A unique id is baked into the bundle (shown in the UI footer via __BUILD_INFO__) AND
+// emitted to dist/build-info.json, which the bridge reads for the `X-Collie-Build` header and
+// `/api/config`. Comparing the two tells you instantly whether a browser is running a stale,
+// service-worker-cached bundle (caches are per-origin) — see README → Troubleshooting. The id mixes
+// version + git sha + build time so it changes on every rebuild, even between commits.
+function gitSha(): string {
+  try {
+    return (
+      execSync("git rev-parse --short HEAD", {
+        cwd: import.meta.dirname,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .toString()
+        .trim() || "nogit"
+    );
+  } catch {
+    return "nogit";
+  }
+}
+const pkgVersion = (
+  JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
+const buildSha = gitSha();
+const buildTime = new Date().toISOString();
+const BUILD_INFO = {
+  version: pkgVersion,
+  sha: buildSha,
+  time: buildTime,
+  id: `${pkgVersion}+${buildSha}.${Math.floor(Date.parse(buildTime) / 1000)}`,
+};
+
+// Emit dist/build-info.json so the bridge can read the current build id. Kept out of the SW precache
+// (not in workbox globPatterns) so the server always reads it fresh from disk after a rebuild.
+const buildInfoPlugin: Plugin = {
+  name: "collie-build-info",
+  generateBundle() {
+    this.emitFile({
+      type: "asset",
+      fileName: "build-info.json",
+      source: JSON.stringify(BUILD_INFO, null, 2),
+    });
+  },
+};
+
+export default defineConfig({
+  define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
+  plugins: [
+    react(),
+    tailwindcss(),
+    buildInfoPlugin,
+    VitePWA({
+      // Build the manifest + service worker. We use `injectManifest` (not the default generateSW)
+      // because we hand-write the SW in `src/sw.ts` to add `push` + `notificationclick` handlers a
+      // generated SW can't give us — without a `push` listener the browser shows a generic "site
+      // updated in the background" instead of the agent's notification. The SW still precaches the
+      // app shell + SPA-falls-back navigations (see src/sw.ts); it compiles to dist/sw.js.
+      // Registration is done manually in main.tsx via the `virtual:pwa-register` module (a bundled,
+      // same-origin script) so we never inject an inline <script>, which the strict CSP blocks.
+      injectRegister: false,
+      registerType: "autoUpdate",
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts", // source; compiled to dist/sw.js (the bridge sets Service-Worker-Allowed: /)
+      includeAssets: ["favicon.svg", "favicon.ico", "favicon-96x96.png", "apple-touch-icon.png"],
+      manifest: {
+        name: "Collie",
+        short_name: "Collie",
+        description: "Monitor and reply to your Herdr agent herd from your phone",
+        id: "/",
+        start_url: "/",
+        scope: "/",
+        display: "standalone",
+        orientation: "portrait",
+        background_color: "#0a0a0a",
+        theme_color: "#0a0a0a",
+        icons: [
+          // The 192/512 are safe-zone-padded, so they serve as both the regular ("any") install
+          // icon and the Android adaptive ("maskable") icon. (favicon.svg is intentionally NOT a
+          // manifest icon: it's a low-res raster-in-svg for the browser tab only — declaring it
+          // sizes:"any" would let an installer pick it and render the install icon blurry.)
+          { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        ],
+      },
+      injectManifest: {
+        // Files baked into the precache manifest (injected at src/sw.ts's `self.__WB_MANIFEST`).
+        // The SPA navigation fallback + /api denylist now live in src/sw.ts (a NavigationRoute):
+        // injectManifest hands routing to the custom SW rather than generating it here.
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest,woff2}"],
+      },
+      // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
+      devOptions: { enabled: false },
+    }),
+  ],
+  resolve: {
+    alias: { "@": resolve(import.meta.dirname, "src") },
+  },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    // A couple of small chunks beat one big one on a phone over the tailnet.
+    chunkSizeWarningLimit: 900,
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": { target: BRIDGE, changeOrigin: true },
+    },
+  },
+});
