@@ -4,7 +4,9 @@ import { extname, join, normalize } from "node:path";
 import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
+import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import type { Push, PushSubscription } from "./push.ts";
+import type { Snooze } from "./snooze.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type {
   ActionResponse,
@@ -53,13 +55,18 @@ const CSP =
 
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close))?$/;
 
+// The whole herd shares one notification slot, so multiple agents coalesce into a single summary
+// and a retraction (or a snooze) targets exactly it.
+const HERD_TAG = "collie:herd";
+
 export function startServer(opts: {
   cfg: Config;
   herdr: HerdrClient;
   engine: StateEngine;
   push: Push;
+  snooze: Snooze;
 }): void {
-  const { cfg, herdr, engine, push } = opts;
+  const { cfg, herdr, engine, push, snooze } = opts;
   const server = Bun.serve({
     hostname: cfg.host,
     port: cfg.port,
@@ -82,6 +89,7 @@ export function startServer(opts: {
           shellPanes,
           workspaces,
           tabs,
+          notifications: { snoozedUntil: snooze.until() },
           ts: Date.now(),
         } satisfies SnapshotResponse, req.headers.get("accept-encoding"));
       }
@@ -139,6 +147,23 @@ export function startServer(opts: {
         await push.addSubscription(body);
         return new Response(null, { status: 204 });
       }
+      if (pathname === "/api/notifications/snooze" && req.method === "POST") {
+        // Managing your own notification quiet-hours isn't terminal-driving — read-level, like subscribe.
+        const denied = guard(req, cfg, "read");
+        if (denied) return denied;
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return text("bad request", 400);
+        }
+        const until = (body as { snoozedUntil?: unknown }).snoozedUntil;
+        if (until !== null && typeof until !== "number") return text("bad snoozedUntil", 400);
+        await snooze.set(until);
+        // Snoozing should also clear whatever's already on the lock screen.
+        if (snooze.isMuted()) void push.send({ type: "clear", tag: HERD_TAG });
+        return json({ snoozedUntil: snooze.until() });
+      }
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
       return serveStatic(pathname);
@@ -146,15 +171,17 @@ export function startServer(opts: {
   });
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side
-  // by diffing snapshots). Push is independent of how the client polls.
-  engine.onTransition((agent, _from, to) => {
-    if (to === "blocked" || to === "done") {
-      const verb = to === "blocked" ? "needs you" : "is done";
-      void push.notify(`${agent.agent} ${verb}`, `${agent.workspaceLabel} · ${agent.cwd}`, {
-        paneId: agent.paneId,
-      });
-    }
-  });
+  // by diffing snapshots). Push is independent of how the client polls. The coordinator debounces
+  // each blocked/done alert and retracts it once the agent resolves — so an agent you cleared at
+  // your desk never (or no longer) buzzes your phone. See notifications.ts.
+  const clock: NotifyClock<ReturnType<typeof setTimeout>> = {
+    schedule: (fn, ms) => setTimeout(fn, ms),
+    cancel: (h) => clearTimeout(h),
+  };
+  const sink = makeNotifySink(push, snooze, HERD_TAG);
+  const notifications = new NotificationCoordinator(clock, sink, cfg.notifyDelayMs);
+  engine.onTransition((agent, from, to) => notifications.onTransition(agent, from, to));
+  engine.onRemove((paneId) => notifications.onRemove(paneId));
 
   console.log(`[bridge] listening on http://${cfg.host}:${cfg.port}  (poll ${cfg.pollMs}ms)`);
   if (cfg.host !== "127.0.0.1" && cfg.host !== "localhost") {

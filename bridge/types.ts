@@ -74,6 +74,8 @@ export interface SnapshotResponse {
   /** All spaces (workspaces) and their tabs, for the space/tab navigator. */
   workspaces: WorkspaceView[];
   tabs: TabView[];
+  /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. */
+  notifications?: { snoozedUntil: number | null };
   ts: number;
 }
 

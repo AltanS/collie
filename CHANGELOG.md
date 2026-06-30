@@ -6,6 +6,29 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.2.0] - 2026-06-30
+
+### Changed
+- **Smarter push notifications.** A blocked/done alert is no longer fire-and-forget. Each one now
+  waits a short **debounce window** (`COLLIE_NOTIFY_DELAY_MS`, default 30s) before it sends; an agent
+  you clear at your desk within that window never reaches your phone. Alerts that *do* fire are
+  **retracted** automatically once the agent resolves (or its pane closes), so handled work stops
+  piling up on your lock screen. The service worker also **suppresses** the system notification when a
+  Collie tab is already open and visible (the in-app status surfaces it instead).
+- **Coalesced into one notification.** The whole herd shares a single notification slot: one agent
+  shows the named, deep-linked alert; several collapse into a *"N agents need you"* digest (tap → the
+  triage home) that updates in place as agents come and go, instead of stacking N separate alerts.
+
+### Added
+- **Do Not Disturb / snooze** (Settings → *Do not disturb*): pause all push for 30m / 1h / 4h, or
+  resume early. Server-enforced and self-expiring, so it quiets every device — and it clears whatever
+  is already on the lock screen the moment you snooze. The current deadline rides the snapshot, so it
+  stays in sync across devices.
+- `COLLIE_NOTIFY_DELAY_MS` env var — the push debounce window in ms (default `30000`; `0` notifies on
+  the next tick with no debounce).
+- `POST /api/notifications/snooze` — set/clear the global snooze (`{ snoozedUntil: number | null }`);
+  the active deadline is reported on the snapshot as `notifications.snoozedUntil`.
+
 ## [0.1.0] - 2026-06-30
 
 Initial public release of **Collie** — a phone web UI to monitor and reply to your Herdr agent

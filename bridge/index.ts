@@ -2,6 +2,7 @@ import { loadConfig } from "./config.ts";
 import { HerdrClient } from "./herdr-client.ts";
 import { Push } from "./push.ts";
 import { startServer } from "./server.ts";
+import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
@@ -20,10 +21,13 @@ if (!(await herdr.ping())) {
 const push = new Push(cfg);
 await push.init();
 
+const snooze = new Snooze(cfg);
+await snooze.load();
+
 const engine = new StateEngine(herdr, cfg.pollMs);
 engine.start();
 
-startServer({ cfg, herdr, engine, push });
+startServer({ cfg, herdr, engine, push, snooze });
 
 const shutdown = () => {
   console.log("\n[bridge] shutting down");

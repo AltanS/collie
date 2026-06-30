@@ -37,6 +37,7 @@ const connected = (agents: AgentView[], shellPanes: AgentView[] = []): HomeData 
   workspaces: [],
   tabs: [],
   device: undefined,
+  snoozedUntil: null,
   error: false,
 });
 

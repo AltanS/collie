@@ -9,6 +9,21 @@ import type { Config } from "./config.ts";
 type WebPushModule = typeof import("web-push");
 export type PushSubscription = { endpoint: string; keys: { p256dh: string; auth: string } };
 
+/**
+ * A notification instruction for the service worker (see web/src/sw.ts). `type:"clear"` closes the
+ * notification on `tag` instead of showing one; otherwise the SW renders `{ title, body }` into the
+ * `tag` slot, deep-links to `paneId` on tap, and re-alerts when `renotify` is set.
+ */
+export interface PushMessage {
+  type?: "clear";
+  title?: string;
+  body?: string;
+  /** Notification slot. Same tag replaces (rather than stacks) the previous notification. */
+  tag?: string;
+  paneId?: string;
+  renotify?: boolean;
+}
+
 export class Push {
   private lib: WebPushModule | null = null;
   private subs = new Map<string, PushSubscription>();
@@ -51,9 +66,18 @@ export class Push {
     await this.save();
   }
 
-  async notify(title: string, body: string, data: Record<string, unknown> = {}): Promise<void> {
+  /** Send a notification instruction (render or clear) to every subscribed device. */
+  async send(msg: PushMessage): Promise<void> {
+    await this.broadcast(JSON.stringify({ ...msg, data: { paneId: msg.paneId } }));
+  }
+
+  /** Convenience for a one-off render (used by the manual push-test script). */
+  async notify(title: string, body: string, data: { paneId?: string } = {}): Promise<void> {
+    await this.send({ title, body, paneId: data.paneId });
+  }
+
+  private async broadcast(payload: string): Promise<void> {
     if (!this.enabled || !this.lib) return;
-    const payload = JSON.stringify({ title, body, data });
     const dead: string[] = [];
     await Promise.all(
       [...this.subs.values()].map(async (sub) => {
@@ -67,7 +91,7 @@ export class Push {
             dead.push(sub.endpoint);
           } else {
             console.warn(
-              `[push] notify failed for ${sub.endpoint}: ${err instanceof Error ? err.message : String(err)}`,
+              `[push] send failed for ${sub.endpoint}: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         }

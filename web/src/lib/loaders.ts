@@ -28,6 +28,8 @@ export interface HomeData {
   shellPanes: AgentView[];
   workspaces: WorkspaceView[];
   tabs: TabView[];
+  /** Active notification snooze deadline (epoch ms), or null when not snoozed. */
+  snoozedUntil: number | null;
   /** True when this render is the last-good snapshot after a failed refresh. */
   error: boolean;
 }
@@ -48,6 +50,7 @@ function toHomeData(snap: SnapshotResponse, error: boolean): HomeData {
     shellPanes: snap.shellPanes ?? [],
     workspaces: snap.workspaces ?? [],
     tabs: snap.tabs ?? [],
+    snoozedUntil: snap.notifications?.snoozedUntil ?? null,
     error,
   };
 }
@@ -68,6 +71,7 @@ export async function rootLoader(): Promise<HomeData> {
           shellPanes: [],
           workspaces: [],
           tabs: [],
+          snoozedUntil: null,
           error: true,
         };
   }

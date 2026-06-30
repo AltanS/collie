@@ -140,6 +140,17 @@ export function fetchConfig(): Promise<BridgeConfig> {
 }
 
 /**
+ * Set (or clear) the global notification snooze. `snoozedUntil` is an epoch-ms deadline; `null`
+ * resumes immediately. Affects every device — it's a quiet-hours switch, not a per-device toggle.
+ */
+export function setSnooze(snoozedUntil: number | null): Promise<{ snoozedUntil: number | null }> {
+  return req<{ snoozedUntil: number | null }>("/api/notifications/snooze", {
+    method: "POST",
+    body: JSON.stringify({ snoozedUntil }),
+  });
+}
+
+/**
  * Upload an image; the bridge saves it to a host file and returns the path to reference in a
  * message. Uses multipart/form-data (NOT the JSON `req` helper — the browser sets the boundary).
  */

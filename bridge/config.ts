@@ -31,6 +31,12 @@ export interface Config {
   host: string;
   /** Poll cadence for the state engine, ms. */
   pollMs: number;
+  /**
+   * Debounce window before a blocked/done transition becomes a push, ms. An agent that resolves
+   * within this window (you handled it at your desk) never notifies; one that fires is retracted
+   * when it later resolves. See NotificationCoordinator. 0 = notify on the next tick (no debounce).
+   */
+  notifyDelayMs: number;
   /** How many lines of scrollback to pull for the agent detail view. */
   readLines: number;
   /** Key sequence sent to submit a reply after the text (agent-dependent; see HERDR_API.md). */
@@ -80,6 +86,7 @@ export function loadConfig(): Config {
     port: envInt("COLLIE_PORT", 8787),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
     pollMs: envInt("COLLIE_POLL_MS", 1500),
+    notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000),
     readLines: envInt("COLLIE_READ_LINES", 200),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",

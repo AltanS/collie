@@ -69,6 +69,8 @@ export interface SnapshotResponse {
   shellPanes: AgentView[];
   workspaces: WorkspaceView[];
   tabs: TabView[];
+  /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. Absent on older bridges. */
+  notifications?: { snoozedUntil: number | null };
   ts: number;
 }
 

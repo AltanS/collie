@@ -21,6 +21,7 @@ export interface EngineSnapshot {
 }
 
 type TransitionListener = (agent: AgentView, from: AgentStatus, to: AgentStatus) => void;
+type RemoveListener = (paneId: string) => void;
 
 export class StateEngine {
   private agents: AgentView[] = [];
@@ -30,6 +31,7 @@ export class StateEngine {
   private bridge: BridgeStatus = "disconnected";
   private readonly prevStatus = new Map<string, AgentStatus>();
   private readonly transitionListeners = new Set<TransitionListener>();
+  private readonly removeListeners = new Set<RemoveListener>();
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -40,6 +42,12 @@ export class StateEngine {
   onTransition(fn: TransitionListener): () => void {
     this.transitionListeners.add(fn);
     return () => this.transitionListeners.delete(fn);
+  }
+
+  /** Fires when a previously-seen agent pane vanishes (closed/exited) — used to retract its push. */
+  onRemove(fn: RemoveListener): () => void {
+    this.removeListeners.add(fn);
+    return () => this.removeListeners.delete(fn);
   }
 
   current(): EngineSnapshot {
@@ -146,7 +154,9 @@ export class StateEngine {
       }
       const live = new Set(agents.map((a) => a.paneId));
       for (const id of [...this.prevStatus.keys()]) {
-        if (!live.has(id)) this.prevStatus.delete(id);
+        if (live.has(id)) continue;
+        this.prevStatus.delete(id);
+        for (const fn of this.removeListeners) fn(id);
       }
 
       this.agents = agents;

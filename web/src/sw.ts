@@ -3,6 +3,8 @@ import { precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
+import { decidePush, type PushPayload } from "./lib/push-decision";
+
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
 // Workbox SW did — precache the app shell + SPA-fallback navigations — PLUS the two handlers a
 // generated SW can't give us: `push` (render the bridge's notification) and `notificationclick`
@@ -32,14 +34,20 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
 });
 
 // ── Web Push ────────────────────────────────────────────────────────────────────────────────────
-// Payload shape is whatever bridge/push.ts → notify() sends: { title, body, data: { paneId } }.
-interface PushPayload {
-  title?: string;
-  body?: string;
-  data?: { paneId?: string };
-}
+// The branching (suppress vs show vs clear, tag/title/renotify) lives in lib/push-decision so it's
+// unit-tested; here we only parse the event, read client visibility, and run the side effect.
+const ICON = "/web-app-manifest-192x192.png";
 
 self.addEventListener("push", (event: PushEvent) => {
+  event.waitUntil(handlePush(event));
+});
+
+async function anyVisibleClient(): Promise<boolean> {
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  return windows.some((c) => c.visibilityState === "visible");
+}
+
+async function handlePush(event: PushEvent): Promise<void> {
   let payload: PushPayload = {};
   try {
     payload = (event.data?.json() as PushPayload) ?? {};
@@ -47,20 +55,26 @@ self.addEventListener("push", (event: PushEvent) => {
     // Non-JSON / empty push — fall back to a plain-text body so we never silently drop it.
     payload = { body: event.data?.text() };
   }
-  const title = payload.title ?? "Collie";
-  const paneId = payload.data?.paneId;
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body: payload.body ?? "",
-      data: { paneId },
-      icon: "/web-app-manifest-192x192.png",
-      badge: "/web-app-manifest-192x192.png",
-      // One notification slot per agent: a fresh "needs you" for the same pane replaces the stale
-      // one instead of stacking. Generic/test pushes (no paneId) share a single slot.
-      tag: paneId ? `collie:${paneId}` : "collie",
-    }),
-  );
-});
+
+  const decision = decidePush(payload, await anyVisibleClient());
+  if (decision.kind === "suppress") return; // a visible Collie tab already surfaces it in-app
+  if (decision.kind === "clear") {
+    // Retraction: close the slot and show nothing. Chrome's silent-push budget tolerates this.
+    const stale = await self.registration.getNotifications({ tag: decision.tag });
+    for (const n of stale) n.close();
+    return;
+  }
+  // `renotify` isn't in lib.dom's NotificationOptions yet, though Chrome honours it (needs a tag).
+  const options: NotificationOptions & { renotify?: boolean } = {
+    body: decision.body,
+    data: { paneId: decision.paneId },
+    icon: ICON,
+    badge: ICON,
+    tag: decision.tag,
+    renotify: decision.renotify,
+  };
+  await self.registration.showNotification(decision.title, options);
+}
 
 // Tap a notification → focus an existing Collie tab (navigating it to the agent) or open a new one.
 self.addEventListener("notificationclick", (event: NotificationEvent) => {

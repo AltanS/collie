@@ -74,8 +74,10 @@ function makeEngine() {
   const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
   const transitions: Array<{ pane: string; from: AgentStatus; to: AgentStatus }> = [];
   engine.onTransition((a, from, to) => transitions.push({ pane: a.paneId, from, to }));
+  const removed: string[] = [];
+  engine.onRemove((paneId) => removed.push(paneId));
   const poll = () => (engine as unknown as { poll(): Promise<void> }).poll();
-  return { herdr, engine, transitions, poll };
+  return { herdr, engine, transitions, removed, poll };
 }
 
 describe("StateEngine — transition detection", () => {
@@ -104,6 +106,35 @@ describe("StateEngine — transition detection", () => {
     herdr.panes = [pane("w1:p1", "w1", "blocked", "claude")];
     await poll(); // reappears — must be treated as new, not a transition
     expect(transitions).toEqual([]);
+  });
+});
+
+describe("StateEngine — removal events", () => {
+  test("fires onRemove when a previously-seen agent pane vanishes", async () => {
+    const { herdr, removed, poll } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "blocked", "claude")];
+    await poll(); // first sighting — now tracked
+    herdr.panes = []; // pane closed
+    await poll();
+    expect(removed).toEqual(["w1:p1"]);
+  });
+
+  test("does not fire onRemove while a pane persists or merely changes status", async () => {
+    const { herdr, removed, poll } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "working", "claude")];
+    await poll();
+    herdr.panes = [pane("w1:p1", "w1", "blocked", "claude")]; // status change, still present
+    await poll();
+    expect(removed).toEqual([]);
+  });
+
+  test("does not fire onRemove for a vanished bare shell pane (never tracked)", async () => {
+    const { herdr, removed, poll } = makeEngine();
+    herdr.panes = [pane("w1:p2", "w1", "unknown", null)]; // shell pane, no agent
+    await poll();
+    herdr.panes = [];
+    await poll();
+    expect(removed).toEqual([]);
   });
 });
 

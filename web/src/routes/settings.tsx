@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BuildStamp } from "@/components/build-stamp";
 import { ConnectionInfo } from "@/components/connection-info";
 import { Card } from "@/components/ui/card";
+import { SnoozeControl } from "@/components/snooze-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
 import { navigateWithTransition } from "@/lib/view-transition";
@@ -96,6 +97,10 @@ export function SettingsRoute() {
             </p>
           )}
         </Card>
+
+        {state && state.availability !== "server-off" && (
+          <SnoozeControl snoozedUntil={root?.snoozedUntil ?? null} />
+        )}
 
         <ConnectionInfo bridge={root?.bridge} device={root?.device} build={serverBuild} />
 

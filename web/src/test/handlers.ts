@@ -76,6 +76,7 @@ export const fixtureSnapshot: SnapshotResponse = {
   shellPanes: fixtureShellPanes,
   workspaces: fixtureWorkspaces,
   tabs: fixtureTabs,
+  notifications: { snoozedUntil: null },
   ts: 0,
 };
 
@@ -113,4 +114,8 @@ export const handlers = [
     }),
   ),
   http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
+  http.post("/api/notifications/snooze", async ({ request }) => {
+    const { snoozedUntil } = (await request.json()) as { snoozedUntil: number | null };
+    return HttpResponse.json({ snoozedUntil });
+  }),
 ];
