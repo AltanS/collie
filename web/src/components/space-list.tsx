@@ -3,6 +3,7 @@ import { FolderPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusDot } from "@/components/status-badge";
 import { blockedCount, worstSpaceStatus } from "@/lib/spaces";
+import { STATUS_LABEL } from "@/lib/types";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
 interface SpaceListProps {
@@ -55,7 +56,11 @@ export function SpaceList({
             )}
           >
             {status ? (
-              <StatusDot status={status} />
+              <>
+                <StatusDot status={status} />
+                {/* The dot alone is color-only; give SR users the same status word as StatusBadge. */}
+                <span className="sr-only">{STATUS_LABEL[status]}</span>
+              </>
             ) : (
               <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
             )}

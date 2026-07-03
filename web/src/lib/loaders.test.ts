@@ -82,3 +82,68 @@ describe("paneLoader", () => {
     await expect(paneLoader({ params: {} })).rejects.toThrow(/paneId/);
   });
 });
+
+describe("requested-lines bookkeeping (Load older)", () => {
+  it("defaults to the base window and grows a step per tap, capped", async () => {
+    const { getRequestedLines, growRequestedLines, canGrowRequestedLines, DETAIL_HISTORY_MAX } =
+      await import("./loaders");
+    expect(getRequestedLines("w1:p1")).toBe(600);
+    expect(canGrowRequestedLines("w1:p1")).toBe(true);
+
+    expect(growRequestedLines("w1:p1")).toBe(1200);
+    expect(growRequestedLines("w1:p1")).toBe(1800);
+    expect(getRequestedLines("w1:p1")).toBe(1800);
+
+    // Grow all the way to the cap; further taps clamp and canGrow flips false.
+    let last = 1800;
+    while (last < DETAIL_HISTORY_MAX) last = growRequestedLines("w1:p1");
+    expect(last).toBe(DETAIL_HISTORY_MAX);
+    expect(growRequestedLines("w1:p1")).toBe(DETAIL_HISTORY_MAX); // stays clamped
+    expect(canGrowRequestedLines("w1:p1")).toBe(false);
+  });
+
+  it("tracks each pane independently", async () => {
+    const { getRequestedLines, growRequestedLines } = await import("./loaders");
+    growRequestedLines("w1:p1");
+    expect(getRequestedLines("w1:p1")).toBe(1200);
+    expect(getRequestedLines("w2:p1")).toBe(600); // untouched
+  });
+
+  it("the loader fetches with (and reports) the pane's requested window", async () => {
+    const { paneLoader, growRequestedLines } = await import("./loaders");
+    growRequestedLines("w1:p1"); // 600 → 1200
+    const data = await paneLoader({ params: { paneId: "w1:p1" } });
+    expect(data.requestedLines).toBe(1200);
+    expect(data.truncated).toBe(false); // from the MSW fixture
+  });
+
+  it("resetRequestedLines clears back to the base window", async () => {
+    const { getRequestedLines, growRequestedLines, resetRequestedLines } = await import("./loaders");
+    growRequestedLines("w1:p1");
+    resetRequestedLines("w1:p1");
+    expect(getRequestedLines("w1:p1")).toBe(600);
+  });
+});
+
+// A superseded revalidation aborts the in-flight fetch via request.signal. The loaders must
+// RETHROW that AbortError (so React Router discards the stale run) rather than swallow it into the
+// stale-data/error-banner branch — otherwise a fast poll would flash a spurious "reconnecting…".
+describe("loaders — aborted request", () => {
+  function abortedRequest(): Request {
+    const controller = new AbortController();
+    controller.abort();
+    return new Request("http://localhost/", { signal: controller.signal });
+  }
+
+  it("rootLoader rethrows the abort instead of returning stale/error data", async () => {
+    const { rootLoader } = await import("./loaders");
+    await expect(rootLoader({ request: abortedRequest() })).rejects.toThrow();
+  });
+
+  it("paneLoader rethrows the abort instead of returning stale/error data", async () => {
+    const { paneLoader } = await import("./loaders");
+    await expect(
+      paneLoader({ params: { paneId: "w1:p1" }, request: abortedRequest() }),
+    ).rejects.toThrow();
+  });
+});

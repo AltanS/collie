@@ -58,6 +58,10 @@ interface PaneCacheEntry {
   response: PaneReadResponse;
 }
 const paneCache = new Map<string, PaneCacheEntry>();
+// Bound the cache so it can't grow forever across a long session of opening many panes. Evict the
+// oldest (insertion-order) entry beyond the cap — a plain FIFO is fine here (each entry is one
+// pane's last body). 20 comfortably covers any panes in flight on a phone.
+const PANE_CACHE_MAX = 20;
 
 export async function fetchPane(
   paneId: string,
@@ -86,7 +90,13 @@ export async function fetchPane(
   // that actually arrived intact.
   const data = (await res.json()) as PaneReadResponse;
   const etag = res.headers.get("etag");
-  if (etag) paneCache.set(paneId, { etag, response: data });
+  if (etag) {
+    paneCache.set(paneId, { etag, response: data });
+    if (paneCache.size > PANE_CACHE_MAX) {
+      const oldest = paneCache.keys().next().value;
+      if (oldest !== undefined) paneCache.delete(oldest);
+    }
+  }
 
   return data;
 }

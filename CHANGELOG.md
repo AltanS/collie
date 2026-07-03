@@ -6,6 +6,85 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.3.0] - 2026-07-03
+
+A full-codebase review pass: four audit agents (backend, frontend, security, ops/product) swept the
+tree; everything they found was verified, fixed, and the top feature gaps were built.
+
+### Added
+- **Reply from the notification.** Needs-you pushes now carry up to two quick-reply action buttons
+  (agent-aware: codex gets `yes`/`no`, others `yes`/`continue`; bridge sends `quickReplies` in the
+  payload). Tapping one POSTs the reply straight from the service worker and confirms with a silent
+  "Sent ✓" — no app open needed. Body tap still deep-links as before.
+- **Find in output.** A magnifier in the pane header opens a find bar: case-insensitive match over
+  the visible buffer, match count, prev/next that cooperates with the scroll-freeze, highlights
+  rendered through the same React-text-node path (XSS boundary untouched).
+- **Load older scrollback.** A "load older" row at the top of the mirror grows the fetched window
+  600 lines at a time (up to 5000; the bridge clamps reads at 10000), preserving your scroll
+  position across the refetch.
+- **Destructive-input confirm.** Replies matching a reviewed pattern list (`rm -rf`, `sudo`,
+  `git push --force`, `dd if=`, `mkfs`, redirects to system paths, …) flip Send into a two-tap
+  "Really send?" state for ~3s — same pattern the `/clear` palette action already used.
+- **Audit log.** Every write action (reply, keys, upload, tab/workspace create, pane close) appends
+  a single JSONL line — timestamp, action, pane, device, truncated params — to
+  `<state-dir>/audit.log` (mode 0600). Audit failures never block the action itself.
+- `COLLIE_PUBLIC_HOSTS` env var — an explicit Host-header allowlist. When set, requests addressed
+  to any other Host are rejected before origin logic, defeating DNS rebinding. Strongly
+  recommended (set it to your MagicDNS name); effectively mandatory with `COLLIE_SERVE_MODE=http`.
+- Startup warnings when `COLLIE_TRUSTED_USER` or `COLLIE_PUBLIC_HOSTS` is unset — parity with the
+  existing bind/allowlist warnings, since an empty trusted-user means any tailnet device has write
+  access.
+- Uploaded images are now swept after 48h (was: kept forever).
+
+### Changed
+- **Builds are gated.** `bun run build` (root) and `collie-ctl.sh build` now typecheck bridge and
+  web before building, and build into `dist-staging` with an atomic swap — a failed build can no
+  longer leave an empty `web/dist` serving 503s. The pre-push hook typechecks both sides too
+  (`SKIP_TYPECHECK=1` to bypass once). Root tsconfig now enforces `noUnusedLocals/Parameters`.
+- **Write requests without an `Origin` header are rejected** unless they arrive on loopback
+  (browsers always send Origin on POST; curl-on-host keeps working).
+- Idle lock is now timestamp-based: backgrounding/foregrounding the app no longer resets the
+  countdown, and returning past the deadline locks immediately.
+- The composer moved into its own `<Composer>` component; `agent-chat.tsx` slimmed by ~230 lines.
+- A reply whose text lands but whose submit keystroke fails now reports "typed into the pane but
+  not submitted — check the pane before resending" (and `textDelivered: true`) instead of a generic
+  error that invited double-sends.
+- systemd unit hardened (`NoNewPrivileges`, `PrivateTmp`) and made persistent
+  (`StartLimitIntervalSec=0`, `RestartSec=5`) so a crash-loop can't leave the service permanently
+  down while you're phone-only.
+- Notification deep links URL-encode the pane id; sheets manage focus (focus in on open, restore on
+  close, `aria-labelledby`); space status dots gained screen-reader text; pinch-zoom re-enabled
+  (removed `maximum-scale=1`).
+
+### Fixed
+- **Socket leak on RPC timeout** — a stalled Herdr left the Unix-socket FD open on every timed-out
+  request; under the 1.5s poll cadence this exhausted file descriptors and wedged the bridge. Every
+  terminal path now closes the socket.
+- **UTF-8 corruption across socket chunks** — multi-byte characters (box drawing, emoji) straddling
+  a socket-read boundary rendered as `�`; replies are now stream-decoded.
+- **Overlapping polls** — a slow Herdr let 1.5s ticks pile up 3-4 concurrent polls; a tick is now
+  skipped while the previous poll is in flight.
+- **Upload buffering** — a too-large upload was buffered fully into RAM before the 10MB check;
+  oversized `Content-Length` is now rejected up front and `Bun.serve` caps request bodies at 12MB.
+- Push subscription saves are serialized and written atomically (temp+rename); concurrent
+  add/prune can no longer drop a subscription. State files are written 0600 in 0700 dirs.
+- First PWA load no longer flashes an immediate reload (service-worker `controllerchange` on
+  initial claim was treated as an update).
+- A rotated VAPID key now unsubscribes the stale push subscription and re-subscribes fresh instead
+  of silently dead-ending pushes.
+- Superseded loader revalidations are aborted (`request.signal` threaded through); raw key presses
+  debounce their revalidate (one refetch per burst instead of one per keystroke).
+- Slash-command insert appends to the draft instead of overwriting it; tap-to-focus no longer
+  collapses an active text selection (copying pane output works now).
+- `envInt` config parsing rejects garbage and out-of-range values (negative poll/debounce
+  intervals, invalid ports) with a warning instead of silently accepting them.
+- Static-file path guard now checks the directory boundary (`dist` vs `dist-*`); `?lines=` is
+  clamped; API/static responses carry `X-Content-Type-Options: nosniff` and
+  `Referrer-Policy: no-referrer`; graceful shutdown drains in-flight requests.
+- Pre-commit version guard now also covers `web/vite.config.ts`, `web/index.html`,
+  `web/package.json`, `web/public/`, `systemd/`, and root `package.json`, and requires the new
+  version to sort strictly above the old one.
+
 ## [0.2.0] - 2026-06-30
 
 ### Changed

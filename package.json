@@ -1,6 +1,6 @@
 {
   "name": "collie",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
   "description": "Collie — a mobile web UI to monitor and reply to your Herdr agent herd over Tailscale",
@@ -8,7 +8,7 @@
   "scripts": {
     "start": "bun run bridge/index.ts",
     "dev": "bun --watch bridge/index.ts",
-    "build": "cd web && bun install && bun run build",
+    "build": "bun run typecheck && cd web && bun install && bun run typecheck && bun run build",
     "build:web": "cd web && bun run build",
     "web:dev": "cd web && bun run dev",
     "test": "bun test ./bridge",

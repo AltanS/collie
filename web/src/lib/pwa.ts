@@ -23,10 +23,23 @@ const STUCK_GUARD_MS = 8_000;
 let registration: ServiceWorkerRegistration | undefined;
 let reloaded = false;
 
+// Was a service worker already controlling this page when we loaded? On a first-ever visit it
+// isn't: `immediate` registration + the SW's clientsClaim then fire ONE `controllerchange` that is
+// *initial* control, not an update — reloading on it is the spurious first-load flash. We ignore
+// that first event (and mark ourselves controlled from then on), so only a *subsequent*
+// controllerchange — a new SW replacing the old one — reloads. On a return visit a controller
+// already exists, so every change reloads.
+let hadController = "serviceWorker" in navigator && Boolean(navigator.serviceWorker.controller);
+
 function reloadOnce() {
   if (reloaded) return;
   reloaded = true;
   window.location.reload();
+}
+
+function onControllerChange() {
+  if (hadController) reloadOnce();
+  else hadController = true;
 }
 
 // Reload as soon as a freshly-installed worker reaches "activated". Used by both the periodic
@@ -52,8 +65,10 @@ registerSW({
     if (!r) return;
     // Any newly-found worker (from the poll below or a manual check) → reload when it activates.
     r.addEventListener("updatefound", () => watchWorker(r.installing));
-    // A new SW taking control is the other reliable "we're updated now" signal.
-    navigator.serviceWorker?.addEventListener("controllerchange", reloadOnce);
+    // A new SW taking control is the other reliable "we're updated now" signal — but only when it
+    // *replaces* a prior controller (see onControllerChange); the first-visit initial claim is not
+    // an update and must not reload.
+    navigator.serviceWorker?.addEventListener("controllerchange", onControllerChange);
     setInterval(() => void r.update().catch(() => {}), UPDATE_CHECK_MS);
   },
 });

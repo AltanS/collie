@@ -9,12 +9,14 @@ const KEYS = [
   "COLLIE_PORT",
   "COLLIE_HOST",
   "COLLIE_POLL_MS",
+  "COLLIE_NOTIFY_DELAY_MS",
   "COLLIE_READ_LINES",
   "COLLIE_SUBMIT_KEYS",
   "COLLIE_TRUSTED_USER",
   "COLLIE_DEVICE_HEADER",
   "COLLIE_DEVICE_ALLOWLIST",
   "COLLIE_ALLOWED_ORIGINS",
+  "COLLIE_PUBLIC_HOSTS",
   "COLLIE_VAPID_PUBLIC",
   "COLLIE_VAPID_PRIVATE",
   "COLLIE_VAPID_SUBJECT",
@@ -51,6 +53,9 @@ describe("loadConfig", () => {
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
     expect(cfg.allowedOrigins).toEqual([]);
+    expect(cfg.notifyDelayMs).toBe(30_000);
+    // Host-header validation is opt-in (empty = off, legacy behaviour).
+    expect(cfg.publicHosts).toEqual([]);
     // Per-device auth is off by default (empty header = feature disabled).
     expect(cfg.deviceHeader).toBe("");
     expect(cfg.deviceAllowlist).toEqual([]);
@@ -69,6 +74,40 @@ describe("loadConfig", () => {
     expect(loadConfig().port).toBe(9999);
     process.env.COLLIE_PORT = "not-a-number";
     expect(loadConfig().port).toBe(8787);
+  });
+
+  test("rejects trailing-garbage integers (parseInt would have accepted '8080abc')", () => {
+    process.env.COLLIE_PORT = "8080abc";
+    expect(loadConfig().port).toBe(8787);
+    // Surrounding whitespace is still fine.
+    process.env.COLLIE_READ_LINES = "  120  ";
+    expect(loadConfig().readLines).toBe(120);
+  });
+
+  test("clamps out-of-range integers back to the default", () => {
+    process.env.COLLIE_PORT = "0";
+    expect(loadConfig().port).toBe(8787);
+    process.env.COLLIE_PORT = "70000";
+    expect(loadConfig().port).toBe(8787);
+    process.env.COLLIE_POLL_MS = "100"; // below the 250 floor
+    expect(loadConfig().pollMs).toBe(1500);
+    process.env.COLLIE_NOTIFY_DELAY_MS = "-5"; // below the 0 floor
+    expect(loadConfig().notifyDelayMs).toBe(30_000);
+  });
+
+  test("accepts an in-range integer and a zero notify delay", () => {
+    process.env.COLLIE_POLL_MS = "250";
+    expect(loadConfig().pollMs).toBe(250);
+    process.env.COLLIE_NOTIFY_DELAY_MS = "0";
+    expect(loadConfig().notifyDelayMs).toBe(0);
+  });
+
+  test("reads the public-hosts allowlist, trimming and dropping blanks", () => {
+    process.env.COLLIE_PUBLIC_HOSTS = " collie.example.ts.net , collie.example.com:8443 ,";
+    expect(loadConfig().publicHosts).toEqual([
+      "collie.example.ts.net",
+      "collie.example.com:8443",
+    ]);
   });
 
   test("splits comma lists, trimming whitespace and dropping blanks", () => {

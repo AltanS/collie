@@ -1,11 +1,34 @@
 #!/usr/bin/env bash
-# Pre-push guard: run the web test suite (Vitest) before anything leaves the machine.
-# Install with: scripts/install-hooks.sh (sets core.hooksPath).
-# Override a single push with: SKIP_TESTS=1 git push …
+# Pre-push guard: typecheck both sides, then run the test suites (backend Bun + web Vitest) before
+# anything leaves the machine. Install with: scripts/install-hooks.sh (sets core.hooksPath).
+# Override once: SKIP_TYPECHECK=1 git push (skip typecheck) · SKIP_TESTS=1 git push (skip tests).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
+# ── Typecheck (the Vite build does NOT typecheck; catch it before it ships) ──
+if [ "${SKIP_TYPECHECK:-}" = "1" ]; then
+  echo "pre-push: SKIP_TYPECHECK=1 — skipping typecheck" >&2
+else
+  echo "pre-push: typechecking backend (bun run typecheck)…" >&2
+  if ! (cd "$ROOT" && bun run typecheck); then
+    cat >&2 <<'EOF'
+✗ pre-push: backend typecheck failed — push aborted.
+  Fix the type errors, or override once with: SKIP_TYPECHECK=1 git push
+EOF
+    exit 1
+  fi
+  echo "pre-push: typechecking web (bun run typecheck)…" >&2
+  if ! (cd "$ROOT/web" && bun run typecheck); then
+    cat >&2 <<'EOF'
+✗ pre-push: web typecheck failed — push aborted.
+  Fix the type errors, or override once with: SKIP_TYPECHECK=1 git push
+EOF
+    exit 1
+  fi
+fi
+
+# ── Tests ───────────────────────────────────────────────────────────────────
 if [ "${SKIP_TESTS:-}" = "1" ]; then
   echo "pre-push: SKIP_TESTS=1 — skipping test suite" >&2
   exit 0

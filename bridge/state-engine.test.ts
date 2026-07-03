@@ -138,6 +138,46 @@ describe("StateEngine — removal events", () => {
   });
 });
 
+describe("StateEngine — in-flight guard", () => {
+  // A Herdr whose list calls hang until released, so we can catch a second tick landing mid-poll.
+  class GatedHerdr {
+    starts = 0;
+    private open: () => void = () => {};
+    private readonly gate = new Promise<void>((resolve) => (this.open = resolve));
+    constructor(private readonly panes: FakePane[]) {}
+    release() {
+      this.open();
+    }
+    async listWorkspaces() {
+      this.starts++;
+      await this.gate;
+      return [ws("w1", 1)];
+    }
+    async listPanes() {
+      await this.gate;
+      return this.panes;
+    }
+    async listTabs() {
+      await this.gate;
+      return [];
+    }
+  }
+
+  test("skips a tick while the previous poll is still in flight", async () => {
+    const herdr = new GatedHerdr([pane("w1:p1", "w1", "idle", "claude")]);
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+    const poll = () => (engine as unknown as { poll(): Promise<void> }).poll();
+
+    const first = poll(); // starts the poll, hangs on the gate
+    await poll(); // second tick — must early-return, not start a second poll
+    expect(herdr.starts).toBe(1);
+
+    herdr.release();
+    await first;
+    expect(herdr.starts).toBe(1);
+  });
+});
+
 describe("StateEngine — snapshot shaping", () => {
   test("splits agent panes from bare shell panes", async () => {
     const { herdr, engine, poll } = makeEngine();

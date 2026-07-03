@@ -1,4 +1,5 @@
 import type { AgentStatus } from "./types.ts";
+import { decodeReplyLine } from "./wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The Herdr socket adapter. THIS IS THE ONLY FILE that knows Herdr's method names
@@ -79,11 +80,27 @@ export class HerdrClient {
     return new Promise<T>((resolve, reject) => {
       let buf = "";
       let settled = false;
+      // The live socket, once Bun.connect opens one. Hoisted so EVERY terminal path (timeout
+      // included) can close it — otherwise a timeout leaves the FD dangling.
+      let socket: Bun.Socket | null = null;
+      // Stream-decode so a multi-byte UTF-8 codepoint split across chunk boundaries isn't
+      // corrupted into replacement characters.
+      const decoder = new TextDecoder("utf-8");
+      // Settle BEFORE closing: socket.end() synchronously fires `close`, which re-enters finish —
+      // but `settled` is already set there, so that reject is a no-op and we keep the real outcome.
       const finish = (fn: () => void) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         fn();
+        if (socket) {
+          try {
+            socket.end();
+          } catch {
+            /* ignore */
+          }
+          socket = null;
+        }
       };
       const timer = setTimeout(
         () => finish(() => reject(new Error(`herdr ${method}: timed out after ${this.timeoutMs}ms`))),
@@ -93,34 +110,24 @@ export class HerdrClient {
       Bun.connect({
         unix: this.socketPath,
         socket: {
-          data(socket, chunk) {
-            buf += chunk.toString();
+          open(s) {
+            socket = s;
+          },
+          data(s, chunk) {
+            socket = s;
+            buf += decoder.decode(chunk, { stream: true });
             const nl = buf.indexOf("\n");
             if (nl < 0) return;
             const line = buf.slice(0, nl);
-            // Settle BEFORE closing — socket.end() synchronously fires `close`, which would
-            // otherwise reject this request before we resolve it.
             finish(() => {
               try {
-                const msg = JSON.parse(line) as
-                  | { result: T }
-                  | { error: { code: string; message: string } };
-                if ("error" in msg) {
-                  reject(new Error(`herdr ${method}: ${msg.error.code}: ${msg.error.message}`));
-                } else {
-                  resolve(msg.result);
-                }
+                resolve(decodeReplyLine<T>(line, method));
               } catch (e) {
-                reject(new Error(`herdr ${method}: bad reply: ${(e as Error).message}`));
+                reject(e as Error);
               }
             });
-            try {
-              socket.end();
-            } catch {
-              /* ignore */
-            }
           },
-          error(_socket, err) {
+          error(_s, err) {
             finish(() => reject(err));
           },
           close() {
@@ -128,10 +135,21 @@ export class HerdrClient {
           },
         },
       })
-        .then((socket) => {
+        .then((s) => {
+          // Already settled (e.g. timed out) before the connection opened — close it so the FD
+          // doesn't leak, and don't bother writing.
+          if (settled) {
+            try {
+              s.end();
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+          socket = s;
           // Write only once the connection is established — matches the verified probe pattern.
-          socket.write(JSON.stringify({ id, method, params }) + "\n");
-          socket.flush();
+          s.write(JSON.stringify({ id, method, params }) + "\n");
+          s.flush();
         })
         .catch((err) => finish(() => reject(err)));
     });

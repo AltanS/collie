@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
 
@@ -8,6 +8,9 @@ import type { Config } from "./config.ts";
 
 type WebPushModule = typeof import("web-push");
 export type PushSubscription = { endpoint: string; keys: { p256dh: string; auth: string } };
+
+/** Delivers one payload to one subscription. Injectable so the prune/log logic is testable. */
+export type PushSender = (sub: PushSubscription, payload: string) => Promise<unknown>;
 
 /**
  * A notification instruction for the service worker (see web/src/sw.ts). `type:"clear"` closes the
@@ -22,16 +25,31 @@ export interface PushMessage {
   tag?: string;
   paneId?: string;
   renotify?: boolean;
+  /**
+   * Candidate one-tap reply strings for a single-agent alert (0–3). The SW turns these into
+   * notification actions (it caps at 2 and defaults to ["yes","continue"] when the field is absent),
+   * so a blocked agent can be answered straight from the lock screen. Omitted for multi-agent
+   * digests (no single pane to reply to).
+   */
+  quickReplies?: string[];
 }
 
 export class Push {
   private lib: WebPushModule | null = null;
   private subs = new Map<string, PushSubscription>();
   private readonly file: string;
+  private readonly sender: PushSender;
   private _enabled = false;
+  // Saves are funnelled through this chain so concurrent writes never interleave (last enqueued
+  // wins deterministically); a failed write is swallowed here so it can't poison later saves.
+  private saveChain: Promise<void> = Promise.resolve();
 
-  constructor(private readonly cfg: Config) {
+  constructor(
+    private readonly cfg: Config,
+    sender?: PushSender,
+  ) {
     this.file = join(cfg.stateDir, "push-subscriptions.json");
+    this.sender = sender ?? ((sub, payload) => this.lib!.sendNotification(sub, payload));
   }
 
   /** Whether push is live (VAPID keys configured and `web-push` installed). Set once in init(). */
@@ -77,12 +95,12 @@ export class Push {
   }
 
   private async broadcast(payload: string): Promise<void> {
-    if (!this.enabled || !this.lib) return;
+    if (!this.enabled) return;
     const dead: string[] = [];
     await Promise.all(
       [...this.subs.values()].map(async (sub) => {
         try {
-          await this.lib!.sendNotification(sub, payload);
+          await this.sender(sub, payload);
         } catch (err) {
           // 404/410 mean the subscription is gone — prune it. Anything else (network, 5xx) is a
           // real failure worth a log line rather than vanishing silently.
@@ -112,8 +130,22 @@ export class Push {
     }
   }
 
-  private async save(): Promise<void> {
-    await mkdir(this.cfg.stateDir, { recursive: true });
-    await Bun.write(this.file, JSON.stringify([...this.subs.values()], null, 2));
+  private save(): Promise<void> {
+    // Snapshot now (subs mutate synchronously before each save call), then serialise the write
+    // behind any in-flight one. `then(write, write)` runs regardless of a prior failure; the
+    // chain itself is reset to a swallowed promise so one bad write doesn't wedge future saves.
+    const snapshot = JSON.stringify([...this.subs.values()], null, 2);
+    const write = () => this.writeState(snapshot);
+    const run = this.saveChain.then(write, write);
+    this.saveChain = run.catch(() => {});
+    return run;
+  }
+
+  /** Atomic, owner-only write: fresh temp file (mode 0600) then rename over the target. */
+  private async writeState(data: string): Promise<void> {
+    await mkdir(this.cfg.stateDir, { recursive: true, mode: 0o700 });
+    const tmp = `${this.file}.tmp`;
+    await writeFile(tmp, data, { mode: 0o600 });
+    await rename(tmp, this.file);
   }
 }

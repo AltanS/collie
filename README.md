@@ -44,7 +44,9 @@ Two sharp edges:
 - **It acts as _you_**, with your full privileges — `~/.ssh`, `git push --force`, `rm -rf`, `sudo`.
 - **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it.
   No password, no session — an unlocked or stolen phone (or anyone else on your tailnet) is an open
-  shell. The idle-lock is UX, not auth. There's no audit log.
+  shell. The idle-lock is UX, not auth. Every write action (replies, keys, uploads, pane/tab
+  create/close) is appended to `<state-dir>/audit.log`, so there is at least a trail — but a trail
+  is not a gate.
 
 It's built single-user and tailnet-only. The defenses:
 
@@ -56,6 +58,11 @@ It's built single-user and tailnet-only. The defenses:
   any other device is read-only. Off by default; revoke a device by dropping it from the list.
   See [Deployment variants](#deployment-variants) for the proxy this requires.
 - **Same-origin gate + strict CSP**; pane output renders as React text nodes, never `innerHTML`.
+- **Optional Host allowlist** — set `COLLIE_PUBLIC_HOSTS` to the exact host(s) you serve on (e.g.
+  your MagicDNS name) and the bridge rejects any request addressed to another Host before the
+  origin logic runs. **Strongly recommended, and effectively mandatory with
+  `COLLIE_SERVE_MODE=http`** — without TLS, DNS rebinding can otherwise make a hostile page
+  same-origin with the bridge.
 
 > 🚫 **Never `tailscale funnel` this** — funnel exposes it to the public internet; `serve` keeps it
 > tailnet-only. There is no scenario where funneling Collie is correct.

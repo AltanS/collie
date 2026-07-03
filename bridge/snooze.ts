@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
 
@@ -41,7 +41,10 @@ export class Snooze {
   /** Snooze until `mutedUntil` (epoch ms); a past timestamp or null resumes immediately. */
   async set(mutedUntil: number | null): Promise<void> {
     this.mutedUntil = mutedUntil !== null && mutedUntil > this.now() ? mutedUntil : null;
-    await mkdir(this.cfg.stateDir, { recursive: true });
-    await Bun.write(this.file, JSON.stringify({ mutedUntil: this.mutedUntil }, null, 2));
+    await mkdir(this.cfg.stateDir, { recursive: true, mode: 0o700 });
+    // node:fs write (not Bun.write) so we can set owner-only perms — the state dir holds push keys.
+    await writeFile(this.file, JSON.stringify({ mutedUntil: this.mutedUntil }, null, 2), {
+      mode: 0o600,
+    });
   }
 }

@@ -53,7 +53,13 @@ function makeRouter(initialPath: string, homeLoader: () => HomeData) {
           { index: true, element: <div data-testid="home">HOME</div> },
           {
             path: "pane/:paneId",
-            loader: ({ params }): PaneData => ({ paneId: params.paneId ?? "", text: "", error: false }),
+            loader: ({ params }): PaneData => ({
+              paneId: params.paneId ?? "",
+              text: "",
+              truncated: false,
+              requestedLines: 600,
+              error: false,
+            }),
             element: <DetailRoute />,
           },
         ],

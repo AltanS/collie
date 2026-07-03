@@ -33,6 +33,7 @@ export class StateEngine {
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private polling = false;
 
   constructor(
     private readonly herdr: HerdrClient,
@@ -71,6 +72,10 @@ export class StateEngine {
   }
 
   private async poll(): Promise<void> {
+    // Skip the tick if the previous poll is still running — against a slow Herdr, back-to-back
+    // ticks would otherwise stack overlapping in-flight polls.
+    if (this.polling) return;
+    this.polling = true;
     try {
       const [workspaces, panes, tabs] = await Promise.all([
         this.herdr.listWorkspaces(),
@@ -169,6 +174,8 @@ export class StateEngine {
         console.warn(`[state] poll failed, marking disconnected: ${(err as Error).message}`);
       }
       this.bridge = "disconnected";
+    } finally {
+      this.polling = false;
     }
   }
 }

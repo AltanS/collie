@@ -42,7 +42,9 @@ line — do it as part of the change, not after**:
   a rebuild is **immediately live — no restart**.
 - **Backend changes** (`bridge/*.ts`): Bun does **not** hot-reload the service — you must
   `systemctl --user restart collie`. Forgetting this is the #1 "my change didn't take" trap.
-- Typecheck before building: `cd web && bun run typecheck` (the Vite build does **not** typecheck).
+- `bun run build` (root) and `collie-ctl.sh build` **typecheck both sides first** (root tsc + web
+  tsc), then build web to `dist-staging` and swap it in atomically — a failed build never empties a
+  live `web/dist`. Bare `cd web && bun run build` still skips typechecking; don't ship from it.
 - **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
   browser); backend pure-logic `bun run test` at the root (Bun's own runner — covers `checkAccess`,
   `StateEngine`, `loadConfig`). A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
@@ -50,8 +52,10 @@ line — do it as part of the change, not after**:
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
   so keep new backend logic pure/injectable enough for `bun test`, or exercise it through `web/`.
 - Service: `systemd --user` unit `collie` on the deployment host; logs `journalctl --user -u collie -f`.
-- TS is strict: `verbatimModuleSyntax` + `erasableSyntaxOnly` (no parameter-property shorthand;
-  use `import type` for types) + `noUnusedLocals/Parameters`.
+- TS is strict on both sides, with `noUnusedLocals/Parameters` everywhere. **`web/` additionally**
+  enforces `verbatimModuleSyntax` + `erasableSyntaxOnly` (use `import type`, no parameter-property
+  shorthand there). The **bridge** tsconfig does not enable those two — bridge code uses
+  parameter-property shorthand by convention; keep each side consistent with itself.
 
 ## Frontend data layer (React Router, not TanStack)
 

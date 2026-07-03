@@ -88,9 +88,13 @@ export interface PaneReadResponse {
 
 /**
  * POST /api/pane/:id/{reply,keys} — result of a send. Discriminated on `ok`: a failure always
- * carries the reason Herdr rejected it.
+ * carries the reason Herdr rejected it. `textDelivered` distinguishes the reply partial-failure case
+ * (text was typed but the submit keypress failed) so the client knows NOT to resend — resending would
+ * duplicate the already-typed text. Absent/false ⇒ nothing landed, so a resend is safe.
  */
-export type ActionResponse = { ok: true } | { ok: false; error: string };
+export type ActionResponse =
+  | { ok: true }
+  | { ok: false; error: string; textDelivered?: boolean };
 
 /** POST /api/pane/:id/upload — image saved to a host file; `path` is the absolute path to ref. */
 export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };

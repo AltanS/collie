@@ -58,6 +58,18 @@ function urlB64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
+// Does an existing subscription's applicationServerKey match the server's current VAPID key? A
+// subscription is permanently bound to the key it was created with, so when the bridge rotates its
+// VAPID keypair every push to the old subscription silently fails — we must detect the mismatch and
+// re-subscribe. `existing` is the raw ArrayBuffer from `subscription.options.applicationServerKey`.
+export function keysMatch(existing: ArrayBuffer | null | undefined, serverKey: Uint8Array): boolean {
+  if (!existing) return false;
+  const a = new Uint8Array(existing);
+  if (a.length !== serverKey.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== serverKey[i]) return false;
+  return true;
+}
+
 // Subscribe this device to push and register it with the bridge; clears the user's "disabled"
 // preference on success. Returns whether a live subscription now exists (with a reason if not).
 export async function enablePush(): Promise<EnableResult> {
@@ -73,11 +85,18 @@ export async function enablePush(): Promise<EnableResult> {
     if (perm !== "granted") return { ok: false, reason: "denied" };
   }
 
+  const serverKey = urlB64ToUint8Array(cfg.vapidPublicKey);
   let sub = await reg.pushManager.getSubscription();
+  // A stale subscription bound to a rotated (or otherwise different) VAPID key would keep receiving
+  // nothing — drop it and re-subscribe fresh against the current key.
+  if (sub && !keysMatch(sub.options.applicationServerKey, serverKey)) {
+    await sub.unsubscribe();
+    sub = null;
+  }
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlB64ToUint8Array(cfg.vapidPublicKey),
+      applicationServerKey: serverKey,
     });
   }
   await fetch("/api/subscribe", {

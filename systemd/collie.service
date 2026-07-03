@@ -9,13 +9,20 @@
 [Unit]
 Description=Collie
 After=default.target
+# Never give up restarting — a phone-only operator can't run 'systemctl reset-failed'.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 WorkingDirectory=@PLUGIN_ROOT@
 ExecStart=@BUN@ run @PLUGIN_ROOT@/bridge/index.ts
 Restart=on-failure
-RestartSec=2
+RestartSec=5
+# Hardening: the bridge is remote shell access, so deny privilege escalation and give it a private
+# /tmp. ProtectSystem is intentionally NOT set — the only write path is the env-driven state dir,
+# which Herdr may inject to an arbitrary location, so it can't be enumerated in a static ReadWritePaths.
+NoNewPrivileges=yes
+PrivateTmp=yes
 Environment=HERDR_SOCKET_PATH=%h/.config/herdr/herdr.sock
 Environment=COLLIE_PORT=8787
 Environment=HERDR_PLUGIN_CONFIG_DIR=%h/.config/collie

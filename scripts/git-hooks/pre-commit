@@ -15,19 +15,30 @@ fi
 # (1) consistency
 "$ROOT/scripts/check-version.sh" >/dev/null
 
-# (2) bump-on-change
+# (2) bump-on-change — any functional path in this set requires a version bump.
 staged="$(git diff --cached --name-only)"
-if echo "$staged" | grep -qE '^(bridge/|web/src/|scripts/|herdr-plugin\.toml)'; then
+if echo "$staged" | grep -qE '^(bridge/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
   read_ver() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
   cur="$(read_ver < "$ROOT/herdr-plugin.toml")"
   prev="$(git show HEAD:herdr-plugin.toml 2>/dev/null | read_ver || true)"
-  if [ -n "${prev:-}" ] && [ "$cur" = "$prev" ]; then
-    cat >&2 <<EOF
+  if [ -n "${prev:-}" ]; then
+    if [ "$cur" = "$prev" ]; then
+      cat >&2 <<EOF
 ✗ pre-commit: functional code changed but the version is still $cur.
   Bump version in herdr-plugin.toml, package.json, web/package.json and add a CHANGELOG entry.
   (Doc-only changes don't need a bump. Override once with SKIP_VERSION_CHECK=1 git commit.)
 EOF
-    exit 1
+      exit 1
+    fi
+    # Monotonicity: the new version must sort STRICTLY ABOVE the previous one — no downgrades or
+    # typo'd versions. `sort -V` orders semver; the higher of {prev,cur} must be cur.
+    higher="$(printf '%s\n%s\n' "$prev" "$cur" | sort -V | tail -1)"
+    if [ "$higher" != "$cur" ]; then
+      cat >&2 <<EOF
+✗ pre-commit: version went backwards ($prev → $cur). The new version must be greater than the last.
+EOF
+      exit 1
+    fi
   fi
 fi
 

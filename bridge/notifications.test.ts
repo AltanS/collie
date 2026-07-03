@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   NotificationCoordinator,
+  deriveQuickReplies,
   makeNotifySink,
   type HerdSummary,
   type NotifyClock,
@@ -93,6 +94,7 @@ describe("NotificationCoordinator — debounce", () => {
       body: "demo · /home/you/demo",
       paneId: "p1",
       renotify: true,
+      quickReplies: ["yes", "continue"],
     });
   });
 
@@ -147,6 +149,7 @@ describe("NotificationCoordinator — coalescing", () => {
       body: "demo · /home/you/demo",
       paneId: "p1",
       renotify: false, // a retraction update must not re-buzz
+      quickReplies: ["yes", "continue"],
     });
   });
 });
@@ -220,5 +223,46 @@ describe("makeNotifySink", () => {
     sink.render(summary);
     sink.clear();
     expect(push.sent).toEqual([]);
+  });
+
+  test("render forwards a summary's quickReplies onto the push, and omits the key when absent", () => {
+    const withReplies = new RecordingPush();
+    makeNotifySink(withReplies, { isMuted: () => false }, "collie:herd").render({
+      ...summary,
+      quickReplies: ["yes", "no"],
+    });
+    expect(withReplies.sent[0]?.quickReplies).toEqual(["yes", "no"]);
+
+    const without = new RecordingPush();
+    makeNotifySink(without, { isMuted: () => false }, "collie:herd").render(summary);
+    expect(without.sent[0]).not.toHaveProperty("quickReplies");
+  });
+});
+
+describe("deriveQuickReplies", () => {
+  test.each([
+    ["claude", ["yes", "continue"]],
+    ["claude-code", ["yes", "continue"]],
+    ["codex", ["yes", "no"]],
+    ["Codex", ["yes", "no"]],
+    ["opencode", ["yes", "continue"]],
+    ["opencode-dev", ["yes", "continue"]],
+    ["pi", ["yes", "continue"]],
+    ["pi-nightly", ["yes", "continue"]],
+    ["gemini", ["yes", "continue"]], // unrecognised → default
+    ["", ["yes", "continue"]],
+  ])("%s → %o", (agent, expected) => {
+    expect(deriveQuickReplies(agent)).toEqual(expected);
+  });
+
+  test("tolerates null/undefined (defaults)", () => {
+    expect(deriveQuickReplies(null)).toEqual(["yes", "continue"]);
+    expect(deriveQuickReplies(undefined)).toEqual(["yes", "continue"]);
+  });
+
+  test("returns a fresh array each call (callers can mutate safely)", () => {
+    const a = deriveQuickReplies("claude");
+    a.push("mutated");
+    expect(deriveQuickReplies("claude")).toEqual(["yes", "continue"]);
   });
 });

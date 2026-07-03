@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/status-badge";
 import { blockedCount, worstSpaceStatus } from "@/lib/spaces";
+import { STATUS_LABEL } from "@/lib/types";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
 interface SpaceOverviewProps {
@@ -54,7 +55,11 @@ export function SpaceOverview({ workspaces, agents, onOpen, onNewSpace }: SpaceO
                   )}
                 >
                   {status ? (
-                    <StatusDot status={status} />
+                    <>
+                      <StatusDot status={status} />
+                      {/* The dot alone is color-only; give SR users the status word (as StatusBadge). */}
+                      <span className="sr-only">{STATUS_LABEL[status]}</span>
+                    </>
                   ) : (
                     <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
                   )}

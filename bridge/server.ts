@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
+import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
@@ -22,6 +23,15 @@ import type {
 // terminal — instead we save it to a host file and the client references its path in the message
 // (the agent reads images by path). See uploadPane().
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+// Multipart wraps the file in a boundary + part headers, so a legitimately-sized image arrives a
+// little over MAX_UPLOAD_BYTES on the wire. Allow a small slack for the Content-Length pre-check.
+const MAX_UPLOAD_OVERHEAD = 64 * 1024; // 64 KB
+// Hard cap the runtime enforces on ANY request body (Bun.serve maxRequestBodySize). Bigger than the
+// upload cap + overhead so the handler's own 413 fires first for honest clients; this cuts off a
+// chunked or lying client that never sends an accurate Content-Length.
+const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
+// Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
+const MAX_READ_LINES = 10_000;
 const IMAGE_EXT: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -53,6 +63,17 @@ const CSP =
   "style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; " +
   "manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'";
 
+// Hardening headers set on EVERY response (static + API), applied centrally in the fetch wrapper.
+// nosniff stops content-type confusion; no-referrer keeps the tailnet URL out of any Referer.
+const SECURITY_HEADERS: Record<string, string> = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+};
+
+// Loopback Host/Origin forms (with an optional port). Loopback is always trusted — only tailscaled
+// (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close))?$/;
 
 // The whole herd shares one notification slot, so multiple agents coalesce into a single summary
@@ -65,11 +86,15 @@ export function startServer(opts: {
   engine: StateEngine;
   push: Push;
   snooze: Snooze;
-}): void {
-  const { cfg, herdr, engine, push, snooze } = opts;
+  audit: AuditLog;
+}) {
+  const { cfg, herdr, engine, push, snooze, audit } = opts;
   const server = Bun.serve({
     hostname: cfg.host,
     port: cfg.port,
+    // Runtime cap on any request body — a chunked/lying client is cut off here even if its
+    // Content-Length is absent or false. The upload handler still does its own precise check.
+    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
 
     async fetch(req) {
       const url = new URL(req.url);
@@ -98,12 +123,12 @@ export function startServer(opts: {
       if (pathname === "/api/tab" && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
-        return createTab(herdr, engine, req);
+        return createTab(herdr, engine, req, audit, deviceAuth(req, cfg).device);
       }
       if (pathname === "/api/workspace" && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
-        return createWorkspace(herdr, req);
+        return createWorkspace(herdr, req, audit, deviceAuth(req, cfg).device);
       }
 
       // ── Per-pane read / send ─────────────────────────────────────────────
@@ -115,12 +140,14 @@ export function startServer(opts: {
         // close) types into or restructures a terminal, so it additionally needs an authorised device.
         const denied = guard(req, cfg, action ? "write" : "read");
         if (denied) return denied;
+        // Every action is a write; attribute it to the authorised device for the audit trail.
+        const device = action ? deviceAuth(req, cfg).device : null;
 
         if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
-        if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req);
-        if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req);
-        if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req);
-        if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req);
+        if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device);
+        if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req, audit, device);
+        if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device);
+        if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device);
         return text("method not allowed", 405);
       }
 
@@ -145,7 +172,7 @@ export function startServer(opts: {
         }
         if (!isPushSubscription(body)) return text("bad subscription", 400);
         await push.addSubscription(body);
-        return new Response(null, { status: 204 });
+        return secure(new Response(null, { status: 204 }));
       }
       if (pathname === "/api/notifications/snooze" && req.method === "POST") {
         // Managing your own notification quiet-hours isn't terminal-driving — read-level, like subscribe.
@@ -162,7 +189,7 @@ export function startServer(opts: {
         await snooze.set(until);
         // Snoozing should also clear whatever's already on the lock screen.
         if (snooze.isMuted()) void push.send({ type: "clear", tag: HERD_TAG });
-        return json({ snoozedUntil: snooze.until() });
+        return json({ snoozedUntil: snooze.until() }, req.headers.get("accept-encoding"));
       }
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
@@ -197,6 +224,18 @@ export function startServer(opts: {
       );
     }
   }
+  if (!cfg.trustedUser) {
+    console.warn(
+      `[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).`,
+    );
+  }
+  if (cfg.publicHosts.length === 0) {
+    console.warn(
+      `[bridge] WARNING: COLLIE_PUBLIC_HOSTS is empty — Host-header validation is OFF (DNS rebinding not blocked). Set it to your MagicDNS name, especially under COLLIE_SERVE_MODE=http.`,
+    );
+  }
+
+  return server;
 }
 
 async function readPane(
@@ -207,7 +246,11 @@ async function readPane(
   req: Request,
 ): Promise<Response> {
   const linesParam = Number.parseInt(url.searchParams.get("lines") ?? "", 10);
-  const lines = Number.isFinite(linesParam) && linesParam > 0 ? linesParam : cfg.readLines;
+  // Clamp to a sane ceiling — don't trust the client (or Herdr) to bound an enormous read.
+  const lines =
+    Number.isFinite(linesParam) && linesParam > 0
+      ? Math.min(linesParam, MAX_READ_LINES)
+      : cfg.readLines;
   try {
     // "ansi" so the client can render a faithful, colored terminal mirror.
     const read = await herdr.readPane(paneId, "recent", lines, "ansi");
@@ -218,14 +261,63 @@ async function readPane(
     const etag = computeEtag(bodyStr);
     if (notModified(req.headers.get("if-none-match"), etag)) {
       // RFC 7232 §4.1: 304 MUST echo the ETag; body MUST be empty.
-      return new Response(null, {
-        status: 304,
-        headers: { etag, "cache-control": "no-store" },
-      });
+      return secure(
+        new Response(null, {
+          status: 304,
+          headers: { etag, "cache-control": "no-store" },
+        }),
+      );
     }
-    return gzipJsonResponse(data, req.headers.get("accept-encoding"), { etag });
+    return secure(gzipJsonResponse(data, req.headers.get("accept-encoding"), { etag }));
   } catch (err) {
     return text(`herdr read failed: ${(err as Error).message}`, 502);
+  }
+}
+
+/** Just the two one-shot RPCs a reply needs — real HerdrClient in the bridge, fake in tests. */
+export interface ReplySender {
+  sendPaneText(paneId: string, text: string): Promise<void>;
+  sendPaneKeys(paneId: string, keys: string[]): Promise<void>;
+}
+
+/** Outcome of the two-step send. `textDelivered` is only meaningful on the failure branch. */
+export type ReplyOutcome =
+  | { ok: true; textDelivered: boolean }
+  | { ok: false; error: string; textDelivered: boolean };
+
+/**
+ * The reply's two one-shot RPCs — type the text, then send the submit key(s) — as a pure function so
+ * the partial-failure branch is unit-testable with a fake client. The important case: if the text
+ * lands but the submit keypress fails, we surface a distinct, actionable error and `textDelivered:
+ * true` so the client knows NOT to resend (which would duplicate the already-typed text). Pure +
+ * exported.
+ */
+export async function sendReplySteps(
+  client: ReplySender,
+  paneId: string,
+  txt: string,
+  submit: boolean,
+  submitKeys: string[],
+): Promise<ReplyOutcome> {
+  let textDelivered = false;
+  try {
+    if (txt) {
+      await client.sendPaneText(paneId, txt);
+      textDelivered = true;
+    }
+    if (submit) await client.sendPaneKeys(paneId, submitKeys);
+    return { ok: true, textDelivered };
+  } catch (err) {
+    if (textDelivered && submit) {
+      // Text is already in the pane — only the submit failed. Tell the operator to check/submit it
+      // by hand rather than resend, and flag textDelivered so a resend-on-error UI can hold off.
+      return {
+        ok: false,
+        textDelivered: true,
+        error: "typed into the pane but not submitted — check the pane before resending",
+      };
+    }
+    return { ok: false, textDelivered, error: (err as Error).message };
   }
 }
 
@@ -234,6 +326,8 @@ async function replyPane(
   cfg: Config,
   paneId: string,
   req: Request,
+  audit: AuditLog,
+  device: string | null,
 ): Promise<Response> {
   let body: { text?: string; submit?: boolean };
   try {
@@ -244,16 +338,28 @@ async function replyPane(
   const txt = body.text ?? "";
   const submit = body.submit ?? true;
   const ae = req.headers.get("accept-encoding");
-  try {
-    if (txt) await herdr.sendPaneText(paneId, txt);
-    if (submit) await herdr.sendPaneKeys(paneId, cfg.submitKeys);
-    return json({ ok: true } satisfies ActionResponse, ae);
-  } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
-  }
+  const outcome = await sendReplySteps(herdr, paneId, txt, submit, cfg.submitKeys);
+  // Audit the attempt regardless of outcome — text may have landed even when the submit failed.
+  audit.record({
+    action: "reply",
+    paneId,
+    device,
+    detail: { text: txt, submit, submitted: outcome.ok, textDelivered: outcome.textDelivered },
+  });
+  if (outcome.ok) return json({ ok: true } satisfies ActionResponse, ae);
+  return json(
+    { ok: false, error: outcome.error, textDelivered: outcome.textDelivered } satisfies ActionResponse,
+    ae,
+  );
 }
 
-async function keysPane(herdr: HerdrClient, paneId: string, req: Request): Promise<Response> {
+async function keysPane(
+  herdr: HerdrClient,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+): Promise<Response> {
   let body: { keys?: unknown };
   try {
     body = (await req.json()) as typeof body;
@@ -265,6 +371,7 @@ async function keysPane(herdr: HerdrClient, paneId: string, req: Request): Promi
   const ae = req.headers.get("accept-encoding");
   try {
     await herdr.sendPaneKeys(paneId, keys);
+    audit.record({ action: "keys", paneId, device, detail: { keys } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
@@ -273,10 +380,17 @@ async function keysPane(herdr: HerdrClient, paneId: string, req: Request): Promi
 
 // Close a pane ("kill the agent"). Structural op — strictly less powerful than the text/keys
 // injection the bridge already allows, so it stays within the existing remote-shell threat model.
-async function closePane(herdr: HerdrClient, paneId: string, req: Request): Promise<Response> {
+async function closePane(
+  herdr: HerdrClient,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   try {
     await herdr.closePane(paneId);
+    audit.record({ action: "pane.close", paneId, device, detail: {} });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
@@ -286,7 +400,13 @@ async function closePane(herdr: HerdrClient, paneId: string, req: Request): Prom
 // Create a new tab in a workspace, opening a fresh shell pane (you then launch your own agent in
 // it). Structural — no more privilege than typing into an existing pane (you can already spawn a
 // shell that way). `cwd` omitted => inherits the workspace dir. session.* stays unexposed.
-async function createTab(herdr: HerdrClient, engine: StateEngine, req: Request): Promise<Response> {
+async function createTab(
+  herdr: HerdrClient,
+  engine: StateEngine,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+): Promise<Response> {
   let body: { workspaceId?: string; label?: string; cwd?: string };
   try {
     body = (await req.json()) as typeof body;
@@ -301,6 +421,12 @@ async function createTab(herdr: HerdrClient, engine: StateEngine, req: Request):
     const label =
       engine.current().workspaces.find((w) => w.workspaceId === created.workspaceId)?.label ??
       created.workspaceId;
+    audit.record({
+      action: "tab.create",
+      paneId: created.paneId,
+      device,
+      detail: { workspaceId, label: body.label, cwd: body.cwd },
+    });
     return json({
       ok: true,
       pane: { ...created, workspaceLabel: label },
@@ -313,7 +439,12 @@ async function createTab(herdr: HerdrClient, engine: StateEngine, req: Request):
 // Create a new workspace ("space") with a fresh shell pane. `cwd` defaults to the user's home dir
 // when the client doesn't specify one (typing a path on a phone is painful) — it's a shell, so you
 // can cd from there. Same structural-only threat model as createTab.
-async function createWorkspace(herdr: HerdrClient, req: Request): Promise<Response> {
+async function createWorkspace(
+  herdr: HerdrClient,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+): Promise<Response> {
   let body: { cwd?: string; label?: string };
   try {
     body = (await req.json()) as typeof body;
@@ -324,6 +455,12 @@ async function createWorkspace(herdr: HerdrClient, req: Request): Promise<Respon
   const ae = req.headers.get("accept-encoding");
   try {
     const created = await herdr.createWorkspace({ cwd, label: body.label });
+    audit.record({
+      action: "workspace.create",
+      paneId: created.paneId,
+      device,
+      detail: { label: body.label, cwd },
+    });
     return json({
       ok: true,
       pane: {
@@ -342,7 +479,29 @@ async function createWorkspace(herdr: HerdrClient, req: Request): Promise<Respon
 // Save an uploaded image to a host file and return its absolute path. The client then references
 // that path in a message; Claude Code / Codex read images by path (the terminal can't take a
 // pasted image over the socket). Validated by MIME and size; the filename is server-generated.
-async function uploadPane(cfg: Config, paneId: string, req: Request): Promise<Response> {
+async function uploadPane(
+  cfg: Config,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  // Reject an oversize upload by its declared Content-Length BEFORE buffering — req.formData()
+  // reads the whole body into memory first, so a 100 MB "image" would be materialised just to fail
+  // the size check below. Multipart adds a boundary + part headers, so allow a small slack.
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES + MAX_UPLOAD_OVERHEAD) {
+    return secure(
+      new Response(
+        JSON.stringify({
+          ok: false,
+          error: "image too large (max 10 MB)",
+        } satisfies UploadResponse),
+        { status: 413, headers: { "content-type": "application/json; charset=utf-8" } },
+      ),
+    );
+  }
   let form: FormData;
   try {
     form = await req.formData();
@@ -350,7 +509,6 @@ async function uploadPane(cfg: Config, paneId: string, req: Request): Promise<Re
     return text("expected multipart form data", 400);
   }
   const file = form.get("file");
-  const ae = req.headers.get("accept-encoding");
   if (!(file instanceof File)) {
     return json({ ok: false, error: "no file" } satisfies UploadResponse, ae);
   }
@@ -363,11 +521,19 @@ async function uploadPane(cfg: Config, paneId: string, req: Request): Promise<Re
   }
   try {
     const dir = join(cfg.stateDir, "uploads");
-    await mkdir(dir, { recursive: true });
+    // 0700 — uploads (and the state dir they live under) may hold sensitive images; keep them
+    // owner-only. recursive:true applies the mode to any intermediate dirs it creates too.
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     const safePane = paneId.replace(/[^A-Za-z0-9_-]/g, "_");
     const filename = `${safePane}-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
     const fullPath = join(dir, filename);
     await Bun.write(fullPath, file);
+    audit.record({
+      action: "upload",
+      paneId,
+      device,
+      detail: { filename: file.name, size: file.size, saved: filename },
+    });
     return json({ ok: true, path: fullPath } satisfies UploadResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies UploadResponse, ae);
@@ -376,16 +542,34 @@ async function uploadPane(cfg: Config, paneId: string, req: Request): Promise<Re
 
 /**
  * Access gate for the API:
+ *  - Host allowlist (opt-in): when COLLIE_PUBLIC_HOSTS is set, the request's Host header must be a
+ *    loopback form, one of those hosts, or the host of an allowed origin — otherwise rejected,
+ *    BEFORE any Origin logic (fail-closed). This defeats DNS rebinding, where a browser is tricked
+ *    into sending Host==Origin==evil.example so a bare same-origin check trivially passes — acute
+ *    under COLLIE_SERVE_MODE=http (no TLS). Empty COLLIE_PUBLIC_HOSTS keeps the legacy behaviour so
+ *    existing deployments don't break (see the startup warning).
  *  - Same-origin only (Origin host must equal Host) — defeats cross-site requests/CSRF. Browsers
  *    omit Origin on same-origin GETs (so the snapshot poll passes); they send it on POSTs.
  *    localhost and explicitly-configured origins are also allowed.
+ *  - Origin required for writes: a state-changing (`level === "write"`) request with no Origin is
+ *    trusted only from loopback (curl on the host). Browsers always send Origin on fetch/SW POSTs,
+ *    so a missing Origin on a remote write is a non-browser or Origin-stripped request — reject it.
  *  - Optional Tailscale identity: if a trusted user is configured and `tailscale serve` injects a
  *    `Tailscale-User-Login`, it must match.
  */
 export function checkAccess(
   req: Request,
   cfg: Config,
+  level: "read" | "write" = "read",
 ): { ok: true } | { ok: false; reason: string } {
+  const host = req.headers.get("host") ?? "";
+
+  // Host-header allowlist — only when the operator opted in (COLLIE_PUBLIC_HOSTS non-empty). Fail
+  // closed, before the Origin logic, so a rebinding request (Host==Origin==evil) never reaches it.
+  if (cfg.publicHosts.length > 0 && !isHostAllowed(host, cfg)) {
+    return { ok: false, reason: "host not allowed" };
+  }
+
   const origin = req.headers.get("origin");
   if (origin) {
     let originHost = "";
@@ -394,12 +578,14 @@ export function checkAccess(
     } catch {
       return { ok: false, reason: "bad origin" };
     }
-    const host = req.headers.get("host") ?? "";
     const allowed =
       originHost === host ||
-      /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(originHost) ||
+      LOOPBACK_HOST.test(originHost) ||
       cfg.allowedOrigins.includes(origin);
     if (!allowed) return { ok: false, reason: "cross-origin rejected" };
+  } else if (level === "write" && !LOOPBACK_HOST.test(host)) {
+    // A write with no Origin header from a non-loopback Host isn't a real browser request — refuse.
+    return { ok: false, reason: "origin required" };
   }
 
   if (cfg.trustedUser) {
@@ -412,13 +598,31 @@ export function checkAccess(
 }
 
 /**
+ * Whether a Host header is one the bridge will answer to under the opt-in host allowlist: a loopback
+ * form, an explicit COLLIE_PUBLIC_HOSTS entry, or the host of a configured allowed origin. Pure +
+ * exported for tests.
+ */
+export function isHostAllowed(host: string, cfg: Config): boolean {
+  if (!host) return false;
+  if (LOOPBACK_HOST.test(host)) return true;
+  if (cfg.publicHosts.includes(host)) return true;
+  return cfg.allowedOrigins.some((o) => {
+    try {
+      return new URL(o).host === host;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
  * Combined API gate used by every handler. A request must always pass {@link checkAccess}
  * (same-origin / CSRF + optional Tailscale identity). A `"write"` request — one that types into a
  * terminal or creates panes — must additionally come from an authorised device (see
  * {@link deviceAuth}). Returns a 403 Response to short-circuit on denial, or null to proceed.
  */
 function guard(req: Request, cfg: Config, level: "read" | "write"): Response | null {
-  const gate = checkAccess(req, cfg);
+  const gate = checkAccess(req, cfg, level);
   if (!gate.ok) return text(gate.reason, 403);
   if (level === "write" && !deviceAuth(req, cfg).authorized) {
     return text("device not authorised", 403);
@@ -450,12 +654,20 @@ export function deviceAuth(req: Request, cfg: Config): DeviceAuth {
   return { enforced: true, device, authorized };
 }
 
+// Apply the shared hardening headers (nosniff / no-referrer) to any response. Every response the
+// bridge emits funnels through json(), text(), serveStatic(), or a handful of inline responses —
+// all of which pass through here — so the headers are set exactly once, consistently.
+function secure(res: Response): Response {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+  return res;
+}
+
 function json(data: unknown, acceptEncoding: string | null): Response {
-  return gzipJsonResponse(data, acceptEncoding);
+  return secure(gzipJsonResponse(data, acceptEncoding));
 }
 
 function text(body: string, status: number): Response {
-  return new Response(body, { status });
+  return secure(new Response(body, { status }));
 }
 
 // Shape-check an untrusted /api/subscribe body before persisting it (a malformed sub would be
@@ -491,10 +703,26 @@ async function buildId(): Promise<string> {
   }
 }
 
+/**
+ * Resolve a request pathname to an absolute path under `webDir`, or null if it escapes. Pure +
+ * exported for tests. The `full === webDir || full.startsWith(webDir + sep)` check rejects both
+ * `..` traversal AND a sibling dir that merely shares the prefix (e.g. `web/dist-x` vs `web/dist`) —
+ * a bare `startsWith(webDir)` would let the latter through.
+ */
+export function resolveStaticPath(
+  pathname: string,
+  webDir: string = WEB_DIR,
+): { rel: string; full: string } | null {
+  const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const full = normalize(join(webDir, rel));
+  if (full !== webDir && !full.startsWith(webDir + sep)) return null;
+  return { rel, full };
+}
+
 async function serveStatic(pathname: string): Promise<Response> {
-  let rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-  let full = normalize(join(WEB_DIR, rel));
-  if (!full.startsWith(WEB_DIR)) return text("forbidden", 403);
+  const resolved = resolveStaticPath(pathname);
+  if (!resolved) return text("forbidden", 403);
+  let { rel, full } = resolved;
 
   let file = Bun.file(full);
   if (!(await file.exists())) {
@@ -523,5 +751,5 @@ async function serveStatic(pathname: string): Promise<Response> {
     headers["cache-control"] = "public, max-age=31536000, immutable"; // hashed → cache hard
   }
   if (rel === "sw.js") headers["service-worker-allowed"] = "/";
-  return new Response(file, { headers });
+  return secure(new Response(file, { headers }));
 }

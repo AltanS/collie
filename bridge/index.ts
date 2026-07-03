@@ -1,12 +1,21 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
+import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { loadConfig } from "./config.ts";
 import { HerdrClient } from "./herdr-client.ts";
 import { Push } from "./push.ts";
 import { startServer } from "./server.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
+import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 const cfg = loadConfig();
+
+// Ensure the state dir exists with private (0700) perms before push/snooze/uploads write into it —
+// it holds push subscription endpoints and uploaded images, so keep it owner-only.
+await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
 
 const herdr = new HerdrClient(cfg.socketPath);
 
@@ -27,11 +36,33 @@ await snooze.load();
 const engine = new StateEngine(herdr, cfg.pollMs);
 engine.start();
 
-startServer({ cfg, herdr, engine, push, snooze });
+// Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
+// inside record() so it can never break the user action it's auditing.
+const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")));
 
-const shutdown = () => {
+// Prune uploaded images past their TTL: once at startup, then on an interval. Uploads are single-use
+// (Herdr reads them by path when the message is sent), so nothing else reclaims them. unref() so the
+// timer never keeps the process alive; it's also cleared on shutdown.
+const uploadsDir = join(cfg.stateDir, "uploads");
+void sweepUploads(uploadsDir).then((removed) => {
+  if (removed.length) console.log(`[uploads] swept ${removed.length} expired image(s) at startup`);
+});
+const sweepTimer = setInterval(() => {
+  void sweepUploads(uploadsDir).then((removed) => {
+    if (removed.length) console.log(`[uploads] swept ${removed.length} expired image(s)`);
+  });
+}, SWEEP_INTERVAL_MS);
+sweepTimer.unref();
+
+const server = startServer({ cfg, herdr, engine, push, snooze, audit });
+
+const shutdown = async () => {
   console.log("\n[bridge] shutting down");
+  // Stop accepting new connections and let in-flight requests drain briefly (non-forced stop)
+  // before we tear down the poll loop and exit.
+  await server.stop();
   engine.stop();
+  clearInterval(sweepTimer);
   process.exit(0);
 };
 process.on("SIGINT", shutdown);

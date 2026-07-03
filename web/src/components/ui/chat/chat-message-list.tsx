@@ -8,6 +8,8 @@ import { useAutoScroll } from "@/hooks/use-auto-scroll";
 export interface ChatMessageListHandle {
   /** Imperatively jump to the latest output (e.g. after sending a reply). */
   scrollToBottom: () => void;
+  /** The scroll container itself — lets the parent measure/anchor (e.g. "Load older" scrollback). */
+  getScrollElement: () => HTMLElement | null;
 }
 
 interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -32,9 +34,11 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
       onAtBottomChange,
     });
 
-    React.useImperativeHandle(ref, () => ({ scrollToBottom: () => scrollToBottom() }), [
-      scrollToBottom,
-    ]);
+    React.useImperativeHandle(
+      ref,
+      () => ({ scrollToBottom: () => scrollToBottom(), getScrollElement: () => scrollRef.current }),
+      [scrollToBottom, scrollRef],
+    );
 
     return (
       <div className="relative h-full w-full">

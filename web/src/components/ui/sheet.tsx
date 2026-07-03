@@ -24,6 +24,20 @@ function useMarkSheetOpen(open: boolean) {
   }, [open]);
 }
 
+// Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
+// keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
+// focused before it opened. The panel must carry tabIndex={-1} to be a focus target.
+function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
+  React.useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus?.();
+    };
+  }, [open, panelRef]);
+}
+
 // A minimal bottom sheet — no Radix, no portals, no extra deps. Renders nothing when closed.
 // Dismisses on backdrop tap or Escape. Animations come from tw-animate-css (already imported).
 interface BottomSheetProps {
@@ -38,7 +52,9 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
   const [dragY, setDragY] = React.useState(0);
+  const titleId = React.useId();
   useMarkSheetOpen(open);
+  useDialogFocus(open, panelRef);
 
   React.useEffect(() => {
     if (!open) return;
@@ -102,15 +118,24 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? titleId : undefined}
+    >
+      {/* Backdrop: still dismisses on tap, but hidden from assistive tech — the ✕ in the header is
+          the single accessible "Close", so the dialog isn't announced with a giant duplicate. */}
       <button
         type="button"
-        aria-label="Close"
+        aria-hidden="true"
+        tabIndex={-1}
         className="absolute inset-0 bg-black/50 duration-200 animate-in fade-in"
         onClick={onClose}
       />
       <div
         ref={panelRef}
+        tabIndex={-1}
         style={{
           transform: dragY ? `translateY(${dragY}px)` : undefined,
           transition: drag.current.engaged ? "none" : "transform 0.2s ease-out",
@@ -127,7 +152,9 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
             <span className="h-1 w-9 rounded-full bg-muted-foreground/40" />
           </div>
           <div className="flex items-center justify-between px-4 pb-3">
-            <span className="text-sm font-semibold">{title}</span>
+            <span id={title ? titleId : undefined} className="text-sm font-semibold">
+              {title}
+            </span>
             <Button
               variant="ghost"
               size="icon"
@@ -167,7 +194,10 @@ export function SideSheet({
   footer,
   className,
 }: SideSheetProps) {
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
   useMarkSheetOpen(open);
+  useDialogFocus(open, panelRef);
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -180,15 +210,24 @@ export function SideSheet({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? titleId : undefined}
+    >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className={cn(
           "relative z-10 flex h-full w-[86%] max-w-sm flex-col border-r border-border bg-background shadow-2xl duration-200 animate-in slide-in-from-left",
           className,
         )}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)]">
-          <span className="text-sm font-semibold">{title}</span>
+          <span id={title ? titleId : undefined} className="text-sm font-semibold">
+            {title}
+          </span>
           <div className="flex items-center gap-1">
             {headerAction}
             <Button
@@ -209,9 +248,12 @@ export function SideSheet({
           </div>
         )}
       </div>
+      {/* Backdrop: dismisses on tap but hidden from assistive tech — the header ✕ is the accessible
+          "Close", so the drawer isn't announced with a giant duplicate close target. */}
       <button
         type="button"
-        aria-label="Close"
+        aria-hidden="true"
+        tabIndex={-1}
         className="flex-1 bg-black/50 duration-200 animate-in fade-in"
         onClick={onClose}
       />

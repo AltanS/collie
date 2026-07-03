@@ -55,7 +55,23 @@ cmd_build() {
   if [ "${SKIP_VERSION_CHECK:-}" != "1" ]; then
     bash "${PLUGIN_ROOT}/scripts/check-version.sh"
   fi
-  ( cd "${PLUGIN_ROOT}/web" && "$BUN" install && "$BUN" run build )
+  ( cd "${PLUGIN_ROOT}/web" && "$BUN" install )
+  # Typecheck BOTH sides before building — the Vite build itself does not typecheck, so a type
+  # error would otherwise ship silently. Skip with SKIP_TYPECHECK=1 (same hatch as the pre-push hook).
+  if [ "${SKIP_TYPECHECK:-}" != "1" ]; then
+    ( cd "${PLUGIN_ROOT}" && "$BUN" run typecheck )
+    ( cd "${PLUGIN_ROOT}/web" && "$BUN" run typecheck )
+  fi
+  # Staged build + atomic swap. Vite empties its output dir first, so building straight into web/dist
+  # would leave it EMPTY with no rollback if the build failed — and the bridge serves web/dist from
+  # disk at request time. Build into web/dist-staging, then swap it in only on success. `set -e`
+  # aborts the function before the swap on any build failure, so a live web/dist survives untouched.
+  local staging="${PLUGIN_ROOT}/web/dist-staging"
+  rm -rf "$staging"
+  ( cd "${PLUGIN_ROOT}/web" && "$BUN" run build -- --outDir dist-staging --emptyOutDir )
+  # Swap is the LAST step (a near-atomic same-filesystem rename) so the served dir is never half-built.
+  rm -rf "${PLUGIN_ROOT}/web/dist"
+  mv "$staging" "${PLUGIN_ROOT}/web/dist"
 }
 
 ensure_build() {
@@ -97,7 +113,11 @@ collie_version() {
 bridge_ready() {
   local i
   for i in $(seq 1 25); do
-    (exec 3<>"/dev/tcp/127.0.0.1/${PORT}") 2>/dev/null && return 0
+    # Open the probe socket on fd 3, then close both directions so the fd never leaks. `&&` (not `;`)
+    # is load-bearing: a refused connection must short-circuit, else the trailing close would mask it.
+    if (exec 3<>"/dev/tcp/127.0.0.1/${PORT}" && exec 3>&- 3<&-) 2>/dev/null; then
+      return 0
+    fi
     sleep 0.2
   done
   return 1
@@ -134,13 +154,20 @@ write_unit() {
 [Unit]
 Description=Collie
 After=default.target
+# Never give up restarting — a phone-only operator can't run 'systemctl reset-failed'.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 WorkingDirectory=${PLUGIN_ROOT}
 ExecStart=${BUN} run ${PLUGIN_ROOT}/bridge/index.ts
 Restart=on-failure
-RestartSec=2
+RestartSec=5
+# Hardening: the bridge is remote shell access, so deny privilege escalation and give it a private
+# /tmp. ProtectSystem is intentionally NOT set — the only write path is the env-driven state dir,
+# which Herdr may inject to an arbitrary location, so it can't be enumerated in a static ReadWritePaths.
+NoNewPrivileges=yes
+PrivateTmp=yes
 Environment=HERDR_SOCKET_PATH=${SOCKET}
 Environment=COLLIE_PORT=${PORT}
 Environment=HERDR_PLUGIN_CONFIG_DIR=${CONFIG_DIR}

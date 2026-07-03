@@ -5,11 +5,31 @@ import { join } from "node:path";
 // plugin launcher can configure it without code changes. Defaults are safe for a single-user,
 // tailnet-only deployment.
 
-function envInt(name: string, fallback: number): number {
+/**
+ * Read an integer env var, falling back to `fallback` (with one warning line) on anything invalid:
+ * an empty/unset value, non-integer garbage (`parseInt("123abc")` used to sneak `123` through — a
+ * strict regex rejects it), or a value outside the optional `[min, max]` bounds. Keeping bad config
+ * from silently becoming a nonsense number (a negative poll interval, port 0) is the whole point.
+ */
+function envInt(
+  name: string,
+  fallback: number,
+  opts: { min?: number; max?: number } = {},
+): number {
   const raw = process.env[name];
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? n : fallback;
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const trimmed = raw.trim();
+  if (!/^[+-]?\d+$/.test(trimmed)) {
+    console.warn(`[config] ${name}="${raw}" is not an integer — using default ${fallback}`);
+    return fallback;
+  }
+  const n = Number(trimmed);
+  const { min, max } = opts;
+  if ((min !== undefined && n < min) || (max !== undefined && n > max)) {
+    console.warn(`[config] ${name}=${n} is out of the allowed range — using default ${fallback}`);
+    return fallback;
+  }
+  return n;
 }
 
 function envList(name: string): string[] {
@@ -65,6 +85,15 @@ export interface Config {
   deviceAllowlist: string[];
   /** Extra allowed request origins beyond localhost (e.g. your MagicDNS https origin). */
   allowedOrigins: string[];
+  /**
+   * Host-header allowlist (`host` or `host:port` values). When non-empty, the operator has opted
+   * in to strict Host validation: any request whose `Host` header isn't a loopback form, one of
+   * these, or a host parsed from {@link allowedOrigins} is rejected before the Origin check. This
+   * closes the DNS-rebinding hole (Host==Origin==evil.com would otherwise pass), which matters most
+   * under `COLLIE_SERVE_MODE=http` (no TLS). Empty = validation off (legacy behaviour) — set this
+   * to your MagicDNS name (`collie.<tailnet>.ts.net`), especially in http serve mode.
+   */
+  publicHosts: string[];
   /** Web Push (VAPID). All three required to enable push; otherwise push is disabled. */
   vapidPublic: string;
   vapidPrivate: string;
@@ -83,16 +112,17 @@ export function loadConfig(): Config {
 
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? join(homedir(), ".config", "herdr", "herdr.sock"),
-    port: envInt("COLLIE_PORT", 8787),
+    port: envInt("COLLIE_PORT", 8787, { min: 1, max: 65535 }),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
-    pollMs: envInt("COLLIE_POLL_MS", 1500),
-    notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000),
-    readLines: envInt("COLLIE_READ_LINES", 200),
+    pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),
+    notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }),
+    readLines: envInt("COLLIE_READ_LINES", 200, { min: 1 }),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
     deviceHeader: (process.env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST"),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS"),
+    publicHosts: envList("COLLIE_PUBLIC_HOSTS"),
     vapidPublic: process.env.COLLIE_VAPID_PUBLIC ?? "",
     vapidPrivate: process.env.COLLIE_VAPID_PRIVATE ?? "",
     vapidSubject: process.env.COLLIE_VAPID_SUBJECT ?? "mailto:admin@example.com",
