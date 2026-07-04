@@ -1,0 +1,55 @@
+
+[0m[38;2;215;119;87m╭─── Claude Code [0m[38;2;153;153;153mv2.1.201 [0m[38;2;215;119;87m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;215;119;87m│                                                    [0m[2m[38;2;215;119;87m│ [0m[1m[38;2;215;119;87mTips for getting started                                                                                                                                     [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                 [0m[1mWelcome back Altan!                [0m[2m[38;2;215;119;87m│ [0mAsk Claude to create a new app or clone a repository                                                                                                         [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                                                    [0m[2m[38;2;215;119;87m│ [0m[38;2;215;119;87m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │[0m
+[0m[38;2;215;119;87m│                       ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▜[0m[38;2;215;119;87m▌                      [0m[2m[38;2;215;119;87m│ [0m[1m[38;2;215;119;87mWhat's new                                                                                                                                                   [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                      ▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m▛▘                     [0m[2m[38;2;215;119;87m│ [0mClaude Sonnet 5 sessions no longer use the mid-conversation system role for harness reminders                                                                [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                        ▘▘ ▝▝                       [0m[2m[38;2;215;119;87m│ [0mChanged `AskUserQuestion` dialogs to no longer auto-continue by default; opt into an idle timeout via `/config`                                              [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│     [0m[38;2;153;153;153mOpus 4.8 with xhigh effort · Claude Max ·      [0m[2m[38;2;215;119;87m│ [0mChanged the "default" permission mode to "Manual" across the CLI, `--help`, VS Code, and JetBrains; `--permission-mode manual` and `"defaultMode": "manual"… [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│     [0m[38;2;153;153;153msandboxdev@example.com's Organization          [0m[2m[38;2;215;119;87m│ [0m[3m[38;2;153;153;153m/release-notes for more                                                                                                                                      [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│           [0m[38;2;153;153;153m/…/scratchpad/fixture-sandbox            [0m[2m[38;2;215;119;87m│                                                                                                                                                              [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+ [0m[38;2;215;119;87m▎ Fable 5 is back.[0m
+ [0m[38;2;215;119;87m▎ [0mUntil July 7, you can use up to 50% of your plan's weekly usage limit on Fable 5. If you hit your limit, you can continue on Fable 5 with usage credits. Fable 5 draws down usage faster than Opus 4.8. Learn more
+ [0m[38;2;215;119;87m▎ [0m(https://support.claude.com/en/articles/15424964-claude-fable-5-promotional-access)
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool to ask me one question: which color theme should the dashboard use? Offer exactly three options: Red, Green, Blue.[0m[48;2;55;55;55m                                                                    [0m
+
+[0m[38;2;255;255;255m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which color theme should the dashboard use? → Green[0m
+
+[0m[38;2;255;255;255m● [0mYou chose the [0m[1mGreen [0mtheme — a calm, natural look with green as the primary accent color. Let me know what you'd like to do next with the dashboard.
+
+[0m[38;2;153;153;153m✻ Sautéed for 9s[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mCreate a file named hello.txt in this directory containing exactly the single word: hello[0m[48;2;55;55;55m                                                                                                                          [0m
+
+[0m[38;2;78;186;101m● [0m[1mWrite[0m(hello.txt)
+[0m[38;2;153;153;153m  ⎿  [0mWrote [0m[1m1 [0mline to [0m[1mhello.txt[0m
+     [0m[2m[38;2;248;248;242m 1 [0m[38;2;248;248;242mhello[0m
+
+[0m[38;2;255;255;255m● [0mCreated [0m[38;2;177;185;249mhello.txt [0mcontaining the single word [0m[38;2;177;185;249mhello[0m.
+
+[0m[38;2;153;153;153m✻ Sautéed for 5s[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mNow run exactly this bash command: mkfifo fixture-fifo[0m[48;2;55;55;55m                                                                                                                                                             [0m
+
+[0m[38;2;153;153;153m  [0mRunning [0m[1m1 [0mshell command…
+[0m[38;2;153;153;153m  ⎿  $ mkfifo fixture-fifo[0m
+
+[0m[38;2;177;185;249m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m
+
+   mkfifo fixture-fifo
+   [0m[38;2;153;153;153mCreate a named pipe (FIFO)[0m
+
+ This command requires approval
+
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mYes, and don’t ask again for: mkfifo fixture-fifo *
+   [0m[38;2;153;153;153m3. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend · ctrl+e to explain[0m

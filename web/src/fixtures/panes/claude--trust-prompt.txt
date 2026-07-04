@@ -1,0 +1,37 @@
+
+  [0m[1m[38;5;228m[48;5;63m 󱍢 Welcome to Bluefin [0m[38;5;252m                                                                                                                                                                                           [0m
+  [0m[38;5;252m                                                                                                                                                                                                                 [0m
+  [0m[38;5;252m󱋩 [0m[38;5;203m[48;5;236m ghcr.io/ublue-os/bluefin-dx:stable [0m[38;5;252m                                                                                                                                                                           [0m
+  [0m[38;5;252m                                                                                                                                                                                                                 [0m
+   [0m[38;5;252m Command[0m                                                                                             │ [0m[38;5;252mDescription[0m                                                                                           [0m[38;5;252m  [0m
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────[0m[38;5;252m  [0m
+   [0m[38;5;203m[48;5;236m ujust --choose [0m                                                                                      │ [0m[38;5;252mShow available commands[0m                                                                               [0m[38;5;252m  [0m
+   [0m[38;5;203m[48;5;236m ujust toggle-user-motd [0m                                                                              │ [0m[38;5;252mToggle this banner on/off[0m                                                                             [0m[38;5;252m  [0m
+   [0m[38;5;203m[48;5;236m ujust bluefin-cli [0m                                                                                   │ [0m[38;5;252mEnable terminal bling[0m                                                                                 [0m[38;5;252m  [0m
+   [0m[38;5;203m[48;5;236m brew help [0m                                                                                           │ [0m[38;5;252mManage command line packages[0m                                                                          [0m[38;5;252m  [0m
+  [0m[38;5;252m                                                                                                                                                                                                                 [0m
+  [0m[38;5;252mHelp keep Bluefin alive and healthy, consider [0m[1m[38;5;35mdonating[0m[38;5;252m [0m[4m[38;5;30mhttps://docs.projectbluefin.io/donations[0m[38;5;252m                                                                                                                  [0m
+  [0m[38;5;252m                                                                                                                                                                                                                 [0m
+  [0m[38;5;252m• [0m[1m[38;5;252m󰊤[0m[38;5;252m [0m[1m[38;5;35mIssues[0m[38;5;252m [0m[4m[38;5;30mhttps://issues.projectbluefin.io[0m[38;5;252m                                                                                                                                                                      [0m
+  [0m[38;5;252m• [0m[1m[38;5;252m󰊤[0m[38;5;252m [0m[1m[38;5;35mAsk Bluefin[0m[38;5;252m [0m[4m[38;5;30mhttps://ask.projectbluefin.io[0m[38;5;252m                                                                                                                                                                    [0m
+  [0m[38;5;252m• [0m[1m[38;5;252m󰈙[0m[38;5;252m [0m[1m[38;5;35mDocumentation[0m[38;5;252m [0m[4m[38;5;30mhttps://docs.projectbluefin.io[0m[38;5;252m                                                                                                                                                                 [0m
+
+
+[0m[1m[38;5;3maltan[0m in [0m[1m[2m[38;5;2m🌐 bluefin[0m in [0m[1m[38;5;6mbad3b8de-6e92-4541-b9cc-4af710c91d88/scratchpad/fixture-sandbox[0m 
+[0m[1m[38;5;2m❯[0m claude
+
+[0m[38;2;255;193;7m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;255;193;7mAccessing workspace:[0m
+
+ [0m[1m/tmp/claude-1000/-var-home-altan-playground-collie/bad3b8de-6e92-4541-b9cc-4af710c91d88/scratchpad/fixture-sandbox[0m
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ [0m[38;2;153;153;153mSecurity guide[0m
+
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes, I trust this folder[0m
+   [0m[38;2;153;153;153m2. [0mNo, exit
+
+ [0m[38;2;153;153;153mEnter to confirm · Esc to cancel[0m

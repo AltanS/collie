@@ -1,0 +1,63 @@
+
+[0m[38;2;215;119;87m╭─── Claude Code [0m[38;2;153;153;153mv2.1.201 [0m[38;2;215;119;87m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[0m
+
+  [0m[38;2;72;150;140m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+   [0m[1m[38;2;177;185;249mReady to code?[0m
+
+   Here is Claude's plan:
+  [0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+   [0m[1m[3m[4mPlan: Add haiku.txt with a dog haiku[0m
+
+   [0m[1mContext[0m
+
+   The user wants a new file, [0m[38;2;177;185;249mhaiku.txt[0m, added to the current directory containing a haiku about dogs. A haiku is a three-line poem following a 5–7–5 syllable structure. This is a simple content-creation task with
+   no code dependencies.
+
+   [0m[1mChange[0m
+
+   Create [0m[38;2;177;185;249mhaiku.txt [0min the working directory ([0m[38;2;177;185;249mfixture-sandbox/[0m) with a three-line dog haiku, for example:
+
+   Loyal wagging tail
+   Bounding through the morning grass
+   Joy on four soft paws
+
+   Syllable check: 5 / 7 / 5.
+
+   [0m[1mFiles[0m
+
+   - [0m[38;2;177;185;249mhaiku.txt[0m (new)
+
+   [0m[1mVerification[0m
+
+   - Confirm the file exists and contains exactly three lines.
+   - Read it back to confirm the 5–7–5 structure and dog theme.
+  [0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [0m[38;2;72;150;140m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+   [0m[38;2;153;153;153mClaude has written up a plan and is ready to execute. Would you like to proceed?[0m
+
+   [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes, and use auto mode[0m
+     [0m[38;2;153;153;153m2. [0mYes, manually approve edits
+     [0m[38;2;153;153;153m3. [0mNo, refine with Ultraplan on Claude Code on the web
+     [0m[38;2;153;153;153m4. Tell Claude what to change[0m
+        [0m[38;2;153;153;153mshift+tab to approve with this feedback[0m
+
+   [0m[38;2;153;153;153mctrl+g to edit in [0m [0m[1m[38;2;153;153;153mnano[0m [0m[38;2;153;153;153m · ~/.claude/plans/velvet-toasting-turtle.md[0m
