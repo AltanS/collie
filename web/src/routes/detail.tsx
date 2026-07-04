@@ -67,6 +67,7 @@ export function DetailRoute() {
       text={pane.text}
       truncated={pane.truncated}
       requestedLines={pane.requestedLines}
+      revision={pane.revision}
       device={root.device}
       onBack={() => navigateWithTransition(navigate, "/", "backward")}
       onSelect={(id) => navigateWithTransition(navigate, panePath(id), "none")}

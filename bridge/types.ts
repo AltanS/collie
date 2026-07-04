@@ -84,6 +84,8 @@ export interface PaneReadResponse {
   paneId: string;
   text: string;
   truncated: boolean;
+  /** Herdr's monotonic pane revision — passed through for the client's prompt-select race guard. */
+  revision: number;
 }
 
 /**

@@ -20,11 +20,13 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { StatusArea } from "@/components/status-area";
 import { ShellBadge, StatusBadge } from "@/components/status-badge";
 import * as api from "@/lib/api";
+import { submitPromptOption } from "@/lib/prompt-action";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { navigateWithTransition } from "@/lib/view-transition";
 import { isReadOnly } from "@/lib/types";
 import type { AgentView, DeviceAuth, TabView, WorkspaceView } from "@/lib/types";
+import type { PromptModel, PromptOption } from "@/lib/blocks";
 
 interface AgentChatProps {
   paneId: string;
@@ -41,6 +43,8 @@ interface AgentChatProps {
   truncated?: boolean;
   /** The scrollback window `text` was fetched with — tells a grown fetch from a stale in-flight poll. */
   requestedLines?: number;
+  /** The pane's `revision` for `text` — the race guard checks a tapped menu against this. */
+  revision?: number;
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
   onBack: () => void;
@@ -71,6 +75,7 @@ export function AgentChat({
   text,
   truncated,
   requestedLines = 0,
+  revision = 0,
   device,
   onBack,
   onSelect,
@@ -185,6 +190,39 @@ export function AgentChat({
     revalidator.revalidate();
     listRef.current?.scrollToBottom();
   };
+
+  // Tap a prompt-select option. This can type into a real terminal, so it runs the revision-based
+  // race guard first (fresh fetch → revision + re-derived-menu equality); only a clean match sends
+  // the option's keys. A stale tap is discarded with a "menu changed" notice and a revalidate; a
+  // clean send snaps back to the tail so the result is visible. The composer stays live for the
+  // free-text rows we deliberately don't render as buttons.
+  const handlePromptAction = useCallback(
+    async (option: PromptOption, prompt: PromptModel) => {
+      if (readOnly) {
+        setStatus("Read-only — device not authorised", "error");
+        return;
+      }
+      const result = await submitPromptOption({
+        paneId,
+        requestedLines,
+        detectedRevision: revision,
+        prompt,
+        option,
+      });
+      if (result.status === "sent") {
+        setStatus("Sent", "success");
+        setFollowing(true);
+        revalidator.revalidate();
+        listRef.current?.scrollToBottom();
+      } else if (result.status === "changed") {
+        setStatus("Menu changed — refreshing", "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || "Send failed", "error");
+      }
+    },
+    [readOnly, paneId, requestedLines, revision, revalidator],
+  );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
   // keyboard and cover the output. You read the pane first, then tap the input to type. (Explicit
@@ -375,6 +413,9 @@ export function AgentChat({
                 query={findOpen ? findQuery : ""}
                 currentMatch={findOpen ? currentMatch : -1}
                 onMatchCount={findOpen ? handleMatchCount : undefined}
+                agent={agent?.agent}
+                onPromptAction={handlePromptAction}
+                promptDisabled={readOnly || gone}
               />
             </>
           ) : (

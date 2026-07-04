@@ -54,6 +54,9 @@ export interface PaneData {
   /** The scrollback window this result was fetched with — lets the UI tell a grown fetch from a
    * stale in-flight poll (a "Load older" tap raises this; see growRequestedLines). */
   requestedLines: number;
+  /** Herdr's monotonic revision for `text` — the prompt-select race guard checks against it. 0 on
+   * the degraded (stale-text) path, where the guard's fresh fetch will reject a mismatch anyway. */
+  revision: number;
   error: boolean;
 }
 
@@ -169,7 +172,7 @@ export async function paneLoader({
     const read: PaneReadResponse = await fetchPane(paneId, lines, request?.signal);
     const text = read.text || lastPaneText.get(paneId) || "";
     rememberPaneText(paneId, text);
-    return { paneId, text, truncated: read.truncated, requestedLines: lines, error: false };
+    return { paneId, text, truncated: read.truncated, requestedLines: lines, revision: read.revision, error: false };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
     // Genuine network / server failure: show stale text flagged as degraded.
@@ -178,6 +181,7 @@ export async function paneLoader({
       text: lastPaneText.get(paneId) ?? "",
       truncated: false,
       requestedLines: lines,
+      revision: 0,
       error: true,
     };
   }

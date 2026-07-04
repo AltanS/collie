@@ -58,6 +58,7 @@ function makeRouter(initialPath: string, homeLoader: () => HomeData) {
               text: "",
               truncated: false,
               requestedLines: 600,
+              revision: 0,
               error: false,
             }),
             element: <DetailRoute />,

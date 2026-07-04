@@ -4,11 +4,13 @@ import {
   checkAccess,
   deviceAuth,
   isHostAllowed,
+  paneReadResponse,
   resolveStaticPath,
   sendReplySteps,
   type ReplySender,
 } from "./server.ts";
 import type { Config } from "./config.ts";
+import type { PaneRead } from "./herdr-client.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -288,6 +290,28 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
     const out = await sendReplySteps(client, "p1", "hello", false, ["Enter"]);
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text"]);
+  });
+});
+
+describe("paneReadResponse — pane read → REST body", () => {
+  test("passes text, truncated, and the monotonic revision through", () => {
+    const read: PaneRead = { pane_id: "w1:p1", text: "hello", truncated: true, revision: 42 };
+    expect(paneReadResponse("w1:p1", read)).toEqual({
+      paneId: "w1:p1",
+      text: "hello",
+      truncated: true,
+      revision: 42,
+    });
+  });
+
+  test("carries a zero revision unchanged (fresh pane) rather than dropping the field", () => {
+    const read: PaneRead = { pane_id: "w2:p1", text: "", truncated: false, revision: 0 };
+    expect(paneReadResponse("w2:p1", read)).toEqual({
+      paneId: "w2:p1",
+      text: "",
+      truncated: false,
+      revision: 0,
+    });
   });
 });
 

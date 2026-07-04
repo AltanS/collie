@@ -78,6 +78,8 @@ export interface PaneReadResponse {
   paneId: string;
   text: string;
   truncated: boolean;
+  /** Herdr's monotonic pane revision — the prompt-select race guard checks a tapped menu against it. */
+  revision: number;
   /** Set to true by the client when the server returns 304 Not Modified. Never sent over the wire. */
   notModified?: boolean;
 }

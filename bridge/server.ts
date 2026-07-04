@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
 import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
-import type { HerdrClient } from "./herdr-client.ts";
+import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import type { Push, PushSubscription } from "./push.ts";
@@ -254,7 +254,7 @@ async function readPane(
   try {
     // "ansi" so the client can render a faithful, colored terminal mirror.
     const read = await herdr.readPane(paneId, "recent", lines, "ansi");
-    const data: PaneReadResponse = { paneId, text: read.text, truncated: read.truncated };
+    const data = paneReadResponse(paneId, read);
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
     // and skips the whole transfer (the big win on a cellular link).
     const bodyStr = JSON.stringify(data);
@@ -272,6 +272,15 @@ async function readPane(
   } catch (err) {
     return text(`herdr read failed: ${(err as Error).message}`, 502);
   }
+}
+
+/**
+ * Map a Herdr pane read to the REST response body. Pure + exported so the `revision` passthrough
+ * (the client's prompt-select race guard depends on it) is covered by the bridge unit tests without
+ * standing up Bun.serve / the socket client.
+ */
+export function paneReadResponse(paneId: string, read: PaneRead): PaneReadResponse {
+  return { paneId, text: read.text, truncated: read.truncated, revision: read.revision };
 }
 
 /** Just the two one-shot RPCs a reply needs — real HerdrClient in the bridge, fake in tests. */

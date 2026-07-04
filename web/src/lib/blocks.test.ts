@@ -1,7 +1,16 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi, type AnsiSegment } from "./ansi";
-import { buildBlocks, splitLines } from "./blocks";
+import { buildBlocks, splitLines, type StyledLine } from "./blocks";
+
+// Anchored on this file's directory (not `new URL(import.meta.url)`, which Vite rewrites to an asset).
+const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
+const fixtureLines = (name: string): StyledLine[] =>
+  splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+const blockText = (lines: StyledLine[]) =>
+  lines.map((l) => l.segments.map((s) => s.text).join("")).join("\n");
 
 // splitLines is the seam between the ANSI parse and the renderer. Its load-bearing invariant (find
 // depends on it): joining every line's text with "\n" reproduces the original visible string
@@ -125,5 +134,42 @@ describe("buildBlocks", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
     expect(blocks[0]!.lines).toEqual([{ segments: [] }]);
+  });
+});
+
+describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
+  it("splits a tail menu into [raw before, prompt-select], keeping the question above the buttons", () => {
+    const lines = fixtureLines("claude--select-menu.txt");
+    const blocks = buildBlocks(lines, { agent: "claude" });
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+
+    const raw = blocks[0]!;
+    const prompt = blocks[1]!;
+    if (raw.kind !== "raw" || prompt.kind !== "prompt-select") throw new Error("unexpected block kinds");
+    // The question stays in the raw block above (not duplicated inside the button group).
+    expect(blockText(raw.lines)).toContain("Which color theme should the dashboard use?");
+    // The typed payload carries the detected model + the raw region it replaced.
+    expect(prompt.prompt.family).toBe("select");
+    expect(prompt.prompt.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Chat about this"]);
+    expect(blockText(prompt.lines)).toContain("Enter to select"); // the replaced footer lives here
+  });
+
+  it("strips trailing input-box chrome when there is no menu (single raw block)", () => {
+    const lines = fixtureLines("claude--fresh-idle.txt");
+    const blocks = buildBlocks(lines, { agent: "claude" });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.kind).toBe("raw");
+    const kept = blockText(blocks[0]!.lines);
+    expect(kept).toContain("Welcome back Altan!");
+    expect(kept).not.toContain("← for agents"); // the input-box statusline/hint is gone
+    expect(blocks[0]!.lines.length).toBeLessThan(lines.length);
+  });
+
+  it("leaves a non-Claude agent as a single untouched raw block (conservative gating)", () => {
+    const lines = fixtureLines("claude--select-menu.txt");
+    const blocks = buildBlocks(lines, { agent: "codex" });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.kind).toBe("raw");
+    expect(blocks[0]!.lines).toBe(lines); // untouched — same reference
   });
 });

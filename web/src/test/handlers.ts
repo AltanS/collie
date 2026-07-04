@@ -84,7 +84,7 @@ export const fixtureSnapshot: SnapshotResponse = {
 export const handlers = [
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
-    HttpResponse.json({ paneId: "w1:p1", text: "hello from the pane", truncated: false }),
+    HttpResponse.json({ paneId: "w1:p1", text: "hello from the pane", truncated: false, revision: 1 }),
   ),
   http.post(/\/api\/pane\/[^/]+\/reply$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),
