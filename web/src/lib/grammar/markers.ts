@@ -44,8 +44,9 @@ export function isBoxBorder(text: string): boolean {
 // checkbox glyph per sub-question plus a Submit, wrapped in ←/→ navigation, e.g.
 //   "←  ☒ Focus area  ☐ Scope  ☐ Workflow  ✔ Submit  →"
 // A single-question dialog never shows this. We can't answer a wizard with one digit+Enter (that
-// submits with only the first question answered), and we don't render a multi-step UI yet — so
-// detecting this line makes prompt-select bail to the raw mirror instead of mis-sending keystrokes.
+// submits with only the first question answered), so detecting this line makes prompt-select bail.
+// The wizard grammar (wizard.ts) claims the dialog first in buildBlocks; this bail remains as the
+// safety net for a wizard that grammar misses (then the raw mirror + keys pad drive it).
 const STEP_GLYPH = /[☐☒☑✔✅]/g;
 
 /** True when a line is a multi-question stepper header (≥2 step/checkbox glyphs on one line). */

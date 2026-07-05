@@ -172,4 +172,33 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks[0]!.kind).toBe("raw");
     expect(blocks[0]!.lines).toBe(lines); // untouched — same reference
   });
+
+  it("splits a multi-question wizard tail into [raw before, wizard] at the stepper header", () => {
+    const lines = fixtureLines("claude--wizard-q2.txt");
+    const blocks = buildBlocks(lines, { agent: "claude" });
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "wizard"]);
+
+    const raw = blocks[0]!;
+    const wizard = blocks[1]!;
+    if (raw.kind !== "raw" || wizard.kind !== "wizard") throw new Error("unexpected block kinds");
+    // Everything from the stepper down is consumed into the wizard block; scrollback stays raw.
+    expect(blockText(raw.lines)).not.toContain("What scope should this work have?");
+    expect(wizard.wizard.phase).toBe("question");
+    expect(blockText(wizard.lines)).toContain("Enter to select"); // the replaced footer lives here
+  });
+
+  it("lifts the Submit review step (which has no footer) into a wizard block too", () => {
+    const blocks = buildBlocks(fixtureLines("claude--wizard-submit.txt"), { agent: "claude" });
+    const wizard = blocks[blocks.length - 1]!;
+    if (wizard.kind !== "wizard") throw new Error("expected a wizard tail block");
+    expect(wizard.wizard.phase).toBe("review");
+  });
+
+  it("keeps a wizard buffer as pure raw for a non-Claude agent", () => {
+    const lines = fixtureLines("claude--wizard-q1.txt");
+    const blocks = buildBlocks(lines, { agent: "codex" });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.kind).toBe("raw");
+    expect(blocks[0]!.lines).toBe(lines);
+  });
 });
