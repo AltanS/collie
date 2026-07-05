@@ -1,10 +1,10 @@
-import { Loader2 } from "lucide-react";
 import { Outlet, useLoaderData, useParams, useRouteError } from "react-router";
 
 import { usePolling } from "@/hooks/use-polling";
 import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { OfflineBanner } from "@/components/offline-banner";
+import { DogGallop } from "@/components/dog-gallop";
 import type { HomeData } from "@/lib/loaders";
 
 // The data root: owns the snapshot loader, drives polling, and fans the herd out to the child
@@ -33,7 +33,7 @@ export function RootLayout() {
 export function BootSplash() {
   return (
     <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
-      <Loader2 className="size-6 animate-spin" />
+      <DogGallop running size="4rem" label="Loading" />
       <span className="text-sm">Connecting to the herd…</span>
     </div>
   );
