@@ -155,13 +155,13 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
     expect(mockSendKeys).not.toHaveBeenCalled();
   });
 
-  it("passes the guard on a 304 (content unchanged) and sends", async () => {
+  it("passes on a 304 whose revision still matches (only the re-derivation is skipped)", async () => {
     const model = fixtureModel("claude--permission-bash.txt");
     mockFetchPane.mockResolvedValue({
       paneId: "w1:p1",
       text: "",
       truncated: false,
-      revision: 0,
+      revision: 42, // the cached body's revision — matches what the menu was detected against
       notModified: true,
     });
     const res = await submitPromptOption({
@@ -173,6 +173,28 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
     });
     expect(res).toEqual({ status: "sent" });
     expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["2"]);
+  });
+
+  it("rejects a 304 whose revision differs — 'not modified' only means unchanged since the LAST POLL", async () => {
+    // Background polling advances the ETag cache while a frozen mirror stands still, so a 304 must
+    // NOT bypass the revision check: the tap was made against an older (frozen) snapshot.
+    const model = fixtureModel("claude--permission-bash.txt");
+    mockFetchPane.mockResolvedValue({
+      paneId: "w1:p1",
+      text: "",
+      truncated: false,
+      revision: 43, // the cache moved on; the user tapped the menu detected at revision 42
+      notModified: true,
+    });
+    const res = await submitPromptOption({
+      paneId: "w1:p1",
+      requestedLines: 600,
+      detectedRevision: 42,
+      prompt: model,
+      option: model.options[1]!,
+    });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
   });
 
   it("surfaces the bridge error when sendKeys fails", async () => {

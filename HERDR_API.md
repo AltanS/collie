@@ -40,6 +40,10 @@ against a real pane). Empirically enumerated against Herdr 0.7.0 — it is **NOT
 
 - **Special keys (bare, case-insensitive):** `Up` `Down` `Left` `Right` `Tab` `Enter` `Escape`
   `Space` `Backspace` (alias `BS`), and function keys `F1`…`F12`.
+- **Literal single characters:** a one-character string is typed as that character — digits (`"1"`,
+  `"2"`, …), letters, punctuation (live-verified 2026-07-04). This is what Collie's prompt-select
+  taps send: `{keys:["1"]}` answers a permission dialog; `{keys:["2","Enter"]}` picks option 2 of an
+  AskUserQuestion select.
 - **Modifier chords (join with `+`):** `ctrl+c`, `ctrl+u`, `ctrl+d`, `ctrl+l`, `ctrl+r`,
   `shift+tab`, `ctrl+left`, `alt+f`, … Modifiers: `ctrl` / `shift` / `alt` / `cmd` / `super`
   (case-insensitive). This is the **same grammar as `config.toml [keys]`**.

@@ -1,11 +1,19 @@
-import type { ComponentProps } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { useState, type ComponentProps } from "react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 
+// Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
+// `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
+// prompt-select-block.test.tsx). The other tests in this file never reach it.
+vi.mock("@/lib/prompt-action", () => ({
+  submitPromptOption: vi.fn(),
+}));
+
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
+import { submitPromptOption } from "@/lib/prompt-action";
 import { fixtureAgents } from "@/test/handlers";
 import { AgentChat } from "./agent-chat";
 
@@ -137,5 +145,92 @@ describe("AgentChat — read-only device", () => {
     renderChat({ device: { enforced: true, device: "my-phone", authorized: true } });
     expect(screen.queryByText(/read-only/i)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/type or dictate a reply/i)).not.toBeDisabled();
+  });
+});
+
+// A minimal permission dialog at the buffer tail — enough for the REAL detector (not a mock) to
+// lift it into prompt-select buttons inside AgentChat's mirror.
+const MENU_TEXT = [
+  "Do you want to create hello.txt?",
+  " ❯ 1. Yes",
+  "   2. No",
+  "",
+  " Esc to cancel · Tab to amend",
+].join("\n");
+
+describe("AgentChat — prompt-select race guard wiring (frozen {text, revision} pair)", () => {
+  const mockSubmit = vi.mocked(submitPromptOption);
+  beforeEach(() => {
+    mockSubmit.mockReset();
+    mockSubmit.mockResolvedValue({ status: "sent" });
+  });
+
+  // Renders AgentChat inside a data router with EXTERNALLY-UPDATABLE pane props, standing in for the
+  // route loader delivering fresh polls. Returns a setter that advances {text, revision} in place.
+  function renderWithLivePane(initial: { text: string; revision: number }) {
+    const agent = fixtureAgents[0]!; // a claude agent — the block grammars are gated on the agent
+    let advance: (pane: { text: string; revision: number }) => void = () => {
+      throw new Error("harness not mounted");
+    };
+    function Harness() {
+      const [pane, setPane] = useState(initial);
+      advance = setPane;
+      return (
+        <AgentChat
+          paneId={agent.paneId}
+          agent={agent}
+          agents={fixtureAgents}
+          shellPanes={[]}
+          workspaces={[]}
+          tabs={[]}
+          text={pane.text}
+          revision={pane.revision}
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    return (pane: { text: string; revision: number }) => advance(pane);
+  }
+
+  it("passes the FROZEN revision when the mirror is frozen and the pane advances underneath", async () => {
+    // Regression (found in review): the handler used to pass the LIVE loader revision, which keeps
+    // advancing via background polls even while the mirror is frozen — so the guard compared
+    // live-vs-live and could never catch drift that happened before the freeze. The menu the user
+    // taps is derived from the FROZEN text, so the guard must get the revision frozen WITH it.
+    const user = userEvent.setup();
+    const advance = renderWithLivePane({ text: MENU_TEXT, revision: 1 });
+
+    // The real detector lifted the tail menu into buttons.
+    await screen.findByRole("button", { name: "Yes" });
+
+    // Freeze the mirror (opening find pins the tail — the same `following=false` state a scroll-up
+    // freeze produces).
+    await user.click(screen.getByRole("button", { name: "Find in output" }));
+
+    // The pane advances while frozen: new output below the menu + a bumped revision.
+    act(() => advance({ text: `${MENU_TEXT}\n● proceeding…\n`, revision: 2 }));
+
+    // The frozen mirror still shows the old menu; the tap must hand the guard the FROZEN pair.
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({ detectedRevision: 1 }));
+  });
+
+  it("passes the LIVE revision while following (the frozen pair is the live pair)", async () => {
+    const user = userEvent.setup();
+    const advance = renderWithLivePane({ text: MENU_TEXT, revision: 1 });
+    await screen.findByRole("button", { name: "Yes" });
+
+    // Not frozen: a revision-only poll (same text) is adopted into the shown pair.
+    act(() => advance({ text: MENU_TEXT, revision: 2 }));
+
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({ detectedRevision: 2 }));
   });
 });

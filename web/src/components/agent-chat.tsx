@@ -108,11 +108,23 @@ export function AgentChat({
   // Mirror freeze: at the bottom we follow live output; the moment you scroll up to read backscroll
   // we hold the text steady (no reflow / no re-pin) until you jump back to latest — so a long
   // message stays put long enough to read instead of sliding out of the rolling window.
+  //
+  // The frozen snapshot is a {text, revision} PAIR captured at the same instant: the prompt-select
+  // race guard must check a tap against the revision of what the user is LOOKING AT. The live
+  // `revision` prop keeps advancing with background polls while the mirror is frozen — comparing
+  // against it would blind the guard to drift that happened before the freeze (live-vs-live always
+  // matches). While following, the frozen pair IS the live pair by definition.
   const [following, setFollowing] = useState(true);
-  const [display, setDisplay] = useState(text);
+  const [shown, setShown] = useState({ text, revision });
   useEffect(() => {
-    if (following) setDisplay(text);
-  }, [text, following]);
+    if (!following) return;
+    // Functional update that returns the previous object when nothing changed keeps React's
+    // Object.is bailout — no re-render per poll while the pane is quiet.
+    setShown((prev) =>
+      prev.text === text && prev.revision === revision ? prev : { text, revision },
+    );
+  }, [text, revision, following]);
+  const display = shown.text;
   const hasNew = !following && display !== text;
 
   // Find-in-output: search the already-fetched buffer. The bar takes over the header while open;
@@ -161,6 +173,8 @@ export function AgentChat({
   }
   // Adopt the enlarged buffer into the frozen display once the *grown* fetch lands — keyed on the
   // requested line count so a stale in-flight poll (still on the old window) can't adopt early.
+  // Adopts the whole {text, revision} pair (props from the same loader result) so the frozen
+  // snapshot stays coherent for the race guard.
   useEffect(() => {
     const target = adoptTarget.current;
     if (target === null || requestedLines < target) return;
@@ -171,8 +185,8 @@ export function AgentChat({
       return;
     }
     pendingRestore.current = true;
-    setDisplay(text);
-  }, [requestedLines, text, display]);
+    setShown({ text, revision });
+  }, [requestedLines, text, revision, display]);
   // After the enlarged display paints, keep the previously-visible content anchored (content grew at
   // the top, so push scrollTop down by the height delta).
   useLayoutEffect(() => {
@@ -193,9 +207,11 @@ export function AgentChat({
 
   // Tap a prompt-select option. This can type into a real terminal, so it runs the revision-based
   // race guard first (fresh fetch → revision + re-derived-menu equality); only a clean match sends
-  // the option's keys. A stale tap is discarded with a "menu changed" notice and a revalidate; a
-  // clean send snaps back to the tail so the result is visible. The composer stays live for the
-  // free-text rows we deliberately don't render as buttons.
+  // the option's keys. The guard checks against the FROZEN pair's revision — the menu the user
+  // tapped was derived from `shown.text`, so `shown.revision` is the revision of what they saw
+  // (the live `revision` prop may have advanced under a frozen mirror). A stale tap is discarded
+  // with a "menu changed" notice and a revalidate; a clean send snaps back to the tail so the
+  // result is visible. The composer stays live for the free-text rows we don't render as buttons.
   const handlePromptAction = useCallback(
     async (option: PromptOption, prompt: PromptModel) => {
       if (readOnly) {
@@ -205,7 +221,7 @@ export function AgentChat({
       const result = await submitPromptOption({
         paneId,
         requestedLines,
-        detectedRevision: revision,
+        detectedRevision: shown.revision,
         prompt,
         option,
       });
@@ -221,7 +237,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, requestedLines, revision, revalidator],
+    [readOnly, paneId, requestedLines, shown.revision, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android

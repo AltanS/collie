@@ -3,10 +3,15 @@
 // pane may have moved on between render and tap — so before sending we re-fetch the pane and confirm
 // nothing changed underfoot:
 //
-//   1. A FRESH pane read for the same window. If the bridge answers 304 Not Modified the content is
-//      unchanged by definition — that PASSES the guard.
-//   2. Otherwise the fresh read's `revision` must equal the one the menu was detected against AND
-//      the fresh buffer must still re-derive to the same {question, options} (family + labels).
+//   1. A FRESH pane read for the same window.
+//   2. The fresh read's `revision` must equal the one the menu was detected against — checked
+//      UNCONDITIONALLY. A 304 Not Modified only proves the buffer is unchanged since the ETag
+//      cache's LAST background poll, NOT since the (possibly frozen) snapshot the user tapped on —
+//      the cache advances with every poll while a frozen mirror stands still. The cached 304 body
+//      carries its own `revision`, so the comparison works on both paths.
+//   3. Unless the read was a 304 (content byte-identical to the last poll, and the revision already
+//      matched), the fresh buffer must additionally still re-derive to the same {question, options}
+//      (family + labels).
 //
 // Only then do we send the option's keys through the existing sendKeys write path. A failed guard
 // discards the tap and reports "changed" so the caller can surface a "menu changed" notice.
@@ -53,9 +58,13 @@ export async function submitPromptOption(args: {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
   }
 
-  // A 304 means the buffer is byte-for-byte what we rendered — the guard passes without re-deriving.
+  // Revision check is UNCONDITIONAL: a 304 only means "unchanged since the last poll", and polls
+  // keep advancing the ETag cache under a frozen mirror — it does NOT vouch for the snapshot the
+  // user actually tapped on. The cached 304 body carries its revision, so this covers both paths.
+  if (fresh.revision !== detectedRevision) return { status: "changed" };
+  // Same revision + 304 ⇒ the content is what the last poll saw and hasn't moved — only then can
+  // the parse + detect + equality re-derivation be skipped.
   if (fresh.notModified !== true) {
-    if (fresh.revision !== detectedRevision) return { status: "changed" };
     const freshModel = detectPromptSelect(splitLines(parseAnsi(fresh.text)));
     if (!freshModel || !promptsEqual(freshModel, prompt)) return { status: "changed" };
   }
