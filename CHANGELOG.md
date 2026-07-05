@@ -9,9 +9,12 @@ All notable changes to Collie are recorded here. The format follows
 ## [0.4.0] - 2026-07-05
 
 ### Added
-- Block-based terminal renderer (in progress on feature/block-renderer): rendering now flows through
-  a semantic Block AST (styled lines → typed blocks → React components); this release contains the
-  raw-block foundation — visually identical, groundwork for native prompt/tool-call rendering.
+- **Block-based terminal renderer.** Pane rendering now flows through a semantic Block AST (styled
+  lines → typed blocks → React components) instead of a flat span mirror. The raw-block foundation is
+  byte-for-byte identical to the old mirror, but it's the seam every feature below builds on —
+  detected regions are lifted into native blocks in place, and anything unrecognized falls back to
+  the raw mirror. Scoped to Claude Code (`hasBlockGrammar`); every other agent renders the plain
+  mirror, since their TUIs are unverified.
 - **Native prompt buttons.** A Claude single-choice dialog at the buffer tail (select, permission,
   trust, plan approval) is lifted out of the mirror and rendered as tappable buttons; a tap sends the
   per-family keystrokes (digit, or digit+Enter for AskUserQuestion), guarded so a stale tap on a
