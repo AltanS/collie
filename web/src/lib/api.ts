@@ -1,6 +1,7 @@
 // Thin REST client for the bridge. Everything is same-origin, so credentials/headers are
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
+import { trackBusy } from "./busy";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -28,7 +29,7 @@ async function errorDetail(res: Response): Promise<string> {
   }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     headers: { "content-type": "application/json", ...init?.headers },
@@ -38,6 +39,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+// Every mutating request (non-GET) feeds the app-wide busy signal so the top progress bar shows
+// while it's in flight; GET reads (snapshot/config polling) don't, or the bar would never rest.
+// trackBusy increments synchronously, so a caller sees `isBusy()` true the instant it fires.
+function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const op = doReq<T>(path, init);
+  const method = init?.method?.toUpperCase() ?? "GET";
+  return method === "GET" ? op : trackBusy(op);
 }
 
 export function fetchSnapshot(signal?: AbortSignal): Promise<SnapshotResponse> {
@@ -164,15 +174,20 @@ export function setSnooze(snoozedUntil: number | null): Promise<{ snoozedUntil: 
  * Upload an image; the bridge saves it to a host file and returns the path to reference in a
  * message. Uses multipart/form-data (NOT the JSON `req` helper — the browser sets the boundary).
  */
-export async function uploadImage(paneId: string, file: File): Promise<UploadResponse> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`/api/pane/${encodeURIComponent(paneId)}/upload`, {
-    method: "POST",
-    body: fd,
-  });
-  if (!res.ok) {
-    throw new ApiError(`upload → ${res.status} ${await errorDetail(res)}`, res.status);
-  }
-  return (await res.json()) as UploadResponse;
+export function uploadImage(paneId: string, file: File): Promise<UploadResponse> {
+  // Multipart, so it bypasses `req` (the browser sets the boundary) — track it explicitly instead.
+  return trackBusy(
+    (async () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/pane/${encodeURIComponent(paneId)}/upload`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        throw new ApiError(`upload → ${res.status} ${await errorDetail(res)}`, res.status);
+      }
+      return (await res.json()) as UploadResponse;
+    })(),
+  );
 }

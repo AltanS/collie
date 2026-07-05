@@ -1,6 +1,7 @@
 import { RouterProvider } from "react-router";
 
 import { router } from "./router";
+import { BusyBar } from "@/components/busy-bar";
 import { IdleLock } from "@/components/idle-lock";
 import { useIdleLock } from "@/hooks/use-idle-lock";
 
@@ -10,5 +11,11 @@ import { useIdleLock } from "@/hooks/use-idle-lock";
 export function App() {
   const { locked, unlock } = useIdleLock();
   if (locked) return <IdleLock onUnlock={unlock} />;
-  return <RouterProvider router={router} />;
+  // BusyBar overlays every route (fixed, top of viewport) — a mutation anywhere shows the strip.
+  return (
+    <>
+      <BusyBar />
+      <RouterProvider router={router} />
+    </>
+  );
 }

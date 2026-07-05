@@ -208,3 +208,57 @@ html[data-vt="backward"]::view-transition-new(root) {
 html[data-sheet-open] .app-header {
   view-transition-name: none;
 }
+
+/* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a
+   mutation is in flight (components/busy-bar). The `appear` animation holds it fully invisible for
+   120ms (delay + `both` fill), so an action that resolves and unmounts within that window never
+   paints — no flash on a fast reply; `slide` is the indeterminate travel once it does show. */
+.busy-bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 60;
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  animation: busy-bar-appear 140ms ease-out 120ms both;
+}
+.busy-bar__indicator {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 9999px;
+  background: var(--primary);
+  animation: busy-bar-slide 1.1s ease-in-out infinite;
+}
+@keyframes busy-bar-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes busy-bar-slide {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(360%);
+  }
+}
+@keyframes busy-bar-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+/* No horizontal travel under reduced motion — a gentle opacity pulse across the full width instead. */
+@media (prefers-reduced-motion: reduce) {
+  .busy-bar__indicator {
+    width: 100%;
+    animation: busy-bar-pulse 1.1s ease-in-out infinite;
+  }
+}

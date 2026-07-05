@@ -30,14 +30,48 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
 
   // 2. Peel the input box off the tail if the full shape is present. Only then; otherwise the
   //    blank-trim above is the sole (safe) change.
-  const boxTop = matchInputBox(texts, end);
-  if (boxTop !== null) {
-    end = boxTop;
+  const box = locateInputBox(texts, end);
+  if (box !== null) {
+    end = box.top;
     // Drop the blank run now exposed above the box (a fresh session has an empty body above it).
     while (end > 0 && isBlank(texts[end - 1]!)) end--;
   }
 
   return end === lines.length ? lines : lines.slice(0, end);
+}
+
+/**
+ * The statusline the agent draws just under its input box — model, ctx%, cwd, branch, tokens,
+ * whatever the user configured in their Claude Code statusline. We strip the box off the mirror
+ * (stripChrome), so this re-surfaces that one line as app chrome above the composer instead of
+ * losing it.
+ *
+ * POSITIONAL only: the first non-blank line strictly below the box's bottom border. Hint lines after
+ * it ("← for agents", "⏵⏵ bypass permissions") are ignored — only the first counts. Returns the
+ * trimmed text, or `null` when there's no input box at the tail (a menu is up, or a non-Claude / torn
+ * buffer). Never interprets the content — the caller renders it verbatim.
+ */
+export function extractStatusLine(lines: StyledLine[]): string | null {
+  const texts = lines.map(lineText);
+  let end = lines.length;
+  while (end > 0 && isBlank(texts[end - 1]!)) end--;
+  if (end === 0) return null;
+
+  const box = locateInputBox(texts, end);
+  if (box === null) return null;
+
+  for (let j = box.bottomBorder + 1; j < end; j++) {
+    const t = texts[j]!.trim();
+    if (t.length > 0) return t;
+  }
+  return null;
+}
+
+interface InputBox {
+  /** Index of the TOP border — the exclusive bound of everything ABOVE the box (stripChrome uses it). */
+  top: number;
+  /** Index of the BOTTOM border — the statusline, if any, is the first non-blank line after it. */
+  bottomBorder: number;
 }
 
 /**
@@ -50,9 +84,9 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
  *     <statusline>         (0..MAX_STATUS_LINES lines, matched by position not content)
  *     <hint line>
  *
- * return the index of the TOP border (the new exclusive bound). Otherwise null. Scans bottom-up.
+ * return the top and bottom border indices. Otherwise null. Scans bottom-up.
  */
-function matchInputBox(texts: string[], end: number): number | null {
+function locateInputBox(texts: string[], end: number): InputBox | null {
   let i = end - 1;
 
   // (a) Up to MAX_STATUS_LINES status/hint lines above the bottom border: non-blank, non-border
@@ -65,6 +99,7 @@ function matchInputBox(texts: string[], end: number): number | null {
 
   // (b) bottom border
   if (i < 0 || !isBoxBorder(texts[i]!)) return null;
+  const bottomBorder = i;
   i--;
 
   // (c) the "❯" prompt line (allow blank padding on either side, defensively)
@@ -75,5 +110,5 @@ function matchInputBox(texts: string[], end: number): number | null {
 
   // (d) top border
   if (i < 0 || !isBoxBorder(texts[i]!)) return null;
-  return i;
+  return { top: i, bottomBorder };
 }

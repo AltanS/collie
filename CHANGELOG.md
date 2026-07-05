@@ -12,6 +12,17 @@ All notable changes to Collie are recorded here. The format follows
 - Block-based terminal renderer (in progress on feature/block-renderer): rendering now flows through
   a semantic Block AST (styled lines → typed blocks → React components); this release contains the
   raw-block foundation — visually identical, groundwork for native prompt/tool-call rendering.
+- **Native prompt buttons.** A Claude single-choice dialog at the buffer tail (select, permission,
+  trust, plan approval) is lifted out of the mirror and rendered as tappable buttons; a tap sends the
+  per-family keystrokes (digit, or digit+Enter for AskUserQuestion), guarded so a stale tap on a
+  scrolled-up menu can't fire. The agent's own input box/statusline are stripped so they don't
+  duplicate the composer.
+- **Status strip.** The stripped statusline (model · ctx% · cwd · branch · tokens) is re-surfaced as
+  a slim line above the composer, so the branch/context stays visible instead of vanishing with the
+  input-box chrome.
+- **Submission progress bar.** A slim indeterminate bar across the top of the app while any mutation
+  (reply, keys, prompt tap, upload, tab/space create, close, snooze) is in flight; background polling
+  never triggers it, and a 120ms delay means a fast action never flashes it.
 
 ## [0.3.0] - 2026-07-03
 

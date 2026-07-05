@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useRevalidator } from "react-router";
 import { ArrowUpToLine, Home, Layers, Loader2, Search, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet, SideSheet } from "@/components/ui/sheet";
 import { AnsiOutput } from "@/components/ansi-output";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
+import { extractStatusLine } from "@/lib/grammar/chrome";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -126,6 +129,17 @@ export function AgentChat({
   }, [text, revision, following]);
   const display = shown.text;
   const hasNew = !following && display !== text;
+
+  // The agent's own statusline (model · ctx% · cwd · branch · tokens) is stripped off the mirror by
+  // stripChrome so it doesn't duplicate the composer — but it carries real context (the branch, most
+  // notably), so we re-surface that one line as app chrome just above the composer, where it sat in
+  // the TUI. Claude-only (matches the chrome-stripping gate); null when a menu is up / no box at the
+  // tail, in which case the strip is hidden. A second parse of `display`, but memoised on it, so it
+  // only recomputes when the buffer content changes — off the render hot path.
+  const statusLine = useMemo(
+    () => (agent?.agent === "claude" ? extractStatusLine(splitLines(parseAnsi(display))) : null),
+    [display, agent?.agent],
+  );
 
   // Find-in-output: search the already-fetched buffer. The bar takes over the header while open;
   // AnsiOutput highlights matches and reports the count back here; prev/next scrolls the focused
@@ -460,6 +474,15 @@ export function AgentChat({
           >
             <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
           </button>
+        )}
+
+        {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx would otherwise
+            vanish with the stripped input box). Sits directly above the composer, as it did in the
+            TUI. Verbatim text — a React text node, so no XSS surface. */}
+        {statusLine && (
+          <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground/80">
+            {statusLine}
+          </div>
         )}
 
         <Composer

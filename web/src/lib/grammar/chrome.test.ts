@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
-import { stripChrome } from "./chrome";
+import { extractStatusLine, stripChrome } from "./chrome";
 import { lineText } from "./markers";
 
 // Anchored on this file's directory (see prompt-select.test.ts for why not `new URL(import.meta.url)`).
@@ -68,5 +68,41 @@ describe("stripChrome — conservative: leaves non-chrome untouched", () => {
     const lines = splitLines(parseAnsi("output line\n\n\n"));
     const kept = joined(stripChrome(lines));
     expect(kept).toBe("output line");
+  });
+});
+
+// extractStatusLine re-surfaces the one statusline stripChrome removes (the branch/model/ctx the
+// user configured) so the app can render it above the composer — positional (first non-blank line
+// below the input box's bottom border), never content-parsed.
+describe("extractStatusLine — recovers the stripped statusline", () => {
+  it("working: returns the statusline including the branch (the field the field-report flagged)", () => {
+    const status = extractStatusLine(fixtureLines("claude--working.txt"));
+    expect(status).not.toBeNull();
+    expect(status).toContain("feature/block-renderer"); // the branch survives
+    expect(status).toContain("151.5k tokens");
+    expect(status).not.toContain("bypass permissions"); // the hint line below it is NOT returned
+  });
+
+  it("fresh-idle: returns the statusline, not the hint line under it", () => {
+    const status = extractStatusLine(fixtureLines("claude--fresh-idle.txt"));
+    expect(status).not.toBeNull();
+    expect(status).toContain("fixture-sandbox");
+    expect(status).not.toContain("← for agents");
+  });
+
+  it("done: returns the statusline of a completed turn", () => {
+    const status = extractStatusLine(fixtureLines("claude--done.txt"));
+    expect(status).not.toBeNull();
+    expect(status).toContain("tokens");
+  });
+
+  it("returns null when a menu is up (no input box at the tail)", () => {
+    expect(extractStatusLine(fixtureLines("claude--select-menu.txt"))).toBeNull();
+    expect(extractStatusLine(fixtureLines("claude--trust-prompt.txt"))).toBeNull();
+    expect(extractStatusLine(fixtureLines("claude--permission-bash.txt"))).toBeNull();
+  });
+
+  it("returns null for a plain buffer with no input box", () => {
+    expect(extractStatusLine(splitLines(parseAnsi("just some output\nmore output")))).toBeNull();
   });
 });
