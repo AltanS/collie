@@ -11,6 +11,16 @@ import { resolve } from "node:path";
 // bridge so the SPA can hit the real socket-backed API while you iterate on the UI.
 const BRIDGE = process.env.COLLIE_DEV_TARGET ?? "http://127.0.0.1:8787";
 
+// Dev-only: extra Host headers to accept besides localhost. Set COLLIE_DEV_HOSTS to a comma-separated
+// list (or "*" for any) when viewing the dev server from another device — e.g. a tailnet MagicDNS
+// name like "bluefin". Vite blocks unknown Hosts by default (a DNS-rebinding guard). No effect on the
+// production bundle: the bridge, not Vite, serves prod.
+const devHosts = (process.env.COLLIE_DEV_HOSTS ?? "")
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
+const allowedHosts = devHosts.includes("*") ? true : devHosts.length > 0 ? devHosts : undefined;
+
 // Build stamp. A unique id is baked into the bundle (shown in the UI footer via __BUILD_INFO__) AND
 // emitted to dist/build-info.json, which the bridge reads for the `X-Collie-Build` header and
 // `/api/config`. Comparing the two tells you instantly whether a browser is running a stale,
@@ -118,6 +128,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    allowedHosts,
     proxy: {
       "/api": { target: BRIDGE, changeOrigin: true },
     },

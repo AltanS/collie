@@ -197,6 +197,40 @@ html[data-vt="backward"]::view-transition-new(root) {
   }
 }
 
+/* ── Collie gallop loader ────────────────────────────────────────────────────────────────────────
+   The mascot as the app's activity indicator (components/dog-gallop.tsx). A horizontal sprite strip
+   — public/dog-gallop.png, 768×128 = six 128px cells — stepped through with steps(6): one frame per
+   step, GPU-cheap, no JS. `--dog-size` sets the square render size AND scales the sprite so a frame
+   is exactly one box wide; the strip is 6 boxes wide, so the box shows one frame. The keyframe walks
+   background-position left by the full strip width; steps(6) jump-end holds each frame's start, so it
+   cycles frames 0→5 and never lands on the off-screen 6th position. Idle rests on frame 0. */
+.dog-gallop {
+  --dog-size: 1.5rem;
+  --dog-frames: 6;
+  display: inline-block;
+  flex: none;
+  width: var(--dog-size);
+  height: var(--dog-size);
+  background-image: url("/dog-gallop.png");
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: calc(var(--dog-frames) * var(--dog-size)) var(--dog-size);
+}
+.dog-gallop--running {
+  animation: dog-gallop 0.6s steps(6) infinite;
+}
+@keyframes dog-gallop {
+  to {
+    background-position: calc(-1 * var(--dog-frames) * var(--dog-size)) 0;
+  }
+}
+/* Respect reduced motion: hold the rest frame instead of galloping. */
+@media (prefers-reduced-motion: reduce) {
+  .dog-gallop--running {
+    animation: none;
+  }
+}
+
 /* The sticky app chrome opts into being its own transition group via this class. The name promotes
    it to a standalone composited layer, though — so while a sheet/drawer is open we drop the name
    (the sheet sets <html data-sheet-open>). Otherwise a poll repainting the live status pill can make

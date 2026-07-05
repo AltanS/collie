@@ -38,7 +38,6 @@ function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
     agent,
     agents: fixtureAgents,
     shellPanes: [],
-    workspaces: [],
     tabs: [],
     text: "recent pane output",
     onBack: vi.fn(),
@@ -113,7 +112,6 @@ describe("AgentChat — header title block", () => {
               agent={agent}
               agents={fixtureAgents}
               shellPanes={[]}
-              workspaces={[]}
               tabs={[]}
               text="out"
               onBack={vi.fn()}
@@ -255,7 +253,6 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
           agent={agent}
           agents={fixtureAgents}
           shellPanes={[]}
-          workspaces={[]}
           tabs={[]}
           text={pane.text}
           revision={pane.revision}

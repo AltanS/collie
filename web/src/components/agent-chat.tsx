@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useRevalidator } from "react-router";
-import { ArrowUpToLine, Home, Layers, Loader2, Search, TerminalSquare } from "lucide-react";
+import { ArrowUpToLine, Loader2, Search, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { setStatus } from "@/lib/status";
 import { Button } from "@/components/ui/button";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
-import { BottomSheet, SideSheet } from "@/components/ui/sheet";
+import { BottomSheet } from "@/components/ui/sheet";
+import { CollieHome } from "@/components/collie-home";
 import { AnsiOutput } from "@/components/ansi-output";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -17,7 +18,6 @@ import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
-import { SpaceList } from "@/components/space-list";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -30,7 +30,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { navigateWithTransition } from "@/lib/view-transition";
 import { isReadOnly } from "@/lib/types";
-import type { AgentView, DeviceAuth, TabView, WorkspaceView } from "@/lib/types";
+import type { AgentView, DeviceAuth, TabView } from "@/lib/types";
 import type { PromptModel, PromptOption, WizardModel } from "@/lib/blocks";
 
 interface AgentChatProps {
@@ -38,7 +38,6 @@ interface AgentChatProps {
   agent: AgentView | undefined;
   agents: AgentView[];
   shellPanes: AgentView[];
-  workspaces: WorkspaceView[];
   tabs: TabView[];
   /** Label of the pane's tab, shown in the header as "space › tab". */
   tabLabel?: string;
@@ -52,13 +51,15 @@ interface AgentChatProps {
   revision?: number;
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
+  /** Global connection state (offline/reconnecting) — gallops the header Collie, like the dashboard. */
+  connecting?: boolean;
   onBack: () => void;
   onSelect: (paneId: string) => void;
 }
 
 // At most one drawer/sheet is open at a time; null = none. (The composer's own Keys/Quick/Agent
 // sheets are separate and live inside <Composer>.)
-type Drawer = "nav" | "switcher" | null;
+type Drawer = "switcher" | null;
 
 // The detail view mirrors a terminal pane, NOT a chat thread. The pane's output comes from the
 // route loader (`text`); polling revalidates it. Replies/keys are confirmed via the header status
@@ -74,7 +75,6 @@ export function AgentChat({
   agent,
   agents,
   shellPanes,
-  workspaces,
   tabs,
   tabLabel,
   text,
@@ -82,12 +82,13 @@ export function AgentChat({
   requestedLines = 0,
   revision = 0,
   device,
+  connecting = false,
   onBack,
   onSelect,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   const navigate = useNavigate();
-  const { newTab, newSpace } = useSpaceActions();
+  const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal } = useDisplayPrefs();
   // Raw-terminal escape hatch: when on, every Claude grammar is bypassed and the plain mirror shows,
@@ -330,7 +331,7 @@ export function AgentChat({
     composerRef.current?.focusInput();
   }
 
-  // Close a pane from the nav drawer's per-row ✕. Closing the pane you're viewing returns Home (the
+  // Close a pane from the switcher's per-row ✕. Closing the pane you're viewing returns Home (the
   // return is the confirmation, no toast); closing any other just revalidates so it drops out of the
   // list. One close at a time (closingId gates re-entry and drives the row spinner).
   async function closePane(id: string) {
@@ -371,9 +372,11 @@ export function AgentChat({
           />
         ) : (
           <>
-            <Button variant="ghost" size="icon" onClick={() => setDrawer("nav")} aria-label="Navigate">
-              <Layers className="size-5" />
-            </Button>
+            {/* Home + connection loader — the SAME Collie mark as the dashboard, so the top-left
+                means the same thing on every screen. Tap returns Home; it gallops while reconnecting.
+                (The nav hub — jump across spaces/panes — moves to the right cluster below so it never
+                impersonates the brand slot.) */}
+            <CollieHome onHome={onBack} connecting={connecting} />
             {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
                 name would just repeat the icon, so it's dropped), and the working directory on the
                 subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
@@ -504,10 +507,12 @@ export function AgentChat({
           <StatusArea />
         </div>
 
-        {/* Swipe-up / tap handle for the quick pane switcher. A tall, full-width hit area so the
-            swipe is easy to land (and a tap always works). Hidden when there's nothing to switch
-            to. `touch-none` so the gesture is ours, not a browser scroll. */}
-        {agents.length + shellPanes.length > 1 && (
+        {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
+            panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
+            tap always works). Shown whenever a pane is open — even the last one, so it stays
+            closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
+            browser scroll. */}
+        {agents.length + shellPanes.length > 0 && (
           <button
             type="button"
             aria-label="Switch pane"
@@ -543,47 +548,6 @@ export function AgentChat({
           onSent={onSent}
         />
       </div>
-
-      {/* Nav hub (left drawer): the Herdr-style two lists — SPACES over PANES (agents + shells).
-          Home lives in the header; each pane row has its own ✕ to close it (two-tap confirm). */}
-      <SideSheet
-        open={drawer === "nav"}
-        onClose={closeDrawer}
-        title="Navigate"
-        headerAction={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 px-2 text-muted-foreground"
-            onClick={() => {
-              closeDrawer();
-              onBack();
-            }}
-          >
-            <Home className="size-4" />
-            Home
-          </Button>
-        }
-      >
-        <SpaceList
-          workspaces={workspaces}
-          agents={agents}
-          currentWorkspaceId={agent?.workspaceId}
-          onSelect={openSpace}
-          onNewSpace={() => {
-            closeDrawer();
-            newSpace();
-          }}
-        />
-        <ThreadSidebar
-          agents={agents}
-          shellPanes={shellPanes}
-          currentPaneId={paneId}
-          onSelect={switchTo}
-          onClose={closePane}
-          closingId={closingId ?? undefined}
-        />
-      </SideSheet>
 
       {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture */}
       <BottomSheet open={drawer === "switcher"} onClose={closeDrawer} title="Switch pane">

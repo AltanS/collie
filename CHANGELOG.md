@@ -6,7 +6,7 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
-## [0.4.0] - 2026-07-04
+## [0.4.0] - 2026-07-05
 
 ### Added
 - Block-based terminal renderer (in progress on feature/block-renderer): rendering now flows through
@@ -34,6 +34,26 @@ All notable changes to Collie are recorded here. The format follows
   round-trip: every tap is a single race-guarded keystroke re-derived against a fresh read; the TUI
   stays the source of truth. Choreography + fixtures documented in
   `web/src/lib/grammar/WIZARD_NOTES.md`.
+- **Galloping Collie loader.** The mascot now doubles as the app's activity indicator: a 6-frame
+  gallop sprite (`web/public/dog-gallop.png`, a 768×128 transparent strip) stepped through with a
+  pure-CSS `steps(6)` animation (no JS timers). At rest it's the familiar static app icon
+  (`favicon.svg`); it springs into the gallop on the boot splash while the first snapshot loads and
+  whenever the connection isn't live (connecting / reconnecting / offline), settling back to the
+  static icon once live. Honours `prefers-reduced-motion`. New `DogGallop` component; rough
+  first-pass art to be replaced with higher-quality frames.
+
+### Changed
+- **One consistent top-left mark on every screen.** The Collie is now the brand + home button +
+  connection loader in a single shared `CollieHome` component, rendered identically on the dashboard
+  and inside a pane — so the header's top-left always means the same thing (previously a "stacks"
+  icon inside a pane vs. the Collie logo on the dashboard). Inside a pane the Collie gallops on
+  reconnect from the same global connection state as the dashboard (shared `isConnecting` predicate).
+
+### Removed
+- **The pane's Nav-hub drawer** (the left "stacks" drawer). It was redundant now that the Collie
+  handles Home, the swipe-up switcher already covers pane switching/closing, and the breadcrumb
+  covers cross-space jumps — removed along with its `SpaceList` component. The swipe-up switcher now
+  appears whenever a pane is open, so even the last pane stays closable.
 
 ### Fixed
 - **Multi-question AskUserQuestion no longer mis-parsed.** A multi-step AskUserQuestion (the
