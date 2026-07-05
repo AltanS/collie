@@ -10,10 +10,14 @@ import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 vi.mock("@/lib/prompt-action", () => ({
   submitPromptOption: vi.fn(),
 }));
+vi.mock("@/lib/wizard-action", () => ({
+  submitWizardKeys: vi.fn(),
+}));
 
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
 import { submitPromptOption } from "@/lib/prompt-action";
+import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents } from "@/test/handlers";
 import { AgentChat } from "./agent-chat";
 
@@ -302,6 +306,28 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
     expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({ detectedRevision: 2 }));
+  });
+
+  // Same frozen-pair guarantee for the wizard path (the guard mirrors prompt-select's; this locks the
+  // wiring so the live-vs-frozen-revision bug can't regress here either).
+  it("wizard: passes the FROZEN revision when the mirror is frozen and the pane advances", async () => {
+    const mockWizard = vi.mocked(submitWizardKeys);
+    mockWizard.mockReset();
+    mockWizard.mockResolvedValue({ status: "sent" });
+
+    const user = userEvent.setup();
+    const advance = renderWithLivePane({ text: WIZARD_TEXT, revision: 1 });
+
+    // The real detector lifted the multi-question tail into a wizard with option buttons.
+    await screen.findByRole("button", { name: /Parser/ });
+
+    await user.click(screen.getByRole("button", { name: "Find in output" })); // freeze the tail
+    act(() => advance({ text: `${WIZARD_TEXT}\n● advancing…\n`, revision: 2 }));
+
+    await user.click(screen.getByRole("button", { name: /Parser/ }));
+
+    await waitFor(() => expect(mockWizard).toHaveBeenCalledTimes(1));
+    expect(mockWizard).toHaveBeenCalledWith(expect.objectContaining({ detectedRevision: 1 }));
   });
 });
 

@@ -116,22 +116,31 @@ export function parseStepperLine(line: StyledLine): ParsedStepper | null {
   // Question chips must be checkbox-state glyphs with real labels (✔ mid-line would be malformed).
   if (questions.some((c) => SUBMIT_GLYPHS.includes(c.glyph) || c.label.length === 0)) return null;
 
-  // The highlighted (current) chip: concatenate the text of the line's bg-styled segments and
-  // match it back to one chip label. Matched by label containment — the highlight run includes
-  // the glyph and padding spaces around the label.
+  // The highlighted (current) chip: concatenate the text of the line's bg-styled segments (the
+  // highlight run wraps exactly ONE chip — its glyph, label, and padding). Match it back to a
+  // single chip. Exactly one chip is highlighted, so among chips whose label appears in the run we
+  // take the LONGEST — otherwise a short label that is a substring of the real chip's label (e.g.
+  // "UI" inside a highlighted "New UI") would be falsely marked current too, which would also skew
+  // the wizardsEqual race-guard comparison.
   const highlighted = line.segments
     .filter((s) => s.bg !== undefined)
     .map((s) => s.text)
     .join("");
-  const isCurrent = (label: string) => highlighted.includes(label);
-  const submitCurrent = highlighted.length > 0 && isCurrent(last.label);
+  const allChips = raw; // questions + the trailing Submit chip
+  let currentChip: { glyph: string; label: string } | null = null;
+  if (highlighted.length > 0) {
+    for (const c of allChips) {
+      if (highlighted.includes(c.label) && (currentChip === null || c.label.length > currentChip.label.length)) {
+        currentChip = c;
+      }
+    }
+  }
+  const submitCurrent = currentChip === last;
 
   const chips: WizardStepChip[] = questions.map((c) => ({
     label: c.label,
     answered: ANSWERED_GLYPHS.includes(c.glyph),
-    // Guard against a question label that happens to be a substring of "Submit"'s highlight run:
-    // when the Submit chip is current, no question chip is.
-    current: !submitCurrent && highlighted.length > 0 && isCurrent(c.label),
+    current: currentChip === c, // identity: exactly one question chip (or none) is current
   }));
   return { chips, submitCurrent };
 }

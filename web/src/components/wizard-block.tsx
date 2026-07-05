@@ -44,6 +44,11 @@ export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
   }
 
   const review = wizard.phase === "review";
+  // The TUI clamps navigation (no wraparound): Left at the first question and Right on the Submit
+  // review step are no-ops, so disable those arrows rather than send a keystroke that does nothing.
+  // When no chip reads as current (an unknown theme's highlight), both stay enabled — the TUI still
+  // clamps, and keeping nav available is the safer degradation.
+  const atFirstQuestion = !review && (wizard.steps[0]?.current ?? false);
   const busyIcon = <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />;
 
   return (
@@ -58,7 +63,7 @@ export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
         <button
           type="button"
           aria-label="Previous step"
-          disabled={locked}
+          disabled={locked || atFirstQuestion}
           onClick={() => press("back", WIZARD_BACK_KEYS)}
           className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
         >
@@ -95,7 +100,7 @@ export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
         <button
           type="button"
           aria-label="Next step"
-          disabled={locked}
+          disabled={locked || review}
           onClick={() => press("next", WIZARD_NEXT_KEYS)}
           className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
         >

@@ -80,19 +80,32 @@ describe("WizardBlock — question step presentation", () => {
     expect(escape).toHaveTextContent(/ends the questions/);
   });
 
-  it("sends ONE digit (no Enter) for a tapped answer, and Left/Right for the step navigation", async () => {
+  it("sends ONE digit (no Enter) for a tapped answer; Next navigates; Back is disabled on the first question", async () => {
     const onAction = vi.fn();
     const user = userEvent.setup();
-    const model = fixtureModel("claude--wizard-q1.txt");
+    const model = fixtureModel("claude--wizard-q1.txt"); // first question is the current step
     render(<WizardBlock wizard={model} onAction={onAction} />);
 
     await user.click(screen.getByRole("button", { name: /UI/ }));
     expect(onAction).toHaveBeenLastCalledWith(["2"]);
 
-    await user.click(screen.getByRole("button", { name: "Previous step" }));
-    expect(onAction).toHaveBeenLastCalledWith(["Left"]);
+    // Left at the first question is a clamped no-op in the TUI, so Back is disabled here.
+    expect(screen.getByRole("button", { name: "Previous step" })).toBeDisabled();
+
     await user.click(screen.getByRole("button", { name: "Next step" }));
     expect(onAction).toHaveBeenLastCalledWith(["Right"]);
+  });
+
+  it("sends Left for Back when not on the first question", async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    const model = fixtureModel("claude--wizard-q2.txt"); // second question current → Back is valid
+    render(<WizardBlock wizard={model} onAction={onAction} />);
+
+    const back = screen.getByRole("button", { name: "Previous step" });
+    expect(back).not.toBeDisabled();
+    await user.click(back);
+    expect(onAction).toHaveBeenLastCalledWith(["Left"]);
   });
 
   it("disables every control when disabled (read-only device / gone pane)", () => {
