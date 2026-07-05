@@ -64,6 +64,14 @@ All notable changes to Collie are recorded here. The format follows
   with one digit+Enter — submitting a half-filled form. It's now recognized as a wizard and left as
   the raw mirror (drive it with the keys pad, or via the new escape hatch) rather than mis-sending.
 
+### Security
+- **Prompt/wizard taps are guarded against same-shaped successor dialogs.** The tap race guard now
+  compares a byte-signature of the whole dialog region — including the subject above the options (the
+  diff/command being approved), not just the question and option labels. So a tap on a frozen mirror
+  can no longer approve a *different* action that happens to render an identical-looking prompt (e.g.
+  a second edit to the same file after the first was answered elsewhere). Herdr's `revision` is a
+  stub, so this content signature is the load-bearing freshness check.
+
 ## [0.3.0] - 2026-07-03
 
 A full-codebase review pass: four audit agents (backend, frontend, security, ops/product) swept the

@@ -38,6 +38,27 @@ export interface PromptModel {
   question: string;
   options: PromptOption[];
   family: PromptFamily;
+  /**
+   * A byte-signature of the dialog's on-screen region — a bounded run of lines from ABOVE the first
+   * option (capturing the subject: the diff/command/context the dialog is about) through the footer.
+   * The race guard compares this so a same-SHAPED successor dialog (identical question + labels but a
+   * different subject — e.g. a second edit to the same file) can't pass as the one the user saw.
+   * Herdr's `revision` is a stub, so this content signature is the load-bearing freshness check.
+   */
+  signature: string;
+}
+
+// Lines above the first option to fold into the signature — enough to capture a dialog's subject
+// (the diff/command shown above the question), which is what distinguishes two same-shaped prompts.
+// A blocked agent doesn't churn output above its own prompt, so a generous window stays stable; and
+// a false "changed" (over-wide capture) is a harmless refresh, whereas a false match types a
+// keystroke into a terminal — so we err wide.
+const SIGNATURE_LOOKBACK = 40;
+
+/** The dialog's region signature: lines [firstOption − LOOKBACK … footer], joined. Pure of `lines`
+ *  offset, so the frozen model and a fresh re-derivation of the SAME dialog produce equal strings. */
+function regionSignature(texts: string[], firstOpt: number, footer: number): string {
+  return texts.slice(Math.max(0, firstOpt - SIGNATURE_LOOKBACK), footer + 1).join("\n");
 }
 
 // A numbered menu row: an optional "❯ " pointer (the currently-highlighted option), then "N." then
@@ -171,7 +192,8 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   }
   if (options.length === 0) return null;
 
-  return { model: { question, options, family }, startLine: firstOpt };
+  const signature = regionSignature(texts, firstOpt, fi);
+  return { model: { question, options, family, signature }, startLine: firstOpt };
 }
 
 /**

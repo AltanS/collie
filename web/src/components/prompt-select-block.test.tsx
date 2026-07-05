@@ -47,6 +47,7 @@ const selectModel: PromptModel = {
     { label: "Red", description: "A warm, high-energy theme", keys: ["1", "Enter"] },
     { label: "Green", keys: ["2", "Enter"] },
   ],
+  signature: "which-color-theme-region",
 };
 
 describe("PromptSelectBlock — presentation", () => {
@@ -303,5 +304,55 @@ describe("PromptSelectBlock — wired tap (component → handler → api)", () =
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Menu changed"));
     expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+});
+
+// H1 regression (pre-release review): promptsEqual used to compare only family/question/labels, so
+// two edit-permission prompts with the same shape but a DIFFERENT subject (a second edit to the same
+// file) were "equal" — a frozen tap on prompt A could approve prompt B the user never saw. The region
+// `signature` (which folds in the subject above the options) now distinguishes them.
+describe("submitPromptOption — same-shaped successor prompt (H1)", () => {
+  const RULE = "─".repeat(30);
+  const promptFor = (subject: string) =>
+    [RULE, `  ${subject}`, RULE, " Do you want to proceed?", " ❯ 1. Yes", "   2. No", "", " Esc to cancel · Tab to amend"].join("\n");
+  const modelFor = (subject: string) => {
+    const m = detectPromptSelect(splitLines(parseAnsi(promptFor(subject))));
+    if (!m) throw new Error("synthetic permission prompt did not detect");
+    return m;
+  };
+
+  it("rejects the tap when only the subject changed (identical question + labels)", async () => {
+    const promptA = modelFor("write hello.txt");
+    // The pane advanced: A was answered elsewhere and a same-shaped B is now on screen (stub rev 0).
+    mockFetchPane.mockResolvedValue({
+      paneId: "w1:p1",
+      text: promptFor("delete production.db"),
+      truncated: false,
+      revision: 0,
+    });
+    const res = await submitPromptOption({
+      paneId: "w1:p1",
+      requestedLines: 600,
+      detectedRevision: 0,
+      prompt: promptA,
+      option: promptA.options[0]!,
+    });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("still sends when the whole region (subject included) is unchanged", async () => {
+    const same = promptFor("write hello.txt");
+    const promptA = modelFor("write hello.txt");
+    mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: same, truncated: false, revision: 0 });
+    const res = await submitPromptOption({
+      paneId: "w1:p1",
+      requestedLines: 600,
+      detectedRevision: 0,
+      prompt: promptA,
+      option: promptA.options[0]!,
+    });
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"]);
   });
 });

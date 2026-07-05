@@ -58,9 +58,25 @@ export interface WizardAnswer {
  *    (constants, so the model doesn't carry them).
  * Both carry the stepper chips (per-question answered/current state).
  */
+// A byte-signature of the wizard's on-screen region (stepper header → tail): the full dialog state.
+// The race guard compares it so a wizard that re-rendered between render and tap can't pass as the
+// one the user saw. Herdr's `revision` is a stub, so this content signature is the load-bearing
+// freshness check (mirrors prompt-select's `signature`).
 export type WizardModel =
-  | { phase: "question"; steps: WizardStepChip[]; question: string; options: WizardOption[] }
-  | { phase: "review"; steps: WizardStepChip[]; answers: WizardAnswer[]; incomplete: boolean };
+  | {
+      phase: "question";
+      steps: WizardStepChip[];
+      question: string;
+      options: WizardOption[];
+      signature: string;
+    }
+  | {
+      phase: "review";
+      steps: WizardStepChip[];
+      answers: WizardAnswer[];
+      incomplete: boolean;
+      signature: string;
+    };
 
 /** Detection result for buildBlocks: the model plus the stepper header's line index — the wizard
  *  region is [`startLine` … tail], which the renderer replaces with the native wizard. */
@@ -246,7 +262,13 @@ function detectQuestionPhase(
   if (options.length === 0) return null;
 
   return {
-    model: { phase: "question", steps: stepper.chips, question, options },
+    model: {
+      phase: "question",
+      steps: stepper.chips,
+      question,
+      options,
+      signature: texts.slice(stepperIdx, fi + 1).join("\n"),
+    },
     startLine: stepperIdx,
   };
 }
@@ -309,7 +331,13 @@ function detectReviewPhase(lines: StyledLine[], texts: string[], fi: number): Wi
   flush();
 
   return {
-    model: { phase: "review", steps: stepper.chips, answers, incomplete },
+    model: {
+      phase: "review",
+      steps: stepper.chips,
+      answers,
+      incomplete,
+      signature: texts.slice(stepperIdx, fi + 1).join("\n"),
+    },
     startLine: stepperIdx,
   };
 }

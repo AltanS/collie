@@ -29,6 +29,9 @@ import type { PromptActionResult } from "./prompt-action";
  */
 export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
   if (a.phase !== b.phase) return false;
+  // The region signature is decisive (a re-rendered wizard changes it); the field checks below stay
+  // as a fast-path and to keep intent explicit. `revision` is a stub, so this is the real guard.
+  if (a.signature !== b.signature) return false;
   if (
     a.steps.length !== b.steps.length ||
     !a.steps.every(

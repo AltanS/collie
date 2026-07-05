@@ -21,15 +21,26 @@ import { parseAnsi } from "./ansi";
 import { splitLines, type PromptModel, type PromptOption } from "./blocks";
 import { detectPromptSelect } from "./grammar/prompt-select";
 
-/** Whether two detected dialogs resolve to the same choice: family, question, and option labels.
- *  (Descriptions/keys are derived, so they can't differ without a label or family change first.) */
+/**
+ * Whether two detected dialogs are the SAME on-screen prompt — not merely the same shape. `signature`
+ * (the dialog's region text, incl. the subject above the options) is the decisive check: two edits to
+ * the same file yield an identical family/question/labels but a different signature, so a stale tap on
+ * one can't approve the other. The family/question/label checks stay as a cheap fast-path and to keep
+ * the intent explicit. (`revision` is a stub, so this content comparison is the real freshness guard.)
+ */
 export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
   return (
     a.family === b.family &&
     a.question === b.question &&
+    a.signature === b.signature &&
     a.options.length === b.options.length &&
-    a.options.every((o, i) => o.label === b.options[i]!.label)
+    a.options.every((o, i) => o.label === b.options[i]!.label && sameKeys(o.keys, b.options[i]!.keys))
   );
+}
+
+/** Exact keystroke-plan equality — a label can map to a different digit across hidden-row layouts. */
+export function sameKeys(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((k, i) => k === b[i]);
 }
 
 export type PromptActionResult =
