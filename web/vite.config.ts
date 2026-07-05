@@ -19,7 +19,19 @@ const devHosts = (process.env.COLLIE_DEV_HOSTS ?? "")
   .split(",")
   .map((h) => h.trim())
   .filter(Boolean);
-const allowedHosts = devHosts.includes("*") ? true : devHosts.length > 0 ? devHosts : undefined;
+// `COLLIE_DEV_HOSTS="*"` maps to Vite's `allowedHosts: true`, which turns OFF the dev server's
+// DNS-rebinding protection (any Host header is accepted). Dev-server-only — the bridge, not Vite,
+// serves prod — but still worth a loud warning: prefer listing explicit hostnames (e.g.
+// COLLIE_DEV_HOSTS="bluefin,localhost") so a malicious page can't rebind to your dev server.
+const wildcardDevHost = devHosts.includes("*");
+if (wildcardDevHost) {
+  console.warn(
+    '\n\x1b[33m⚠ COLLIE_DEV_HOSTS="*" accepts ANY Host header on the Vite dev server, disabling its\n' +
+      "  DNS-rebinding guard. This is DEV-ONLY (prod is served by the bridge), but prefer explicit\n" +
+      '  hostnames instead, e.g. COLLIE_DEV_HOSTS="bluefin,localhost".\x1b[0m\n',
+  );
+}
+const allowedHosts = wildcardDevHost ? true : devHosts.length > 0 ? devHosts : undefined;
 
 // Build stamp. A unique id is baked into the bundle (shown in the UI footer via __BUILD_INFO__) AND
 // emitted to dist/build-info.json, which the bridge reads for the `X-Collie-Build` header and

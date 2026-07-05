@@ -6,7 +6,7 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
-## [0.4.1] - 2026-07-05
+## [0.5.0] - 2026-07-05
 
 ### Added
 - **Preview-variant question notes.** Claude Code's *preview* AskUserQuestion — a single-select
@@ -21,6 +21,18 @@ All notable changes to Collie are recorded here. The format follows
   a drifted dialog aborts before anything irreversible is sent). Claude-scoped (`hasBlockGrammar`)
   and web-only; the standard non-preview select and wizard steps are unaffected (pressing `n` there
   is a no-op, so no notes UI is shown).
+
+### Security
+- **Preview-note tap guard hardened to region-signature parity.** The preview dialog's race guard now
+  carries a pointer- and note-independent **core signature** (the subject/question/stepper above the
+  options joined with the option rows' left column, `❯` normalised) — matching the 0.4.0 `signature`
+  parity the prompt/wizard guards already had. It is enforced at entry AND on **every** mid-flight
+  acceptance/drift check, so a same-shaped successor dialog (identical question + labels, different
+  subject) can no longer be answered by a stale tap: no digit-then-`Enter` or `Enter` is sent unless
+  the fresh read's core signature byte-matches what the user saw. The blur poll is now three-valued
+  (ok / drifted / timeout) so the Escape-retry fires only on a genuine swallowed key — never after the
+  dialog drifted or vanished (which a blind second Escape could cancel / interrupt). Pasted note text
+  is stripped of C0/C1 control bytes (ESC, BEL, …) before it can reach the focused input.
 
 ## [0.4.0] - 2026-07-05
 

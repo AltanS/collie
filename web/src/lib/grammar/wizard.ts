@@ -218,6 +218,10 @@ function detectQuestionPhase(
   }
   if (rows.length < 2) return null;
   if (rows.some((r, k) => r.n !== k + 1)) return null;
+  // Past 9 numbered rows, an option would need a two-key digit ("10") — the wizard sends the digit
+  // ALONE to select+advance, and Herdr rejects "10", so this would mis-answer. Real wizard steps are
+  // ≤6 options; bail to the raw mirror. (Rows are 1..k consecutive above, so length > 9 == a row ≥10.)
+  if (rows.length > 9) return null;
   const firstOpt = rows[0]!.index;
   if (fi - rows[rows.length - 1]!.index > MAX_FOOTER_GAP) return null;
 

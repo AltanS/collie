@@ -39,25 +39,30 @@ type Sleep = (ms: number) => Promise<void>;
 const defaultSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Whether two detected preview dialogs are the same dialog in the same visible state: question,
- * stepper chips, options (labels, pointer, chosen marks), note state+text, and the preview pane.
- * The strictest of the three equality checks — everything the user can see participates, because
+ * Whether two detected preview dialogs are the same dialog in the same visible state: identity (the
+ * pointer/note-independent core signature — see below), question, stepper chips, options (labels,
+ * pointer, chosen marks), note state+text, and the preview pane. The strictest of the three equality
+ * checks — everything the user can see participates AND the region signature must byte-match, because
  * every visible change (even a terminal-side pointer move) re-routes what our keystrokes would do.
  */
 export function previewsEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
   return (
-    structureEqual(a, b) &&
+    structureEqual(a, b) && // core signature + question/chips/labels + note state
     a.options.every((o, i) => o.pointed === b.options[i]!.pointed) &&
     a.preview.length === b.preview.length &&
     a.preview.every((l, i) => l === b.preview[i])
   );
 }
 
-/** The dialog's identity, independent of transient state: question, stepper chips, and option
- *  labels/chosen marks — but NOT the pointer (our own digit legitimately moves it), NOT the
- *  preview pane (it follows the pointer), and NOT the note (the note flow legitimately transitions
- *  it). The mid-flight polls key on this: same dialog, awaited state. */
+/** The dialog's identity, independent of transient state: the region CORE SIGNATURE (the subject
+ *  above the options + the option labels/layout, pointer normalised) plus question, stepper chips,
+ *  and option labels/chosen marks — but NOT the pointer (our own digit legitimately moves it), NOT
+ *  the preview pane (it follows the pointer), and NOT the note (the note flow legitimately transitions
+ *  it). The mid-flight polls key on this: same dialog (same signature), awaited state. The signature
+ *  is the load-bearing check — a same-SHAPED successor (identical question+labels, different subject)
+ *  has a different signature, so it can never pass as the dialog the user tapped. */
 function coreEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
+  if (a.coreSignature !== b.coreSignature) return false;
   if (a.question !== b.question) return false;
   if ((a.steps === null) !== (b.steps === null)) return false;
   if (
@@ -116,14 +121,27 @@ async function entryGuard(args: GuardArgs): Promise<PromptActionResult | null> {
   return null;
 }
 
-/** Poll (bounded) until `accept` passes on a fresh re-derivation. A dialog whose IDENTITY drifted
- *  (another question/options entirely) aborts early; a null model keeps polling (the TUI redraw
- *  can transiently hide the tail). Timing out reports "changed" — the caller just refreshes. */
+/**
+ * Poll (bounded) until `accept` passes on a fresh re-derivation. THREE-VALUED, because the caller
+ * must distinguish "the awaited state never arrived, but this is still our dialog" from "a different
+ * dialog is on screen now":
+ *   - `"ok"`      — `accept` passed.
+ *   - `"drifted"` — the dialog's IDENTITY changed: a fresh model whose core signature no longer
+ *                   matches (a same-shaped successor / another dialog entirely), OR the dialog is
+ *                   GONE (every read re-derived to null — e.g. the agent is running again). No
+ *                   further key may be sent: a blind keystroke would hit whatever replaced it.
+ *   - `"timeout"` — our dialog stayed on screen (signature intact) but the awaited state never came
+ *                   within the bounded window (e.g. a swallowed keystroke). The dialog is still ours,
+ *                   so a bounded RETRY of the same key is safe.
+ * A transient null re-derivation MID-poll keeps polling (the TUI redraw can briefly hide the tail);
+ * only an all-null poll (the dialog truly vanished) resolves to `"drifted"`.
+ */
 async function pollUntil(
   args: GuardArgs,
   accept: (m: PreviewSelectModel) => boolean,
-): Promise<"ok" | "changed"> {
+): Promise<"ok" | "drifted" | "timeout"> {
   const sleep = args.sleep ?? defaultSleep;
+  let sawDialog = false;
   for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
     await sleep(POLL_DELAY_MS);
     let fresh;
@@ -132,12 +150,14 @@ async function pollUntil(
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
     }
-    if (fresh.model) {
-      if (accept(fresh.model)) return "ok";
-      if (!coreEqual(fresh.model, args.preview)) return "changed";
-    }
+    if (!fresh.model) continue; // transient redraw hid the tail — keep polling
+    sawDialog = true;
+    if (accept(fresh.model)) return "ok";
+    if (!coreEqual(fresh.model, args.preview)) return "drifted"; // a different dialog now
   }
-  return "changed";
+  // Exhausted. If we never saw the dialog at all it has vanished (a now-running agent) — treat as
+  // drift, NOT a retryable timeout, so no blind key is sent at whatever replaced it.
+  return sawDialog ? "timeout" : "drifted";
 }
 
 /**
@@ -194,7 +214,15 @@ export async function submitPreviewNote(
   const guarded = await entryGuard(args);
   if (guarded) return guarded;
 
-  const text = args.text.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX_LENGTH);
+  // Collapse whitespace to single spaces FIRST (so \t \n \r become word boundaries, not glue), then
+  // strip any remaining C0/C1 control chars. Pasted clipboard text can smuggle in ESC (\x1b — blurs/
+  // cancels the dialog), BEL (\x07 — "edit in nano"), ETX (\x03), etc., which the reply path would
+  // deliver straight into the focused input BEFORE the readback check — so they must never reach it.
+  const text = args.text
+    .replace(/\s+/g, " ")
+    .replace(/\p{Cc}/gu, "")
+    .trim()
+    .slice(0, NOTE_MAX_LENGTH);
   const editing = (m: PreviewSelectModel) => coreEqual(m, args.preview) && m.note.state === "editing";
 
   try {
@@ -237,7 +265,11 @@ export async function submitPreviewNote(
         return { status: "error", error: "Note text didn't arrive — check the pane" };
       }
     }
-    // Blur, keeping the text. Verified (the swallowed-ESC hazard above); one retry.
+    // Blur, keeping the text. Verified (the swallowed-ESC hazard above). The ONLY safe reason to
+    // resend Escape is a swallowed key while OUR dialog is still on screen and still editing (a
+    // "timeout" — the ESC glued onto the paste chunk). If instead the dialog DRIFTED or VANISHED
+    // (a successor dialog, or a now-running agent — pollUntil returns "drifted"), a second blind
+    // Escape would cancel/interrupt whatever is there now — so abort with "changed" and send nothing.
     for (let attempt = 0; attempt < 2; attempt++) {
       const blur = await sendKeys(args.paneId, ["Escape"]);
       if (!blur.ok) return { status: "error", error: blur.error };
@@ -246,6 +278,8 @@ export async function submitPreviewNote(
         (m) => coreEqual(m, args.preview) && m.note.state !== "editing",
       );
       if (blurred === "ok") return { status: "sent" };
+      if (blurred === "drifted") return { status: "changed" }; // no second Escape at a successor
+      // "timeout": our dialog is still editing — the ESC was likely swallowed. Retry once.
     }
     return { status: "error", error: "Note input didn't close — check the pane" };
   } catch (e) {

@@ -139,6 +139,11 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   for (let k = 0; k < rows.length; k++) {
     if (rows[k]!.n !== k + 1) return null;
   }
+  // A menu numbered past 9 would need a two-key digit ("10"), which Herdr's send_keys rejects — so
+  // up-levelling it into buttons would emit an unsendable keystroke plan. Real Claude menus are ≤6
+  // options; bail to the raw mirror + keys pad rather than render a broken button. (Rows are
+  // 1..k consecutive by the check above, so length > 9 == a row numbered ≥10.)
+  if (rows.length > 9) return null;
   const firstOpt = rows[0]!.index;
   const lastOpt = rows[rows.length - 1]!.index;
   // The options must sit against the footer (only a hint sub-line / blank may separate them).

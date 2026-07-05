@@ -29,10 +29,20 @@ const mockSendReply = vi.mocked(sendReply);
 
 // A synthetic preview dialog in the exact live layout (fixtures claude--select-preview*.txt):
 // fixed-width label column, preview pane + Notes line sharing a column, rule, escape row, footer.
-function buffer(opts: { pointer?: number; note?: string; editing?: boolean; question?: string }) {
+// `labels`/`pane` override the left-column subject / right-hand preview; `subject` prepends a context
+// line ABOVE the dialog (captured by the core-signature lookback but not parsed into question/labels).
+function buffer(opts: {
+  pointer?: number;
+  note?: string;
+  editing?: boolean;
+  question?: string;
+  labels?: string[];
+  pane?: string[];
+  subject?: string;
+}) {
   const pointer = opts.pointer ?? 1;
-  const labels = ["Boxy", "Rounded", "Minimal"];
-  const pane = ["┌─────────┐", "│ MOCKUP  │", "└─────────┘"];
+  const labels = opts.labels ?? ["Boxy", "Rounded", "Minimal"];
+  const pane = opts.pane ?? ["┌─────────┐", "│ MOCKUP  │", "└─────────┘"];
   const col = 34;
   const rows = labels.map((label, i) => {
     const left = `${pointer === i + 1 ? "❯" : " "} ${i + 1}. ${label}`;
@@ -46,6 +56,7 @@ function buffer(opts: { pointer?: number; note?: string; editing?: boolean; ques
     (opts.editing ? " · ctrl+g to edit in nano" : "") +
     " · Esc to cancel";
   return [
+    ...(opts.subject ? [opts.subject] : []),
     " ☐ Design",
     "",
     opts.question ?? "Which widget design should we use?",
@@ -93,6 +104,23 @@ describe("previewsEqual", () => {
     // The TUI input opening flips the note state even with no text yet.
     expect(previewsEqual(model({}), model({ editing: true }))).toBe(false);
     expect(previewsEqual(model({}), model({ question: "Something else?" }))).toBe(false);
+  });
+
+  it("rejects a pane-only difference (the preview pane re-routes what the pointed row means)", () => {
+    // Same options, pointer, and note — only the right-hand preview pane content differs. The
+    // pane comparison must catch it (the core signature deliberately excludes the pane).
+    expect(previewsEqual(model({}), model({ pane: ["┌X┐", "│Y│", "└Z┘"] }))).toBe(false);
+  });
+
+  it("rejects a same-shaped successor: identical question/labels/pointer/note, different subject", () => {
+    // The dangerous case H-1 closes: two dialogs that render identically but for the SUBJECT above
+    // them (e.g. a different file being edited). Pre-fix this compared "equal" and a stale tap could
+    // approve the wrong one; the pointer/note-independent core signature now separates them.
+    expect(
+      previewsEqual(model({ subject: "Editing foo.ts" }), model({ subject: "Editing bar.ts" })),
+    ).toBe(false);
+    // A changed option label (the left-column subject) is caught too.
+    expect(previewsEqual(model({}), model({ labels: ["Boxy", "Rounded", "Compact"] }))).toBe(false);
   });
 });
 
@@ -142,6 +170,21 @@ describe("submitPreviewOption — digit → verify pointer → Enter", () => {
     const res = await submitPreviewOption({ ...base, preview: m, option: m.options[1]! });
     expect(res).toEqual({ status: "changed" });
     expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"]]]); // digit only, no Enter
+  });
+
+  it("rejects a same-labels successor whose core signature differs mid-flight — NO Enter", async () => {
+    // The H-1 mid-flight hazard: after the digit is sent, a successor with the SAME question+labels
+    // but a different subject renders — with the pointer already on the tapped row. Pre-fix, the
+    // acceptance check keyed on question+labels only, so structureEqual passed and the unconditional
+    // Enter submitted the WRONG dialog's row. The core signature now differs → the poll drifts → the
+    // digit's pointer move stays the only side effect.
+    const m = model({ pointer: 1, subject: "Editing foo.ts" });
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(buffer({ pointer: 1, subject: "Editing foo.ts" }))) // entry guard: same dialog
+      .mockResolvedValue(paneWith(buffer({ pointer: 2, subject: "Editing bar.ts" }))); // successor: pointer on tapped row, DIFFERENT subject
+    const res = await submitPreviewOption({ ...base, preview: m, option: m.options[1]! });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"]]]); // digit moved the pointer; Enter never fired
   });
 });
 
@@ -208,7 +251,7 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
 
   it("collapses whitespace/newlines and caps the typed text", async () => {
     const raw = "  a\nb\t c  " + "x".repeat(400);
-    const expected = raw.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX_LENGTH);
+    const expected = raw.replace(/\s+/g, " ").replace(/\p{Cc}/gu, "").trim().slice(0, NOTE_MAX_LENGTH);
     const m = model({});
     script(
       buffer({}),
@@ -225,6 +268,28 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     expect(typed.length).toBe(NOTE_MAX_LENGTH);
   });
 
+  it("strips C0 control chars (ESC/BEL/ETX) from the pasted note before it reaches the input", async () => {
+    // Pasted clipboard text can smuggle in raw control bytes — ESC blurs/cancels the dialog, BEL
+    // opens the external editor — which the reply path would deliver into the FOCUSED input before
+    // any readback. They must be gone from what we send.
+    const raw = "safe\x1b[31m\x07 note\x03 here";
+    const expected = raw.replace(/\s+/g, " ").replace(/\p{Cc}/gu, "").trim().slice(0, NOTE_MAX_LENGTH);
+    const m = model({});
+    script(
+      buffer({}),
+      buffer({ editing: true }),
+      buffer({ editing: true, note: expected }),
+      buffer({ note: expected }),
+    );
+    const res = await submitPreviewNote({ ...base, preview: m, text: raw });
+    expect(res).toEqual({ status: "sent" });
+    const typed = mockSendReply.mock.calls[0]![1] as string;
+    expect(typed).toBe(expected);
+    expect(typed).not.toMatch(/\p{Cc}/u); // no raw control byte survives
+    expect(typed).toContain("safe");
+    expect(typed).toContain("note");
+  });
+
   it("retries a swallowed Escape once (the blur is verified, not assumed)", async () => {
     const m = model({});
     script(
@@ -238,6 +303,39 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     expect(res).toEqual({ status: "sent" });
     const escapes = mockSendKeys.mock.calls.filter((c) => c[1][0] === "Escape");
     expect(escapes).toHaveLength(2);
+  });
+
+  it("aborts the blur with NO second Escape when a successor dialog drifts in after the first", async () => {
+    // H-2: after the note lands and the first Escape is sent, a same-shaped SUCCESSOR (different
+    // subject) is on screen. The old collapse of drift/timeout would resend Escape — cancelling that
+    // successor. pollUntil now returns "drifted", so the flow aborts with "changed" and one Escape.
+    const m = model({ subject: "Editing foo.ts" });
+    script(
+      buffer({ subject: "Editing foo.ts" }), // entry guard
+      buffer({ subject: "Editing foo.ts", editing: true }), // focused
+      buffer({ subject: "Editing foo.ts", editing: true, note: "hi" }), // text rendered
+      buffer({ subject: "Editing bar.ts", editing: true, note: "hi" }), // after 1st Escape: a successor
+    );
+    const res = await submitPreviewNote({ ...base, preview: m, text: "hi" });
+    expect(res).toEqual({ status: "changed" });
+    const escapes = mockSendKeys.mock.calls.filter((c) => c[1][0] === "Escape");
+    expect(escapes).toHaveLength(1);
+  });
+
+  it("aborts the blur with NO second Escape when the dialog vanishes after the first (agent running)", async () => {
+    // The other H-2 half: the dialog is gone (model re-derives to null on every read — the agent is
+    // running again). A blind second Escape would interrupt it. pollUntil's all-null poll ⇒ "drifted".
+    const m = model({});
+    script(
+      buffer({}), // entry guard
+      buffer({ editing: true }), // focused
+      buffer({ editing: true, note: "hi" }), // text rendered
+      "● Running now\n  ⎿  working…\n", // dialog gone
+    );
+    const res = await submitPreviewNote({ ...base, preview: m, text: "hi" });
+    expect(res).toEqual({ status: "changed" });
+    const escapes = mockSendKeys.mock.calls.filter((c) => c[1][0] === "Escape");
+    expect(escapes).toHaveLength(1);
   });
 
   it("refuses while the TUI's note input is already focused (keys would corrupt it)", async () => {

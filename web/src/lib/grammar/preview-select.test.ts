@@ -74,6 +74,49 @@ describe("detectPreviewSelect — the preview-variant fixtures", () => {
   });
 });
 
+describe("detectPreviewSelect — core signature (pointer/note-independent identity)", () => {
+  // A minimal synthetic preview dialog; `pointer` / `note` / `subject` / `label3` vary independently
+  // so we can assert exactly which changes the core signature is (in)sensitive to.
+  function synth(opts: { pointer?: number; note?: string; subject?: string; label3?: string }): string {
+    const pointer = opts.pointer ?? 1;
+    const labels = ["Boxy", "Rounded", opts.label3 ?? "Minimal"];
+    const pane = ["┌────┐", "│ MK │", "└────┘"];
+    const col = 30;
+    const rows = labels.map(
+      (l, i) => `${pointer === i + 1 ? "❯" : " "} ${i + 1}. ${l}`.padEnd(col) + (pane[i] ?? ""),
+    );
+    return [
+      ...(opts.subject ? [opts.subject] : []),
+      " ☐ Design",
+      "",
+      "Which widget design should we use?",
+      "",
+      ...rows,
+      "",
+      " ".repeat(col) + `Notes: ${opts.note ?? "press n to add notes"}`,
+      "",
+      "─".repeat(50),
+      "  Chat about this",
+      "",
+      "Enter to select · n to add notes · Esc to cancel",
+    ].join("\n");
+  }
+  const sig = (s: string) => detectPreviewSelect(splitLines(parseAnsi(s)))!.coreSignature;
+
+  it("is STABLE across a pointer move and a note change (the legit in-flight changes)", () => {
+    const base = sig(synth({}));
+    expect(sig(synth({ pointer: 2 }))).toBe(base); // our own digit moves the pointer
+    expect(sig(synth({ pointer: 3 }))).toBe(base);
+    expect(sig(synth({ note: "prefer subtle shadows" }))).toBe(base); // the note flow transitions this
+  });
+
+  it("DIFFERS when the subject above the dialog or an option label changes", () => {
+    const base = sig(synth({}));
+    expect(sig(synth({ subject: "Editing foo.ts" }))).not.toBe(base); // different subject = different dialog
+    expect(sig(synth({ label3: "Compact" }))).not.toBe(base); // left-column label change
+  });
+});
+
 describe("detectPreviewSelect — false-positive / cross-grammar isolation", () => {
   for (const name of [
     "claude--working.txt",

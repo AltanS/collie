@@ -116,6 +116,34 @@ describe("detectWizard — review (Submit) phase", () => {
   });
 });
 
+describe("detectWizard — ≥10 options bail (L4)", () => {
+  // A synthetic wizard step with `n` numbered options under a valid stepper header + select footer.
+  function wizardBuf(n: number): string {
+    const rows = Array.from({ length: n }, (_, i) => `  ${i + 1}. Option ${i + 1}`);
+    return [
+      "←  ☐ Focus area  ☐ Scope  ✔ Submit  →",
+      "",
+      "Which option should we use?",
+      "",
+      ...rows,
+      "Enter to select · Esc to cancel",
+    ].join("\n");
+  }
+
+  it("detects a 9-option wizard step (control — the shape is otherwise valid)", () => {
+    const model = detectWizard(splitLines(parseAnsi(wizardBuf(9))));
+    expect(model).not.toBeNull();
+    if (model!.phase !== "question") throw new Error("expected question phase");
+    expect(model!.options).toHaveLength(9);
+  });
+
+  it("bails on a 10-option wizard step (option 10 would need the unsendable digit '10')", () => {
+    // The wizard sends the digit ALONE to select+advance; "10" is rejected and would mis-answer, so
+    // the >9 guard bails to the raw mirror rather than render a broken button.
+    expect(detectWizard(splitLines(parseAnsi(wizardBuf(10))))).toBeNull();
+  });
+});
+
 describe("detectWizard — false-positive gate", () => {
   // Every non-wizard state in the corpus, including all the single-choice dialogs T2 owns: the
   // wizard detector must never claim them (no Submit chip / no stepper).

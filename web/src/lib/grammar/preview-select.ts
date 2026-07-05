@@ -56,6 +56,19 @@ export interface PreviewSelectModel {
   /** The wizard stepper chips when this question is a step of a multi-question dialog; null for a
    *  single-question dialog. Navigation uses the same Left/Right keys as the standard wizard. */
   steps: WizardStepChip[] | null;
+  /**
+   * A pointer- and note-INDEPENDENT byte-signature of the dialog's identity, computed at detection
+   * time: the head lines above the options (the stepper/chip header + question + any subject/preamble
+   * within a bounded lookback, mirroring prompt-select's SIGNATURE_LOOKBACK) joined with the LEFT
+   * COLUMN of every option row (`slice(0, noteCol)`, with the ❯ pointer normalised to a space). It
+   * deliberately EXCLUDES the preview pane (which follows the pointer), the Notes line, and the footer
+   * (which carry the note state) — so it stays byte-stable across the whole option-select and note
+   * choreography, yet a DIFFERENT dialog rendered in the same shape (different subject / question /
+   * labels) breaks it. The race guard compares it so no irreversible key is ever sent to a same-shaped
+   * successor the user never saw. Herdr's `revision` is a stub, so this content signature is the
+   * load-bearing freshness check (mirrors PromptModel/WizardModel `signature`).
+   */
+  coreSignature: string;
 }
 
 /** Detection result for buildBlocks: the model plus the region's first line — the preview region
@@ -88,6 +101,12 @@ const NOTES_SCAN_LIMIT = 8;
 const OPTION_SCAN_WINDOW = 28;
 const QUESTION_SCAN_LIMIT = 12;
 const STEPPER_SCAN_LIMIT = 6;
+
+// Lines above the first option folded into the core signature — enough to capture the dialog's
+// subject (the prompt/context shown above the question), which is what distinguishes two same-shaped
+// dialogs. Mirrors prompt-select's SIGNATURE_LOOKBACK: err wide — a false "changed" is a harmless
+// refresh, whereas a false match types a keystroke into a live terminal.
+const SIGNATURE_LOOKBACK = 40;
 
 /**
  * Detect a preview-variant dialog at the tail of `lines`. Returns the model + its start line, or
@@ -193,7 +212,38 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
     chosen: CHOSEN_SUFFIX.test(r.label),
   }));
 
-  return { model: { question, options, preview, note, steps }, startLine };
+  return {
+    model: {
+      question,
+      options,
+      preview,
+      note,
+      steps,
+      coreSignature: computeCoreSignature(texts, firstOpt, lastOpt, noteCol),
+    },
+    startLine,
+  };
+}
+
+/**
+ * The dialog's pointer/note-independent CORE SIGNATURE (see `PreviewSelectModel.coreSignature`): the
+ * head lines [firstOpt − LOOKBACK … firstOpt) — the stepper/chip header, the question, and any
+ * subject/preamble above the options — joined with each option row's LEFT column (`slice(0, noteCol)`,
+ * `❯` normalised to a space so our own pointer move doesn't perturb it). Pure of the buffer's absolute
+ * offset, so the frozen model and a fresh re-derivation of the SAME dialog produce byte-equal strings.
+ */
+function computeCoreSignature(
+  texts: string[],
+  firstOpt: number,
+  lastOpt: number,
+  noteCol: number,
+): string {
+  const head = texts.slice(Math.max(0, firstOpt - SIGNATURE_LOOKBACK), firstOpt);
+  const left: string[] = [];
+  for (let i = firstOpt; i <= lastOpt; i++) {
+    left.push(texts[i]!.slice(0, noteCol).replace(/❯/g, " "));
+  }
+  return [...head, ...left].join("\n");
 }
 
 /** Just the model (or null) — the race guard's re-derivation entry point. */

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
-import { detectPromptSelect, detectPromptSelectRegion } from "./prompt-select";
+import { detectPromptSelect, detectPromptSelectRegion, type PromptFamily } from "./prompt-select";
 import { lineText } from "./markers";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
@@ -95,6 +95,37 @@ describe("detectPromptSelect — the five blocked-state fixtures", () => {
   });
 });
 
+describe("detectPromptSelect — family → keystroke recipe (regression guard)", () => {
+  // Table-driven over all four families: `select` confirms on the digit THEN Enter; the confirm
+  // families (trust/permission/plan) fire on the digit ALONE (a trailing Enter there would leak into
+  // whatever renders next). A regression flipping any family's plan — e.g. `plan` → digit+Enter — is
+  // caught here rather than only in that family's single fixture test.
+  const cases: { fixture: string; family: PromptFamily; digitThenEnter: boolean }[] = [
+    { fixture: "claude--trust-prompt.txt", family: "trust", digitThenEnter: false },
+    { fixture: "claude--select-menu.txt", family: "select", digitThenEnter: true },
+    { fixture: "claude--permission-edit.txt", family: "permission", digitThenEnter: false },
+    { fixture: "claude--plan-approval.txt", family: "plan", digitThenEnter: false },
+  ];
+  for (const c of cases) {
+    it(`${c.family} → ${c.digitThenEnter ? "digit+Enter" : "digit alone"}`, () => {
+      const model = detectPromptSelect(fixtureLines(c.fixture));
+      expect(model).not.toBeNull();
+      expect(model!.family).toBe(c.family);
+      expect(model!.options.length).toBeGreaterThan(0);
+      for (const o of model!.options) {
+        expect(/^\d+$/.test(o.keys[0]!)).toBe(true); // first key is always the digit
+        if (c.digitThenEnter) {
+          expect(o.keys.length).toBe(2);
+          expect(o.keys[1]).toBe("Enter");
+        } else {
+          expect(o.keys.length).toBe(1);
+          expect(o.keys).not.toContain("Enter");
+        }
+      }
+    });
+  }
+});
+
 describe("detectPromptSelect — false-positive gate (no menu at the tail)", () => {
   for (const name of ["claude--working.txt", "claude--fresh-idle.txt", "claude--done.txt"]) {
     it(`${name} produces zero detections`, () => {
@@ -108,6 +139,21 @@ describe("detectPromptSelect — false-positive gate (no menu at the tail)", () 
     // the raw mirror + keys pad drive it instead. (The single-question select-menu fixture, with its
     // lone "☐ Color Theme" chip, still detects — proven above.)
     expect(detectPromptSelect(fixtureLines("claude--select-multi.txt"))).toBeNull();
+  });
+
+  it("bails on a menu with more than 9 numbered rows (option 10 needs the unsendable key '10')", () => {
+    // 10 consecutive rows 1..10 under a select footer would otherwise up-level, emitting a broken
+    // keys:["10","Enter"] Herdr rejects. The >9 guard bails to the raw mirror instead. (Claude menus
+    // are ≤6 today; the guard is safe headroom.)
+    const rows = Array.from({ length: 10 }, (_, i) => `  ${i + 1}. Option ${i + 1}`).join("\n");
+    const buf = `Which option should we use?\n\n${rows}\n\nEnter to select · Esc to cancel`;
+    expect(detectPromptSelect(splitLines(parseAnsi(buf)))).toBeNull();
+    // Control: the same shape with 9 rows still detects (proving the guard, not the shape, rejects).
+    const nine = Array.from({ length: 9 }, (_, i) => `  ${i + 1}. Option ${i + 1}`).join("\n");
+    const nineBuf = `Which option should we use?\n\n${nine}\n\nEnter to select · Esc to cancel`;
+    const model = detectPromptSelect(splitLines(parseAnsi(nineBuf)));
+    expect(model).not.toBeNull();
+    expect(model!.options).toHaveLength(9);
   });
 
   it("a menu-shaped block that is NOT at the tail does not match", () => {
