@@ -25,12 +25,13 @@ import { StatusArea } from "@/components/status-area";
 import { ShellBadge, StatusBadge } from "@/components/status-badge";
 import * as api from "@/lib/api";
 import { submitPromptOption } from "@/lib/prompt-action";
+import { submitWizardKeys } from "@/lib/wizard-action";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { navigateWithTransition } from "@/lib/view-transition";
 import { isReadOnly } from "@/lib/types";
 import type { AgentView, DeviceAuth, TabView, WorkspaceView } from "@/lib/types";
-import type { PromptModel, PromptOption } from "@/lib/blocks";
+import type { PromptModel, PromptOption, WizardModel } from "@/lib/blocks";
 
 interface AgentChatProps {
   paneId: string;
@@ -262,6 +263,39 @@ export function AgentChat({
     [readOnly, paneId, requestedLines, shown.revision, revalidator],
   );
 
+  // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
+  // Same shape as handlePromptAction — the guard re-derives the wizard from a FRESH read and only
+  // a clean match sends the single keystroke (incremental round-trip; grammar/WIZARD_NOTES.md).
+  // gate: claude-only (see hasBlockGrammar) — wizard blocks only ever exist for a Claude pane
+  // (buildBlocks gates on ctx.agent), so this handler can't fire for other agents.
+  const handleWizardAction = useCallback(
+    async (keys: string[], wizard: WizardModel) => {
+      if (readOnly) {
+        setStatus("Read-only — device not authorised", "error");
+        return;
+      }
+      const result = await submitWizardKeys({
+        paneId,
+        requestedLines,
+        detectedRevision: shown.revision,
+        wizard,
+        keys,
+      });
+      if (result.status === "sent") {
+        setStatus("Sent", "success");
+        setFollowing(true);
+        revalidator.revalidate();
+        listRef.current?.scrollToBottom();
+      } else if (result.status === "changed") {
+        setStatus("Wizard changed — refreshing", "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || "Send failed", "error");
+      }
+    },
+    [readOnly, paneId, requestedLines, shown.revision, revalidator],
+  );
+
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
   // keyboard and cover the output. You read the pane first, then tap the input to type. (Explicit
   // actions inside the composer still focus it; the mirror tap focuses it via composerRef.)
@@ -453,6 +487,7 @@ export function AgentChat({
                 onMatchCount={findOpen ? handleMatchCount : undefined}
                 agent={grammarsOn ? agent?.agent : undefined}
                 onPromptAction={handlePromptAction}
+                onWizardAction={handleWizardAction}
                 promptDisabled={readOnly || gone}
               />
             </>

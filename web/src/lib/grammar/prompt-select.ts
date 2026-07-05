@@ -54,7 +54,9 @@ interface OptionRow {
   label: string;
 }
 
-function parseOptionRow(text: string): { n: number; label: string } | null {
+/** Parse a numbered menu row ("❯ 2. Label" / "2. Label") into its number + label, or null.
+ *  Shared with the wizard grammar (wizard.ts) — the multi-question dialog uses the same row shape. */
+export function parseOptionRow(text: string): { n: number; label: string } | null {
   const m = OPTION_ROW.exec(text.trim());
   if (!m) return null;
   return { n: Number(m[1]), label: m[2]!.trim() };
@@ -63,7 +65,8 @@ function parseOptionRow(text: string): { n: number; label: string } | null {
 // Free-text escape rows are answered by TYPING, not a keystroke — the app's composer already covers
 // that — so they are never up-levelled into a button (spec T2). The two known phrases:
 // "Type something." (AskUserQuestion) and "Tell Claude what to change" (plan approval).
-function isFreeTextLabel(label: string): boolean {
+// Shared with the wizard grammar (wizard.ts), which drops the same rows.
+export function isFreeTextLabel(label: string): boolean {
   return /^type something\b/i.test(label) || /^tell claude what to change\b/i.test(label);
 }
 
@@ -123,7 +126,8 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   // Bail on a MULTI-question AskUserQuestion (only the `select` family is ever multi-step). Its
   // stepper header ("☒ Focus area  ☐ Scope  ✔ Submit") means there are further questions we can't
   // see and can't answer with one digit+Enter — up-levelling only the first question would submit a
-  // half-filled form. Falling through to raw lets the user drive the wizard with the keys pad. The
+  // half-filled form. The wizard grammar (wizard.ts) runs FIRST in buildBlocks and claims this
+  // dialog; the bail stays as its safety net (a missed wizard falls to raw + the keys pad). The
   // header sits just above the current question, within the option-scan window.
   if (family === "select") {
     const top = Math.max(0, firstOpt - QUESTION_SCAN_LIMIT);

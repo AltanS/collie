@@ -169,6 +169,26 @@ describe("AgentChat — raw-terminal escape hatch", () => {
     // …and the menu is rendered verbatim in the mirror, drivable by the keys pad.
     expect(screen.getByText(/1\. Yes/)).toBeInTheDocument();
   });
+
+  it("lifts a multi-question wizard into native controls by default (grammars on)", async () => {
+    renderChat({ text: WIZARD_TEXT });
+    expect(await screen.findByRole("button", { name: /Parser/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next step" })).toBeInTheDocument();
+    // The stepper header row is consumed into the wizard block, not mirrored as text.
+    expect(screen.queryByText(/☐ Focus area/)).not.toBeInTheDocument();
+  });
+
+  it("raw terminal bypasses the wizard too — the dialog shows verbatim, keys-pad drivable", () => {
+    localStorage.setItem(
+      "collie:display-prefs",
+      JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
+    );
+    renderChat({ text: WIZARD_TEXT });
+    expect(screen.queryByRole("button", { name: /Parser/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next step" })).not.toBeInTheDocument();
+    expect(screen.getByText(/1\. Parser/)).toBeInTheDocument();
+    expect(screen.getByText(/☐ Focus area/)).toBeInTheDocument();
+  });
 });
 
 // A minimal permission dialog at the buffer tail — enough for the REAL detector (not a mock) to
@@ -193,6 +213,19 @@ const STATUS_TEXT = [
   RULE,
   "  [Opus 4.8] ~/webapp · main",
   "  ← for agents",
+].join("\n");
+
+// A minimal multi-question wizard tail (stepper header + current question) — enough for the REAL
+// wizard detector to lift it into the native WizardBlock inside AgentChat's mirror.
+const WIZARD_TEXT = [
+  "←  ☐ Focus area  ☐ Scope  ✔ Submit  →",
+  "",
+  "Which focus area should we work on?",
+  "",
+  "❯ 1. Parser",
+  "  2. UI",
+  "",
+  "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
 ].join("\n");
 
 describe("AgentChat — prompt-select race guard wiring (frozen {text, revision} pair)", () => {

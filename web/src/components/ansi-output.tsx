@@ -3,15 +3,25 @@ import type { CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
 import { parseAnsi, type AnsiSegment } from "@/lib/ansi";
-import { buildBlocks, splitLines, type Block, type PromptModel, type PromptOption } from "@/lib/blocks";
+import {
+  buildBlocks,
+  splitLines,
+  type Block,
+  type PromptModel,
+  type PromptOption,
+  type WizardModel,
+} from "@/lib/blocks";
 import { lineText } from "@/lib/grammar/markers";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { PromptSelectBlock } from "@/components/prompt-select-block";
+import { WizardBlock } from "@/components/wizard-block";
 
 /** A raw block, narrowed off the Block union (the highlight/offset paths only touch these). */
 type RawBlock = Extract<Block, { kind: "raw" }>;
 /** The (at most one) prompt-select block — always at the tail. */
 type PromptBlock = Extract<Block, { kind: "prompt-select" }>;
+/** The (at most one) wizard block — always at the tail, mutually exclusive with prompt-select. */
+type WizBlock = Extract<Block, { kind: "wizard" }>;
 
 export interface AnsiOutputProps {
   text: string;
@@ -32,7 +42,10 @@ export interface AnsiOutputProps {
   /** Injected handler for a prompt-select tap (the race guard lives in AgentChat). Absent (or with a
    *  disabled block) means the buttons render but don't act — AnsiOutput never touches the network. */
   onPromptAction?: (option: PromptOption, prompt: PromptModel) => void | Promise<void>;
-  /** Disable the prompt-select buttons (read-only device / gone pane). */
+  /** Injected handler for a wizard tap — one race-guarded keystroke per control (see
+   *  lib/wizard-action.ts). Same presentational contract as onPromptAction. */
+  onWizardAction?: (keys: string[], wizard: WizardModel) => void | Promise<void>;
+  /** Disable the prompt-select/wizard buttons (read-only device / gone pane). */
   promptDisabled?: boolean;
 }
 
@@ -76,6 +89,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   onMatchCount,
   agent,
   onPromptAction,
+  onWizardAction,
   promptDisabled,
 }: AnsiOutputProps) {
   const segments = useMemo(() => parseAnsi(text), [text]);
@@ -87,6 +101,10 @@ export const AnsiOutput = memo(function AnsiOutput({
   );
   const promptBlock = useMemo(
     () => blocks.find((b): b is PromptBlock => b.kind === "prompt-select") ?? null,
+    [blocks],
+  );
+  const wizardBlock = useMemo(
+    () => blocks.find((b): b is WizBlock => b.kind === "wizard") ?? null,
     [blocks],
   );
 
@@ -119,6 +137,12 @@ export const AnsiOutput = memo(function AnsiOutput({
       prompt={promptBlock.prompt}
       disabled={promptDisabled || !onPromptAction}
       onAction={(option) => onPromptAction?.(option, promptBlock.prompt)}
+    />
+  ) : wizardBlock ? (
+    <WizardBlock
+      wizard={wizardBlock.wizard}
+      disabled={promptDisabled || !onWizardAction}
+      onAction={(keys) => onWizardAction?.(keys, wizardBlock.wizard)}
     />
   ) : null;
 

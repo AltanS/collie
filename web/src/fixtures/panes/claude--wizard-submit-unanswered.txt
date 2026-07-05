@@ -1,0 +1,35 @@
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool to ask me THREE questions in ONE tool call: focus area (options: Parser, UI, Tests), scope [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55m(options: Small, Medium, Large), and workflow (options: Plan first, Just build). Do not do anything else.[0m[48;2;55;55;55m                  [0m
+ 
+[0m[38;2;255;255;255m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which focus area should we work on? → Parser[0m
+     [0m[38;2;153;153;153m· What scope should this work have? → Medium[0m
+     [0m[38;2;153;153;153m· How should we approach the work? → Just build[0m
+
+[0m[38;2;255;255;255m●[0m Got your answers:
+
+  - [0m[1mFocus area:[0m Parser
+  - [0m[1mScope:[0m Medium
+  - [0m[1mWorkflow:[0m Just build
+     
+  Ready when you are — let me know what you'd like to build in the parser.
+
+[0m[38;2;153;153;153m✻ Cooked for 13s[0m
+ 
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mGreat. Now do the EXACT same AskUserQuestion again (same three questions, same options), one tool call, nothing else.[0m[48;2;55;55;55m      [0m
+
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☐ Focus area  ☐ Scope  ☐ Workflow [0m[38;2;0;0;0m[48;2;177;185;249m ✔ Submit [0m[38;2;153;153;153m →[0m
+
+[0m[1m[38;2;255;255;255mReview your answers[0m
+
+[0m[38;2;255;193;7m⚠[0m [0m[38;2;255;193;7mYou have not answered all questions[0m
+ 
+[0m[38;2;153;153;153mReady to submit your answers?[0m
+  
+[0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mSubmit answers[0m
+  [0m[38;2;153;153;153m2. [0mCancel
+
+
+ 

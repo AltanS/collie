@@ -1,0 +1,36 @@
+[0m[38;2;215;119;87m│                 [0m[1mWelcome back Altan!                [0m[2m[38;2;215;119;87m│ [0mAsk Claude to create a new app or clone a repository                 [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│[0m                                                    [0m[2m[38;2;215;119;87m│[0m [0m[38;2;215;119;87m────────────────────────────────────────────────────────────────────[0m [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                       ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▜[0m[38;2;215;119;87m▌                      [0m[2m[38;2;215;119;87m│ [0m[1m[38;2;215;119;87mWhat's new[0m                                                           [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                 [0m     [0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m▛▘[0m                     [0m[2m[38;2;215;119;87m│ [0mClaude Sonnet 5 sessions no longer use the mid-conversation system … [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                        ▘▘ ▝▝                       [0m[2m[38;2;215;119;87m│ [0mChanged `AskUserQuestion` dialogs to no longer auto-continue by def… [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│     [0m[38;2;153;153;153mOpus 4.8 with xhigh effort · Claude Max ·      [0m[2m[38;2;215;119;87m│ [0mChanged the "default" permission mode to "Manual" across the CLI, `… [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│     [0m[38;2;153;153;153msandboxdev@example.com's Organization[0m          [0m[2m[38;2;215;119;87m│ [0m[3m[38;2;153;153;153m/release-notes for more[0m                                              [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│     [0m       [0m[38;2;153;153;153m/…/scratchpad/wizard-sandbox[0m            [0m[2m[38;2;215;119;87m│ [0m                                                                     [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+ [0m[38;2;255;193;7m⚠ 1 MCP server needs authentication[0m[38;2;153;153;153m · run /mcp[0m
+ 
+ [0m[38;2;215;119;87m▎ Fable 5 is back.[0m
+ [0m[38;2;215;119;87m▎ [0mUntil July 7, you can use up to 50% of your plan's weekly usage limit on Fable 5. If you hit your limit, you can continue
+ [0m[38;2;215;119;87m▎ [0mon Fable 5 with usage credits. Fable 5 draws down usage faster than Opus 4.8. Learn more
+ [0m[38;2;215;119;87m▎ [0m(https://support.claude.com/en/articles/15424964-claude-fable-5-promotional-access)
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool to ask me THREE questions in ONE tool call: focus area (options: Parser, UI, Tests), scope [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55m(options: Small, Medium, Large), and workflow (options: Plan first, Just build). Do not do anything else.[0m[48;2;55;55;55m                  [0m
+
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☒ Focus area  ☒ Scope  ☒ Workflow [0m[38;2;0;0;0m[48;2;177;185;249m ✔ Submit [0m[38;2;153;153;153m →[0m
+
+[0m[1m[38;2;255;255;255mReview your answers[0m
+
+ ● Which focus area should we work on?
+   [0m[38;2;78;186;101m→ UI[0m
+ ● What scope should this work have?
+   [0m[38;2;78;186;101m→ Medium[0m
+ ● How should we approach the work?
+   [0m[38;2;78;186;101m→ Plan first[0m
+  
+[0m[38;2;153;153;153mReady to submit your answers?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mSubmit answers[0m
+  [0m[38;2;153;153;153m2. [0mCancel

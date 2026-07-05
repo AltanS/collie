@@ -26,6 +26,14 @@ All notable changes to Collie are recorded here. The format follows
 - **Raw-terminal escape hatch.** A View toggle (terminal icon) that turns off the block renderer —
   native prompt buttons, chrome stripping, status strip — and shows the plain mirror, so a
   mis-detected/mis-rendered dialog can always be driven by hand with the keys pad. Persisted.
+- **Multi-question wizard.** A multi-question AskUserQuestion (the `☒ Focus area ☐ Scope ✔ Submit`
+  stepper) now renders as a native step-by-step wizard instead of bailing to the raw mirror: the
+  stepper chips (answered/current per question), the current question's options as tappable buttons
+  (one digit each — verified: a wizard digit instant-selects and advances), back/next step
+  navigation, and the final Submit review step (answers echoed, submit/cancel). Incremental
+  round-trip: every tap is a single race-guarded keystroke re-derived against a fresh read; the TUI
+  stays the source of truth. Choreography + fixtures documented in
+  `web/src/lib/grammar/WIZARD_NOTES.md`.
 
 ### Fixed
 - **Multi-question AskUserQuestion no longer mis-parsed.** A multi-step AskUserQuestion (the

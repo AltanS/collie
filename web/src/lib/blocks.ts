@@ -18,13 +18,16 @@
 import type { AnsiSegment } from "./ansi";
 import type { PromptModel } from "./grammar/prompt-select";
 import { detectPromptSelectRegion } from "./grammar/prompt-select";
+import type { WizardModel } from "./grammar/wizard";
+import { detectWizardRegion } from "./grammar/wizard";
 import { stripChrome } from "./grammar/chrome";
 import { hasBlockGrammar } from "./grammar/agents";
 import { isBlank, lineText } from "./grammar/markers";
 
-// Re-export the prompt-select model so consumers (the block component, the race guard) have one
-// import site for the AST's typed payloads.
+// Re-export the prompt-select + wizard models so consumers (the block components, the race guards)
+// have one import site for the AST's typed payloads.
 export type { PromptModel, PromptOption, PromptFamily } from "./grammar/prompt-select";
+export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./grammar/wizard";
 
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
 export interface StyledLine {
@@ -50,10 +53,21 @@ export interface PromptSelectBlock {
 }
 
 /**
+ * A multi-question AskUserQuestion wizard (the stepper dialog) lifted out of the raw mirror and
+ * rendered as a native step-by-step form. Like `prompt-select` it REPLACES its region
+ * ([stepper header … tail]) in place; `lines` is provenance only — not rendered, not searchable.
+ */
+export interface WizardBlock {
+  kind: "wizard";
+  wizard: WizardModel;
+  lines: StyledLine[];
+}
+
+/**
  * A semantic block. A discriminated union on `kind`; new members are added purely additively, so a
  * `switch (block.kind)` in the renderer stays exhaustive.
  */
-export type Block = RawBlock | PromptSelectBlock;
+export type Block = RawBlock | PromptSelectBlock | WizardBlock;
 
 /**
  * Split parsed segments into visual lines at "\n" boundaries. The newline characters become the
@@ -108,7 +122,22 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
  * it always was.
  */
 export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string }): Block[] {
+  // gate: claude-only — every grammar below (wizard, prompt-select, chrome) is Claude Code TUI
+  // specific; the "which agents get them" decision is the single hasBlockGrammar predicate, so it
+  // can't drift from agent-chat's status-strip gate. Every other agent keeps the pure raw mirror.
   if (!hasBlockGrammar(ctx?.agent)) return [{ kind: "raw", lines }];
+
+  // The wizard runs FIRST: its question phase also carries a select footer, so prompt-select's
+  // detector would otherwise have to arbitrate (today it bails on the stepper header — that bail
+  // stays as a safety net for a wizard this detector misses).
+  const wizardRegion = detectWizardRegion(lines);
+  if (wizardRegion) {
+    const before = trimTrailingBlank(lines.slice(0, wizardRegion.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "wizard", wizard: wizardRegion.model, lines: lines.slice(wizardRegion.startLine) });
+    return blocks;
+  }
 
   const region = detectPromptSelectRegion(lines);
   if (region) {
