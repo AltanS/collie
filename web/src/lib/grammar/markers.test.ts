@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
-import { classifyFooter, isBlank, isBoxBorder, isHorizontalRule, lineText } from "./markers";
+import {
+  classifyFooter,
+  isBlank,
+  isBoxBorder,
+  isHorizontalRule,
+  isMultiStepHeader,
+  lineText,
+} from "./markers";
 
 // The shared lexing primitives every Claude-Code grammar leans on (chrome, prompt-select, and — in
 // T3 — history segmentation). Small and pure; these pin the exact edge cases the matchers rely on.
@@ -57,5 +64,18 @@ describe("classifyFooter", () => {
     expect(classifyFooter("⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents")).toBeNull();
     expect(classifyFooter("← for agents")).toBeNull();
     expect(classifyFooter("Do you want to proceed?")).toBeNull();
+  });
+});
+
+describe("isMultiStepHeader", () => {
+  it("detects a multi-question stepper (≥2 checkbox/step glyphs on one line)", () => {
+    expect(isMultiStepHeader("←  ☒ Focus area  ☐ Scope  ☐ Workflow  ✔ Submit  →")).toBe(true);
+    expect(isMultiStepHeader("☐ A  ☐ B")).toBe(true);
+  });
+
+  it("does not flag a single-question chip or ordinary prose", () => {
+    expect(isMultiStepHeader(" ☐ Color Theme ")).toBe(false); // single-question dialog's lone chip
+    expect(isMultiStepHeader("How should I approach the work?")).toBe(false);
+    expect(isMultiStepHeader("1. Plan first")).toBe(false);
   });
 });

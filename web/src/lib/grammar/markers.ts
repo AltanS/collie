@@ -40,6 +40,20 @@ export function isBoxBorder(text: string): boolean {
   return RULE_RUN.test(text);
 }
 
+// A MULTI-question AskUserQuestion renders a step indicator above the current question — one
+// checkbox glyph per sub-question plus a Submit, wrapped in ←/→ navigation, e.g.
+//   "←  ☒ Focus area  ☐ Scope  ☐ Workflow  ✔ Submit  →"
+// A single-question dialog never shows this. We can't answer a wizard with one digit+Enter (that
+// submits with only the first question answered), and we don't render a multi-step UI yet — so
+// detecting this line makes prompt-select bail to the raw mirror instead of mis-sending keystrokes.
+const STEP_GLYPH = /[☐☒☑✔✅]/g;
+
+/** True when a line is a multi-question stepper header (≥2 step/checkbox glyphs on one line). */
+export function isMultiStepHeader(text: string): boolean {
+  const m = text.match(STEP_GLYPH);
+  return m !== null && m.length >= 2;
+}
+
 /** The single-choice dialog families Claude Code renders, discriminated by their footer hint bar. */
 export type PromptFamily = "select" | "permission" | "trust" | "plan";
 

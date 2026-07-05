@@ -1,0 +1,34 @@
+ [0m[38;2;255;193;7m⚠ 1 MCP server needs authentication[0m[38;2;153;153;153m · run /mcp[0m
+
+ [0m[38;2;215;119;87m▎[0m [0m[38;2;215;119;87mFable 5 is back.[0m
+ [0m[38;2;215;119;87m▎[0m Until July 7, you can use up to 50% of your plan's weekly usage limit on Fable 5. If you hit your limit, you can continue
+ [0m[38;2;215;119;87m▎ [0mon Fable 5 with usage credits. Fable 5 draws down usage faster than Opus 4.8. Learn more
+ [0m[38;2;215;119;87m▎ [0m(https://support.claude.com/en/articles/15424964-claude-fable-5-promotional-access)
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mask me a question with prompt options[0m[48;2;55;55;55m                                                                                      [0m
+
+[0m[38;2;255;255;255m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · You're on the feature/block-renderer branch with the status strip + submission progress bar just committed. What would[0m
+     [0m[38;2;153;153;153myou like to do next? → Keep building[0m
+
+[0m[38;2;255;255;255m● [0mYou picked [0m[1mKeep building[0m. What's the next block-renderer feature or hardening task you want to tackle?
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mBaked for 13s[0m
+     
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mok, awesome! now ask me a question with multiple steps please[0m[48;2;55;55;55m                                                              [0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☒ Focus area  ☐ Scope [0m[38;2;0;0;0m[48;2;177;185;249m ☐ Workflow  [0m✔ Submit  →
+
+[0m[1m[38;2;255;255;255mHow should I approach the work?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mPlan first[0m
+     [0m[38;2;153;153;153mI draft a plan and get your approval before writing any code.[0m
+  [0m[38;2;153;153;153m2. [0mJust build it
+     [0m[38;2;153;153;153mI go straight to implementation and show you the diff when done.[0m
+  [0m[38;2;153;153;153m3.[0m Build + verify
+     [0m[38;2;153;153;153mI implement, then build and drive the app end-to-end to confirm it works before handing back.[0m
+  [0m[38;2;153;153;153m4. Type something.[0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · Tab/Arrow keys to navigate · Esc to cancel[0m

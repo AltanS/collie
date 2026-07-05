@@ -87,7 +87,10 @@ export function AgentChat({
   const navigate = useNavigate();
   const { newTab, newSpace } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, setWrap, stepFontSize } = useDisplayPrefs();
+  const { prefs, setWrap, stepFontSize, setRawTerminal } = useDisplayPrefs();
+  // Raw-terminal escape hatch: when on, every Claude grammar is bypassed and the plain mirror shows,
+  // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
+  const grammarsOn = !prefs.rawTerminal;
   const isShell = agent?.kind === "shell";
   // This device isn't allowlisted to type into agents: the backend rejects every write, so the
   // composer drops to read-only (and shows a banner). The mirror still polls (reading is fine).
@@ -137,8 +140,11 @@ export function AgentChat({
   // tail, in which case the strip is hidden. A second parse of `display`, but memoised on it, so it
   // only recomputes when the buffer content changes — off the render hot path.
   const statusLine = useMemo(
-    () => (agent?.agent === "claude" ? extractStatusLine(splitLines(parseAnsi(display))) : null),
-    [display, agent?.agent],
+    () =>
+      grammarsOn && agent?.agent === "claude"
+        ? extractStatusLine(splitLines(parseAnsi(display)))
+        : null,
+    [display, agent?.agent, grammarsOn],
   );
 
   // Find-in-output: search the already-fetched buffer. The bar takes over the header while open;
@@ -443,7 +449,7 @@ export function AgentChat({
                 query={findOpen ? findQuery : ""}
                 currentMatch={findOpen ? currentMatch : -1}
                 onMatchCount={findOpen ? handleMatchCount : undefined}
-                agent={agent?.agent}
+                agent={grammarsOn ? agent?.agent : undefined}
                 onPromptAction={handlePromptAction}
                 promptDisabled={readOnly || gone}
               />
@@ -496,6 +502,7 @@ export function AgentChat({
           prefs={prefs}
           setWrap={setWrap}
           stepFontSize={stepFontSize}
+          setRawTerminal={setRawTerminal}
           onSent={onSent}
         />
       </div>

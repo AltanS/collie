@@ -148,6 +148,29 @@ describe("AgentChat — read-only device", () => {
   });
 });
 
+describe("AgentChat — raw-terminal escape hatch", () => {
+  afterEach(() => localStorage.clear());
+
+  it("lifts a tail menu into buttons by default (grammars on)", async () => {
+    renderChat({ text: MENU_TEXT });
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    // The raw option row is consumed into the button, not shown as text.
+    expect(screen.queryByText(/❯ 1\. Yes/)).not.toBeInTheDocument();
+  });
+
+  it("shows the plain mirror (no buttons, menu as raw text) when raw terminal is on", () => {
+    localStorage.setItem(
+      "collie:display-prefs",
+      JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
+    );
+    renderChat({ text: MENU_TEXT });
+    // No native prompt buttons — the escape hatch bypasses the block grammars entirely…
+    expect(screen.queryByRole("button", { name: "Yes" })).not.toBeInTheDocument();
+    // …and the menu is rendered verbatim in the mirror, drivable by the keys pad.
+    expect(screen.getByText(/1\. Yes/)).toBeInTheDocument();
+  });
+});
+
 // A minimal permission dialog at the buffer tail — enough for the REAL detector (not a mock) to
 // lift it into prompt-select buttons inside AgentChat's mirror.
 const MENU_TEXT = [

@@ -23,6 +23,15 @@ All notable changes to Collie are recorded here. The format follows
 - **Submission progress bar.** A slim indeterminate bar across the top of the app while any mutation
   (reply, keys, prompt tap, upload, tab/space create, close, snooze) is in flight; background polling
   never triggers it, and a 120ms delay means a fast action never flashes it.
+- **Raw-terminal escape hatch.** A View toggle (terminal icon) that turns off the block renderer —
+  native prompt buttons, chrome stripping, status strip — and shows the plain mirror, so a
+  mis-detected/mis-rendered dialog can always be driven by hand with the keys pad. Persisted.
+
+### Fixed
+- **Multi-question AskUserQuestion no longer mis-parsed.** A multi-step AskUserQuestion (the
+  `☒ Focus area  ☐ Scope  ✔ Submit` stepper) was detected as a single-question select and answered
+  with one digit+Enter — submitting a half-filled form. It's now recognized as a wizard and left as
+  the raw mirror (drive it with the keys pad, or via the new escape hatch) rather than mis-sending.
 
 ## [0.3.0] - 2026-07-03
 

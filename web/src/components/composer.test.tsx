@@ -22,9 +22,10 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     gone: false,
     readOnly: false,
     text: "pane output",
-    prefs: { wrap: true, fontSize: 11 },
+    prefs: { wrap: true, fontSize: 11, rawTerminal: false },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
+    setRawTerminal: vi.fn(),
     onSent: vi.fn(),
     ...overrides,
   };

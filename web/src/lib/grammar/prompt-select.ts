@@ -12,6 +12,7 @@ import {
   classifyFooter,
   isBlank,
   isHorizontalRule,
+  isMultiStepHeader,
   lineText,
   type PromptFamily,
 } from "./markers";
@@ -118,6 +119,18 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   const lastOpt = rows[rows.length - 1]!.index;
   // The options must sit against the footer (only a hint sub-line / blank may separate them).
   if (fi - lastOpt > MAX_FOOTER_GAP) return null;
+
+  // Bail on a MULTI-question AskUserQuestion (only the `select` family is ever multi-step). Its
+  // stepper header ("☒ Focus area  ☐ Scope  ✔ Submit") means there are further questions we can't
+  // see and can't answer with one digit+Enter — up-levelling only the first question would submit a
+  // half-filled form. Falling through to raw lets the user drive the wizard with the keys pad. The
+  // header sits just above the current question, within the option-scan window.
+  if (family === "select") {
+    const top = Math.max(0, firstOpt - QUESTION_SCAN_LIMIT);
+    for (let i = top; i < fi; i++) {
+      if (isMultiStepHeader(texts[i]!)) return null;
+    }
+  }
 
   // 3. Question = the nearest line above the first option that contains "?", stopping at a rule so
   //    the search can't cross out of the dialog. Every dialog's prompt carries a "?".

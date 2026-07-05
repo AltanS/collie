@@ -102,6 +102,14 @@ describe("detectPromptSelect — false-positive gate (no menu at the tail)", () 
     });
   }
 
+  it("multi-question AskUserQuestion (stepper header) bails to raw", () => {
+    // The wizard shows a "☒ Focus area  ☐ Scope  ✔ Submit" stepper: there are further questions we
+    // can't see, and one digit+Enter would submit a half-filled form. Detection must return null so
+    // the raw mirror + keys pad drive it instead. (The single-question select-menu fixture, with its
+    // lone "☐ Color Theme" chip, still detects — proven above.)
+    expect(detectPromptSelect(fixtureLines("claude--select-multi.txt"))).toBeNull();
+  });
+
   it("a menu-shaped block that is NOT at the tail does not match", () => {
     // Take the real select-menu buffer and append ordinary output after it: the footer is no longer
     // the last non-blank line, so the tail anchor fails.

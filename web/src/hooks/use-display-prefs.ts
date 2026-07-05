@@ -8,12 +8,19 @@ export interface DisplayPrefs {
   wrap: boolean;
   /** Font size in px for the mirror pre (default: 11, range: 9–16). */
   fontSize: number;
+  /**
+   * Raw-terminal escape hatch (default: false). When on, the mirror renders the PLAIN terminal —
+   * every Claude grammar (chrome stripping, native prompt-select buttons, the status strip) is
+   * bypassed, so a misdetected/mis-rendered dialog can always be driven manually with the keys pad.
+   * The universal fallback, made user-controllable.
+   */
+  rawTerminal: boolean;
 }
 
 const STORAGE_KEY = "collie:display-prefs";
 const FONT_MIN = 9;
 const FONT_MAX = 16;
-const DEFAULTS: DisplayPrefs = { wrap: true, fontSize: 11 };
+const DEFAULTS: DisplayPrefs = { wrap: true, fontSize: 11, rawTerminal: false };
 
 function clampFont(n: number): number {
   return Math.max(FONT_MIN, Math.min(FONT_MAX, Math.round(n)));
@@ -29,6 +36,7 @@ function loadPrefs(): DisplayPrefs {
     return {
       wrap: typeof p.wrap === "boolean" ? p.wrap : DEFAULTS.wrap,
       fontSize: typeof p.fontSize === "number" ? clampFont(p.fontSize) : DEFAULTS.fontSize,
+      rawTerminal: typeof p.rawTerminal === "boolean" ? p.rawTerminal : DEFAULTS.rawTerminal,
     };
   } catch {
     return DEFAULTS;
@@ -53,6 +61,8 @@ export interface UseDisplayPrefsReturn {
   setFontSize: (size: number) => void;
   /** Step font size by delta (positive = larger), clamped to 9–16. */
   stepFontSize: (delta: number) => void;
+  /** Toggle or explicitly set the raw-terminal escape hatch. */
+  setRawTerminal: (raw: boolean) => void;
 }
 
 export function useDisplayPrefs(): UseDisplayPrefsReturn {
@@ -82,5 +92,13 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
-  return { prefs, setWrap, setFontSize, stepFontSize };
+  const setRawTerminal = useCallback((rawTerminal: boolean) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, rawTerminal };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
+  return { prefs, setWrap, setFontSize, stepFontSize, setRawTerminal };
 }

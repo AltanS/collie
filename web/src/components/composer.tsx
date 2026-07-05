@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useRevalidator } from "react-router";
-import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Send, Slash, WrapText, Zap } from "lucide-react";
+import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Send, Slash, Terminal, WrapText, Zap } from "lucide-react";
 
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
@@ -40,6 +40,7 @@ interface ComposerProps {
   prefs: DisplayPrefs;
   setWrap: (wrap: boolean) => void;
   stepFontSize: (delta: number) => void;
+  setRawTerminal: (raw: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
 }
@@ -53,7 +54,7 @@ interface ComposerProps {
 type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, agent, isShell, gone, readOnly, text, prefs, setWrap, stepFontSize, onSent },
+  { paneId, agent, isShell, gone, readOnly, text, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -310,6 +311,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <div className="mb-2 flex items-center gap-1">
           <SectionLabel>View</SectionLabel>
           <div className="ml-auto flex items-center gap-1">
+            {/* Raw-terminal escape hatch: turns off the block renderer (native prompt buttons, chrome
+                strip, status strip) so a mis-parsed dialog can always be driven by hand with the keys
+                pad. Highlighted when active so it's obvious the plain mirror is showing. */}
+            <Button
+              variant={prefs.rawTerminal ? "secondary" : "ghost"}
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => setRawTerminal(!prefs.rawTerminal)}
+              aria-label={
+                prefs.rawTerminal
+                  ? "Raw terminal on — tap for the enhanced view"
+                  : "Raw terminal off — tap to show the plain terminal"
+              }
+              aria-pressed={prefs.rawTerminal}
+              title="Toggle raw terminal (disable native prompt buttons)"
+            >
+              <Terminal className="size-3.5" />
+            </Button>
             <Button
               variant={prefs.wrap ? "secondary" : "ghost"}
               size="icon"
