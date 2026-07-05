@@ -7,7 +7,8 @@
 // buildBlocks(lines, ctx) → Block[]. These functions are PURE (no React) and, together with the
 // parser, run once per unique text (memoised by the renderer), so they're off the hot polling path.
 // The Claude-only grammars in buildBlocks (prompt-select detection, chrome stripping) live in
-// ./grammar; every other agent keeps pure raw output.
+// ./grammar; the "which agents get them" decision is the single `hasBlockGrammar` predicate
+// (./grammar/agents) — every other agent keeps pure raw output.
 //
 // Invariant (relied on by find-in-output): joining every RAW block's line text with "\n" reproduces
 // the visible mirror text character-for-character. Find operates on global character offsets over
@@ -18,6 +19,7 @@ import type { AnsiSegment } from "./ansi";
 import type { PromptModel } from "./grammar/prompt-select";
 import { detectPromptSelectRegion } from "./grammar/prompt-select";
 import { stripChrome } from "./grammar/chrome";
+import { hasBlockGrammar } from "./grammar/agents";
 import { isBlank, lineText } from "./grammar/markers";
 
 // Re-export the prompt-select model so consumers (the block component, the race guard) have one
@@ -96,16 +98,17 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
 
 /**
  * Group lines into semantic blocks. This is the seam where Claude-Code TUI grammars run: when
- * `ctx.agent === "claude"` we detect a tail prompt-select dialog (replacing it with a typed block
- * and keeping everything above it raw) and otherwise strip trailing chrome. Any detection miss
- * falls back to a single raw block — the universal T1 behaviour.
+ * `hasBlockGrammar(ctx.agent)` (Claude today) we detect a tail prompt-select dialog (replacing it
+ * with a typed block and keeping everything above it raw) and otherwise strip trailing chrome. Any
+ * detection miss falls back to a single raw block — the universal T1 behaviour.
  *
- * Gating is conservative: every OTHER agent keeps pure raw output until its own matchers exist, so
- * a non-Claude pane is never mis-parsed. With no `ctx` (or a non-Claude agent) this is the trivial
- * single-raw-block wrap it always was.
+ * Gating is conservative and centralised in {@link hasBlockGrammar}: every OTHER agent (and any
+ * unknown/absent one) keeps pure raw output until its own matchers exist, so a non-Claude pane is
+ * never mis-parsed. With no `ctx` (or a non-Claude agent) this is the trivial single-raw-block wrap
+ * it always was.
  */
 export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string }): Block[] {
-  if (ctx?.agent !== "claude") return [{ kind: "raw", lines }];
+  if (!hasBlockGrammar(ctx?.agent)) return [{ kind: "raw", lines }];
 
   const region = detectPromptSelectRegion(lines);
   if (region) {

@@ -12,6 +12,7 @@ import { AnsiOutput } from "@/components/ansi-output";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { extractStatusLine } from "@/lib/grammar/chrome";
+import { hasBlockGrammar } from "@/lib/grammar/agents";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -136,12 +137,13 @@ export function AgentChat({
   // The agent's own statusline (model · ctx% · cwd · branch · tokens) is stripped off the mirror by
   // stripChrome so it doesn't duplicate the composer — but it carries real context (the branch, most
   // notably), so we re-surface that one line as app chrome just above the composer, where it sat in
-  // the TUI. Claude-only (matches the chrome-stripping gate); null when a menu is up / no box at the
-  // tail, in which case the strip is hidden. A second parse of `display`, but memoised on it, so it
-  // only recomputes when the buffer content changes — off the render hot path.
+  // the TUI. Gated by the SAME `hasBlockGrammar` predicate as the chrome-stripping in buildBlocks
+  // (Claude-only), so the two can't drift; null when a menu is up / no box at the tail, in which case
+  // the strip is hidden. A second parse of `display`, but memoised on it, so it only recomputes when
+  // the buffer content changes — off the render hot path.
   const statusLine = useMemo(
     () =>
-      grammarsOn && agent?.agent === "claude"
+      grammarsOn && hasBlockGrammar(agent?.agent)
         ? extractStatusLine(splitLines(parseAnsi(display)))
         : null,
     [display, agent?.agent, grammarsOn],

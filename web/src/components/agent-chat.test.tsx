@@ -181,6 +181,20 @@ const MENU_TEXT = [
   " Esc to cancel · Tab to amend",
 ].join("\n");
 
+// A minimal Claude input-box buffer at the tail: top border, the "❯" prompt, bottom border, then the
+// statusline + a hint. For a Claude pane, chrome-stripping peels the box off the mirror and the
+// statusline is re-surfaced as the app strip; for a non-Claude pane none of that runs (raw mirror).
+const RULE = "─".repeat(60);
+const STATUS_TEXT = [
+  "Welcome back!",
+  "",
+  RULE,
+  "❯ ",
+  RULE,
+  "  [Opus 4.8] ~/webapp · main",
+  "  ← for agents",
+].join("\n");
+
 describe("AgentChat — prompt-select race guard wiring (frozen {text, revision} pair)", () => {
   const mockSubmit = vi.mocked(submitPromptOption);
   beforeEach(() => {
@@ -255,5 +269,37 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
 
     await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
     expect(mockSubmit).toHaveBeenCalledWith(expect.objectContaining({ detectedRevision: 2 }));
+  });
+});
+
+// The block grammars are provably scoped to Claude Code (spec T8): a non-Claude pane gets the plain
+// raw mirror — no prompt-select buttons, no chrome stripping, no re-surfaced status strip — because
+// running Claude-tuned matchers on an unverified TUI could mis-lift or mis-strip its output.
+describe("AgentChat — block-grammar scoping (Claude-only)", () => {
+  // A codex agent sharing the Claude fixture's ids, so only the agent kind differs from the default.
+  const codexAgent = { ...fixtureAgents[0]!, agent: "codex" };
+
+  it("does NOT lift a codex tail menu into buttons — it stays raw mirror text", () => {
+    renderChat({ text: MENU_TEXT, agent: codexAgent });
+    // No native prompt buttons: the Claude prompt-select grammar never runs for codex…
+    expect(screen.queryByRole("button", { name: "Yes" })).not.toBeInTheDocument();
+    // …and the menu row shows verbatim in the raw mirror instead (drivable by the keys pad).
+    expect(screen.getByText(/1\. Yes/)).toBeInTheDocument();
+  });
+
+  it("re-surfaces the Claude input-box statusline as an app strip above the composer", () => {
+    renderChat({ text: STATUS_TEXT }); // default claude agent
+    const strip = screen.getByText("[Opus 4.8] ~/webapp · main");
+    expect(strip.closest("pre")).toBeNull(); // the strip is app chrome, not <pre> mirror text
+    expect(screen.queryByText(/❯/)).toBeNull(); // the input box was stripped off the mirror
+  });
+
+  it("leaves a codex input-box buffer fully raw — no status strip, box kept in the mirror", () => {
+    renderChat({ text: STATUS_TEXT, agent: codexAgent });
+    // The statusline is NOT hoisted into an app strip — it stays inside the raw <pre> mirror…
+    const status = screen.getByText(/\[Opus 4\.8\] ~\/webapp · main/);
+    expect(status.closest("pre")).not.toBeNull();
+    // …and the input box itself is preserved verbatim (no chrome stripping for a non-Claude agent).
+    expect(screen.getByText(/❯/)).toBeInTheDocument();
   });
 });
