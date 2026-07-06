@@ -17,9 +17,53 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- First-paint splash: the galloping Collie shown the instant the PWA opens, bridging the OS
+         launch splash and React mount (createRoot replaces #root, so it clears itself). Critical CSS
+         is inlined here so it paints and animates before the app bundle/index.css load — pure CSS,
+         no JS. It mirrors routes/root.tsx's BootSplash (same sprite, 4rem, copy) so the hand-off is
+         seamless. Sprite math matches .dog-gallop in index.css: dog-gallop.png is a 768×128 strip of
+         six 128px frames, stepped with steps(6). -->
+    <style>
+      .boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        background: #0a0a0a;
+        color: #a1a1a1;
+        font: 500 0.875rem/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      .boot-splash__dog {
+        --dog-size: 4rem;
+        --dog-frames: 6;
+        width: var(--dog-size);
+        height: var(--dog-size);
+        background: url("/dog-gallop.png") no-repeat 0 0;
+        background-size: calc(var(--dog-frames) * var(--dog-size)) var(--dog-size);
+        animation: boot-dog-gallop 0.6s steps(6) infinite;
+      }
+      @keyframes boot-dog-gallop {
+        to {
+          background-position: calc(-1 * var(--dog-frames) * var(--dog-size)) 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-splash__dog {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-splash" role="status" aria-label="Loading Collie">
+        <span class="boot-splash__dog" aria-hidden="true"></span>
+        <span>Connecting to the herd…</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
