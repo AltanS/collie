@@ -9,6 +9,7 @@ const KEYS = [
   "COLLIE_PORT",
   "COLLIE_HOST",
   "COLLIE_POLL_MS",
+  "COLLIE_POLL_IDLE_MS",
   "COLLIE_NOTIFY_DELAY_MS",
   "COLLIE_READ_LINES",
   "COLLIE_SUBMIT_KEYS",
@@ -49,6 +50,7 @@ describe("loadConfig", () => {
     expect(cfg.port).toBe(8787);
     expect(cfg.host).toBe("127.0.0.1");
     expect(cfg.pollMs).toBe(1500);
+    expect(cfg.pollIdleMs).toBe(12_000);
     expect(cfg.readLines).toBe(200);
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
@@ -91,6 +93,8 @@ describe("loadConfig", () => {
     expect(loadConfig().port).toBe(8787);
     process.env.COLLIE_POLL_MS = "100"; // below the 250 floor
     expect(loadConfig().pollMs).toBe(1500);
+    process.env.COLLIE_POLL_IDLE_MS = "500"; // below the 1000 floor
+    expect(loadConfig().pollIdleMs).toBe(12_000);
     process.env.COLLIE_NOTIFY_DELAY_MS = "-5"; // below the 0 floor
     expect(loadConfig().notifyDelayMs).toBe(30_000);
   });
@@ -98,6 +102,8 @@ describe("loadConfig", () => {
   test("accepts an in-range integer and a zero notify delay", () => {
     process.env.COLLIE_POLL_MS = "250";
     expect(loadConfig().pollMs).toBe(250);
+    process.env.COLLIE_POLL_IDLE_MS = "30000";
+    expect(loadConfig().pollIdleMs).toBe(30_000);
     process.env.COLLIE_NOTIFY_DELAY_MS = "0";
     expect(loadConfig().notifyDelayMs).toBe(0);
   });

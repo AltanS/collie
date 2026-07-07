@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { StateEngine } from "./state-engine.ts";
+import { StateEngine, type EngineSnapshot } from "./state-engine.ts";
 import type { HerdrClient } from "./herdr-client.ts";
 import type { AgentStatus } from "./types.ts";
 
@@ -58,6 +58,16 @@ class FakeHerdr {
       agent_status: "idle" as AgentStatus,
     },
   ];
+  // The default path (herdr ≥ 0.7.2): one snapshot call carries workspaces + panes + tabs.
+  sessionSnapshot() {
+    return Promise.resolve({
+      version: "0.7.2",
+      protocol: 16,
+      workspaces: this.workspaces,
+      tabs: this.tabs,
+      panes: this.panes,
+    });
+  }
   listWorkspaces() {
     return Promise.resolve(this.workspaces);
   }
@@ -139,7 +149,7 @@ describe("StateEngine — removal events", () => {
 });
 
 describe("StateEngine — in-flight guard", () => {
-  // A Herdr whose list calls hang until released, so we can catch a second tick landing mid-poll.
+  // A Herdr whose snapshot call hangs until released, so we can catch a second tick landing mid-poll.
   class GatedHerdr {
     starts = 0;
     private open: () => void = () => {};
@@ -148,18 +158,10 @@ describe("StateEngine — in-flight guard", () => {
     release() {
       this.open();
     }
-    async listWorkspaces() {
+    async sessionSnapshot() {
       this.starts++;
       await this.gate;
-      return [ws("w1", 1)];
-    }
-    async listPanes() {
-      await this.gate;
-      return this.panes;
-    }
-    async listTabs() {
-      await this.gate;
-      return [];
+      return { version: "0.7.2", protocol: 16, workspaces: [ws("w1", 1)], tabs: [], panes: this.panes };
     }
   }
 
@@ -206,8 +208,161 @@ describe("StateEngine — snapshot shaping", () => {
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
     await poll();
     expect(engine.current().bridge).toBe("connected");
-    herdr.listPanes = () => Promise.reject(new Error("socket down"));
+    herdr.sessionSnapshot = () => Promise.reject(new Error("socket down"));
     await poll();
     expect(engine.current().bridge).toBe("disconnected");
+  });
+});
+
+describe("StateEngine — snapshot vs legacy path", () => {
+  const drivePoll = (engine: StateEngine) =>
+    (engine as unknown as { poll(): Promise<void> }).poll();
+
+  const snap = (panes: FakePane[]) => ({
+    version: "0.7.2",
+    protocol: 16,
+    workspaces: [ws("w1", 1)],
+    tabs: [],
+    panes,
+  });
+
+  test("polls via session.snapshot and never touches the list calls when supported", async () => {
+    let listCalls = 0;
+    const herdr = {
+      sessionSnapshot: () => Promise.resolve(snap([pane("w1:p1", "w1", "idle", "claude")])),
+      listWorkspaces: () => ((listCalls++), Promise.resolve([])),
+      listPanes: () => ((listCalls++), Promise.resolve([])),
+      listTabs: () => ((listCalls++), Promise.resolve([])),
+    };
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+    await drivePoll(engine);
+    expect(listCalls).toBe(0);
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["w1:p1"]);
+    expect(engine.current().bridge).toBe("connected");
+  });
+
+  test("an unknown-variant error falls through to list calls in the SAME tick, then never retries snapshot", async () => {
+    let snapCalls = 0;
+    let listCalls = 0;
+    const herdr = {
+      sessionSnapshot: () => {
+        snapCalls++;
+        return Promise.reject(
+          new Error(
+            "herdr session.snapshot: invalid_request: invalid request: unknown variant `session.snapshot`, expected one of `ping`",
+          ),
+        );
+      },
+      listWorkspaces: () => ((listCalls++), Promise.resolve([ws("w1", 1)])),
+      listPanes: () => Promise.resolve([pane("w1:p1", "w1", "idle", "claude")]),
+      listTabs: () => Promise.resolve([]),
+    };
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+    await drivePoll(engine);
+    // Same-tick fallback: one snapshot attempt, then the list path, connected with real data.
+    expect(snapCalls).toBe(1);
+    expect(listCalls).toBe(1);
+    expect(engine.current().bridge).toBe("connected");
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["w1:p1"]);
+    // Permanent: the next tick goes straight to the list path, no wasted snapshot probe.
+    await drivePoll(engine);
+    expect(snapCalls).toBe(1);
+    expect(listCalls).toBe(2);
+  });
+
+  test("a transient snapshot error does NOT fall back and keeps trying snapshot", async () => {
+    let snapCalls = 0;
+    let listCalls = 0;
+    const herdr = {
+      sessionSnapshot: () => {
+        snapCalls++;
+        return Promise.reject(new Error("herdr session.snapshot: timed out after 5000ms"));
+      },
+      listWorkspaces: () => ((listCalls++), Promise.resolve([])),
+      listPanes: () => Promise.resolve([]),
+      listTabs: () => Promise.resolve([]),
+    };
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+    await drivePoll(engine);
+    expect(snapCalls).toBe(1);
+    expect(listCalls).toBe(0); // no fallback on a transient error
+    expect(engine.current().bridge).toBe("disconnected");
+    await drivePoll(engine);
+    expect(snapCalls).toBe(2); // still on the snapshot path
+    expect(listCalls).toBe(0);
+  });
+});
+
+describe("StateEngine — poke / cadence / onUpdate", () => {
+  test("onUpdate fires with the fresh snapshot after a successful poll, but not after a failed one", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const updates: EngineSnapshot[] = [];
+    engine.onUpdate((s) => updates.push(s));
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    await poll();
+    expect(updates.length).toBe(1);
+    expect(updates[0]!.agents.map((a) => a.paneId)).toEqual(["w1:p1"]);
+    herdr.sessionSnapshot = () => Promise.reject(new Error("down"));
+    await poll();
+    expect(updates.length).toBe(1); // failed poll does not notify
+  });
+
+  // A snapshot call gated on a manual release, so a poke can land while a poll is in flight.
+  class GatedSnapshot {
+    calls = 0;
+    private open: () => void = () => {};
+    private readonly gate = new Promise<void>((resolve) => (this.open = resolve));
+    release() {
+      this.open();
+    }
+    async sessionSnapshot() {
+      this.calls++;
+      await this.gate;
+      return { version: "0.7.2", protocol: 16, workspaces: [ws("w1", 1)], tabs: [], panes: [] as FakePane[] };
+    }
+  }
+
+  test("pokeNow queues exactly one follow-up poll when one is already in flight", async () => {
+    const herdr = new GatedSnapshot();
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+    // Mark started without the interval firing: drive polls by hand.
+    (engine as unknown as { started: boolean }).started = true;
+    const poll = () => (engine as unknown as { poll(): Promise<void> }).poll();
+
+    const first = poll(); // calls=1, hangs on the gate
+    engine.pokeNow(); // in-flight → queue one follow-up
+    engine.pokeNow(); // coalesced into the same single follow-up
+    herdr.release();
+    await first;
+    await Promise.resolve(); // let the drained follow-up poll settle
+    await Promise.resolve();
+    expect(herdr.calls).toBe(2); // initial + one follow-up, not three
+    (engine as unknown as { started: boolean }).started = false;
+  });
+
+  test("pokeNow is a no-op once stopped", async () => {
+    const herdr = new GatedSnapshot();
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+    engine.pokeNow(); // never started → no-op
+    expect(herdr.calls).toBe(0);
+  });
+
+  test("setCadence re-arms the interval only when started and changed", () => {
+    const { engine } = makeEngine();
+    const cadence = () => (engine as unknown as { cadenceMs: number }).cadenceMs;
+    const timer = () => (engine as unknown as { timer: unknown }).timer;
+
+    engine.setCadence(9000); // not started → no-op
+    expect(cadence()).toBe(1500);
+
+    engine.start();
+    expect(cadence()).toBe(1500);
+    const before = timer();
+    engine.setCadence(1500); // unchanged → no re-arm
+    expect(timer()).toBe(before);
+    engine.setCadence(12_000); // changed → re-arm
+    expect(cadence()).toBe(12_000);
+    expect(timer()).not.toBe(before);
+    engine.stop();
   });
 });

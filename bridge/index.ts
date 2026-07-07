@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { loadConfig } from "./config.ts";
+import { EventPoker } from "./event-poker.ts";
 import { HerdrClient } from "./herdr-client.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { Push } from "./push.ts";
@@ -40,6 +41,16 @@ await notifyPrefs.load();
 const engine = new StateEngine(herdr, cfg.pollMs);
 engine.start();
 
+// Event-poked polling: a long-lived events.subscribe stream pokes an immediate re-poll on any herd
+// change, and while it's healthy the interval relaxes to the safety-net cadence. Events are ONLY a
+// poke — the snapshot poll stays the source of truth — so a missed event costs one interval, not
+// correctness. The fresh snapshot after any pane lifecycle change re-scopes the subscriptions.
+const poker = new EventPoker(herdr);
+poker.onPoke(() => engine.pokeNow());
+poker.onHealth((h) => engine.setCadence(h ? cfg.pollIdleMs : cfg.pollMs));
+engine.onUpdate((s) => poker.setAgentPanes(s.agents.map((a) => a.paneId)));
+poker.start();
+
 // Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
 // inside record() so it can never break the user action it's auditing.
 const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")));
@@ -65,6 +76,7 @@ const shutdown = async () => {
   // Stop accepting new connections and let in-flight requests drain briefly (non-forced stop)
   // before we tear down the poll loop and exit.
   await server.stop();
+  poker.stop();
   engine.stop();
   clearInterval(sweepTimer);
   process.exit(0);

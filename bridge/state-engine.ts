@@ -22,6 +22,7 @@ export interface EngineSnapshot {
 
 type TransitionListener = (agent: AgentView, from: AgentStatus, to: AgentStatus) => void;
 type RemoveListener = (paneId: string) => void;
+type UpdateListener = (snap: EngineSnapshot) => void;
 
 export class StateEngine {
   private agents: AgentView[] = [];
@@ -32,13 +33,25 @@ export class StateEngine {
   private readonly prevStatus = new Map<string, AgentStatus>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
+  private readonly updateListeners = new Set<UpdateListener>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private started = false;
   private polling = false;
+  // One follow-up poll queued when pokeNow lands mid-poll: an event may describe state the
+  // in-flight poll already read past, so we must re-poll once it settles.
+  private queuedPoll = false;
+  // Current interval cadence; setCadence swaps it (relaxed while the event stream is healthy).
+  private cadenceMs: number;
+  // session.snapshot is the fast path; flipped off PERMANENTLY once a server proves it predates the
+  // method (see poll()), after which every tick uses the legacy three-call path.
+  private supportsSnapshot = true;
 
   constructor(
     private readonly herdr: HerdrClient,
     private readonly pollMs: number,
-  ) {}
+  ) {
+    this.cadenceMs = pollMs;
+  }
 
   onTransition(fn: TransitionListener): () => void {
     this.transitionListeners.add(fn);
@@ -49,6 +62,12 @@ export class StateEngine {
   onRemove(fn: RemoveListener): () => void {
     this.removeListeners.add(fn);
     return () => this.removeListeners.delete(fn);
+  }
+
+  /** Fires after every successful poll (post-transition bookkeeping) with the fresh snapshot. */
+  onUpdate(fn: UpdateListener): () => void {
+    this.updateListeners.add(fn);
+    return () => this.updateListeners.delete(fn);
   }
 
   current(): EngineSnapshot {
@@ -62,13 +81,64 @@ export class StateEngine {
   }
 
   start(): void {
+    if (this.started) return;
+    this.started = true;
+    this.cadenceMs = this.pollMs;
     void this.poll();
-    this.timer = setInterval(() => void this.poll(), this.pollMs);
+    this.timer = setInterval(() => void this.poll(), this.cadenceMs);
   }
 
   stop(): void {
+    this.started = false;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /**
+   * Poll right now (event-poked). If a poll is already in flight, queue exactly one follow-up to run
+   * when it finishes — the event that poked us may describe state that poll already read past.
+   * No-op once stopped.
+   */
+  pokeNow(): void {
+    if (!this.started) return;
+    if (this.polling) {
+      this.queuedPoll = true;
+      return;
+    }
+    void this.poll();
+  }
+
+  /** Re-arm the interval at a new cadence (relaxed while events are healthy). No-op if unchanged or stopped. */
+  setCadence(ms: number): void {
+    if (!this.started || ms === this.cadenceMs) return;
+    this.cadenceMs = ms;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => void this.poll(), ms);
+  }
+
+  /**
+   * Fetch the herd, preferring the single `session.snapshot` round-trip. Only an "unknown variant"
+   * error (the server predates the method) trips a PERMANENT fallback — and we fall through to the
+   * legacy three list calls in the SAME tick so there's no missed poll. Any other failure (timeout,
+   * closed socket) is transient: it propagates so the tick fails as before, snapshot mode intact.
+   */
+  private async fetchWire() {
+    if (this.supportsSnapshot) {
+      try {
+        const snap = await this.herdr.sessionSnapshot();
+        return { workspaces: snap.workspaces, panes: snap.panes, tabs: snap.tabs };
+      } catch (err) {
+        if (!(err instanceof Error && err.message.includes("unknown variant"))) throw err;
+        this.supportsSnapshot = false;
+        console.log("[state] herdr predates session.snapshot — using list-call polling");
+      }
+    }
+    const [workspaces, panes, tabs] = await Promise.all([
+      this.herdr.listWorkspaces(),
+      this.herdr.listPanes(),
+      this.herdr.listTabs(),
+    ]);
+    return { workspaces, panes, tabs };
   }
 
   private async poll(): Promise<void> {
@@ -77,11 +147,7 @@ export class StateEngine {
     if (this.polling) return;
     this.polling = true;
     try {
-      const [workspaces, panes, tabs] = await Promise.all([
-        this.herdr.listWorkspaces(),
-        this.herdr.listPanes(),
-        this.herdr.listTabs(),
-      ]);
+      const { workspaces, panes, tabs } = await this.fetchWire();
       const wsById = new Map(workspaces.map((w) => [w.workspace_id, w]));
 
       const toView = (
@@ -169,6 +235,10 @@ export class StateEngine {
       this.workspaces = workspaceViews;
       this.tabs = tabViews;
       this.bridge = "connected";
+
+      // After all transition/removal bookkeeping so listeners see a consistent, current snapshot.
+      const snap = this.current();
+      for (const fn of this.updateListeners) fn(snap);
     } catch (err) {
       if (this.bridge === "connected") {
         console.warn(`[state] poll failed, marking disconnected: ${(err as Error).message}`);
@@ -176,6 +246,11 @@ export class StateEngine {
       this.bridge = "disconnected";
     } finally {
       this.polling = false;
+      // Run the single follow-up an event-poke asked for while this poll was in flight.
+      if (this.queuedPoll) {
+        this.queuedPoll = false;
+        if (this.started) void this.poll();
+      }
     }
   }
 }

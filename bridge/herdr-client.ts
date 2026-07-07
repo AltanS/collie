@@ -1,5 +1,5 @@
 import type { AgentStatus } from "./types.ts";
-import { decodeReplyLine } from "./wire.ts";
+import { decodeReplyLine, decodeStreamLine } from "./wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The Herdr socket adapter. THIS IS THE ONLY FILE that knows Herdr's method names
@@ -33,7 +33,7 @@ interface WireTab {
   agent_status: AgentStatus;
 }
 
-/** Raw wire shape of a pane from `pane.list`. */
+/** Raw wire shape of a pane from `pane.list` (and, identically, inside `session.snapshot`). */
 interface WirePane {
   pane_id: string;
   terminal_id: string;
@@ -45,6 +45,25 @@ interface WirePane {
   agent?: string | null;
   agent_status: AgentStatus;
   revision: number;
+  /** Scroll position (herdr ≥ 0.7.2); optional so older servers that omit it still typecheck. Unused for now. */
+  scroll?: {
+    offset_from_bottom: number;
+    max_offset_from_bottom: number;
+    viewport_rows: number;
+  } | null;
+}
+
+/**
+ * Raw shape of `session.snapshot` — the whole herd in one reply, superseding the three parallel
+ * list calls. `agents`/`layouts`/`focused_*` are carried too but intentionally unused: agents stay
+ * derived from `panes` so there's one code path. Older servers predate the method (see StateEngine).
+ */
+export interface WireSnapshot {
+  version: string;
+  protocol: number;
+  workspaces: WireWorkspace[];
+  tabs: WireTab[];
+  panes: WirePane[];
 }
 
 /** The freshly-created shell pane returned by tab.create / workspace.create (`root_pane`). */
@@ -169,6 +188,123 @@ export class HerdrClient {
   async listTabs(): Promise<WireTab[]> {
     const r = await this.request<{ tabs: WireTab[] }>("tab.list");
     return r.tabs;
+  }
+
+  /**
+   * The whole herd in one round-trip (herdr ≥ 0.7.2). Replaces workspace.list + pane.list +
+   * tab.list for the poll loop. An older server rejects the method with an "unknown variant" error
+   * reply — StateEngine treats only that as a permanent signal to fall back to the three list calls.
+   */
+  async sessionSnapshot(): Promise<WireSnapshot> {
+    const r = await this.request<{ type: string; snapshot: WireSnapshot }>("session.snapshot");
+    return r.snapshot;
+  }
+
+  /**
+   * Open a LONG-LIVED `events.subscribe` stream. Unlike every other method here (one-shot), this
+   * connection stays open: after the ack, each line is an event. It exists ONLY to poke re-polls —
+   * callers must not treat events as state. `onDown` fires exactly once when the stream ends for any
+   * reason (error line, socket error, close, or a 5s ack timeout); `close()` is idempotent and also
+   * ends it with reason "closed". Reconnect/backoff live in the caller (see EventPoker).
+   */
+  subscribeEvents(opts: {
+    subscriptions: Array<{ type: string; pane_id?: string }>;
+    onUp: () => void;
+    onEvent: (event: string, data: unknown) => void;
+    onDown: (reason: string) => void;
+  }): { close(): void } {
+    const id = `es${++idCounter}`;
+    const decoder = new TextDecoder("utf-8");
+    let buf = "";
+    let socket: Bun.Socket | null = null;
+    let down = false;
+    let acked = false;
+
+    // The single terminal path. Guarded so onDown never fires twice, and closes the FD once.
+    const fireDown = (reason: string) => {
+      if (down) return;
+      down = true;
+      clearTimeout(ackTimer);
+      if (socket) {
+        try {
+          socket.end();
+        } catch {
+          /* ignore */
+        }
+        socket = null;
+      }
+      opts.onDown(reason);
+    };
+
+    // A server that accepts the connection but never acks (hung) counts as down, not healthy.
+    const ackTimer = setTimeout(() => fireDown("ack timeout"), 5000);
+
+    const handleLine = (line: string) => {
+      if (line === "") return;
+      let decoded;
+      try {
+        decoded = decodeStreamLine(line);
+      } catch (e) {
+        fireDown(`protocol error: ${(e as Error).message}`);
+        return;
+      }
+      if (decoded.kind === "error") {
+        fireDown(`${decoded.code}: ${decoded.message}`);
+        return;
+      }
+      if (decoded.kind === "ack") {
+        if (acked) return;
+        acked = true;
+        clearTimeout(ackTimer);
+        opts.onUp();
+        return;
+      }
+      opts.onEvent(decoded.event, decoded.data);
+    };
+
+    Bun.connect({
+      unix: this.socketPath,
+      socket: {
+        open(s) {
+          socket = s;
+        },
+        // Multiple lines can arrive per chunk (bursty events); drain ALL complete lines and keep the
+        // stream open. Stream-decode so a multi-byte codepoint split across chunks isn't corrupted.
+        data(s, chunk) {
+          socket = s;
+          buf += decoder.decode(chunk, { stream: true });
+          let nl = buf.indexOf("\n");
+          while (nl >= 0 && !down) {
+            const line = buf.slice(0, nl);
+            buf = buf.slice(nl + 1);
+            handleLine(line);
+            nl = buf.indexOf("\n");
+          }
+        },
+        error(_s, err) {
+          fireDown(err.message || "socket error");
+        },
+        close() {
+          fireDown("connection closed");
+        },
+      },
+    })
+      .then((s) => {
+        if (down) {
+          try {
+            s.end();
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+        socket = s;
+        s.write(JSON.stringify({ id, method: "events.subscribe", params: { subscriptions: opts.subscriptions } }) + "\n");
+        s.flush();
+      })
+      .catch((err) => fireDown((err as Error).message || "connect failed"));
+
+    return { close: () => fireDown("closed") };
   }
 
   /**

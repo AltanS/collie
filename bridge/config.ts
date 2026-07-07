@@ -49,8 +49,14 @@ export interface Config {
    * check meaningless (see ARCHITECTURE.md §6). Override only if you know exactly why.
    */
   host: string;
-  /** Poll cadence for the state engine, ms. */
+  /** Poll cadence for the state engine, ms. Also the fast fallback cadence when the event stream is down. */
   pollMs: number;
+  /**
+   * Relaxed safety-net poll cadence, ms, used while the events.subscribe stream is healthy. Events
+   * poke immediate re-polls, so this interval only backstops a missed poke — a miss costs at most
+   * one of these, never correctness. Falls back to {@link pollMs} the moment the stream drops.
+   */
+  pollIdleMs: number;
   /**
    * Debounce window before a blocked/done transition becomes a push, ms. An agent that resolves
    * within this window (you handled it at your desk) never notifies; one that fires is retracted
@@ -115,6 +121,7 @@ export function loadConfig(): Config {
     port: envInt("COLLIE_PORT", 8787, { min: 1, max: 65535 }),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),
+    pollIdleMs: envInt("COLLIE_POLL_IDLE_MS", 12_000, { min: 1000 }),
     notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }),
     readLines: envInt("COLLIE_READ_LINES", 200, { min: 1 }),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
