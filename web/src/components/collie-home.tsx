@@ -34,8 +34,9 @@ export function CollieHome({ onHome, connecting, wordmark = false, className }: 
         <DogGallop running size="2rem" />
       ) : (
         // Rest state = the original app icon (bigger, detailed collie), same 2rem box as the sprite —
-        // sized to match the agent logo (size-8) beside it in the pane header.
-        <img src="/favicon.svg" alt="" className="size-8 shrink-0 rounded" />
+        // sized to match the agent logo (size-8) beside it in the pane header. The icon is
+        // transparent (no backing rect), matching the gallop sprite's treatment on the header.
+        <img src="/favicon.svg" alt="" className="size-8 shrink-0" />
       )}
       {wordmark && <span className="text-lg font-semibold tracking-tight">Collie</span>}
     </button>
