@@ -1,7 +1,10 @@
-# Herdr socket API — empirically verified (v0.7.0, protocol 14)
+# Herdr socket API — empirically verified (v0.7.2, protocol 16)
 
-Probed live against a running Herdr server. These are the facts the bridge is built on;
-they confirm the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+Probed live against a running Herdr server, most recently re-probed 2026-07-07 and cross-checked
+against the bundled machine-readable schema — `herdr api schema [--json | --output PATH]`
+(`schema_version 1`, covering requests, responses, errors, and events) is now the fastest way to
+re-derive this contract without probing. These are the facts the bridge is built on; they confirm
+the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Transport
 
@@ -20,6 +23,7 @@ they confirm the socket assumptions behind the design in [`ARCHITECTURE.md`](./A
 
 | Method | Params | Returns (`result.type`) |
 |---|---|---|
+| `session.snapshot` | `{}` | `session_snapshot` → `snapshot{workspaces[], tabs[], panes[], agents[], layouts[], focused_*}` |
 | `workspace.list` | `{}` | `workspace_list` → `workspaces[]` |
 | `pane.list` | `{}` | `pane_list` → `panes[]` |
 | `pane.read` | `{pane_id, source, lines, format}` | `pane_read` → `read{text, truncated, revision}` |
@@ -31,6 +35,34 @@ they confirm the socket assumptions behind the design in [`ARCHITECTURE.md`](./A
   **`format: "text"` returns clean plain text (no ANSI escapes)** → safe to render, no XSS surface.
 - `agent.send` writes literal text only; to submit a reply, follow with an Enter keypress
   (`pane.send_keys {keys: ["Enter"]}`) — submit-key name needs live confirmation per agent.
+
+## `session.snapshot` — one RPC, the whole herd (new in 0.7.2)
+
+`session.snapshot` `{}` → `{"type":"session_snapshot","snapshot":{...}}`. One-shot like every RPC —
+no special connection handling, no streaming. The `snapshot` bundles everything a client needs to
+bootstrap or resync in a single round trip:
+
+```jsonc
+{ "version":"0.7.2", "protocol":16,
+  "workspaces":[ /* same record shape as workspace.list → workspaces[] */ ],
+  "tabs":      [ /* same record shape as tab.list → tabs[] */ ],
+  "panes":     [ /* same record shape as pane.list → panes[] */ ],
+  "agents":    [ /* precomputed subset of panes[] that carry an agent */ ],
+  "layouts":   [ /* per-tab PaneLayoutSnapshot, see layout.updated below */ ],
+  "focused_workspace_id":"w0…", "focused_tab_id":"w0…:t1", "focused_pane_id":"w0…:p1" }
+  // focused_* are string | null
+```
+
+Docs-blessed pattern: **bootstrap with `session.snapshot` → `events.subscribe` → re-`session.snapshot`
+on reconnect or staleness.** CLI mirror: `herdr api snapshot` prints the raw reply — handy for
+diffing shapes without writing a client.
+
+Collie's bridge polls this method (one RPC per tick instead of the `workspace.list` + `pane.list`
++ `tab.list` trio) and falls back to the trio on older servers that don't know the method. Old-server
+detection: the error reply is
+``{"id":"","error":{"code":"invalid_request","message":"invalid request: unknown variant `session.snapshot`, expected one of ..."}}``
+— the bridge treats an `unknown variant` error on `session.snapshot` specifically as "fall back,"
+not a hard failure.
 
 ## `pane.send_keys` key grammar (verified)
 
@@ -52,6 +84,7 @@ against a real pane). Empirically enumerated against Herdr 0.7.0 — it is **NOT
   and no scrollback paging via keys — the web mirror is scrollable instead.
 - ⚠️ Consequence: Ctrl-C is **`ctrl+c`**, not `C-c`. Multiple keys per call are applied in order,
   e.g. `{keys:["Down","Enter"]}`.
+- Re-checked against 0.7.2's bundled schema: unchanged.
 
 ## Object shapes (observed)
 
@@ -66,32 +99,72 @@ against a real pane). Empirically enumerated against Herdr 0.7.0 — it is **NOT
   "tab_id":"w0000000000000:t1", "focused":false, "cwd":"/…/demo",
   "foreground_cwd":"/…/demo", "agent":"claude", "agent_status":"done",
   "agent_session":{"source":"herdr:claude","agent":"claude","kind":"id","value":"…"},
-  "revision":0 }
+  "revision":0,
+  "scroll":{"offset_from_bottom":0,"max_offset_from_bottom":128,"viewport_rows":48} }
 ```
 
 `agent_status` ∈ `idle | working | blocked | done | unknown`. Panes without an agent omit/null `agent`.
 
-> **`revision` is a stub on Herdr 0.7.x** (live-verified 2026-07-05): `pane.read` and `pane.list`
-> return `revision: 0` for every pane, including actively-changing ones. Treat it as advisory /
+> **Pane records now carry `scroll`** (new in 0.7.2, live-verified 2026-07-07): `pane.list`,
+> `pane.get`, `pane.current`, and `session.snapshot` panes all include
+> `scroll: {offset_from_bottom, max_offset_from_bottom, viewport_rows} | null` (all `uint64`;
+> `offset_from_bottom == 0` means the pane is scrolled to the bottom). Collie doesn't consume it yet.
+
+> **`revision` is a stub on Herdr 0.7.x** (live-verified 2026-07-05 on 0.7.0; reconfirmed unchanged
+> on 0.7.2, live-verified 2026-07-07): `pane.read`, `pane.list`, and `session.snapshot` all return
+> `revision: 0` for every pane, including actively-changing ones. Treat it as advisory /
 > future-proofing only — never as a load-bearing change detector (Collie's prompt-select race
 > guard re-derives the menu from content for exactly this reason).
 
-## Event stream (available; NOT used by the MVP)
+## Event stream (now wired: event-poked polling)
 
-`events.subscribe` `{subscriptions: [{type, …}]}` keeps the connection open and streams events.
-Empty `subscriptions: []` → `{result:{type:"subscription_started"}}`. The full event catalog
-(the `type` values) is:
+`events.subscribe` `{subscriptions: [{type, pane_id?}]}` keeps the connection open and streams
+events. Empty `subscriptions: []` → ack only, no events ever arrive. The ack and the event frames
+are shaped differently — worth calling out explicitly:
+
+- **Ack:** `{"id":"<id>","result":{"type":"subscription_started"}}`.
+- **Event:** `{"event":"<snake_case>","data":{...}}`. Note the split: subscription `type` values
+  are dot-form (`pane.agent_status_changed`), but the `event` field on each streamed line is
+  snake_case (`pane_agent_status_changed`). Real example line:
+  `{"data":{"pane_id":"w6:p3","type":"pane_agent_detected","workspace_id":"w6"},"event":"pane_agent_detected"}`.
+
+The full event catalog (subscription `type` values), 0.7.2 additions marked `*`:
 
 ```
-workspace.created  workspace.updated  workspace.renamed  workspace.closed  workspace.focused
+workspace.created  workspace.updated  workspace.renamed  workspace.closed  workspace.focused  workspace.moved *
 worktree.created   worktree.opened    worktree.removed
-tab.created        tab.closed         tab.focused        tab.renamed
+tab.created        tab.closed         tab.focused        tab.renamed       tab.moved *
 pane.created       pane.closed        pane.focused       pane.moved        pane.exited
 pane.agent_detected  pane.output_matched  pane.agent_status_changed
+layout.updated *   pane.scroll_changed *
 ```
 
-`pane.agent_status_changed` subscriptions are **pane-scoped** (require a `pane_id`), which makes
-global monitoring via subscriptions a bookkeeping exercise (subscribe/unsubscribe as panes come
-and go, plus resync on reconnect). **The MVP polls `pane.list` instead** (~1.5 s): one cheap call
-returns every pane's `agent_status` with no per-pane subscription management and free resync.
-The event stream is the documented path to lower-latency push later (P3).
+`*` = new to the catalog in 0.7.2 (`workspace.moved`, `tab.moved`, `layout.updated`,
+`pane.scroll_changed`); `workspace.updated` and `pane.focused` were already listed but are called
+out here too since they're easy to miss in the block above.
+
+- **Scoping, verified:** `pane.agent_status_changed`, `pane.scroll_changed`, and
+  `pane.output_matched` **require** `pane_id` in the subscription (omit it →
+  ``invalid_request: missing field `pane_id` ``). Everything else is global — subscribe with just
+  `{type}`.
+- **`layout.updated`** (global) payload is a full `PaneLayoutSnapshot`: `{workspace_id, tab_id,
+  zoomed, area, focused_pane_id, panes:[{pane_id,focused,rect}],
+  splits:[{id,direction,ratio,rect}]}` — the same shape as `session.snapshot`'s `layouts[]`.
+- **`pane.scroll_changed`** (pane-scoped) payload: `{pane_id, workspace_id, scroll}` (`scroll`
+  shape as in "Object shapes" above).
+- **Rich payloads:** `pane_created` / `workspace_created` carry the **full** pane/workspace
+  record, not just ids. `pane_exited` carries `{pane_id, workspace_id}`. `pane_agent_detected`
+  carries `{pane_id, workspace_id, agent?}` and can fire in herd-wide bursts on re-detection —
+  consumers should debounce it.
+
+Collie now polls `session.snapshot` (above) as the source of truth, and additionally holds a
+long-lived `events.subscribe` stream — global lifecycle events plus a per-agent-pane
+`pane.agent_status_changed` subscription, resubscribed whenever the agent-pane set changes —
+purely to **poke** the poller: an event triggers an immediate debounced re-poll, it never updates
+state by itself. While the stream is healthy, interval polling relaxes to `COLLIE_POLL_IDLE_MS`
+(default 12000 ms, min 1000 ms); when the stream is down or reconnecting, it drops back to the
+fast `COLLIE_POLL_MS` cadence. Events accelerate; the snapshot stays authoritative — a missed
+event costs one interval, never correctness.
+
+Also visible in the 0.7.2 schema but unused by Collie: `events.wait`, `pane.send_input`,
+`agent.list`, `pane.wait_for_output` — run `herdr api schema` for the full ~80-method catalog.

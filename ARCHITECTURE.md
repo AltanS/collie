@@ -119,9 +119,17 @@ Product details that shaped the loop:
   it as React text nodes; never `innerHTML` raw terminal output.
 - **PWA cache-busting.** Service workers serve stale clients after an update. Put a bridge
   version in the WS handshake; on mismatch, prompt "Update available — tap to reload."
-- **Output model: poll, not stream.** Herdr exposes `pane.read` (snapshot) and
-  `pane.output_matched` (regex event) but no raw output-stream event, so the live view is built
-  on poll-on-status-change + caching rather than streaming.
+- **Output model: poll, not stream — now event-poked.** Herdr exposes `pane.read` (snapshot) and
+  `pane.output_matched` (regex event) but no raw output-stream event, so the live pane view is
+  still poll-on-status-change + caching, not streaming. What changed is the bridge's own
+  Herdr-facing poll (full contract in `HERDR_API.md`): it ticks `session.snapshot` — one RPC
+  returning every workspace/tab/pane/agent/layout — falling back to the `workspace.list` +
+  `pane.list` (+ `tab.list`) trio on older servers. A long-lived `events.subscribe` stream runs
+  alongside purely to **poke** that poll: lifecycle events plus a per-agent-pane
+  `pane.agent_status_changed` subscription trigger an immediate debounced re-poll, while the
+  interval itself relaxes to `COLLIE_POLL_IDLE_MS` (12 s default) whenever the stream is healthy
+  and drops back to the fast `COLLIE_POLL_MS` when it isn't. The snapshot poll stays the source of
+  truth throughout — a missed event costs one interval, never correctness.
 
 ## 6. Security model
 
@@ -171,3 +179,20 @@ defeat the purpose. **Never use `tailscale funnel`** (public exposure).
   Tailscale aggressively — a notification tap may hit the app before the tunnel is up. Mitigation:
   put the agent's question **in the notification body** so it's actionable even if the web app
   doesn't load instantly.
+
+## 8. Future ideas
+
+Not planned, not scheduled — a parking lot for ideas surfaced while reading Herdr's socket surface,
+so they don't get re-discovered from scratch or acted on by accident.
+
+- **`herdr terminal session observe` / `control` (new in 0.7.2).** A CLI subcommand pair that
+  streams a pane as NDJSON live ANSI frames — `observe` is read-only; `control` additionally
+  accepts stdin commands (`terminal.input`, `terminal.resize`, `terminal.scroll`,
+  `terminal.release`) with one-controller-at-a-time semantics (`--takeover` to steal control). A
+  bridge process could spawn either as a child and get a true live pane mirror, or even a full
+  interactive terminal, instead of polled snapshots. **But raw ANSI frames need a real terminal
+  emulator to render** (cursor movement, screen clears, scroll regions — well beyond the current
+  SGR-color-only parser, see `HERDR_API.md`), and rendering that faithfully in the browser would
+  breach the security posture's "pane output is React text nodes only" XSS boundary (§6). Adopt
+  this deliberately, with a real terminal-emulator library and a re-examined threat model — or not
+  at all. This is the designated parking spot for that idea; don't half-do it.
