@@ -3,13 +3,7 @@ import { precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
-import {
-  buildNotificationActions,
-  decidePush,
-  parseReplyAction,
-  type PushAction,
-  type PushPayload,
-} from "./lib/push-decision";
+import { decidePush, type PushPayload } from "./lib/push-decision";
 
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
 // Workbox SW did — precache the app shell + SPA-fallback navigations — PLUS the two handlers a
@@ -70,93 +64,29 @@ async function handlePush(event: PushEvent): Promise<void> {
     for (const n of stale) n.close();
     return;
   }
-  // One-tap reply buttons ("yes"/"continue"/…): only offered when there's a real pane to reply to.
-  // The button texts ride along in notification.data so notificationclick can look them up by index.
-  const { actions, quickReplies } = buildNotificationActions(payload.quickReplies, decision.paneId);
-  // `renotify` and `actions` aren't in this TS lib's NotificationOptions yet, though both are
-  // honoured by browsers that support notification action buttons (and both need a tag).
-  const options: NotificationOptions & { renotify?: boolean; actions?: PushAction[] } = {
+  // `renotify` isn't in this TS lib's NotificationOptions yet, though it's honoured by browsers that
+  // support it (and it needs a tag).
+  const options: NotificationOptions & { renotify?: boolean } = {
     body: decision.body,
-    data: { paneId: decision.paneId, quickReplies },
+    data: { paneId: decision.paneId },
     icon: ICON,
     badge: ICON,
     tag: decision.tag,
     renotify: decision.renotify,
-    actions,
   };
   await self.registration.showNotification(decision.title, options);
 }
 
 interface NotifData {
   paneId?: string;
-  quickReplies?: string[];
 }
 
-// Tap a notification. A reply action button POSTs the reply straight from the SW (no app needed) and
-// swaps in a brief "Sent ✓" confirmation; a plain body tap keeps the old deep-link-to-the-agent path.
+// Tap a notification: deep-link to the agent's pane (never act on it blind — the reply lives in-app).
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
   const data = (event.notification.data as NotifData | null) ?? {};
-  const replyIndex = event.action ? parseReplyAction(event.action) : null;
-
-  if (replyIndex !== null && data.paneId) {
-    const text = data.quickReplies?.[replyIndex];
-    if (text) {
-      event.waitUntil(sendQuickReply(data.paneId, text, event.notification.tag));
-      return;
-    }
-    // The reply text vanished (shouldn't happen) — fall through to the deep-link.
-  }
   event.waitUntil(openPane(data.paneId));
 });
-
-// POST a quick reply to the same endpoint the app uses (POST /api/pane/:id/reply {text, submit}).
-// Same-origin, so credentials/the trusted-user header ride along automatically. Confirm on success;
-// on failure raise an error notification whose tap opens the pane so the user can retry by hand.
-async function sendQuickReply(paneId: string, text: string, tag: string): Promise<void> {
-  try {
-    const res = await fetch(`/api/pane/${encodeURIComponent(paneId)}/reply`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, submit: true }),
-    });
-    // The bridge answers 200 with { ok: boolean }; a non-2xx OR an { ok: false } body is a failure.
-    let ok = res.ok;
-    if (ok) {
-      try {
-        const json = (await res.json()) as { ok?: boolean } | null;
-        if (json?.ok === false) ok = false;
-      } catch {
-        // 2xx with no/invalid JSON body — trust the status code.
-      }
-    }
-    if (!ok) {
-      await showReplyError(paneId, tag);
-      return;
-    }
-    // Silent confirmation reusing the slot (same tag) so it replaces the original alert, not stacks.
-    await self.registration.showNotification("Sent ✓", {
-      body: text,
-      icon: ICON,
-      badge: ICON,
-      tag,
-      silent: true,
-      data: { paneId },
-    });
-  } catch {
-    await showReplyError(paneId, tag);
-  }
-}
-
-async function showReplyError(paneId: string, tag: string): Promise<void> {
-  await self.registration.showNotification("Reply failed — tap to open", {
-    body: "Couldn't send. Open the pane to retry.",
-    icon: ICON,
-    badge: ICON,
-    tag,
-    data: { paneId },
-  });
-}
 
 // Focus an existing Collie tab (navigating it to the agent) or open a new one — the body-tap path.
 async function openPane(paneId: string | undefined): Promise<void> {
