@@ -3,7 +3,6 @@ import type { ChangeEvent } from "react";
 import { useRevalidator } from "react-router";
 import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Search, Send, Slash, Terminal, WrapText, Zap } from "lucide-react";
 
-import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { setStatus } from "@/lib/status";
@@ -63,11 +62,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   ref,
 ) {
   const revalidator = useRevalidator();
-  // Show the quick-key row (1–5 / Esc / Enter) only while the composer is focused AND the soft
-  // keyboard is actually up. Focus alone isn't enough: collapsing the Android keyboard leaves the
-  // textarea focused (no blur fires), so we also watch the viewport via useKeyboardOpen — which
-  // catches the collapse — and hide the row the moment the keyboard goes down.
-  const keyboardOpen = useKeyboardOpen();
   // Every write affordance is off when the pane is gone OR this device is read-only.
   const locked = gone || readOnly;
 
@@ -77,7 +71,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
   // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
   const [lastSent, setLastSent] = useState<string | null>(null);
-  const [composerFocused, setComposerFocused] = useState(false);
   const [justSent, setJustSent] = useState(false); // brief ✓ on the send button after a send
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
@@ -238,55 +231,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </div>
         )}
 
-        {/* Quick keys — shown only while the composer is focused and the keyboard is actually up.
-            Mimics a physical keyboard's layout so muscle memory carries over: Esc top-left, Tab
-            directly below it, arrows as an inverted-T on the right (↑ over Enter's row, ← ↓ → below).
-            Digits live on the Keys sheet's 123 tab instead (keeps this strip to a fixed 2 rows, which
-            matters with the phone keyboard eating vertical space). All fire on pointer-down +
-            preventDefault so the textarea keeps focus and the soft keyboard stays up. Key names match
-            the verified HERDR_API.md grammar (Left/Right/Up/Down/Tab/Escape/Enter). */}
-        {composerFocused && keyboardOpen && !locked && (
-          <div className="mb-2 space-y-1">
-            {(
-              [
-                [
-                  { label: "Esc", keys: ["Escape"], aria: "Escape" },
-                  null,
-                  { label: "↑", keys: ["Up"], aria: "Up" },
-                  { label: "⏎", keys: ["Enter"], aria: "Enter" },
-                ],
-                [
-                  { label: "Tab", keys: ["Tab"], aria: "Tab" },
-                  { label: "←", keys: ["Left"], aria: "Left" },
-                  { label: "↓", keys: ["Down"], aria: "Down" },
-                  { label: "→", keys: ["Right"], aria: "Right" },
-                ],
-              ] as const
-            ).map((row, i) => (
-              <div key={i} className="grid grid-cols-4 gap-1">
-                {row.map((cell, j) =>
-                  cell ? (
-                    <Button
-                      key={cell.aria}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 px-0 text-xs font-medium"
-                      onPointerDown={(e) => e.preventDefault()}
-                      onClick={() => pressKeys([...cell.keys])}
-                      aria-label={cell.aria}
-                    >
-                      {cell.label}
-                    </Button>
-                  ) : (
-                    <div key={j} aria-hidden />
-                  ),
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* File input stays mounted here (not inside the keyboard-only key row) so the picker
             callback survives the keyboard collapsing. Attach-image fires it from the reply-input row
             below (always visible, not gated behind the keyboard-open quick keys); structural commands
@@ -422,8 +366,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onFocus={() => setComposerFocused(true)}
-            onBlur={() => setComposerFocused(false)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
