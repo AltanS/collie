@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.11.0] - 2026-07-09
+
+### Added
+- Terminal-draft recovery: a queued-then-recalled message stranded on the "❯" input line now surfaces as a composer chip (46dcf35)
+- "Edit here" clears the stranded terminal line and adopts the text into the composer, so the next send isn't corrupted; per-draft dismiss (46dcf35)
+- `extractInputDraft` grammar helper reads the input box's prompt line (skips the empty box + queued-messages placeholder) (46dcf35)
+
 ## [0.10.7] - 2026-07-09
 
 ### Changed
