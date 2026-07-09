@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.10.7] - 2026-07-09
+
+### Changed
+- Header height is consistent between the dashboard and inside a space (both compact) — no more 65px→57px jump (6250e0c)
+- Removed the keyboard-only quick-keys strip (Esc/Tab/arrows/Enter) above View/Controls; those keys now live in the Keys sheet (6250e0c)
+
 ## [0.10.6] - 2026-07-09
 
 ### Security
