@@ -6,6 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.12.0] - 2026-07-10
+
+### Added
+- Space detail is a deep-linkable route (`/space/:spaceId`) with a working browser Back button, replacing the in-home drill-in state (0e5f9c8)
+
+### Changed
+- Dashboard, space, and settings scroll inside a viewport-clipped region so a view-transition slide captures what's on screen, not the full document height (2aa9272)
+
+### Fixed
+- View-transition slides no longer detach the sticky header or warp the content — only the pinned header and the content region animate, and the sliding group's geometry is pinned so it can't size-morph between two different-height views (2aa9272)
+
 ## [0.11.0] - 2026-07-09
 
 ### Added
