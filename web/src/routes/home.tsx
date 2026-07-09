@@ -59,6 +59,7 @@ export function HomeRoute() {
         onHome={toDashboard}
         sessions={data.sessions}
         session={data.session}
+        showSessionSwitcher={!selectedWs}
       />
       <ReadOnlyBanner device={data.device} />
 

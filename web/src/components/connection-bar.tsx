@@ -24,6 +24,9 @@ interface ConnectionBarProps {
   sessions?: SessionSummary[];
   /** The current session name (undefined = primary). */
   session?: string;
+  /** Show the session switcher. Dashboard-only — hidden when drilled into a space so the in-space
+   *  header stays uncluttered (you switch sessions from home). Defaults to shown. */
+  showSessionSwitcher?: boolean;
 }
 
 // One-line truth about whether the data on screen is live, and why not if it isn't. Deliberately
@@ -56,9 +59,12 @@ export function ConnectionBar(props: ConnectionBarProps) {
     <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)] app-header">
       <CollieHome onHome={props.onHome} connecting={isConnecting(props)} wordmark />
       <div className="flex items-center gap-3">
-        {/* Session switcher — self-hides unless there's more than one reachable session (or you're
-            on a non-primary one), so a single-session install sees no change here. */}
-        <SessionSwitcher sessions={props.sessions ?? []} current={props.session} />
+        {/* Session switcher — dashboard-only (hidden when drilled into a space). Also self-hides
+            unless there's more than one reachable session (or you're on a non-primary one), so a
+            single-session install sees no change here. */}
+        {props.showSessionSwitcher !== false && (
+          <SessionSwitcher sessions={props.sessions ?? []} current={props.session} />
+        )}
         <div className={cn("flex items-center gap-1.5 text-xs font-medium", TONE[tone])}>
           <Icon className="size-3.5" />
           <span>{label}</span>

@@ -446,11 +446,13 @@ export function AgentChat({
                 className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
               >
                 {isShell ? (
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full border bg-muted">
-                    <TerminalSquare className="size-4 text-muted-foreground" />
+                  <div className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-muted">
+                    <TerminalSquare className="size-3 text-muted-foreground" />
                   </div>
                 ) : (
-                  <AgentIcon agent={agent.agent} className="size-8" />
+                  // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
+                  // pane's subject, not a second brand competing with Collie's for the header.
+                  <AgentIcon agent={agent.agent} className="size-6" />
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-semibold leading-tight">
