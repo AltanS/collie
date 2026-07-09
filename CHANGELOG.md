@@ -6,6 +6,11 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.10.0] - 2026-07-09
+
+### Added
+- Herdr session switcher: one bridge fronts every named herdr session — `?session=` on the API, `?s=` in the app, sessions summary in the snapshot, per-session notification slots, `COLLIE_MULTI_SESSION` kill-switch (8fa1f20)
+
 ## [0.9.0] - 2026-07-07
 
 ### Changed
