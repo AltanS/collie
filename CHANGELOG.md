@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.10.1] - 2026-07-09
+
+### Changed
+- Session switcher is dashboard-only — hidden once you drill into a space, keeping the in-space header clean (bb0048d)
+- Pane-header agent logo shrunk (size-8 → size-6) so it reads as subordinate to the Collie brand mark (bb0048d)
+
 ## [0.10.0] - 2026-07-09
 
 ### Added
