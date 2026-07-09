@@ -40,13 +40,6 @@ export interface PushMessage {
    */
   session?: string;
   renotify?: boolean;
-  /**
-   * Candidate one-tap reply strings for a single-agent alert (0–3). The SW turns these into
-   * notification actions (it caps at 2 and defaults to ["yes","continue"] when the field is absent),
-   * so a blocked agent can be answered straight from the lock screen. Omitted for multi-agent
-   * digests (no single pane to reply to).
-   */
-  quickReplies?: string[];
 }
 
 export class Push {

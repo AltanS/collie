@@ -34,38 +34,6 @@ export interface HerdSummary {
   paneId?: string;
   /** Re-alert (buzz) the device — true when a new alert arrived, false on a silent retraction update. */
   renotify: boolean;
-  /** One-tap reply candidates when exactly one agent is outstanding; undefined for a digest. */
-  quickReplies?: string[];
-}
-
-// Kind-specific one-tap replies for a blocked/done agent, keyed by Herdr's detected agent name.
-// The two universally useful nudges for a coding CLI waiting on you are "yes" (approve the pending
-// prompt) and "continue" (keep going), so that's the default. Codex's blocked state is almost always
-// an approval gate, where declining ("no") is the more useful second action than "continue". Kept as
-// a small table + default on purpose — it's the extension point, not a per-agent taxonomy.
-const DEFAULT_QUICK_REPLIES: readonly string[] = ["yes", "continue"];
-const QUICK_REPLIES_BY_KIND: Record<string, readonly string[]> = {
-  claude: DEFAULT_QUICK_REPLIES,
-  codex: ["yes", "no"],
-  opencode: DEFAULT_QUICK_REPLIES,
-  pi: DEFAULT_QUICK_REPLIES,
-};
-
-/**
- * Pick the one-tap reply pair for a Herdr-detected agent name (`pane.agent`, e.g. "claude" /
- * "codex" / "claude-code"). Pure + exported for table tests. Always returns a non-empty pair — the
- * kind-specific one when we recognise the agent, else the ["yes","continue"] default. Normalisation
- * mirrors `commandsFor()` in web/src/lib/agent-commands.ts so variants map to the same kind.
- */
-export function deriveQuickReplies(agent: string | null | undefined): string[] {
-  const key = (agent ?? "").toLowerCase().trim();
-  const exact = QUICK_REPLIES_BY_KIND[key];
-  if (exact) return [...exact];
-  if (key.startsWith("claude")) return [...QUICK_REPLIES_BY_KIND.claude!];
-  if (key.startsWith("codex")) return [...QUICK_REPLIES_BY_KIND.codex!];
-  if (key.startsWith("opencode")) return [...QUICK_REPLIES_BY_KIND.opencode!];
-  if (key === "pi" || key.startsWith("pi-") || key.startsWith("pi.")) return [...QUICK_REPLIES_BY_KIND.pi!];
-  return [...DEFAULT_QUICK_REPLIES];
 }
 
 export interface NotifySink {
@@ -102,7 +70,6 @@ export function makeNotifySink(
     render: (s) => {
       if (mute.isMuted()) return;
       const msg: PushMessage = { title: s.title, body: s.body, tag: herdTag, paneId: s.paneId, renotify: s.renotify };
-      if (s.quickReplies) msg.quickReplies = s.quickReplies;
       if (sessionName !== undefined) msg.session = sessionName;
       void push.send(msg);
     },
@@ -218,13 +185,12 @@ export class NotificationCoordinator<H = unknown> {
     if (entries.length === 1) {
       const [paneId, a] = entries[0]!;
       const verb = a.status === "blocked" ? "needs you" : "is done";
-      // One outstanding agent → one pane to reply to, so offer kind-specific one-tap replies.
+      // One outstanding agent → deep-link straight to its pane on tap.
       return {
         title: `${a.agent} ${verb}`,
         body: `${a.workspaceLabel} · ${a.cwd}`,
         paneId,
         renotify,
-        quickReplies: deriveQuickReplies(a.agent),
       };
     }
     const alerts = entries.map(([, a]) => a);
