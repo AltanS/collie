@@ -3,9 +3,9 @@
 > **Design rationale**, captured before the build and kept for the "why" behind Collie's shape —
 > the deployment model, the interaction loop, and especially the security posture. A few passages
 > still speak in the original "P0/P1" planning tense; treat those as historical. **Most notably the
-> live-state transport: this doc sketches a WebSocket fan-out, but the build instead polls over
-> HTTP (`useRevalidator` → `/api/snapshot`) — see §5, "Output model: poll, not stream." Read the
-> WS/WSS passages below as the original design, not what shipped.** For the operational truth see
+> live-state transport: the original design sketched a WebSocket fan-out, but the build polls over
+> HTTP (`useRevalidator` → `/api/snapshot`) — see §5, "Output model: poll, not stream." The
+> WS-era passages below carry notes on what actually shipped.** For the operational truth see
 > [`README.md`](./README.md), [`CLAUDE.md`](./CLAUDE.md), and the verified socket API in
 > [`HERDR_API.md`](./HERDR_API.md).
 
@@ -28,22 +28,23 @@ and voice, no SSH.
 - connects to Herdr's Unix-socket API (`$HERDR_SOCKET_PATH`),
 - serves a **mobile-first web app** (HTTP for assets; live state is polled over HTTP in the
   shipped build — the WebSocket design described here was never built, see §5),
-- translates browser actions → socket methods, and fans Herdr's event stream → browsers,
+- translates browser actions → socket methods; Herdr's event stream only pokes the bridge's own
+  poll (see §5) — nothing streams to the browser,
 - exposed **tailnet-only via `tailscale serve`** (HTTPS + MagicDNS), installable as a **PWA**.
 
 The browser never touches the socket directly; the bridge is the only thing that does.
 
 ```
    phone / laptop (PWA)
-        │  HTTPS + WSS over tailnet  (https://herd.<tailnet>.ts.net)
+        │  HTTPS over tailnet  (https://herd.<tailnet>.ts.net)
         ▼
    tailscale serve  ── injects identity headers, terminates TLS
         │  127.0.0.1:PORT   (bridge binds loopback ONLY)
         ▼
    Collie (this project)
-     • static web app + WebSocket fan-out
+     • static web app + small JSON API (browser polls /api/snapshot)
      • herdr-client adapter (the ONLY code that knows socket method names)
-     • reconnect/resync state machine
+     • snapshot poll, event-poked (see §5)
         │  newline-delimited JSON over Unix socket
         ▼
    Herdr server (owns panes, agents, state)
@@ -98,8 +99,9 @@ Product details that shaped the loop:
 - **Opinionated triage.** The home screen leads with **"NEEDS YOU (n)"** — blocked agents at
   top with a one-line excerpt each; working/idle agents collapsed below. Batch simultaneous
   blocks into one summary notification, not three races.
-- **Close the trust loop.** Show a "Sent" state + timestamp on WS ack, then the visible
-  blocked→working transition. Without it, latency makes users double-tap.
+- **Close the trust loop.** Show a "Sent" state + timestamp on the send ack (shipped: the `POST`'s
+  HTTP response), then the visible blocked→working transition. Without it, latency makes users
+  double-tap.
 
 ## 5. Architecture notes
 
@@ -107,18 +109,22 @@ Product details that shaped the loop:
   `agent.send`, `events.subscribe`, …). It translates to/from an internal domain model
   (`AgentStatus`, `PaneSnapshot`, `BlockingMessage`). Everything else talks to the adapter, so
   a Herdr API rename is a one-file fix, not a shatter.
-- **Two independent reconnect loops, designed in from the start** (not retrofitted):
-  - *bridge ↔ Herdr*: on disconnect → backoff reconnect → re-`events.subscribe` → full resync
-    (`workspace.list` + `pane.read` per pane) → push a fresh snapshot before resuming the stream.
-  - *browser ↔ bridge*: client reconnect with a `bridge_status` banner (`connected` /
-    `reconnecting` / `failed`) so the UI is never silently stale.
-- **Per-client WebSocket backpressure.** Mobile-over-cellular is slow; the local event stream is
-  fast. Watch `bufferedAmount`; above a threshold, coalesce/drop non-critical events and signal
-  the client to re-fetch — otherwise a flaky phone OOMs the bridge.
+- **Two independent recovery loops, designed in from the start** (not retrofitted). As shipped
+  (poll-based, no WS):
+  - *bridge ↔ Herdr*: the snapshot poll doubles as resync — a failed tick marks the herd
+    disconnected (the UI's connection bar shows "Herdr offline") and keeps retrying; the
+    `events.subscribe` stream reconnects with backoff and re-subscribes, and since it only pokes
+    the poll, a dropped stream costs latency, never correctness.
+  - *browser ↔ bridge*: polling makes reconnect trivial — failed polls surface in the connection
+    bar / offline banner, and the next successful poll heals the UI. No socket lifecycle to manage.
+- **Per-client backpressure — mooted by polling.** The WS design needed `bufferedAmount` watching
+  so a slow phone couldn't OOM the bridge; pull-based polling removes the concern: each client
+  fetches a bounded snapshot at its own pace, so there's nothing to buffer or coalesce.
 - **Render `pane.read` safely** (see Security): strip ANSI **server-side** to plain text and render
   it as React text nodes; never `innerHTML` raw terminal output.
-- **PWA cache-busting.** Service workers serve stale clients after an update. Put a bridge
-  version in the WS handshake; on mismatch, prompt "Update available — tap to reload."
+- **PWA cache-busting.** Service workers serve stale clients after an update. Shipped: the build
+  stamp travels in every response (`X-Collie-Build` header + `/api/config`); on mismatch the
+  footer offers "new build — tap to update."
 - **Output model: poll, not stream — now event-poked.** Herdr exposes `pane.read` (snapshot) and
   `pane.output_matched` (regex event) but no raw output-stream event, so the live pane view is
   still poll-on-status-change + caching, not streaming. What changed is the bridge's own
@@ -156,7 +162,8 @@ genuine RCE vectors and are **MUST-DO before first use**:
   "fix" it).
 - **Idle timeout / re-auth.** Tailscale identity proves the *device*, not *who's holding it*. The
   PWA stays "signed in" with no session, so a stolen unlocked phone is a root shell. Add a
-  configurable idle timeout (30–60 min) requiring re-confirmation before the WS reconnects.
+  configurable idle timeout (30–60 min) requiring re-confirmation before the UI resumes
+  (shipped: the idle-lock unmounts the router, pausing all polling, until tapped).
 
 **NICE-TO-HAVE (cheap, add incrementally)**
 - **Tailscale ACL scoping** to your specific devices (`src: tag:my-phone → dst: this:bridge`).
