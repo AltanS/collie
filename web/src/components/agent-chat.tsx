@@ -489,136 +489,141 @@ export function AgentChat({
         )}
       </header>
 
-      {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
-      <ReadOnlyBanner device={device} />
+      {/* Content region below the header — owns the `page` view-transition snapshot so it slides
+          while the header stays pinned; the mirror inside is the scroller (see index.css → View
+          transitions). */}
+      <div className="vt-page flex min-h-0 flex-1 flex-col">
+        {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
+        <ReadOnlyBanner device={device} />
 
-      {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
-          pane, or create one with +. No "All" here (you're always in a specific tab). */}
-      {agent && (
-        <TabStrip
-          workspaceId={agent.workspaceId}
-          tabs={tabs}
-          agents={agents}
-          selected={agent.tabId}
-          onSelect={(id) => id && goToTab(id)}
-          onNewTab={newTab}
-          allowAll={false}
-        />
-      )}
+        {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
+            pane, or create one with +. No "All" here (you're always in a specific tab). */}
+        {agent && (
+          <TabStrip
+            workspaceId={agent.workspaceId}
+            tabs={tabs}
+            agents={agents}
+            selected={agent.tabId}
+            onSelect={(id) => id && goToTab(id)}
+            onNewTab={newTab}
+            allowAll={false}
+          />
+        )}
 
-      {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
-          tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
-      {agent && (
-        <PaneStrip
-          panes={[...agents, ...shellPanes]
-            .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-            .sort((a, b) => a.paneId.localeCompare(b.paneId))}
-          currentPaneId={paneId}
-          onSelect={switchTo}
-        />
-      )}
+        {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
+            tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
+        {agent && (
+          <PaneStrip
+            panes={[...agents, ...shellPanes]
+              .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
+              .sort((a, b) => a.paneId.localeCompare(b.paneId))}
+            currentPaneId={paneId}
+            onSelect={switchTo}
+          />
+        )}
 
-      {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
-          (unless you're selecting text to copy, which the tap must not collapse). */}
-      <div className="min-h-0 flex-1" onClick={focusFromMirror}>
-        <ChatMessageList
-          ref={listRef}
-          dep={display}
-          onAtBottomChange={setFollowing}
-          hasNew={hasNew}
-          className="gap-0 px-2 py-3"
-        >
-          {display ? (
-            <>
-              {/* Load older scrollback — sits at the top of the buffer, so it's reached by scrolling
-                  up. Shown while the buffer is still truncated (older lines exist) and below the cap. */}
-              {truncated && canGrowRequestedLines(paneId, session) && (
-                <button
-                  type="button"
-                  onClick={loadOlder}
-                  disabled={loadingOlder}
-                  className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
-                >
-                  {loadingOlder ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <ArrowUpToLine className="size-3.5" />
-                  )}
-                  {loadingOlder ? "Loading…" : "Load older"}
-                </button>
-              )}
-              <AnsiOutput
-                text={display}
-                wrap={prefs.wrap}
-                fontSize={prefs.fontSize}
-                query={findOpen ? findQuery : ""}
-                currentMatch={findOpen ? currentMatch : -1}
-                onMatchCount={findOpen ? handleMatchCount : undefined}
-                agent={grammarsOn ? agent?.agent : undefined}
-                onPromptAction={handlePromptAction}
-                onWizardAction={handleWizardAction}
-                onPreviewAction={handlePreviewAction}
-                promptDisabled={readOnly || gone}
-              />
-            </>
-          ) : (
-            <div className="py-16 text-center text-sm text-muted-foreground">(no recent output)</div>
-          )}
-        </ChatMessageList>
-      </div>
-
-      {/* Bottom region: the status line floats as a slim overlay above the tray + composer, so it
-          tells you what last happened then vanishes — never pushing or shifting content. */}
-      <div className="relative">
-        <div className="pointer-events-none absolute inset-x-0 bottom-full px-3 pb-1.5">
-          <StatusArea />
+        {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
+            (unless you're selecting text to copy, which the tap must not collapse). */}
+        <div className="min-h-0 flex-1" onClick={focusFromMirror}>
+          <ChatMessageList
+            ref={listRef}
+            dep={display}
+            onAtBottomChange={setFollowing}
+            hasNew={hasNew}
+            className="gap-0 px-2 py-3"
+          >
+            {display ? (
+              <>
+                {/* Load older scrollback — sits at the top of the buffer, so it's reached by scrolling
+                    up. Shown while the buffer is still truncated (older lines exist) and below the cap. */}
+                {truncated && canGrowRequestedLines(paneId, session) && (
+                  <button
+                    type="button"
+                    onClick={loadOlder}
+                    disabled={loadingOlder}
+                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
+                  >
+                    {loadingOlder ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <ArrowUpToLine className="size-3.5" />
+                    )}
+                    {loadingOlder ? "Loading…" : "Load older"}
+                  </button>
+                )}
+                <AnsiOutput
+                  text={display}
+                  wrap={prefs.wrap}
+                  fontSize={prefs.fontSize}
+                  query={findOpen ? findQuery : ""}
+                  currentMatch={findOpen ? currentMatch : -1}
+                  onMatchCount={findOpen ? handleMatchCount : undefined}
+                  agent={grammarsOn ? agent?.agent : undefined}
+                  onPromptAction={handlePromptAction}
+                  onWizardAction={handleWizardAction}
+                  onPreviewAction={handlePreviewAction}
+                  promptDisabled={readOnly || gone}
+                />
+              </>
+            ) : (
+              <div className="py-16 text-center text-sm text-muted-foreground">(no recent output)</div>
+            )}
+          </ChatMessageList>
         </div>
 
-        {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
-            panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
-            tap always works). Shown whenever a pane is open — even the last one, so it stays
-            closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
-            browser scroll. */}
-        {agents.length + shellPanes.length > 0 && (
-          <button
-            type="button"
-            aria-label="Switch pane"
-            {...swipe}
-            onClick={() => setDrawer("switcher")}
-            className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
-          >
-            <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
-          </button>
-        )}
-
-        {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx would otherwise
-            vanish with the stripped input box). Sits directly above the composer, as it did in the
-            TUI. Verbatim text — a React text node, so no XSS surface. */}
-        {statusLine && (
-          <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground/80">
-            {statusLine}
+        {/* Bottom region: the status line floats as a slim overlay above the tray + composer, so it
+            tells you what last happened then vanishes — never pushing or shifting content. */}
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-x-0 bottom-full px-3 pb-1.5">
+            <StatusArea />
           </div>
-        )}
 
-        <Composer
-          ref={composerRef}
-          paneId={paneId}
-          session={session}
-          agent={agent?.agent}
-          isShell={isShell}
-          gone={gone}
-          readOnly={readOnly}
-          text={text}
-          terminalDraft={terminalDraft}
-          prefs={prefs}
-          setWrap={setWrap}
-          stepFontSize={stepFontSize}
-          setRawTerminal={setRawTerminal}
-          onSent={onSent}
-          // Find-in-output lives in the composer's View row now (the header was the wrong home for it).
-          // Enabled only when there's buffered output to search; opening it freezes the tail (openFind).
-          onOpenFind={display ? openFind : undefined}
-        />
+          {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
+              panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
+              tap always works). Shown whenever a pane is open — even the last one, so it stays
+              closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
+              browser scroll. */}
+          {agents.length + shellPanes.length > 0 && (
+            <button
+              type="button"
+              aria-label="Switch pane"
+              {...swipe}
+              onClick={() => setDrawer("switcher")}
+              className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+            >
+              <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
+            </button>
+          )}
+
+          {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx would otherwise
+              vanish with the stripped input box). Sits directly above the composer, as it did in the
+              TUI. Verbatim text — a React text node, so no XSS surface. */}
+          {statusLine && (
+            <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground/80">
+              {statusLine}
+            </div>
+          )}
+
+          <Composer
+            ref={composerRef}
+            paneId={paneId}
+            session={session}
+            agent={agent?.agent}
+            isShell={isShell}
+            gone={gone}
+            readOnly={readOnly}
+            text={text}
+            terminalDraft={terminalDraft}
+            prefs={prefs}
+            setWrap={setWrap}
+            stepFontSize={stepFontSize}
+            setRawTerminal={setRawTerminal}
+            onSent={onSent}
+            // Find-in-output lives in the composer's View row now (the header was the wrong home for it).
+            // Enabled only when there's buffered output to search; opening it freezes the tail (openFind).
+            onOpenFind={display ? openFind : undefined}
+          />
+        </div>
       </div>
 
       {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture */}

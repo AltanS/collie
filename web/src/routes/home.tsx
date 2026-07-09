@@ -50,7 +50,7 @@ export function HomeRoute() {
   const selectedWs = space ? data.workspaces.find((w) => w.workspaceId === space) : undefined;
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-screen-sm flex-col">
+    <div className="mx-auto flex h-[100dvh] max-w-screen-sm flex-col">
       <ConnectionBar
         online={online}
         bridge={data.bridge}
@@ -61,57 +61,64 @@ export function HomeRoute() {
         session={data.session}
         showSessionSwitcher={!selectedWs}
       />
-      <ReadOnlyBanner device={data.device} />
 
-      {selectedWs ? (
-        // Drill-in: one space's tabs + panes, with the space/tab strips for in-space navigation.
-        // The SpaceStrip's "All" chip clears the selection and returns to the dashboard.
-        <>
-          <SpaceStrip
-            workspaces={data.workspaces}
-            agents={data.agents}
-            selected={space}
-            onSelect={(id) => (id === null ? toDashboard() : switchSpace(id))}
-            onNewSpace={() => setNewSpaceOpen(true)}
-            onBack={toDashboard}
-          />
-          <TabStrip
-            workspaceId={selectedWs.workspaceId}
-            tabs={data.tabs}
-            agents={data.agents}
-            selected={tab}
-            onSelect={switchTab}
-            onNewTab={newTab}
-          />
-          <main className="flex-1">
-            <SpaceView
-              workspace={selectedWs}
+      {/* Content region below the header: a viewport-clipped internal scroller that owns the `page`
+          view-transition snapshot. Because it captures its visible box (not the full document
+          height), a slide shows exactly what's on screen, and the sticky header stays out of the
+          animation entirely (see index.css → View transitions). */}
+      <div className="vt-page flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <ReadOnlyBanner device={data.device} />
+
+        {selectedWs ? (
+          // Drill-in: one space's tabs + panes, with the space/tab strips for in-space navigation.
+          // The SpaceStrip's "All" chip clears the selection and returns to the dashboard.
+          <>
+            <SpaceStrip
+              workspaces={data.workspaces}
+              agents={data.agents}
+              selected={space}
+              onSelect={(id) => (id === null ? toDashboard() : switchSpace(id))}
+              onNewSpace={() => setNewSpaceOpen(true)}
+              onBack={toDashboard}
+            />
+            <TabStrip
+              workspaceId={selectedWs.workspaceId}
               tabs={data.tabs}
               agents={data.agents}
-              shellPanes={data.shellPanes}
-              selectedTab={tab}
-              onOpen={open}
+              selected={tab}
+              onSelect={switchTab}
+              onNewTab={newTab}
             />
+            <main className="flex-1">
+              <SpaceView
+                workspace={selectedWs}
+                tabs={data.tabs}
+                agents={data.agents}
+                shellPanes={data.shellPanes}
+                selectedTab={tab}
+                onOpen={open}
+              />
+            </main>
+          </>
+        ) : (
+          // Dashboard: spaces (with tab/pane counts) on top, the agent triage below.
+          <main className="flex-1">
+            <SpaceOverview
+              workspaces={data.workspaces}
+              agents={data.agents}
+              onOpen={drillInto}
+              onNewSpace={() => setNewSpaceOpen(true)}
+            />
+            <AgentList agents={data.agents} bridge={data.bridge} onOpen={open} />
           </main>
-        </>
-      ) : (
-        // Dashboard: spaces (with tab/pane counts) on top, the agent triage below.
-        <main className="flex-1">
-          <SpaceOverview
-            workspaces={data.workspaces}
-            agents={data.agents}
-            onOpen={drillInto}
-            onNewSpace={() => setNewSpaceOpen(true)}
-          />
-          <AgentList agents={data.agents} bridge={data.bridge} onOpen={open} />
-        </main>
-      )}
+        )}
 
-      {/* Build stamp: which bundle you're running, with a stale-cache nudge. */}
-      <BuildStamp className="px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
+        {/* Build stamp: which bundle you're running, with a stale-cache nudge. */}
+        <BuildStamp className="px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
+      </div>
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
-          floating so it never shifts the list. */}
+          floating so it never shifts the list. Stays outside the scroller so it never scrolls away. */}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
         <StatusArea />
       </div>

@@ -53,7 +53,7 @@ export function SettingsRoute() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-screen-sm flex-col">
+    <div className="mx-auto flex h-[100dvh] max-w-screen-sm flex-col">
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-background/85 px-2 py-2 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)] app-header">
         <Button
           variant="ghost"
@@ -66,7 +66,7 @@ export function SettingsRoute() {
         <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
       </header>
 
-      <main className="flex flex-1 flex-col space-y-4 p-4">
+      <main className="vt-page flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">
             <div className="flex min-w-0 items-start gap-3">

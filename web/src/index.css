@@ -113,15 +113,34 @@
 }
 
 /* ── View transitions ───────────────────────────────────────────────────────────────────────────
-   Animate switches between views (lib/view-transition.ts). The app chrome (the sticky header,
-   tagged `view-transition-name: app-header`) is its own snapshot group, so it stays pinned and just
-   crossfades while the page content underneath slides. `data-vt` on <html> picks the direction:
+   Animate switches between views (lib/view-transition.ts). Two snapshot groups only: the app chrome
+   (the sticky header, `view-transition-name: app-header`) stays pinned and crossfades, and the
+   scrolling content region below it (`.vt-page`, `view-transition-name: page`) slides. We deliberately
+   do NOT snapshot the whole document — the UA default `:root { view-transition-name: root }` is
+   cleared below — so the header is never dragged into the slide (which used to detach it) and the
+   `page` group can't size-morph between two different-height views (which used to warp the content).
+   Because `.vt-page` is each route's viewport-clipped internal scroller, its snapshot is the visible
+   box (what's on screen), not the full document height. `data-vt` on <html> picks the direction:
    forward = new view in from the right, backward = the reverse, absent = a plain crossfade for
    lateral moves (sibling space / tab / pane switch). */
 
+/* Drop the UA's whole-document snapshot: only app-header + page participate, everything else swaps
+   instantly. This is what stops the header-detach + content-warp — nothing captures the header's band
+   or the full page height any more. */
+:root {
+  view-transition-name: none;
+}
+
+/* Pin the sliding group's geometry: the default group animation interpolates width/height/transform
+   old→new, which is the size-morph that warped the slide. `animation: none` snaps the group to the new
+   box so only the image-pair (below) animates — a clean translate, no stretch. */
+::view-transition-group(page) {
+  animation: none;
+}
+
 /* Lateral move (no data-vt): a quick crossfade. The UA's default fade keyframes, our timing. */
-::view-transition-old(root),
-::view-transition-new(root) {
+::view-transition-old(page),
+::view-transition-new(page) {
   animation-duration: 160ms;
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -133,16 +152,16 @@
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-html[data-vt="forward"]::view-transition-old(root) {
+html[data-vt="forward"]::view-transition-old(page) {
   animation: vt-slide-out-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
-html[data-vt="forward"]::view-transition-new(root) {
+html[data-vt="forward"]::view-transition-new(page) {
   animation: vt-slide-in-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
-html[data-vt="backward"]::view-transition-old(root) {
+html[data-vt="backward"]::view-transition-old(page) {
   animation: vt-slide-out-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
-html[data-vt="backward"]::view-transition-new(root) {
+html[data-vt="backward"]::view-transition-new(page) {
   animation: vt-slide-in-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
@@ -240,6 +259,18 @@ html[data-vt="backward"]::view-transition-new(root) {
   view-transition-name: app-header;
 }
 html[data-sheet-open] .app-header {
+  view-transition-name: none;
+}
+
+/* The sliding content region: each route's viewport-clipped scroller below the header opts in with
+   this class, so home↔space↔pane↔settings share one `page` snapshot that slides (see the View
+   transitions block above). Mirror the app-header sheet-open drop: while a sheet is open we strip the
+   name so a poll-driven repaint of the region can't get composited above the sheet backdrop — and
+   nothing is transitioning with a sheet open anyway (navigations close it first). */
+.vt-page {
+  view-transition-name: page;
+}
+html[data-sheet-open] .vt-page {
   view-transition-name: none;
 }
 
