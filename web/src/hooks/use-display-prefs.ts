@@ -4,9 +4,9 @@ import { useCallback, useState } from "react";
 // Safe to call in SSR contexts (localStorage guarded throughout).
 
 export interface DisplayPrefs {
-  /** Whether the mirror wraps long lines (default: true). */
+  /** Whether the mirror wraps long lines (default: false — preserves column alignment like desktop Herdr; enable Wrap in View for prose). */
   wrap: boolean;
-  /** Font size in px for the mirror pre (default: 11, range: 9–16). */
+  /** Font size in px for the mirror pre (default: 12, range: 9–16). */
   fontSize: number;
   /**
    * Raw-terminal escape hatch (default: false). When on, the mirror renders the PLAIN terminal —
@@ -17,10 +17,10 @@ export interface DisplayPrefs {
   rawTerminal: boolean;
 }
 
-const STORAGE_KEY = "collie:display-prefs";
+const STORAGE_KEY = "collie:display-prefs:v3";
 const FONT_MIN = 9;
 const FONT_MAX = 16;
-const DEFAULTS: DisplayPrefs = { wrap: true, fontSize: 11, rawTerminal: false };
+const DEFAULTS: DisplayPrefs = { wrap: false, fontSize: 12, rawTerminal: false };
 
 function clampFont(n: number): number {
   return Math.max(FONT_MIN, Math.min(FONT_MAX, Math.round(n)));

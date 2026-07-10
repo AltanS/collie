@@ -427,7 +427,7 @@ export function AgentChat({
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col">
+    <div className="flex h-[100dvh] min-w-0 w-full max-w-[100dvw] flex-col overflow-x-hidden">
       {/* Header — while find is open, the find bar takes over this row (one-handed, thumb-reachable). */}
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-zinc-800 pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
         {findOpen ? (
@@ -489,7 +489,7 @@ export function AgentChat({
       </header>
 
       {/* Content region below the header — the mirror inside is the scroller. */}
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
         <ReadOnlyBanner device={device} />
 
@@ -521,7 +521,7 @@ export function AgentChat({
 
         {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
             (unless you're selecting text to copy, which the tap must not collapse). */}
-        <div className="min-h-0 flex-1" onClick={focusFromMirror}>
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden" onClick={focusFromMirror}>
           <ChatMessageList
             ref={listRef}
             dep={display}
