@@ -13,6 +13,45 @@ special-keys pad.
 A Herdr plugin (thin launcher) plus a Bun/TypeScript bridge running as a `systemd --user` service,
 serving a Vite + React + shadcn PWA.
 
+## Contents
+
+- [Demo](#demo)
+- [Security — read first](#-security--read-before-you-run-it)
+- [Requirements](#requirements)
+- [Install](#install)
+- [First run — what you'll see](#first-run--what-youll-see)
+- [Configure](#configure)
+- [Commands](#commands) · [Herdr actions](#herdr-actions)
+- [Update](#update-to-a-new-release)
+- [Uninstall](#stop-or-uninstall)
+- [Deployment variants](#deployment-variants)
+- [Web Push](#web-push-optional)
+- [Troubleshooting](#troubleshooting)
+- [Architecture](#architecture)
+
+## Demo
+
+<p align="center">
+  <video src="assets/2026-07-10-collie-demo.mp4" controls width="720">
+    <a href="assets/2026-07-10-collie-demo.mp4">▶ Watch the Collie demo (43s)</a>
+  </video>
+</p>
+
+A run through the herd from a phone: the dashboard floats the agent that **needs you** to the top,
+you drill into a space's tabs and panes, switch between herds, and pick up a push notification the
+moment an agent is waiting on input.
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard — Needs you, Spaces, Idle · done" width="250"><br><sub><b>Dashboard</b> — agents needing you float to the top</sub></td>
+    <td align="center" width="50%"><img src="assets/space-detail.png" alt="A space's tabs and panes" width="250"><br><sub><b>Space</b> — its tabs and panes, deep-linkable</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="assets/session-switcher.png" alt="Session switcher" width="250"><br><sub><b>Session switcher</b> — one bridge, every herd</sub></td>
+    <td align="center" width="50%"><img src="assets/settings.png" alt="Settings — notifications and diagnostics" width="250"><br><sub><b>Settings</b> — notifications, DND, diagnostics</sub></td>
+  </tr>
+</table>
+
 ## Motivation
 
 I wanted to check on my agents from my phone. The usual route is [Termux](https://termux.dev) — SSH
@@ -299,8 +338,9 @@ Collie registers these actions in `herdr-plugin.toml`; invoke any with
 
 ## Manage & update
 
-**Stop or uninstall.** Pause the bridge without removing anything (a later `start` brings it right
-back):
+### Stop or uninstall
+
+Pause the bridge without removing anything (a later `start` brings it right back):
 
 ```bash
 scripts/collie-ctl.sh stop      # or: herdr plugin action invoke stop --plugin herdr.collie
@@ -317,8 +357,10 @@ scripts/collie-ctl.sh uninstall # or: herdr plugin action invoke uninstall --plu
 Then `herdr plugin uninstall herdr.collie` (or, for a linked clone, just deleting the directory)
 removes the plugin registration itself.
 
-**Update to a new release.** Collie is link-mode — the checkout *is* the plugin, and there's no
-`herdr plugin update`. One command does the lot:
+### Update to a new release
+
+Collie is link-mode — the checkout *is* the plugin, and there's no `herdr plugin update`. One command
+does the lot:
 
 ```bash
 scripts/collie-ctl.sh update    # or: herdr plugin action invoke update --plugin herdr.collie
