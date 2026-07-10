@@ -134,7 +134,7 @@ export async function fetchPane(
   const url = withSession(`/api/pane/${encodeURIComponent(paneId)}${q}`, session);
   // Pane ids are per-session (each session is a separate Herdr server), so the ETag/body cache must
   // be keyed by session too — otherwise a "w1:p1" in one session would 304 into another's mirror.
-  const cacheKey = `${session ?? ""} ${paneId}`;
+  const cacheKey = `${session ?? ""}\u0000${paneId}`;
 
   const cached = paneCache.get(cacheKey);
   const headers: Record<string, string> = {};

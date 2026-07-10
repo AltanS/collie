@@ -53,9 +53,9 @@ export function SessionSwitcher({ sessions, current }: SessionSwitcherProps) {
         <span className="max-w-[7rem] truncate">{currentName}</span>
       </button>
 
-      {/* Portal to document.body: ConnectionBar's backdrop-blur-md header is a CSS containing block
-          for fixed-position descendants, so the sheet's `fixed inset-0` would resolve against the
-          56px header instead of the viewport if rendered in place. */}
+      {/* Portal to document.body so the sheet's `fixed inset-0` always resolves against the viewport,
+          not an ancestor: any transform / filter / backdrop-filter on the app header (it has carried a
+          backdrop-blur before) would make it the containing block and clip the sheet to the header band. */}
       {createPortal(
         <BottomSheet open={open} onClose={() => setOpen(false)} title="Sessions">
           <ul className="flex flex-col gap-1">

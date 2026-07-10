@@ -6,77 +6,22 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
-## [0.12.1] - 2026-07-10
-
-### Fixed
-- View transitions no longer flicker the dashboard list on every poll — React Router fires one per revalidation, so animation is gated to transitions we initiate and un-armed ones swap instantly (71e2ba2)
-- `loaders.ts` is text again (real git diff/blame): the `paneKey` joiner is an escaped NUL, not a literal one (fcb0b7d)
-- Deep-linking a space that never existed shows "Space not found", not "Space closed" (fcb0b7d)
-
-### Changed
-- Settings gear navigates imperatively so it still slides under the transition gate (71e2ba2)
-- Security posture documents that `COLLIE_MULTI_SESSION` (default on) fronts every named session (fcb0b7d)
-
-## [0.12.0] - 2026-07-10
+## [0.10.0] - 2026-07-10
 
 ### Added
+- Herdr session switcher: one bridge fronts every named herdr session — `?session=` on the API, `?s=` in the app, a sessions summary in the snapshot, per-session notification slots, and a `COLLIE_MULTI_SESSION` kill-switch (8fa1f20)
 - Space detail is a deep-linkable route (`/space/:spaceId`) with a working browser Back button, replacing the in-home drill-in state (0e5f9c8)
+- Terminal-draft recovery: a queued-then-recalled message stranded on the "❯" input line surfaces as a composer chip, with "Edit here" to clear the line and adopt the text cleanly (46dcf35)
 
 ### Changed
-- Dashboard, space, and settings scroll inside a viewport-clipped region so a view-transition slide captures what's on screen, not the full document height (2aa9272)
+- Dashboard leads with "Needs you" — agents awaiting your input sit at the top, above the spaces overview (1d92592)
+- Dashboard, space, and settings scroll inside a viewport-clipped region instead of the whole document (2aa9272)
+- Session switcher and the session chip are dashboard-only, keeping the in-space and pane headers clean (bb0048d, ba56ba9)
+- Header polish: consistent compact height across the dashboard and inside a space, zinc-800 nav chrome, a ringed Collie mark, a smaller pane-header agent logo, and the keyboard-only quick-keys strip removed (6250e0c, 9da7195, 35db0e5, ba56ba9)
+- Security posture documents that `COLLIE_MULTI_SESSION` (default on) fronts every named session under the config root (fcb0b7d)
 
 ### Fixed
-- View-transition slides no longer detach the sticky header or warp the content — only the pinned header and the content region animate, and the sliding group's geometry is pinned so it can't size-morph between two different-height views (2aa9272)
-
-## [0.11.0] - 2026-07-09
-
-### Added
-- Terminal-draft recovery: a queued-then-recalled message stranded on the "❯" input line now surfaces as a composer chip (46dcf35)
-- "Edit here" clears the stranded terminal line and adopts the text into the composer, so the next send isn't corrupted; per-draft dismiss (46dcf35)
-- `extractInputDraft` grammar helper reads the input box's prompt line (skips the empty box + queued-messages placeholder) (46dcf35)
-
-## [0.10.7] - 2026-07-09
-
-### Changed
-- Header height is consistent between the dashboard and inside a space (both compact) — no more 65px→57px jump (6250e0c)
-- Removed the keyboard-only quick-keys strip (Esc/Tab/arrows/Enter) above View/Controls; those keys now live in the Keys sheet (6250e0c)
-
-## [0.10.6] - 2026-07-09
-
-### Security
-- Removed one-tap yes/no reply buttons from push notifications — they POSTed to the terminal without opening the app, i.e. approving blind. Notifications now only deep-link to the pane (3873e42)
-
-## [0.10.5] - 2026-07-09
-
-### Changed
-- Navigation chrome (header + footer nav) brightened to a solid zinc-800 surface, lifting it off the content (9da7195)
-
-## [0.10.4] - 2026-07-09
-
-### Changed
-- Faint translucent zinc disc behind the Collie header mark, lifting its silhouette off the dark header (45daa22)
-
-## [0.10.3] - 2026-07-09
-
-### Changed
-- Collie header ring is thinner and lighter, with more diameter so the mark has room to breathe (35db0e5)
-
-## [0.10.2] - 2026-07-09
-
-### Changed
-- Pane header no longer shows the session chip — session UI is dashboard-only, keeping the in-space header clean (ba56ba9)
-- Collie header mark framed with a whitesmoke ring so it reads as a deliberate badge on the dark header (ba56ba9)
-
-## [0.10.1] - 2026-07-09
-
-### Changed
-- Session switcher is dashboard-only — hidden once you drill into a space, keeping the in-space header clean (bb0048d)
-- Pane-header agent logo shrunk (size-8 → size-6) so it reads as subordinate to the Collie brand mark (bb0048d)
-
-## [0.10.0] - 2026-07-09
-
-### Added
-- Herdr session switcher: one bridge fronts every named herdr session — `?session=` on the API, `?s=` in the app, sessions summary in the snapshot, per-session notification slots, `COLLIE_MULTI_SESSION` kill-switch (8fa1f20)
+- Deep-linking a space that never existed shows "Space not found" rather than "Space closed" (fcb0b7d)
 
 ## [0.9.0] - 2026-07-07
 
