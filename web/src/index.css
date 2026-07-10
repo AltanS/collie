@@ -138,6 +138,24 @@
   animation: none;
 }
 
+/* Pin the header group too: the chrome stays put across every transition (only its image-pair
+   crossfades), so its group must never interpolate — otherwise the UA's default group animation runs
+   on each RR poll transition even when the header hasn't moved. */
+::view-transition-group(app-header) {
+  animation: none;
+}
+
+/* Neutralise transitions we didn't initiate. React Router fires a view transition on every poll-driven
+   revalidation (see lib/view-transition.ts → installGate), which nothing navigated; without this each
+   tick would crossfade the named `page`/`app-header` groups — a visible blink. Our own transitions
+   stamp `html[data-vt-anim]` (armed + cleared by the gate), so anything WITHOUT it swaps instantly. */
+html:not([data-vt-anim])::view-transition-old(page),
+html:not([data-vt-anim])::view-transition-new(page),
+html:not([data-vt-anim])::view-transition-old(app-header),
+html:not([data-vt-anim])::view-transition-new(app-header) {
+  animation: none !important;
+}
+
 /* Lateral move (no data-vt): a quick crossfade. The UA's default fade keyframes, our timing. */
 ::view-transition-old(page),
 ::view-transition-new(page) {

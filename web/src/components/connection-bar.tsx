@@ -1,10 +1,10 @@
 import { Plug, PlugZap, Settings, WifiOff } from "lucide-react";
-import { Link } from "react-router";
+import { useNavigate } from "react-router";
 
 import { cn } from "@/lib/utils";
-import { markNavDirection } from "@/lib/view-transition";
+import { navigateWithTransition } from "@/lib/view-transition";
 import { isConnecting } from "@/lib/connection";
-import { sessionSearch } from "@/lib/session";
+import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { SessionSwitcher } from "@/components/session-switcher";
 import type { BridgeStatus, SessionSummary } from "@/lib/types";
@@ -52,6 +52,7 @@ const TONE: Record<"ok" | "warn" | "bad", string> = {
 
 export function ConnectionBar(props: ConnectionBarProps) {
   const { label, tone, Icon } = resolve(props);
+  const navigate = useNavigate();
   // The Collie mark doubles as the connection loader: it gallops while we're not yet live —
   // connecting, reconnecting, or offline — and rests once the data on screen is live. The same
   // CollieHome renders inside a pane, so the top-left mark means the same thing on every screen.
@@ -69,15 +70,17 @@ export function ConnectionBar(props: ConnectionBarProps) {
           <Icon className="size-3.5" />
           <span>{label}</span>
         </div>
-        <Link
-          to={{ pathname: "/settings", search: sessionSearch(props.session) }}
-          viewTransition
-          onClick={() => markNavDirection("forward")}
+        {/* Imperative nav so Settings animates like the rest of the app: the view-transition gate
+            (lib/view-transition.ts) only animates transitions WE arm, so a declarative
+            <Link viewTransition> would swap without the forward slide. navigateWithTransition arms it. */}
+        <button
+          type="button"
+          onClick={() => navigateWithTransition(navigate, settingsPath(props.session), "forward")}
           aria-label="Settings"
           className="text-muted-foreground transition-colors hover:text-foreground"
         >
           <Settings className="size-5" />
-        </Link>
+        </button>
       </div>
     </header>
   );

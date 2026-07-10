@@ -1,13 +1,29 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import type { ReactElement } from "react";
 
 import { ConnectionBar } from "./connection-bar";
 
-// The bar contains a <Link> to /settings, so it needs a router context.
+// The bar calls useNavigate (the Settings gear) and renders router-aware children, so it needs a
+// router context.
 function renderBar(ui: ReactElement) {
   return render(ui, { wrapper: MemoryRouter });
+}
+
+// Probe the live router location so a test can assert where an imperative navigation landed.
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="loc">{loc.pathname + loc.search}</div>;
+}
+
+function renderBarAt(ui: ReactElement, initialEntries: string[]) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      {ui}
+      <LocationProbe />
+    </MemoryRouter>,
+  );
 }
 
 describe("ConnectionBar", () => {
@@ -55,18 +71,20 @@ describe("ConnectionBar", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("omits ?s= from the Settings link on the primary session", () => {
-    renderBar(<ConnectionBar online bridge="connected" error={false} />);
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
+  it("navigates to /settings with no ?s= on the primary session", async () => {
+    renderBarAt(<ConnectionBar online bridge="connected" error={false} />, ["/"]);
+    // Imperative nav (arms the view-transition gate so Settings slides like the rest of the app) —
+    // assert it still lands on the right, session-scoped path.
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByTestId("loc").textContent).toBe("/settings");
   });
 
-  it("carries the current session into the Settings link", () => {
-    render(<ConnectionBar online bridge="connected" error={false} session="collie-demo" />, {
-      wrapper: ({ children }) => <MemoryRouter initialEntries={["/?s=collie-demo"]}>{children}</MemoryRouter>,
-    });
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
-      "href",
-      "/settings?s=collie-demo",
+  it("carries the current session into the Settings navigation", async () => {
+    renderBarAt(
+      <ConnectionBar online bridge="connected" error={false} session="collie-demo" />,
+      ["/?s=collie-demo"],
     );
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByTestId("loc").textContent).toBe("/settings?s=collie-demo");
   });
 });
