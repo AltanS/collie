@@ -37,6 +37,13 @@ line — do it as part of the change, not after**:
   `scripts/install-hooks.sh`) blocks commits where functional code changed but the version didn't.
   Escape hatch for a single commit: `SKIP_VERSION_CHECK=1 git commit …`.
 
+**Tag the release when you push it.** Cutting a release means the three version files + the newest
+`CHANGELOG.md` heading agree on `x.y.z` (steps 1–3). When that release lands on `main` and you push,
+**always push a matching annotated git tag with it** — `git tag -a vX.Y.Z -m "Collie X.Y.Z" && git
+push origin vX.Y.Z` (or `git push --follow-tags` so the tag ships *with* the release). One `v<x.y.z>`
+tag per shipped version on the remote. Not hook-enforced — it's on you. (Adding/adjusting this note is
+a doc-only change and needs no version bump.)
+
 ## Build / run (operational facts that are easy to forget)
 
 - **Frontend changes** (`web/`): rebuild with `bun run build` (root) or `cd web && bun run build`.
