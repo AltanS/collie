@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
-import { fixtureAgents } from "@/test/handlers";
+import { fixtureAgents, fixtureSnapshot } from "@/test/handlers";
 
 // loaders.ts keeps a module-level "last good" cache, so each test re-imports the module fresh
 // (via vi.resetModules) to start from an empty cache and stay independent of run order.
@@ -142,6 +142,77 @@ describe("requested-lines bookkeeping (Load older)", () => {
     growRequestedLines("w1:p1");
     resetRequestedLines("w1:p1");
     expect(getRequestedLines("w1:p1")).toBe(600);
+  });
+});
+
+// The session in the request URL's `?s=` must reach the API as `session=` and be exposed on the
+// loader data so components don't re-derive it — and each session's keep-previous-data cache is
+// independent, so a failed refresh in one never surfaces another session's herd/pane.
+describe("loaders — session scoping", () => {
+  it("rootLoader threads ?s= to the API as session= and surfaces it on the data", async () => {
+    let captured: string | null = "MISSING";
+    server.use(
+      http.get("/api/snapshot", ({ request }) => {
+        captured = new URL(request.url).searchParams.get("session");
+        return HttpResponse.json(fixtureSnapshot);
+      }),
+    );
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://localhost/?s=collie-demo") });
+    expect(captured).toBe("collie-demo");
+    expect(data.session).toBe("collie-demo");
+    expect(data.sessions).toHaveLength(2);
+  });
+
+  it("rootLoader omits the param on the primary session (no ?s=)", async () => {
+    let captured: string | null = "MISSING";
+    server.use(
+      http.get("/api/snapshot", ({ request }) => {
+        captured = new URL(request.url).searchParams.get("session");
+        return HttpResponse.json(fixtureSnapshot);
+      }),
+    );
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://localhost/") });
+    expect(captured).toBeNull();
+    expect(data.session).toBeUndefined();
+  });
+
+  it("paneLoader threads the session through to the pane read", async () => {
+    let captured: string | null = "MISSING";
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, ({ request }) => {
+        captured = new URL(request.url).searchParams.get("session");
+        return HttpResponse.json({ paneId: "w1:p1", text: "hi", truncated: false, revision: 1 });
+      }),
+    );
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/?s=collie-demo"),
+    });
+    expect(captured).toBe("collie-demo");
+    expect(data.session).toBe("collie-demo");
+  });
+
+  it("keeps a per-session stale cache — a failed refresh in one session shows no other's herd", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/") }); // prime the primary session
+
+    failSnapshot(); // now every snapshot 500s
+    const stale = await rootLoader({ request: new Request("http://localhost/?s=collie-demo") });
+
+    expect(stale.error).toBe(true);
+    expect(stale.session).toBe("collie-demo");
+    expect(stale.agents).toEqual([]); // NOT the primary session's cached herd
+    expect(stale.bridge).toBeUndefined();
+  });
+
+  it("tracks requested scrollback per (session, pane) so ids can't collide across sessions", async () => {
+    const { getRequestedLines, growRequestedLines } = await import("./loaders");
+    growRequestedLines("w1:p1", "collie-demo");
+    expect(getRequestedLines("w1:p1", "collie-demo")).toBe(1200);
+    expect(getRequestedLines("w1:p1")).toBe(600); // the primary session's same id is untouched
   });
 });
 

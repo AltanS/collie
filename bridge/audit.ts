@@ -15,6 +15,8 @@ export interface AuditEntry {
   action: string;
   /** Target pane, when the action is pane-scoped. */
   paneId?: string;
+  /** The herdr session the action targeted (registry name); absent on pre-multi-session lines. */
+  session?: string;
   /** Attributed device (from the per-device auth header), or null/absent when the feature is off. */
   device?: string | null;
   /** Truncated, newline-safe parameters — reply text, key names, filename+size, labels, etc. */
@@ -46,12 +48,14 @@ function sanitize(value: unknown): unknown {
 
 /**
  * Render one entry to a single JSONL line (no trailing newline). Stable field order
- * (ts, action, paneId?, device?, detail) so lines are grep/diff-friendly; optional attribution is
- * omitted (not null) when absent. Pure — `now` (epoch ms) is injected so tests are deterministic.
+ * (ts, action, paneId?, session?, device?, detail) so lines are grep/diff-friendly; optional
+ * attribution is omitted (not null) when absent. Pure — `now` (epoch ms) is injected so tests are
+ * deterministic.
  */
 export function formatAuditLine(entry: AuditEntry, now: number): string {
   const line: Record<string, unknown> = { ts: new Date(now).toISOString(), action: entry.action };
   if (entry.paneId !== undefined) line.paneId = entry.paneId;
+  if (entry.session !== undefined) line.session = entry.session;
   if (entry.device != null) line.device = entry.device;
   line.detail = sanitize(entry.detail ?? {});
   return JSON.stringify(line);

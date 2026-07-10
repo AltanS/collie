@@ -22,6 +22,7 @@ const KEYS = [
   "COLLIE_VAPID_PRIVATE",
   "COLLIE_VAPID_SUBJECT",
   "COLLIE_STATE_DIR",
+  "COLLIE_MULTI_SESSION",
   "HERDR_SOCKET_PATH",
   "HERDR_PLUGIN_STATE_DIR",
 ];
@@ -61,6 +62,26 @@ describe("loadConfig", () => {
     // Per-device auth is off by default (empty header = feature disabled).
     expect(cfg.deviceHeader).toBe("");
     expect(cfg.deviceAllowlist).toEqual([]);
+    // Multi-session support is on by default.
+    expect(cfg.multiSession).toBe(true);
+  });
+
+  test("parses COLLIE_MULTI_SESSION as a boolean toggle (default on)", () => {
+    // Falsey spellings turn it off (pin to the primary session only).
+    for (const off of ["off", "0", "false", "no", "OFF", " False "]) {
+      process.env.COLLIE_MULTI_SESSION = off;
+      expect(loadConfig().multiSession).toBe(false);
+    }
+    // Truthy spellings keep it on.
+    for (const on of ["on", "1", "true", "yes", "ON", " True "]) {
+      process.env.COLLIE_MULTI_SESSION = on;
+      expect(loadConfig().multiSession).toBe(true);
+    }
+    // Garbage and empty fall back to the default (on).
+    process.env.COLLIE_MULTI_SESSION = "banana";
+    expect(loadConfig().multiSession).toBe(true);
+    process.env.COLLIE_MULTI_SESSION = "";
+    expect(loadConfig().multiSession).toBe(true);
   });
 
   test("reads the per-device auth header and allowlist", () => {

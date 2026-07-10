@@ -89,7 +89,9 @@ describe("api client — request timeouts", () => {
     // "AbortError" name, which loaders rethrow as a superseded run — the timeout must not mask it.
     const controller = new AbortController();
     controller.abort();
-    await expect(fetchSnapshot(controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    await expect(fetchSnapshot(undefined, controller.signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
   });
 
   it("withTimeout produces a signal that aborts a pending op with a TimeoutError (real timer)", async () => {
@@ -102,5 +104,39 @@ describe("api client — request timeouts", () => {
         signal!.addEventListener("abort", () => reject(signal!.reason));
       }),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+});
+
+// The browser URL uses the short `?s=`; on the wire every session-scoped endpoint takes `session=`.
+// A named session must append that param (composing correctly with fetchPane's `?lines=`); the
+// primary session (undefined) must leave the path untouched so a single-session bridge is unaffected.
+describe("api client — session scoping", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function captureUrls() {
+    const urls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      urls.push(String(input));
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+    return urls;
+  }
+
+  it("appends session= to a named session (composing with ?lines=)", async () => {
+    const urls = captureUrls();
+    await fetchSnapshot("collie-demo");
+    await fetchPane("w1:p1", 600, "collie-demo");
+    await sendReply("w1:p1", "hi", true, "collie-demo");
+    expect(urls[0]).toBe("/api/snapshot?session=collie-demo");
+    expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600&session=collie-demo");
+    expect(urls[2]).toBe("/api/pane/w1%3Ap1/reply?session=collie-demo");
+  });
+
+  it("leaves the path untouched on the primary session (no param)", async () => {
+    const urls = captureUrls();
+    await fetchSnapshot();
+    await fetchPane("w1:p1", 600);
+    expect(urls[0]).toBe("/api/snapshot");
+    expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600");
   });
 });

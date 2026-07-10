@@ -112,89 +112,12 @@
   }
 }
 
-/* ── View transitions ───────────────────────────────────────────────────────────────────────────
-   Animate switches between views (lib/view-transition.ts). The app chrome (the sticky header,
-   tagged `view-transition-name: app-header`) is its own snapshot group, so it stays pinned and just
-   crossfades while the page content underneath slides. `data-vt` on <html> picks the direction:
-   forward = new view in from the right, backward = the reverse, absent = a plain crossfade for
-   lateral moves (sibling space / tab / pane switch). */
-
-/* Lateral move (no data-vt): a quick crossfade. The UA's default fade keyframes, our timing. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 160ms;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* The pinned chrome: keep it brief and fade-only so it reads as "staying put". */
-::view-transition-old(app-header),
-::view-transition-new(app-header) {
-  animation-duration: 160ms;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-html[data-vt="forward"]::view-transition-old(root) {
-  animation: vt-slide-out-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-html[data-vt="forward"]::view-transition-new(root) {
-  animation: vt-slide-in-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-html[data-vt="backward"]::view-transition-old(root) {
-  animation: vt-slide-out-right 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-html[data-vt="backward"]::view-transition-new(root) {
-  animation: vt-slide-in-left 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-@keyframes vt-slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(28px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-@keyframes vt-slide-out-left {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(-28px);
-  }
-}
-@keyframes vt-slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-28px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-@keyframes vt-slide-out-right {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(28px);
-  }
-}
-
-/* Honour reduced motion even when a transition is triggered (e.g. a React Router <Link>): kill every
-   snapshot animation so the swap is instant rather than a fade. */
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
-  }
+/* We don't use view transitions (removed). But React Router can still fire document.startViewTransition
+   on a revalidation for a device carrying a stale persisted transition map from an older build (see
+   router.tsx). Keep the whole document unnamed so any such stray transition captures nothing and swaps
+   instantly — no full-page crossfade flicker. This is a no-op-izing safety net, not a transition. */
+:root {
+  view-transition-name: none;
 }
 
 /* ── Collie gallop loader ────────────────────────────────────────────────────────────────────────
@@ -229,18 +152,6 @@ html[data-vt="backward"]::view-transition-new(root) {
   .dog-gallop--running {
     animation: none;
   }
-}
-
-/* The sticky app chrome opts into being its own transition group via this class. The name promotes
-   it to a standalone composited layer, though — so while a sheet/drawer is open we drop the name
-   (the sheet sets <html data-sheet-open>). Otherwise a poll repainting the live status pill can make
-   Chrome briefly composite the header ABOVE the modal backdrop. Nothing is transitioning while a
-   sheet is open anyway (every navigation closes the sheet first), so the group isn't needed then. */
-.app-header {
-  view-transition-name: app-header;
-}
-html[data-sheet-open] .app-header {
-  view-transition-name: none;
 }
 
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a

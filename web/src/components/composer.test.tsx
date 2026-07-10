@@ -1,9 +1,11 @@
 import type { ComponentProps } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus } from "@/lib/status";
+import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
 // Composer owns the send flow (draft → api.sendReply → clear/error) plus the destructive-command
@@ -22,6 +24,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     gone: false,
     readOnly: false,
     text: "pane output",
+    terminalDraft: null,
     prefs: { wrap: true, fontSize: 11, rawTerminal: false },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
@@ -79,6 +82,48 @@ describe("Composer — destructive-input confirm", () => {
     // Sent straight away — no "Really send?" ever appeared, and the draft cleared.
     expect(screen.queryByRole("button", { name: /really send/i })).not.toBeInTheDocument();
     await waitFor(() => expect(box).toHaveValue(""));
+  });
+});
+
+describe("Composer — terminal-draft recovery chip", () => {
+  it("does not render the chip when there's no stranded draft", () => {
+    renderComposer({ terminalDraft: null });
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+  });
+
+  it("recovers the draft: clears the terminal line with backspaces and populates the textarea", async () => {
+    const user = userEvent.setup();
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        const body = (await request.json()) as { keys: string[] };
+        sentKeys = body.keys;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer({ terminalDraft: "recover me" });
+
+    // The chip surfaces the stranded draft with its recovery affordance.
+    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /edit here/i }));
+
+    // One Backspace per code point plus the 8-key overshoot clears the "❯" line.
+    await waitFor(() => expect(sentKeys).not.toBeNull());
+    expect(sentKeys).toHaveLength([..."recover me"].length + 8);
+    expect(sentKeys!.every((k) => k === "Backspace")).toBe(true);
+
+    // …and the draft lands in the composer for editing, with the chip gone.
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("recover me"));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+  });
+
+  it("dismiss hides the chip for that draft", async () => {
+    const user = userEvent.setup();
+    renderComposer({ terminalDraft: "dismiss me" });
+    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /dismiss terminal draft/i }));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
   });
 });
 

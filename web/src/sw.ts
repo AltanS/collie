@@ -68,7 +68,7 @@ async function handlePush(event: PushEvent): Promise<void> {
   // support it (and it needs a tag).
   const options: NotificationOptions & { renotify?: boolean } = {
     body: decision.body,
-    data: { paneId: decision.paneId },
+    data: { paneId: decision.paneId, session: decision.session },
     icon: ICON,
     badge: ICON,
     tag: decision.tag,
@@ -79,18 +79,28 @@ async function handlePush(event: PushEvent): Promise<void> {
 
 interface NotifData {
   paneId?: string;
+  /** Registry name of the pane's session (undefined = primary) — the deep-link scopes to it. */
+  session?: string;
+}
+
+// Session query builder, inlined so the SW bundle stays dependency-free (it imports only
+// push-decision). The browser URL uses `?s=`. Primary → no param.
+function sessionSearchParam(session?: string): string {
+  return session ? `?s=${encodeURIComponent(session)}` : "";
 }
 
 // Tap a notification: deep-link to the agent's pane (never act on it blind — the reply lives in-app).
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
   const data = (event.notification.data as NotifData | null) ?? {};
-  event.waitUntil(openPane(data.paneId));
+  event.waitUntil(openPane(data.paneId, data.session));
 });
 
 // Focus an existing Collie tab (navigating it to the agent) or open a new one — the body-tap path.
-async function openPane(paneId: string | undefined): Promise<void> {
-  const path = paneId && paneId !== "test" ? `/pane/${encodeURIComponent(paneId)}` : "/";
+// The session rides along as `?s=` so the deep-link lands in the right herd (omitted for primary).
+async function openPane(paneId: string | undefined, session?: string): Promise<void> {
+  const base = paneId && paneId !== "test" ? `/pane/${encodeURIComponent(paneId)}` : "/";
+  const path = `${base}${sessionSearchParam(session)}`;
   const url = new URL(path, self.location.origin).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   for (const client of windows) {

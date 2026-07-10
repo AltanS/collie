@@ -6,8 +6,7 @@ import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
 import { isConnecting } from "@/lib/connection";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
-import { panePath } from "@/lib/nav";
-import { navigateWithTransition } from "@/lib/view-transition";
+import { homePath, panePath } from "@/lib/nav";
 import { setStatus } from "@/lib/status";
 import type { AgentView } from "@/lib/types";
 
@@ -20,6 +19,9 @@ export function DetailRoute() {
   const pane = useLoaderData() as PaneData;
   const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
   const { paneId = "" } = useParams();
+  // The session this pane belongs to (undefined = primary), read from the pane loader so every
+  // navigation and write below stays scoped to it.
+  const session = pane.session;
   const navigate = useNavigate();
   const location = useLocation();
   const online = useOnline();
@@ -55,14 +57,15 @@ export function DetailRoute() {
   useEffect(() => {
     if (gone && root.bridge === "connected" && !root.error) {
       setStatus("Pane closed", "info");
-      navigateWithTransition(navigate, "/", "backward", { replace: true });
+      navigate(homePath(session), { replace: true });
     }
-  }, [gone, root.bridge, root.error, navigate]);
+  }, [gone, root.bridge, root.error, navigate, session]);
 
   return (
     <AgentChat
       key={paneId}
       paneId={paneId}
+      session={session}
       agent={agent}
       agents={root.agents}
       shellPanes={root.shellPanes}
@@ -74,8 +77,8 @@ export function DetailRoute() {
       revision={pane.revision}
       device={root.device}
       connecting={isConnecting({ online, bridge: root.bridge, error: root.error, stalled })}
-      onBack={() => navigateWithTransition(navigate, "/", "backward")}
-      onSelect={(id) => navigateWithTransition(navigate, panePath(id), "none")}
+      onBack={() => navigate(homePath(session))}
+      onSelect={(id) => navigate(panePath(id, session))}
     />
   );
 }

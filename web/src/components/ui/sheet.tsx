@@ -4,26 +4,6 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-// While any sheet/drawer is open, mark <html data-sheet-open> (ref-counted, so overlapping sheets
-// don't clear it early). The CSS uses it to drop the sticky header's `view-transition-name` — that
-// name promotes the header to its own composited layer, which Chrome can briefly paint above the
-// modal backdrop when a poll repaints the live status pill. Ref-counted on a module-level int.
-let openSheetCount = 0;
-function useMarkSheetOpen(open: boolean) {
-  React.useEffect(() => {
-    if (!open) return;
-    openSheetCount += 1;
-    document.documentElement.dataset.sheetOpen = "";
-    return () => {
-      openSheetCount -= 1;
-      if (openSheetCount <= 0) {
-        openSheetCount = 0;
-        delete document.documentElement.dataset.sheetOpen;
-      }
-    };
-  }, [open]);
-}
-
 // Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
 // keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
 // focused before it opened. The panel must carry tabIndex={-1} to be a focus target.
@@ -53,7 +33,6 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
   const [dragY, setDragY] = React.useState(0);
   const titleId = React.useId();
-  useMarkSheetOpen(open);
   useDialogFocus(open, panelRef);
 
   React.useEffect(() => {
@@ -196,7 +175,6 @@ export function SideSheet({
 }: SideSheetProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
-  useMarkSheetOpen(open);
   useDialogFocus(open, panelRef);
   React.useEffect(() => {
     if (!open) return;

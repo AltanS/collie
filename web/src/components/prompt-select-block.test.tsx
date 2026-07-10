@@ -96,7 +96,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       option: model.options[0]!,
     });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1", "Enter"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1", "Enter"], undefined);
   });
 
   it("permission family: sends the digit ALONE (a trailing Enter would leak)", async () => {
@@ -115,7 +115,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       option: model.options[0]!,
     });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined);
   });
 
   it("rejects (no send) when the fresh revision differs", async () => {
@@ -175,7 +175,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       option: model.options[1]!,
     });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["2"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["2"], undefined);
   });
 
   it("rejects a 304 with MATCHING (stub) revisions when the cached text no longer shows the menu", async () => {
@@ -286,7 +286,7 @@ describe("PromptSelectBlock — wired tap (component → handler → api)", () =
     await user.click(screen.getByRole("button", { name: /Red/ }));
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Sent"));
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1", "Enter"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1", "Enter"], undefined);
   });
 
   it("a stale tap surfaces a 'menu changed' notice and sends nothing", async () => {
@@ -353,6 +353,6 @@ describe("submitPromptOption — same-shaped successor prompt (H1)", () => {
       option: promptA.options[0]!,
     });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined);
   });
 });

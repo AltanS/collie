@@ -181,7 +181,7 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       keys: ["2"],
     });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["2"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["2"], undefined);
   });
 
   it("rejects (no send) when the wizard advanced to another step underfoot", async () => {
@@ -305,7 +305,7 @@ describe("WizardBlock — wired tap (component → handler → api)", () => {
     await user.click(screen.getByRole("button", { name: /Tests/ }));
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Sent"));
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["3"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["3"], undefined);
   });
 
   it("a stale tap surfaces a 'wizard changed' notice and sends nothing", async () => {

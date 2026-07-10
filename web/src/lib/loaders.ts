@@ -5,11 +5,13 @@
 // (flagged) instead of flashing empty — i.e. keep-previous-data while a refetch is in flight.
 
 import { fetchPane, fetchSnapshot } from "@/lib/api";
+import { SESSION_PARAM, normalizeSession } from "@/lib/session";
 import type {
   AgentView,
   BridgeStatus,
   DeviceAuth,
   PaneReadResponse,
+  SessionSummary,
   SnapshotResponse,
   TabView,
   WorkspaceView,
@@ -32,6 +34,18 @@ function isAbortError(e: unknown): boolean {
 // silent runtime `undefined` from a stale string literal.
 export const ROOT_ROUTE_ID = "root";
 
+// The session a loader run was scoped to, read from the request URL's `?s=`. Extracted once per run
+// and threaded into every fetch + cache key so a session switch (a plain URL change picked up by the
+// revalidator) is automatically correct. Undefined = primary.
+function sessionFromRequest(request?: Request): string | undefined {
+  if (!request) return undefined;
+  try {
+    return normalizeSession(new URL(request.url).searchParams.get(SESSION_PARAM));
+  } catch {
+    return undefined;
+  }
+}
+
 export interface HomeData {
   bridge: BridgeStatus | undefined;
   /** Per-device authorisation; undefined when the feature is off or not yet known. */
@@ -40,6 +54,10 @@ export interface HomeData {
   shellPanes: AgentView[];
   workspaces: WorkspaceView[];
   tabs: TabView[];
+  /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
+  sessions: SessionSummary[];
+  /** The session this snapshot was fetched for (undefined = primary) — so children don't re-derive. */
+  session: string | undefined;
   /** Active notification snooze deadline (epoch ms), or null when not snoozed. */
   snoozedUntil: number | null;
   /** True when this render is the last-good snapshot after a failed refresh. */
@@ -48,6 +66,8 @@ export interface HomeData {
 
 export interface PaneData {
   paneId: string;
+  /** The session this pane was fetched for (undefined = primary) — threaded into every write. */
+  session: string | undefined;
   text: string;
   /** True when the buffer was cut off at the requested line count — older scrollback still exists. */
   truncated: boolean;
@@ -60,9 +80,11 @@ export interface PaneData {
   error: boolean;
 }
 
-let lastSnapshot: SnapshotResponse | null = null;
+// Keep-previous-data cache is now PER-SESSION: switching sessions must not show the other session's
+// herd flagged as stale. Keyed by session name ("" = primary).
+const lastSnapshot = new Map<string, SnapshotResponse>();
 
-function toHomeData(snap: SnapshotResponse, error: boolean): HomeData {
+function toHomeData(snap: SnapshotResponse, session: string | undefined, error: boolean): HomeData {
   return {
     bridge: snap.bridge,
     device: snap.device,
@@ -70,21 +92,25 @@ function toHomeData(snap: SnapshotResponse, error: boolean): HomeData {
     shellPanes: snap.shellPanes ?? [],
     workspaces: snap.workspaces ?? [],
     tabs: snap.tabs ?? [],
+    sessions: snap.sessions ?? [],
+    session,
     snoozedUntil: snap.notifications?.snoozedUntil ?? null,
     error,
   };
 }
 
 export async function rootLoader({ request }: { request?: Request } = {}): Promise<HomeData> {
+  const session = sessionFromRequest(request);
   try {
-    const snap = await fetchSnapshot(request?.signal);
-    lastSnapshot = snap;
-    return toHomeData(snap, false);
+    const snap = await fetchSnapshot(session, request?.signal);
+    lastSnapshot.set(session ?? "", snap);
+    return toHomeData(snap, session, false);
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
     // Keep the last good herd on screen, flagged so the ConnectionBar can say "reconnecting…".
-    return lastSnapshot
-      ? toHomeData(lastSnapshot, true)
+    const cached = lastSnapshot.get(session ?? "");
+    return cached
+      ? toHomeData(cached, session, true)
       : {
           bridge: undefined,
           device: undefined,
@@ -92,10 +118,18 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
           shellPanes: [],
           workspaces: [],
           tabs: [],
+          sessions: [],
+          session,
           snoozedUntil: null,
           error: true,
         };
   }
+}
+
+// Pane ids are per-session, so every per-pane cache is keyed by (session, paneId) — a NUL joiner
+// keeps the two fields unambiguous. "" session = primary.
+function paneKey(paneId: string, session?: string): string {
+  return `${session ?? ""}\u0000${paneId}`;
 }
 
 const lastPaneText = new Map<string, string>();
@@ -104,8 +138,8 @@ const lastPaneText = new Map<string, string>();
 // phone that views one pane at a time.
 const PANE_TEXT_MAX = 20;
 
-function rememberPaneText(paneId: string, text: string): void {
-  lastPaneText.set(paneId, text);
+function rememberPaneText(key: string, text: string): void {
+  lastPaneText.set(key, text);
   if (lastPaneText.size > PANE_TEXT_MAX) {
     const oldest = lastPaneText.keys().next().value;
     if (oldest !== undefined) lastPaneText.delete(oldest);
@@ -127,19 +161,19 @@ export const DETAIL_HISTORY_MAX = 5000;
 const requestedLines = new Map<string, number>();
 
 /** The scrollback window currently requested for a pane (defaults to the base window). */
-export function getRequestedLines(paneId: string): number {
-  return requestedLines.get(paneId) ?? DETAIL_HISTORY_LINES;
+export function getRequestedLines(paneId: string, session?: string): number {
+  return requestedLines.get(paneKey(paneId, session)) ?? DETAIL_HISTORY_LINES;
 }
 
 /** True while more scrollback can still be requested (below the cap). */
-export function canGrowRequestedLines(paneId: string): boolean {
-  return getRequestedLines(paneId) < DETAIL_HISTORY_MAX;
+export function canGrowRequestedLines(paneId: string, session?: string): boolean {
+  return getRequestedLines(paneId, session) < DETAIL_HISTORY_MAX;
 }
 
 /** Raise the requested scrollback by one step (capped) and return the new value. */
-export function growRequestedLines(paneId: string): number {
-  const next = Math.min(getRequestedLines(paneId) + DETAIL_HISTORY_STEP, DETAIL_HISTORY_MAX);
-  requestedLines.set(paneId, next);
+export function growRequestedLines(paneId: string, session?: string): number {
+  const next = Math.min(getRequestedLines(paneId, session) + DETAIL_HISTORY_STEP, DETAIL_HISTORY_MAX);
+  requestedLines.set(paneKey(paneId, session), next);
   if (requestedLines.size > PANE_TEXT_MAX) {
     const oldest = requestedLines.keys().next().value;
     if (oldest !== undefined) requestedLines.delete(oldest);
@@ -148,9 +182,9 @@ export function growRequestedLines(paneId: string): number {
 }
 
 /** Reset a pane's requested scrollback back to the base window (used by tests). */
-export function resetRequestedLines(paneId?: string): void {
+export function resetRequestedLines(paneId?: string, session?: string): void {
   if (paneId === undefined) requestedLines.clear();
-  else requestedLines.delete(paneId);
+  else requestedLines.delete(paneKey(paneId, session));
 }
 
 export async function paneLoader({
@@ -164,21 +198,24 @@ export async function paneLoader({
   // The route is `/pane/:paneId`, so a missing param means a misconfigured route, not a user state
   // — fail loudly to the error boundary rather than fetching `/api/pane/` and rendering an empty pane.
   if (!paneId) throw new Error("paneLoader: missing :paneId route param");
-  const lines = getRequestedLines(paneId);
+  const session = sessionFromRequest(request);
+  const key = paneKey(paneId, session);
+  const lines = getRequestedLines(paneId, session);
   try {
     // On a 304 fetchPane returns the cached body, so `read.text` is populated either way; the
     // `?? lastPaneText` is just belt-and-suspenders. Both paths are a success (not the error
     // branch) so the connection bar doesn't flicker on an unchanged poll.
-    const read: PaneReadResponse = await fetchPane(paneId, lines, request?.signal);
-    const text = read.text || lastPaneText.get(paneId) || "";
-    rememberPaneText(paneId, text);
-    return { paneId, text, truncated: read.truncated, requestedLines: lines, revision: read.revision, error: false };
+    const read: PaneReadResponse = await fetchPane(paneId, lines, session, request?.signal);
+    const text = read.text || lastPaneText.get(key) || "";
+    rememberPaneText(key, text);
+    return { paneId, session, text, truncated: read.truncated, requestedLines: lines, revision: read.revision, error: false };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
     // Genuine network / server failure: show stale text flagged as degraded.
     return {
       paneId,
-      text: lastPaneText.get(paneId) ?? "",
+      session,
+      text: lastPaneText.get(key) ?? "",
       truncated: false,
       requestedLines: lines,
       revision: 0,

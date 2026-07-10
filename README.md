@@ -39,7 +39,7 @@ keystrokes into a live terminal pane, so anyone who can reach the URL can read e
 secrets, env, agent output) and run any command as your user. No sandbox, no command allow-list
 (that would defeat the purpose). Treat the URL like a root login.
 
-Two sharp edges:
+Three sharp edges:
 
 - **It acts as _you_**, with your full privileges — `~/.ssh`, `git push --force`, `rm -rf`, `sudo`.
 - **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it.
@@ -47,6 +47,10 @@ Two sharp edges:
   shell. The idle-lock is UX, not auth. Every write action (replies, keys, uploads, pane/tab
   create/close) is appended to `<state-dir>/audit.log`, so there is at least a trail — but a trail
   is not a gate.
+- **One bridge fronts _every_ session.** With `COLLIE_MULTI_SESSION` on (the default), the bridge
+  discovers and serves every named Herdr session under your config root — a private or sandbox
+  session (e.g. `collie-demo`) is readable and drivable through the same URL as your primary, and the
+  set is rescanned periodically. Set `COLLIE_MULTI_SESSION=0` to serve only the primary session.
 
 It's built single-user and tailnet-only. The defenses:
 

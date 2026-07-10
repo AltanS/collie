@@ -12,7 +12,7 @@ import { CollieHome } from "@/components/collie-home";
 import { AnsiOutput } from "@/components/ansi-output";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
-import { extractStatusLine } from "@/lib/grammar/chrome";
+import { extractInputDraft, extractStatusLine } from "@/lib/grammar/chrome";
 import { hasBlockGrammar } from "@/lib/grammar/agents";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
@@ -30,13 +30,15 @@ import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
-import { navigateWithTransition } from "@/lib/view-transition";
+import { spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
 import type { AgentView, DeviceAuth, TabView } from "@/lib/types";
 import type { PreviewSelectModel, PromptModel, PromptOption, WizardModel } from "@/lib/blocks";
 
 interface AgentChatProps {
   paneId: string;
+  /** The session this pane lives in (undefined = primary) — scopes every read/write + the safety chip. */
+  session?: string;
   agent: AgentView | undefined;
   agents: AgentView[];
   shellPanes: AgentView[];
@@ -74,6 +76,7 @@ type Drawer = "switcher" | null;
 // only to re-follow the tail after a send, focus on a mirror tap, and open find (which freezes the tail).
 export function AgentChat({
   paneId,
+  session,
   agent,
   agents,
   shellPanes,
@@ -153,6 +156,20 @@ export function AgentChat({
     [display, agent?.agent, grammarsOn],
   );
 
+  // A user draft stranded on the input box's "❯" line — a message queued while the agent was busy
+  // then recalled, which persists across turns. stripChrome peels the box off the mirror so it goes
+  // invisible, and (worse) pane.send_text appends to it, corrupting the next send. We surface it to
+  // the composer, which offers a one-tap "Edit here" recovery (clear the terminal line, adopt the
+  // text locally). Same parse source + same Claude-only gate as the statusline, so the two can't
+  // drift; null when raw-terminal is on, no box is at the tail, or the line is empty/a placeholder.
+  const terminalDraft = useMemo(
+    () =>
+      grammarsOn && hasBlockGrammar(agent?.agent)
+        ? extractInputDraft(splitLines(parseAnsi(display)))
+        : null,
+    [display, agent?.agent, grammarsOn],
+  );
+
   // Find-in-output: search the already-fetched buffer. The bar takes over the header while open;
   // AnsiOutput highlights matches and reports the count back here; prev/next scrolls the focused
   // match into view. Opening freezes the tail so matches don't shift under you as polls land.
@@ -189,12 +206,12 @@ export function AgentChat({
   const adoptTarget = useRef<number | null>(null); // the requestedLines a pending grow is waiting on
   const pendingRestore = useRef(false); // re-anchor scroll after the enlarged display paints
   function loadOlder() {
-    if (loadingOlder || !canGrowRequestedLines(paneId)) return;
+    if (loadingOlder || !canGrowRequestedLines(paneId, session)) return;
     const el = listRef.current?.getScrollElement();
     olderAnchor.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
     setLoadingOlder(true);
     setFollowing(false); // stay put in history rather than snapping to the tail
-    adoptTarget.current = growRequestedLines(paneId);
+    adoptTarget.current = growRequestedLines(paneId, session);
     revalidator.revalidate();
   }
   // Adopt the enlarged buffer into the frozen display once the *grown* fetch lands — keyed on the
@@ -246,6 +263,7 @@ export function AgentChat({
       }
       const result = await submitPromptOption({
         paneId,
+        session,
         requestedLines,
         detectedRevision: shown.revision,
         prompt,
@@ -263,7 +281,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -279,6 +297,7 @@ export function AgentChat({
       }
       const result = await submitWizardKeys({
         paneId,
+        session,
         requestedLines,
         detectedRevision: shown.revision,
         wizard,
@@ -296,7 +315,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -312,6 +331,7 @@ export function AgentChat({
       }
       const base = {
         paneId,
+        session,
         requestedLines,
         detectedRevision: shown.revision,
         preview,
@@ -338,7 +358,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [readOnly, paneId, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
@@ -359,11 +379,11 @@ export function AgentChat({
     if (target) switchTo(target.paneId);
   }
 
-  // Open a space from the nav hub — go to its home view (its tabs + panes, incl. shells). A step
+  // Open a space from the nav hub — go to its detail route (its tabs + panes, incl. shells). A step
   // back up out of the pane, so it slides backward.
   function openSpace(workspaceId: string) {
     closeDrawer();
-    navigateWithTransition(navigate, "/", "backward", { state: { space: workspaceId } });
+    navigate(spacePath(workspaceId, session));
   }
 
   // Tapping the terminal mirror focuses the composer so you can start typing right away. Two bails:
@@ -392,7 +412,7 @@ export function AgentChat({
     }
     setClosingId(id);
     try {
-      const res = await api.closePane(id);
+      const res = await api.closePane(id, session);
       if (res.ok) {
         if (id === paneId) onBack();
         else revalidator.revalidate();
@@ -409,7 +429,7 @@ export function AgentChat({
   return (
     <div className="flex h-[100dvh] flex-col">
       {/* Header — while find is open, the find bar takes over this row (one-handed, thumb-reachable). */}
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-background/85 pl-4 pr-2 py-2 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)] app-header">
+      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-zinc-800 pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
         {findOpen ? (
           <FindBar
             query={findQuery}
@@ -438,11 +458,13 @@ export function AgentChat({
                 className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
               >
                 {isShell ? (
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full border bg-muted">
-                    <TerminalSquare className="size-4 text-muted-foreground" />
+                  <div className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-muted">
+                    <TerminalSquare className="size-3 text-muted-foreground" />
                   </div>
                 ) : (
-                  <AgentIcon agent={agent.agent} className="size-8" />
+                  // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
+                  // pane's subject, not a second brand competing with Collie's for the header.
+                  <AgentIcon agent={agent.agent} className="size-6" />
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-semibold leading-tight">
@@ -466,134 +488,139 @@ export function AgentChat({
         )}
       </header>
 
-      {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
-      <ReadOnlyBanner device={device} />
+      {/* Content region below the header — the mirror inside is the scroller. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
+        <ReadOnlyBanner device={device} />
 
-      {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
-          pane, or create one with +. No "All" here (you're always in a specific tab). */}
-      {agent && (
-        <TabStrip
-          workspaceId={agent.workspaceId}
-          tabs={tabs}
-          agents={agents}
-          selected={agent.tabId}
-          onSelect={(id) => id && goToTab(id)}
-          onNewTab={newTab}
-          allowAll={false}
-        />
-      )}
+        {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
+            pane, or create one with +. No "All" here (you're always in a specific tab). */}
+        {agent && (
+          <TabStrip
+            workspaceId={agent.workspaceId}
+            tabs={tabs}
+            agents={agents}
+            selected={agent.tabId}
+            onSelect={(id) => id && goToTab(id)}
+            onNewTab={newTab}
+            allowAll={false}
+          />
+        )}
 
-      {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
-          tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
-      {agent && (
-        <PaneStrip
-          panes={[...agents, ...shellPanes]
-            .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-            .sort((a, b) => a.paneId.localeCompare(b.paneId))}
-          currentPaneId={paneId}
-          onSelect={switchTo}
-        />
-      )}
+        {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
+            tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
+        {agent && (
+          <PaneStrip
+            panes={[...agents, ...shellPanes]
+              .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
+              .sort((a, b) => a.paneId.localeCompare(b.paneId))}
+            currentPaneId={paneId}
+            onSelect={switchTo}
+          />
+        )}
 
-      {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
-          (unless you're selecting text to copy, which the tap must not collapse). */}
-      <div className="min-h-0 flex-1" onClick={focusFromMirror}>
-        <ChatMessageList
-          ref={listRef}
-          dep={display}
-          onAtBottomChange={setFollowing}
-          hasNew={hasNew}
-          className="gap-0 px-2 py-3"
-        >
-          {display ? (
-            <>
-              {/* Load older scrollback — sits at the top of the buffer, so it's reached by scrolling
-                  up. Shown while the buffer is still truncated (older lines exist) and below the cap. */}
-              {truncated && canGrowRequestedLines(paneId) && (
-                <button
-                  type="button"
-                  onClick={loadOlder}
-                  disabled={loadingOlder}
-                  className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
-                >
-                  {loadingOlder ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <ArrowUpToLine className="size-3.5" />
-                  )}
-                  {loadingOlder ? "Loading…" : "Load older"}
-                </button>
-              )}
-              <AnsiOutput
-                text={display}
-                wrap={prefs.wrap}
-                fontSize={prefs.fontSize}
-                query={findOpen ? findQuery : ""}
-                currentMatch={findOpen ? currentMatch : -1}
-                onMatchCount={findOpen ? handleMatchCount : undefined}
-                agent={grammarsOn ? agent?.agent : undefined}
-                onPromptAction={handlePromptAction}
-                onWizardAction={handleWizardAction}
-                onPreviewAction={handlePreviewAction}
-                promptDisabled={readOnly || gone}
-              />
-            </>
-          ) : (
-            <div className="py-16 text-center text-sm text-muted-foreground">(no recent output)</div>
-          )}
-        </ChatMessageList>
-      </div>
-
-      {/* Bottom region: the status line floats as a slim overlay above the tray + composer, so it
-          tells you what last happened then vanishes — never pushing or shifting content. */}
-      <div className="relative">
-        <div className="pointer-events-none absolute inset-x-0 bottom-full px-3 pb-1.5">
-          <StatusArea />
+        {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
+            (unless you're selecting text to copy, which the tap must not collapse). */}
+        <div className="min-h-0 flex-1" onClick={focusFromMirror}>
+          <ChatMessageList
+            ref={listRef}
+            dep={display}
+            onAtBottomChange={setFollowing}
+            hasNew={hasNew}
+            className="gap-0 px-2 py-3"
+          >
+            {display ? (
+              <>
+                {/* Load older scrollback — sits at the top of the buffer, so it's reached by scrolling
+                    up. Shown while the buffer is still truncated (older lines exist) and below the cap. */}
+                {truncated && canGrowRequestedLines(paneId, session) && (
+                  <button
+                    type="button"
+                    onClick={loadOlder}
+                    disabled={loadingOlder}
+                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
+                  >
+                    {loadingOlder ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <ArrowUpToLine className="size-3.5" />
+                    )}
+                    {loadingOlder ? "Loading…" : "Load older"}
+                  </button>
+                )}
+                <AnsiOutput
+                  text={display}
+                  wrap={prefs.wrap}
+                  fontSize={prefs.fontSize}
+                  query={findOpen ? findQuery : ""}
+                  currentMatch={findOpen ? currentMatch : -1}
+                  onMatchCount={findOpen ? handleMatchCount : undefined}
+                  agent={grammarsOn ? agent?.agent : undefined}
+                  onPromptAction={handlePromptAction}
+                  onWizardAction={handleWizardAction}
+                  onPreviewAction={handlePreviewAction}
+                  promptDisabled={readOnly || gone}
+                />
+              </>
+            ) : (
+              <div className="py-16 text-center text-sm text-muted-foreground">(no recent output)</div>
+            )}
+          </ChatMessageList>
         </div>
 
-        {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
-            panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
-            tap always works). Shown whenever a pane is open — even the last one, so it stays
-            closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
-            browser scroll. */}
-        {agents.length + shellPanes.length > 0 && (
-          <button
-            type="button"
-            aria-label="Switch pane"
-            {...swipe}
-            onClick={() => setDrawer("switcher")}
-            className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
-          >
-            <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
-          </button>
-        )}
-
-        {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx would otherwise
-            vanish with the stripped input box). Sits directly above the composer, as it did in the
-            TUI. Verbatim text — a React text node, so no XSS surface. */}
-        {statusLine && (
-          <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground/80">
-            {statusLine}
+        {/* Bottom region: the status line floats as a slim overlay above the tray + composer, so it
+            tells you what last happened then vanishes — never pushing or shifting content. */}
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-x-0 bottom-full px-3 pb-1.5">
+            <StatusArea />
           </div>
-        )}
 
-        <Composer
-          ref={composerRef}
-          paneId={paneId}
-          agent={agent?.agent}
-          isShell={isShell}
-          gone={gone}
-          readOnly={readOnly}
-          text={text}
-          prefs={prefs}
-          setWrap={setWrap}
-          stepFontSize={stepFontSize}
-          setRawTerminal={setRawTerminal}
-          onSent={onSent}
-          // Find-in-output lives in the composer's View row now (the header was the wrong home for it).
-          // Enabled only when there's buffered output to search; opening it freezes the tail (openFind).
-          onOpenFind={display ? openFind : undefined}
-        />
+          {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
+              panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
+              tap always works). Shown whenever a pane is open — even the last one, so it stays
+              closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
+              browser scroll. */}
+          {agents.length + shellPanes.length > 0 && (
+            <button
+              type="button"
+              aria-label="Switch pane"
+              {...swipe}
+              onClick={() => setDrawer("switcher")}
+              className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+            >
+              <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
+            </button>
+          )}
+
+          {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx would otherwise
+              vanish with the stripped input box). Sits directly above the composer, as it did in the
+              TUI. Verbatim text — a React text node, so no XSS surface. */}
+          {statusLine && (
+            <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground/80">
+              {statusLine}
+            </div>
+          )}
+
+          <Composer
+            ref={composerRef}
+            paneId={paneId}
+            session={session}
+            agent={agent?.agent}
+            isShell={isShell}
+            gone={gone}
+            readOnly={readOnly}
+            text={text}
+            terminalDraft={terminalDraft}
+            prefs={prefs}
+            setWrap={setWrap}
+            stepFontSize={stepFontSize}
+            setRawTerminal={setRawTerminal}
+            onSent={onSent}
+            // Find-in-output lives in the composer's View row now (the header was the wrong home for it).
+            // Enabled only when there's buffered output to search; opening it freezes the tail (openFind).
+            onOpenFind={display ? openFind : undefined}
+          />
+        </div>
       </div>
 
       {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture */}

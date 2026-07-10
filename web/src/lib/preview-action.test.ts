@@ -133,8 +133,8 @@ describe("submitPreviewOption — digit → verify pointer → Enter", () => {
     const res = await submitPreviewOption({ ...base, preview: m, option: m.options[1]! });
     expect(res).toEqual({ status: "sent" });
     expect(mockSendKeys.mock.calls).toEqual([
-      ["w1:p1", ["2"]],
-      ["w1:p1", ["Enter"]],
+      ["w1:p1", ["2"], undefined],
+      ["w1:p1", ["Enter"], undefined],
     ]);
   });
 
@@ -143,7 +143,7 @@ describe("submitPreviewOption — digit → verify pointer → Enter", () => {
     mockFetchPane.mockResolvedValue(paneWith(buffer({ pointer: 1 }))); // pointer never moves
     const res = await submitPreviewOption({ ...base, preview: m, option: m.options[2]! });
     expect(res).toEqual({ status: "changed" });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["3"]]]);
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["3"], undefined]]);
   });
 
   it("rejects at the entry guard when the dialog changed underfoot (no keys at all)", async () => {
@@ -169,7 +169,7 @@ describe("submitPreviewOption — digit → verify pointer → Enter", () => {
       .mockResolvedValue(paneWith(buffer({ question: "Another dialog entirely?" })));
     const res = await submitPreviewOption({ ...base, preview: m, option: m.options[1]! });
     expect(res).toEqual({ status: "changed" });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"]]]); // digit only, no Enter
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"], undefined]]); // digit only, no Enter
   });
 
   it("rejects a same-labels successor whose core signature differs mid-flight — NO Enter", async () => {
@@ -184,7 +184,7 @@ describe("submitPreviewOption — digit → verify pointer → Enter", () => {
       .mockResolvedValue(paneWith(buffer({ pointer: 2, subject: "Editing bar.ts" }))); // successor: pointer on tapped row, DIFFERENT subject
     const res = await submitPreviewOption({ ...base, preview: m, option: m.options[1]! });
     expect(res).toEqual({ status: "changed" });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"]]]); // digit moved the pointer; Enter never fired
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"], undefined]]); // digit moved the pointer; Enter never fired
   });
 });
 
@@ -209,10 +209,10 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     const res = await submitPreviewNote({ ...base, preview: m, text: "focus on mobile" });
     expect(res).toEqual({ status: "sent" });
     expect(mockSendKeys.mock.calls).toEqual([
-      ["w1:p1", ["n"]],
-      ["w1:p1", ["Escape"]],
+      ["w1:p1", ["n"], undefined],
+      ["w1:p1", ["Escape"], undefined],
     ]);
-    expect(mockSendReply.mock.calls).toEqual([["w1:p1", "focus on mobile", false]]);
+    expect(mockSendReply.mock.calls).toEqual([["w1:p1", "focus on mobile", false, undefined]]);
   });
 
   it("replaces an existing note with the deterministic clear (ctrl+k + Backspace sweep)", async () => {
@@ -226,13 +226,13 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     );
     const res = await submitPreviewNote({ ...base, preview: m, text: "new note" });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys.mock.calls[0]).toEqual(["w1:p1", ["n"]]);
+    expect(mockSendKeys.mock.calls[0]).toEqual(["w1:p1", ["n"], undefined]);
     const clear = mockSendKeys.mock.calls[1]![1];
     expect(clear[0]).toBe("ctrl+k");
     expect(clear.length).toBe(1 + NOTE_MAX_LENGTH + 20);
     expect(clear.slice(1).every((k: string) => k === "Backspace")).toBe(true);
-    expect(mockSendKeys.mock.calls[2]).toEqual(["w1:p1", ["Escape"]]);
-    expect(mockSendReply).toHaveBeenCalledWith("w1:p1", "new note", false);
+    expect(mockSendKeys.mock.calls[2]).toEqual(["w1:p1", ["Escape"], undefined]);
+    expect(mockSendReply).toHaveBeenCalledWith("w1:p1", "new note", false, undefined);
   });
 
   it("removes a note with empty text: clear + Escape, nothing typed", async () => {
@@ -351,7 +351,7 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     mockFetchPane.mockResolvedValue(paneWith(buffer({}))); // editing state never appears
     const res = await submitPreviewNote({ ...base, preview: m, text: "hello" });
     expect(res).toEqual({ status: "error", error: "Note input didn't open — check the pane" });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["n"]]]);
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["n"], undefined]]);
     expect(mockSendReply).not.toHaveBeenCalled();
   });
 });
@@ -362,7 +362,7 @@ describe("submitPreviewKeys — guarded single keystroke (wizard step navigation
     mockFetchPane.mockResolvedValue(paneWith(buffer({})));
     const res = await submitPreviewKeys({ ...base, preview: m, keys: ["Right"] });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["Right"]);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["Right"], undefined);
   });
 
   it("rejects when the dialog is gone", async () => {

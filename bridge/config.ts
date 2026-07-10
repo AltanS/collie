@@ -39,6 +39,21 @@ function envList(name: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Read a boolean env var. Empty/unset → `fallback`. `off`/`0`/`false`/`no` → false; `on`/`1`/`true`/
+ * `yes` → true (case-insensitive); anything else falls back with a warning. Used for feature toggles
+ * that default on, where a typo silently flipping the feature would be surprising.
+ */
+function envBool(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const v = raw.trim().toLowerCase();
+  if (["off", "0", "false", "no"].includes(v)) return false;
+  if (["on", "1", "true", "yes"].includes(v)) return true;
+  console.warn(`[config] ${name}="${raw}" is not a boolean — using default ${fallback}`);
+  return fallback;
+}
+
 export interface Config {
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
@@ -106,6 +121,14 @@ export interface Config {
   vapidSubject: string;
   /** Where to persist push subscriptions and other runtime state. */
   stateDir: string;
+  /**
+   * Multi-session support. When on (default), the bridge fronts every running herdr session it
+   * discovers under the config root, not just {@link socketPath}, and the UI gains a session
+   * switcher. Off (`off`/`0`/`false`) pins the bridge to the primary session only — no discovery,
+   * exactly the pre-feature behaviour. Client-supplied session names only ever select an
+   * already-discovered session; they never build a filesystem path.
+   */
+  multiSession: boolean;
 }
 
 export function loadConfig(): Config {
@@ -134,5 +157,6 @@ export function loadConfig(): Config {
     vapidPrivate: process.env.COLLIE_VAPID_PRIVATE ?? "",
     vapidSubject: process.env.COLLIE_VAPID_SUBJECT ?? "mailto:admin@example.com",
     stateDir,
+    multiSession: envBool("COLLIE_MULTI_SESSION", true),
   };
 }

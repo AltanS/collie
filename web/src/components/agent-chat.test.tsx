@@ -2,7 +2,7 @@ import { useState, type ComponentProps } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
+import { createMemoryRouter, RouterProvider, useParams } from "react-router";
 
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
@@ -84,8 +84,8 @@ describe("AgentChat — reply flow", () => {
 // Echoes the space passed via navigation state, so a test can assert the header lands on the space
 // overview ("/") for the right workspace.
 function SpaceOverviewSentinel() {
-  const space = (useLocation().state as { space?: string } | null)?.space;
-  return <div>overview:{space ?? "none"}</div>;
+  const { spaceId } = useParams();
+  return <div>overview:{spaceId ?? "none"}</div>;
 }
 
 describe("AgentChat — header title block", () => {
@@ -103,7 +103,7 @@ describe("AgentChat — header title block", () => {
     const agent = fixtureAgents[0]!; // workspaceId w1
     const router = createMemoryRouter(
       [
-        { path: "/", element: <SpaceOverviewSentinel /> },
+        { path: "/space/:spaceId", element: <SpaceOverviewSentinel /> },
         {
           path: "/pane/:paneId",
           element: (

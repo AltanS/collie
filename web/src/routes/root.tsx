@@ -5,6 +5,8 @@ import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { OfflineBanner } from "@/components/offline-banner";
 import { DogGallop } from "@/components/dog-gallop";
+import { homePath } from "@/lib/nav";
+import { SESSION_PARAM, normalizeSession } from "@/lib/session";
 import type { HomeData } from "@/lib/loaders";
 
 // The data root: owns the snapshot loader, drives polling, and fans the herd out to the child
@@ -50,7 +52,14 @@ export function RootError() {
       <p className="max-w-xs text-sm text-muted-foreground">{message}</p>
       <button
         type="button"
-        onClick={() => window.location.assign("/")}
+        onClick={() => {
+          // Reload home, but stay in the session you were in (read from the live URL, since the
+          // router context may be the throwing one). Primary → plain "/".
+          const session = normalizeSession(
+            new URLSearchParams(window.location.search).get(SESSION_PARAM),
+          );
+          window.location.assign(homePath(session));
+        }}
         className="text-sm underline underline-offset-4"
       >
         Reload

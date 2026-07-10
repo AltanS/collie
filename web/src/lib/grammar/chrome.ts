@@ -16,6 +16,11 @@ import { isBlank, isBoxBorder, lineText } from "./markers";
 // shape, so we leave the buffer raw.
 const MAX_STATUS_LINES = 3;
 
+// Text Claude draws on the "❯" prompt line that is NOT a real user draft — it's a hint the TUI paints
+// when the box is otherwise empty. Must never be surfaced as a recoverable draft. Kept as an array so
+// more variants can be added without touching the extraction logic.
+const INPUT_PLACEHOLDERS = ["Press up to edit queued messages"];
+
 /**
  * Return `lines` with any confidently-matched trailing chrome removed. When nothing matches the
  * input is returned as-is (same reference), so callers can treat an unchanged result as "no chrome".
@@ -67,9 +72,42 @@ export function extractStatusLine(lines: StyledLine[]): string | null {
   return null;
 }
 
+/**
+ * The user's draft text stranded on the input box's "❯" prompt line. When a message is queued while
+ * the agent is busy and then recalled (Up/Esc), the text lands here and persists across turns — but
+ * stripChrome peels the whole box off the mirror, so it becomes invisible, and the composer (local
+ * state only) never learns of it. This re-surfaces it so the app can offer to recover it.
+ *
+ * Reads the prompt line found by locateInputBox: drop the leading "❯" marker and its separator space
+ * (Claude renders a U+00A0 there, which JS trim() strips), then trim. Returns `null` when there's no
+ * input box at the tail, the box is empty (bare "❯"), or the line is a known TUI placeholder
+ * (INPUT_PLACEHOLDERS) rather than a real draft.
+ *
+ * Known limitation: a multi-line / wrapped draft doesn't match the single-"❯"-line box shape
+ * locateInputBox requires, so the box is left UNstripped in the mirror (visible raw) — acceptable, as
+ * the draft is at least not hidden in that case.
+ */
+export function extractInputDraft(lines: StyledLine[]): string | null {
+  const texts = lines.map(lineText);
+  let end = lines.length;
+  while (end > 0 && isBlank(texts[end - 1]!)) end--;
+  if (end === 0) return null;
+
+  const box = locateInputBox(texts, end);
+  if (box === null) return null;
+
+  let draft = texts[box.prompt]!.trimStart();
+  if (draft.startsWith("❯")) draft = draft.slice(1);
+  draft = draft.trim();
+  if (draft.length === 0 || INPUT_PLACEHOLDERS.includes(draft)) return null;
+  return draft;
+}
+
 interface InputBox {
   /** Index of the TOP border — the exclusive bound of everything ABOVE the box (stripChrome uses it). */
   top: number;
+  /** Index of the "❯" prompt line, between the two borders — carries the draft (extractInputDraft). */
+  prompt: number;
   /** Index of the BOTTOM border — the statusline, if any, is the first non-blank line after it. */
   bottomBorder: number;
 }
@@ -105,10 +143,11 @@ function locateInputBox(texts: string[], end: number): InputBox | null {
   // (c) the "❯" prompt line (allow blank padding on either side, defensively)
   while (i >= 0 && isBlank(texts[i]!)) i--;
   if (i < 0 || !texts[i]!.trimStart().startsWith("❯")) return null;
+  const prompt = i;
   i--;
   while (i >= 0 && isBlank(texts[i]!)) i--;
 
   // (d) top border
   if (i < 0 || !isBoxBorder(texts[i]!)) return null;
-  return { top: i, bottomBorder };
+  return { top: i, prompt, bottomBorder };
 }

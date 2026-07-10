@@ -95,6 +95,8 @@ interface GuardArgs {
   /** The `revision` the rendered dialog was detected against. */
   detectedRevision: number;
   preview: PreviewSelectModel;
+  /** The session the pane lives in (undefined = primary) — scopes every read + keystroke below. */
+  session?: string;
   /** Test seam for the verification polls' pacing. */
   sleep?: Sleep;
 }
@@ -103,8 +105,9 @@ interface GuardArgs {
 async function readModel(
   paneId: string,
   requestedLines: number,
+  session?: string,
 ): Promise<{ revision: number; model: PreviewSelectModel | null }> {
-  const fresh = await fetchPane(paneId, requestedLines);
+  const fresh = await fetchPane(paneId, requestedLines, session);
   return { revision: fresh.revision, model: detectPreviewSelect(splitLines(parseAnsi(fresh.text))) };
 }
 
@@ -112,7 +115,7 @@ async function readModel(
 async function entryGuard(args: GuardArgs): Promise<PromptActionResult | null> {
   let fresh;
   try {
-    fresh = await readModel(args.paneId, args.requestedLines);
+    fresh = await readModel(args.paneId, args.requestedLines, args.session);
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
   }
@@ -146,7 +149,7 @@ async function pollUntil(
     await sleep(POLL_DELAY_MS);
     let fresh;
     try {
-      fresh = await readModel(args.paneId, args.requestedLines);
+      fresh = await readModel(args.paneId, args.requestedLines, args.session);
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
     }
@@ -172,7 +175,7 @@ export async function submitPreviewOption(
   if (guarded) return guarded;
 
   try {
-    const digit = await sendKeys(args.paneId, [String(args.option.n)]);
+    const digit = await sendKeys(args.paneId, [String(args.option.n)], args.session);
     if (!digit.ok) return { status: "error", error: digit.error };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
@@ -187,7 +190,7 @@ export async function submitPreviewOption(
   if (pointed !== "ok") return { status: "changed" };
 
   try {
-    const enter = await sendKeys(args.paneId, ["Enter"]);
+    const enter = await sendKeys(args.paneId, ["Enter"], args.session);
     if (!enter.ok) return { status: "error", error: enter.error };
     return { status: "sent" };
   } catch (e) {
@@ -226,7 +229,7 @@ export async function submitPreviewNote(
   const editing = (m: PreviewSelectModel) => coreEqual(m, args.preview) && m.note.state === "editing";
 
   try {
-    const open = await sendKeys(args.paneId, ["n"]);
+    const open = await sendKeys(args.paneId, ["n"], args.session);
     if (!open.ok) return { status: "error", error: open.error };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
@@ -243,17 +246,18 @@ export async function submitPreviewNote(
       // Deterministic clear: the restored cursor position is unreliable, so kill the tail from
       // wherever it is, then sweep the head with Backspaces (no-ops once the text is gone). Then
       // wait until the input verifiably shows empty before typing into it.
-      const clear = await sendKeys(args.paneId, [
-        "ctrl+k",
-        ...Array.from({ length: CLEAR_SWEEP }, () => "Backspace"),
-      ]);
+      const clear = await sendKeys(
+        args.paneId,
+        ["ctrl+k", ...Array.from({ length: CLEAR_SWEEP }, () => "Backspace")],
+        args.session,
+      );
       if (!clear.ok) return { status: "error", error: clear.error };
       if ((await pollUntil(args, (m) => editing(m) && m.note.text === "")) !== "ok") {
         return { status: "error", error: "Couldn't clear the existing note — check the pane" };
       }
     }
     if (text.length > 0) {
-      const typed = await sendReply(args.paneId, text, false);
+      const typed = await sendReply(args.paneId, text, false, args.session);
       if (!typed.ok) return { status: "error", error: typed.error };
       // Wait for the text to render. The input windows long text around the trailing cursor, so
       // the visible value is the TAIL of what we typed (the whole of it when it fits).
@@ -271,7 +275,7 @@ export async function submitPreviewNote(
     // (a successor dialog, or a now-running agent — pollUntil returns "drifted"), a second blind
     // Escape would cancel/interrupt whatever is there now — so abort with "changed" and send nothing.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const blur = await sendKeys(args.paneId, ["Escape"]);
+      const blur = await sendKeys(args.paneId, ["Escape"], args.session);
       if (!blur.ok) return { status: "error", error: blur.error };
       const blurred = await pollUntil(
         args,
@@ -297,7 +301,7 @@ export async function submitPreviewKeys(
   const guarded = await entryGuard(args);
   if (guarded) return guarded;
   try {
-    const res = await sendKeys(args.paneId, args.keys);
+    const res = await sendKeys(args.paneId, args.keys, args.session);
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
   } catch (e) {

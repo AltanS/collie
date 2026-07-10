@@ -59,12 +59,14 @@ export async function submitPromptOption(args: {
   detectedRevision: number;
   prompt: PromptModel;
   option: PromptOption;
+  /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
+  session?: string;
 }): Promise<PromptActionResult> {
-  const { paneId, requestedLines, detectedRevision, prompt, option } = args;
+  const { paneId, requestedLines, detectedRevision, prompt, option, session } = args;
 
   let fresh;
   try {
-    fresh = await fetchPane(paneId, requestedLines);
+    fresh = await fetchPane(paneId, requestedLines, session);
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
   }
@@ -82,7 +84,7 @@ export async function submitPromptOption(args: {
   if (!freshModel || !promptsEqual(freshModel, prompt)) return { status: "changed" };
 
   try {
-    const res = await sendKeys(paneId, option.keys);
+    const res = await sendKeys(paneId, option.keys, session);
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
   } catch (e) {

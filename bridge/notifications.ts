@@ -53,16 +53,24 @@ export interface MuteGate {
 }
 
 /**
- * Build the {@link NotifySink} the coordinator drives. The whole herd shares one notification slot
- * (`herdTag`), so a render replaces rather than stacks; an active snooze mutes both render and clear
- * (nothing is shown, so there's nothing to close). Kept here, decoupled from `Push`/`Snooze`, so the
- * gating + summary→message mapping is unit-testable without `Bun.serve`.
+ * Build the {@link NotifySink} the coordinator drives. One session's whole herd shares one
+ * notification slot (`herdTag`), so a render replaces rather than stacks; an active snooze mutes both
+ * render and clear (nothing is shown, so there's nothing to close). `sessionName` (the registry name)
+ * is stamped into the push payload so the service worker can deep-link to the right session — omit it
+ * (undefined) for the primary, keeping its payload byte-identical to the single-session case. Kept
+ * here, decoupled from `Push`/`Snooze`, so the gating + summary→message mapping is unit-testable.
  */
-export function makeNotifySink(push: PushSender, mute: MuteGate, herdTag: string): NotifySink {
+export function makeNotifySink(
+  push: PushSender,
+  mute: MuteGate,
+  herdTag: string,
+  sessionName?: string,
+): NotifySink {
   return {
     render: (s) => {
       if (mute.isMuted()) return;
       const msg: PushMessage = { title: s.title, body: s.body, tag: herdTag, paneId: s.paneId, renotify: s.renotify };
+      if (sessionName !== undefined) msg.session = sessionName;
       void push.send(msg);
     },
     clear: () => {
@@ -144,6 +152,18 @@ export class NotificationCoordinator<H = unknown> {
       }
     }
     if (removed) this.emit(false);
+  }
+
+  /**
+   * Tear down this session's notifications: cancel every pending timer and retract everything
+   * outstanding, closing the herd slot. Called when a session is disposed (its socket vanished) so
+   * its alerts never linger on the lock screen with no live session behind them.
+   */
+  clearAll(): void {
+    for (const id of [...this.pending.keys()]) this.cancelPending(id);
+    const had = this.outstanding.size > 0;
+    this.outstanding.clear();
+    if (had) this.sink.clear();
   }
 
   private resolve(id: string): void {

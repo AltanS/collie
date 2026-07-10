@@ -47,6 +47,24 @@ export interface TabView {
 export type BridgeStatus = "connected" | "disconnected";
 
 /**
+ * One entry in the snapshot's `sessions` list — a herdr session this bridge fronts. Additive: a
+ * single-session deployment reports exactly one (the primary), so nothing about the UI changes.
+ */
+export interface SessionSummary {
+  /** Registry name, e.g. "default" or "collie-demo". Client passes this back as `?session=`. */
+  name: string;
+  /** The session cfg.socketPath points at — all pre-multi-session behaviour maps to it. */
+  isPrimary: boolean;
+  /** Whether this session's last poll succeeded (a stale/unreachable socket reads false). */
+  reachable: boolean;
+  /** Agent-pane count (0 when unreachable). */
+  agents: number;
+  /** Agent panes currently working / blocked (0 when unreachable). */
+  working: number;
+  blocked: number;
+}
+
+/**
  * Per-device authorisation state for the requesting client (see `deviceAuth()` in server.ts).
  * Reported in the snapshot so the UI can show a read-only state. Optional on the wire so an older
  * bridge (or a response from before the feature existed) simply reads as "not enforced".
@@ -74,6 +92,11 @@ export interface SnapshotResponse {
   /** All spaces (workspaces) and their tabs, for the space/tab navigator. */
   workspaces: WorkspaceView[];
   tabs: TabView[];
+  /**
+   * Every herdr session this bridge fronts (primary first, then alphabetical). Always present; a
+   * single-session deployment lists just the primary, so the switcher UI can stay hidden.
+   */
+  sessions: SessionSummary[];
   /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. */
   notifications?: { snoozedUntil: number | null };
   ts: number;

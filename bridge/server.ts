@@ -5,9 +5,9 @@ import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
-import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import type { Push, PushSubscription } from "./push.ts";
+import { herdTagFor, type SessionRegistry } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type {
@@ -77,36 +77,18 @@ const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close))?$/;
 
-// The whole herd shares one notification slot, so multiple agents coalesce into a single summary
-// and a retraction (or a snooze) targets exactly it.
-const HERD_TAG = "collie:herd";
-
 export function startServer(opts: {
   cfg: Config;
-  herdr: HerdrClient;
-  engine: StateEngine;
+  registry: SessionRegistry;
   push: Push;
   snooze: Snooze;
   notifyPrefs: NotifyPrefsStore;
   audit: AuditLog;
 }) {
-  const { cfg, herdr, engine, push, snooze, notifyPrefs, audit } = opts;
-
-  // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
-  // diffing snapshots). Push is independent of how the client polls. The coordinator debounces each
-  // blocked/done alert, honours the notify-type prefs, and retracts an alert once the agent resolves
-  // — so an agent you cleared at your desk never (or no longer) buzzes your phone. See notifications.ts.
-  // Built before Bun.serve so the /api/notifications/prefs route can drive its applyPrefs() hook.
-  const clock: NotifyClock<ReturnType<typeof setTimeout>> = {
-    schedule: (fn, ms) => setTimeout(fn, ms),
-    cancel: (h) => clearTimeout(h),
-  };
-  const sink = makeNotifySink(push, snooze, HERD_TAG);
-  const notifications = new NotificationCoordinator(clock, sink, cfg.notifyDelayMs, (status) =>
-    notifyPrefs.isNotifiable(status),
-  );
-  engine.onTransition((agent, from, to) => notifications.onTransition(agent, from, to));
-  engine.onRemove((paneId) => notifications.onRemove(paneId));
+  const { cfg, registry, push, snooze, notifyPrefs, audit } = opts;
+  // Per-session background notifications live in each session's runtime (built by the factory in
+  // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
+  // snooze-clears across every live session's coordinator.
 
   const server = Bun.serve({
     hostname: cfg.host,
@@ -119,11 +101,20 @@ export function startServer(opts: {
       const url = new URL(req.url);
       const { pathname } = url;
 
+      // Session-scoped routes accept an optional `?session=<name>`; absent → the primary session
+      // (identical to pre-multi-session behaviour). The name is only ever a registry Map lookup — it
+      // never builds a path. An unknown name is a 404. Global routes below ignore the param entirely.
+      const sessionName = url.searchParams.get("session") ?? undefined;
+      const unknownSession = () =>
+        jsonError(`unknown session: ${sessionName ?? ""}`, 404, req.headers.get("accept-encoding"));
+
       // ── Live state (polled by the client) ────────────────────────────────
       if (pathname === "/api/snapshot") {
         const gate = checkAccess(req, cfg);
         if (!gate.ok) return text(gate.reason, 403);
-        const { agents, shellPanes, workspaces, tabs, bridge } = engine.current();
+        const rt = registry.get(sessionName);
+        if (!rt) return unknownSession();
+        const { agents, shellPanes, workspaces, tabs, bridge } = rt.engine.current();
         const device = deviceAuth(req, cfg);
         return json({
           bridge,
@@ -133,6 +124,7 @@ export function startServer(opts: {
           shellPanes,
           workspaces,
           tabs,
+          sessions: registry.list(),
           notifications: { snoozedUntil: snooze.until() },
           ts: Date.now(),
         } satisfies SnapshotResponse, req.headers.get("accept-encoding"));
@@ -142,12 +134,16 @@ export function startServer(opts: {
       if (pathname === "/api/tab" && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
-        return createTab(herdr, engine, req, audit, deviceAuth(req, cfg).device);
+        const rt = registry.get(sessionName);
+        if (!rt) return unknownSession();
+        return createTab(rt.herdr, rt.engine, req, audit, deviceAuth(req, cfg).device, rt.name);
       }
       if (pathname === "/api/workspace" && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
-        return createWorkspace(herdr, req, audit, deviceAuth(req, cfg).device);
+        const rt = registry.get(sessionName);
+        if (!rt) return unknownSession();
+        return createWorkspace(rt.herdr, req, audit, deviceAuth(req, cfg).device, rt.name);
       }
 
       // ── Per-pane read / send ─────────────────────────────────────────────
@@ -159,14 +155,17 @@ export function startServer(opts: {
         // close) types into or restructures a terminal, so it additionally needs an authorised device.
         const denied = guard(req, cfg, action ? "write" : "read");
         if (denied) return denied;
+        const rt = registry.get(sessionName);
+        if (!rt) return unknownSession();
+        const { herdr, name: session } = rt;
         // Every action is a write; attribute it to the authorised device for the audit trail.
         const device = action ? deviceAuth(req, cfg).device : null;
 
         if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
-        if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device);
-        if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req, audit, device);
-        if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device);
-        if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device);
+        if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device, session);
+        if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req, audit, device, session);
+        if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
+        if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device, session);
         return text("method not allowed", 405);
       }
 
@@ -206,8 +205,13 @@ export function startServer(opts: {
         const until = (body as { snoozedUntil?: unknown }).snoozedUntil;
         if (until !== null && typeof until !== "number") return text("bad snoozedUntil", 400);
         await snooze.set(until);
-        // Snoozing should also clear whatever's already on the lock screen.
-        if (snooze.isMuted()) void push.send({ type: "clear", tag: HERD_TAG });
+        // Snoozing should also clear whatever's already on the lock screen — across every session,
+        // since snooze is bridge-wide. Each session owns its own notification slot (tag).
+        if (snooze.isMuted()) {
+          for (const rt of registry.all()) {
+            void push.send({ type: "clear", tag: herdTagFor(rt.isPrimary, rt.name) });
+          }
+        }
         return json({ snoozedUntil: snooze.until() }, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/notifications/prefs") {
@@ -230,8 +234,9 @@ export function startServer(opts: {
           const patch = parseNotifyPrefsPatch(body);
           if (!patch) return text("bad prefs", 400);
           const updated = await notifyPrefs.set(patch);
-          // Prefs may have just disabled a kind — retract any pending/outstanding alerts of it.
-          notifications.applyPrefs();
+          // Prefs may have just disabled a kind — retract any pending/outstanding alerts of it, in
+          // every live session (prefs are bridge-wide; each session has its own coordinator).
+          for (const rt of registry.all()) rt.notifications.applyPrefs();
           return json(updated, req.headers.get("accept-encoding"));
         }
         return text("method not allowed", 405);
@@ -369,6 +374,7 @@ async function replyPane(
   req: Request,
   audit: AuditLog,
   device: string | null,
+  session: string,
 ): Promise<Response> {
   let body: { text?: string; submit?: boolean };
   try {
@@ -384,6 +390,7 @@ async function replyPane(
   audit.record({
     action: "reply",
     paneId,
+    session,
     device,
     detail: { text: txt, submit, submitted: outcome.ok, textDelivered: outcome.textDelivered },
   });
@@ -400,6 +407,7 @@ async function keysPane(
   req: Request,
   audit: AuditLog,
   device: string | null,
+  session: string,
 ): Promise<Response> {
   let body: { keys?: unknown };
   try {
@@ -412,7 +420,7 @@ async function keysPane(
   const ae = req.headers.get("accept-encoding");
   try {
     await herdr.sendPaneKeys(paneId, keys);
-    audit.record({ action: "keys", paneId, device, detail: { keys } });
+    audit.record({ action: "keys", paneId, session, device, detail: { keys } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
@@ -427,11 +435,12 @@ async function closePane(
   req: Request,
   audit: AuditLog,
   device: string | null,
+  session: string,
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   try {
     await herdr.closePane(paneId);
-    audit.record({ action: "pane.close", paneId, device, detail: {} });
+    audit.record({ action: "pane.close", paneId, session, device, detail: {} });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
@@ -447,6 +456,7 @@ async function createTab(
   req: Request,
   audit: AuditLog,
   device: string | null,
+  session: string,
 ): Promise<Response> {
   let body: { workspaceId?: string; label?: string; cwd?: string };
   try {
@@ -465,6 +475,7 @@ async function createTab(
     audit.record({
       action: "tab.create",
       paneId: created.paneId,
+      session,
       device,
       detail: { workspaceId, label: body.label, cwd: body.cwd },
     });
@@ -485,6 +496,7 @@ async function createWorkspace(
   req: Request,
   audit: AuditLog,
   device: string | null,
+  session: string,
 ): Promise<Response> {
   let body: { cwd?: string; label?: string };
   try {
@@ -499,6 +511,7 @@ async function createWorkspace(
     audit.record({
       action: "workspace.create",
       paneId: created.paneId,
+      session,
       device,
       detail: { label: body.label, cwd },
     });
@@ -526,6 +539,7 @@ async function uploadPane(
   req: Request,
   audit: AuditLog,
   device: string | null,
+  session: string,
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   // Reject an oversize upload by its declared Content-Length BEFORE buffering — req.formData()
@@ -572,6 +586,7 @@ async function uploadPane(
     audit.record({
       action: "upload",
       paneId,
+      session,
       device,
       detail: { filename: file.name, size: file.size, saved: filename },
     });
@@ -705,6 +720,20 @@ function secure(res: Response): Response {
 
 function json(data: unknown, acceptEncoding: string | null): Response {
   return secure(gzipJsonResponse(data, acceptEncoding));
+}
+
+/**
+ * A JSON error body with a non-200 status (e.g. an unknown-session 404). The body is tiny (below the
+ * gzip threshold), so a plain uncompressed JSON response is the whole story — no need for the gzip
+ * path. `acceptEncoding` is accepted for call-site symmetry with {@link json} but not needed here.
+ */
+function jsonError(message: string, status: number, _acceptEncoding: string | null): Response {
+  return secure(
+    new Response(JSON.stringify({ error: message }), {
+      status,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    }),
+  );
 }
 
 function text(body: string, status: number): Response {

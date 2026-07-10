@@ -61,6 +61,24 @@ export function isReadOnly(device: DeviceAuth | undefined): boolean {
   return !!device && device.enforced && !device.authorized;
 }
 
+/**
+ * One entry in the snapshot's session registry — a named Herdr session the bridge is fanning out.
+ * Order is primary-first, then alphabetical. An unreachable session (crashed / stale socket) reports
+ * `reachable: false` with zeroed counts and renders greyed-out, non-clickable in the switcher.
+ */
+export interface SessionSummary {
+  /** Registry name, e.g. "default", "collie-demo". */
+  name: string;
+  /** The `cfg.socketPath` session — all no-`?s=` requests map to it. */
+  isPrimary: boolean;
+  /** Whether the last poll of this session's socket succeeded. */
+  reachable: boolean;
+  /** Agent-pane count (0 when unreachable). */
+  agents: number;
+  working: number;
+  blocked: number;
+}
+
 export interface SnapshotResponse {
   bridge: BridgeStatus;
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
@@ -71,6 +89,8 @@ export interface SnapshotResponse {
   tabs: TabView[];
   /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. Absent on older bridges. */
   notifications?: { snoozedUntil: number | null };
+  /** The bridge's session registry (primary-first). Absent on a single-session / older bridge. */
+  sessions?: SessionSummary[];
   ts: number;
 }
 

@@ -57,6 +57,16 @@ export function withTimeout(
   return AbortSignal.any([signal, timeoutSignal]);
 }
 
+// Append the `session=<name>` query param to an API path, composing with any query already present
+// (fetchPane carries `?lines=`). The browser URL uses the short `?s=`; on the wire it's `session=`.
+// Blank / absent session → the primary session, so the path is returned untouched (no param).
+function withSession(path: string, session?: string): string {
+  const s = session?.trim();
+  if (!s) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}session=${encodeURIComponent(s)}`;
+}
+
 // Best-effort human-readable failure detail: the response body if present, else the status text.
 async function errorDetail(res: Response): Promise<string> {
   try {
@@ -91,8 +101,8 @@ function req<T>(path: string, init?: RequestInit): Promise<T> {
   return method === "GET" ? op : trackBusy(op);
 }
 
-export function fetchSnapshot(signal?: AbortSignal): Promise<SnapshotResponse> {
-  return req<SnapshotResponse>("/api/snapshot", { signal });
+export function fetchSnapshot(session?: string, signal?: AbortSignal): Promise<SnapshotResponse> {
+  return req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
 }
 
 // Per-pane cache of the last ETag AND the body it belongs to, kept together on purpose. We send
@@ -117,12 +127,16 @@ const PANE_CACHE_MAX = 20;
 export async function fetchPane(
   paneId: string,
   lines?: number,
+  session?: string,
   signal?: AbortSignal,
 ): Promise<PaneReadResponse> {
   const q = lines ? `?lines=${lines}` : "";
-  const url = `/api/pane/${encodeURIComponent(paneId)}${q}`;
+  const url = withSession(`/api/pane/${encodeURIComponent(paneId)}${q}`, session);
+  // Pane ids are per-session (each session is a separate Herdr server), so the ETag/body cache must
+  // be keyed by session too — otherwise a "w1:p1" in one session would 304 into another's mirror.
+  const cacheKey = `${session ?? ""}\u0000${paneId}`;
 
-  const cached = paneCache.get(paneId);
+  const cached = paneCache.get(cacheKey);
   const headers: Record<string, string> = {};
   if (cached) headers["if-none-match"] = cached.etag;
 
@@ -142,7 +156,7 @@ export async function fetchPane(
   const data = (await res.json()) as PaneReadResponse;
   const etag = res.headers.get("etag");
   if (etag) {
-    paneCache.set(paneId, { etag, response: data });
+    paneCache.set(cacheKey, { etag, response: data });
     if (paneCache.size > PANE_CACHE_MAX) {
       const oldest = paneCache.keys().next().value;
       if (oldest !== undefined) paneCache.delete(oldest);
@@ -156,23 +170,24 @@ export function sendReply(
   paneId: string,
   text: string,
   submit = true,
+  session?: string,
 ): Promise<ActionResponse> {
-  return req<ActionResponse>(`/api/pane/${encodeURIComponent(paneId)}/reply`, {
+  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/reply`, session), {
     method: "POST",
     body: JSON.stringify({ text, submit }),
   });
 }
 
-export function sendKeys(paneId: string, keys: string[]): Promise<ActionResponse> {
-  return req<ActionResponse>(`/api/pane/${encodeURIComponent(paneId)}/keys`, {
+export function sendKeys(paneId: string, keys: string[], session?: string): Promise<ActionResponse> {
+  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/keys`, session), {
     method: "POST",
     body: JSON.stringify({ keys }),
   });
 }
 
 /** Close a pane ("kill the agent"). */
-export function closePane(paneId: string): Promise<ActionResponse> {
-  return req<ActionResponse>(`/api/pane/${encodeURIComponent(paneId)}/close`, {
+export function closePane(paneId: string, session?: string): Promise<ActionResponse> {
+  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/close`, session), {
     method: "POST",
   });
 }
@@ -181,16 +196,20 @@ export function closePane(paneId: string): Promise<ActionResponse> {
 export function createTab(
   workspaceId: string,
   opts: { label?: string; cwd?: string } = {},
+  session?: string,
 ): Promise<CreateResponse> {
-  return req<CreateResponse>("/api/tab", {
+  return req<CreateResponse>(withSession("/api/tab", session), {
     method: "POST",
     body: JSON.stringify({ workspaceId, ...opts }),
   });
 }
 
 /** Create a new space (workspace) with a fresh shell pane. `cwd` omitted = the host's home dir. */
-export function createWorkspace(opts: { label?: string; cwd?: string } = {}): Promise<CreateResponse> {
-  return req<CreateResponse>("/api/workspace", {
+export function createWorkspace(
+  opts: { label?: string; cwd?: string } = {},
+  session?: string,
+): Promise<CreateResponse> {
+  return req<CreateResponse>(withSession("/api/workspace", session), {
     method: "POST",
     body: JSON.stringify(opts),
   });
@@ -231,13 +250,13 @@ export function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs
  * Upload an image; the bridge saves it to a host file and returns the path to reference in a
  * message. Uses multipart/form-data (NOT the JSON `req` helper — the browser sets the boundary).
  */
-export function uploadImage(paneId: string, file: File): Promise<UploadResponse> {
+export function uploadImage(paneId: string, file: File, session?: string): Promise<UploadResponse> {
   // Multipart, so it bypasses `req` (the browser sets the boundary) — track it explicitly instead.
   return trackBusy(
     (async () => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`/api/pane/${encodeURIComponent(paneId)}/upload`, {
+      const res = await fetch(withSession(`/api/pane/${encodeURIComponent(paneId)}/upload`, session), {
         method: "POST",
         body: fd,
         signal: withTimeout(undefined, UPLOAD_TIMEOUT_MS),

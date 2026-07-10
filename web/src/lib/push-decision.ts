@@ -14,7 +14,8 @@ export interface PushPayload {
   tag?: string;
   /** Re-alert when replacing the slot (a new agent arrived) vs. update it silently (a retraction). */
   renotify?: boolean;
-  data?: { paneId?: string };
+  /** `session` is the registry name the pane lives in — carried so the click deep-links into it. */
+  data?: { paneId?: string; session?: string };
 }
 
 export type PushDecision =
@@ -23,7 +24,16 @@ export type PushDecision =
   /** A Collie tab is already visible and showing this; don't raise a redundant system notification. */
   | { kind: "suppress" }
   /** Show (or replace) the notification on this tag. */
-  | { kind: "show"; title: string; body: string; tag: string; paneId?: string; renotify: boolean };
+  | {
+      kind: "show";
+      title: string;
+      body: string;
+      tag: string;
+      paneId?: string;
+      /** Registry name of the pane's session (undefined = primary) — for the click deep-link. */
+      session?: string;
+      renotify: boolean;
+    };
 
 // Notifications share a slot so a replacement updates rather than stacks. The bridge sets the tag
 // explicitly ("collie:herd"); we only fall back to a per-pane tag for direct/manual pushes.
@@ -36,6 +46,7 @@ export const tagFor = (paneId?: string): string => (paneId ? `collie:${paneId}` 
  */
 export function decidePush(payload: PushPayload, hasVisibleClient: boolean): PushDecision {
   const paneId = payload.data?.paneId;
+  const session = payload.data?.session;
   const tag = payload.tag ?? tagFor(paneId);
   if (payload.type === "clear") return { kind: "clear", tag };
   if (hasVisibleClient) return { kind: "suppress" };
@@ -45,6 +56,7 @@ export function decidePush(payload: PushPayload, hasVisibleClient: boolean): Pus
     body: payload.body ?? "",
     tag,
     paneId,
+    session,
     renotify: payload.renotify ?? false,
   };
 }

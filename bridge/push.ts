@@ -33,6 +33,12 @@ export interface PushMessage {
   /** Notification slot. Same tag replaces (rather than stacks) the previous notification. */
   tag?: string;
   paneId?: string;
+  /**
+   * The herdr session this alert belongs to (registry name). Threaded into the payload `data` so the
+   * service worker deep-links to the right session. Absent for the primary session, whose payload
+   * then stays byte-identical to the single-session case (an older cached SW keeps working).
+   */
+  session?: string;
   renotify?: boolean;
 }
 
@@ -88,7 +94,11 @@ export class Push {
 
   /** Send a notification instruction (render or clear) to every subscribed device. */
   async send(msg: PushMessage): Promise<void> {
-    await this.broadcast(JSON.stringify({ ...msg, data: { paneId: msg.paneId } }));
+    // The SW reads deep-link fields from `data`. `session` is omitted for the primary (absent on the
+    // message), keeping that payload identical to the pre-multi-session shape.
+    const data: { paneId?: string; session?: string } = { paneId: msg.paneId };
+    if (msg.session !== undefined) data.session = msg.session;
+    await this.broadcast(JSON.stringify({ ...msg, data }));
   }
 
   /** Convenience for a one-off render (used by the manual push-test script). */

@@ -42,6 +42,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     vapidPrivate: "",
     vapidSubject: "mailto:admin@example.com",
     stateDir: "/tmp/state",
+    multiSession: true,
     ...overrides,
   };
 }

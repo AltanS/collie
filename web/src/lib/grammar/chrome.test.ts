@@ -4,11 +4,21 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
-import { extractStatusLine, stripChrome } from "./chrome";
+import { extractInputDraft, extractStatusLine, stripChrome } from "./chrome";
 import { lineText } from "./markers";
 
 // Anchored on this file's directory (see prompt-select.test.ts for why not `new URL(import.meta.url)`).
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
+
+// Synthesise the input-box shape: a top rule, the "❯ …" prompt line, a bottom rule, and an optional
+// statusline below it (matched by position, like the real captures). 40 box glyphs clear the
+// 20-glyph border threshold in isBoxBorder.
+function boxBuffer(promptLine: string, status?: string): StyledLine[] {
+  const rule = "─".repeat(40);
+  const rows = [rule, promptLine, rule];
+  if (status !== undefined) rows.push(status);
+  return splitLines(parseAnsi(rows.join("\n")));
+}
 
 // stripChrome peels the agent's own input-box + statusline + trailing blanks off the TAIL. It's
 // deliberately conservative: it strips only when the full box shape matches and never removes
@@ -104,5 +114,39 @@ describe("extractStatusLine — recovers the stripped statusline", () => {
 
   it("returns null for a plain buffer with no input box", () => {
     expect(extractStatusLine(splitLines(parseAnsi("just some output\nmore output")))).toBeNull();
+  });
+});
+
+// extractInputDraft recovers a user draft stranded on the "❯" prompt line (a queued-then-recalled
+// message that stripChrome would otherwise hide) — the marker + separator stripped, trimmed; null
+// for an empty box, a TUI placeholder, or no box at the tail.
+describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
+  it("done: returns the draft left in the input box (the text stripChrome hides)", () => {
+    // The same fixture whose draft stripChrome removes as chrome — here we surface it instead.
+    const draft = extractInputDraft(fixtureLines("claude--done.txt"));
+    expect(draft).toBe("cat hello.txt to verify");
+  });
+
+  it("returns null for an empty box (bare ❯)", () => {
+    expect(extractInputDraft(boxBuffer("❯"))).toBeNull();
+    expect(extractInputDraft(boxBuffer("❯ "))).toBeNull();
+  });
+
+  it("returns null for the queued-messages placeholder line", () => {
+    expect(extractInputDraft(boxBuffer("❯ Press up to edit queued messages"))).toBeNull();
+  });
+
+  it("returns null when there's no input box at the tail", () => {
+    expect(extractInputDraft(splitLines(parseAnsi("just some output\nmore output")))).toBeNull();
+    expect(extractInputDraft(fixtureLines("claude--trust-prompt.txt"))).toBeNull();
+  });
+
+  it("returns the draft even when a statusline sits below the box", () => {
+    const draft = extractInputDraft(boxBuffer("❯ fix the flaky test", "[Opus 4.8] · ctx:3% · main · 32k tokens"));
+    expect(draft).toBe("fix the flaky test");
+  });
+
+  it("trims leading and trailing whitespace around the draft", () => {
+    expect(extractInputDraft(boxBuffer("❯   spaced out draft   "))).toBe("spaced out draft");
   });
 });

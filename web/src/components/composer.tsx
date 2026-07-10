@@ -1,9 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useRevalidator } from "react-router";
-import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Search, Send, Slash, Terminal, WrapText, Zap } from "lucide-react";
+import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Search, Send, Slash, Terminal, WrapText, X, Zap } from "lucide-react";
 
-import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { setStatus } from "@/lib/status";
@@ -25,6 +24,8 @@ export interface ComposerHandle {
 
 interface ComposerProps {
   paneId: string;
+  /** The session the pane lives in (undefined = primary) — scopes every write to the right Herdr. */
+  session?: string;
   /** The pane's agent name — drives the slash-command palette and the reply-vs-shell placeholder. */
   agent: string | undefined | null;
   /** True for a bare shell pane (tweaks the placeholder copy). */
@@ -35,6 +36,9 @@ interface ComposerProps {
   readOnly: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
+  /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), or null. When set,
+   * the composer offers a chip to recover it here — clearing the terminal line + adopting the text. */
+  terminalDraft: string | null;
   /** Mirror display prefs — the View row lives here, but the mirror (in AgentChat) reads the same
    * single instance, so they're threaded through rather than each calling useDisplayPrefs. */
   prefs: DisplayPrefs;
@@ -57,15 +61,10 @@ interface ComposerProps {
 type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, agent, isShell, gone, readOnly, text, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
+  { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
   ref,
 ) {
   const revalidator = useRevalidator();
-  // Show the quick-key row (1–5 / Esc / Enter) only while the composer is focused AND the soft
-  // keyboard is actually up. Focus alone isn't enough: collapsing the Android keyboard leaves the
-  // textarea focused (no blur fires), so we also watch the viewport via useKeyboardOpen — which
-  // catches the collapse — and hide the row the moment the keyboard goes down.
-  const keyboardOpen = useKeyboardOpen();
   // Every write affordance is off when the pane is gone OR this device is read-only.
   const locked = gone || readOnly;
 
@@ -75,8 +74,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
   // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
   const [lastSent, setLastSent] = useState<string | null>(null);
-  const [composerFocused, setComposerFocused] = useState(false);
   const [justSent, setJustSent] = useState(false); // brief ✓ on the send button after a send
+  // Terminal-draft recovery chip: `dismissedDraft` holds the draft the user dismissed (the chip
+  // stays hidden while `terminalDraft` still equals it, and reappears if the stranded text changes);
+  // `recovering` disables Edit-here while its backspace-then-adopt round-trip is in flight.
+  const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
+  const [recovering, setRecovering] = useState(false);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
   const closeDrawer = () => setDrawer(null);
@@ -131,7 +134,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!t || locked || sending) return;
     setSending(true);
     try {
-      const res = await api.sendReply(paneId, t, true);
+      const res = await api.sendReply(paneId, t, true, session);
       if (res.ok) {
         if (isDraft) setInput("");
         // ✓ flash on the send button + status line acknowledge the send immediately. The mirror only
@@ -184,7 +187,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function pressKeys(k: string[]) {
     if (locked) return;
     api
-      .sendKeys(paneId, k)
+      .sendKeys(paneId, k, session)
       .then((res) => {
         if (!res.ok) setStatus(res.error ?? "Key send failed", "error");
         else scheduleKeyRevalidate();
@@ -199,6 +202,42 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     focusInputEnd();
   }
 
+  // Recover a draft stranded on the terminal's "❯" line (extractInputDraft surfaced it as the chip).
+  // Two moves, in order: (1) clear the terminal line so the next pane.send_text isn't corrupted —
+  // one Backspace per code point plus a harmless overshoot (extra Backspace on an empty input is a
+  // no-op); (2) only if that succeeds, adopt the text into the composer (set an empty draft, else
+  // append on a new line, mirroring insertCommand's set-or-append). On failure we surface the error
+  // and leave the composer alone — the text is still in the terminal, so we mustn't duplicate it.
+  async function recoverDraft() {
+    if (terminalDraft === null || locked || recovering) return;
+    const draft = terminalDraft;
+    setRecovering(true);
+    try {
+      const n = [...draft].length + 8;
+      const res = await api.sendKeys(paneId, Array(n).fill("Backspace"), session);
+      if (res.ok) {
+        setInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
+        focusInputEnd();
+        scheduleKeyRevalidate();
+        // Mark it dismissed so the chip doesn't flash back before the mirror echoes the cleared line.
+        setDismissedDraft(draft);
+      } else {
+        setStatus(res.error ?? "Couldn't clear the terminal draft", "error");
+      }
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setRecovering(false);
+    }
+  }
+
+  // The chip shows only when there's a live stranded draft, the composer can write, no send is in
+  // flight, and the user hasn't dismissed this exact draft. Preview truncates like the send preview.
+  const showDraftChip =
+    terminalDraft !== null && !locked && !sending && terminalDraft !== dismissedDraft;
+  const draftPreview =
+    terminalDraft && terminalDraft.length > 60 ? `${terminalDraft.slice(0, 57)}…` : terminalDraft;
+
   // Upload an image; on success append its host path to the composer so the user can add context.
   async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -206,7 +245,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!file || locked) return;
     setUploading(true);
     try {
-      const res = await api.uploadImage(paneId, file);
+      const res = await api.uploadImage(paneId, file, session);
       if (res.ok) {
         const path = res.path;
         setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
@@ -224,7 +263,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <>
-      <div className="border-t border-border/60 bg-background/95 px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2.5 backdrop-blur-md">
+      <div className="border-t border-border/60 bg-zinc-800 px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2.5">
         {/* Pending-send preview: visible from send until the mirror echoes back (or 6s). Shows the
             user what landed so they don't double-tap while waiting for the terminal to update. */}
         {lastSent && (
@@ -233,55 +272,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <span className="truncate">
               <span className="font-medium">You sent:</span> {lastSent}
             </span>
-          </div>
-        )}
-
-        {/* Quick keys — shown only while the composer is focused and the keyboard is actually up.
-            Mimics a physical keyboard's layout so muscle memory carries over: Esc top-left, Tab
-            directly below it, arrows as an inverted-T on the right (↑ over Enter's row, ← ↓ → below).
-            Digits live on the Keys sheet's 123 tab instead (keeps this strip to a fixed 2 rows, which
-            matters with the phone keyboard eating vertical space). All fire on pointer-down +
-            preventDefault so the textarea keeps focus and the soft keyboard stays up. Key names match
-            the verified HERDR_API.md grammar (Left/Right/Up/Down/Tab/Escape/Enter). */}
-        {composerFocused && keyboardOpen && !locked && (
-          <div className="mb-2 space-y-1">
-            {(
-              [
-                [
-                  { label: "Esc", keys: ["Escape"], aria: "Escape" },
-                  null,
-                  { label: "↑", keys: ["Up"], aria: "Up" },
-                  { label: "⏎", keys: ["Enter"], aria: "Enter" },
-                ],
-                [
-                  { label: "Tab", keys: ["Tab"], aria: "Tab" },
-                  { label: "←", keys: ["Left"], aria: "Left" },
-                  { label: "↓", keys: ["Down"], aria: "Down" },
-                  { label: "→", keys: ["Right"], aria: "Right" },
-                ],
-              ] as const
-            ).map((row, i) => (
-              <div key={i} className="grid grid-cols-4 gap-1">
-                {row.map((cell, j) =>
-                  cell ? (
-                    <Button
-                      key={cell.aria}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 px-0 text-xs font-medium"
-                      onPointerDown={(e) => e.preventDefault()}
-                      onClick={() => pressKeys([...cell.keys])}
-                      aria-label={cell.aria}
-                    >
-                      {cell.label}
-                    </Button>
-                  ) : (
-                    <div key={j} aria-hidden />
-                  ),
-                )}
-              </div>
-            ))}
           </div>
         )}
 
@@ -400,6 +390,36 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           )}
         </div>
+        {/* Terminal-draft recovery chip: a message queued-then-recalled lands on the terminal's "❯"
+            line and stripChrome hides it from the mirror; worse, the next send appends to it. This
+            slim strip surfaces it with a one-tap "Edit here" (clear the line, adopt the text) and a
+            dismiss. Same zinc/text-xs chrome as the "You sent:" strip above. */}
+        {showDraftChip && (
+          <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
+            <Terminal className="size-3 shrink-0" />
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-medium">Draft in terminal:</span> &ldquo;{draftPreview}&rdquo;
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 shrink-0 px-2 text-xs font-medium"
+              onClick={recoverDraft}
+              disabled={recovering}
+            >
+              {recovering ? <Loader2 className="size-3 animate-spin" /> : "Edit here"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0 text-muted-foreground"
+              onClick={() => setDismissedDraft(terminalDraft)}
+              aria-label="Dismiss terminal draft"
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           {/* Attach image — messenger-style, left of the input, always available (previously buried
               in the keyboard-only quick-key strip). preventDefault keeps the textarea focused so the
@@ -420,8 +440,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onFocus={() => setComposerFocused(true)}
-            onBlur={() => setComposerFocused(false)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();

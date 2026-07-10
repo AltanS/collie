@@ -1,11 +1,12 @@
 import { Plug, PlugZap, Settings, WifiOff } from "lucide-react";
-import { Link } from "react-router";
+import { useNavigate } from "react-router";
 
 import { cn } from "@/lib/utils";
-import { markNavDirection } from "@/lib/view-transition";
 import { isConnecting } from "@/lib/connection";
+import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
-import type { BridgeStatus } from "@/lib/types";
+import { SessionSwitcher } from "@/components/session-switcher";
+import type { BridgeStatus, SessionSummary } from "@/lib/types";
 
 interface ConnectionBarProps {
   online: boolean;
@@ -18,6 +19,13 @@ interface ConnectionBarProps {
    *  dashboard and the drilled-in space view share the "/" route (drill-in is local state), so a
    *  same-route link would no-op while drilled in — the home route owns the reset. */
   onHome?: () => void;
+  /** The bridge's session registry — drives the switcher trigger (which self-hides on one session). */
+  sessions?: SessionSummary[];
+  /** The current session name (undefined = primary). */
+  session?: string;
+  /** Show the session switcher. Dashboard-only — hidden when drilled into a space so the in-space
+   *  header stays uncluttered (you switch sessions from home). Defaults to shown. */
+  showSessionSwitcher?: boolean;
 }
 
 // One-line truth about whether the data on screen is live, and why not if it isn't. Deliberately
@@ -43,26 +51,33 @@ const TONE: Record<"ok" | "warn" | "bad", string> = {
 
 export function ConnectionBar(props: ConnectionBarProps) {
   const { label, tone, Icon } = resolve(props);
+  const navigate = useNavigate();
   // The Collie mark doubles as the connection loader: it gallops while we're not yet live —
   // connecting, reconnecting, or offline — and rests once the data on screen is live. The same
   // CollieHome renders inside a pane, so the top-left mark means the same thing on every screen.
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)] app-header">
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/60 bg-zinc-800 px-4 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
       <CollieHome onHome={props.onHome} connecting={isConnecting(props)} wordmark />
       <div className="flex items-center gap-3">
+        {/* Session switcher — dashboard-only (hidden when drilled into a space). Also self-hides
+            unless there's more than one reachable session (or you're on a non-primary one), so a
+            single-session install sees no change here. */}
+        {props.showSessionSwitcher !== false && (
+          <SessionSwitcher sessions={props.sessions ?? []} current={props.session} />
+        )}
         <div className={cn("flex items-center gap-1.5 text-xs font-medium", TONE[tone])}>
           <Icon className="size-3.5" />
           <span>{label}</span>
         </div>
-        <Link
-          to="/settings"
-          viewTransition
-          onClick={() => markNavDirection("forward")}
+        {/* Settings gear. */}
+        <button
+          type="button"
+          onClick={() => navigate(settingsPath(props.session))}
           aria-label="Settings"
           className="text-muted-foreground transition-colors hover:text-foreground"
         >
           <Settings className="size-5" />
-        </Link>
+        </button>
       </div>
     </header>
   );

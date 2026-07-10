@@ -77,12 +77,14 @@ export async function submitWizardKeys(args: {
   detectedRevision: number;
   wizard: WizardModel;
   keys: string[];
+  /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
+  session?: string;
 }): Promise<PromptActionResult> {
-  const { paneId, requestedLines, detectedRevision, wizard, keys } = args;
+  const { paneId, requestedLines, detectedRevision, wizard, keys, session } = args;
 
   let fresh;
   try {
-    fresh = await fetchPane(paneId, requestedLines);
+    fresh = await fetchPane(paneId, requestedLines, session);
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
   }
@@ -92,7 +94,7 @@ export async function submitWizardKeys(args: {
   if (!freshModel || !wizardsEqual(freshModel, wizard)) return { status: "changed" };
 
   try {
-    const res = await sendKeys(paneId, keys);
+    const res = await sendKeys(paneId, keys, session);
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
   } catch (e) {

@@ -1,6 +1,12 @@
 import { http, HttpResponse } from "msw";
 
-import type { AgentView, SnapshotResponse, TabView, WorkspaceView } from "@/lib/types";
+import type {
+  AgentView,
+  SessionSummary,
+  SnapshotResponse,
+  TabView,
+  WorkspaceView,
+} from "@/lib/types";
 
 // A couple of fixture agents covering the triage groups, reused across tests.
 export const fixtureAgents: AgentView[] = [
@@ -70,6 +76,13 @@ export const fixtureTabs: TabView[] = [
   { tabId: "w2:t2", workspaceId: "w2", number: 2, label: "shell", focused: false, paneCount: 1 },
 ];
 
+// A two-session registry: the primary "default" plus a named "collie-demo". Order is primary-first,
+// then alphabetical — matching the bridge contract.
+export const fixtureSessions: SessionSummary[] = [
+  { name: "default", isPrimary: true, reachable: true, agents: 2, working: 1, blocked: 1 },
+  { name: "collie-demo", isPrimary: false, reachable: true, agents: 1, working: 1, blocked: 0 },
+];
+
 export const fixtureSnapshot: SnapshotResponse = {
   bridge: "connected",
   agents: fixtureAgents,
@@ -77,6 +90,7 @@ export const fixtureSnapshot: SnapshotResponse = {
   workspaces: fixtureWorkspaces,
   tabs: fixtureTabs,
   notifications: { snoozedUntil: null },
+  sessions: fixtureSessions,
   ts: 0,
 };
 
