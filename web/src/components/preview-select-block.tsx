@@ -172,7 +172,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
               Preview · {pointedLabel}
             </div>
           )}
-          <pre className="m-0 overflow-x-auto font-mono text-[10px] leading-[1.3] text-foreground/80">
+          <pre className="m-0 min-w-0 w-full max-w-full overflow-x-auto font-mono text-[10px] leading-[1.3] text-foreground/80">
             {preview.preview.join("\n")}
           </pre>
         </div>
