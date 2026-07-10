@@ -6,6 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.12.1] - 2026-07-10
+
+### Fixed
+- View transitions no longer flicker the dashboard list on every poll — React Router fires one per revalidation, so animation is gated to transitions we initiate and un-armed ones swap instantly (71e2ba2)
+- `loaders.ts` is text again (real git diff/blame): the `paneKey` joiner is an escaped NUL, not a literal one (fcb0b7d)
+- Deep-linking a space that never existed shows "Space not found", not "Space closed" (fcb0b7d)
+
+### Changed
+- Settings gear navigates imperatively so it still slides under the transition gate (71e2ba2)
+- Security posture documents that `COLLIE_MULTI_SESSION` (default on) fronts every named session (fcb0b7d)
+
 ## [0.12.0] - 2026-07-10
 
 ### Added
