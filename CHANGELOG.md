@@ -9,7 +9,7 @@ All notable changes to Collie are recorded here. The format follows
 ## [0.10.1] - 2026-07-10
 
 ### Fixed
-- Terminal mirror defaults to no-wrap for table alignment like desktop Herdr; clearer borders/typography (font 12, muted-foreground box-drawing); pane stays viewport-width — toggle Wrap on in View for prose
+- Terminal mirror defaults to no-wrap for table alignment like desktop Herdr; clearer borders/typography (font 12, muted-foreground box-drawing); pane stays viewport-width — toggle Wrap on in View for prose (08749e9)
 
 ## [0.10.0] - 2026-07-10
 
