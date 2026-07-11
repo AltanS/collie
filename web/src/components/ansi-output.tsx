@@ -30,7 +30,7 @@ type PrevBlock = Extract<Block, { kind: "preview-select" }>;
 export interface AnsiOutputProps {
   text: string;
   className?: string;
-  /** false = no wrap; the block scrolls horizontally, preserving column alignment. Default true. */
+  /** false = no wrap; the block scrolls horizontally, preserving column alignment. Default false — enable Wrap in View for prose. */
   wrap?: boolean;
   /** Monospace font size in px. Default 11. */
   fontSize?: number;
@@ -62,8 +62,10 @@ const NO_MATCHES: FindMatch[] = [];
 
 function preClass(wrap: boolean, className?: string): string {
   return cn(
-    "m-0 font-mono leading-[1.35] text-foreground/90",
-    wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre overflow-x-auto",
+    "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
+    wrap
+      ? "whitespace-pre-wrap break-words"
+      : "min-w-0 w-full max-w-full whitespace-pre overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y]",
     className,
   );
 }
@@ -89,7 +91,7 @@ function preClass(wrap: boolean, className?: string): string {
 export const AnsiOutput = memo(function AnsiOutput({
   text,
   className,
-  wrap = true,
+  wrap = false,
   fontSize = 11,
   query = "",
   currentMatch = -1,
@@ -141,8 +143,12 @@ export const AnsiOutput = memo(function AnsiOutput({
     currentRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
   }, [currentMatch, matches]);
 
+  // Muted = box-drawing / rule glyphs. Use muted-foreground (readable on dark) and drop ANSI dim
+  // opacity so table borders stay visible — var(--border) + dim made them nearly invisible on mobile.
   const styleFor = (s: AnsiSegment): CSSProperties =>
-    s.muted ? { ...s.style, color: "var(--border)", fontWeight: 400 } : s.style;
+    s.muted
+      ? { ...s.style, color: "var(--muted-foreground)", fontWeight: 400, opacity: 1 }
+      : s.style;
 
   const prompt = promptBlock ? (
     <PromptSelectBlock
