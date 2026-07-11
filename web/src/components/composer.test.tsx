@@ -55,7 +55,7 @@ describe("Composer — send", () => {
     expect(props.onSent).toHaveBeenCalled();
   });
 
-  it("clears the terminal line with backspaces before sendReply when a draft is stranded", async () => {
+  it("clears the terminal line with ctrl+k and backspaces before sendReply when a draft is stranded", async () => {
     const user = userEvent.setup();
     const callOrder: string[] = [];
     let sentKeys: string[] | null = null;
@@ -78,17 +78,39 @@ describe("Composer — send", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(callOrder).toEqual(["keys", "reply"]));
-    expect(sentKeys).toHaveLength([..."leftover"].length + 8);
-    expect(sentKeys!.every((k) => k === "Backspace")).toBe(true);
+    expect(sentKeys![0]).toBe("ctrl+k");
+    expect(sentKeys).toHaveLength([..."leftover"].length + 9);
+    expect(sentKeys!.slice(1).every((k) => k === "Backspace")).toBe(true);
   });
 
-  it("clears the terminal line before each send so sequential sends do not accumulate", async () => {
+  it("does not call keys before reply when terminalDraft is null", async () => {
+    const user = userEvent.setup();
+    const callOrder: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        callOrder.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async () => {
+        callOrder.push("reply");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer({ terminalDraft: null });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(callOrder).toEqual(["reply"]));
+  });
+
+  it("sequential sends with no stranded draft do not call keys before reply", async () => {
     const user = userEvent.setup();
     const callLog: string[] = [];
     server.use(
-      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
-        const body = (await request.json()) as { keys: string[] };
-        callLog.push(`keys:${body.keys.length}`);
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        callLog.push("keys");
         return HttpResponse.json({ ok: true });
       }),
       http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
@@ -109,8 +131,7 @@ describe("Composer — send", () => {
     await waitFor(() => expect(callLog).toContain("reply:second"));
 
     expect(callLog.filter((e) => e.startsWith("reply:"))).toEqual(["reply:first", "reply:second"]);
-    expect(callLog[callLog.length - 1]).toBe("reply:second");
-    expect(callLog[callLog.length - 1]).not.toContain("first");
+    expect(callLog).not.toContain("keys");
   });
 
   it("keeps the draft and shows the partial-failure message when textDelivered is true", async () => {
