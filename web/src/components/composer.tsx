@@ -60,6 +60,10 @@ interface ComposerProps {
 // exposes `focusInput` so the mirror tap can bring up the keyboard.
 type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
+// Generous Backspace sweep when the stranded-draft length is unknown — matches preview-action.ts
+// CLEAR_SWEEP (NOTE_MAX_LENGTH + 20).
+const TERMINAL_CLEAR_SWEEP = 320;
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
   ref,
@@ -134,9 +138,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!t || locked || sending) return;
     setSending(true);
     try {
+      // Clear any text on the terminal's "❯" line before pane.send_text appends at cursor — same
+      // Backspace sweep as recoverDraft(), sized from terminalDraft when known.
+      const clearCount = terminalDraft !== null ? [...terminalDraft].length + 8 : TERMINAL_CLEAR_SWEEP;
+      const clearRes = await api.sendKeys(paneId, Array(clearCount).fill("Backspace"), session);
+      if (!clearRes.ok) {
+        setStatus(clearRes.error ?? "Couldn't clear the terminal input", "error");
+        return;
+      }
+      scheduleKeyRevalidate();
+
       const res = await api.sendReply(paneId, t, true, session);
       if (res.ok) {
         if (isDraft) setInput("");
+        if (terminalDraft !== null) setDismissedDraft(terminalDraft);
         // ✓ flash on the send button + status line acknowledge the send immediately. The mirror only
         // echoes in 1–3s; the "You sent: …" pending preview keeps the typed text visible until it
         // lands (cleared by the next text update or a 6s safety timeout).
@@ -150,6 +165,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
         onSent(); // you just acted — snap the mirror back to the live tail to see the result
       } else {
+        // textDelivered: text landed but Enter failed — keep the draft and surface the bridge's
+        // partial-failure message so the user checks the pane instead of double-sending.
         setStatus(res.error ?? "Send failed", "error");
       }
     } catch (e) {
