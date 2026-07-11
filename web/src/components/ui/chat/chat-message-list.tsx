@@ -41,12 +41,12 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
     );
 
     return (
-      <div className="relative h-full w-full">
+      <div className="relative h-full min-w-0 w-full">
         <div
           ref={scrollRef}
           onScroll={onScroll}
           className={cn(
-            "flex h-full w-full flex-col gap-4 overflow-y-auto overflow-x-hidden px-3 py-4",
+            "flex h-full min-w-0 w-full flex-col gap-4 overflow-y-auto overflow-x-hidden px-3 py-4",
             className,
           )}
           {...props}

@@ -93,8 +93,8 @@
   --color-status-idle: var(--status-idle);
   --color-status-unknown: var(--status-unknown);
 
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace,
+    SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @layer base {
