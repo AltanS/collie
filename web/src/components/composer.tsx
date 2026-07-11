@@ -60,9 +60,8 @@ interface ComposerProps {
 // exposes `focusInput` so the mirror tap can bring up the keyboard.
 type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
-// Generous Backspace sweep when the stranded-draft length is unknown — matches preview-action.ts
-// CLEAR_SWEEP (NOTE_MAX_LENGTH + 20).
-const TERMINAL_CLEAR_SWEEP = 320;
+// Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text.
+const TUI_SETTLE_MS = 350;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
@@ -138,15 +137,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!t || locked || sending) return;
     setSending(true);
     try {
-      // Clear any text on the terminal's "❯" line before pane.send_text appends at cursor — same
-      // Backspace sweep as recoverDraft(), sized from terminalDraft when known.
-      const clearCount = terminalDraft !== null ? [...terminalDraft].length + 8 : TERMINAL_CLEAR_SWEEP;
-      const clearRes = await api.sendKeys(paneId, Array(clearCount).fill("Backspace"), session);
-      if (!clearRes.ok) {
-        setStatus(clearRes.error ?? "Couldn't clear the terminal input", "error");
-        return;
+      // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
+      // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip when
+      // there's no draft: a blind sweep races the TUI and Enter can fire before the PTY settles.
+      if (terminalDraft !== null) {
+        const clearCount = [...terminalDraft].length + 8;
+        const clearRes = await api.sendKeys(
+          paneId,
+          ["ctrl+k", ...Array(clearCount).fill("Backspace")],
+          session,
+        );
+        if (!clearRes.ok) {
+          setStatus(clearRes.error ?? "Couldn't clear the terminal input", "error");
+          return;
+        }
+        scheduleKeyRevalidate();
+        await new Promise((resolve) => setTimeout(resolve, TUI_SETTLE_MS));
       }
-      scheduleKeyRevalidate();
 
       const res = await api.sendReply(paneId, t, true, session);
       if (res.ok) {
