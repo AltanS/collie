@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.10.2] - 2026-07-12
+
+### Fixed
+- Composer Send clears a stranded draft off the terminal `❯` line (ctrl+k + Backspace) before typing so replies no longer accumulate on the prompt; a clean prompt skips the clear (cd1cc25)
+- Bridge settles ~350ms between typing and Enter so the TUI reliably accepts the submit key (cd1cc25)
+
 ## [0.10.1] - 2026-07-11
 
 ### Fixed

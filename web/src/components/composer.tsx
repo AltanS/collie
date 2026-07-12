@@ -60,6 +60,9 @@ interface ComposerProps {
 // exposes `focusInput` so the mirror tap can bring up the keyboard.
 type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
+// Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text.
+const TUI_SETTLE_MS = 350;
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
   ref,
@@ -134,9 +137,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!t || locked || sending) return;
     setSending(true);
     try {
+      // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
+      // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip when
+      // there's no draft: a blind sweep races the TUI and Enter can fire before the PTY settles.
+      if (terminalDraft !== null) {
+        const clearCount = [...terminalDraft].length + 8;
+        const clearRes = await api.sendKeys(
+          paneId,
+          ["ctrl+k", ...Array(clearCount).fill("Backspace")],
+          session,
+        );
+        if (!clearRes.ok) {
+          setStatus(clearRes.error ?? "Couldn't clear the terminal input", "error");
+          return;
+        }
+        scheduleKeyRevalidate();
+        await new Promise((resolve) => setTimeout(resolve, TUI_SETTLE_MS));
+      }
+
       const res = await api.sendReply(paneId, t, true, session);
       if (res.ok) {
         if (isDraft) setInput("");
+        if (terminalDraft !== null) setDismissedDraft(terminalDraft);
         // ✓ flash on the send button + status line acknowledge the send immediately. The mirror only
         // echoes in 1–3s; the "You sent: …" pending preview keeps the typed text visible until it
         // lands (cleared by the next text update or a 6s safety timeout).
@@ -150,6 +172,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
         onSent(); // you just acted — snap the mirror back to the live tail to see the result
       } else {
+        // textDelivered: text landed but Enter failed — keep the draft and surface the bridge's
+        // partial-failure message so the user checks the pane instead of double-sending.
         setStatus(res.error ?? "Send failed", "error");
       }
     } catch (e) {

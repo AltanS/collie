@@ -104,7 +104,9 @@ export interface PaneReadResponse {
   notModified?: boolean;
 }
 
-export type ActionResponse = { ok: true } | { ok: false; error: string };
+export type ActionResponse =
+  | { ok: true }
+  | { ok: false; error: string; textDelivered?: boolean };
 
 export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };
 
