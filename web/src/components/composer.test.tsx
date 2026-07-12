@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { clearStatus } from "@/lib/status";
+import { clearStatus, useStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
@@ -37,6 +37,11 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
   return props;
 }
 
+function StatusSentinel() {
+  const status = useStatus();
+  return <div data-testid="status">{status?.text ?? ""}</div>;
+}
+
 describe("Composer — send", () => {
   it("sends non-destructive input on the first tap and clears the draft", async () => {
     const user = userEvent.setup();
@@ -48,6 +53,129 @@ describe("Composer — send", () => {
 
     await waitFor(() => expect(box).toHaveValue(""));
     expect(props.onSent).toHaveBeenCalled();
+  });
+
+  it("clears the terminal line with ctrl+k and backspaces before sendReply when a draft is stranded", async () => {
+    const user = userEvent.setup();
+    const callOrder: string[] = [];
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        const body = (await request.json()) as { keys: string[] };
+        sentKeys = body.keys;
+        callOrder.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async () => {
+        callOrder.push("reply");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer({ terminalDraft: "leftover" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "new message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(callOrder).toEqual(["keys", "reply"]));
+    expect(sentKeys![0]).toBe("ctrl+k");
+    expect(sentKeys).toHaveLength([..."leftover"].length + 9);
+    expect(sentKeys!.slice(1).every((k) => k === "Backspace")).toBe(true);
+  });
+
+  it("does not call keys before reply when terminalDraft is null", async () => {
+    const user = userEvent.setup();
+    const callOrder: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        callOrder.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async () => {
+        callOrder.push("reply");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer({ terminalDraft: null });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(callOrder).toEqual(["reply"]));
+  });
+
+  it("sequential sends with no stranded draft do not call keys before reply", async () => {
+    const user = userEvent.setup();
+    const callLog: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        callLog.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string };
+        callLog.push(`reply:${body.text}`);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "first");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain("reply:first"));
+
+    await user.type(box, "second");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain("reply:second"));
+
+    expect(callLog.filter((e) => e.startsWith("reply:"))).toEqual(["reply:first", "reply:second"]);
+    expect(callLog).not.toContain("keys");
+  });
+
+  it("keeps the draft and shows the partial-failure message when textDelivered is true", async () => {
+    const user = userEvent.setup();
+    const partialError = "typed into the pane but not submitted — check the pane before resending";
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () =>
+        HttpResponse.json({ ok: false, textDelivered: true, error: partialError }),
+      ),
+    );
+    const props: ComponentProps<typeof Composer> = {
+      paneId: "w1:p1",
+      agent: "claude",
+      isShell: false,
+      gone: false,
+      readOnly: false,
+      text: "pane output",
+      terminalDraft: null,
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      setWrap: vi.fn(),
+      stepFontSize: vi.fn(),
+      setRawTerminal: vi.fn(),
+      onSent: vi.fn(),
+    };
+    const router = createMemoryRouter([
+      {
+        path: "/",
+        element: (
+          <>
+            <StatusSentinel />
+            <Composer {...props} />
+          </>
+        ),
+      },
+    ]);
+    render(<RouterProvider router={router} />);
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "almost sent");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(box).toHaveValue("almost sent"));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(partialError));
+    expect(props.onSent).not.toHaveBeenCalled();
   });
 });
 

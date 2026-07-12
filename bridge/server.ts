@@ -338,12 +338,18 @@ export type ReplyOutcome =
  * true` so the client knows NOT to resend (which would duplicate the already-typed text). Pure +
  * exported.
  */
+export type SleepFn = (ms: number) => Promise<void>;
+const defaultSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Pause between typing and Enter so the TUI accepts the submit key (preview-action polls ~350ms). */
+const REPLY_SETTLE_MS = 350;
+
 export async function sendReplySteps(
   client: ReplySender,
   paneId: string,
   txt: string,
   submit: boolean,
   submitKeys: string[],
+  sleep: SleepFn = defaultSleep,
 ): Promise<ReplyOutcome> {
   let textDelivered = false;
   try {
@@ -351,7 +357,10 @@ export async function sendReplySteps(
       await client.sendPaneText(paneId, txt);
       textDelivered = true;
     }
-    if (submit) await client.sendPaneKeys(paneId, submitKeys);
+    if (submit) {
+      if (txt) await sleep(REPLY_SETTLE_MS);
+      await client.sendPaneKeys(paneId, submitKeys);
+    }
     return { ok: true, textDelivered };
   } catch (err) {
     if (textDelivered && submit) {

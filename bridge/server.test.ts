@@ -255,16 +255,18 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
     }
   }
 
+  const noSleep = async () => {};
+
   test("types then submits on the happy path", async () => {
     const client = new FakeClient();
-    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"], noSleep);
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text", "keys"]);
   });
 
   test("text lands but submit fails → distinguishable error + textDelivered:true (don't resend)", async () => {
     const client = new FakeClient("keys");
-    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"], noSleep);
     expect(out).toEqual({
       ok: false,
       textDelivered: true,
@@ -275,21 +277,21 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
 
   test("text step fails → nothing delivered, surfaces Herdr's message (safe to resend)", async () => {
     const client = new FakeClient("text");
-    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"], noSleep);
     expect(out).toEqual({ ok: false, textDelivered: false, error: "text rejected" });
     expect(client.calls).toEqual(["text"]); // never reached the keys step
   });
 
   test("submit-only (empty text) failure is a plain failure, not the partial-delivery message", async () => {
     const client = new FakeClient("keys");
-    const out = await sendReplySteps(client, "p1", "", true, ["Enter"]);
+    const out = await sendReplySteps(client, "p1", "", true, ["Enter"], noSleep);
     expect(out).toEqual({ ok: false, textDelivered: false, error: "keys rejected" });
     expect(client.calls).toEqual(["keys"]); // no text typed
   });
 
   test("no-submit reply just types the text", async () => {
     const client = new FakeClient();
-    const out = await sendReplySteps(client, "p1", "hello", false, ["Enter"]);
+    const out = await sendReplySteps(client, "p1", "hello", false, ["Enter"], noSleep);
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text"]);
   });
