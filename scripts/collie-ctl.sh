@@ -55,6 +55,12 @@ cmd_build() {
   if [ "${SKIP_VERSION_CHECK:-}" != "1" ]; then
     bash "${PLUGIN_ROOT}/scripts/check-version.sh"
   fi
+  # Install BOTH dependency trees before typechecking. The root typecheck (tsconfig `types: ["bun"]`)
+  # resolves @types/bun from the ROOT node_modules; a fresh Herdr checkout ships neither tree, so
+  # without a root install the very first build dies with TS2688 "Cannot find type definition file
+  # for 'bun'" and Herdr rolls the install back (issue #9). It works on the dev host only because a
+  # manual `bun install` left root node_modules behind.
+  ( cd "${PLUGIN_ROOT}" && "$BUN" install )
   ( cd "${PLUGIN_ROOT}/web" && "$BUN" install )
   # Typecheck BOTH sides before building — the Vite build itself does not typecheck, so a type
   # error would otherwise ship silently. Skip with SKIP_TYPECHECK=1 (same hatch as the pre-push hook).
