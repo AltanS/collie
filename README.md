@@ -28,6 +28,7 @@ serving a Vite + React + shadcn PWA.
 - [Web Push](#web-push-optional)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
+- [Developing this plugin](#developing-this-plugin)
 
 ## Demo
 
@@ -551,10 +552,28 @@ A small Bun process sits between your phone and Herdr — the browser never touc
 
 Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
+## Developing this plugin
+
+Clone it and `herdr plugin link` it ([Install](#install) above), then edit in place.
+
+- **The manifest is the plugin.** `herdr-plugin.toml` declares the actions listed in
+  [Herdr actions](#herdr-actions), and each one shells out to `scripts/collie-ctl.sh`. Both are
+  commented — read them, not a paraphrase of them here.
+- **One asymmetry in the dev loop:** `web/` rebuilds go live with no restart (the bridge serves
+  `web/dist` from disk); `bridge/` changes need `systemctl --user restart collie`. Build, test and
+  versioning rules are in [`CLAUDE.md`](./CLAUDE.md) — versioning is hook-enforced, so skim it before
+  your first commit.
+- **Why a supervised service and not a plugin pane** — [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3.
+  That decision is why the manifest uses `[[actions]]` and `[[build]]` and nothing else.
+
+Herdr's plugin system itself is upstream's to document:
+[authoring](https://herdr.dev/docs/plugins/) ·
+[CLI reference](https://herdr.dev/docs/cli-reference/) ·
+[example plugins](https://github.com/ogulcancelik/herdr-plugin-examples).
+
 ## More
 
 - Design & rationale — [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - Verified Herdr socket API — [`HERDR_API.md`](./HERDR_API.md)
-- Herdr background notes — [`HERDR_NOTES.md`](./HERDR_NOTES.md)
 - Ops, versioning & conventions — [`CLAUDE.md`](./CLAUDE.md)
 - Changes — [`CHANGELOG.md`](./CHANGELOG.md)
