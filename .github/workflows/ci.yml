@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a PR supersedes the old run — don't burn a runner on the stale one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      # The MANDATORY invariant: the three version files + the newest CHANGELOG heading must agree.
+      - name: Version consistency
+        run: bash scripts/check-version.sh
+
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+      - name: Typecheck (root)
+        run: bun run typecheck
+      - name: Test (bridge)
+        run: bun run test
+
+      - name: Install (web)
+        run: cd web && bun install --frozen-lockfile
+      - name: Typecheck (web)
+        run: cd web && bun run typecheck
+      - name: Test (web)
+        run: cd web && bun run test
