@@ -15,9 +15,9 @@
 // reads segment STYLING (`AnsiSegment.bg`) as well as text: the current chip in the stepper is
 // marked only by a background highlight, not by a distinct glyph.
 
-import type { StyledLine } from "../blocks";
+import type { StyledLine } from "../../blocks";
 import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
-import { isFreeTextLabel, parseOptionRow } from "./prompt-select";
+import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 
 /** One question chip in the stepper header (the Submit chip is implicit — see `WizardModel`). */
 export interface WizardStepChip {
@@ -209,7 +209,9 @@ function detectQuestionPhase(
 ): WizardRegion | null {
   if (classifyFooter(texts[fi]!) !== "select") return null;
 
-  // Numbered rows 1..k in order, near the footer (same shape as the single-question menu).
+  // Numbered rows near the footer (same shape as the single-question menu). The menu is the trailing
+  // 1,2,…,m run of them (see trailingMenuRows) — a numbered body above the current question's options
+  // sits above it and drops out, the same body-list hazard prompt-select guards against.
   const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
   const rows: { index: number; n: number; label: string }[] = [];
   for (let i = from; i < fi; i++) {
@@ -217,13 +219,19 @@ function detectQuestionPhase(
     if (parsed) rows.push({ index: i, ...parsed });
   }
   if (rows.length < 2) return null;
-  if (rows.some((r, k) => r.n !== k + 1)) return null;
+  const menu = trailingMenuRows(rows);
+  if (menu.length < 2) return null;
   // Past 9 numbered rows, an option would need a two-key digit ("10") — the wizard sends the digit
   // ALONE to select+advance, and Herdr rejects "10", so this would mis-answer. Real wizard steps are
-  // ≤6 options; bail to the raw mirror. (Rows are 1..k consecutive above, so length > 9 == a row ≥10.)
-  if (rows.length > 9) return null;
-  const firstOpt = rows[0]!.index;
-  if (fi - rows[rows.length - 1]!.index > MAX_FOOTER_GAP) return null;
+  // ≤6 options; bail to the raw mirror. (menu is 1..m consecutive by construction, so length > 9 == a row ≥10.)
+  if (menu.length > 9) return null;
+  // A multiSelect step inside a multi-question wizard (its option rows carry the `[ ]`/`[✔]` checkbox
+  // prefix) is unsupported in v1: a wizard digit selects-AND-advances, but a checkbox digit TOGGLES,
+  // so rendering these as select-and-advance answers would mis-drive the dialog. Bail to the raw
+  // mirror + keys pad. (The multi-select grammar only claims the single-question checkbox form.)
+  if (menu.some((row) => checkboxState(row.label) !== null)) return null;
+  const firstOpt = menu[0]!.index;
+  if (fi - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
 
   // The stepper header above the first option — THE wizard discriminator. Stop at a horizontal
   // rule (the dialog's top border) so the scan can't wander into scrollback.
@@ -243,10 +251,10 @@ function detectQuestionPhase(
   // Options: description sub-lines attach like prompt-select's; free-text rows ("Type something.")
   // stay with the composer; "Chat about this" is kept but flagged — it aborts the whole wizard.
   const options: WizardOption[] = [];
-  for (let r = 0; r < rows.length; r++) {
-    const row = rows[r]!;
+  for (let r = 0; r < menu.length; r++) {
+    const row = menu[r]!;
     if (isFreeTextLabel(row.label)) continue;
-    const nextIdx = r + 1 < rows.length ? rows[r + 1]!.index : fi;
+    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : fi;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;

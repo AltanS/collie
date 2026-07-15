@@ -11,8 +11,15 @@ import {
 
 import { cn } from "@/lib/utils";
 import type { PreviewOption, PreviewSelectModel } from "@/lib/blocks";
+import {
+  KeyBadge,
+  OptionGroupCaption,
+  optionSurface,
+  PromptPanel,
+  QuestionHeading,
+} from "@/components/option-button";
 import { NOTE_MAX_LENGTH } from "@/lib/preview-action";
-import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/grammar/wizard";
+import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/claude/wizard";
 
 /** One tap's intent, resolved to keystrokes by the injected handler (preview-action.ts). */
 export type PreviewBlockAction =
@@ -75,7 +82,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
   );
 
   return (
-    <div role="group" aria-label={preview.question} className="my-1.5 flex flex-col gap-2">
+    <PromptPanel ariaLabel={preview.question}>
       {/* Wizard form only: the stepper chips + Left/Right navigation, exactly as in WizardBlock —
           a preview question is just one step of the same dialog. Single-question dialogs keep
           their question/chip line in the raw mirror above, so neither renders here. */}
@@ -123,41 +130,43 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           </button>
         </div>
       )}
-      {wizard && <div className="text-sm font-medium text-foreground">{preview.question}</div>}
+      {wizard && <QuestionHeading>{preview.question}</QuestionHeading>}
+      {!wizard && <OptionGroupCaption>Choose an option</OptionGroupCaption>}
 
-      {/* Options. Tapping one selects it outright (the handler drives digit → verify → Enter).
-          The pointed row — whose preview is shown below — is marked with the TUI's chevron. */}
-      <div className="flex flex-col gap-1.5">
+      {/* Options. Tapping one selects it outright (the handler drives digit → verify → Enter). Each
+          row leads with the pointer chevron (whose preview shows below) then its terminal-menu digit
+          (KeyBadge), on the shared elevated option surface. */}
+      <div className="flex flex-col gap-1">
         {preview.options.map((option, i) => {
           const id = `opt-${i}`;
+          const busy = sending === id;
+          const tone = busy ? "busy" : option.chosen ? "selected" : "default";
           return (
             <button
               key={i}
               type="button"
               disabled={locked}
               onClick={() => press(id, { kind: "option", option })}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors active:bg-muted disabled:opacity-60",
-                option.chosen ? "border-primary/60 bg-primary/10" : "border-border/70 bg-muted/40",
-              )}
+              className={optionSurface(tone)}
             >
               <ChevronRight
                 className={cn(
-                  "size-3.5 shrink-0",
+                  "mt-[3px] size-3.5 shrink-0",
                   option.pointed ? "text-primary" : "text-transparent",
                 )}
                 aria-label={option.pointed ? "Previewed below" : undefined}
               />
+              <KeyBadge tone={tone}>{option.n}</KeyBadge>
               <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
                 {option.label}
               </span>
-              {sending === id ? (
+              {busy ? (
                 <Loader2
-                  className="size-4 shrink-0 animate-spin text-muted-foreground"
+                  className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
                   aria-label="Sending"
                 />
               ) : option.chosen ? (
-                <Check className="size-4 shrink-0 text-primary" aria-label="Current answer" />
+                <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-label="Current answer" />
               ) : null}
             </button>
           );
@@ -261,6 +270,6 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           Add a note to this answer
         </button>
       )}
-    </div>
+    </PromptPanel>
   );
 }

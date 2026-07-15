@@ -1,0 +1,49 @@
+
+[0m[38;2;215;119;87m╭─── Claude Code [0m[38;2;153;153;153mv2.1.210 [0m[38;2;215;119;87m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;215;119;87m│                                                    [0m[2m[38;2;215;119;87m│ [0m[1m[38;2;215;119;87mTips for getting started                                                                                             [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                 [0m[1mWelcome back Altan!                [0m[2m[38;2;215;119;87m│ [0mRun /init to create a CLAUDE.md file with instructions for Claude                                                    [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                                                    [0m[2m[38;2;215;119;87m│ [0m[38;2;215;119;87m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │[0m
+[0m[38;2;215;119;87m│                       ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▜[0m[38;2;215;119;87m▌                      [0m[2m[38;2;215;119;87m│ [0m[1m[38;2;215;119;87mWhat's new                                                                                                           [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                      ▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m▛▘                     [0m[2m[38;2;215;119;87m│ [0mAdded a live elapsed-time counter to the collapsed tool summary line so long-running tool calls visibly tick instea… [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│                        ▘▘ ▝▝                       [0m[2m[38;2;215;119;87m│ [0mAdded a startup warning for `Write(path)`, `NotebookEdit(path)`, and `Glob(path)` permission rules — use `Edit(path… [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│      [0m[38;2;153;153;153mFable 5 with xhigh effort · Claude Max ·      [0m[2m[38;2;215;119;87m│ [0mFixed `isolation: 'worktree'` subagents being able to run git-mutating commands against the main repo checkout inst… [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│      [0m[38;2;153;153;153maltan@sportsight.de's Organization            [0m[2m[38;2;215;119;87m│ [0m[3m[38;2;153;153;153m/release-notes for more                                                                                              [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m│        [0m[38;2;153;153;153m~/playground/collie-demo-herd/juniper       [0m[2m[38;2;215;119;87m│                                                                                                                      [0m[38;2;215;119;87m│[0m
+[0m[38;2;215;119;87m╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mCreate a file named SHEPHERD.md with a one-line description of a shepherd dog.[0m[48;2;55;55;55m                                                                                             [0m
+
+[0m[38;2;255;107;128m● [0m[1mWrite[0m(SHEPHERD.md)
+[0m[38;2;153;153;153m  ⎿  [0m[38;2;255;107;128mError writing file[0m
+
+  [0m[38;2;153;153;153mRead [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m file [0m
+
+[0m[38;2;153;153;153m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · SHEPHERD.md already exists and contains a haiku about agents. How should I handle it? → Leave it alone[0m
+
+[0m[38;2;255;255;255m● [0mUnderstood — I've left [0m[38;2;177;185;249mSHEPHERD.md [0muntouched. It still contains the original haiku, and no changes were made.
+
+[0m[38;2;153;153;153m✻ Brewed for 43s[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse AskUserQuestion with multiSelect enabled: ask me which pizza toppings I want, options Cheese, Mushrooms, Olives, Peppers, allowing multiple selections. Do nothing [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55melse.[0m[48;2;55;55;55m                                                                                                                                                                      [0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m← [0m[38;2;0;0;0m[48;2;177;185;249m ☐ Toppings  [0m✔ Submit  →
+
+[0m[1m[38;2;255;255;255mWhich pizza toppings do you want?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[ ] [0m[38;2;177;185;249mCheese[0m
+  [0m[38;2;153;153;153mClassic melted cheese topping.[0m
+  [0m[38;2;153;153;153m2. [0m[ ] Mushrooms
+  [0m[38;2;153;153;153mSliced mushrooms.[0m
+  [0m[38;2;153;153;153m3. [0m[ ] Olives
+  [0m[38;2;153;153;153mSliced olives.[0m
+  [0m[38;2;153;153;153m4.[0m [ ] Peppers
+  [0m[38;2;153;153;153mSliced peppers.[0m
+  [0m[38;2;153;153;153m5. [0m[ ] [0m[38;2;153;153;153mType something[0m
+     [0m[1mSubmit[0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  6. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

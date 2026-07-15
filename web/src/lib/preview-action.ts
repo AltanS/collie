@@ -16,11 +16,16 @@
 // mid-flight verification polls then re-derive from fresh reads again; a dialog that drifts
 // structurally at any point aborts with "changed" BEFORE anything irreversible is sent.
 
-import { fetchPane, sendKeys, sendReply } from "./api";
-import { parseAnsi } from "./ansi";
-import { splitLines, type PreviewOption, type PreviewSelectModel } from "./blocks";
-import { detectPreviewSelect } from "./grammar/preview-select";
-import type { PromptActionResult } from "./prompt-action";
+import { sendKeys, sendReply } from "./api";
+import { type PreviewOption, type PreviewSelectModel } from "./blocks";
+import { detectPreviewSelect } from "./harness/claude/preview-select";
+import {
+  entryGuard,
+  pollUntil,
+  sanitizeTypedText,
+  type ActionResult,
+  type Sleep,
+} from "./harness/guard";
 
 /** Longest note Collie will type (the editor enforces it). The TUI itself windows the display at
  *  ~60 columns, so long notes can't be read back faithfully anyway — keep them phone-sized. */
@@ -29,14 +34,6 @@ export const NOTE_MAX_LENGTH = 300;
 // the head (surplus presses at position 0 are no-ops). Sized past NOTE_MAX_LENGTH so any note
 // Collie itself attached is always fully cleared; ctrl+u/ctrl+a are NOT supported by the input.
 const CLEAR_SWEEP = NOTE_MAX_LENGTH + 20;
-
-// Bounded verification polling between choreography steps (the TUI re-renders well under a
-// second; ~3s total before we give up and refresh).
-const POLL_ATTEMPTS = 8;
-const POLL_DELAY_MS = 350;
-
-type Sleep = (ms: number) => Promise<void>;
-const defaultSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Whether two detected preview dialogs are the same dialog in the same visible state: identity (the
@@ -101,68 +98,6 @@ interface GuardArgs {
   sleep?: Sleep;
 }
 
-/** One fresh read + re-derivation. Returns the model (null = no preview dialog on screen). */
-async function readModel(
-  paneId: string,
-  requestedLines: number,
-  session?: string,
-): Promise<{ revision: number; model: PreviewSelectModel | null }> {
-  const fresh = await fetchPane(paneId, requestedLines, session);
-  return { revision: fresh.revision, model: detectPreviewSelect(splitLines(parseAnsi(fresh.text))) };
-}
-
-/** The shared entry guard: fresh read, unconditional revision equality, full model equality. */
-async function entryGuard(args: GuardArgs): Promise<PromptActionResult | null> {
-  let fresh;
-  try {
-    fresh = await readModel(args.paneId, args.requestedLines, args.session);
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
-  if (fresh.revision !== args.detectedRevision) return { status: "changed" };
-  if (!fresh.model || !previewsEqual(fresh.model, args.preview)) return { status: "changed" };
-  return null;
-}
-
-/**
- * Poll (bounded) until `accept` passes on a fresh re-derivation. THREE-VALUED, because the caller
- * must distinguish "the awaited state never arrived, but this is still our dialog" from "a different
- * dialog is on screen now":
- *   - `"ok"`      — `accept` passed.
- *   - `"drifted"` — the dialog's IDENTITY changed: a fresh model whose core signature no longer
- *                   matches (a same-shaped successor / another dialog entirely), OR the dialog is
- *                   GONE (every read re-derived to null — e.g. the agent is running again). No
- *                   further key may be sent: a blind keystroke would hit whatever replaced it.
- *   - `"timeout"` — our dialog stayed on screen (signature intact) but the awaited state never came
- *                   within the bounded window (e.g. a swallowed keystroke). The dialog is still ours,
- *                   so a bounded RETRY of the same key is safe.
- * A transient null re-derivation MID-poll keeps polling (the TUI redraw can briefly hide the tail);
- * only an all-null poll (the dialog truly vanished) resolves to `"drifted"`.
- */
-async function pollUntil(
-  args: GuardArgs,
-  accept: (m: PreviewSelectModel) => boolean,
-): Promise<"ok" | "drifted" | "timeout"> {
-  const sleep = args.sleep ?? defaultSleep;
-  let sawDialog = false;
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
-    await sleep(POLL_DELAY_MS);
-    let fresh;
-    try {
-      fresh = await readModel(args.paneId, args.requestedLines, args.session);
-    } catch {
-      continue; // transient read failure — the bounded loop is the timeout
-    }
-    if (!fresh.model) continue; // transient redraw hid the tail — keep polling
-    sawDialog = true;
-    if (accept(fresh.model)) return "ok";
-    if (!coreEqual(fresh.model, args.preview)) return "drifted"; // a different dialog now
-  }
-  // Exhausted. If we never saw the dialog at all it has vanished (a now-running agent) — treat as
-  // drift, NOT a retryable timeout, so no blind key is sent at whatever replaced it.
-  return sawDialog ? "timeout" : "drifted";
-}
-
 /**
  * Select an option: entry guard → digit (pointer move) → poll until the pointer verifiably sits on
  * the tapped row → Enter. If the pointer never converges nothing has been submitted — the digit's
@@ -170,8 +105,8 @@ async function pollUntil(
  */
 export async function submitPreviewOption(
   args: GuardArgs & { option: PreviewOption },
-): Promise<PromptActionResult> {
-  const guarded = await entryGuard(args);
+): Promise<ActionResult> {
+  const guarded = await entryGuard(args, args.preview, detectPreviewSelect, previewsEqual);
   if (guarded) return guarded;
 
   try {
@@ -183,9 +118,12 @@ export async function submitPreviewOption(
 
   const pointed = await pollUntil(
     args,
+    args.preview,
+    detectPreviewSelect,
     (m) =>
       structureEqual(m, args.preview) && // same dialog, note untouched (an opened input eats keys)
       (m.options.find((o) => o.n === args.option.n)?.pointed ?? false),
+    coreEqual,
   );
   if (pointed !== "ok") return { status: "changed" };
 
@@ -212,20 +150,12 @@ export async function submitPreviewOption(
  */
 export async function submitPreviewNote(
   args: GuardArgs & { text: string },
-): Promise<PromptActionResult> {
+): Promise<ActionResult> {
   if (args.preview.note.state === "editing") return { status: "changed" };
-  const guarded = await entryGuard(args);
+  const guarded = await entryGuard(args, args.preview, detectPreviewSelect, previewsEqual);
   if (guarded) return guarded;
 
-  // Collapse whitespace to single spaces FIRST (so \t \n \r become word boundaries, not glue), then
-  // strip any remaining C0/C1 control chars. Pasted clipboard text can smuggle in ESC (\x1b — blurs/
-  // cancels the dialog), BEL (\x07 — "edit in nano"), ETX (\x03), etc., which the reply path would
-  // deliver straight into the focused input BEFORE the readback check — so they must never reach it.
-  const text = args.text
-    .replace(/\s+/g, " ")
-    .replace(/\p{Cc}/gu, "")
-    .trim()
-    .slice(0, NOTE_MAX_LENGTH);
+  const text = sanitizeTypedText(args.text, NOTE_MAX_LENGTH);
   const editing = (m: PreviewSelectModel) => coreEqual(m, args.preview) && m.note.state === "editing";
 
   try {
@@ -237,7 +167,7 @@ export async function submitPreviewNote(
 
   // The input must be FOCUSED before anything else is sent — early keys are misrouted (verified).
   // On timeout we stop dead: a blind Escape could cancel the whole dialog if `n` never landed.
-  if ((await pollUntil(args, editing)) !== "ok") {
+  if ((await pollUntil(args, args.preview, detectPreviewSelect, editing, coreEqual)) !== "ok") {
     return { status: "error", error: "Note input didn't open — check the pane" };
   }
 
@@ -252,7 +182,15 @@ export async function submitPreviewNote(
         args.session,
       );
       if (!clear.ok) return { status: "error", error: clear.error };
-      if ((await pollUntil(args, (m) => editing(m) && m.note.text === "")) !== "ok") {
+      if (
+        (await pollUntil(
+          args,
+          args.preview,
+          detectPreviewSelect,
+          (m) => editing(m) && m.note.text === "",
+          coreEqual,
+        )) !== "ok"
+      ) {
         return { status: "error", error: "Couldn't clear the existing note — check the pane" };
       }
     }
@@ -263,7 +201,10 @@ export async function submitPreviewNote(
       // the visible value is the TAIL of what we typed (the whole of it when it fits).
       const landed = await pollUntil(
         args,
+        args.preview,
+        detectPreviewSelect,
         (m) => editing(m) && m.note.text.length > 0 && text.endsWith(m.note.text),
+        coreEqual,
       );
       if (landed !== "ok") {
         return { status: "error", error: "Note text didn't arrive — check the pane" };
@@ -279,7 +220,10 @@ export async function submitPreviewNote(
       if (!blur.ok) return { status: "error", error: blur.error };
       const blurred = await pollUntil(
         args,
+        args.preview,
+        detectPreviewSelect,
         (m) => coreEqual(m, args.preview) && m.note.state !== "editing",
+        coreEqual,
       );
       if (blurred === "ok") return { status: "sent" };
       if (blurred === "drifted") return { status: "changed" }; // no second Escape at a successor
@@ -297,8 +241,8 @@ export async function submitPreviewNote(
  */
 export async function submitPreviewKeys(
   args: GuardArgs & { keys: string[] },
-): Promise<PromptActionResult> {
-  const guarded = await entryGuard(args);
+): Promise<ActionResult> {
+  const guarded = await entryGuard(args, args.preview, detectPreviewSelect, previewsEqual);
   if (guarded) return guarded;
   try {
     const res = await sendKeys(args.paneId, args.keys, args.session);

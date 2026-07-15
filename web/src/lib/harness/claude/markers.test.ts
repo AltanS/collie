@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAnsi } from "../ansi";
-import { splitLines } from "../blocks";
+import { parseAnsi } from "../../ansi";
+import { splitLines } from "../../blocks";
 import {
   classifyFooter,
   isBlank,

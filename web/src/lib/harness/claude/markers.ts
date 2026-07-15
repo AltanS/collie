@@ -4,7 +4,7 @@
 // *between* glyphs, so a regex over the raw buffer would miss (e.g. the `❯` pointer and the `1.` are
 // separate styled segments). Pure functions, no I/O, no React.
 
-import type { StyledLine } from "../blocks";
+import type { StyledLine } from "../../blocks";
 
 /** The visible text of a line: its segments' text concatenated (the "\n" separator lives between
  *  lines, so a single line's text never contains one). */

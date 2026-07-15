@@ -8,7 +8,7 @@
 // T1 raw-mirror fallback). Pure; operates on parsed line text, so a user-configured statusline is
 // matched by POSITION (below the box's bottom border), never by its content strings.
 
-import type { StyledLine } from "../blocks";
+import type { StyledLine } from "../../blocks";
 import { isBlank, isBoxBorder, lineText } from "./markers";
 
 // Lines allowed between the input box's bottom border and the tail: the statusline plus a hint line

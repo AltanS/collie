@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import type { PromptModel, PromptOption } from "@/lib/blocks";
+import type { PromptFamily, PromptModel, PromptOption } from "@/lib/blocks";
+import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
 
 export interface PromptSelectBlockProps {
   /** The detected dialog: question (screen-reader label) + selectable options as buttons. */
@@ -17,12 +17,22 @@ export interface PromptSelectBlockProps {
   disabled?: boolean;
 }
 
+// Family-aware caption above the options — orients the reader ("the terminal is asking you
+// something") without repeating the question, which stays in the raw scrollback just above.
+const FAMILY_CAPTION: Record<PromptFamily, string> = {
+  select: "Choose an option",
+  permission: "Permission required",
+  trust: "Trust this folder?",
+  plan: "Review the plan",
+};
+
 // Native, tappable rendering of a Claude single-choice dialog. Every visible string — the option
 // label and its description — is a React text node (the XSS boundary is unchanged; nothing is ever
 // set as innerHTML). Real <button>s, so they're keyboard-focusable and screen-reader-announced; the
 // group is labelled by the question (which stays visible in the raw scrollback just above, so it's
-// not repeated here). One option can be in flight at a time — its spinner shows and the rest lock,
-// preventing a double-send.
+// not repeated here). Each row leads with its terminal-menu digit (KeyBadge) so the mapping is
+// visible. One option can be in flight at a time — its spinner shows and the rest lock, preventing a
+// double-send.
 export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBlockProps) {
   const [sending, setSending] = useState<number | null>(null);
 
@@ -37,32 +47,32 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
   }
 
   return (
-    <div role="group" aria-label={prompt.question} className="my-1.5 flex flex-col gap-1.5">
-      {prompt.options.map((option, index) => {
-        const busy = sending === index;
-        return (
-          <button
-            key={index}
-            type="button"
-            disabled={disabled || sending !== null}
-            onClick={() => press(index, option)}
-            className={cn(
-              "flex w-full items-start gap-2 rounded-lg border border-border/70 bg-muted/40 px-3 py-2",
-              "text-left transition-colors active:bg-muted disabled:opacity-60",
-            )}
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium text-foreground">{option.label}</span>
-              {option.description ? (
-                <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
-              ) : null}
-            </span>
-            {busy ? (
-              <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
+    <PromptPanel ariaLabel={prompt.question}>
+      <OptionGroupCaption>{FAMILY_CAPTION[prompt.family]}</OptionGroupCaption>
+      <div className="flex flex-col gap-1">
+        {prompt.options.map((option, index) => {
+          const busy = sending === index;
+          return (
+            <OptionButton
+              key={index}
+              tone={busy ? "busy" : "default"}
+              keyLabel={option.keys[0]}
+              label={option.label}
+              description={option.description}
+              disabled={disabled || sending !== null}
+              onClick={() => press(index, option)}
+              trailing={
+                busy ? (
+                  <Loader2
+                    className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
+                    aria-label="Sending"
+                  />
+                ) : null
+              }
+            />
+          );
+        })}
+      </div>
+    </PromptPanel>
   );
 }

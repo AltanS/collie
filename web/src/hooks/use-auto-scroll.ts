@@ -51,5 +51,21 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
     });
   }, [dep]);
 
+  // Re-pin when the container itself RESIZES while we're following — a shrinking viewport (the keys
+  // dock opening above the composer, or the on-screen keyboard) pushes the tail below the fold, so
+  // stickiness must snap it back. Keyed on the captured `autoScroll` intent, NOT a recomputed
+  // at-bottom (the shrink already moved the view off bottom); a scrolled-up user is left in place.
+  // Guarded for jsdom, which has no ResizeObserver.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (!autoScroll.current) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return { scrollRef, isAtBottom, scrollToBottom, onScroll };
 }

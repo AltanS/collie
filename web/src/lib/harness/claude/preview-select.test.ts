@@ -2,15 +2,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { parseAnsi } from "../ansi";
-import { buildBlocks, splitLines, type StyledLine } from "../blocks";
+import { parseAnsi } from "../../ansi";
+import { splitLines, type StyledLine } from "../../blocks";
+import { buildBlocks } from "..";
 import { detectPreviewSelect, detectPreviewSelectRegion } from "./preview-select";
 import { detectPromptSelect } from "./prompt-select";
 import { detectWizard } from "./wizard";
 import { lineText } from "./markers";
 
 // Anchored on this file's own directory (see prompt-select.test.ts for why not import.meta.url).
-const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
+const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
 // The detector is developed and gated entirely against the byte-faithful preview-variant captures
 // (see NOTES_NOTES.md for the live-verified choreography they encode). Every fixture runs through

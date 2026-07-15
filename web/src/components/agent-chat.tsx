@@ -12,8 +12,7 @@ import { CollieHome } from "@/components/collie-home";
 import { AnsiOutput } from "@/components/ansi-output";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
-import { extractInputDraft, extractStatusLine } from "@/lib/grammar/chrome";
-import { hasBlockGrammar } from "@/lib/grammar/agents";
+import { adapterFor } from "@/lib/harness";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -27,13 +26,20 @@ import * as api from "@/lib/api";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
+import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
 import type { AgentView, DeviceAuth, TabView } from "@/lib/types";
-import type { PreviewSelectModel, PromptModel, PromptOption, WizardModel } from "@/lib/blocks";
+import type {
+  MultiSelectModel,
+  PreviewSelectModel,
+  PromptModel,
+  PromptOption,
+  WizardModel,
+} from "@/lib/blocks";
 
 interface AgentChatProps {
   paneId: string;
@@ -144,14 +150,14 @@ export function AgentChat({
   // The agent's own statusline (model · ctx% · cwd · branch · tokens) is stripped off the mirror by
   // stripChrome so it doesn't duplicate the composer — but it carries real context (the branch, most
   // notably), so we re-surface that one line as app chrome just above the composer, where it sat in
-  // the TUI. Gated by the SAME `hasBlockGrammar` predicate as the chrome-stripping in buildBlocks
-  // (Claude-only), so the two can't drift; null when a menu is up / no box at the tail, in which case
-  // the strip is hidden. A second parse of `display`, but memoised on it, so it only recomputes when
-  // the buffer content changes — off the render hot path.
+  // the TUI. Routed through the SAME adapter (adapterFor) whose buildBlocks strips the chrome, so the
+  // two can't drift; null when there's no adapter for the agent, a menu is up, or no box at the tail,
+  // in which case the strip is hidden. A second parse of `display`, but memoised on it, so it only
+  // recomputes when the buffer content changes — off the render hot path.
   const statusLine = useMemo(
     () =>
-      grammarsOn && hasBlockGrammar(agent?.agent)
-        ? extractStatusLine(splitLines(parseAnsi(display)))
+      grammarsOn
+        ? adapterFor(agent?.agent)?.extractStatusLine(splitLines(parseAnsi(display))) ?? null
         : null,
     [display, agent?.agent, grammarsOn],
   );
@@ -160,12 +166,12 @@ export function AgentChat({
   // then recalled, which persists across turns. stripChrome peels the box off the mirror so it goes
   // invisible, and (worse) pane.send_text appends to it, corrupting the next send. We surface it to
   // the composer, which offers a one-tap "Edit here" recovery (clear the terminal line, adopt the
-  // text locally). Same parse source + same Claude-only gate as the statusline, so the two can't
-  // drift; null when raw-terminal is on, no box is at the tail, or the line is empty/a placeholder.
+  // text locally). Same parse source + same adapter as the statusline, so the two can't drift; null
+  // when raw-terminal is on, there's no adapter, no box is at the tail, or the line is empty/a placeholder.
   const terminalDraft = useMemo(
     () =>
-      grammarsOn && hasBlockGrammar(agent?.agent)
-        ? extractInputDraft(splitLines(parseAnsi(display)))
+      grammarsOn
+        ? adapterFor(agent?.agent)?.extractInputDraft(splitLines(parseAnsi(display))) ?? null
         : null,
     [display, agent?.agent, grammarsOn],
   );
@@ -361,6 +367,40 @@ export function AgentChat({
     [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
   );
 
+  // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
+  // review screen's confirm/cancel). Same guard-first shape as the wizard handler — the guard
+  // re-derives the dialog from a FRESH read; toggle sends one digit, Submit drives the closed-loop
+  // Down→Up→verify→Enter macro (see lib/multi-select-action.ts). gate: claude-only (multi-select
+  // blocks only ever exist for a Claude pane, buildBlocks gates on ctx.agent).
+  const handleMultiSelectAction = useCallback(
+    async (action: MultiSelectIntent, multi: MultiSelectModel) => {
+      if (readOnly) {
+        setStatus("Read-only — device not authorised", "error");
+        return;
+      }
+      const result = await submitMultiSelectIntent({
+        paneId,
+        session,
+        requestedLines,
+        detectedRevision: shown.revision,
+        multi,
+        intent: action,
+      });
+      if (result.status === "sent") {
+        setStatus("Sent", "success");
+        setFollowing(true);
+        revalidator.revalidate();
+        listRef.current?.scrollToBottom();
+      } else if (result.status === "changed") {
+        setStatus("Selection changed — refreshing", "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || "Send failed", "error");
+      }
+    },
+    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
+  );
+
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
   // keyboard and cover the output. You read the pane first, then tap the input to type. (Explicit
   // actions inside the composer still focus it; the mirror tap focuses it via composerRef.)
@@ -490,6 +530,12 @@ export function AgentChat({
 
       {/* Content region below the header — the mirror inside is the scroller. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Status line — a slim row pinned directly below the header (NOT the scrolling mirror), so a
+            "Sent" / "changed" notice reads at the top instead of floating over the terminal tail
+            (prompt/cursor + up-levelled prompt buttons) it used to cover. Renders nothing — no
+            reserved space — when idle; auto-dismisses. */}
+        <StatusArea className="mx-3 mt-1.5 shrink-0" />
+
         {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
         <ReadOnlyBanner device={device} />
 
@@ -559,6 +605,7 @@ export function AgentChat({
                   onPromptAction={handlePromptAction}
                   onWizardAction={handleWizardAction}
                   onPreviewAction={handlePreviewAction}
+                  onMultiSelectAction={handleMultiSelectAction}
                   promptDisabled={readOnly || gone}
                 />
               </>
@@ -568,12 +615,10 @@ export function AgentChat({
           </ChatMessageList>
         </div>
 
-        {/* Bottom region: the status line floats as a slim overlay above the tray + composer, so it
-            tells you what last happened then vanishes — never pushing or shifting content. */}
+        {/* Bottom region: the pane-switch handle + composer. The status line USED to float here as an
+            overlay just above the composer, but it covered the terminal tail (the prompt/cursor and
+            up-levelled prompt buttons) — it now lives as a slim row just below the header. */}
         <div className="relative">
-          <div className="pointer-events-none absolute inset-x-0 bottom-full px-3 pb-1.5">
-            <StatusArea />
-          </div>
 
           {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
               panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a

@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi, type AnsiSegment } from "./ansi";
-import { buildBlocks, splitLines, type StyledLine } from "./blocks";
+import { splitLines, type StyledLine } from "./blocks";
+import { buildBlocks } from "./harness";
 
 // Anchored on this file's directory (not `new URL(import.meta.url)`, which Vite rewrites to an asset).
 const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
