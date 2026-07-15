@@ -68,7 +68,7 @@ async function handlePush(event: PushEvent): Promise<void> {
   // support it (and it needs a tag).
   const options: NotificationOptions & { renotify?: boolean } = {
     body: decision.body,
-    data: { paneId: decision.paneId, session: decision.session },
+    data: { paneId: decision.paneId, session: decision.session, target: decision.target },
     icon: ICON,
     badge: ICON,
     tag: decision.tag,
@@ -81,6 +81,8 @@ interface NotifData {
   paneId?: string;
   /** Registry name of the pane's session (undefined = primary) — the deep-link scopes to it. */
   session?: string;
+  /** Non-pane tap destination (e.g. "settings"); absent = the default agent deep-link. */
+  target?: string;
 }
 
 // Session query builder, inlined so the SW bundle stays dependency-free (it imports only
@@ -89,18 +91,28 @@ function sessionSearchParam(session?: string): string {
   return session ? `?s=${encodeURIComponent(session)}` : "";
 }
 
-// Tap a notification: deep-link to the agent's pane (never act on it blind — the reply lives in-app).
+// Tap a notification: an update push routes to Settings; everything else deep-links to the agent's
+// pane (never act on it blind — the reply lives in-app). An old cached SW that predates `target`
+// simply ignores it and takes the pane path, opening "/" for a pushed update — acceptable.
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
   const data = (event.notification.data as NotifData | null) ?? {};
+  if (data.target === "settings") {
+    event.waitUntil(openPath("/settings"));
+    return;
+  }
   event.waitUntil(openPane(data.paneId, data.session));
 });
 
-// Focus an existing Collie tab (navigating it to the agent) or open a new one — the body-tap path.
-// The session rides along as `?s=` so the deep-link lands in the right herd (omitted for primary).
+// Deep-link to the agent's pane — the body-tap path. The session rides along as `?s=` so it lands in
+// the right herd (omitted for primary). Delegates the focus/navigate/open to openPath.
 async function openPane(paneId: string | undefined, session?: string): Promise<void> {
   const base = paneId && paneId !== "test" ? `/pane/${encodeURIComponent(paneId)}` : "/";
-  const path = `${base}${sessionSearchParam(session)}`;
+  await openPath(`${base}${sessionSearchParam(session)}`);
+}
+
+// Focus an existing Collie tab (navigating it to `path`) or open a new one. `path` is origin-relative.
+async function openPath(path: string): Promise<void> {
   const url = new URL(path, self.location.origin).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   for (const client of windows) {

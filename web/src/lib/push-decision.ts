@@ -14,8 +14,12 @@ export interface PushPayload {
   tag?: string;
   /** Re-alert when replacing the slot (a new agent arrived) vs. update it silently (a retraction). */
   renotify?: boolean;
-  /** `session` is the registry name the pane lives in — carried so the click deep-links into it. */
-  data?: { paneId?: string; session?: string };
+  /**
+   * `session` is the registry name the pane lives in — carried so the click deep-links into it.
+   * `target` names a non-pane destination for the tap (e.g. "settings" for an update notification);
+   * absent = the default agent deep-link path.
+   */
+  data?: { paneId?: string; session?: string; target?: string };
 }
 
 export type PushDecision =
@@ -32,6 +36,8 @@ export type PushDecision =
       paneId?: string;
       /** Registry name of the pane's session (undefined = primary) — for the click deep-link. */
       session?: string;
+      /** Non-pane tap destination (e.g. "settings"); undefined = the default agent deep-link. */
+      target?: string;
       renotify: boolean;
     };
 
@@ -47,6 +53,7 @@ export const tagFor = (paneId?: string): string => (paneId ? `collie:${paneId}` 
 export function decidePush(payload: PushPayload, hasVisibleClient: boolean): PushDecision {
   const paneId = payload.data?.paneId;
   const session = payload.data?.session;
+  const target = payload.data?.target;
   const tag = payload.tag ?? tagFor(paneId);
   if (payload.type === "clear") return { kind: "clear", tag };
   if (hasVisibleClient) return { kind: "suppress" };
@@ -57,6 +64,7 @@ export function decidePush(payload: PushPayload, hasVisibleClient: boolean): Pus
     tag,
     paneId,
     session,
+    target,
     renotify: payload.renotify ?? false,
   };
 }

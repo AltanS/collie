@@ -9,10 +9,11 @@ import type {
   NotifyPrefs,
   PaneReadResponse,
   SnapshotResponse,
+  UpdateInfo,
   UploadResponse,
 } from "./types";
 
-export type { NotifyPrefs };
+export type { NotifyPrefs, UpdateInfo };
 
 class ApiError extends Error {
   readonly status: number;
@@ -244,6 +245,15 @@ export function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs
     method: "POST",
     body: JSON.stringify(patch),
   });
+}
+
+/**
+ * Force an immediate upstream update check and return the fresh UpdateInfo. Read-level gated (same
+ * auth basis as the prefs/snooze POSTs) and takes no body. The bridge otherwise only checks every
+ * few hours, so this can take a beat — it rides the mutation timeout budget like the other POSTs.
+ */
+export function checkForUpdates(): Promise<UpdateInfo> {
+  return req<UpdateInfo>("/api/update/check", { method: "POST" });
 }
 
 /**

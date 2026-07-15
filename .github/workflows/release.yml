@@ -1,0 +1,54 @@
+name: Release
+
+# Every pushed vX.Y.Z tag becomes a GitHub Release whose notes carry the update commands — the
+# in-app update banner links here, so the page a user lands on tells them exactly how to update.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write # create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble release notes (CHANGELOG section + update commands)
+        id: notes
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          notes="$RUNNER_TEMP/notes.md"
+          # This version's CHANGELOG block: everything between its `## [x.y.z]` heading and the next.
+          awk -v ver="$version" '
+            $0 ~ ("^## \\[" ver "\\]") { grab = 1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/changelog.md" || true
+          {
+            if [ -s "$RUNNER_TEMP/changelog.md" ]; then
+              cat "$RUNNER_TEMP/changelog.md"
+              echo
+            fi
+            echo "## Update"
+            echo
+            echo "Update the plugin — pulls, rebuilds, restarts, and re-links (runs from any directory):"
+            echo
+            echo '```'
+            echo "herdr plugin action invoke update --plugin herdr.collie"
+            echo '```'
+            echo
+            echo "Or just restart the bridge to pick up an already-built change:"
+            echo
+            echo '```'
+            echo "herdr plugin action invoke restart --plugin herdr.collie"
+            echo '```'
+          } > "$notes"
+          echo "file=$notes" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "Collie $GITHUB_REF_NAME" --notes-file "${{ steps.notes.outputs.file }}"

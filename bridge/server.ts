@@ -9,6 +9,7 @@ import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import type { Push, PushSubscription } from "./push.ts";
 import { herdTagFor, type SessionRegistry } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
+import type { UpdateMonitor } from "./update.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type {
   ActionResponse,
@@ -83,9 +84,10 @@ export function startServer(opts: {
   push: Push;
   snooze: Snooze;
   notifyPrefs: NotifyPrefsStore;
+  updateMonitor: UpdateMonitor;
   audit: AuditLog;
 }) {
-  const { cfg, registry, push, snooze, notifyPrefs, audit } = opts;
+  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit } = opts;
   // Per-session background notifications live in each session's runtime (built by the factory in
   // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
   // snooze-clears across every live session's coordinator.
@@ -126,6 +128,7 @@ export function startServer(opts: {
           tabs,
           sessions: registry.list(),
           notifications: { snoozedUntil: snooze.until() },
+          update: updateMonitor.status(),
           ts: Date.now(),
         } satisfies SnapshotResponse, req.headers.get("accept-encoding"));
       }
@@ -240,6 +243,15 @@ export function startServer(opts: {
           return json(updated, req.headers.get("accept-encoding"));
         }
         return text("method not allowed", 405);
+      }
+      if (pathname === "/api/update/check" && req.method === "POST") {
+        // Force an immediate upstream check (the "check for updates" button), instead of waiting for
+        // the periodic timer. Read-level — checking a version isn't terminal-driving — and idempotent
+        // (the monitor de-dupes concurrent checks). Returns the fresh status the client revalidates on.
+        const denied = guard(req, cfg, "read");
+        if (denied) return denied;
+        await updateMonitor.checkRelease();
+        return json(updateMonitor.status(), req.headers.get("accept-encoding"));
       }
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
@@ -759,7 +771,7 @@ export function parseNotifyPrefsPatch(v: unknown): Partial<NotifyPrefs> | null {
   if (typeof v !== "object" || v === null) return null;
   const o = v as Record<string, unknown>;
   const patch: Partial<NotifyPrefs> = {};
-  for (const key of ["blocked", "done"] as const) {
+  for (const key of ["blocked", "done", "updates"] as const) {
     if (!(key in o)) continue;
     if (typeof o[key] !== "boolean") return null;
     patch[key] = o[key] as boolean;

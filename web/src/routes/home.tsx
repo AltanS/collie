@@ -8,6 +8,7 @@ import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
+import { UpdateBanner } from "@/components/update-banner";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
 import { useSpaceActions } from "@/hooks/use-spaces";
@@ -72,7 +73,9 @@ export function HomeRoute() {
           <AgentList agents={data.agents} bridge={data.bridge} onOpen={open} groups={REST_GROUPS} />
         </main>
 
-        {/* Build stamp: which bundle you're running, with a stale-cache nudge. */}
+        {/* An available update / needed restart, then the build stamp (which bundle you're
+            running, with a stale-cache nudge). */}
+        <UpdateBanner className="px-3 pt-3" />
         <BuildStamp className="px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
       </div>
 

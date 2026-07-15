@@ -1,4 +1,4 @@
-import { initials, shortCwd } from "./format";
+import { initials, shortCwd, timeAgo } from "./format";
 
 describe("shortCwd", () => {
   it("collapses /home/<user> to ~", () => {
@@ -61,5 +61,26 @@ describe("initials", () => {
 
   it("handles a single-character name", () => {
     expect(initials("x")).toBe("X");
+  });
+});
+
+describe("timeAgo", () => {
+  const now = 1_700_000_000_000;
+
+  it("reads 'just now' under a minute (and for now / future)", () => {
+    expect(timeAgo(now, now)).toBe("just now");
+    expect(timeAgo(now - 30_000, now)).toBe("just now");
+    expect(timeAgo(now + 5_000, now)).toBe("just now"); // future clamps to 0
+  });
+
+  it("counts whole minutes, hours, then days", () => {
+    expect(timeAgo(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(timeAgo(now - 2 * 3_600_000, now)).toBe("2h ago");
+    expect(timeAgo(now - 3 * 86_400_000, now)).toBe("3d ago");
+  });
+
+  it("floors at the unit boundaries", () => {
+    expect(timeAgo(now - 119_000, now)).toBe("1m ago"); // 1m59s → 1m
+    expect(timeAgo(now - 90 * 60_000, now)).toBe("1h ago"); // 90m → 1h
   });
 });

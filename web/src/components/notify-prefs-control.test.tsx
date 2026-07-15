@@ -11,11 +11,11 @@ import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 // merged prefs back; a failing POST must leave the switch where it started (revert).
 
 let lastPatch: Record<string, unknown> | undefined;
-let currentPrefs: { blocked: boolean; done: boolean };
+let currentPrefs: { blocked: boolean; done: boolean; updates: boolean };
 
 beforeEach(() => {
   lastPatch = undefined;
-  currentPrefs = { blocked: true, done: false };
+  currentPrefs = { blocked: true, done: false, updates: true };
   server.use(
     http.get("/api/notifications/prefs", () => HttpResponse.json(currentPrefs)),
     http.post("/api/notifications/prefs", async ({ request }) => {
@@ -31,8 +31,21 @@ describe("NotifyPrefsControl", () => {
     render(<NotifyPrefsControl />);
     const needs = await screen.findByRole("switch", { name: /needs input/i });
     const finished = await screen.findByRole("switch", { name: /finished/i });
+    const updates = await screen.findByRole("switch", { name: /app updates/i });
     expect(needs).toBeChecked(); // blocked default on
     expect(finished).not.toBeChecked(); // done default off
+    expect(updates).toBeChecked(); // updates default on
+  });
+
+  test("toggling App updates POSTs the single-key partial update", async () => {
+    const user = userEvent.setup();
+    render(<NotifyPrefsControl />);
+    const updates = await screen.findByRole("switch", { name: /app updates/i });
+
+    await user.click(updates); // on → off
+
+    await waitFor(() => expect(lastPatch).toEqual({ updates: false }));
+    await waitFor(() => expect(updates).not.toBeChecked());
   });
 
   test("toggling a row POSTs the single-key partial update", async () => {

@@ -44,6 +44,13 @@ push origin vX.Y.Z` (or `git push --follow-tags` so the tag ships *with* the rel
 tag per shipped version on the remote. Not hook-enforced — it's on you. (Adding/adjusting this note is
 a doc-only change and needs no version bump.)
 
+**Update notice (user-facing).** The app's in-app update banner links to the newest release's GitHub
+page and shows the command to run. Pushing a `v*` tag auto-creates that GitHub Release (with the
+commands) via `.github/workflows/release.yml`. **Always express user-facing update/restart
+instructions as Herdr plugin actions** — `herdr plugin action invoke update --plugin herdr.collie`
+(or `restart`) — never `collie-ctl.sh …` / `systemctl … collie`, which depend on the caller's cwd and
+the unit name; the Herdr action runs from anywhere.
+
 ## Build / run (operational facts that are easy to forget)
 
 - **Frontend changes** (`web/`): rebuild with `bun run build` (root) or `cd web && bun run build`.

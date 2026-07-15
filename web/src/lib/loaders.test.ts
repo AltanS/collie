@@ -49,6 +49,28 @@ describe("rootLoader", () => {
     expect(data.agents).toEqual([]);
     expect(data.bridge).toBeUndefined();
   });
+
+  it("surfaces the snapshot's optional update field onto the loader data", async () => {
+    const update = {
+      current: "0.11.0",
+      latest: "0.12.0",
+      releaseAvailable: true,
+      bridgeStale: false,
+      checkedAt: 123,
+    };
+    server.use(
+      http.get("/api/snapshot", () => HttpResponse.json({ ...fixtureSnapshot, update })),
+    );
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.update).toEqual(update);
+  });
+
+  it("leaves update undefined when the snapshot omits it (older bridge)", async () => {
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.update).toBeUndefined();
+  });
 });
 
 describe("paneLoader", () => {
