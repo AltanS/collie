@@ -7,7 +7,7 @@
 // backbone: the dialog's footer hint bar is the LAST non-blank line of the buffer, so a menu that
 // has scrolled up (with real output below it) simply doesn't match — the false-positive guard.
 
-import type { StyledLine } from "../blocks";
+import type { StyledLine } from "../../blocks";
 import {
   classifyFooter,
   isBlank,
@@ -83,12 +83,40 @@ export function parseOptionRow(text: string): { n: number; label: string } | nul
   return { n: Number(m[1]), label: m[2]!.trim() };
 }
 
+// A Claude single-choice menu ALWAYS restarts its numbering at 1 directly above the footer, so the
+// menu is the maximal SUFFIX of the collected rows reading 1,2,…,m; stray numbered lines from the
+// dialog BODY (a plan's "1./2./3." steps, say) sit ABOVE it and are excluded. Walk up from the last
+// row while each is exactly one less than the row below, then require the run to start at 1.
+// Invariant: the menu's first number is 1 and the body row above it is ≥1, so `bodyLast === 0` is
+// impossible — the descending walk always breaks exactly at the menu boundary. Empty when the tail
+// isn't a real menu (first number ≠ 1). Generic over the two grammars' row shapes (both carry `n`).
+// Shared with the wizard grammar (wizard.ts), which has the identical body-list hazard.
+export function trailingMenuRows<T extends { n: number }>(rows: T[]): T[] {
+  if (rows.length === 0) return [];
+  let s = rows.length - 1;
+  while (s > 0 && rows[s - 1]!.n === rows[s]!.n - 1) s--;
+  return rows[s]!.n === 1 ? rows.slice(s) : [];
+}
+
 // Free-text escape rows are answered by TYPING, not a keystroke — the app's composer already covers
 // that — so they are never up-levelled into a button (spec T2). The two known phrases:
 // "Type something." (AskUserQuestion) and "Tell Claude what to change" (plan approval).
 // Shared with the wizard grammar (wizard.ts), which drops the same rows.
 export function isFreeTextLabel(label: string): boolean {
   return /^type something\b/i.test(label) || /^tell claude what to change\b/i.test(label);
+}
+
+// A multiSelect checkbox prefix on an option label: "[ ] Cheese" (unchecked) / "[✔] Mushrooms"
+// (checked; ✔ ✓ x X all count as checked). Its PRESENCE is the discriminator that separates a
+// multiSelect dialog from a single-choice one — the prompt-select/wizard grammars leave a checkbox
+// step to the multi-select grammar (wizard.ts bails when an option row carries it). Returns the
+// checked state plus the label with the prefix stripped, or null when there's no checkbox prefix.
+// Shared with wizard.ts (the bail) and multi-select.ts (the parse).
+const CHECKBOX_PREFIX = /^\[[ xX✔✓]\]\s*/;
+export function checkboxState(label: string): { checked: boolean; rest: string } | null {
+  const m = CHECKBOX_PREFIX.exec(label);
+  if (!m) return null;
+  return { checked: /[xX✔✓]/.test(m[0]), rest: label.slice(m[0].length) };
 }
 
 // Options live within a couple dozen lines of the footer; scanning a bounded window keeps a stray
@@ -127,8 +155,8 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   const family = classifyFooter(texts[fi]!);
   if (!family) return null;
 
-  // 2. Numbered option rows just above the footer. Require ≥2 rows numbered exactly 1,2,…,k in
-  //    order (a single-choice menu), so scattered "N." lines can't masquerade as a menu.
+  // 2. Numbered option rows just above the footer. The menu is the trailing 1,2,…,m run of them
+  //    (see trailingMenuRows); scattered "N." lines from the dialog body sit above it and drop out.
   const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
   const rows: OptionRow[] = [];
   for (let i = from; i < fi; i++) {
@@ -136,16 +164,15 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
     if (parsed) rows.push({ index: i, n: parsed.n, label: parsed.label });
   }
   if (rows.length < 2) return null;
-  for (let k = 0; k < rows.length; k++) {
-    if (rows[k]!.n !== k + 1) return null;
-  }
+  const menu = trailingMenuRows(rows);
+  if (menu.length < 2) return null; // ≥2 rows numbered 1,2,…,m — else not a single-choice menu tail.
   // A menu numbered past 9 would need a two-key digit ("10"), which Herdr's send_keys rejects — so
   // up-levelling it into buttons would emit an unsendable keystroke plan. Real Claude menus are ≤6
-  // options; bail to the raw mirror + keys pad rather than render a broken button. (Rows are
-  // 1..k consecutive by the check above, so length > 9 == a row numbered ≥10.)
-  if (rows.length > 9) return null;
-  const firstOpt = rows[0]!.index;
-  const lastOpt = rows[rows.length - 1]!.index;
+  // options; bail to the raw mirror + keys pad rather than render a broken button. (menu is
+  // 1..m consecutive by construction, so length > 9 == a row numbered ≥10.)
+  if (menu.length > 9) return null;
+  const firstOpt = menu[0]!.index;
+  const lastOpt = menu[menu.length - 1]!.index;
   // The options must sit against the footer (only a hint sub-line / blank may separate them).
   if (fi - lastOpt > MAX_FOOTER_GAP) return null;
 
@@ -179,10 +206,10 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   //    `keys` carries the option's ORIGINAL number, so pressing it still selects the right row even
   //    though free-text rows are omitted from the rendered buttons.
   const options: PromptOption[] = [];
-  for (let r = 0; r < rows.length; r++) {
-    const row = rows[r]!;
+  for (let r = 0; r < menu.length; r++) {
+    const row = menu[r]!;
     if (isFreeTextLabel(row.label)) continue;
-    const nextIdx = r + 1 < rows.length ? rows[r + 1]!.index : fi;
+    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : fi;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;

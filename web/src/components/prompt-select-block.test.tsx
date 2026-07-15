@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,7 +16,7 @@ vi.mock("@/lib/api", () => ({
 import { fetchPane, sendKeys } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type PromptModel, type PromptOption } from "@/lib/blocks";
-import { detectPromptSelect } from "@/lib/grammar/prompt-select";
+import { detectPromptSelect } from "@/lib/harness/claude/prompt-select";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { PromptSelectBlock } from "./prompt-select-block";
@@ -61,6 +61,9 @@ describe("PromptSelectBlock — presentation", () => {
     expect(screen.getByRole("button", { name: /Red/ })).toBeInTheDocument();
     // Description renders as a secondary text node (not markup).
     expect(screen.getByText("A warm, high-energy theme")).toBeInTheDocument();
+    // Each row leads with its terminal-menu digit (the KeyBadge affordance).
+    expect(within(screen.getByRole("button", { name: /Red/ })).getByText("1")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /Green/ })).getByText("2")).toBeInTheDocument();
     buttons[0]!.focus();
     expect(buttons[0]).toHaveFocus();
   });

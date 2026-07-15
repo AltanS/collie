@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,7 +16,7 @@ vi.mock("@/lib/api", () => ({
 import { fetchPane, sendKeys } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type WizardModel } from "@/lib/blocks";
-import { detectWizard } from "@/lib/grammar/wizard";
+import { detectWizard } from "@/lib/harness/claude/wizard";
 import { submitWizardKeys, wizardsEqual } from "@/lib/wizard-action";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { WizardBlock } from "./wizard-block";
@@ -58,6 +58,9 @@ describe("WizardBlock — question step presentation", () => {
       expect(screen.getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
     }
     expect(screen.getByText(/parsing logic/)).toBeInTheDocument();
+    // Each answer leads with its terminal-menu digit (the KeyBadge affordance).
+    expect(within(screen.getByRole("button", { name: /Parser/ })).getByText("1")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /Tests/ })).getByText("3")).toBeInTheDocument();
     const parser = screen.getByRole("button", { name: /Parser/ });
     parser.focus();
     expect(parser).toHaveFocus();

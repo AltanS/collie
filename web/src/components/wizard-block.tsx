@@ -3,12 +3,13 @@ import { AlertTriangle, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide
 
 import { cn } from "@/lib/utils";
 import type { WizardModel, WizardOption } from "@/lib/blocks";
+import { OptionButton, PromptPanel, QuestionHeading } from "@/components/option-button";
 import {
   WIZARD_BACK_KEYS,
   WIZARD_CANCEL_KEYS,
   WIZARD_NEXT_KEYS,
   WIZARD_SUBMIT_KEYS,
-} from "@/lib/grammar/wizard";
+} from "@/lib/harness/claude/wizard";
 
 export interface WizardBlockProps {
   /** The detected wizard step (question or Submit review) with its stepper state. */
@@ -52,11 +53,7 @@ export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
   const busyIcon = <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />;
 
   return (
-    <div
-      role="group"
-      aria-label={review ? "Review your answers" : wizard.question}
-      className="my-1.5 flex flex-col gap-2"
-    >
+    <PromptPanel ariaLabel={review ? "Review your answers" : wizard.question}>
       {/* Stepper: one chip per question plus the fixed Submit step, flanked by the same back/next
           navigation the TUI drives with ←/→ (each tap sends exactly that one key). */}
       <div className="flex items-center gap-1.5">
@@ -119,7 +116,7 @@ export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
       ) : (
         <ReviewStep wizard={wizard} locked={locked} sendingId={sending} onPress={press} />
       )}
-    </div>
+    </PromptPanel>
   );
 }
 
@@ -140,33 +137,28 @@ function QuestionStep({
   const escapes = options.filter((o) => o.escape);
   return (
     <>
-      <div className="text-sm font-medium text-foreground">{question}</div>
-      <div className="flex flex-col gap-1.5">
+      <QuestionHeading>{question}</QuestionHeading>
+      <div className="flex flex-col gap-1">
         {answers.map((option, i) => {
           const id = `opt-${i}`;
+          const busy = sendingId === id;
           return (
-            <button
+            <OptionButton
               key={i}
-              type="button"
+              tone={busy ? "busy" : option.chosen ? "selected" : "default"}
+              keyLabel={option.keys[0]}
+              label={option.label}
+              description={option.description}
               disabled={locked}
               onClick={() => onPress(id, option.keys)}
-              className={cn(
-                "flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors active:bg-muted disabled:opacity-60",
-                option.chosen ? "border-primary/60 bg-primary/10" : "border-border/70 bg-muted/40",
-              )}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-foreground">{option.label}</span>
-                {option.description ? (
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
-                ) : null}
-              </span>
-              {sendingId === id ? (
-                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />
-              ) : option.chosen ? (
-                <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-label="Current answer" />
-              ) : null}
-            </button>
+              trailing={
+                busy ? (
+                  <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />
+                ) : option.chosen ? (
+                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-label="Current answer" />
+                ) : null
+              }
+            />
           );
         })}
       </div>

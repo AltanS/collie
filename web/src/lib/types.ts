@@ -79,6 +79,26 @@ export interface SessionSummary {
   blocked: number;
 }
 
+/**
+ * Version / upgrade status for the running Collie (mirrors UpdateInfo in bridge/types.ts). Optional
+ * on the snapshot — an older bridge omits it entirely, which the client treats as "no info" (the
+ * update banner renders nothing). `latest` is null when the newest upstream release isn't known.
+ */
+export interface UpdateInfo {
+  /** The version this bridge is running, e.g. "0.11.0". */
+  current: string;
+  /** Newest upstream release, e.g. "0.12.0", or null when unknown. */
+  latest: string | null;
+  /** GitHub release page for `latest` (the banner links to it), or null when `latest` is unknown. */
+  latestUrl: string | null;
+  /** A newer release than `current` exists upstream — the update action will fetch it. */
+  releaseAvailable: boolean;
+  /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
+  bridgeStale: boolean;
+  /** When the upstream check last ran (epoch ms), or null if it hasn't. */
+  checkedAt: number | null;
+}
+
 export interface SnapshotResponse {
   bridge: BridgeStatus;
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
@@ -91,6 +111,8 @@ export interface SnapshotResponse {
   notifications?: { snoozedUntil: number | null };
   /** The bridge's session registry (primary-first). Absent on a single-session / older bridge. */
   sessions?: SessionSummary[];
+  /** Version / upgrade status. Absent on an older bridge that doesn't report it. */
+  update?: UpdateInfo;
   ts: number;
 }
 
@@ -138,6 +160,8 @@ export interface NotifyPrefs {
   blocked: boolean;
   /** Push when an agent finishes its task. Default off. */
   done: boolean;
+  /** Push when a new Collie version is available (a restart or upgrade is waiting). Default on. */
+  updates: boolean;
 }
 
 /** Lower sorts first — "needs you" at the top. Mirrors STATUS_RANK on the server. */

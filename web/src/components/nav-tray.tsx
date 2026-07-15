@@ -44,7 +44,7 @@ const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 // Two views behind a segmented toggle: the keys pad (arrows/Esc, Tab/Space/Enter, modifiers, Ctrl
 // presets) and a phone-dialer digit grid. Digits were a cramped nine-across sliver row; on their own
 // tab they get large, thumb-sized targets. The tab is component state only (resets to "keys" each
-// open — the sheet unmounts the tray when closed), while the armed modifier, the key queue, and the
+// open — the dock unmounts the tray when closed), while the armed modifier, the key queue, and the
 // Ctrl-expand persist across the toggle so a composed sequence survives switching to the digit pad.
 type Tab = "keys" | "digits";
 

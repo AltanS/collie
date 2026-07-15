@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { parseAnsi } from "../ansi";
-import { splitLines, type StyledLine } from "../blocks";
+import { parseAnsi } from "../../ansi";
+import { splitLines, type StyledLine } from "../../blocks";
 import { extractInputDraft, extractStatusLine, stripChrome } from "./chrome";
 import { lineText } from "./markers";
 
 // Anchored on this file's directory (see prompt-select.test.ts for why not `new URL(import.meta.url)`).
-const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
+const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
 // Synthesise the input-box shape: a top rule, the "❯ …" prompt line, a bottom rule, and an optional
 // statusline below it (matched by position, like the real captures). 40 box glyphs clear the

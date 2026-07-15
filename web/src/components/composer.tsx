@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Search, Send, Slash, Terminal, WrapText, X, Zap } from "lucide-react";
 
@@ -8,10 +8,9 @@ import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { setStatus } from "@/lib/status";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
-import { BottomSheet } from "@/components/ui/sheet";
 import { NavTray } from "@/components/nav-tray";
 import { CommandPalette } from "@/components/command-palette";
-import { QuickActions } from "@/components/quick-actions";
+import { QuickActionsContent } from "@/components/quick-actions";
 import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
@@ -62,6 +61,40 @@ type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
 // Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text.
 const TUI_SETTLE_MS = 350;
+
+// Shared in-flow dock chrome for Keys/Quick — an IN-FLOW panel (never an overlay), so the terminal
+// mirror's flex-1 box shrinks and its tail stays visible while the dock is open (a covering sheet
+// hid exactly the prompt you were driving). Full-bleed top border + capped height keep the mirror
+// usable on a phone. The header (title + Close X) is a NON-scrolling child of a flex column; only the
+// body below it scrolls (max-h + overflow), so the Close X can never scroll out of reach on a short
+// viewport with a tall tray. One wrapper so Keys and Quick can't drift apart.
+function ComposerDock({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="-mx-3 mb-2 flex flex-col border-t border-border bg-background">
+      <div className="flex items-center justify-between px-3 pt-2">
+        <SectionLabel>{title}</SectionLabel>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 text-muted-foreground"
+          onClick={onClose}
+          aria-label={`Close ${title}`}
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+      <div className="max-h-[45dvh] min-h-0 overflow-y-auto">{children}</div>
+    </div>
+  );
+}
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
@@ -302,7 +335,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* File input stays mounted here (not inside the keyboard-only key row) so the picker
             callback survives the keyboard collapsing. Attach-image fires it from the reply-input row
             below (always visible, not gated behind the keyboard-open quick keys); structural commands
-            (New tab/space, Kill) and Stop (Esc, in the Keys sheet) live elsewhere. */}
+            (New tab/space, Kill) and Stop (Esc, in the Keys dock) live elsewhere. */}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickImage} />
         {/* Display prefs (wrap + font size) on their own compact, right-aligned row. Kept off the
             Keys/Quick/Agent action row below — three extra buttons there overflowed a narrow phone
@@ -378,25 +411,49 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           </div>
         </div>
+        {/* Keys / Quick dock — a single in-flow site ABOVE the Controls row (so the toggle you tapped
+            stays put and the panel grows over the mirror, not the input). Whichever of the mutually
+            exclusive drawers is active renders here via the shared ComposerDock chrome. Keys mounts
+            the NavTray (unmounts on close, so tab/queue reset each open); Quick mounts the two
+            one-tap reply grids. Agent stays a covering BottomSheet below (it's a palette, not a pad). */}
+        {drawer === "keys" && (
+          <ComposerDock title="Keys" onClose={closeDrawer}>
+            <NavTray onSend={pressKeys} disabled={locked} />
+          </ComposerDock>
+        )}
+        {drawer === "quick" && (
+          <ComposerDock title="Quick" onClose={closeDrawer}>
+            <QuickActionsContent
+              onSend={(t) => send(t, false)}
+              onClose={closeDrawer}
+              disabled={locked || sending}
+            />
+          </ComposerDock>
+        )}
         {/* Action row: Keys · Quick · Agent (Agent only when the pane's agent has commands). */}
         <div className="mb-2 flex items-center gap-2">
           <SectionLabel>Controls</SectionLabel>
+          {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
+              again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
+              while open. Both share the single-valued `drawer`, so opening one closes the other. */}
           <Button
-            variant="ghost"
+            variant={drawer === "keys" ? "secondary" : "ghost"}
             size="sm"
             className="h-8 flex-1 gap-1.5 text-muted-foreground"
             disabled={locked}
-            onClick={() => setDrawer("keys")}
+            aria-expanded={drawer === "keys"}
+            onClick={() => setDrawer(drawer === "keys" ? null : "keys")}
           >
             <Keyboard className="size-4" />
             Keys
           </Button>
           <Button
-            variant="ghost"
+            variant={drawer === "quick" ? "secondary" : "ghost"}
             size="sm"
             className="h-8 flex-1 gap-1.5 text-muted-foreground"
             disabled={locked}
-            onClick={() => setDrawer("quick")}
+            aria-expanded={drawer === "quick"}
+            onClick={() => setDrawer(drawer === "quick" ? null : "quick")}
           >
             <Zap className="size-4" />
             Quick
@@ -511,19 +568,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           )}
         </div>
       </div>
-
-      {/* Quick actions */}
-      <QuickActions
-        open={drawer === "quick"}
-        onClose={closeDrawer}
-        onSend={(t) => send(t, false)}
-        disabled={locked || sending}
-      />
-
-      {/* Keys — same bottom-sheet behaviour as Quick; stays open so you can press several keys */}
-      <BottomSheet open={drawer === "keys"} onClose={closeDrawer} title="Keys">
-        <NavTray onSend={pressKeys} disabled={locked} />
-      </BottomSheet>
 
       {/* Slash-command palette */}
       <CommandPalette

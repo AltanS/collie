@@ -14,6 +14,7 @@ import type {
   SessionSummary,
   SnapshotResponse,
   TabView,
+  UpdateInfo,
   WorkspaceView,
 } from "@/lib/types";
 
@@ -60,6 +61,8 @@ export interface HomeData {
   session: string | undefined;
   /** Active notification snooze deadline (epoch ms), or null when not snoozed. */
   snoozedUntil: number | null;
+  /** Version / upgrade status for the footer update banner; undefined on an older bridge. */
+  update: UpdateInfo | undefined;
   /** True when this render is the last-good snapshot after a failed refresh. */
   error: boolean;
 }
@@ -95,6 +98,7 @@ function toHomeData(snap: SnapshotResponse, session: string | undefined, error: 
     sessions: snap.sessions ?? [],
     session,
     snoozedUntil: snap.notifications?.snoozedUntil ?? null,
+    update: snap.update,
     error,
   };
 }
@@ -121,6 +125,7 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
           sessions: [],
           session,
           snoozedUntil: null,
+          update: undefined,
           error: true,
         };
   }

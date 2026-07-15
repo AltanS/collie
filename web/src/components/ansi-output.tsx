@@ -3,20 +3,23 @@ import type { CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
 import { parseAnsi, type AnsiSegment } from "@/lib/ansi";
+import { buildBlocks } from "@/lib/harness";
 import {
-  buildBlocks,
   splitLines,
   type Block,
+  type MultiSelectModel,
   type PreviewSelectModel,
   type PromptModel,
   type PromptOption,
   type WizardModel,
 } from "@/lib/blocks";
-import { lineText } from "@/lib/grammar/markers";
+import { lineText } from "@/lib/harness/claude/markers";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { PromptSelectBlock } from "@/components/prompt-select-block";
 import { WizardBlock } from "@/components/wizard-block";
 import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
+import { MultiSelectBlock } from "@/components/multi-select-block";
+import type { MultiSelectIntent } from "@/lib/multi-select-action";
 
 /** A raw block, narrowed off the Block union (the highlight/offset paths only touch these). */
 type RawBlock = Extract<Block, { kind: "raw" }>;
@@ -26,6 +29,8 @@ type PromptBlock = Extract<Block, { kind: "prompt-select" }>;
 type WizBlock = Extract<Block, { kind: "wizard" }>;
 /** The (at most one) preview-select block — tail, mutually exclusive with the other two. */
 type PrevBlock = Extract<Block, { kind: "preview-select" }>;
+/** The (at most one) multi-select block — tail, mutually exclusive with the other dialog blocks. */
+type MultiBlock = Extract<Block, { kind: "multi-select" }>;
 
 export interface AnsiOutputProps {
   text: string;
@@ -52,7 +57,10 @@ export interface AnsiOutputProps {
   /** Injected handler for a preview-dialog tap (option / note / step-nav intents — the race-guarded
    *  choreography lives in lib/preview-action.ts). Same presentational contract as onPromptAction. */
   onPreviewAction?: (action: PreviewBlockAction, preview: PreviewSelectModel) => void | Promise<void>;
-  /** Disable the prompt-select/wizard/preview buttons (read-only device / gone pane). */
+  /** Injected handler for a multi-select tap (toggle / submit / escape / confirm / cancel — the
+   *  race-guarded choreography lives in lib/multi-select-action.ts). Same presentational contract. */
+  onMultiSelectAction?: (action: MultiSelectIntent, multi: MultiSelectModel) => void | Promise<void>;
+  /** Disable the prompt-select/wizard/preview/multi-select buttons (read-only device / gone pane). */
   promptDisabled?: boolean;
 }
 
@@ -100,6 +108,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   onPromptAction,
   onWizardAction,
   onPreviewAction,
+  onMultiSelectAction,
   promptDisabled,
 }: AnsiOutputProps) {
   const segments = useMemo(() => parseAnsi(text), [text]);
@@ -119,6 +128,10 @@ export const AnsiOutput = memo(function AnsiOutput({
   );
   const previewBlock = useMemo(
     () => blocks.find((b): b is PrevBlock => b.kind === "preview-select") ?? null,
+    [blocks],
+  );
+  const multiBlock = useMemo(
+    () => blocks.find((b): b is MultiBlock => b.kind === "multi-select") ?? null,
     [blocks],
   );
 
@@ -167,6 +180,12 @@ export const AnsiOutput = memo(function AnsiOutput({
       preview={previewBlock.preview}
       disabled={promptDisabled || !onPreviewAction}
       onAction={(action) => onPreviewAction?.(action, previewBlock.preview)}
+    />
+  ) : multiBlock ? (
+    <MultiSelectBlock
+      multi={multiBlock.multi}
+      disabled={promptDisabled || !onMultiSelectAction}
+      onAction={(action) => onMultiSelectAction?.(action, multiBlock.multi)}
     />
   ) : null;
 

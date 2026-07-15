@@ -14,7 +14,7 @@ vi.mock("./api", () => ({
 import { fetchPane, sendKeys, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
-import { detectPreviewSelect } from "./grammar/preview-select";
+import { detectPreviewSelect } from "./harness/claude/preview-select";
 import {
   NOTE_MAX_LENGTH,
   previewsEqual,

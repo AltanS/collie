@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -18,10 +18,20 @@ import {
 } from "./sessions.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
+import {
+  bridgeStampSync,
+  githubTagsFetcher,
+  UpdateMonitor,
+  UpdateStateStore,
+} from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
+// Upstream release check cadence. Releases are rare, so poll every few hours; the first check is
+// delayed so we never probe the network mid-boot.
+const UPDATE_FIRST_DELAY_MS = 90_000;
+const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 const cfg = loadConfig();
@@ -43,6 +53,51 @@ await notifyPrefs.load();
 // Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
 // inside record() so it can never break the user action it's auditing.
 const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")));
+
+// ── Update-availability monitor ───────────────────────────────────────────────
+// The running plugin version, captured NOW at module load — never re-read from disk later, or a
+// post-pull package.json would mask the very update we detect (same class of bug as the buildId gap).
+// The bridge-source stamp is snapshotted here too, so a rebuilt-but-not-restarted process reads stale.
+const bridgeDir = import.meta.dir;
+const rootDir = join(bridgeDir, "..");
+const currentVersion = (
+  JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as { version: string }
+).version;
+
+const updateStore = new UpdateStateStore(cfg);
+await updateStore.load();
+
+// The repo the release check + release links point at. Defaults to Collie's own; overridable for a
+// fork (or a synthetic test target) via COLLIE_UPDATE_REPO.
+const updateRepo = process.env.COLLIE_UPDATE_REPO?.trim() || "AltanS/collie";
+const updateMonitor = new UpdateMonitor({
+  repo: updateRepo,
+  current: currentVersion,
+  startupStamp: bridgeStampSync(bridgeDir, rootDir),
+  fetchTags: githubTagsFetcher(updateRepo),
+  bridgeStamp: () => bridgeStampSync(bridgeDir, rootDir),
+  store: updateStore,
+  now: Date.now,
+  // The `updates` notify pref is the off-switch — update pushes bypass snooze, so this is their gate.
+  updatesEnabled: () => notifyPrefs.current().updates,
+  notify: (latest) =>
+    void push.send({
+      type: "update",
+      tag: "collie:update",
+      // No command in the body — the tap opens Settings (target below), and the update banner / linked
+      // release page carry the location-independent Herdr actions. Keeps this off the cwd-dependent path.
+      title: "Collie update available",
+      body: `Version ${latest} is available`,
+      target: "settings",
+    }),
+});
+
+// First check delayed (don't probe mid-boot); then every few hours. unref() so neither timer holds
+// the process open; both cleared on shutdown.
+const updateFirstCheck = setTimeout(() => void updateMonitor.checkRelease(), UPDATE_FIRST_DELAY_MS);
+updateFirstCheck.unref();
+const updateTimer = setInterval(() => void updateMonitor.checkRelease(), UPDATE_INTERVAL_MS);
+updateTimer.unref();
 
 // ── Per-session runtime factory ──────────────────────────────────────────────
 // One HerdrClient + StateEngine + EventPoker + NotificationCoordinator per herdr session. The
@@ -132,7 +187,7 @@ const sweepTimer = setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
-const server = startServer({ cfg, registry, push, snooze, notifyPrefs, audit });
+const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit });
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");
@@ -142,6 +197,8 @@ const shutdown = async () => {
   clearInterval(refreshTimer);
   registry.disposeAll();
   clearInterval(sweepTimer);
+  clearTimeout(updateFirstCheck);
+  clearInterval(updateTimer);
   process.exit(0);
 };
 process.on("SIGINT", shutdown);

@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type PreviewSelectModel } from "@/lib/blocks";
-import { detectPreviewSelect } from "@/lib/grammar/preview-select";
+import { detectPreviewSelect } from "@/lib/harness/claude/preview-select";
 import { PreviewSelectBlock } from "./preview-select-block";
 
 // Presentational contract only — the choreography engine has its own tests (preview-action.test.ts)
@@ -31,6 +31,8 @@ describe("PreviewSelectBlock — presentation", () => {
     for (const label of ["Boxy", "Rounded", "Minimal"]) {
       expect(screen.getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
     }
+    // Each option leads with its terminal-menu digit (the KeyBadge affordance).
+    expect(within(screen.getByRole("button", { name: /Boxy/ })).getByText("1")).toBeInTheDocument();
     // The preview pane, captioned with the pointed option, verbatim as text.
     expect(screen.getByText(/Preview · Boxy/)).toBeInTheDocument();
     expect(screen.getByText(/WIDGET/)).toBeInTheDocument();

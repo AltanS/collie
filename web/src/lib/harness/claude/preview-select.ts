@@ -14,7 +14,7 @@
 // Everything here is PURE over `StyledLine[]`, fixture-driven (web/src/fixtures/panes/
 // claude--*preview*.txt), and never touches a pane or the network.
 
-import type { StyledLine } from "../blocks";
+import type { StyledLine } from "../../blocks";
 import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
 import { parseOptionRow } from "./prompt-select";
 import { parseStepperLine, type WizardStepChip } from "./wizard";

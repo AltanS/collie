@@ -16,10 +16,10 @@
 // Only then do we send the option's keys through the existing sendKeys write path. A failed guard
 // discards the tap and reports "changed" so the caller can surface a "menu changed" notice.
 
-import { fetchPane, sendKeys } from "./api";
-import { parseAnsi } from "./ansi";
-import { splitLines, type PromptModel, type PromptOption } from "./blocks";
-import { detectPromptSelect } from "./grammar/prompt-select";
+import { sendKeys } from "./api";
+import { type PromptModel, type PromptOption } from "./blocks";
+import { detectPromptSelect } from "./harness/claude/prompt-select";
+import { entryGuard, type ActionResult } from "./harness/guard";
 
 /**
  * Whether two detected dialogs are the SAME on-screen prompt — not merely the same shape. `signature`
@@ -43,10 +43,9 @@ export function sameKeys(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((k, i) => k === b[i]);
 }
 
-export type PromptActionResult =
-  | { status: "sent" }
-  | { status: "changed" }
-  | { status: "error"; error: string };
+/** The guarded-action result union, canonical in `harness/guard.ts`; re-exported under the original
+ *  name so existing imports (wizard-action, AgentChat, tests) keep working. */
+export type PromptActionResult = ActionResult;
 
 /**
  * Run the race guard and, if it passes, send `option.keys`. Pure of any UI — the caller maps the
@@ -62,26 +61,10 @@ export async function submitPromptOption(args: {
   /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
   session?: string;
 }): Promise<PromptActionResult> {
-  const { paneId, requestedLines, detectedRevision, prompt, option, session } = args;
+  const { paneId, prompt, option, session } = args;
 
-  let fresh;
-  try {
-    fresh = await fetchPane(paneId, requestedLines, session);
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
-
-  // Revision check is UNCONDITIONAL: a 304 only means "unchanged since the last poll", and polls
-  // keep advancing the ETag cache under a frozen mirror — it does NOT vouch for the snapshot the
-  // user actually tapped on. The cached 304 body carries its revision, so this covers both paths.
-  if (fresh.revision !== detectedRevision) return { status: "changed" };
-  // EMPIRICAL (Herdr 0.7.x, live-verified 2026-07-05): pane.read's `revision` is a stub upstream —
-  // it is always 0, even for actively-changing panes. The gate above is therefore defense-in-depth
-  // for future Herdr versions, NOT load-bearing. So the menu re-derivation below runs on EVERY
-  // path, including 304: the fresh (= latest cached) text is exactly what a tap on a possibly
-  // frozen mirror must be compared against. One parse per tap — taps are rare, correctness isn't.
-  const freshModel = detectPromptSelect(splitLines(parseAnsi(fresh.text)));
-  if (!freshModel || !promptsEqual(freshModel, prompt)) return { status: "changed" };
+  const guarded = await entryGuard(args, prompt, detectPromptSelect, promptsEqual);
+  if (guarded) return guarded;
 
   try {
     const res = await sendKeys(paneId, option.keys, session);

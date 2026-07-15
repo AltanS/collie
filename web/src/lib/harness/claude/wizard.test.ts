@@ -2,15 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { parseAnsi } from "../ansi";
-import { splitLines, type StyledLine } from "../blocks";
+import { parseAnsi } from "../../ansi";
+import { splitLines, type StyledLine } from "../../blocks";
 import { detectWizard, detectWizardRegion } from "./wizard";
 import { detectPromptSelect } from "./prompt-select";
 import { lineText } from "./markers";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
 // rewrites into a root-relative asset path) so the fixtures resolve regardless of the run cwd.
-const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
+const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
 // The wizard detector is developed and gated against the byte-faithful sandbox captures of a real
 // multi-question AskUserQuestion flow (claude--wizard-*.txt; choreography in WIZARD_NOTES.md).

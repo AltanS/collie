@@ -271,10 +271,140 @@ describe("Composer — quick keys / image attach", () => {
     await user.click(attach); // clickable without throwing (opens the hidden file input)
   });
 
-  it("does not render digit shortcut buttons in the composer (they live on the Keys sheet's 123 tab)", () => {
+  it("does not render digit shortcut buttons in the composer (they live on the Keys dock's 123 tab)", () => {
     renderComposer();
     for (const d of ["1", "2", "3", "4", "5"]) {
       expect(screen.queryByRole("button", { name: d })).not.toBeInTheDocument();
     }
+  });
+});
+
+describe("Composer — keys dock (in-flow, not an overlay)", () => {
+  it("tapping Keys docks the NavTray in the normal flow (no fixed overlay) and toggles it closed", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    const keys = screen.getByRole("button", { name: "Keys" });
+    expect(keys).toHaveAttribute("aria-expanded", "false");
+    // Closed by default — the tray isn't mounted.
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+
+    await user.click(keys);
+    expect(keys).toHaveAttribute("aria-expanded", "true");
+
+    // The NavTray is now mounted (its Esc key is a good witness)…
+    const esc = screen.getByRole("button", { name: "Esc" });
+    expect(esc).toBeInTheDocument();
+    // …and it is IN-FLOW, not inside a fixed overlay/dialog (the BottomSheet's covering role="dialog").
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(esc.closest('[aria-modal="true"]')).toBeNull();
+    expect(esc.closest(".fixed")).toBeNull();
+
+    // Tapping Keys again closes the dock (single-valued drawer toggle).
+    await user.click(keys);
+    expect(keys).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+  });
+
+  it("the dock's own X close button dismisses it", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close Keys" }));
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+  });
+
+  it("routes a docked key press through pane.send_keys", async () => {
+    const user = userEvent.setup();
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        const body = (await request.json()) as { keys: string[] };
+        sentKeys = body.keys;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    await user.click(screen.getByRole("button", { name: "Esc" }));
+
+    await waitFor(() => expect(sentKeys).toEqual(["Escape"]));
+  });
+});
+
+describe("Composer — quick dock (in-flow, matches the keys dock)", () => {
+  it("tapping Quick docks the reply grids in the normal flow (no fixed overlay) and toggles it closed", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    const quick = screen.getByRole("button", { name: "Quick" });
+    expect(quick).toHaveAttribute("aria-expanded", "false");
+    // Closed by default — none of the quick replies are mounted.
+    expect(screen.queryByRole("button", { name: "yes" })).not.toBeInTheDocument();
+
+    await user.click(quick);
+    expect(quick).toHaveAttribute("aria-expanded", "true");
+
+    // The reply grid is now mounted ("yes" is a good witness)…
+    const yes = screen.getByRole("button", { name: "yes" });
+    expect(yes).toBeInTheDocument();
+    // …and it is IN-FLOW like the keys dock, not inside a BottomSheet's covering role="dialog".
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(yes.closest('[aria-modal="true"]')).toBeNull();
+    expect(yes.closest(".fixed")).toBeNull();
+
+    // Tapping Quick again closes the dock (single-valued drawer toggle).
+    await user.click(quick);
+    expect(quick).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "yes" })).not.toBeInTheDocument();
+  });
+
+  it("opening Quick closes an open Keys dock (shared single-valued drawer)", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+    // Keys unmounts, Quick mounts — only one dock at the single placement site.
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "yes" })).toBeInTheDocument();
+  });
+
+  it("the dock's own X close button dismisses it", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+    expect(screen.getByRole("button", { name: "yes" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close Quick" }));
+    expect(screen.queryByRole("button", { name: "yes" })).not.toBeInTheDocument();
+  });
+
+  it("a quick-action tap sends its text through the reply path and closes the dock", async () => {
+    const user = userEvent.setup();
+    let replyText: string | null = null;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string };
+        replyText = body.text;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const props = renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+    await user.click(screen.getByRole("button", { name: "continue" }));
+
+    await waitFor(() => expect(replyText).toBe("continue"));
+    expect(props.onSent).toHaveBeenCalled();
+    // fire() closes the dock after sending.
+    expect(screen.queryByRole("button", { name: "continue" })).not.toBeInTheDocument();
   });
 });

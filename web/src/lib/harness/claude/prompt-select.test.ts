@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { parseAnsi } from "../ansi";
-import { splitLines, type StyledLine } from "../blocks";
+import { parseAnsi } from "../../ansi";
+import { splitLines, type StyledLine } from "../../blocks";
 import { detectPromptSelect, detectPromptSelectRegion, type PromptFamily } from "./prompt-select";
 import { lineText } from "./markers";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
 // rewrites into a root-relative asset path) so the fixtures resolve regardless of the run cwd.
-const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
+const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
 // The detector is developed and gated entirely against the byte-faithful pane captures in
 // web/src/fixtures/panes/*.txt (real ESC bytes; see that README). Each fixture is run through the
@@ -95,6 +95,26 @@ describe("detectPromptSelect — the five blocked-state fixtures", () => {
   });
 });
 
+describe("detectPromptSelect — numbered dialog body above the menu (suffix extraction)", () => {
+  it("plan approval whose plan lists numbered steps still detects the real menu", () => {
+    // The plan body carries "1. Title / 2. … / 4. Context / 5. TODO stub" and the option-scan window
+    // catches the trailing "4./5." — so rows collect as [4,5,1,2,3,4]. The menu is the maximal
+    // trailing 1,2,…,m run ([1,2,3,4]); the body rows above it drop out. Before the fix the
+    // whole-collection "must be 1..k" check saw rows[0]=4 and bailed to the raw mirror.
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--numbered-body.txt"));
+    expect(model).not.toBeNull();
+    expect(model!.family).toBe("plan");
+    expect(model!.question).toContain("ready to execute");
+    // "4. Tell Claude what to change" is a free-text escape row → dropped, leaving three buttons.
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "Yes, and use auto mode",
+      "Yes, manually approve edits",
+      "No, refine with Ultraplan on Claude Code on the web",
+    ]);
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+  });
+});
+
 describe("detectPromptSelect — family → keystroke recipe (regression guard)", () => {
   // Table-driven over all four families: `select` confirms on the digit THEN Enter; the confirm
   // families (trust/permission/plan) fire on the digit ALONE (a trailing Enter there would leak into
@@ -139,6 +159,14 @@ describe("detectPromptSelect — false-positive gate (no menu at the tail)", () 
     // the raw mirror + keys pad drive it instead. (The single-question select-menu fixture, with its
     // lone "☐ Color Theme" chip, still detects — proven above.)
     expect(detectPromptSelect(fixtureLines("claude--select-multi.txt"))).toBeNull();
+  });
+
+  it("single-question multiSelect AskUserQuestion is not claimed by prompt-select", () => {
+    // A !wizard multiSelect (checkbox "[ ]" options under a "☐ Toppings  ✔ Submit" stepper):
+    // prompt-select BAILS on the multi-step stepper glyph (its "☐ …  ✔ Submit" line trips the
+    // multi-step-header bail — 2 step glyphs), so detectPromptSelect returns null here. The
+    // multi-select grammar (multi-select.ts) is what claims this dialog and lifts it natively.
+    expect(detectPromptSelect(fixtureLines("claude--select-multiselect-single.txt"))).toBeNull();
   });
 
   it("bails on a menu with more than 9 numbered rows (option 10 needs the unsendable key '10')", () => {

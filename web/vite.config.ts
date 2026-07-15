@@ -39,18 +39,29 @@ const allowedHosts = wildcardDevHost ? true : devHosts.length > 0 ? devHosts : u
 // service-worker-cached bundle (caches are per-origin) — see README → Troubleshooting. The id mixes
 // version + git sha + build time so it changes on every rebuild, even between commits.
 function gitSha(): string {
+  const git = (cmd: string) =>
+    execSync(cmd, { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  let sha: string;
   try {
-    return (
-      execSync("git rev-parse --short HEAD", {
-        cwd: import.meta.dirname,
-        stdio: ["ignore", "pipe", "ignore"],
-      })
-        .toString()
-        .trim() || "nogit"
-    );
+    sha = git("git rev-parse --short HEAD") || "nogit";
   } catch {
     return "nogit";
   }
+  // Mark a dirty working tree so the footer stamp doesn't silently claim HEAD when the build
+  // actually contains uncommitted work — the common case while developing (the bridge serves the
+  // rebuilt `dist` straight off disk, so most builds here are pre-commit). Mirrors `git describe
+  // --dirty`. The `-dirty` also flows into the build `id`, so a dirty rebuild always reads as a
+  // fresh, distinct build to the stale-cache check. Its OWN try/catch: a `git status` failure must
+  // keep the good sha (just drop the dirty marker), not discard it back to "nogit".
+  let dirty = false;
+  try {
+    dirty = git("git status --porcelain").length > 0;
+  } catch {
+    /* keep the sha, just no dirty marker */
+  }
+  return dirty ? `${sha}-dirty` : sha;
 }
 const pkgVersion = (
   JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")) as {

@@ -37,6 +37,24 @@ function reloadOnce() {
   window.location.reload();
 }
 
+// Last-resort reload that BYPASSES a wedged service worker: unregister every registration first, so
+// the ensuing navigation fetches straight from the bridge instead of being answered from the stale
+// precache (a plain reload stays controlled by the active worker and would re-serve the SAME old
+// bundle — the "keeps saying new build, won't update" trap). The SW re-registers clean on the fresh
+// load. Used ONLY when the normal worker-swap didn't confirm a newly-activated worker — never on the
+// happy path, where the new precache is already in place and reloadOnce() is correct and lighter.
+async function forceReload(): Promise<void> {
+  if (reloaded) return;
+  reloaded = true; // set before awaiting so a racing reloadOnce() can't double-fire
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
+    await Promise.all(regs.map((r) => r.unregister()));
+  } catch {
+    /* ignore — reload regardless */
+  }
+  window.location.reload();
+}
+
 function onControllerChange() {
   if (hadController) reloadOnce();
   else hadController = true;
@@ -74,20 +92,27 @@ registerSW({
 });
 
 // Force an immediate update check — the footer's manual "tap to update". A newer SW installs,
-// skip-waits, activates, and watchWorker reloads us onto it. If we're already on the latest SW
-// there's nothing to activate, so reload now (served by the active SW) — the button is never a
-// no-op. With no SW at all (plain HTTP / insecure context) a plain reload still re-fetches.
+// skip-waits, activates, and watchWorker reloads us onto it (the happy path). The ONE path that
+// forceReload()s — unregistering the worker so the reload bypasses a stale precache — is when
+// update() SUCCEEDS (so we're online) but finds nothing to activate while the footer shows us stale:
+// the wedged-precache trap. Network-failure paths (a thrown update(), or the stuck-guard) fall back to
+// a PLAIN reload instead — unregistering there would strand an offline PWA on an error page with its
+// precache gone. With no SW at all (plain HTTP / insecure context) a plain reload already re-fetches.
 export async function checkForUpdate(): Promise<void> {
   if (!("serviceWorker" in navigator) || !registration) {
     window.location.reload();
     return;
   }
   const reg = registration;
-  // Set the stuck-guard before awaiting, so even a hung update() check can't strand the button.
+  // Stuck-guard: if no fresh worker has activated in time, reload from the active worker so the button
+  // never hangs. A plain reload (not forceReload) — a hung activation may just be a flaky network, and
+  // dropping the precache offline would be worse than staying on the current build.
   setTimeout(reloadOnce, STUCK_GUARD_MS);
   try {
     await reg.update();
   } catch {
+    // A thrown update() is a NETWORK failure (the browser fetches sw.js directly, bypassing the SW) —
+    // not a wedged worker. Keep the precache and reload from it, so an offline PWA still works.
     reloadOnce();
     return;
   }
@@ -96,6 +121,8 @@ export async function checkForUpdate(): Promise<void> {
     watchWorker(reg.waiting);
     reg.waiting.postMessage({ type: "SKIP_WAITING" });
   }
-  // Nothing new to activate → already current; reload to surface the latest from the active SW.
-  if (!reg.installing && !reg.waiting) reloadOnce();
+  // update() succeeded yet found nothing to activate, while the button only shows when we're provably
+  // stale → the active worker is behind and won't self-update. The one place unregister-then-reload is
+  // both safe (we're online) and necessary — bypass the wedged precache rather than re-serve it.
+  if (!reg.installing && !reg.waiting) await forceReload();
 }

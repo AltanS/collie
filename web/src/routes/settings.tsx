@@ -4,10 +4,12 @@ import { useNavigate, useRouteLoaderData } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { BuildStamp } from "@/components/build-stamp";
+import { UpdateBanner } from "@/components/update-banner";
 import { ConnectionInfo } from "@/components/connection-info";
 import { Card } from "@/components/ui/card";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { SnoozeControl } from "@/components/snooze-control";
+import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
 import { usePushControl } from "@/hooks/use-push";
@@ -108,9 +110,16 @@ export function SettingsRoute() {
           </>
         )}
 
+        {/* On-demand upstream update check (independent of push) — drives the footer UpdateBanner. */}
+        <UpdateCheckControl />
+
         <ConnectionInfo bridge={root?.bridge} device={root?.device} build={serverBuild} />
 
-        <BuildStamp className="mt-auto pt-4" />
+        {/* Update nudge + build stamp, grouped and pinned to the bottom of the page. */}
+        <div className="mt-auto flex flex-col gap-2 pt-4">
+          <UpdateBanner />
+          <BuildStamp />
+        </div>
       </main>
     </div>
   );

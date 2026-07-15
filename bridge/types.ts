@@ -99,7 +99,30 @@ export interface SnapshotResponse {
   sessions: SessionSummary[];
   /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. */
   notifications?: { snoozedUntil: number | null };
+  /** Update-availability signal. Optional — a stale bridge that predates the field simply omits it,
+   *  which the client reads as "no info" (see bridge/update.ts). */
+  update?: UpdateStatus;
   ts: number;
+}
+
+/**
+ * GET /api/snapshot `update` — whether the running plugin is behind (see bridge/update.ts). Both a
+ * newer upstream RELEASE (`releaseAvailable` + `latest`) and a rebuilt-but-not-restarted bridge
+ * PROCESS (`bridgeStale`) surface here; the client shows one banner, `bridgeStale` taking precedence.
+ */
+export interface UpdateStatus {
+  /** The running bridge/plugin version, captured at process start. */
+  current: string;
+  /** Newest upstream release (dotted `X.Y.Z`, no leading `v`), or null if unknown/none yet. */
+  latest: string | null;
+  /** GitHub release page for `latest` (the banner links to it), or null when `latest` is unknown. */
+  latestUrl: string | null;
+  /** `latest` is strictly newer than `current`. */
+  releaseAvailable: boolean;
+  /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
+  bridgeStale: boolean;
+  /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */
+  checkedAt: number | null;
 }
 
 /** GET /api/pane/:id — recent terminal output for one agent (ANSI/SGR, rendered colored). */

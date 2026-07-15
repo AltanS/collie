@@ -15,11 +15,11 @@
 //
 // A failed guard discards the tap and reports "changed" so the caller can refresh the mirror.
 
-import { fetchPane, sendKeys } from "./api";
-import { parseAnsi } from "./ansi";
-import { splitLines, type WizardModel } from "./blocks";
-import { detectWizard } from "./grammar/wizard";
+import { sendKeys } from "./api";
+import { type WizardModel } from "./blocks";
+import { detectWizard } from "./harness/claude/wizard";
 import type { PromptActionResult } from "./prompt-action";
+import { entryGuard } from "./harness/guard";
 
 /**
  * Whether two detected wizards are the same step of the same dialog. Field-by-field over the
@@ -80,18 +80,10 @@ export async function submitWizardKeys(args: {
   /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
   session?: string;
 }): Promise<PromptActionResult> {
-  const { paneId, requestedLines, detectedRevision, wizard, keys, session } = args;
+  const { paneId, wizard, keys, session } = args;
 
-  let fresh;
-  try {
-    fresh = await fetchPane(paneId, requestedLines, session);
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
-
-  if (fresh.revision !== detectedRevision) return { status: "changed" };
-  const freshModel = detectWizard(splitLines(parseAnsi(fresh.text)));
-  if (!freshModel || !wizardsEqual(freshModel, wizard)) return { status: "changed" };
+  const guarded = await entryGuard(args, wizard, detectWizard, wizardsEqual);
+  if (guarded) return guarded;
 
   try {
     const res = await sendKeys(paneId, keys, session);

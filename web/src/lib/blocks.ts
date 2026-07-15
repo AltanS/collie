@@ -4,11 +4,13 @@
 // further grammars (tool calls, …) are added as new `kind`s without disturbing these.
 //
 // The pipeline is: parseAnsi(text) → AnsiSegment[] → splitLines(segments) → StyledLine[] →
-// buildBlocks(lines, ctx) → Block[]. These functions are PURE (no React) and, together with the
-// parser, run once per unique text (memoised by the renderer), so they're off the hot polling path.
-// The Claude-only grammars in buildBlocks (prompt-select detection, chrome stripping) live in
-// ./grammar; the "which agents get them" decision is the single `hasBlockGrammar` predicate
-// (./grammar/agents) — every other agent keeps pure raw output.
+// buildBlocks(lines, ctx) → Block[]. splitLines (and the pure helpers below) live here; the
+// block-BUILDING step is the harness DISPATCHER (harness/index) routing to a per-agent adapter, so
+// this core module has NO dependency on the agent grammars — the edge is one-way, which is what lets
+// an adapter import this AST without forming a cycle. These functions are PURE (no React) and,
+// together with the parser, run once per unique text (memoised by the renderer), so they're off the
+// hot polling path. The Claude grammars themselves (prompt-select detection, chrome stripping) live
+// in harness/claude; which agents get them is decided by the adapter registry (harness/registry).
 //
 // Invariant (relied on by find-in-output): joining every RAW block's line text with "\n" reproduces
 // the visible mirror text character-for-character. Find operates on global character offsets over
@@ -16,21 +18,24 @@
 // (find covers the raw mirror only).
 
 import type { AnsiSegment } from "./ansi";
-import type { PromptModel } from "./grammar/prompt-select";
-import { detectPromptSelectRegion } from "./grammar/prompt-select";
-import type { WizardModel } from "./grammar/wizard";
-import { detectWizardRegion } from "./grammar/wizard";
-import type { PreviewSelectModel } from "./grammar/preview-select";
-import { detectPreviewSelectRegion } from "./grammar/preview-select";
-import { stripChrome } from "./grammar/chrome";
-import { hasBlockGrammar } from "./grammar/agents";
-import { isBlank, lineText } from "./grammar/markers";
+import type { PromptModel } from "./harness/claude/prompt-select";
+import type { WizardModel } from "./harness/claude/wizard";
+import type { PreviewSelectModel } from "./harness/claude/preview-select";
+import type { MultiSelectModel } from "./harness/claude/multi-select";
 
-// Re-export the prompt-select + wizard + preview models so consumers (the block components, the
-// race guards) have one import site for the AST's typed payloads.
-export type { PromptModel, PromptOption, PromptFamily } from "./grammar/prompt-select";
-export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./grammar/wizard";
-export type { PreviewSelectModel, PreviewOption, PreviewNote } from "./grammar/preview-select";
+// Re-export the prompt-select + wizard + preview + multi-select models so consumers (the block
+// components, the race guards) have one import site for the AST's typed payloads. These are
+// TYPE-ONLY re-exports (erased under verbatimModuleSyntax), so they add no runtime edge into
+// harness/ — the value dependency stays one-way (harness → blocks).
+export type { PromptModel, PromptOption, PromptFamily } from "./harness/claude/prompt-select";
+export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./harness/claude/wizard";
+export type { PreviewSelectModel, PreviewOption, PreviewNote } from "./harness/claude/preview-select";
+export type {
+  MultiSelectModel,
+  MultiSelectOption,
+  MultiSelectEscape,
+  MultiPointer,
+} from "./harness/claude/multi-select";
 
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
 export interface StyledLine {
@@ -78,10 +83,26 @@ export interface PreviewSelectBlock {
 }
 
 /**
+ * A multi-select AskUserQuestion (the checkbox form + its review screen) lifted out of the raw
+ * mirror and rendered as native checkboxes / a confirm screen. Like the other dialog blocks it
+ * REPLACES its region in place; `lines` is provenance only — not rendered, not searchable.
+ */
+export interface MultiSelectBlock {
+  kind: "multi-select";
+  multi: MultiSelectModel;
+  lines: StyledLine[];
+}
+
+/**
  * A semantic block. A discriminated union on `kind`; new members are added purely additively, so a
  * `switch (block.kind)` in the renderer stays exhaustive.
  */
-export type Block = RawBlock | PromptSelectBlock | WizardBlock | PreviewSelectBlock;
+export type Block =
+  | RawBlock
+  | PromptSelectBlock
+  | WizardBlock
+  | PreviewSelectBlock
+  | MultiSelectBlock;
 
 /**
  * Split parsed segments into visual lines at "\n" boundaries. The newline characters become the
@@ -124,65 +145,19 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
   return lines;
 }
 
-/**
- * Group lines into semantic blocks. This is the seam where Claude-Code TUI grammars run: when
- * `hasBlockGrammar(ctx.agent)` (Claude today) we detect a tail prompt-select dialog (replacing it
- * with a typed block and keeping everything above it raw) and otherwise strip trailing chrome. Any
- * detection miss falls back to a single raw block — the universal T1 behaviour.
- *
- * Gating is conservative and centralised in {@link hasBlockGrammar}: every OTHER agent (and any
- * unknown/absent one) keeps pure raw output until its own matchers exist, so a non-Claude pane is
- * never mis-parsed. With no `ctx` (or a non-Claude agent) this is the trivial single-raw-block wrap
- * it always was.
- */
-export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string }): Block[] {
-  // gate: claude-only — every grammar below (wizard, prompt-select, chrome) is Claude Code TUI
-  // specific; the "which agents get them" decision is the single hasBlockGrammar predicate, so it
-  // can't drift from agent-chat's status-strip gate. Every other agent keeps the pure raw mirror.
-  if (!hasBlockGrammar(ctx?.agent)) return [{ kind: "raw", lines }];
-
-  // The preview variant runs FIRST: its footer is the most specific anchor ("n to add notes"),
-  // and although the wizard/prompt-select detectors can't match its layout (their footer-gap
-  // guards fail on the tall preview pane), ordering by specificity keeps the arbitration obvious.
-  const previewRegion = detectPreviewSelectRegion(lines);
-  if (previewRegion) {
-    const before = trimTrailingBlank(lines.slice(0, previewRegion.startLine));
-    const blocks: Block[] = [];
-    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
-    blocks.push({
-      kind: "preview-select",
-      preview: previewRegion.model,
-      lines: lines.slice(previewRegion.startLine),
-    });
-    return blocks;
-  }
-
-  // The wizard runs before prompt-select: its question phase also carries a select footer, so
-  // prompt-select's detector would otherwise have to arbitrate (today it bails on the stepper
-  // header — that bail stays as a safety net for a wizard this detector misses).
-  const wizardRegion = detectWizardRegion(lines);
-  if (wizardRegion) {
-    const before = trimTrailingBlank(lines.slice(0, wizardRegion.startLine));
-    const blocks: Block[] = [];
-    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
-    blocks.push({ kind: "wizard", wizard: wizardRegion.model, lines: lines.slice(wizardRegion.startLine) });
-    return blocks;
-  }
-
-  const region = detectPromptSelectRegion(lines);
-  if (region) {
-    const before = trimTrailingBlank(lines.slice(0, region.startLine));
-    const blocks: Block[] = [];
-    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
-    blocks.push({ kind: "prompt-select", prompt: region.model, lines: lines.slice(region.startLine) });
-    return blocks;
-  }
-
-  return [{ kind: "raw", lines: stripChrome(lines) }];
+// The two generic StyledLine probes trimTrailingBlank needs. Kept LOCAL (harness/claude/markers has
+// an identical pair for the grammars) so this core module imports nothing from harness/ — that is
+// what keeps the harness → blocks edge one-way and cycle-free.
+function lineText(line: StyledLine): string {
+  return line.segments.map((s) => s.text).join("");
+}
+function isBlank(text: string): boolean {
+  return text.trim().length === 0;
 }
 
-/** Drop a trailing run of blank lines (keeps the raw block above the buttons tight). */
-function trimTrailingBlank(lines: StyledLine[]): StyledLine[] {
+/** Drop a trailing run of blank lines (keeps the raw block above the buttons tight). Exported for the
+ *  harness adapters, whose pipelines tighten the raw region above a lifted dialog with it. */
+export function trimTrailingBlank(lines: StyledLine[]): StyledLine[] {
   let end = lines.length;
   while (end > 0 && isBlank(lineText(lines[end - 1]!))) end--;
   return end === lines.length ? lines : lines.slice(0, end);
