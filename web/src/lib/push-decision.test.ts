@@ -55,6 +55,30 @@ describe("decidePush", () => {
       paneId: undefined,
     });
   });
+
+  test("carries a settings target through so the tap can route there", () => {
+    expect(
+      decidePush(
+        {
+          title: "Collie 0.12.0 available",
+          body: "collie-ctl.sh update",
+          data: { target: "settings" },
+        },
+        false,
+      ),
+    ).toMatchObject({
+      kind: "show",
+      title: "Collie 0.12.0 available",
+      target: "settings",
+      paneId: undefined,
+    });
+  });
+
+  test("an agent push carries no target (defaults to the pane deep-link path)", () => {
+    const decision = decidePush({ title: "claude needs you", data: { paneId: "p1" } }, false);
+    expect(decision).toMatchObject({ kind: "show", paneId: "p1" });
+    expect((decision as { target?: string }).target).toBeUndefined();
+  });
 });
 
 describe("tagFor", () => {

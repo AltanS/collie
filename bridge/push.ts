@@ -17,17 +17,31 @@ export type PushSubscription = { endpoint: string; keys: { p256dh: string; auth:
 //   • `TTL` (seconds) bounds how long the service holds an undelivered message: 6h is long enough to
 //     reach a briefly-offline phone but short enough that a day-old "needs you" doesn't resurface.
 const SEND_OPTIONS = { TTL: 21_600, topic: "collie-herd" } as const;
+// Update-available pushes ride their OWN collapse topic (and a longer TTL). The `topic` — NOT the
+// client-side `tag` — is the push service's collapse key: sharing "collie-herd" would make an offline
+// device's queued herd summary and an update push silently overwrite each other. 3-day TTL, since an
+// update stays relevant far longer than a transient "needs you".
+const UPDATE_SEND_OPTIONS = { TTL: 259_200, topic: "collie-update" } as const;
 
-/** Delivers one payload to one subscription. Injectable so the prune/log logic is testable. */
-export type PushSender = (sub: PushSubscription, payload: string) => Promise<unknown>;
+/** web-push delivery options (collapse topic + TTL), derived per message from its `type`. */
+export type SendOptions = { TTL: number; topic: string };
+
+/** Delivers one payload to one subscription with the given options. Injectable so the prune/log
+ *  logic is testable. */
+export type PushSender = (
+  sub: PushSubscription,
+  payload: string,
+  options: SendOptions,
+) => Promise<unknown>;
 
 /**
  * A notification instruction for the service worker (see web/src/sw.ts). `type:"clear"` closes the
- * notification on `tag` instead of showing one; otherwise the SW renders `{ title, body }` into the
- * `tag` slot, deep-links to `paneId` on tap, and re-alerts when `renotify` is set.
+ * notification on `tag` instead of showing one; `type:"update"` is an update-available alert (its own
+ * collapse topic; taps open Settings); otherwise the SW renders `{ title, body }` into the `tag` slot,
+ * deep-links to `paneId` on tap, and re-alerts when `renotify` is set.
  */
 export interface PushMessage {
-  type?: "clear";
+  type?: "clear" | "update";
   title?: string;
   body?: string;
   /** Notification slot. Same tag replaces (rather than stacks) the previous notification. */
@@ -39,6 +53,9 @@ export interface PushMessage {
    * then stays byte-identical to the single-session case (an older cached SW keeps working).
    */
   session?: string;
+  /** Where a tap should land instead of the default pane deep-link. `"settings"` for update alerts;
+   *  absent = today's pane deep-link (so the agent-alert payload is unchanged). */
+  target?: "settings";
   renotify?: boolean;
 }
 
@@ -57,7 +74,7 @@ export class Push {
     sender?: PushSender,
   ) {
     this.file = join(cfg.stateDir, "push-subscriptions.json");
-    this.sender = sender ?? ((sub, payload) => this.lib!.sendNotification(sub, payload, SEND_OPTIONS));
+    this.sender = sender ?? ((sub, payload, options) => this.lib!.sendNotification(sub, payload, options));
   }
 
   /** Whether push is live (VAPID keys configured and `web-push` installed). Set once in init(). */
@@ -92,13 +109,16 @@ export class Push {
     await this.save();
   }
 
-  /** Send a notification instruction (render or clear) to every subscribed device. */
+  /** Send a notification instruction (render, clear, or update) to every subscribed device. */
   async send(msg: PushMessage): Promise<void> {
     // The SW reads deep-link fields from `data`. `session` is omitted for the primary (absent on the
     // message), keeping that payload identical to the pre-multi-session shape.
-    const data: { paneId?: string; session?: string } = { paneId: msg.paneId };
+    const data: { paneId?: string; session?: string; target?: "settings" } = { paneId: msg.paneId };
     if (msg.session !== undefined) data.session = msg.session;
-    await this.broadcast(JSON.stringify({ ...msg, data }));
+    if (msg.target !== undefined) data.target = msg.target;
+    // Per-message collapse topic — update alerts must not share the herd slot (see UPDATE_SEND_OPTIONS).
+    const options = msg.type === "update" ? UPDATE_SEND_OPTIONS : SEND_OPTIONS;
+    await this.broadcast(JSON.stringify({ ...msg, data }), options);
   }
 
   /** Convenience for a one-off render (used by the manual push-test script). */
@@ -106,13 +126,13 @@ export class Push {
     await this.send({ title, body, paneId: data.paneId });
   }
 
-  private async broadcast(payload: string): Promise<void> {
+  private async broadcast(payload: string, options: SendOptions): Promise<void> {
     if (!this.enabled) return;
     const dead: string[] = [];
     await Promise.all(
       [...this.subs.values()].map(async (sub) => {
         try {
-          await this.sender(sub, payload);
+          await this.sender(sub, payload, options);
         } catch (err) {
           // 404/410 mean the subscription is gone — prune it. Anything else (network, 5xx) is a
           // real failure worth a log line rather than vanishing silently.

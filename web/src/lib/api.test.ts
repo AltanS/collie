@@ -1,7 +1,15 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
-import { createTab, fetchPane, fetchSnapshot, sendReply, uploadImage, withTimeout } from "./api";
+import {
+  checkForUpdates,
+  createTab,
+  fetchPane,
+  fetchSnapshot,
+  sendReply,
+  uploadImage,
+  withTimeout,
+} from "./api";
 
 // The default happy-path handlers live in test/handlers.ts; here we focus on the write paths and the
 // ApiError-on-non-2xx contract that every mutation depends on (and uploadImage's separate code path).
@@ -37,6 +45,33 @@ describe("api client", () => {
     );
     const file = new File(["x"], "x.png", { type: "image/png" });
     await expect(uploadImage("w1:p1", file)).rejects.toThrow(/413/);
+  });
+
+  it("checkForUpdates POSTs (no body) and returns the fresh UpdateInfo", async () => {
+    const info = {
+      current: "0.11.0",
+      latest: "0.12.0",
+      releaseAvailable: true,
+      bridgeStale: false,
+      checkedAt: 1_700_000_000_000,
+    };
+    let method: string | undefined;
+    let body: string | null = null;
+    server.use(
+      http.post("/api/update/check", async ({ request }) => {
+        method = request.method;
+        body = await request.text();
+        return HttpResponse.json(info);
+      }),
+    );
+    await expect(checkForUpdates()).resolves.toEqual(info);
+    expect(method).toBe("POST");
+    expect(body).toBe(""); // no request body
+  });
+
+  it("checkForUpdates throws on a non-2xx response", async () => {
+    server.use(http.post("/api/update/check", () => new HttpResponse("down", { status: 503 })));
+    await expect(checkForUpdates()).rejects.toThrow(/503/);
   });
 });
 

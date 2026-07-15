@@ -16,9 +16,13 @@ export interface NotifyPrefs {
   blocked: boolean;
   /** Push when an agent finishes its task. Default off. */
   done: boolean;
+  /** Push when a newer Collie release is available. Default on — the off-switch for update alerts,
+   *  which otherwise bypass snooze (an update isn't quiet-hours material). Not an agent status, so it
+   *  never flows through {@link isNotifiable}; the update monitor reads it directly. */
+  updates: boolean;
 }
 
-export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = { blocked: true, done: false };
+export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = { blocked: true, done: false, updates: true };
 
 /**
  * Coerce an untrusted parsed value into a {@link NotifyPrefs}, filling any missing or non-boolean key
@@ -29,6 +33,7 @@ export function coerceNotifyPrefs(raw: unknown): NotifyPrefs {
   return {
     blocked: typeof o.blocked === "boolean" ? o.blocked : DEFAULT_NOTIFY_PREFS.blocked,
     done: typeof o.done === "boolean" ? o.done : DEFAULT_NOTIFY_PREFS.done,
+    updates: typeof o.updates === "boolean" ? o.updates : DEFAULT_NOTIFY_PREFS.updates,
   };
 }
 
@@ -67,6 +72,7 @@ export class NotifyPrefsStore {
   async set(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs> {
     if (typeof patch.blocked === "boolean") this.prefs.blocked = patch.blocked;
     if (typeof patch.done === "boolean") this.prefs.done = patch.done;
+    if (typeof patch.updates === "boolean") this.prefs.updates = patch.updates;
     await this.save();
     return this.current();
   }
