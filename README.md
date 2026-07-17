@@ -91,7 +91,10 @@ Three sharp edges:
 It's built single-user and tailnet-only. The defenses:
 
 - **Loopback bind only** (`127.0.0.1`) — never `0.0.0.0`.
-- **`tailscale serve` is the sole ingress** — terminates TLS, injects the identity header.
+- **Exactly one hardened front door** — either `tailscale serve` (default, Variant A: terminates
+  TLS, injects the identity header) or a conforming reverse proxy
+  ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)). Never
+  `tailscale funnel`, never a bare port.
 - **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject anyone but you.
 - **Optional per-device gate** — behind a proxy that injects a device-identity header, set
   `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` so only allowlisted devices can drive agents;
@@ -117,7 +120,7 @@ On the **host** (the tailnet node your agents run on):
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
 | [**Herdr**](https://herdr.dev) ≥ 0.7.0 | The herd Collie mirrors; its CLI registers the plugin. |
-| [**Tailscale**](https://tailscale.com) | Sole ingress (`tailscale serve`); without it, the bridge is `127.0.0.1`-only. |
+| [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, the bridge is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
 
 Soft dependencies: **Node.js** (the control script uses it to extract your MagicDNS name from
@@ -281,9 +284,11 @@ The bridge reads `.env` only at startup — after any edit, `scripts/collie-ctl.
 `COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains; read by the control script when it runs
 `tailscale serve`).
 
-**Custom domain or reverse proxy?** Collie is same-origin only. A plain `tailscale serve` on your
-MagicDNS name works as-is, but a different hostname or TLS terminator makes API calls fail with `403
-cross-origin` (page loads, stays empty). Allow the exact origin:
+**Custom domain or reverse proxy?** See
+[Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) for the full reverse-proxy
+front-door setup. The one rule to know here: Collie is same-origin only. A plain `tailscale serve` on
+your MagicDNS name works as-is, but a different hostname or TLS terminator makes API calls fail with
+`403 cross-origin` (page loads, stays empty). Allow the exact origin:
 
 ```bash
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com
@@ -375,8 +380,8 @@ repo's pre-commit / pre-push checks.
 ## Deployment variants
 
 The bridge always binds **loopback only**; what changes between deployments is *what sits in front
-of it* and *how a request proves who it is*. There are two supported shapes — they gate access at
-different levels (**person** vs **device**). Pick one.
+of it* and *how a request proves who it is*. Three supported shapes — Tailscale by **person** (A),
+Tailscale/proxy by **device** (B), or a reverse proxy as the sole front door (C). Pick one.
 
 ### Variant A — `tailscale serve` + person identity (default)
 
@@ -454,6 +459,48 @@ Revoke a device by dropping its id from `COLLIE_DEVICE_ALLOWLIST` and
 `systemctl --user restart collie`. With the header set but the allowlist **empty**, every device is
 read-only (fail-closed).
 
+### Variant C — reverse proxy as the only front door (no Tailscale)
+
+A reverse proxy (Caddy, Nginx, …) is the **sole ingress** — no Tailscale in the path. Choose this
+when the host isn't on a tailnet, or when you already run a TLS-terminating proxy with its own access
+control (SSO, mTLS, a VPN gateway) and want Collie behind it like any other upstream.
+
+Set `COLLIE_SKIP_SERVE=1` so `collie-ctl.sh start` builds, starts and supervises the bridge but
+**never touches `tailscale serve`** — the proxy owns ingress. The bridge still binds loopback only;
+your proxy reaches it on `127.0.0.1:$COLLIE_PORT`.
+
+The **four proxy requirements from
+[Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) apply verbatim** — the proxy
+*is* the identity-aware front door here. A minimal Caddy front door:
+
+```caddyfile
+collie.example.com {
+    # TLS is automatic (Let's Encrypt). Put YOUR access control here
+    # (forward_auth / mTLS / SSO) — it also yields the per-device id below.
+    reverse_proxy 127.0.0.1:8787 {
+        header_up X-Device-Id {your_device_id}   # SET from your auth — overrides any client-supplied copy
+        header_up Host {host}                     # forward the public Host → same-origin gate passes
+    }
+}
+```
+
+Required env (`.env`):
+
+```bash
+COLLIE_SKIP_SERVE=1                                 # proxy is ingress; never run tailscale serve
+COLLIE_PUBLIC_HOSTS=collie.example.com              # Host allowlist — blocks DNS rebinding
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
+COLLIE_DEVICE_HEADER=X-Device-Id                    # the header your proxy injects…
+COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to drive; others → read-only
+# COLLIE_PUBLIC_URL=https://collie.example.com      # optional — shown in the collie-ctl.sh status banner
+```
+
+> ⚠️ **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only
+> `tailscale serve` injects — with no Tailscale in the path there is no injector, and the bridge
+> logs a startup warning saying so. **Per-device auth (`COLLIE_DEVICE_HEADER`) is the write gate**,
+> and the **proxy must provide TLS and its own access control** — anyone who reaches the proxy gets
+> read access to every pane. Give the proxy the same respect you'd give the tailnet.
+
 ## Web Push (optional)
 
 Off unless you opt in:
@@ -464,9 +511,11 @@ bunx web-push generate-vapid-keys
 # set COLLIE_VAPID_PUBLIC / _PRIVATE / _SUBJECT in your .env, then restart
 ```
 
-Push needs HTTPS — the default `tailscale serve` already provides it (Tailscale manages the MagicDNS
-cert; nothing to obtain or renew). `COLLIE_SERVE_MODE=http` is **not** a secure context, so push
-silently won't fire there — Settings flags it `insecure`.
+Push needs a **secure context (HTTPS)**, which any HTTPS-terminating front door provides — the
+default `tailscale serve` (Tailscale manages the MagicDNS cert; nothing to obtain or renew) or a
+[Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) proxy that terminates TLS.
+Plain-HTTP modes (`COLLIE_SERVE_MODE=http`) are **not** a secure context, so push silently won't fire
+there — Settings flags it `insecure`.
 
 Collie pushes when an agent goes **blocked** or **done**, with the agent's message in the body;
 **tapping it opens Collie at that agent**. Test it without waiting for an agent to block:
@@ -544,6 +593,9 @@ A small Bun process sits between your phone and Herdr — the browser never touc
      ▼
   Herdr server           owns the panes, agents and terminal state
 ```
+
+Under [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) a reverse proxy
+replaces the `tailscale serve` box; everything below the front door is identical.
 
 - **One module touches the socket** (`bridge/herdr-client.ts`); everything else speaks the bridge's HTTP API.
 - **Polling is still the model** — the bridge polls Herdr (via `session.snapshot`, one RPC per tick) and the browser polls `/api/snapshot`; a long-lived Herdr event stream only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
