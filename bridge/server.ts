@@ -260,31 +260,56 @@ export function startServer(opts: {
   });
 
   console.log(`[bridge] listening on http://${cfg.host}:${cfg.port}  (poll ${cfg.pollMs}ms)`);
-  if (cfg.host !== "127.0.0.1" && cfg.host !== "localhost") {
-    console.warn(`[bridge] WARNING: bound to ${cfg.host}, not loopback — identity checks may be bypassable`);
-  }
   if (cfg.deviceHeader) {
     console.log(
       `[bridge] per-device auth ON: trusting '${cfg.deviceHeader}', ${cfg.deviceAllowlist.length} device(s) allowlisted`,
     );
-    if (cfg.deviceAllowlist.length === 0) {
-      console.warn(
-        `[bridge] WARNING: COLLIE_DEVICE_HEADER set but COLLIE_DEVICE_ALLOWLIST is empty — every device is read-only`,
+  }
+  for (const w of startupWarnings(cfg)) console.warn(w);
+
+  return server;
+}
+
+/**
+ * The security-posture warnings emitted once at startup, as plain strings (each already prefixed
+ * `[bridge] WARNING:`). Pure + exported so the exact set that fires for a given {@link Config} is
+ * unit-testable without standing up Bun.serve; the bootstrap in {@link startServer} just logs each
+ * via `console.warn`. The identity-gate advice forks on {@link Config.skipServe}: behind a reverse
+ * proxy the `Tailscale-User-Login` header is never injected, so trustedUser is inert (nag toward
+ * COLLIE_DEVICE_HEADER instead), whereas under `tailscale serve` an empty trustedUser is the open
+ * door Variant A closes.
+ */
+export function startupWarnings(cfg: Config): string[] {
+  const warnings: string[] = [];
+  if (cfg.host !== "127.0.0.1" && cfg.host !== "localhost") {
+    warnings.push(
+      `[bridge] WARNING: bound to ${cfg.host}, not loopback — identity checks may be bypassable`,
+    );
+  }
+  if (cfg.deviceHeader && cfg.deviceAllowlist.length === 0) {
+    warnings.push(
+      `[bridge] WARNING: COLLIE_DEVICE_HEADER set but COLLIE_DEVICE_ALLOWLIST is empty — every device is read-only`,
+    );
+  }
+  if (cfg.skipServe) {
+    // Reverse-proxy mode: no tailscale serve injects Tailscale-User-Login, so checkAccess never has
+    // an identity to enforce — trustedUser is dead config. Only nag when it's set (a likely mistake).
+    if (cfg.trustedUser) {
+      warnings.push(
+        `[bridge] WARNING: COLLIE_TRUSTED_USER has no effect under COLLIE_SKIP_SERVE=1 — without tailscale serve in front, the Tailscale-User-Login header is never injected. Use COLLIE_DEVICE_HEADER for per-device auth (see README → Variant C).`,
       );
     }
-  }
-  if (!cfg.trustedUser) {
-    console.warn(
+  } else if (!cfg.trustedUser) {
+    warnings.push(
       `[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).`,
     );
   }
   if (cfg.publicHosts.length === 0) {
-    console.warn(
-      `[bridge] WARNING: COLLIE_PUBLIC_HOSTS is empty — Host-header validation is OFF (DNS rebinding not blocked). Set it to your MagicDNS name, especially under COLLIE_SERVE_MODE=http.`,
+    warnings.push(
+      `[bridge] WARNING: COLLIE_PUBLIC_HOSTS is empty — Host-header validation is OFF (DNS rebinding not blocked). Set it to your MagicDNS name, especially under plain-HTTP serve mode or behind a reverse proxy.`,
     );
   }
-
-  return server;
+  return warnings;
 }
 
 async function readPane(
