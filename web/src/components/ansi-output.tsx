@@ -73,7 +73,12 @@ function preClass(wrap: boolean, className?: string): string {
     "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
     wrap
       ? "whitespace-pre-wrap break-words"
-      : "min-w-0 w-full max-w-full whitespace-pre overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y]",
+      : // Horizontal pan for wide TUI tables. `overflow-x-auto` forces `overflow-y` to compute to
+        // `auto` (CSS overflow quirk), and a flex item with non-visible overflow may shrink below its
+        // content height — the <pre> then becomes the vertical scroller and ChatMessageList's
+        // stickiness is a no-op (pane opens stuck at the oldest scrollback). `shrink-0` keeps the
+        // pre at content height so vertical scroll stays on the outer list; x-scroll still works.
+        "min-w-0 w-full max-w-full shrink-0 whitespace-pre overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y]",
     className,
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface UseAutoScrollOptions {
   /** Px distance from the bottom still considered "at bottom". */
@@ -24,11 +24,17 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
     [offset],
   );
 
+  const pinToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !autoScroll.current) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+  }, []);
+
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
     autoScroll.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
     setIsAtBottom(true);
     onAtBottomChange?.(true);
   }, [onAtBottomChange]);
@@ -42,30 +48,48 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
     onAtBottomChange?.(bottom);
   }, [atBottom, onAtBottomChange]);
 
-  // Re-pin to bottom when new content arrives, unless the user has scrolled away.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !autoScroll.current) return;
-    requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
-    });
-  }, [dep]);
+  // Re-pin before paint when new content arrives — opening a pane / switching tabs must land on
+  // the live tail without a flash of the oldest scrollback. Yields if the user has scrolled away.
+  useLayoutEffect(() => {
+    pinToBottom();
+  }, [dep, pinToBottom]);
 
-  // Re-pin when the container itself RESIZES while we're following — a shrinking viewport (the keys
-  // dock opening above the composer, or the on-screen keyboard) pushes the tail below the fold, so
-  // stickiness must snap it back. Keyed on the captured `autoScroll` intent, NOT a recomputed
-  // at-bottom (the shrink already moved the view off bottom); a scrolled-up user is left in place.
+  // Re-pin when the container OR its content resizes while we're following.
+  // - Container: a shrinking viewport (keys dock, on-screen keyboard) pushes the tail below the fold.
+  // - Content: opening a pane paints the flex-sized scroller first; AnsiOutput then grows inside it.
+  //   That does not change the container's border box, so observing only `el` leaves you stuck at the
+  //   top of scrollback. Keyed on the captured `autoScroll` intent, NOT a recomputed at-bottom (a
+  //   shrink already moved the view off bottom); a scrolled-up user is left in place.
   // Guarded for jsdom, which has no ResizeObserver.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
+
     const ro = new ResizeObserver(() => {
-      if (!autoScroll.current) return;
-      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+      pinToBottom();
     });
     ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+    for (const child of Array.from(el.children)) {
+      ro.observe(child);
+    }
+
+    // React replaces/grows children across polls and pane opens — keep observing new nodes and
+    // re-pin when the child list changes while following.
+    const mo = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof Element) ro.observe(node);
+        }
+      }
+      pinToBottom();
+    });
+    mo.observe(el, { childList: true });
+
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [pinToBottom]);
 
   return { scrollRef, isAtBottom, scrollToBottom, onScroll };
 }
