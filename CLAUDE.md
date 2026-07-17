@@ -96,6 +96,7 @@ the unit name; the Herdr action runs from anywhere.
 
 ## Security posture (don't regress)
 
-Loopback bind only · `tailscale serve` is the sole ingress (never `funnel`) · same-origin gate ·
-optional `COLLIE_TRUSTED_USER` identity check · strict CSP. A socket call can type into a
-real terminal — treat the bridge as remote shell access.
+Loopback bind only · exactly one hardened front door — `tailscale serve` (never `funnel`) or a
+conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate · optional
+identity/device gates · strict CSP. A socket call can type into a real terminal — treat the bridge as
+remote shell access.

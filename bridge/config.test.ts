@@ -23,6 +23,7 @@ const KEYS = [
   "COLLIE_VAPID_SUBJECT",
   "COLLIE_STATE_DIR",
   "COLLIE_MULTI_SESSION",
+  "COLLIE_SKIP_SERVE",
   "HERDR_SOCKET_PATH",
   "HERDR_PLUGIN_STATE_DIR",
 ];
@@ -64,6 +65,8 @@ describe("loadConfig", () => {
     expect(cfg.deviceAllowlist).toEqual([]);
     // Multi-session support is on by default.
     expect(cfg.multiSession).toBe(true);
+    // tailscale serve is used by default (reverse-proxy bypass is opt-in).
+    expect(cfg.skipServe).toBe(false);
   });
 
   test("parses COLLIE_MULTI_SESSION as a boolean toggle (default on)", () => {
@@ -82,6 +85,24 @@ describe("loadConfig", () => {
     expect(loadConfig().multiSession).toBe(true);
     process.env.COLLIE_MULTI_SESSION = "";
     expect(loadConfig().multiSession).toBe(true);
+  });
+
+  test("parses COLLIE_SKIP_SERVE as a boolean toggle (default off)", () => {
+    // Truthy spellings turn it on (reverse-proxy mode; bypass tailscale serve).
+    for (const on of ["on", "1", "true", "yes", "ON", " True "]) {
+      process.env.COLLIE_SKIP_SERVE = on;
+      expect(loadConfig().skipServe).toBe(true);
+    }
+    // Falsey spellings keep it off (the default tailscale serve path).
+    for (const off of ["off", "0", "false", "no", "OFF", " False "]) {
+      process.env.COLLIE_SKIP_SERVE = off;
+      expect(loadConfig().skipServe).toBe(false);
+    }
+    // Garbage and empty fall back to the default (off).
+    process.env.COLLIE_SKIP_SERVE = "banana";
+    expect(loadConfig().skipServe).toBe(false);
+    process.env.COLLIE_SKIP_SERVE = "";
+    expect(loadConfig().skipServe).toBe(false);
   });
 
   test("reads the per-device auth header and allowlist", () => {
