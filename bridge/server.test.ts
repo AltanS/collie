@@ -7,6 +7,7 @@ import {
   paneReadResponse,
   resolveStaticPath,
   sendReplySteps,
+  startupWarnings,
   type ReplySender,
 } from "./server.ts";
 import type { Config } from "./config.ts";
@@ -43,6 +44,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     vapidSubject: "mailto:admin@example.com",
     stateDir: "/tmp/state",
     multiSession: true,
+    skipServe: false,
     ...overrides,
   };
 }
@@ -385,5 +387,46 @@ describe("deviceAuth — per-device authorisation", () => {
       device: "phone",
       authorized: false,
     });
+  });
+});
+
+describe("startupWarnings — security-posture nags", () => {
+  const has = (ws: string[], needle: string) => ws.some((w) => w.includes(needle));
+
+  test("skipServe + trustedUser: warns the identity gate is inert and points at the device header", () => {
+    const ws = startupWarnings(cfg({ skipServe: true, trustedUser: "me@example.com" }));
+    expect(has(ws, "COLLIE_TRUSTED_USER has no effect")).toBe(true);
+    expect(has(ws, "COLLIE_DEVICE_HEADER")).toBe(true);
+    expect(has(ws, "Variant C")).toBe(true);
+    // The Variant-A empty-trustedUser nag must NOT also fire (it's meaningless behind a proxy).
+    expect(has(ws, "any tailnet device/user")).toBe(false);
+  });
+
+  test("skipServe + empty trustedUser: no empty-trustedUser warning at all", () => {
+    const ws = startupWarnings(cfg({ skipServe: true, trustedUser: "" }));
+    expect(has(ws, "COLLIE_TRUSTED_USER")).toBe(false);
+  });
+
+  test("no skipServe + empty trustedUser: the existing Variant-A warning still fires", () => {
+    const ws = startupWarnings(cfg({ skipServe: false, trustedUser: "" }));
+    expect(has(ws, "COLLIE_TRUSTED_USER is empty")).toBe(true);
+    expect(has(ws, "Variant A")).toBe(true);
+  });
+
+  test("no skipServe + trustedUser set: no identity warning (correctly configured)", () => {
+    const ws = startupWarnings(cfg({ skipServe: false, trustedUser: "me@example.com" }));
+    expect(has(ws, "COLLIE_TRUSTED_USER")).toBe(false);
+  });
+
+  test("empty publicHosts: the Host-validation warning fires and no longer names COLLIE_SERVE_MODE", () => {
+    const ws = startupWarnings(cfg({ publicHosts: [] }));
+    expect(has(ws, "COLLIE_PUBLIC_HOSTS is empty")).toBe(true);
+    // The reworded clause must not reference the script-only COLLIE_SERVE_MODE var.
+    expect(has(ws, "COLLIE_SERVE_MODE")).toBe(false);
+  });
+
+  test("populated publicHosts: no Host-validation warning", () => {
+    const ws = startupWarnings(cfg({ publicHosts: ["collie.example.ts.net"] }));
+    expect(has(ws, "COLLIE_PUBLIC_HOSTS")).toBe(false);
   });
 });
