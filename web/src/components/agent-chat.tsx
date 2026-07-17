@@ -247,6 +247,13 @@ export function AgentChat({
     olderAnchor.current = null;
   }, [display]);
 
+  // Opening / switching into this pane must land on the live tail. Stickiness usually handles it,
+  // but the first flex layout + AnsiOutput paint can race; pin once after mount so a tab/pane open
+  // never strands you at the oldest scrollback.
+  useLayoutEffect(() => {
+    listRef.current?.scrollToBottom();
+  }, []);
+
   // After a successful send, snap the mirror back to the live tail so the reply's result is visible.
   const onSent = () => {
     setFollowing(true);
@@ -567,13 +574,15 @@ export function AgentChat({
 
         {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
             (unless you're selecting text to copy, which the tap must not collapse). */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden" onClick={focusFromMirror}>
+        {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
+            quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
+        <div className="min-h-0 min-w-0 flex-1" onClick={focusFromMirror}>
           <ChatMessageList
             ref={listRef}
             dep={display}
             onAtBottomChange={setFollowing}
             hasNew={hasNew}
-            className="gap-0 px-2 py-3"
+            className="px-2 py-3"
           >
             {display ? (
               <>

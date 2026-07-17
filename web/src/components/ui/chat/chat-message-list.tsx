@@ -42,11 +42,13 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
 
     return (
       <div className="relative h-full min-w-0 w-full">
+        {/* Block scrollport (not flex-col): flex children with overflow-x-auto can shrink and steal
+            vertical scrolling from this container — see ansi-output preClass. */}
         <div
           ref={scrollRef}
           onScroll={onScroll}
           className={cn(
-            "flex h-full min-w-0 w-full flex-col gap-4 overflow-y-auto overflow-x-hidden px-3 py-4",
+            "h-full min-w-0 w-full overflow-y-auto overflow-x-hidden px-3 py-4",
             className,
           )}
           {...props}
