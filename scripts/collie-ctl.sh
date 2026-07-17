@@ -150,7 +150,11 @@ print_status_banner() {
   echo "    service   ${svc}"
   echo "    local     http://127.0.0.1:${PORT}"
   if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
-    echo "    proxy     (COLLIE_SKIP_SERVE=1 — use your reverse proxy)"
+    if [ -n "${COLLIE_PUBLIC_URL:-}" ]; then
+      echo "    proxy     ${COLLIE_PUBLIC_URL}"
+    else
+      echo "    proxy     (COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)"
+    fi
   else
     echo "    tailnet   $(bridge_url)"
   fi
@@ -301,10 +305,9 @@ cmd_serve() {
 # https:443 by default, or http:$PORT in http mode. Best-effort (|| true) so teardown is idempotent
 # when the mapping is already gone.
 cmd_unserve() {
-  if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
-    echo "tailscale serve skipped (COLLIE_SKIP_SERVE=1) — nothing to unserve"
-    return
-  fi
+  # Always attempt teardown, even under COLLIE_SKIP_SERVE=1: it's idempotent (|| true) and guarded by
+  # the `command -v tailscale` check, and skipping it would strand a stale serve mapping (from before
+  # the flag was flipped on) still publishing the app — a security hazard, not a convenience.
   command -v tailscale >/dev/null || { echo "note: tailscale not found; no serve mapping to remove"; return; }
   if [ "$SERVE_MODE" = "http" ]; then
     tailscale serve --http="$PORT" off >/dev/null 2>&1 || true

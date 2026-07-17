@@ -129,6 +129,14 @@ export interface Config {
    * already-discovered session; they never build a filesystem path.
    */
   multiSession: boolean;
+  /**
+   * Whether `tailscale serve` is bypassed (COLLIE_SKIP_SERVE=1) because an operator-run reverse
+   * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
+   * identically either way — this flag only informs the startup warnings: without `tailscale serve`
+   * in front, the `Tailscale-User-Login` header is never injected, so {@link trustedUser} is inert
+   * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (README → Variant C).
+   */
+  skipServe: boolean;
 }
 
 export function loadConfig(): Config {
@@ -158,5 +166,6 @@ export function loadConfig(): Config {
     vapidSubject: process.env.COLLIE_VAPID_SUBJECT ?? "mailto:admin@example.com",
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true),
+    skipServe: envBool("COLLIE_SKIP_SERVE", false),
   };
 }
