@@ -44,6 +44,9 @@ interface WirePane {
   foreground_cwd?: string;
   agent?: string | null;
   agent_status: AgentStatus;
+  /** User-set pane label (herdr `pane.rename`). Present only once set — the key disappears when
+   *  cleared with `label: null`, so absent/null both read as "no label". */
+  label?: string | null;
   revision: number;
   /** Scroll position (herdr ≥ 0.7.2); optional so older servers that omit it still typecheck. Unused for now. */
   scroll?: {
@@ -372,6 +375,15 @@ export class HerdrClient {
   /** Close a pane, terminating its agent ("kill"). Resolves on Herdr's `{type:"ok"}` reply. */
   closePane(paneId: string): Promise<void> {
     return this.request<void>("pane.close", { pane_id: paneId });
+  }
+
+  /**
+   * Set or clear a pane's label. `label: null` clears it (the key then disappears from pane
+   * records). Resolves on Herdr's `pane_info` reply — the returned pane isn't consumed here, the
+   * next snapshot poll carries the new label (pane.rename emits no event). Bad id → `pane_not_found`.
+   */
+  renamePane(paneId: string, label: string | null): Promise<void> {
+    return this.request<void>("pane.rename", { pane_id: paneId, label });
   }
 
   /** Reachability check for the connected/disconnected banner. */
