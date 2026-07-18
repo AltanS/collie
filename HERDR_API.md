@@ -86,6 +86,34 @@ against a real pane). Empirically enumerated against Herdr 0.7.0 — it is **NOT
   e.g. `{keys:["Down","Enter"]}`.
 - Re-checked against 0.7.2's bundled schema: unchanged.
 
+## Rename methods — set an object's label (verified)
+
+Three sibling RPCs set a display label on a workspace, tab, or pane. Live-verified 2026-07-18.
+
+| Method | Params | `label` | Returns (`result.type`) | Event |
+|---|---|---|---|---|
+| `pane.rename` | `{pane_id, label}` | `string \| null` — **null clears** | `pane_info` → `{pane}` | **none** |
+| `tab.rename` | `{tab_id, label}` | `string` (non-null) | `tab_info` → `{tab}` | `tab_renamed` |
+| `workspace.rename` | `{workspace_id, label}` | `string` (non-null) | `workspace_info` → `{workspace}` | `workspace_renamed` |
+
+- **`pane.rename` is the odd one out, twice over.** Its `label` accepts `null`, which **clears** the
+  label (the `label` key then disappears from the pane record); the sibling two take a non-null
+  string. And it emits **NO event** — a renamed pane surfaces only on the next `session.snapshot` /
+  `pane.list` poll. `tab.rename` / `workspace.rename` DO emit: `tab_renamed` →
+  `{type, tab_id, workspace_id, label}`, `workspace_renamed` → `{type, workspace_id, label}` (the
+  `event` field is snake_case on the stream, as everywhere).
+- **Errors:** an unknown id → `{code:"pane_not_found" | "tab_not_found" | "workspace_not_found",
+  message:"<kind> <id> not found"}`.
+- **No length limit; empty string accepted** (stored as-is on tab/workspace). Collie itself maps a
+  blank pane label to `null` before sending, so an empty "Save" clears — a Collie choice, not a Herdr
+  rule; see `bridge/server.ts`.
+- **Undocumented field:** once set, a pane's label rides along as **`label?: string`** in `pane.list`,
+  `pane.get`, `pane.current`, and `session.snapshot` panes (omitted when unset — so it's absent from
+  the base pane shape below). Workspaces already expose `label`; tabs likewise.
+- **`agent.rename` `{target, name}`** also exists in the schema, but it is a DIFFERENT operation
+  (renames an agent session, not a pane/tab/workspace) — **unverified and unwired by Collie**. Listed
+  only so it isn't mistaken for the label renames above.
+
 ## Object shapes (observed)
 
 ```jsonc
