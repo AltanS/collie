@@ -4,6 +4,7 @@ import { usePolling } from "@/hooks/use-polling";
 import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { OfflineBanner } from "@/components/offline-banner";
+import { ConnectionLostPrompt } from "@/components/connection-lost-prompt";
 import { DogGallop } from "@/components/dog-gallop";
 import { homePath } from "@/lib/nav";
 import { SESSION_PARAM, normalizeSession } from "@/lib/session";
@@ -29,6 +30,9 @@ export function RootLayout() {
   return (
     <div className="flex h-[100dvh] flex-col">
       <OfflineBanner />
+      {/* Escalates a sustained outage (online but bridge/Herdr unreachable ≥15s) to a prominent,
+          non-blocking prompt. Gated on being online, so it never shows alongside OfflineBanner. */}
+      <ConnectionLostPrompt bridge={data.bridge} error={data.error} />
       <Outlet />
     </div>
   );
