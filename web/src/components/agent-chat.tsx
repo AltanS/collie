@@ -514,9 +514,10 @@ export function AgentChat({
                   <AgentIcon agent={agent.agent} className="size-6" />
                 )}
                 <div className="min-w-0 flex-1">
+                  {/* A user-set pane label leads when present (the identifier they chose); otherwise
+                      the default space › tab. The cwd subline keeps context either way. */}
                   <div className="truncate font-semibold leading-tight">
-                    {agent.workspaceLabel}
-                    {tabLabel ? ` › ${tabLabel}` : ""}
+                    {agent.paneLabel ?? `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
                   </div>
                   <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
                     {shortCwd(agent.cwd)}
@@ -569,6 +570,11 @@ export function AgentChat({
               .sort((a, b) => a.paneId.localeCompare(b.paneId))}
             currentPaneId={paneId}
             onSelect={switchTo}
+            session={session}
+            readOnly={readOnly}
+            onRenamed={() => revalidator.revalidate()}
+            // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
+            onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
           />
         )}
 

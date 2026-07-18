@@ -33,7 +33,10 @@ export function AgentCard({ agent, onClick }: { agent: AgentView; onClick: () =>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="truncate font-medium">{isShell ? "shell" : agent.agent}</span>
+            {/* A user-set pane label takes the name slot (the icon still shows which agent it is). */}
+            <span className="truncate font-medium">
+              {agent.paneLabel ?? (isShell ? "shell" : agent.agent)}
+            </span>
             <span className="truncate text-xs text-muted-foreground">· {agent.workspaceLabel}</span>
           </div>
           <div className="truncate font-mono text-xs text-muted-foreground">
