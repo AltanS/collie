@@ -149,4 +149,19 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
   it("trims leading and trailing whitespace around the draft", () => {
     expect(extractInputDraft(boxBuffer("❯   spaced out draft   "))).toBe("spaced out draft");
   });
+
+  // Ground truth for the in-flight self-race (fix: draft-detect). The parse is stateless per snapshot
+  // by design, so it DOES read our own just-typed reply as a "draft" during the bridge's ~350ms
+  // send_text→Enter gap — that's exactly why the cross-poll stabiliser + match-last-sent guard exist
+  // upstream (see use-terminal-draft.ts / composer.tsx). These two pin the parse behaviour those
+  // guards depend on.
+  it("mid-send in-flight frame: reads the just-typed text off the ❯ line (the false positive to suppress)", () => {
+    // The composer typed "/rename"; the bridge hasn't pressed Enter yet, so it sits on the box line.
+    expect(extractInputDraft(fixtureLines("claude--send-inflight.txt"))).toBe("/rename");
+  });
+
+  it("self-resolved rename frame: the box is empty again, so no draft is read", () => {
+    // A poll or two later the command has submitted (spinner up, prompt cleared) — nothing stranded.
+    expect(extractInputDraft(fixtureLines("claude--rename-resolved.txt"))).toBeNull();
+  });
 });

@@ -15,6 +15,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
+import { isSelfEcho } from "@/hooks/use-terminal-draft";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -61,6 +62,12 @@ type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
 // Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text.
 const TUI_SETTLE_MS = 350;
+
+// Grace window after a send during which a terminal draft matching what we just sent is treated as
+// our own in-flight reply (still on the "❯" line before the bridge's pending Enter lands), NOT a
+// stranded draft. Wide enough to cover a slow tailnet round-trip; the parent's cross-poll
+// stabilisation (useStableTerminalDraft) closes the other half of the same window.
+const SENT_ECHO_GRACE_MS = 5_000;
 
 // Shared in-flow dock chrome for Keys/Quick — an IN-FLOW panel (never an overlay), so the terminal
 // mirror's flex-1 box shrinks and its tail stays visible while the dock is open (a covering sheet
@@ -128,9 +135,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const fileRef = useRef<HTMLInputElement>(null);
   const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What we last sent, and when — so we can recognise our OWN reply momentarily echoing on the "❯"
+  // line (during the bridge's send_text→settle→Enter gap) and NOT treat it as a stranded draft. A
+  // ref, not state: it feeds a render-time derivation but must not itself trigger re-renders.
+  const lastSentRef = useRef<{ text: string; at: number } | null>(null);
   // Trailing-edge debounce for post-keypress revalidation: a burst of raw key sends (arrow-key
   // spam) coalesces into a single pane refetch instead of one per press.
   const keyRevalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Second guard against a false stranded-draft (the parent already stabilises across polls): if the
+  // detected draft is what we JUST sent, it's our own reply still echoing on the "❯" line before the
+  // bridge's pending Enter — suppress the chip AND the destructive clear-prefix on the next Send.
+  // Recomputed each render (each poll re-renders), so it lapses on its own once the grace expires or
+  // the echo resolves. A genuinely stranded draft (never matches a recent send) is untouched.
+  const isInFlightEcho =
+    terminalDraft !== null &&
+    lastSentRef.current !== null &&
+    Date.now() - lastSentRef.current.at < SENT_ECHO_GRACE_MS &&
+    isSelfEcho(terminalDraft, lastSentRef.current.text);
+  const effectiveDraft = isInFlightEcho ? null : terminalDraft;
 
   useImperativeHandle(ref, () => ({ focusInput: focusInputEnd }), []);
 
@@ -172,9 +195,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
       // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip when
-      // there's no draft: a blind sweep races the TUI and Enter can fire before the PTY settles.
-      if (terminalDraft !== null) {
-        const clearCount = [...terminalDraft].length + 8;
+      // there's no draft: a blind sweep races the TUI and Enter can fire before the PTY settles. Uses
+      // effectiveDraft, so our own in-flight echo never triggers a (destructive) clear of a message
+      // that's already on its way.
+      if (effectiveDraft !== null) {
+        const clearCount = [...effectiveDraft].length + 8;
         const clearRes = await api.sendKeys(
           paneId,
           ["ctrl+k", ...Array(clearCount).fill("Backspace")],
@@ -191,7 +216,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.sendReply(paneId, t, true, session);
       if (res.ok) {
         if (isDraft) setInput("");
-        if (terminalDraft !== null) setDismissedDraft(terminalDraft);
+        // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
+        // line as our own in-flight reply rather than a stranded draft (isInFlightEcho above).
+        lastSentRef.current = { text: t, at: Date.now() };
+        if (effectiveDraft !== null) setDismissedDraft(effectiveDraft);
         // ✓ flash on the send button + status line acknowledge the send immediately. The mirror only
         // echoes in 1–3s; the "You sent: …" pending preview keeps the typed text visible until it
         // lands (cleared by the next text update or a 6s safety timeout).
@@ -266,8 +294,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // append on a new line, mirroring insertCommand's set-or-append). On failure we surface the error
   // and leave the composer alone — the text is still in the terminal, so we mustn't duplicate it.
   async function recoverDraft() {
-    if (terminalDraft === null || locked || recovering) return;
-    const draft = terminalDraft;
+    if (effectiveDraft === null || locked || recovering) return;
+    const draft = effectiveDraft;
     setRecovering(true);
     try {
       const n = [...draft].length + 8;
@@ -291,9 +319,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The chip shows only when there's a live stranded draft, the composer can write, no send is in
   // flight, and the user hasn't dismissed this exact draft. Preview truncates like the send preview.
   const showDraftChip =
-    terminalDraft !== null && !locked && !sending && terminalDraft !== dismissedDraft;
+    effectiveDraft !== null && !locked && !sending && effectiveDraft !== dismissedDraft;
   const draftPreview =
-    terminalDraft && terminalDraft.length > 60 ? `${terminalDraft.slice(0, 57)}…` : terminalDraft;
+    effectiveDraft && effectiveDraft.length > 60 ? `${effectiveDraft.slice(0, 57)}…` : effectiveDraft;
 
   // Upload an image; on success append its host path to the composer so the user can add context.
   async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
@@ -494,7 +522,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               variant="ghost"
               size="icon"
               className="size-6 shrink-0 text-muted-foreground"
-              onClick={() => setDismissedDraft(terminalDraft)}
+              onClick={() => setDismissedDraft(effectiveDraft)}
               aria-label="Dismiss terminal draft"
             >
               <X className="size-3.5" />

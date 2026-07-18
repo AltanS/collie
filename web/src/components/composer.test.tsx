@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ComponentProps } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -252,6 +253,114 @@ describe("Composer — terminal-draft recovery chip", () => {
     expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /dismiss terminal draft/i }));
     expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+  });
+});
+
+// Mitigation A for the in-flight self-race: the composer knows what it just sent, so when the SAME
+// text shows up on the terminal's "❯" line moments later (our own reply before the bridge's pending
+// Enter lands), it must NOT be treated as a stranded draft — no chip, and no destructive clear-prefix
+// on the next Send. A harness lets the test flip `terminalDraft` after a send, the way the parent
+// would once the mirror echoes the in-flight text back.
+describe("Composer — in-flight echo suppression (match-last-sent)", () => {
+  function EchoHarness({ echoValue }: { echoValue: string }) {
+    const [draft, setDraft] = useState<string | null>(null);
+    const props: ComponentProps<typeof Composer> = {
+      paneId: "w1:p1",
+      agent: "claude",
+      isShell: false,
+      gone: false,
+      readOnly: false,
+      text: "pane output",
+      terminalDraft: draft,
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      setWrap: vi.fn(),
+      stepFontSize: vi.fn(),
+      setRawTerminal: vi.fn(),
+      onSent: vi.fn(),
+    };
+    return (
+      <>
+        <button onClick={() => setDraft(echoValue)}>__set-draft</button>
+        <Composer {...props} />
+      </>
+    );
+  }
+
+  function renderEcho(echoValue: string) {
+    const router = createMemoryRouter([
+      { path: "/", element: <EchoHarness echoValue={echoValue} /> },
+    ]);
+    render(<RouterProvider router={router} />);
+  }
+
+  it("suppresses the chip AND skips the clear-prefix when the draft matches what we just sent", async () => {
+    const user = userEvent.setup();
+    const callLog: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        callLog.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string };
+        callLog.push(`reply:${body.text}`);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderEcho("/rename");
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    // Send "/rename"; the composer remembers it.
+    await user.type(box, "/rename");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain("reply:/rename"));
+
+    // The mirror now echoes the in-flight "/rename" back onto the ❯ line — no stranded-draft chip.
+    await user.click(screen.getByRole("button", { name: "__set-draft" }));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+
+    // A follow-up send must NOT fire the destructive ctrl+k/backspace clear-prefix against our own
+    // in-flight reply — it goes straight to reply.
+    await user.type(box, "next message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain("reply:next message"));
+    expect(callLog).not.toContain("keys");
+    expect(callLog.filter((e) => e.startsWith("reply:"))).toEqual([
+      "reply:/rename",
+      "reply:next message",
+    ]);
+  });
+
+  it("still surfaces a genuinely different stranded draft (does not over-suppress)", async () => {
+    const user = userEvent.setup();
+    const callLog: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        callLog.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string };
+        callLog.push(`reply:${body.text}`);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderEcho("someone else's leftover");
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain("reply:hello"));
+
+    // A draft that is NOT what we sent is a real stranded draft — the chip returns and the next Send
+    // clears the line first.
+    await user.click(screen.getByRole("button", { name: "__set-draft" }));
+    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+
+    await user.type(box, "reply2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain("reply:reply2"));
+    expect(callLog).toContain("keys");
   });
 });
 
