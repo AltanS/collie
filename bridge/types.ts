@@ -20,6 +20,8 @@ export interface AgentView {
   focused: boolean;
   /** "agent" for an agent-bearing pane, "shell" for a bare shell. Defaults to "agent" when absent. */
   kind?: "agent" | "shell";
+  /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
+  paneLabel?: string;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */

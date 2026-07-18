@@ -16,10 +16,17 @@ interface FakePane {
   cwd: string;
   agent?: string | null;
   agent_status: AgentStatus;
+  label?: string | null;
   revision: number;
 }
 
-function pane(id: string, ws: string, status: AgentStatus, agent: string | null): FakePane {
+function pane(
+  id: string,
+  ws: string,
+  status: AgentStatus,
+  agent: string | null,
+  label?: string | null,
+): FakePane {
   return {
     pane_id: id,
     terminal_id: "term",
@@ -29,6 +36,7 @@ function pane(id: string, ws: string, status: AgentStatus, agent: string | null)
     cwd: "/home/you/demo",
     agent,
     agent_status: status,
+    ...(label !== undefined ? { label } : {}),
     revision: 0,
   };
 }
@@ -190,6 +198,32 @@ describe("StateEngine — snapshot shaping", () => {
     expect(snap.shellPanes.map((a) => a.paneId)).toEqual(["w1:p2"]);
     expect(snap.shellPanes[0]!.agent).toBe("shell");
     expect(snap.bridge).toBe("connected");
+  });
+
+  test("threads a pane label through to the view when set, on agents and shells alike", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [
+      pane("w1:p1", "w1", "idle", "claude", "deploy"),
+      pane("w1:p2", "w1", "unknown", null, "logs"),
+    ];
+    await poll();
+    const snap = engine.current();
+    expect(snap.agents[0]!.paneLabel).toBe("deploy");
+    expect(snap.shellPanes[0]!.paneLabel).toBe("logs");
+  });
+
+  test("leaves paneLabel absent when the pane has no label (or a null/empty one)", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [
+      pane("w1:p1", "w1", "idle", "claude"), // no label field at all
+      pane("w1:p2", "w1", "idle", "codex", null), // explicitly null
+      pane("w1:p3", "w1", "idle", "codex", ""), // empty string → treated as unset
+    ];
+    await poll();
+    for (const a of engine.current().agents) {
+      expect(a.paneLabel).toBeUndefined();
+      expect("paneLabel" in a).toBe(false);
+    }
   });
 
   test("sorts agents by urgency (blocked first), then workspace number", async () => {

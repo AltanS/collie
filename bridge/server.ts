@@ -76,7 +76,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 // (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename))?$/;
 
 export function startServer(opts: {
   cfg: Config;
@@ -169,6 +169,7 @@ export function startServer(opts: {
         if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req, audit, device, session);
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
         if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device, session);
+        if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit, device, session);
         return text("method not allowed", 405);
       }
 
@@ -487,6 +488,37 @@ async function closePane(
   try {
     await herdr.closePane(paneId);
     audit.record({ action: "pane.close", paneId, session, device, detail: {} });
+    return json({ ok: true } satisfies ActionResponse, ae);
+  } catch (err) {
+    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+  }
+}
+
+// Set or clear a pane's label. Structural metadata op — strictly less powerful than the text/keys
+// injection the bridge already allows, so it stays within the existing remote-shell threat model.
+// The body's `label` must be a string or null; a blank string clears (so a user can wipe a label by
+// saving an empty field), which we send to Herdr as `label: null`.
+async function renamePane(
+  herdr: HerdrClient,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: { label?: unknown };
+  try {
+    body = (await req.json()) as typeof body;
+  } catch {
+    return text("bad body", 400);
+  }
+  if (body.label !== null && typeof body.label !== "string") return text("bad label", 400);
+  const trimmed = typeof body.label === "string" ? body.label.trim() : "";
+  const label = trimmed.length > 0 ? trimmed : null;
+  try {
+    await herdr.renamePane(paneId, label);
+    audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);

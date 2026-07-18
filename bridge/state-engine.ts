@@ -167,6 +167,8 @@ export class StateEngine {
           cwd: p.cwd,
           focused: p.focused,
           kind,
+          // A user-set pane label (herdr pane.rename); omitted when unset so "absent stays absent".
+          ...(typeof p.label === "string" && p.label.length > 0 ? { paneLabel: p.label } : {}),
         };
       };
 
