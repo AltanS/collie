@@ -5,6 +5,7 @@ import { ArrowUpToLine, Loader2, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
+import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -168,13 +169,19 @@ export function AgentChat({
   // the composer, which offers a one-tap "Edit here" recovery (clear the terminal line, adopt the
   // text locally). Same parse source + same adapter as the statusline, so the two can't drift; null
   // when raw-terminal is on, there's no adapter, no box is at the tail, or the line is empty/a placeholder.
-  const terminalDraft = useMemo(
+  const rawTerminalDraft = useMemo(
     () =>
       grammarsOn
         ? adapterFor(agent?.agent)?.extractInputDraft(splitLines(parseAnsi(display))) ?? null
         : null,
     [display, agent?.agent, grammarsOn],
   );
+  // Stabilise it across polls before it reaches the composer: extractInputDraft is stateless, so it
+  // can't distinguish a stranded draft from the ~350ms flash where our OWN just-sent reply sits on
+  // the "❯" line waiting for the bridge's pending Enter. Requiring the same text to persist drops
+  // that false positive (the composer adds a second guard: it also suppresses a draft matching what
+  // it just sent) without losing real stranded drafts, which persist across turns.
+  const terminalDraft = useStableTerminalDraft(rawTerminalDraft);
 
   // Find-in-output: search the already-fetched buffer. The bar takes over the header while open;
   // AnsiOutput highlights matches and reports the count back here; prev/next scrolls the focused
