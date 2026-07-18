@@ -481,7 +481,7 @@ export function AgentChat({
   }
 
   return (
-    <div className="flex h-[100dvh] min-w-0 w-full max-w-[100dvw] flex-col overflow-x-hidden">
+    <div className="flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden">
       {/* Header — while find is open, the find bar takes over this row (one-handed, thumb-reachable). */}
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-zinc-800 pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
         {findOpen ? (
