@@ -130,7 +130,8 @@ function PaneRow({
   closing?: boolean;
 }) {
   const isShell = pane.kind === "shell";
-  const name = isShell ? "shell" : pane.agent;
+  // A user-set pane label leads (the icon still conveys the agent); falls back to the agent/shell name.
+  const name = pane.paneLabel ?? (isShell ? "shell" : pane.agent);
   // A row is a container, not one big button: the select tap and the ✕ are separate controls, so they
   // can't be nested <button>s. The active/hover highlight lives on the container; the inner button is
   // transparent and carries aria-current.
