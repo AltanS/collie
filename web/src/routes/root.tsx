@@ -23,11 +23,14 @@ export function RootLayout() {
   useAgentTransitions(data.agents, paneId ?? null);
   usePushSetup();
 
+  // A viewport-height flex column: the offline banner (when shown) is an in-flow row at the top and
+  // the active route fills the rest (each route root is `min-h-0 flex-1`). This is what keeps the
+  // banner from covering the route's sticky header — it reserves real space instead of overlaying.
   return (
-    <>
+    <div className="flex h-[100dvh] flex-col">
       <OfflineBanner />
       <Outlet />
-    </>
+    </div>
   );
 }
 

@@ -40,7 +40,7 @@ export function HomeRoute() {
   const drillInto = (id: string) => navigate(spacePath(id, data.session));
 
   return (
-    <div className="mx-auto flex h-[100dvh] max-w-screen-sm flex-col">
+    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       <ConnectionBar
         online={online}
         bridge={data.bridge}
