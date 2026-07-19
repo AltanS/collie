@@ -5,6 +5,7 @@ import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { OfflineBanner } from "@/components/offline-banner";
+import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { ConnectionLostPrompt } from "@/components/connection-lost-prompt";
 import { DogGallop } from "@/components/dog-gallop";
 import { homePath } from "@/lib/nav";
@@ -31,6 +32,10 @@ export function RootLayout() {
   return (
     <div className="flex h-[100dvh] flex-col">
       <OfflineBanner />
+      {/* API-observed self-update: mounted unconditionally so its controller runs (and can
+          auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh
+          build is confirmed but auto-update is held off (unsent work) or already spent. */}
+      <UpdateAvailableBanner />
       {/* Escalates a sustained outage (online but bridge/Herdr unreachable ≥15s) to a prominent,
           non-blocking prompt. Gated on being online, so it never shows alongside OfflineBanner. */}
       <ConnectionLostPrompt bridge={data.bridge} error={data.error} />

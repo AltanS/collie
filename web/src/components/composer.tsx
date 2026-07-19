@@ -15,6 +15,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
+import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho } from "@/hooks/use-terminal-draft";
 
 export interface ComposerHandle {
@@ -189,6 +190,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Are we currently mirroring a terminal draft, unedited? (adoptedDraft is only ever set together
   // with input, so this is true exactly while the auto-filled text is untouched.)
   const mirroring = adoptedDraft !== null && input === adoptedDraft;
+
+  // Block a self-update reload while there's unsent work here: real typed text OR an upload in
+  // flight. The auto-adopted mirrored draft is SAFE — it lives on the terminal's "❯" line and
+  // re-adopts after a reload — so it must NOT hold (else a stranded draft would wedge the update
+  // forever). When held, the self-updater shows the "tap to update" banner instead and updates once
+  // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
+  useHoldReload(`composer:${paneId}`, (input.trim() !== "" && !mirroring) || uploading);
 
   // Auto-adopt + sync state machine. Two disjoint cases:
   //   A — MIRRORING (adoptedDraft set, input unedited): follow the terminal draft. It CHANGED →

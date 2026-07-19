@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus, useStatus } from "@/lib/status";
+import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
@@ -538,6 +539,46 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(callLog).toContain("reply:someone else's leftover"));
     expect(callLog).toContain("keys");
+  });
+});
+
+// The no-service-worker self-updater must never reload over unsent work. The composer registers a
+// reload hold (lib/reload-guard) while it holds REAL unsent text — but the auto-adopted mirrored
+// draft is SAFE (it lives on the terminal's "❯" line and re-adopts after a reload), so it must NOT
+// hold, or a stranded draft would wedge the update forever.
+describe("Composer — reload-guard hold (no-SW self-update safety gate)", () => {
+  beforeEach(() => __resetReloadGuard());
+
+  it("holds a reload while the composer has unsent text, releases when it's cleared", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(isReloadHeld()).toBe(false);
+
+    await user.type(box, "half-written thought");
+    expect(isReloadHeld()).toBe(true);
+
+    await user.clear(box);
+    expect(isReloadHeld()).toBe(false);
+  });
+
+  it("an auto-adopted mirrored draft does NOT hold (it re-adopts after a reload)", async () => {
+    renderDraftHarness({ terminalDraft: "adopt me" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("adopt me")); // adopted, still mirroring
+    expect(isReloadHeld()).toBe(false);
+  });
+
+  it("editing the adopted draft detaches it into real unsent work — now it holds", async () => {
+    const user = userEvent.setup();
+    renderDraftHarness({ terminalDraft: "adopt me" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("adopt me"));
+    expect(isReloadHeld()).toBe(false);
+
+    await user.type(box, "!"); // "adopt me!" → detached, the user owns it now
+    expect(box).toHaveValue("adopt me!");
+    expect(isReloadHeld()).toBe(true);
   });
 });
 
