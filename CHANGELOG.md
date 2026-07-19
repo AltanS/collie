@@ -6,6 +6,34 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.13.0] - 2026-07-19
+
+### Added
+- Long-press a pane pill for a pane actions sheet — rename + two-tap close (5b50941, c713551, 90210ce, ea20df0)
+- Pane rename end-to-end: `pane.rename` RPC, bridge route, label threading (99c8808)
+- Tab rename + tab close (blast-radius confirm) via the same long-press sheet on tab chips (a9664b5, 37a470e)
+- Claude's own `/rename` session name surfaced on cards, headers, and the switcher (d22fdd7)
+- Read-only "Draft in terminal" preview with explicit Take over — the composer input is exclusively phone-owned (4b6f0ac, 10fa28d)
+- Self-update without the service worker: `X-Collie-Build` on polled responses, auto-reload or tap-to-update banner (8d13622)
+- Instant offline navigation — during a known outage, routes serve the last good snapshot instead of hanging on a dead fetch (b756edd)
+- Busy strip on genuinely hung loads: navigations >500ms, background polls >6s (e886541, 3bfaa1c, 06516c4)
+- `-dev` marker in the build stamp for non-release builds (3e785f4)
+
+### Changed
+- One shared `AppHeader` for dashboard, space, and pane — same components underneath, stale status badges dim during outages (29432c2)
+- Connection status is a single animated top bar — amber "reconnecting…" after 4s of trouble, red with Retry at 15s, green flash on recovery; no header pill (394e6fe, b2dd50e)
+- Switcher sections carry status-colored bullets; per-row close removed (switching is the only action there) (3918c69)
+- `assets/*` served immutable, everything else `no-cache` — proxy caches can no longer starve `/sw.js` updates (8d13622)
+
+### Fixed
+- Own in-flight reply no longer flagged as a stranded terminal draft (e8462f9)
+- Wrapped multi-line drafts and the new background-agents footer no longer break input-box detection (829fc7e, d9521e3)
+- `navigator.onLine` never gates polling or liveness — lying flags can't wedge the app or fake outages (d31ffb8, 394e6fe)
+- One shared connection-lost clock; escalation survives route changes and app switches until a poll succeeds (1486e07, 5949885)
+- Sustained outages escalate everywhere — boot splash, header, banner — with Retry/Reload (0cbbac1, 4d89588, 4494cf5)
+- Gallop sprite re-centered; the dog never freezes mid-stride (rest state is the static icon) (3c7174a, 394e6fe)
+- Offline banner no longer overlaps the sticky header (bf98a88)
+
 ## [0.12.0] - 2026-07-17
 
 ### Added
