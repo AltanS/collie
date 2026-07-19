@@ -47,12 +47,23 @@ describe("usePollBusy — two independent thresholds (nav vs. background poll)",
   });
 
   it("a background revalidation between the nav and poll thresholds does NOT show the bar", () => {
-    h.rev = "loading"; // on-device: routinely 0.5-1.5s over the reverse proxy
+    h.rev = "loading"; // on-device: routinely 0.5-3s over the reverse proxy, chronic-but-normal
     renderHook(() => usePollBusy());
     act(() => vi.advanceTimersByTime(NAV_T)); // past the (shorter) nav threshold
     expect(isBusy()).toBe(false); // but a poll gets the longer, ambient threshold
     act(() => vi.advanceTimersByTime(POLL_T - NAV_T - 1));
     expect(isBusy()).toBe(false);
+  });
+
+  it("a chronically slow mobile poll (2-5s) never shows the bar, only a hang past 6s does", () => {
+    h.rev = "loading"; // the reverse-proxy link this threshold exists for
+    renderHook(() => usePollBusy());
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(isBusy()).toBe(false); // slow-but-normal round trip
+    act(() => vi.advanceTimersByTime(3_000)); // now at 5s
+    expect(isBusy()).toBe(false); // still slow-but-normal, must stay hidden
+    act(() => vi.advanceTimersByTime(1_000)); // now at 6s — genuinely hung
+    expect(isBusy()).toBe(true);
   });
 
   it("a background revalidation past its (long) threshold shows the bar", () => {
