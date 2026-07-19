@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 
 import { ConnectionBar } from "./connection-bar";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
+import { __resetConnectionHealth } from "@/lib/connection-health";
 
 // The bar calls useNavigate (the Settings gear) and renders router-aware children, so it needs a
 // router context.
@@ -102,7 +103,10 @@ describe("ConnectionBar", () => {
 // dragged on past CONNECTION_LOST_MS — the same threshold that raises the prominent prompt, so the
 // two agree. Fake timers drive the wall-clock hook (Vitest advances Date.now with them).
 describe("ConnectionBar — escalates the pill after a sustained outage", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetConnectionHealth(); // anchor == frozen clock, so the threshold boundary is exact
+  });
   afterEach(() => vi.useRealTimers());
 
   it("reconnecting… → not connected once past the threshold", () => {

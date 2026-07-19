@@ -62,10 +62,11 @@ const TONE: Record<"ok" | "warn" | "bad", string> = {
 
 export function ConnectionBar(props: ConnectionBarProps) {
   const connecting = isConnecting(props);
-  // Same 15s wall-clock as the prominent prompt, so the pill and the prompt agree on when a blip has
-  // become a real outage. Self-contained here (the pill renders inside each route header, not under
-  // RootLayout) — worst case a route change during an outage restarts its clock; the prompt, which
-  // lives in the persistent RootLayout, is the stable escalation.
+  // Same 15s wall-clock as the prominent prompt, derived from the SHARED lib/connection-health store
+  // (not a per-instance timer), so the pill and the prompt escalate as one. The pill renders inside
+  // each route header, so it remounts on a home↔space navigation — the shared, module-scoped anchor
+  // survives that remount, so a route change mid-outage can no longer restart the pill's clock and
+  // leave it stuck amber while the persistent prompt has already gone red.
   const lost = useConnectionLost(connecting);
   const { label, tone, Icon } = resolve(props, lost);
   const navigate = useNavigate();

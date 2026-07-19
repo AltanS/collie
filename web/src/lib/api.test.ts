@@ -1,6 +1,8 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
+import { fixtureSnapshot } from "@/test/handlers";
+import { __resetConnectionHealth, lastHealthyAt } from "./connection-health";
 import {
   checkForUpdates,
   createTab,
@@ -173,5 +175,40 @@ describe("api client — session scoping", () => {
     await fetchPane("w1:p1", 600);
     expect(urls[0]).toBe("/api/snapshot");
     expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600");
+  });
+});
+
+// The fetch layer is where liveness is stamped onto the shared lib/connection-health anchor (the same
+// interception point that captures X-Collie-Build). A live snapshot/pane stamps; a 200 that reports
+// the herd link down must NOT — otherwise the "Herdr is down" escalation could never fire.
+describe("api client — connection-health stamping", () => {
+  it("stamps a live moment on a healthy snapshot (bridge connected)", async () => {
+    __resetConnectionHealth(1); // pin the anchor far in the past
+    await fetchSnapshot(); // default handler → fixtureSnapshot.bridge === "connected"
+    expect(lastHealthyAt()).toBeGreaterThan(1);
+  });
+
+  it("does NOT stamp when the snapshot 200s but reports the herd link disconnected", async () => {
+    server.use(
+      http.get("/api/snapshot", () =>
+        HttpResponse.json({ ...fixtureSnapshot, bridge: "disconnected" }),
+      ),
+    );
+    __resetConnectionHealth(1);
+    await fetchSnapshot();
+    expect(lastHealthyAt()).toBe(1); // a 200 that says "Herdr down" is not a provably-live moment
+  });
+
+  it("stamps a live moment on a successful pane read", async () => {
+    __resetConnectionHealth(1);
+    await fetchPane("w1:p1"); // default handler → 200 body
+    expect(lastHealthyAt()).toBeGreaterThan(1);
+  });
+
+  it("does NOT stamp when a poll fails (the throw precedes the stamp)", async () => {
+    server.use(http.get("/api/snapshot", () => new HttpResponse("boom", { status: 502 })));
+    __resetConnectionHealth(1);
+    await expect(fetchSnapshot()).rejects.toThrow(/502/);
+    expect(lastHealthyAt()).toBe(1);
   });
 });

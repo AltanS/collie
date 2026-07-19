@@ -1,39 +1,40 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-// How long the app must stay continuously not-live before we escalate from the quiet header pill
-// ("reconnecting…") to a prominent prompt. Long enough that a normal poll blip, a pane-open hiccup,
-// or a brief tunnel drop never trips it — only a genuinely sustained outage does.
-export const CONNECTION_LOST_MS = 15_000;
+import { CONNECTION_LOST_MS, useConnectionHealth } from "@/lib/connection-health";
+
+// Re-exported so the many call sites and tests that import the threshold from here keep working; the
+// constant itself now lives with the shared store in lib/connection-health.
+export { CONNECTION_LOST_MS };
 
 /**
  * True once `connecting` (isConnecting — offline / snapshot error / Herdr down / stalled) has stayed
- * true continuously for CONNECTION_LOST_MS. Resets to false the instant `connecting` goes false, so a
- * recovered snapshot dismisses the prompt immediately.
+ * true continuously for `thresholdMs`, measured from the last PROVABLY LIVE moment. Resets to false
+ * the instant `connecting` goes false, so a recovered snapshot dismisses the prompt immediately.
  *
- * Mirrors useLoadingStalled's shape, but measures WALL-CLOCK elapsed (the SUPERSEDE_MS approach):
- * `since` stamps when the outage began, and `lost` is derived from real time elapsed, not a timer's
- * countdown — a phone that sleeps mid-outage and wakes still-disconnected escalates on the true
- * elapsed time rather than accumulated awake-time. A timer (and focus/online wakeups) only force the
- * re-render at which that derivation is recomputed.
+ * Derives entirely from the module-scoped lib/connection-health store — NOT a per-instance timer.
+ * `lost` is a pure function of `connecting` and the shared `lastHealthyAt()` anchor, so every consumer
+ * (header pill, outage banner, in-pane header, boot splash) computes the SAME answer and they cannot
+ * disagree across remounts, route changes, or timer drift. The store subscription re-renders us when
+ * the anchor moves (a successful poll or a wake); the timeout below forces the re-evaluation at the
+ * exact threshold moment, and focus/online are cheap re-check nudges after the phone wakes (when
+ * timers were frozen). Wall-clock throughout: a phone that sleeps mid-outage escalates on true elapsed
+ * time, not accumulated awake-time.
  */
 export function useConnectionLost(connecting: boolean, thresholdMs = CONNECTION_LOST_MS): boolean {
-  const since = useRef<number | null>(null);
-  // A bare re-render nudge: the derived `lost` below is the source of truth; this just makes React
-  // re-evaluate it at the threshold moment (and on wake) even when no poll happens to re-render us.
+  // The shared anchor. Subscribing re-renders us whenever markLive/markWake advances it, and feeding
+  // it into the effect deps below reschedules the threshold timer against the new anchor (e.g. a wake
+  // grace pushes escalation back a fresh window).
+  const anchor = useConnectionHealth();
+  // A bare re-render nudge: `lost` below is the source of truth; this just makes React re-evaluate it
+  // at the threshold moment (and on focus/online) even when no poll or store change re-renders us.
   const [, tick] = useState(0);
-
-  if (connecting) {
-    if (since.current === null) since.current = Date.now();
-  } else {
-    since.current = null;
-  }
 
   useEffect(() => {
     if (!connecting) return;
     const recheck = () => tick((n) => n + 1);
-    const elapsed = since.current === null ? 0 : Date.now() - since.current;
+    const elapsed = Date.now() - anchor;
     const id = window.setTimeout(recheck, Math.max(0, thresholdMs - elapsed));
-    // Timers freeze while the phone sleeps, so re-measure real elapsed time on wake.
+    // Timers freeze while the phone sleeps; focus/online re-measure real elapsed time on wake.
     window.addEventListener("focus", recheck);
     window.addEventListener("online", recheck);
     return () => {
@@ -41,7 +42,7 @@ export function useConnectionLost(connecting: boolean, thresholdMs = CONNECTION_
       window.removeEventListener("focus", recheck);
       window.removeEventListener("online", recheck);
     };
-  }, [connecting, thresholdMs]);
+  }, [connecting, thresholdMs, anchor]);
 
-  return connecting && since.current !== null && Date.now() - since.current >= thresholdMs;
+  return connecting && Date.now() - anchor >= thresholdMs;
 }
