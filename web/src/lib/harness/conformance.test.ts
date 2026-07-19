@@ -14,8 +14,23 @@ import { describeAdapterConformance, isValidHerdrKey } from "./conformance";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
-// The three neutral (no-dialog) Claude states: they must never lift an interactive block.
-const NEUTRAL = ["claude--working.txt", "claude--fresh-idle.txt", "claude--done.txt"];
+// The neutral (no-dialog) Claude states: they must never lift an interactive block. Includes the
+// in-flight-send captures — a `❯ …` input box (with or without a slash-autocomplete menu above it) is
+// composer chrome, not a dialog, so it must stay raw. The wrapped-draft capture is the same: a
+// (multi-line) input box, stripped as chrome, never lifted.
+const NEUTRAL = [
+  "claude--working.txt",
+  "claude--fresh-idle.txt",
+  "claude--done.txt",
+  "claude--send-inflight.txt",
+  "claude--rename-resolved.txt",
+  "claude--draft-wrapped.txt",
+  // Input boxes with the background-agents footer below them — still composer chrome (stripped), not a
+  // dialog, so they must stay raw / lift no interactive block.
+  "claude--draft-footer-empty.txt",
+  "claude--draft-footer-single.txt",
+  "claude--draft-footer-wrapped.txt",
+];
 
 const allClaudeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))

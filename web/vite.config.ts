@@ -38,11 +38,13 @@ const allowedHosts = wildcardDevHost ? true : devHosts.length > 0 ? devHosts : u
 // `/api/config`. Comparing the two tells you instantly whether a browser is running a stale,
 // service-worker-cached bundle (caches are per-origin) — see README → Troubleshooting. The id mixes
 // version + git sha + build time so it changes on every rebuild, even between commits.
+// Shared by gitSha() and isReleaseBuild() below.
+const git = (cmd: string) =>
+  execSync(cmd, { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] })
+    .toString()
+    .trim();
+
 function gitSha(): string {
-  const git = (cmd: string) =>
-    execSync(cmd, { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
   let sha: string;
   try {
     sha = git("git rev-parse --short HEAD") || "nogit";
@@ -63,6 +65,21 @@ function gitSha(): string {
   }
   return dirty ? `${sha}-dirty` : sha;
 }
+// Clean-tree builds off a non-release commit (a preview branch, mid-development main) would
+// otherwise stamp a version string identical to the real `vX.Y.Z` release, since `-dirty` only
+// fires on an uncommitted tree. `-dev` covers that gap: true only when the `vX.Y.Z` tag exists
+// AND points at HEAD. Compare full shas (`rev-parse HEAD`, not the short one gitSha() uses) since
+// that's what the tag's rev-parse resolves to. Any failure (no tag, no git) returns true — i.e.
+// we don't add the marker — mirroring build.ts's isStaleBuild "never nag spuriously" policy.
+function isReleaseBuild(version: string): boolean {
+  try {
+    const tagCommit = git(`git rev-parse -q --verify "refs/tags/v${version}^{commit}"`);
+    const headCommit = git("git rev-parse HEAD");
+    return tagCommit === headCommit;
+  } catch {
+    return true;
+  }
+}
 const pkgVersion = (
   JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")) as {
     version: string;
@@ -70,11 +87,12 @@ const pkgVersion = (
 ).version;
 const buildSha = gitSha();
 const buildTime = new Date().toISOString();
+const stampedVersion = isReleaseBuild(pkgVersion) ? pkgVersion : `${pkgVersion}-dev`;
 const BUILD_INFO = {
-  version: pkgVersion,
+  version: stampedVersion,
   sha: buildSha,
   time: buildTime,
-  id: `${pkgVersion}+${buildSha}.${Math.floor(Date.parse(buildTime) / 1000)}`,
+  id: `${stampedVersion}+${buildSha}.${Math.floor(Date.parse(buildTime) / 1000)}`,
 };
 
 // Emit dist/build-info.json so the bridge can read the current build id. Kept out of the SW precache

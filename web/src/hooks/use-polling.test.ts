@@ -150,4 +150,19 @@ describe("usePolling — superseding a wedged revalidation", () => {
     vi.advanceTimersByTime(1_500); // one HOT tick
     expect(rr.revalidate).toHaveBeenCalled();
   });
+
+  // Regression: some phones report navigator.onLine === false even when the network is fine (it stuck
+  // false after an airplane-mode toggle). The tick must NOT gate on it — otherwise polling wedges
+  // forever and the app can never discover the connection came back. A stuck-false flag still polls.
+  it("keeps polling even when navigator.onLine reports false (the flag can lie — never wedge)", () => {
+    rr.state = "idle";
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    try {
+      renderHook(() => usePolling(hotData()));
+      vi.advanceTimersByTime(1_500); // one HOT tick with the flag stuck false
+      expect(rr.revalidate).toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(navigator, "onLine"); // restore the prototype getter
+    }
+  });
 });

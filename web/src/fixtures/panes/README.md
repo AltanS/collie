@@ -34,6 +34,35 @@ pane over capturing real work sessions.
 | `claude--select-multiselect-checked.txt` | Same dialog **mid-selection**: some boxes `[✔]` (Mushrooms, Olives), the stepper's question chip flipped to `☒` (answered). Exercises the checked-glyph lift (`[✔]`/`[x]`/`[✓]` → `checked: true`; terminal is source of truth) | `blocked` |
 | `claude--select-multiselect-review.txt` | The multiSelect **review/confirm** screen: `←  ☐ Toppings  ✔ Submit  →` stepper, "Ready to submit your answers?" over `❯ 1. Submit answers / 2. Cancel`, with a `⚠ You have not answered all questions` line (`incomplete`). Lifts the `review` phase (submit = key `1`, cancel = key `2`) | `blocked` |
 
+## In-flight send / self-race corpus (captured 2026-07-18, `collie-demo` sandbox pane)
+
+Captures of the ~350ms window where the composer's own reply sits on the `❯` line before the
+bridge presses Enter — the frame `extractInputDraft` misreads as a stranded draft. The fix suppresses
+it two ways (cross-poll stabilisation + match-last-sent), so these anchor the parse behaviour those
+guards lean on (`web/src/hooks/use-terminal-draft.ts`, `web/src/lib/harness/claude/chrome.test.ts`).
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--send-inflight.txt` | `/rename` typed, Enter not yet sent: the slash-autocomplete menu above a `❯ /rename` box at the tail — `extractInputDraft` reads `"/rename"` (the transient false positive) |
+| `claude--rename-resolved.txt` | A poll later: the command submitted (`✢ Thundering…` spinner), the box line cleared back to bare `❯` — `extractInputDraft` reads `null` |
+| `claude--draft-wrapped.txt` | A long stranded draft that soft-wraps onto continuation lines inside the box (`❯ …` + 3 indented lines). Regression fixture: the multi-line box must still strip off the mirror (it used to stay visible), and `extractInputDraft` folds the continuations back into one space-joined line |
+
+## Background-agents footer corpus (structure from real panes 2026-07-19, SANITIZED)
+
+A newer Claude Code UI paints a "background agents" footer BELOW the statusline/hint — a blank line,
+a bold `● main` header, then one `◯ <agent> <task…> · ↓ <tokens>` row per background agent. Those
+extra lines broke `locateInputBox` (it tolerated only the statusline window), so the whole box stayed
+visible on the mirror **and** no draft chip surfaced. Byte-faithful SGR/CRLF structure taken from real
+panes; **all identifying content genericized** (paths, session/agent names, tasks, tokens) per the
+repo's public-repo rule. The parser tolerates the footer as chrome by POSITION (a blank-separated
+non-blank run below the statusline), never by content.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--draft-footer-empty.txt` | Empty `❯` box with the footer below it — box + statusline + hint + footer all strip; `extractInputDraft` → `null` (no chip) |
+| `claude--draft-footer-single.txt` | A single-line stranded draft on the `❯` line, footer below — draft recovered, box + footer stripped |
+| `claude--draft-footer-wrapped.txt` | A wrapped multi-line draft, footer below — continuations folded back into one line, whole box + footer stripped |
+
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 
 | Fixture | State / what's in it |
