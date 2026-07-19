@@ -22,6 +22,22 @@ describe("CollieHome", () => {
     expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
   });
 
+  it("rests the mark (stops galloping) once the outage has escalated to lost", () => {
+    // Galloping = "still trying"; once the reconnect gives up (lost) the sprite must stop, or the
+    // never-stopping gallop reads as busy forever — the exact "never stopping" complaint.
+    const { container } = render(<CollieHome connecting lost />);
+    const sprite = container.querySelector(".dog-gallop");
+    expect(sprite).not.toBeNull(); // still the dog mark…
+    expect(sprite).not.toHaveClass("dog-gallop--running"); // …but at rest, not galloping
+    expect(screen.getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
+  });
+
+  it("gallops while connecting but NOT yet lost", () => {
+    const { container } = render(<CollieHome connecting lost={false} />);
+    expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
+    expect(screen.getByRole("button", { name: "Collie home — reconnecting" })).toBeInTheDocument();
+  });
+
   it("shows the wordmark only when asked", () => {
     const { rerender } = render(<CollieHome connecting={false} />);
     expect(screen.queryByText("Collie")).toBeNull();

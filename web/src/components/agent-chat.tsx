@@ -6,6 +6,7 @@ import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
+import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -100,6 +101,10 @@ export function AgentChat({
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   const navigate = useNavigate();
+  // Escalate the header mark the same way the dashboard does: gallop while reconnecting, rest once the
+  // outage passes the threshold. Computed from the same `connecting` the dashboard bar uses, so the
+  // pane header and the dashboard header agree on when the dog stops running.
+  const lost = useConnectionLost(connecting);
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal } = useDisplayPrefs();
@@ -500,7 +505,7 @@ export function AgentChat({
                 means the same thing on every screen. Tap returns Home; it gallops while reconnecting.
                 (The nav hub — jump across spaces/panes — moves to the right cluster below so it never
                 impersonates the brand slot.) */}
-            <CollieHome onHome={onBack} connecting={connecting} />
+            <CollieHome onHome={onBack} connecting={connecting} lost={lost} />
             {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
                 name would just repeat the icon, so it's dropped), and the working directory on the
                 subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
