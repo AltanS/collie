@@ -45,6 +45,7 @@ guards lean on (`web/src/hooks/use-terminal-draft.ts`, `web/src/lib/harness/clau
 |---|---|
 | `claude--send-inflight.txt` | `/rename` typed, Enter not yet sent: the slash-autocomplete menu above a `❯ /rename` box at the tail — `extractInputDraft` reads `"/rename"` (the transient false positive) |
 | `claude--rename-resolved.txt` | A poll later: the command submitted (`✢ Thundering…` spinner), the box line cleared back to bare `❯` — `extractInputDraft` reads `null` |
+| `claude--draft-wrapped.txt` | A long stranded draft that soft-wraps onto continuation lines inside the box (`❯ …` + 3 indented lines). Regression fixture: the multi-line box must still strip off the mirror (it used to stay visible), and `extractInputDraft` folds the continuations back into one space-joined line |
 
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 

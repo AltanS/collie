@@ -66,6 +66,21 @@ describe("useStableTerminalDraft — cross-poll debounce (mitigation B)", () => 
     expect(result.current).toBe(STRANDED);
   });
 
+  it("a cosmetic whitespace change does NOT reset the clock (it promotes on the original timer)", () => {
+    // The mirror can re-flow spacing / pad a trailing space between polls. Keying stability on the
+    // raw string made every such wobble restart the 1.5s clock, so the chip never promoted for a
+    // draft the user was staring at. Stability keys on the NORMALISED text, so only a real edit resets.
+    const { result, rerender } = renderHook(({ raw }) => useStableTerminalDraft(raw), {
+      initialProps: { raw: STRANDED as string | null },
+    });
+    act(() => vi.advanceTimersByTime(MIN_AGE - 500)); // 500ms shy of promoting
+    expect(result.current).toBeNull();
+    rerender({ raw: `  ${STRANDED}   ` }); // same text, only whitespace differs (would-be reset)
+    act(() => vi.advanceTimersByTime(500)); // reaches MIN_AGE from the ORIGINAL start — not a fresh clock
+    expect(result.current).not.toBeNull(); // promoted → the clock was never reset
+    expect(result.current).toBe(`  ${STRANDED}   `); // and it surfaces the LATEST raw text
+  });
+
   it("a changed draft resets the clock (re-delays before surfacing the new text)", () => {
     const { result, rerender } = renderHook(({ raw }) => useStableTerminalDraft(raw), {
       initialProps: { raw: STRANDED },
