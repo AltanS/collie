@@ -3,19 +3,17 @@ import { Settings } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { isConnecting } from "@/lib/connection";
-import { useConnectionLost } from "@/hooks/use-connection-lost";
+import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
-import { ConnectionPill } from "@/components/connection-pill";
 import type { BridgeStatus } from "@/lib/types";
 
 interface AppHeaderProps {
-  // Connection state — the ONE input that drives BOTH the CollieHome gallop and the quiet-by-default
-  // ConnectionPill. Every header (dashboard, space, pane) renders THIS component, so the mark and the
-  // pill are the same pieces fed from the same state everywhere; a header can no longer diverge by
-  // hand-rolling its own bar or omitting the pill. The pill self-hides while live, so a healthy header
-  // is calm and the pill's mere presence signals an outage — identically on every screen.
-  online: boolean;
+  // Connection state — the inputs that drive the CollieHome dog. The dog gallops on sustained trouble
+  // (≥4s not-live) and rests muted once lost (≥15s), both derived here from the SAME shared connection-
+  // health clock the ConnectionBanner reads, so the header mark and the top connection bar can never
+  // disagree. There is no longer a per-header pill: the single ConnectionBanner (mounted once in
+  // RootLayout) owns all connection copy, so a healthy header is just the mark + the caller's own items.
   bridge: BridgeStatus | undefined;
   error: boolean;
   stalled?: boolean;
@@ -31,9 +29,9 @@ interface AppHeaderProps {
    *  min-w-0` region so a long breadcrumb truncates instead of pushing the pill off the row. Empty on
    *  the dashboard/space, where the region is just the spacer that pushes the right cluster over. */
   children?: ReactNode;
-  /** Right-cluster items BEFORE the pill (the dashboard's SessionSwitcher; the pane's StatusBadge). */
+  /** Right-cluster lead items (the dashboard's SessionSwitcher; the pane's StatusBadge). */
   rightLead?: ReactNode;
-  /** Right-cluster items AFTER the pill (the Settings gear). */
+  /** Right-cluster trailing items (the Settings gear). */
   rightTrail?: ReactNode;
 
   /** Full-width takeover of the header row (the pane's find bar). When set it replaces the normal
@@ -43,13 +41,12 @@ interface AppHeaderProps {
 }
 
 // The single header shell every screen mounts: the sticky, safe-area-aware zinc bar with the Collie
-// mark on the left, an optional route breadcrumb in the middle, and a right cluster that holds the
-// connection pill. The pill is baked in here (not a slot), so no caller can forget it — which is
-// exactly the divergence the pane header used to have — but it renders nothing while live, so the
-// resting header shows only the caller's own items (switcher/badge + gear). When an outage brings the
-// pill in it shifts its neighbours over (acceptable — the gear stays pinned to the edge as rightTrail).
+// mark on the left, an optional route breadcrumb in the middle, and the caller's right cluster. The
+// mark's connection animation is baked in here (not a slot), so no caller can forget it: it gallops on
+// sustained trouble and rests muted once lost, computed from the SAME shared clock as the top
+// ConnectionBanner so the two never diverge. A healthy header is calm — just the mark + the caller's
+// own items (switcher/badge + gear).
 export function AppHeader({
-  online,
   bridge,
   error,
   stalled,
@@ -60,21 +57,21 @@ export function AppHeader({
   rightTrail,
   override,
 }: AppHeaderProps) {
-  // Independent of the pill's own computation, but derived from the SAME predicate + shared store, so
-  // the mark's gallop and the pill's tone always agree (see lib/connection-health).
+  // The same two shared-clock signals the ConnectionBanner reads, so the dog and the bar agree by
+  // construction: gallop while troubled (≥4s not-live), rest muted once lost (≥15s, latched).
   const connecting = isConnecting({ bridge, error, stalled });
+  const trouble = useConnectionTrouble(connecting);
   const lost = useConnectionLost(connecting);
   return (
     <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-zinc-800 pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
       {override ?? (
         <>
-          <CollieHome onHome={onHome} connecting={connecting} lost={lost} wordmark={wordmark} />
+          <CollieHome onHome={onHome} trouble={trouble} lost={lost} wordmark={wordmark} />
           {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
               pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight. */}
           <div className="flex min-w-0 flex-1 items-center">{children}</div>
           <div className="flex items-center gap-3">
             {rightLead}
-            <ConnectionPill online={online} bridge={bridge} error={error} stalled={stalled} />
             {rightTrail}
           </div>
         </>

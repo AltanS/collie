@@ -39,6 +39,13 @@ import { useSyncExternalStore } from "react";
 // or a brief tunnel drop never trips it — only a genuinely sustained outage does.
 export const CONNECTION_LOST_MS = 15_000;
 
+// How long the app must stay continuously not-live before the connection bar fades IN as an ambient
+// amber "reconnecting…" (and the header dog starts to gallop). Short enough to catch a genuine stall,
+// long enough that a single slow poll (the stall itself only trips at 2.5s) or one failed fetch never
+// flashes a bar — the flicker fix. Measured from the SAME shared anchor as CONNECTION_LOST_MS (via
+// useConnectionTrouble), just far shorter and, crucially, NON-latching: only the 15s escalation latches.
+export const TROUBLE_MS = 4_000;
+
 // Both initialise to module-load time (app open), so a dead cold start escalates ~CONNECTION_LOST_MS
 // after open (the BootSplash case) — the first successful poll then advances `lastLiveAt` for real.
 let lastLiveAt = Date.now();

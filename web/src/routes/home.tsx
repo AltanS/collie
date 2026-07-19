@@ -11,7 +11,6 @@ import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
-import { useOnline } from "@/hooks/use-online";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { AGENT_GROUPS } from "@/lib/agent-groups";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
@@ -28,7 +27,6 @@ const REST_GROUPS = AGENT_GROUPS.filter((g) => !g.accent);
 // space drills into its detail route (/space/:id).
 export function HomeRoute() {
   const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
-  const online = useOnline();
   // A stalled load (a black-holed poll, or a pane-open tap whose navigation hangs) gallops the
   // Collie mark within the threshold — instant feedback while you're still on the dashboard, even
   // though the tap otherwise shows no visual change until its loader finally settles or times out.
@@ -45,7 +43,6 @@ export function HomeRoute() {
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
           and the Settings gear. The switcher self-hides on a single-session install. */}
       <AppHeader
-        online={online}
         bridge={data.bridge}
         error={data.error}
         stalled={stalled}

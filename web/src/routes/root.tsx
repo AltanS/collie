@@ -5,7 +5,7 @@ import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
-import { OutageBanner } from "@/components/outage-banner";
+import { ConnectionBanner } from "@/components/connection-banner";
 import { DogGallop } from "@/components/dog-gallop";
 import { homePath } from "@/lib/nav";
 import { SESSION_PARAM, normalizeSession } from "@/lib/session";
@@ -34,10 +34,11 @@ export function RootLayout() {
           auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh
           build is confirmed but auto-update is held off (unsent work) or already spent. */}
       <UpdateAvailableBanner />
-      {/* The single outage escalation: once the app has been not-live (poll-truth) for ≥15s, one
-          crisp single-row banner names the cause (Herdr down / offline / unreachable) and offers
-          Retry + Reload. Below the threshold the header pill is the only signal. */}
-      <OutageBanner bridge={data.bridge} error={data.error} />
+      {/* The app's ONE connection surface: a thin, animated bar that stays hidden while healthy, fades
+          in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
+          red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
+          same shared-clock signals as the header dog, so the two always agree. */}
+      <ConnectionBanner bridge={data.bridge} error={data.error} />
       <Outlet />
     </div>
   );

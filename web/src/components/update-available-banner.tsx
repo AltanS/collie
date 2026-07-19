@@ -7,8 +7,8 @@ import { useSelfUpdate } from "@/lib/self-update";
 // confirmed-stale but can't auto-update right now — the user has unsent work (an open composer draft,
 // an in-flight upload, an open action sheet) or we already auto-updated once for this build. An
 // in-flow row (not an overlay) that stacks above the route in RootLayout's flex column rather than
-// covering the sticky header. Shares the OutageBanner metrics — text-xs, py-1.5, one truncating row —
-// so every top-of-app row reads as one consistent band.
+// covering the sticky header. Shares the top-band idiom with the ConnectionBanner — text-xs, one
+// truncating row, safe-area top inset — so every top-of-app row reads as one consistent band.
 //
 // Mounted unconditionally so useSelfUpdate() runs the controller for its whole lifetime — the
 // auto-update path runs even while this returns null (banner hidden). Tapping takes the same update

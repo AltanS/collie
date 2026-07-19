@@ -11,7 +11,6 @@ import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
-import { useOnline } from "@/hooks/use-online";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { homePath, panePath, spacePath } from "@/lib/nav";
@@ -23,7 +22,6 @@ import { setStatus } from "@/lib/status";
 export function SpaceRoute() {
   const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
   const { spaceId = "" } = useParams();
-  const online = useOnline();
   const stalled = useLoadingStalled();
   const navigate = useNavigate();
   const { newTab, newSpace } = useSpaceActions();
@@ -69,7 +67,6 @@ export function SpaceRoute() {
       {/* The space header: same shell as the dashboard, minus the session switcher (you switch
           sessions from home). Wordmark + shared pill + Settings gear. */}
       <AppHeader
-        online={online}
         bridge={data.bridge}
         error={data.error}
         stalled={stalled}
