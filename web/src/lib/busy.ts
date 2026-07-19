@@ -3,9 +3,10 @@ import { useSyncExternalStore } from "react";
 // App-wide "the bar should show" signal. Two independent sources feed it:
 //   1. Mutations — every WRITE to the bridge (reply, keys, prompt-option tap, upload, tab/space
 //      create, pane close, snooze) increments a counter for its duration.
-//   2. A SLOW poll — a background revalidation/navigation that stays in flight past a threshold sets
-//      a boolean (see hooks/use-poll-busy). A routine fast poll never trips it, so the bar stays
-//      invisible on healthy traffic; only a genuinely laggy read surfaces the strip.
+//   2. A SLOW load — a background revalidation (the poll) or a route navigation that stays in flight
+//      past its own threshold sets a boolean (see hooks/use-poll-busy, which uses two independent
+//      thresholds — snappy for navigation, longer for the ambient poll). A routine fast poll never
+//      trips it, so the bar stays invisible on healthy traffic; only genuinely laggy loading does.
 // The top <BusyBar/> reflects `count > 0 || pollStalled`. Background reads are otherwise NOT counted
 // as mutations — they run on a constant timer, so the counter alone would never rest. Module-scoped,
 // mirroring lib/status, so any call site participates without prop-drilling. Concurrent mutations

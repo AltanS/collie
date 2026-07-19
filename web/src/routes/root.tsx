@@ -21,8 +21,9 @@ export function RootLayout() {
   const { paneId } = useParams();
 
   usePolling(data, paneId);
-  // Surface the busy bar when a poll/navigation runs slow (past the threshold) — routine fast polls
-  // stay invisible. Mounted here so the whole app shares one detector inside the router context.
+  // Surface the busy bar when a navigation or a poll runs slow, each against its own threshold —
+  // routine fast polls/navigations stay invisible. Mounted here so the whole app shares one
+  // detector inside the router context.
   usePollBusy();
   useAgentTransitions(data.agents, paneId ?? null);
   usePushSetup();
