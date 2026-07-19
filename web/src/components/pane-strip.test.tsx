@@ -92,9 +92,9 @@ describe("PaneStrip", () => {
         onClosed={vi.fn()}
       />,
     );
-    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
     fireEvent.contextMenu(screen.getByRole("button", { name: /codex/ }));
-    expect(screen.getByPlaceholderText("name this pane")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
   });
 
   it("stays inert on contextmenu when the write actions are not wired", () => {
@@ -106,7 +106,7 @@ describe("PaneStrip", () => {
       />,
     );
     fireEvent.contextMenu(screen.getByRole("button", { name: /codex/ }));
-    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
   // Tapping the already-active pill used to be a dead re-navigate (onSelect with the same id it's
@@ -124,9 +124,9 @@ describe("PaneStrip", () => {
         onClosed={vi.fn()}
       />,
     );
-    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
     await user.click(screen.getByRole("button", { name: /claude/ }));
-    expect(screen.getByPlaceholderText("name this pane")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -144,7 +144,7 @@ describe("PaneStrip", () => {
     );
     await user.click(screen.getByRole("button", { name: /codex/ }));
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p2");
-    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
   it("a tap of the ACTIVE pill still just re-selects (no-op) when actions are NOT wired", async () => {

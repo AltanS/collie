@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronLeft, Loader2, Pencil, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
@@ -26,10 +27,15 @@ interface PaneActionsSheetProps {
   onClosed: (paneId: string) => void;
 }
 
+type Mode = "actions" | "rename";
+
 // Long-press actions for a single pane: rename (set/clear its label) and close (kill). Reached by
-// long-pressing a pane pill. The label is user text rendered only into an <input> value / text node
-// — never markup — so it stays within the pane-output XSS boundary. Both actions are writes, so under
-// read-only they're replaced by a note. Close reuses the app's two-tap arm-then-confirm.
+// long-pressing a pane pill. Opens on an action-list view (Rename / Close pane); rename is a second
+// tap away so the sheet doesn't shove a keyboard-triggering input at you just to close a pane. The
+// label is user text rendered only into an <input> value / text node — never markup — so it stays
+// within the pane-output XSS boundary. Both actions are writes, so under read-only they're replaced
+// by a note. Close reuses the app's two-tap arm-then-confirm and is destructive-styled from the very
+// first tap, not just once armed.
 export function PaneActionsSheet({
   open,
   onClose,
@@ -39,19 +45,28 @@ export function PaneActionsSheet({
   onRenamed,
   onClosed,
 }: PaneActionsSheetProps) {
+  const [mode, setMode] = useState<Mode>("actions");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const { pending, confirm, reset } = usePendingConfirm();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Prefill the input from the current label whenever the sheet opens on a (new) pane. Intentionally
-  // NOT keyed on the live label, so a background poll landing while you type can't clobber your edit.
+  // Reset to the action list — and reprefill the label — whenever the sheet opens on a (new) pane,
+  // AND whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the
+  // live label, so a background poll landing while you type can't clobber your edit.
   useEffect(() => {
+    setMode("actions");
     if (!open) return;
     setLabel(pane?.paneLabel ?? "");
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pane?.paneId]);
+
+  // Autofocus the label input when rename mode opens, so the phone keyboard pops without a second tap.
+  useEffect(() => {
+    if (mode === "rename") inputRef.current?.focus();
+  }, [mode]);
 
   async function save() {
     if (!pane || saving) return;
@@ -73,7 +88,7 @@ export function PaneActionsSheet({
     }
   }
 
-  // Two-tap: the first tap arms (button flips to "Tap again to close"), the second closes.
+  // Two-tap: the first tap arms (row flips to "Tap again to close"), the second closes.
   async function requestClose() {
     if (!pane || closing) return;
     if (!confirm(pane.paneId)) return;
@@ -108,11 +123,51 @@ export function PaneActionsSheet({
         <p className="py-2 text-sm text-muted-foreground">
           Read-only — this device isn't authorised to rename or close panes.
         </p>
+      ) : mode === "actions" ? (
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => setMode("rename")}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted"
+          >
+            <Pencil className="size-4 shrink-0 text-muted-foreground" />
+            Rename
+          </button>
+
+          {/* Close (kill) — destructive-styled from the first tap, not just once armed; two-tap confirmed. */}
+          <button
+            type="button"
+            onClick={() => void requestClose()}
+            disabled={closing}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors disabled:opacity-60",
+              confirming
+                ? "bg-destructive text-destructive-foreground"
+                : "text-destructive hover:bg-destructive/10 active:bg-destructive/15",
+            )}
+          >
+            {closing ? (
+              <Loader2 className="size-4 shrink-0 animate-spin" />
+            ) : (
+              <XCircle className="size-4 shrink-0" />
+            )}
+            {closing ? "Closing…" : confirming ? "Tap again to close" : "Close pane"}
+          </button>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => setMode("actions")}
+            className="flex items-center gap-1 self-start rounded-md py-1 pr-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted"
+          >
+            <ChevronLeft className="size-3.5" />
+            Back
+          </button>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">Label</span>
             <input
+              ref={inputRef}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               onKeyDown={onInputKeyDown}
@@ -123,24 +178,6 @@ export function PaneActionsSheet({
           <Button onClick={() => void save()} disabled={saving} className="h-11">
             {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
           </Button>
-
-          {/* Close (kill) — separated so it doesn't sit flush against Save, and two-tap confirmed. */}
-          <div className="mt-1 border-t border-border/60 pt-3">
-            <Button
-              variant={confirming ? "destructive" : "outline"}
-              onClick={() => void requestClose()}
-              disabled={closing}
-              className="h-11 w-full"
-            >
-              {closing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : confirming ? (
-                "Tap again to close"
-              ) : (
-                "Close pane"
-              )}
-            </Button>
-          </div>
         </div>
       )}
     </BottomSheet>
