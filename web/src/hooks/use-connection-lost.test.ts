@@ -110,4 +110,41 @@ describe("useConnectionLost", () => {
     act(() => vi.advanceTimersByTime(1));
     expect(result.current).toBe(true);
   });
+
+  // STICKY escalation — a mid-outage app switch (visibilitychange → markWake) must NOT downgrade an
+  // already-red "not connected" back to amber "reconnecting…" for another window.
+  it("(a) once escalated, a wake keeps it lost immediately — no fresh grace on a mid-outage app switch", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS)); // escalate → latched
+    expect(result.current).toBe(true);
+    act(() => markWake()); // switch away + back mid-outage; old code reset the anchor → downgrade
+    expect(result.current).toBe(true); // STILL lost, in the very next sample — latch dropped the grace
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS)); // …and stays lost while it keeps failing
+    expect(result.current).toBe(true);
+  });
+
+  it("(b) a wake BEFORE escalation still grants fresh grace (a healthy-network resume never flashes red)", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - 2_000)); // 13s — not yet lost, not yet latched
+    expect(result.current).toBe(false);
+    act(() => markWake()); // resume from sleep on a healthy network, before any red UI ever showed
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - 1)); // grace restarts from the wake
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(1)); // a full window AFTER the wake
+    expect(result.current).toBe(true);
+  });
+
+  it("(c) recovery via markLive clears the latch; a later wake does not resurrect the escalation", () => {
+    const { result } = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS)); // escalate → latched
+    expect(result.current).toBe(true);
+    act(() => markLive()); // a good poll lands: freshens the anchor AND clears the latch
+    expect(result.current).toBe(false); // recovered immediately
+    act(() => markWake()); // a wake AFTER recovery must not bring red back
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - 1)); // full grace still applies from recovery
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(1)); // it CAN escalate again if failure genuinely persists
+    expect(result.current).toBe(true);
+  });
 });
