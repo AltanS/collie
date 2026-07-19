@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
+import { useHoldReload } from "@/lib/reload-guard";
 
 interface NewSpaceSheetProps {
   open: boolean;
@@ -15,6 +16,10 @@ interface NewSpaceSheetProps {
 export function NewSpaceSheet({ open, onClose, onCreate }: NewSpaceSheetProps) {
   const [label, setLabel] = useState("");
   const [cwd, setCwd] = useState("");
+
+  // Don't let a self-update reload yank this tab/space form out from under a half-typed
+  // directory/label — hold while it's open; the self-updater shows the banner and updates on close.
+  useHoldReload("new-space", open);
 
   useEffect(() => {
     if (open) {

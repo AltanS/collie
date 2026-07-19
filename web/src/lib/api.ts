@@ -2,6 +2,7 @@
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
 import { trackBusy } from "./busy";
+import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -77,6 +78,14 @@ async function errorDetail(res: Response): Promise<string> {
   }
 }
 
+// Capture the bridge's build id off any response that carries it. Every poll (snapshot/pane) — and
+// config + mutations — funnels through the two fetch sites below, so the store stays current for
+// free, powering the no-service-worker self-updater (lib/self-update.ts). Absent header (older
+// bridge) → no-op, so nothing activates.
+function captureBuild(res: Response): void {
+  observeServerBuild(res.headers.get(SERVER_BUILD_HEADER));
+}
+
 async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init?.method?.toUpperCase() ?? "GET";
@@ -86,6 +95,7 @@ async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
     signal: withTimeout(init?.signal, timeoutMs),
     headers: { "content-type": "application/json", ...init?.headers },
   });
+  captureBuild(res);
   if (!res.ok) {
     throw new ApiError(`${path} → ${res.status} ${await errorDetail(res)}`, res.status);
   }
@@ -142,6 +152,7 @@ export async function fetchPane(
   if (cached) headers["if-none-match"] = cached.etag;
 
   const res = await fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
 
   if (res.status === 304 && cached) {
     // Unchanged — hand back the cached body (text included) so the mirror keeps its content.

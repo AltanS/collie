@@ -118,19 +118,24 @@ export function startServer(opts: {
         if (!rt) return unknownSession();
         const { agents, shellPanes, workspaces, tabs, bridge } = rt.engine.current();
         const device = deviceAuth(req, cfg);
-        return json({
-          bridge,
-          // Only report device state when the feature is on, so an off deployment sends nothing new.
-          ...(device.enforced ? { device } : {}),
-          agents,
-          shellPanes,
-          workspaces,
-          tabs,
-          sessions: registry.list(),
-          notifications: { snoozedUntil: snooze.until() },
-          update: updateMonitor.status(),
-          ts: Date.now(),
-        } satisfies SnapshotResponse, req.headers.get("accept-encoding"));
+        // Tag every snapshot poll with the on-disk build id so an open client notices a live rebuild
+        // between polls — the no-service-worker self-update path (web/src/lib/self-update.ts).
+        return withBuildHeader(
+          json({
+            bridge,
+            // Only report device state when the feature is on, so an off deployment sends nothing new.
+            ...(device.enforced ? { device } : {}),
+            agents,
+            shellPanes,
+            workspaces,
+            tabs,
+            sessions: registry.list(),
+            notifications: { snoozedUntil: snooze.until() },
+            update: updateMonitor.status(),
+            ts: Date.now(),
+          } satisfies SnapshotResponse, req.headers.get("accept-encoding")),
+          await buildId(),
+        );
       }
 
       // ── Structural creates: new tab / new space (each opens a fresh shell pane) ──
@@ -333,16 +338,25 @@ async function readPane(
     // and skips the whole transfer (the big win on a cellular link).
     const bodyStr = JSON.stringify(data);
     const etag = computeEtag(bodyStr);
+    // Tag pane polls too (both the 304 and the full body), so a client that only has a pane open —
+    // not the home snapshot — still observes a live rebuild between polls.
+    const build = await buildId();
     if (notModified(req.headers.get("if-none-match"), etag)) {
       // RFC 7232 §4.1: 304 MUST echo the ETag; body MUST be empty.
-      return secure(
-        new Response(null, {
-          status: 304,
-          headers: { etag, "cache-control": "no-store" },
-        }),
+      return withBuildHeader(
+        secure(
+          new Response(null, {
+            status: 304,
+            headers: { etag, "cache-control": "no-store" },
+          }),
+        ),
+        build,
       );
     }
-    return secure(gzipJsonResponse(data, req.headers.get("accept-encoding"), { etag }));
+    return withBuildHeader(
+      secure(gzipJsonResponse(data, req.headers.get("accept-encoding"), { etag })),
+      build,
+    );
   } catch (err) {
     return text(`herdr read failed: ${(err as Error).message}`, 502);
   }
@@ -837,6 +851,23 @@ async function buildId(): Promise<string> {
   }
 }
 
+// The response header carrying the on-disk bundle's build id. A polling client reads it off every
+// snapshot/pane response (web/src/lib/server-build.ts) to notice a live rebuild WITHOUT a service
+// worker — the plain-HTTP deployments where the SW can't register, so the SW-based auto-reload never
+// runs (see web/src/lib/self-update.ts). Also set on static responses (serveStatic). A named constant
+// so both sides agree on the spelling.
+export const BUILD_HEADER = "x-collie-build";
+
+/**
+ * Attach the current bundle's build id to a response so a polling client can observe a server-side
+ * rebuild continuously, not just on a full document load. Pure given the id (the disk read stays in
+ * buildId(), mtime-cached) — exported for unit tests.
+ */
+export function withBuildHeader(res: Response, id: string): Response {
+  res.headers.set(BUILD_HEADER, id);
+  return res;
+}
+
 /**
  * Resolve a request pathname to an absolute path under `webDir`, or null if it escapes. Pure +
  * exported for tests. The `full === webDir || full.startsWith(webDir + sep)` check rejects both
@@ -876,14 +907,24 @@ async function serveStatic(pathname: string): Promise<Response> {
   const ext = extname(full);
   const headers: Record<string, string> = {
     "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream",
-    "x-collie-build": await buildId(), // which bundle the server is serving (vs the client's stamp)
+    [BUILD_HEADER]: await buildId(), // which bundle the server is serving (vs the client's stamp)
+    "cache-control": cacheControlFor(rel),
   };
-  if (ext === ".html") {
-    headers["content-security-policy"] = CSP;
-    headers["cache-control"] = "no-cache";
-  } else if (rel.startsWith("assets/")) {
-    headers["cache-control"] = "public, max-age=31536000, immutable"; // hashed → cache hard
-  }
+  if (ext === ".html") headers["content-security-policy"] = CSP;
   if (rel === "sw.js") headers["service-worker-allowed"] = "/";
   return secure(new Response(file, { headers }));
+}
+
+/**
+ * Cache-Control for a served dist file, keyed by its path relative to web/dist. Hashed assets under
+ * `assets/` are content-addressed, so cache them hard + immutable. EVERYTHING else — index.html,
+ * sw.js, manifest.webmanifest, build-info.json, the favicons — is MUTABLE across a rebuild and must
+ * always be revalidated (`no-cache`), so neither the browser NOR an intermediary reverse proxy can
+ * pin a stale copy. This matters most for sw.js: a proxy that heuristically caches it (it shipped
+ * with no Cache-Control before) starves `registration.update()` and wedges the whole SW update
+ * pipeline — the exact failure the API-observed self-update (web/src/lib/self-update.ts) works around,
+ * but which this header prevents at the source. Pure + exported for unit tests.
+ */
+export function cacheControlFor(rel: string): string {
+  return rel.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache";
 }
