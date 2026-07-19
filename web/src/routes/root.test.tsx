@@ -2,13 +2,17 @@ import { act, render, screen } from "@testing-library/react";
 
 import { BootSplash } from "./root";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
+import { __resetConnectionHealth } from "@/lib/connection-health";
 
 // BootSplash is the router's HydrateFallback: it stays mounted until the FIRST loader run settles, so
 // over a dead tailnet (a hanging initial fetch) it can otherwise gallop the dog forever with no way
 // out. It must escalate to an actionable "Not connected" state once stuck past CONNECTION_LOST_MS.
 // Fake timers drive the wall-clock hook (Vitest advances Date.now with them).
 describe("BootSplash — escalates a stuck cold start", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetConnectionHealth(); // module-load anchor == frozen clock: a dead cold start escalates ~15s in
+  });
   afterEach(() => vi.useRealTimers());
 
   it("shows the galloping-dog splash before the threshold", () => {

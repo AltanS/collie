@@ -2,6 +2,7 @@
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
 import { trackBusy } from "./busy";
+import { markLive } from "./connection-health";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import type {
   ActionResponse,
@@ -112,8 +113,17 @@ function req<T>(path: string, init?: RequestInit): Promise<T> {
   return method === "GET" ? op : trackBusy(op);
 }
 
-export function fetchSnapshot(session?: string, signal?: AbortSignal): Promise<SnapshotResponse> {
-  return req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
+export async function fetchSnapshot(
+  session?: string,
+  signal?: AbortSignal,
+): Promise<SnapshotResponse> {
+  const snap = await req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
+  // A snapshot whose herd link is UP is a provably-live moment — stamp the shared connection-health
+  // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
+  // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the
+  // clock, or the "Herdr is down" escalation could never surface.
+  if (snap.bridge !== "disconnected") markLive();
+  return snap;
 }
 
 // Per-pane cache of the last ETag AND the body it belongs to, kept together on purpose. We send
@@ -155,7 +165,9 @@ export async function fetchPane(
   captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
 
   if (res.status === 304 && cached) {
-    // Unchanged — hand back the cached body (text included) so the mirror keeps its content.
+    // Unchanged — hand back the cached body (text included) so the mirror keeps its content. An
+    // unchanged poll is still a live poll: stamp the connection-health anchor (a 304 counts as live).
+    markLive();
     return { ...cached.response, notModified: true };
   }
 
@@ -175,6 +187,8 @@ export async function fetchPane(
     }
   }
 
+  // A pane body served from Herdr is provably-live data — stamp the connection-health anchor.
+  markLive();
   return data;
 }
 
