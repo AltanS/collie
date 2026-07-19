@@ -71,7 +71,7 @@ export function ConnectionBar(props: ConnectionBarProps) {
   // CollieHome renders inside a pane, so the top-left mark means the same thing on every screen.
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/60 bg-zinc-800 px-4 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
-      <CollieHome onHome={props.onHome} connecting={connecting} wordmark />
+      <CollieHome onHome={props.onHome} connecting={connecting} lost={lost} wordmark />
       <div className="flex items-center gap-3">
         {/* Session switcher — dashboard-only (hidden when drilled into a space). Also self-hides
             unless there's more than one reachable session (or you're on a non-primary one), so a

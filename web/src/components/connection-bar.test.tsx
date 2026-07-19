@@ -104,6 +104,19 @@ describe("ConnectionBar — escalates the pill after a sustained outage", () => 
     expect(screen.getByText("not connected")).toBeInTheDocument();
   });
 
+  it("rests the header mark (stops galloping) once the outage passes the threshold", () => {
+    const { container } = render(<ConnectionBar online bridge="connected" error />, {
+      wrapper: MemoryRouter,
+    });
+    // Reconnecting: the mark gallops.
+    expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
+    // Escalated: same mark, no longer galloping.
+    const sprite = container.querySelector(".dog-gallop");
+    expect(sprite).not.toBeNull();
+    expect(sprite).not.toHaveClass("dog-gallop--running");
+  });
+
   it("does not escalate a stall that recovers before the threshold", () => {
     const { rerender } = render(<ConnectionBar online bridge="connected" error={false} stalled />, {
       wrapper: MemoryRouter,

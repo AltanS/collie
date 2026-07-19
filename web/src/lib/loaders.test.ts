@@ -50,6 +50,19 @@ describe("rootLoader", () => {
     expect(data.bridge).toBeUndefined();
   });
 
+  it("treats a cold-start TimeoutError as an error snapshot, NOT a rethrow to the error boundary", async () => {
+    // The cold-start-against-a-dead-host case: the first snapshot fetch aborts at its timeout with a
+    // DOMException named "TimeoutError" (distinct from the "AbortError" of a superseded revalidation).
+    // The loader must fall into the error-snapshot branch so RootLayout + the escalation prompt handle
+    // it uniformly — it must NOT bubble to RootError's generic "Something went wrong" screen.
+    const { rootLoader } = await import("./loaders");
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+    const data = await rootLoader();
+    expect(data.error).toBe(true);
+    expect(data.bridge).toBeUndefined();
+    expect(data.agents).toEqual([]);
+  });
+
   it("surfaces the snapshot's optional update field onto the loader data", async () => {
     const update = {
       current: "0.11.0",
