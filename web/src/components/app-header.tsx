@@ -10,10 +10,11 @@ import { ConnectionPill } from "@/components/connection-pill";
 import type { BridgeStatus } from "@/lib/types";
 
 interface AppHeaderProps {
-  // Connection state — the ONE input that drives BOTH the CollieHome gallop and the always-present
+  // Connection state — the ONE input that drives BOTH the CollieHome gallop and the quiet-by-default
   // ConnectionPill. Every header (dashboard, space, pane) renders THIS component, so the mark and the
   // pill are the same pieces fed from the same state everywhere; a header can no longer diverge by
-  // hand-rolling its own bar or omitting the pill.
+  // hand-rolling its own bar or omitting the pill. The pill self-hides while live, so a healthy header
+  // is calm and the pill's mere presence signals an outage — identically on every screen.
   online: boolean;
   bridge: BridgeStatus | undefined;
   error: boolean;
@@ -42,9 +43,11 @@ interface AppHeaderProps {
 }
 
 // The single header shell every screen mounts: the sticky, safe-area-aware zinc bar with the Collie
-// mark on the left, an optional route breadcrumb in the middle, and a right cluster that ALWAYS
-// contains the connection pill. The pill is baked in here (not a slot), so no caller can forget it —
-// which is exactly the divergence the pane header used to have.
+// mark on the left, an optional route breadcrumb in the middle, and a right cluster that holds the
+// connection pill. The pill is baked in here (not a slot), so no caller can forget it — which is
+// exactly the divergence the pane header used to have — but it renders nothing while live, so the
+// resting header shows only the caller's own items (switcher/badge + gear). When an outage brings the
+// pill in it shifts its neighbours over (acceptable — the gear stays pinned to the edge as rightTrail).
 export function AppHeader({
   online,
   bridge,
