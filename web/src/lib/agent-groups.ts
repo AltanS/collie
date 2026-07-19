@@ -7,10 +7,13 @@ export interface AgentGroup {
   label: string;
   match: (s: AgentStatus) => boolean;
   accent?: boolean;
+  /** Section bullet class — the same status palette the badges use, so a group's color can't drift
+   *  from the status it collects. */
+  dot: string;
 }
 
 export const AGENT_GROUPS: readonly AgentGroup[] = [
-  { key: "needs", label: "Needs you", match: (s) => s === "blocked", accent: true },
-  { key: "working", label: "Working", match: (s) => s === "working" },
-  { key: "other", label: "Idle · done", match: (s) => s !== "blocked" && s !== "working" },
+  { key: "needs", label: "Needs you", match: (s) => s === "blocked", accent: true, dot: "bg-status-blocked" },
+  { key: "working", label: "Working", match: (s) => s === "working", dot: "bg-status-working" },
+  { key: "other", label: "Idle · done", match: (s) => s !== "blocked" && s !== "working", dot: "bg-status-idle" },
 ];
