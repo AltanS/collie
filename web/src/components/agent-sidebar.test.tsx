@@ -97,34 +97,23 @@ describe("ThreadSidebar", () => {
     expect(screen.getByText("Shells")).toBeInTheDocument();
   });
 
-  it("shows no ✕ close control unless onClose is provided", () => {
+  it("is switch-only — no close control on any row", () => {
     render(<ThreadSidebar agents={[fixtureAgents[0]!]} currentPaneId="" onSelect={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /^Close / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /close/i })).toBeNull();
   });
 
-  it("closes a pane only after a two-tap confirm on its ✕", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    // fixtureAgents[0] is the blocked claude agent (paneId w1:p1).
-    render(
-      <ThreadSidebar agents={[fixtureAgents[0]!]} currentPaneId="" onSelect={vi.fn()} onClose={onClose} />,
-    );
-    await user.click(screen.getByRole("button", { name: "Close claude" }));
-    expect(onClose).not.toHaveBeenCalled(); // first tap only arms the confirm
-    await user.click(screen.getByRole("button", { name: "Confirm closing claude" }));
-    expect(onClose).toHaveBeenCalledExactlyOnceWith("w1:p1");
-  });
-
-  it("disables a row's ✕ while that pane is being closed", () => {
-    render(
+  it("gives each section a status-colored bullet from the shared group palette", () => {
+    const { container } = render(
       <ThreadSidebar
-        agents={[fixtureAgents[0]!]}
+        agents={[...fixtureAgents, idleAgent]}
+        shellPanes={[shellPane]}
         currentPaneId=""
         onSelect={vi.fn()}
-        onClose={vi.fn()}
-        closingId="w1:p1"
       />,
     );
-    expect(screen.getByRole("button", { name: "Close claude" })).toBeDisabled();
+    // One dot per section, colored by the same status palette the badges use.
+    for (const cls of ["bg-status-blocked", "bg-status-working", "bg-status-idle", "bg-status-unknown"]) {
+      expect(container.getElementsByClassName(cls).length).toBeGreaterThan(0);
+    }
   });
 });

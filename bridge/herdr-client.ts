@@ -44,6 +44,9 @@ interface WirePane {
   foreground_cwd?: string;
   agent?: string | null;
   agent_status: AgentStatus;
+  /** User-set pane label (herdr `pane.rename`). Present only once set — the key disappears when
+   *  cleared with `label: null`, so absent/null both read as "no label". */
+  label?: string | null;
   revision: number;
   /** Scroll position (herdr ≥ 0.7.2); optional so older servers that omit it still typecheck. Unused for now. */
   scroll?: {
@@ -372,6 +375,36 @@ export class HerdrClient {
   /** Close a pane, terminating its agent ("kill"). Resolves on Herdr's `{type:"ok"}` reply. */
   closePane(paneId: string): Promise<void> {
     return this.request<void>("pane.close", { pane_id: paneId });
+  }
+
+  /**
+   * Set or clear a pane's label. `label: null` clears it (the key then disappears from pane
+   * records). Resolves on Herdr's `pane_info` reply — the returned pane isn't consumed here, the
+   * next snapshot poll carries the new label (pane.rename emits no event). Bad id → `pane_not_found`.
+   */
+  renamePane(paneId: string, label: string | null): Promise<void> {
+    return this.request<void>("pane.rename", { pane_id: paneId, label });
+  }
+
+  /**
+   * Set a tab's label. Unlike {@link renamePane}, `label` is a NON-null string: herdr's `tab.rename`
+   * rejects `null` (`invalid type: null, expected a string`) and stores an empty string literally
+   * rather than clearing to the default number — both live-verified 2026-07-19 — so a tab has no
+   * "clear". Resolves on herdr's `tab_info` reply; the new label surfaces on the next snapshot poll
+   * (tab.rename also emits a `tab_renamed` event, which Collie doesn't consume). Bad id → `tab_not_found`.
+   */
+  renameTab(tabId: string, label: string): Promise<void> {
+    return this.request<void>("tab.rename", { tab_id: tabId, label });
+  }
+
+  /**
+   * Close a tab, terminating EVERY pane inside it (live-verified 2026-07-19: the tab's shell/agent
+   * panes all disappear with it — closing a tab is a bulk pane-close). Resolves on herdr's
+   * `{type:"ok"}` reply; the closure surfaces on the next `session.snapshot` poll (tab.close also
+   * emits a `tab_closed` event, which Collie doesn't consume). Bad id → `tab_not_found`.
+   */
+  closeTab(tabId: string): Promise<void> {
+    return this.request<void>("tab.close", { tab_id: tabId });
   }
 
   /** Reachability check for the connected/disconnected banner. */

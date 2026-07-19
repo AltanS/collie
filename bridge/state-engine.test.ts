@@ -16,10 +16,17 @@ interface FakePane {
   cwd: string;
   agent?: string | null;
   agent_status: AgentStatus;
+  label?: string | null;
   revision: number;
 }
 
-function pane(id: string, ws: string, status: AgentStatus, agent: string | null): FakePane {
+function pane(
+  id: string,
+  ws: string,
+  status: AgentStatus,
+  agent: string | null,
+  label?: string | null,
+): FakePane {
   return {
     pane_id: id,
     terminal_id: "term",
@@ -29,6 +36,7 @@ function pane(id: string, ws: string, status: AgentStatus, agent: string | null)
     cwd: "/home/you/demo",
     agent,
     agent_status: status,
+    ...(label !== undefined ? { label } : {}),
     revision: 0,
   };
 }
@@ -192,6 +200,32 @@ describe("StateEngine — snapshot shaping", () => {
     expect(snap.bridge).toBe("connected");
   });
 
+  test("threads a pane label through to the view when set, on agents and shells alike", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [
+      pane("w1:p1", "w1", "idle", "claude", "deploy"),
+      pane("w1:p2", "w1", "unknown", null, "logs"),
+    ];
+    await poll();
+    const snap = engine.current();
+    expect(snap.agents[0]!.paneLabel).toBe("deploy");
+    expect(snap.shellPanes[0]!.paneLabel).toBe("logs");
+  });
+
+  test("leaves paneLabel absent when the pane has no label (or a null/empty one)", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [
+      pane("w1:p1", "w1", "idle", "claude"), // no label field at all
+      pane("w1:p2", "w1", "idle", "codex", null), // explicitly null
+      pane("w1:p3", "w1", "idle", "codex", ""), // empty string → treated as unset
+    ];
+    await poll();
+    for (const a of engine.current().agents) {
+      expect(a.paneLabel).toBeUndefined();
+      expect("paneLabel" in a).toBe(false);
+    }
+  });
+
   test("sorts agents by urgency (blocked first), then workspace number", async () => {
     const { herdr, engine, poll } = makeEngine();
     herdr.panes = [
@@ -290,6 +324,88 @@ describe("StateEngine — snapshot vs legacy path", () => {
     await drivePoll(engine);
     expect(snapCalls).toBe(2); // still on the snapshot path
     expect(listCalls).toBe(0);
+  });
+});
+
+describe("StateEngine — session name enrichment", () => {
+  // A named claude input box: the rule above the ❯ prompt carries the /rename session name.
+  const named = (name: string) => [`──────── ${name} ──`, "❯ "].join("\n");
+  // An unnamed input box (plain rule) — no session name to extract.
+  const plainBox = ["────────────────", "❯ "].join("\n");
+
+  // A fake herdr that also serves per-pane text, so enrichSessionNames has something to read. The
+  // production StateEngine short-circuits when `readPane` is absent (the other fakes here omit it),
+  // which is exactly why those tests are unaffected by the enrichment step.
+  class NameHerdr {
+    panes: FakePane[] = [];
+    texts = new Map<string, string>();
+    sessionSnapshot() {
+      return Promise.resolve({ version: "0.7.2", protocol: 16, workspaces: [ws("w1", 1)], tabs: [], panes: this.panes });
+    }
+    readPane(paneId: string) {
+      return Promise.resolve({ pane_id: paneId, text: this.texts.get(paneId) ?? "", truncated: false, revision: 0 });
+    }
+  }
+
+  function makeNameEngine() {
+    const herdr = new NameHerdr();
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+    const poll = () => (engine as unknown as { poll(): Promise<void> }).poll();
+    const agent = (id: string) => engine.current().agents.find((a) => a.paneId === id)!;
+    return { herdr, engine, poll, agent };
+  }
+
+  test("threads a claude pane's /rename session name onto the view — claude-only", async () => {
+    const { herdr, poll, agent } = makeNameEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), pane("w1:p2", "w1", "idle", "codex")];
+    herdr.texts.set("w1:p1", named("my-feature"));
+    herdr.texts.set("w1:p2", named("ignored")); // codex is never read, so never named
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("my-feature");
+    expect(agent("w1:p2").sessionName).toBeUndefined();
+  });
+
+  test("leaves sessionName absent for an unnamed claude session (plain rule)", async () => {
+    const { herdr, poll, agent } = makeNameEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", plainBox);
+    await poll();
+    expect(agent("w1:p1").sessionName).toBeUndefined();
+    expect("sessionName" in agent("w1:p1")).toBe(false);
+  });
+
+  test("keeps the last-known name when a later poll can't see the input box (sticky)", async () => {
+    const { herdr, poll, agent } = makeNameEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", named("kept"));
+    await poll(); // learns it
+    herdr.texts.set("w1:p1", "● Working…\n  ⎿  no input box in view"); // extractor → undefined
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("kept");
+  });
+
+  test("drops the cached name when the pane vanishes, so a reused id starts clean", async () => {
+    const { herdr, poll, agent } = makeNameEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", named("old"));
+    await poll(); // cached
+    herdr.panes = [];
+    await poll(); // pane gone → cache pruned
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", plainBox); // reappears, now unnamed
+    await poll();
+    expect(agent("w1:p1").sessionName).toBeUndefined();
+  });
+
+  test("a failing pane read never blanks the name or fails the poll", async () => {
+    const { herdr, engine, poll, agent } = makeNameEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", named("safe"));
+    await poll();
+    herdr.readPane = () => Promise.reject(new Error("read down"));
+    await poll();
+    expect(agent("w1:p1").sessionName).toBe("safe"); // last-known kept
+    expect(engine.current().bridge).toBe("connected"); // the poll itself still succeeded
   });
 });
 

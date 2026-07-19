@@ -193,6 +193,37 @@ export function closePane(paneId: string, session?: string): Promise<ActionRespo
   });
 }
 
+/** Set (or clear) a pane's label. An empty/blank `label` clears it (the bridge sends `null` on). */
+export function renamePane(
+  paneId: string,
+  label: string,
+  session?: string,
+): Promise<ActionResponse> {
+  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/rename`, session), {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
+/** Set a tab's label. Non-empty required — a tab has no "clear" (the bridge 400s a blank label). */
+export function renameTab(
+  tabId: string,
+  label: string,
+  session?: string,
+): Promise<ActionResponse> {
+  return req<ActionResponse>(withSession(`/api/tab/${encodeURIComponent(tabId)}/rename`, session), {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
+/** Close a tab, killing every pane inside it. */
+export function closeTab(tabId: string, session?: string): Promise<ActionResponse> {
+  return req<ActionResponse>(withSession(`/api/tab/${encodeURIComponent(tabId)}/close`, session), {
+    method: "POST",
+  });
+}
+
 /** Create a new tab in a space, opening a fresh shell pane. `cwd` omitted = inherits the space dir. */
 export function createTab(
   workspaceId: string,

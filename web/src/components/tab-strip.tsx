@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Chip } from "@/components/ui/chip";
 import { SectionLabel } from "@/components/ui/section-label";
+import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import type { AgentView, TabView } from "@/lib/types";
 
 interface TabStripProps {
@@ -14,12 +16,22 @@ interface TabStripProps {
   onNewTab: (workspaceId: string) => void;
   /** Show the leading "All" chip (home space view); off for the in-pane tab bar. */
   allowAll?: boolean;
+  /** Session scope for the long-press tab actions (rename/close); undefined = primary. */
+  session?: string;
+  /** Drop the long-press write actions when the device isn't authorised (the sheet shows a note). */
+  readOnly?: boolean;
+  /** Revalidate after a rename. Long-press tab actions turn on only when this AND onClosed are set. */
+  onRenamed?: () => void;
+  /** Refresh/fall back after a close. Enables long-press together with onRenamed. */
+  onClosed?: (tabId: string) => void;
 }
 
 // The selected space's tabs as a horizontal strip — the second header row under SpaceStrip, mirroring
 // it one level down. "All" shows every tab's panes; tapping a tab filters the space to it; the
 // trailing + creates a new tab (and opens its fresh shell). The desktop-focused tab gets a ring; a
-// tab holding a blocked agent gets an alert dot.
+// tab holding a blocked agent gets an alert dot. A long-press on a tab chip opens its actions sheet
+// (rename / close) when the parent wires both onRenamed and onClosed (the "All" chip and the + never
+// take long-press).
 export function TabStrip({
   workspaceId,
   tabs,
@@ -28,34 +40,61 @@ export function TabStrip({
   onSelect,
   onNewTab,
   allowAll = true,
+  session,
+  readOnly,
+  onRenamed,
+  onClosed,
 }: TabStripProps) {
+  const [sheetTab, setSheetTab] = useState<TabView | null>(null);
+  // Actions need both callbacks wired (revalidate on rename, fall back on close); without them the
+  // chips stay plain tap-to-switch — long-press is inert.
+  const actionsEnabled = !!onRenamed && !!onClosed;
+
   const wsTabs = tabs
     .filter((t) => t.workspaceId === workspaceId)
     .sort((a, b) => a.number - b.number);
   if (wsTabs.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto border-t border-border/40 px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <SectionLabel>Tabs</SectionLabel>
-      {allowAll && <Chip label="All" active={selected === null} onClick={() => onSelect(null)} />}
-      {wsTabs.map((t) => (
-        <Chip
-          key={t.tabId}
-          label={t.label}
-          active={selected === t.tabId}
-          ring={t.focused}
-          alert={agents.some((a) => a.tabId === t.tabId && a.status === "blocked")}
-          onClick={() => onSelect(t.tabId)}
+    <>
+      <div className="flex items-center gap-2 overflow-x-auto border-t border-border/40 px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <SectionLabel>Tabs</SectionLabel>
+        {allowAll && <Chip label="All" active={selected === null} onClick={() => onSelect(null)} />}
+        {wsTabs.map((t) => (
+          <Chip
+            key={t.tabId}
+            label={t.label}
+            active={selected === t.tabId}
+            ring={t.focused}
+            alert={agents.some((a) => a.tabId === t.tabId && a.status === "blocked")}
+            onClick={() => onSelect(t.tabId)}
+            // Long-press (and a tap on the already-active tab) opens the actions sheet — only when the
+            // parent wired the actions; otherwise the chips stay plain tap-to-switch.
+            onLongPress={actionsEnabled ? () => setSheetTab(t) : undefined}
+            onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
+          />
+        ))}
+        <button
+          type="button"
+          onClick={() => onNewTab(workspaceId)}
+          aria-label="New tab"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
+        >
+          <Plus className="size-4" />
+        </button>
+      </div>
+
+      {actionsEnabled && (
+        <TabActionsSheet
+          open={sheetTab !== null}
+          onClose={() => setSheetTab(null)}
+          tab={sheetTab}
+          session={session}
+          readOnly={readOnly}
+          onRenamed={onRenamed}
+          onClosed={onClosed}
         />
-      ))}
-      <button
-        type="button"
-        onClick={() => onNewTab(workspaceId)}
-        aria-label="New tab"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
-      >
-        <Plus className="size-4" />
-      </button>
-    </div>
+      )}
+    </>
   );
 }

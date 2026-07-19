@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { shortCwd } from "@/lib/format";
+import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
@@ -33,7 +34,9 @@ export function AgentCard({ agent, onClick }: { agent: AgentView; onClick: () =>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="truncate font-medium">{isShell ? "shell" : agent.agent}</span>
+            {/* Name slot: a user label, else Claude's /rename session name, else the agent name — the
+                icon still shows which agent it is (see paneDisplayName). */}
+            <span className="truncate font-medium">{paneDisplayName(agent)}</span>
             <span className="truncate text-xs text-muted-foreground">· {agent.workspaceLabel}</span>
           </div>
           <div className="truncate font-mono text-xs text-muted-foreground">
