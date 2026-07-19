@@ -6,11 +6,11 @@ import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
-import { useConnectionLost } from "@/hooks/use-connection-lost";
+import { isConnecting } from "@/lib/connection";
 import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
-import { CollieHome } from "@/components/collie-home";
+import { AppHeader } from "@/components/app-header";
 import { AnsiOutput } from "@/components/ansi-output";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -34,7 +34,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
-import type { AgentView, DeviceAuth, TabView } from "@/lib/types";
+import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
 import type {
   MultiSelectModel,
   PreviewSelectModel,
@@ -63,8 +63,13 @@ interface AgentChatProps {
   revision?: number;
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
-  /** Global connection state (offline/reconnecting) — gallops the header Collie, like the dashboard. */
-  connecting?: boolean;
+  // Global connection state — fed straight to the shared AppHeader, which drives the header Collie
+  // mark AND the connection pill (identically to the dashboard), and lets us dim the stale StatusBadge
+  // while not live. Defaults describe a healthy link so tests that don't care render "live".
+  online?: boolean;
+  bridge?: BridgeStatus | undefined;
+  error?: boolean;
+  stalled?: boolean;
   onBack: () => void;
   onSelect: (paneId: string) => void;
 }
@@ -95,16 +100,19 @@ export function AgentChat({
   requestedLines = 0,
   revision = 0,
   device,
-  connecting = false,
+  online = true,
+  bridge = "connected",
+  error = false,
+  stalled = false,
   onBack,
   onSelect,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   const navigate = useNavigate();
-  // Escalate the header mark the same way the dashboard does: gallop while reconnecting, rest once the
-  // outage passes the threshold. Computed from the same `connecting` the dashboard bar uses, so the
-  // pane header and the dashboard header agree on when the dog stops running.
-  const lost = useConnectionLost(connecting);
+  // Poll-truth "is the data on screen not live". The header (AppHeader) reads the same inputs to drive
+  // the Collie mark + pill; here we use it to dim the StatusBadge, so the badge stops presenting the
+  // last snapshot's status as current while we're reconnecting/lost, and restores instantly on recovery.
+  const connecting = isConnecting({ bridge, error, stalled });
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal } = useDisplayPrefs();
@@ -488,65 +496,76 @@ export function AgentChat({
 
   return (
     <div className="flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden">
-      {/* Header — while find is open, the find bar takes over this row (one-handed, thumb-reachable). */}
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-zinc-800 pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
-        {findOpen ? (
-          <FindBar
-            query={findQuery}
-            onQueryChange={setFindQuery}
-            count={matchCount}
-            current={currentMatch}
-            onPrev={() => gotoMatch(-1)}
-            onNext={() => gotoMatch(1)}
-            onClose={closeFind}
-          />
-        ) : (
-          <>
-            {/* Home + connection loader — the SAME Collie mark as the dashboard, so the top-left
-                means the same thing on every screen. Tap returns Home; it gallops while reconnecting.
-                (The nav hub — jump across spaces/panes — moves to the right cluster below so it never
-                impersonates the brand slot.) */}
-            <CollieHome onHome={onBack} connecting={connecting} lost={lost} />
-            {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
-                name would just repeat the icon, so it's dropped), and the working directory on the
-                subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
-            {agent ? (
-              <button
-                type="button"
-                onClick={() => openSpace(agent.workspaceId)}
-                aria-label={`Open ${agent.workspaceLabel} overview`}
-                className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
-              >
-                {isShell ? (
-                  <div className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-muted">
-                    <TerminalSquare className="size-3 text-muted-foreground" />
-                  </div>
-                ) : (
-                  // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
-                  // pane's subject, not a second brand competing with Collie's for the header.
-                  <AgentIcon agent={agent.agent} className="size-6" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold leading-tight">
-                    {agent.workspaceLabel}
-                    {tabLabel ? ` › ${tabLabel}` : ""}
-                  </div>
-                  <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
-                    {shortCwd(agent.cwd)}
-                  </div>
-                </div>
-              </button>
+      {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Collie mark and the
+          connection pill are identical on every screen (no hand-rolled bar to drift). The pane's own
+          bits ride in via slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as
+          the pill's left neighbour, and the find bar as the full-row takeover while searching. */}
+      <AppHeader
+        online={online}
+        bridge={bridge}
+        error={error}
+        stalled={stalled}
+        onHome={onBack}
+        override={
+          findOpen ? (
+            <FindBar
+              query={findQuery}
+              onQueryChange={setFindQuery}
+              count={matchCount}
+              current={currentMatch}
+              onPrev={() => gotoMatch(-1)}
+              onNext={() => gotoMatch(1)}
+              onClose={closeFind}
+            />
+          ) : undefined
+        }
+        // The agent status pill, dimmed while the connection isn't live so a frozen "working"/"idle"
+        // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
+        rightLead={
+          agent ? (
+            isShell ? (
+              <ShellBadge stale={connecting} />
             ) : (
-              <div className="min-w-0 flex-1">
-                <span className="truncate font-semibold">(agent gone)</span>
+              <StatusBadge status={agent.status} stale={connecting} />
+            )
+          ) : undefined
+        }
+      >
+        {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
+            name would just repeat the icon, so it's dropped), and the working directory on the
+            subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
+        {agent ? (
+          <button
+            type="button"
+            onClick={() => openSpace(agent.workspaceId)}
+            aria-label={`Open ${agent.workspaceLabel} overview`}
+            className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
+          >
+            {isShell ? (
+              <div className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-muted">
+                <TerminalSquare className="size-3 text-muted-foreground" />
               </div>
+            ) : (
+              // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
+              // pane's subject, not a second brand competing with Collie's for the header.
+              <AgentIcon agent={agent.agent} className="size-6" />
             )}
-            {/* The status pill is the live indicator — polling refreshes the mirror on its own, so
-                there's no manual refresh button. A bare shell shows a muted "shell" tag instead. */}
-            {agent && (isShell ? <ShellBadge /> : <StatusBadge status={agent.status} />)}
-          </>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-semibold leading-tight">
+                {agent.workspaceLabel}
+                {tabLabel ? ` › ${tabLabel}` : ""}
+              </div>
+              <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
+                {shortCwd(agent.cwd)}
+              </div>
+            </div>
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1">
+            <span className="truncate font-semibold">(agent gone)</span>
+          </div>
         )}
-      </header>
+      </AppHeader>
 
       {/* Content region below the header — the mirror inside is the scroller. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">

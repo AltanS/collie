@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate, useRouteLoaderData } from "react-router";
 
-import { ConnectionBar } from "@/components/connection-bar";
+import { AppHeader, SettingsGear } from "@/components/app-header";
+import { SessionSwitcher } from "@/components/session-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
@@ -41,13 +42,16 @@ export function HomeRoute() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <ConnectionBar
+      {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
+          and the Settings gear. The switcher self-hides on a single-session install. */}
+      <AppHeader
         online={online}
         bridge={data.bridge}
         error={data.error}
         stalled={stalled}
-        sessions={data.sessions}
-        session={data.session}
+        wordmark
+        rightLead={<SessionSwitcher sessions={data.sessions ?? []} current={data.session} />}
+        rightTrail={<SettingsGear session={data.session} />}
       />
 
       {/* Content region below the header: a viewport-clipped internal scroller. */}
