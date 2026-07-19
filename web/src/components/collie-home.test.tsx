@@ -22,13 +22,15 @@ describe("CollieHome", () => {
     expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
   });
 
-  it("rests the mark (stops galloping) once the outage has escalated to lost", () => {
-    // Galloping = "still trying"; once the reconnect gives up (lost) the sprite must stop, or the
-    // never-stopping gallop reads as busy forever — the exact "never stopping" complaint.
+  it("rests on the muted static icon (never a frozen sprite) once the outage escalates to lost", () => {
+    // Galloping = "still trying"; once the reconnect gives up (lost) the sprite is gone entirely. It is
+    // replaced by the STATIC app icon, muted — not a paused gallop frame, whose full-stretch mid-stride
+    // pose looked "stuck mid-run" (the exact complaint).
     const { container } = render(<CollieHome connecting lost />);
-    const sprite = container.querySelector(".dog-gallop");
-    expect(sprite).not.toBeNull(); // still the dog mark…
-    expect(sprite).not.toHaveClass("dog-gallop--running"); // …but at rest, not galloping
+    expect(container.querySelector(".dog-gallop")).toBeNull();
+    const icon = container.querySelector("img");
+    expect(icon).toHaveAttribute("src", "/favicon.svg");
+    expect(icon?.className).toMatch(/grayscale/);
     expect(screen.getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
   });
 

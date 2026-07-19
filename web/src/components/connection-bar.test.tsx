@@ -28,8 +28,17 @@ function renderBarAt(ui: ReactElement, initialEntries: string[]) {
 }
 
 describe("ConnectionBar", () => {
-  it("shows 'offline' when the browser is offline (regardless of bridge state)", () => {
+  it("shows 'live' even when the browser claims offline, as long as polls are healthy (poll-truth)", () => {
+    // The lying-onLine case: onLine stuck false while the snapshot path is fine must NOT gallop a
+    // phantom outage — liveness is poll-truth, not navigator.onLine.
     renderBar(<ConnectionBar online={false} bridge="connected" error={false} />);
+    expect(screen.getByText("live")).toBeInTheDocument();
+  });
+
+  it("shows 'offline' only when NOT live AND the browser reports offline (copy-only use of onLine)", () => {
+    // Here the snapshot genuinely failed (error), so we're not live; onLine=false then picks "offline"
+    // as the most-likely cause to name.
+    renderBar(<ConnectionBar online={false} bridge="connected" error />);
     expect(screen.getByText("offline")).toBeInTheDocument();
   });
 
@@ -104,17 +113,19 @@ describe("ConnectionBar — escalates the pill after a sustained outage", () => 
     expect(screen.getByText("not connected")).toBeInTheDocument();
   });
 
-  it("rests the header mark (stops galloping) once the outage passes the threshold", () => {
+  it("rests the header mark on the muted static icon (never a frozen sprite) past the threshold", () => {
     const { container } = render(<ConnectionBar online bridge="connected" error />, {
       wrapper: MemoryRouter,
     });
     // Reconnecting: the mark gallops.
     expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
-    // Escalated: same mark, no longer galloping.
-    const sprite = container.querySelector(".dog-gallop");
-    expect(sprite).not.toBeNull();
-    expect(sprite).not.toHaveClass("dog-gallop--running");
+    // Escalated: the gallop sprite is gone entirely, replaced by the static app icon muted to grayscale
+    // — no full-stretch rest-frame that looks frozen mid-run.
+    expect(container.querySelector(".dog-gallop")).toBeNull();
+    const icon = container.querySelector("img");
+    expect(icon).toHaveAttribute("src", "/favicon.svg");
+    expect(icon?.className).toMatch(/grayscale/);
   });
 
   it("does not escalate a stall that recovers before the threshold", () => {

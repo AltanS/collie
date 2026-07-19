@@ -16,9 +16,13 @@ interface DogGallopProps {
 // (public/dog-gallop.png — a 768×128 strip of six 128px cells, transparent background) stepped
 // through with a pure-CSS steps(6) animation. No JS timers, no layout thrash, GPU-cheap — the whole
 // cycle is one repainting background-position. It gallops while the app is loading/reconnecting
-// (`running`) and rests on the first frame when idle. `prefers-reduced-motion` pins it to the rest
-// frame (see index.css). `--dog-size` drives both the box and the sprite scale, so one length keeps
-// them in lockstep at any placement.
+// (`running`); `prefers-reduced-motion` pins it to frame 0 (see index.css). `--dog-size` drives both
+// the box and the sprite scale, so one length keeps them in lockstep at any placement.
+//
+// NOTE: the `running={false}` rest frame is frame 0 of the gallop strip — a full-stretch mid-stride
+// pose that reads as "frozen mid-run", not "at rest". So callers must NOT use this as a rest state:
+// the app's rest state is the STATIC app icon (favicon.svg), and this component is only ever mounted
+// with `running`. The `running` default stays false only to preserve the reduced-motion contract.
 export function DogGallop({ running = false, size = "1.5rem", label, className }: DogGallopProps) {
   return (
     <span

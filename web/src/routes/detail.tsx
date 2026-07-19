@@ -3,7 +3,6 @@ import { useLoaderData, useLocation, useNavigate, useParams, useRouteLoaderData 
 
 import { AgentChat } from "@/components/agent-chat";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
-import { useOnline } from "@/hooks/use-online";
 import { isConnecting } from "@/lib/connection";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { homePath, panePath } from "@/lib/nav";
@@ -24,7 +23,6 @@ export function DetailRoute() {
   const session = pane.session;
   const navigate = useNavigate();
   const location = useLocation();
-  const online = useOnline();
   const stalled = useLoadingStalled();
 
   const fresh = (location.state as { freshPane?: AgentView } | null)?.freshPane;
@@ -76,7 +74,7 @@ export function DetailRoute() {
       requestedLines={pane.requestedLines}
       revision={pane.revision}
       device={root.device}
-      connecting={isConnecting({ online, bridge: root.bridge, error: root.error, stalled })}
+      connecting={isConnecting({ bridge: root.bridge, error: root.error, stalled })}
       onBack={() => navigate(homePath(session))}
       onSelect={(id) => navigate(panePath(id, session))}
     />

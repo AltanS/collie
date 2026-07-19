@@ -36,8 +36,11 @@ interface ConnectionBarProps {
 // escalates the transient "reconnecting…" to an honest "not connected".
 function resolve(props: ConnectionBarProps, lost: boolean) {
   const { online, bridge, error, stalled } = props;
-  // `isConnecting` is the single source of truth for live-vs-not (shared with the in-pane loader);
-  // resolve only picks which message/icon to show for the not-live cause.
+  // `isConnecting` is the single source of truth for live-vs-not (poll-truth, shared with the in-pane
+  // loader): "live" whenever the snapshot path is healthy, regardless of navigator.onLine. resolve
+  // only picks which message/icon to show for the not-live cause — and onLine is consulted HERE, for
+  // COPY only: when we're genuinely not live and the browser also reports offline, that's the
+  // most-likely cause to name. A lying onLine can never manufacture a not-live state on its own.
   if (!isConnecting(props)) return { label: "live", tone: "ok", Icon: PlugZap } as const;
   if (!online) return { label: "offline", tone: "bad", Icon: WifiOff } as const;
   // A stall reads as "reconnecting…" too — same warn label, no new state: a fetch that hasn't
