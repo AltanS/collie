@@ -65,6 +65,37 @@ describe("stripChrome — trims the input box off the tail", () => {
     expect(kept).not.toContain("cat hello.txt to verify"); // the input-box draft is chrome
     expect(kept).not.toContain("32.7k tokens"); // statusline gone
   });
+
+  // The newer Claude Code UI paints a "background agents" footer BELOW the statusline/hint, separated
+  // by a blank line. It broke the bottom-up anchor (only the statusline window was tolerated), so the
+  // whole box stayed visible on the mirror AND no draft chip surfaced. These three cover empty /
+  // single-line / wrapped drafts with that footer present — see the real-capture cohort in the README.
+  it("footer variant (empty prompt): strips the box + statusline + hint + background-agents footer", () => {
+    const lines = fixtureLines("claude--draft-footer-empty.txt");
+    const kept = joined(stripChrome(lines));
+    expect(stripChrome(lines).length).toBeLessThan(lines.length);
+    expect(kept).toContain("Wired up the token refresh path"); // real content above survives
+    expect(kept).not.toContain("● main"); // footer header gone
+    expect(kept).not.toContain("worker:scout"); // footer agent row gone
+    expect(kept).not.toContain("bypass permissions"); // hint gone
+    expect(kept).not.toContain("ctx:33%"); // statusline gone
+  });
+
+  it("footer variant (single-line draft): strips the box AND the footer below it", () => {
+    const lines = fixtureLines("claude--draft-footer-single.txt");
+    const kept = joined(stripChrome(lines));
+    expect(kept).toContain("Wired up the token refresh path"); // content above survives
+    expect(kept).not.toContain("update the changelog"); // the box draft is chrome
+    expect(kept).not.toContain("● main"); // footer gone with the box
+  });
+
+  it("footer variant (wrapped draft): strips the multi-line box AND the footer", () => {
+    const lines = fixtureLines("claude--draft-footer-wrapped.txt");
+    const kept = joined(stripChrome(lines));
+    expect(kept).toContain("Wired up the token refresh path"); // content above survives
+    expect(kept).not.toContain("soft-wraps it onto several"); // wrapped continuation gone
+    expect(kept).not.toContain("worker:scout"); // footer gone
+  });
 });
 
 describe("stripChrome — conservative: leaves non-chrome untouched", () => {
@@ -126,6 +157,14 @@ describe("extractStatusLine — recovers the stripped statusline", () => {
     expect(status).toContain("tokens");
   });
 
+  it("footer variant: returns the statusline, not the hint or the background-agents footer below it", () => {
+    const status = extractStatusLine(fixtureLines("claude--draft-footer-empty.txt"));
+    expect(status).not.toBeNull();
+    expect(status).toContain("ctx:33%"); // the statusline itself
+    expect(status).not.toContain("bypass permissions"); // hint under it is NOT returned
+    expect(status).not.toContain("worker:scout"); // footer is NOT returned
+  });
+
   it("returns null when a menu is up (no input box at the tail)", () => {
     expect(extractStatusLine(fixtureLines("claude--select-menu.txt"))).toBeNull();
     expect(extractStatusLine(fixtureLines("claude--trust-prompt.txt"))).toBeNull();
@@ -183,6 +222,25 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
   it("self-resolved rename frame: the box is empty again, so no draft is read", () => {
     // A poll or two later the command has submitted (spinner up, prompt cleared) — nothing stranded.
     expect(extractInputDraft(fixtureLines("claude--rename-resolved.txt"))).toBeNull();
+  });
+
+  // Background-agents footer present below the box — the case that regressed on real panes: the extra
+  // footer lines broke locateInputBox, so no draft surfaced. With the footer tolerated, an empty box
+  // is still null (no chip), and a real draft (single-line or wrapped) is recovered as before.
+  it("footer variant (empty box): no draft to recover", () => {
+    expect(extractInputDraft(fixtureLines("claude--draft-footer-empty.txt"))).toBeNull();
+  });
+
+  it("footer variant (single-line draft): recovers the draft above the footer", () => {
+    expect(extractInputDraft(fixtureLines("claude--draft-footer-single.txt"))).toBe(
+      "remember to update the changelog before tagging",
+    );
+  });
+
+  it("footer variant (wrapped draft): folds the continuations back, footer notwithstanding", () => {
+    expect(extractInputDraft(fixtureLines("claude--draft-footer-wrapped.txt"))).toBe(
+      "this stranded draft is long enough that the Claude Code TUI soft-wraps it onto several continuation lines inside the input box while the background-agents footer sits below the box",
+    );
   });
 
   it("folds a WRAPPED draft back into one line (real capture)", () => {

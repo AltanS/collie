@@ -11,10 +11,18 @@
 import type { StyledLine } from "../../blocks";
 import { isBlank, isBoxBorder, lineText } from "./markers";
 
-// Lines allowed between the input box's bottom border and the tail: the statusline plus a hint line
-// or two ("← for agents", "⏵⏵ bypass permissions on …"). More than this and we don't recognise the
-// shape, so we leave the buffer raw.
+// Lines allowed DIRECTLY under the input box's bottom border: the statusline plus a hint line or two
+// ("← for agents", "⏵⏵ bypass permissions on …"). More than this and we don't recognise the shape, so
+// we leave the buffer raw. The background-agents footer below these (see MAX_FOOTER_LINES) is peeled
+// separately — this bound stays tight because it's the run that must sit flush against the border.
 const MAX_STATUS_LINES = 3;
+
+// A newer Claude Code UI paints a "background agents" footer BELOW the statusline/hint, separated from
+// them by a blank line: a bold "● main" header and one row per background agent
+// ("◯ <agent>  <task…>   <elapsed> · ↓ <tokens>"). We peel it off the tail as chrome too, bounded to
+// this many rows (header + a handful of agents, plus a possible "… +N more" line) so a borderless
+// buffer still can't strip unboundedly — an over-long block just falls back to the raw mirror.
+const MAX_FOOTER_LINES = 8;
 
 // A long draft WRAPS inside the input box: the "❯ …" prompt line plus continuation lines (indented,
 // no leading "❯") before the bottom border. We scan up past those to find the prompt, but only this
@@ -134,6 +142,9 @@ interface InputBox {
  *     <bottom border>
  *     <statusline>         (0..MAX_STATUS_LINES lines, matched by position not content)
  *     <hint line>
+ *     <blank>              (optional — separates the background-agents footer, if present)
+ *     <● main>             (0..MAX_FOOTER_LINES footer lines, matched by position not content)
+ *     <◯ agent …>
  *
  * return the top and bottom border indices plus the prompt-line index. Otherwise null. Scans
  * bottom-up.
@@ -141,20 +152,37 @@ interface InputBox {
 function locateInputBox(texts: string[], end: number): InputBox | null {
   let i = end - 1;
 
-  // (a) Up to MAX_STATUS_LINES status/hint lines above the bottom border: non-blank, non-border
-  //     text. Stop as soon as a border is reached.
+  // (a) Optional background-agents footer at the very tail (a newer Claude Code UI): a non-blank run
+  //     ("● main" header + "◯ …" agent rows) divided from the statusline/hint by a blank line. Matched
+  //     by POSITION, never content, and peeled only when that blank separator is found within the
+  //     bound — otherwise the run we just walked IS the statusline+hint, so leave it for step (b).
+  {
+    let j = i;
+    let footer = 0;
+    while (j >= 0 && !isBoxBorder(texts[j]!) && !isBlank(texts[j]!) && footer < MAX_FOOTER_LINES) {
+      footer++;
+      j--;
+    }
+    if (footer > 0 && j >= 0 && isBlank(texts[j]!)) {
+      while (j >= 0 && isBlank(texts[j]!)) j--; // consume the blank separator run
+      i = j;
+    }
+  }
+
+  // (b) Up to MAX_STATUS_LINES status/hint lines directly above the bottom border: non-blank,
+  //     non-border text. Stop as soon as a border is reached.
   let status = 0;
   while (i >= 0 && !isBoxBorder(texts[i]!) && !isBlank(texts[i]!) && status < MAX_STATUS_LINES) {
     status++;
     i--;
   }
 
-  // (b) bottom border
+  // (c) bottom border
   if (i < 0 || !isBoxBorder(texts[i]!)) return null;
   const bottomBorder = i;
   i--;
 
-  // (c) the "❯" prompt line — the FIRST line of the draft. A long draft wraps onto continuation lines
+  // (d) the "❯" prompt line — the FIRST line of the draft. A long draft wraps onto continuation lines
   //     (indented, no "❯") between the prompt and the bottom border, so scan up past them to the
   //     prompt. Bounded by MAX_DRAFT_LINES, and any box border en route aborts the match (we'd have
   //     left the box). Blank padding on either side is tolerated defensively.
@@ -174,7 +202,7 @@ function locateInputBox(texts: string[], end: number): InputBox | null {
   i--;
   while (i >= 0 && isBlank(texts[i]!)) i--;
 
-  // (d) top border
+  // (e) top border
   if (i < 0 || !isBoxBorder(texts[i]!)) return null;
   return { top: i, prompt, bottomBorder };
 }

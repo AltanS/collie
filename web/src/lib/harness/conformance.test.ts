@@ -25,6 +25,11 @@ const NEUTRAL = [
   "claude--send-inflight.txt",
   "claude--rename-resolved.txt",
   "claude--draft-wrapped.txt",
+  // Input boxes with the background-agents footer below them — still composer chrome (stripped), not a
+  // dialog, so they must stay raw / lift no interactive block.
+  "claude--draft-footer-empty.txt",
+  "claude--draft-footer-single.txt",
+  "claude--draft-footer-wrapped.txt",
 ];
 
 const allClaudeFixtures = readdirSync(PANES_DIR)
