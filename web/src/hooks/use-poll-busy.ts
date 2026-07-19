@@ -9,13 +9,16 @@ import { setPollBusy } from "@/lib/busy";
 // the strip. Kept short/snappy because the user is actively watching for feedback.
 export const NAV_BUSY_THRESHOLD_MS = 500;
 
-// A background revalidation (the poll) is AMBIENT — nobody is staring at it, so only SUSTAINED lag
-// should surface the strip. On-device, over the user's HTTPS reverse proxy, a single poll routinely
-// takes >500ms while the hot poll interval itself is only 1.5s — at the nav threshold the bar would
-// re-trigger on nearly every tick and read as permanently stuck on. This threshold sits comfortably
-// above a whole hot-poll interval, so a merely-slow-on-mobile poll (0.5–1.5s round trip) never trips
-// it — only a genuinely degraded/laggy poll does.
-export const POLL_BUSY_THRESHOLD_MS = 2_000;
+// A background revalidation (the poll) is AMBIENT — nobody is staring at it, so the strip should
+// only fire when a poll has HUNG, not merely when the link is slow. On-device, over the user's
+// HTTPS reverse proxy with large streaming-pane payloads on a 1.5s hot-poll cadence, single
+// revalidations routinely sit in flight for 0.5–3s as chronic-but-normal behavior for that link —
+// "stops briefly, then continues" is not a problem and must never surface the strip. This threshold
+// is well past any plausible normal round-trip on that link (roughly halfway to the 12s supersede
+// kick in use-polling.ts's SUPERSEDE_MS, which force-restarts a poll stuck that long), so crossing
+// it is rare and means the poll is actually stuck — a signal worth surfacing as reassurance the app
+// isn't dead, not ambient noise on every slow tick.
+export const POLL_BUSY_THRESHOLD_MS = 6_000;
 
 /**
  * Feed the app-wide busy bar from two independent slow-load signals, each against its own
