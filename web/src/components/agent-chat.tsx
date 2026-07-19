@@ -564,6 +564,9 @@ export function AgentChat({
             session={session}
             readOnly={readOnly}
             onRenamed={() => revalidator.revalidate()}
+            // Closing the tab this pane lives in kills the pane too — leave for Home the same way a
+            // pane-close does (onBack); closing any other tab just revalidates so it drops out.
+            onClosed={(tabId) => (agent?.tabId === tabId ? onBack() : revalidator.revalidate())}
           />
         )}
 

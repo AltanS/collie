@@ -217,6 +217,13 @@ export function renameTab(
   });
 }
 
+/** Close a tab, killing every pane inside it. */
+export function closeTab(tabId: string, session?: string): Promise<ActionResponse> {
+  return req<ActionResponse>(withSession(`/api/tab/${encodeURIComponent(tabId)}/close`, session), {
+    method: "POST",
+  });
+}
+
 /** Create a new tab in a space, opening a fresh shell pane. `cwd` omitted = inherits the space dir. */
 export function createTab(
   workspaceId: string,

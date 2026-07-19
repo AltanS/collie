@@ -16,19 +16,22 @@ interface TabStripProps {
   onNewTab: (workspaceId: string) => void;
   /** Show the leading "All" chip (home space view); off for the in-pane tab bar. */
   allowAll?: boolean;
-  /** Session scope for the long-press tab rename (undefined = primary). */
+  /** Session scope for the long-press tab actions (rename/close); undefined = primary. */
   session?: string;
-  /** Drop the long-press write action when the device isn't authorised (the sheet shows a note). */
+  /** Drop the long-press write actions when the device isn't authorised (the sheet shows a note). */
   readOnly?: boolean;
-  /** Revalidate after a rename. Long-press tab rename turns on only when this is wired. */
+  /** Revalidate after a rename. Long-press tab actions turn on only when this AND onClosed are set. */
   onRenamed?: () => void;
+  /** Refresh/fall back after a close. Enables long-press together with onRenamed. */
+  onClosed?: (tabId: string) => void;
 }
 
 // The selected space's tabs as a horizontal strip — the second header row under SpaceStrip, mirroring
 // it one level down. "All" shows every tab's panes; tapping a tab filters the space to it; the
 // trailing + creates a new tab (and opens its fresh shell). The desktop-focused tab gets a ring; a
-// tab holding a blocked agent gets an alert dot. A long-press on a tab chip opens its rename sheet
-// when the parent wires onRenamed (the "All" chip and the + never take long-press).
+// tab holding a blocked agent gets an alert dot. A long-press on a tab chip opens its actions sheet
+// (rename / close) when the parent wires both onRenamed and onClosed (the "All" chip and the + never
+// take long-press).
 export function TabStrip({
   workspaceId,
   tabs,
@@ -40,8 +43,12 @@ export function TabStrip({
   session,
   readOnly,
   onRenamed,
+  onClosed,
 }: TabStripProps) {
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
+  // Actions need both callbacks wired (revalidate on rename, fall back on close); without them the
+  // chips stay plain tap-to-switch — long-press is inert.
+  const actionsEnabled = !!onRenamed && !!onClosed;
 
   const wsTabs = tabs
     .filter((t) => t.workspaceId === workspaceId)
@@ -61,10 +68,10 @@ export function TabStrip({
             ring={t.focused}
             alert={agents.some((a) => a.tabId === t.tabId && a.status === "blocked")}
             onClick={() => onSelect(t.tabId)}
-            // Long-press (and a tap on the already-active tab) opens the rename sheet — only when the
-            // parent wired onRenamed; otherwise the chips stay plain tap-to-switch.
-            onLongPress={onRenamed ? () => setSheetTab(t) : undefined}
-            onTapActive={onRenamed ? () => setSheetTab(t) : undefined}
+            // Long-press (and a tap on the already-active tab) opens the actions sheet — only when the
+            // parent wired the actions; otherwise the chips stay plain tap-to-switch.
+            onLongPress={actionsEnabled ? () => setSheetTab(t) : undefined}
+            onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
           />
         ))}
         <button
@@ -77,7 +84,7 @@ export function TabStrip({
         </button>
       </div>
 
-      {onRenamed && (
+      {actionsEnabled && (
         <TabActionsSheet
           open={sheetTab !== null}
           onClose={() => setSheetTab(null)}
@@ -85,6 +92,7 @@ export function TabStrip({
           session={session}
           readOnly={readOnly}
           onRenamed={onRenamed}
+          onClosed={onClosed}
         />
       )}
     </>

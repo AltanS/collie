@@ -119,6 +119,25 @@ Three sibling RPCs set a display label on a workspace, tab, or pane. Live-verifi
   (renames an agent session, not a pane/tab/workspace) — **unverified and unwired by Collie**. Listed
   only so it isn't mistaken for the label renames above.
 
+## Close methods — kill a pane or a whole tab (verified)
+
+Two sibling structural ops remove panes. `tab.close` live-verified 2026-07-19 on the sandbox session.
+
+| Method | Params | Returns (`result.type`) | Event | Error (unknown id) |
+|---|---|---|---|---|
+| `pane.close` | `{pane_id}` | `ok` | `pane.closed` | `pane_not_found` |
+| `tab.close` | `{tab_id}` (schema: `TabTarget`) | `ok` | `tab.closed` | `tab_not_found` |
+
+- **`tab.close` is a BULK pane-close: closing a tab terminates EVERY pane inside it.** Verified by
+  creating a throwaway tab holding a plain shell pane, then `tab.close {tab_id}` — the next
+  `session.snapshot` no longer lists the tab **or** its inner pane. So it's no more privileged than
+  closing those panes one-by-one (which `pane.close` already allows) — same remote-shell threat model.
+- **Success is a bare `{"result":{"type":"ok"}}`** (same shape as `pane.close`), not a record reply
+  like the renames — there's nothing left to describe. The closure surfaces on the next snapshot poll;
+  `tab.close` also emits a `tab_closed` event (which Collie doesn't consume).
+- **Errors:** unknown id → `{code:"tab_not_found", message:"tab <id> not found"}`; a missing `tab_id`
+  → ``{code:"invalid_request", message:"invalid request: missing field `tab_id` …"}``.
+
 ## Object shapes (observed)
 
 ```jsonc

@@ -77,10 +77,9 @@ const SECURITY_HEADERS: Record<string, string> = {
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename))?$/;
-// A tab currently supports only rename (no close), so a lean single-action route rather than the
-// pane route's action group. The `/api/tab` POST above (create) is an exact match, so it never
-// collides with this `/api/tab/<id>/rename`.
-const TAB_RENAME_ROUTE = /^\/api\/tab\/([^/]+)\/rename$/;
+// A tab supports rename + close — an action group like the pane route. The `/api/tab` POST above
+// (create) is an exact match on `/api/tab`, so it never collides with this `/api/tab/<id>/<action>`.
+const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
 
 export function startServer(opts: {
   cfg: Config;
@@ -153,15 +152,18 @@ export function startServer(opts: {
         return createWorkspace(rt.herdr, req, audit, deviceAuth(req, cfg).device, rt.name);
       }
 
-      // ── Rename a tab (set its label) ─────────────────────────────────────
-      const tabMatch = pathname.match(TAB_RENAME_ROUTE);
+      // ── Tab actions: rename (set its label) / close (kill it + every pane in it) ──
+      const tabMatch = pathname.match(TAB_ACTION_ROUTE);
       if (tabMatch && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
         const rt = registry.get(sessionName);
         if (!rt) return unknownSession();
         const tabId = decodeURIComponent(tabMatch[1]!);
-        return renameTab(rt.herdr, tabId, req, audit, deviceAuth(req, cfg).device, rt.name);
+        const action = tabMatch[2];
+        const device = deviceAuth(req, cfg).device;
+        if (action === "close") return closeTab(rt.herdr, tabId, req, audit, device, rt.name);
+        return renameTab(rt.herdr, tabId, req, audit, device, rt.name);
       }
 
       // ── Per-pane read / send ─────────────────────────────────────────────
@@ -579,6 +581,28 @@ async function renameTab(
   try {
     await herdr.renameTab(tabId, parsed.label);
     audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
+    return json({ ok: true } satisfies ActionResponse, ae);
+  } catch (err) {
+    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+  }
+}
+
+// Close a tab, killing every pane inside it (live-verified 2026-07-19: the tab's panes disappear with
+// it — see HERDR_API.md). Structural op — no more powerful than closing those panes one-by-one, which
+// the bridge already allows via pane.close — so it stays within the existing remote-shell threat
+// model. No body: the tab id is in the path.
+async function closeTab(
+  herdr: HerdrClient,
+  tabId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  try {
+    await herdr.closeTab(tabId);
+    audit.record({ action: "tab.close", session, device, detail: { tabId } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
