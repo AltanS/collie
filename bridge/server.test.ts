@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  BUILD_HEADER,
+  cacheControlFor,
   checkAccess,
   deviceAuth,
   isHostAllowed,
@@ -9,6 +11,7 @@ import {
   resolveStaticPath,
   sendReplySteps,
   startupWarnings,
+  withBuildHeader,
   type ReplySender,
 } from "./server.ts";
 import type { Config } from "./config.ts";
@@ -449,5 +452,57 @@ describe("normalizeTabLabel", () => {
     expect(normalizeTabLabel(null)).toEqual({ ok: false, error: "bad label" });
     expect(normalizeTabLabel(42)).toEqual({ ok: false, error: "bad label" });
     expect(normalizeTabLabel(undefined)).toEqual({ ok: false, error: "bad label" });
+  });
+});
+
+// The X-Collie-Build response header is what a no-service-worker client polls to notice a live
+// rebuild (web/src/lib/server-build.ts). withBuildHeader is the pure attach helper; the handlers
+// that call it (snapshot/pane) stay untested by convention (they need Bun.serve + the socket).
+describe("withBuildHeader", () => {
+  test("sets the build header to the given id and returns the same response", () => {
+    const res = new Response("body");
+    const out = withBuildHeader(res, "0.13.0+abc.123");
+    expect(out).toBe(res);
+    expect(out.headers.get(BUILD_HEADER)).toBe("0.13.0+abc.123");
+    expect(BUILD_HEADER).toBe("x-collie-build");
+  });
+
+  test("overwrites any existing build header (last write wins)", () => {
+    const res = new Response(null, { headers: { [BUILD_HEADER]: "old" } });
+    withBuildHeader(res, "new");
+    expect(res.headers.get(BUILD_HEADER)).toBe("new");
+  });
+
+  test("preserves a 304's empty body and status", async () => {
+    const res = withBuildHeader(new Response(null, { status: 304 }), "id-1");
+    expect(res.status).toBe(304);
+    expect(res.headers.get(BUILD_HEADER)).toBe("id-1");
+    expect(await res.text()).toBe("");
+  });
+});
+
+// Cache-Control selection for served dist files. Hashed assets cache hard; every other (mutable)
+// dist file — crucially sw.js, which shipped with NO Cache-Control before — must be no-cache so a
+// browser or reverse proxy always revalidates it and can't wedge the update pipeline on a stale copy.
+describe("cacheControlFor", () => {
+  test("hashed assets under assets/ are immutable", () => {
+    expect(cacheControlFor("assets/index-B7cWgJ3M.js")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(cacheControlFor("assets/index-abc.css")).toBe("public, max-age=31536000, immutable");
+  });
+
+  test("sw.js and every other mutable dist-root file are no-cache", () => {
+    for (const rel of [
+      "sw.js",
+      "index.html",
+      "manifest.webmanifest",
+      "build-info.json",
+      "favicon.svg",
+      "favicon.ico",
+      "apple-touch-icon.png",
+    ]) {
+      expect(cacheControlFor(rel)).toBe("no-cache");
+    }
   });
 });

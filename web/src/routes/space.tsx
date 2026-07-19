@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRevalidator, useRouteLoaderData } from "react-router";
 
-import { ConnectionBar } from "@/components/connection-bar";
+import { AppHeader, SettingsGear } from "@/components/app-header";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
@@ -11,7 +11,6 @@ import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
-import { useOnline } from "@/hooks/use-online";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { homePath, panePath, spacePath } from "@/lib/nav";
@@ -24,7 +23,6 @@ import { isReadOnly } from "@/lib/types";
 export function SpaceRoute() {
   const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
   const { spaceId = "" } = useParams();
-  const online = useOnline();
   const stalled = useLoadingStalled();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -67,16 +65,16 @@ export function SpaceRoute() {
   }, [gone, data.bridge, data.error, data.session, navigate]);
 
   return (
-    <div className="mx-auto flex h-[100dvh] max-w-screen-sm flex-col">
-      <ConnectionBar
-        online={online}
+    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+      {/* The space header: same shell as the dashboard, minus the session switcher (you switch
+          sessions from home). Wordmark + shared pill + Settings gear. */}
+      <AppHeader
         bridge={data.bridge}
         error={data.error}
         stalled={stalled}
         onHome={toDashboard}
-        sessions={data.sessions}
-        session={data.session}
-        showSessionSwitcher={false}
+        wordmark
+        rightTrail={<SettingsGear session={data.session} />}
       />
 
       {/* Content region below the header: the viewport-clipped scroller. */}

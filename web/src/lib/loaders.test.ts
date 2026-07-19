@@ -50,6 +50,19 @@ describe("rootLoader", () => {
     expect(data.bridge).toBeUndefined();
   });
 
+  it("treats a cold-start TimeoutError as an error snapshot, NOT a rethrow to the error boundary", async () => {
+    // The cold-start-against-a-dead-host case: the first snapshot fetch aborts at its timeout with a
+    // DOMException named "TimeoutError" (distinct from the "AbortError" of a superseded revalidation).
+    // The loader must fall into the error-snapshot branch so RootLayout + the escalation prompt handle
+    // it uniformly — it must NOT bubble to RootError's generic "Something went wrong" screen.
+    const { rootLoader } = await import("./loaders");
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+    const data = await rootLoader();
+    expect(data.error).toBe(true);
+    expect(data.bridge).toBeUndefined();
+    expect(data.agents).toEqual([]);
+  });
+
   it("surfaces the snapshot's optional update field onto the loader data", async () => {
     const update = {
       current: "0.11.0",
@@ -235,6 +248,124 @@ describe("loaders — session scoping", () => {
     growRequestedLines("w1:p1", "collie-demo");
     expect(getRequestedLines("w1:p1", "collie-demo")).toBe(1200);
     expect(getRequestedLines("w1:p1")).toBe(600); // the primary session's same id is untouched
+  });
+});
+
+// A PWA must navigate INSTANTLY to last-known data while offline. During a KNOWN, escalated outage
+// (the shared connection-health store has latched "lost"), a NAVIGATION (loader run at a NEW url) skips
+// the doomed fetch and returns cache immediately (flagged error); a REVALIDATION (same url — the poll)
+// still really fetches, so recovery is discovered and the stale data swapped out. connection-health is
+// imported AFTER vi.resetModules() alongside loaders so both share one fresh module instance (the latch
+// the test sets is the one the loader reads).
+describe("loaders — offline navigation fast path", () => {
+  it("a navigation during a known outage returns the cached snapshot INSTANTLY (error, no fetch)", async () => {
+    const { rootLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+
+    await rootLoader({ request: new Request("http://localhost/") }); // prime the last-good snapshot
+    latchLost(); // escalated outage
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    // Different url ⇒ navigation ⇒ fast path: cache returned without touching the network.
+    const data = await rootLoader({ request: new Request("http://localhost/space/w1") });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(data.error).toBe(true); // flagged stale
+    expect(data.bridge).toBe("connected"); // last-known herd
+    expect(data.agents).toHaveLength(2);
+  });
+
+  it("a revalidation (same url) still really fetches while latched — polls keep probing", async () => {
+    const { rootLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+
+    await rootLoader({ request: new Request("http://localhost/") }); // sets lastRootUrl = "/"
+    latchLost();
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await rootLoader({ request: new Request("http://localhost/") }); // same url ⇒ revalidation
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("recovery: the next successful revalidation clears the latch and returns fresh, live data", async () => {
+    const { rootLoader } = await import("./loaders");
+    const { latchLost, isLostLatched } = await import("./connection-health");
+
+    await rootLoader({ request: new Request("http://localhost/") });
+    latchLost();
+    expect(isLostLatched()).toBe(true);
+
+    const data = await rootLoader({ request: new Request("http://localhost/") }); // lands (MSW success)
+    expect(data.error).toBe(false);
+    expect(isLostLatched()).toBe(false); // markLive cleared the latch
+  });
+
+  it("navigating to an UNVISITED pane during an outage returns a degraded pane INSTANTLY (no fetch)", async () => {
+    const { paneLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+    latchLost();
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const data = await paneLoader({
+      params: { paneId: "wX:p9" },
+      request: new Request("http://localhost/pane/wX:p9"),
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(data.error).toBe(true);
+    expect(data.text).toBe(""); // never fetched → empty mirror, but instant (no 10s hang)
+    expect(data.revision).toBe(0);
+  });
+
+  it("returning to a PREVIOUSLY-VISITED pane during an outage shows its stale mirror INSTANTLY", async () => {
+    const { rootLoader, paneLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+
+    // Visit the pane (healthy) so its text is cached, then leave to the dashboard — rootLoader clears
+    // the pane discriminator so a RETURN reads as a fresh navigation, not a poll.
+    await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1:p1"),
+    });
+    await rootLoader({ request: new Request("http://localhost/") });
+
+    latchLost();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const data = await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1:p1"),
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(data.error).toBe(true);
+    expect(data.text).toBe("hello from the pane"); // the stale mirror
+  });
+
+  it("polling within a pane during an outage keeps fetching (same url ⇒ revalidation)", async () => {
+    const { paneLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+
+    await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1:p1"),
+    });
+    latchLost();
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1:p1"), // same url ⇒ poll ⇒ must fetch
+    });
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("does NOT fast-path when the connection is not latched (a brief blip still fetches)", async () => {
+    const { rootLoader } = await import("./loaders");
+    // No latchLost(): a transient blip must keep really fetching on navigation, not serve stale.
+    await rootLoader({ request: new Request("http://localhost/") });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await rootLoader({ request: new Request("http://localhost/space/w1") }); // navigation, but not latched
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });
 

@@ -2,6 +2,8 @@
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
 import { trackBusy } from "./busy";
+import { markLive } from "./connection-health";
+import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -77,6 +79,14 @@ async function errorDetail(res: Response): Promise<string> {
   }
 }
 
+// Capture the bridge's build id off any response that carries it. Every poll (snapshot/pane) — and
+// config + mutations — funnels through the two fetch sites below, so the store stays current for
+// free, powering the no-service-worker self-updater (lib/self-update.ts). Absent header (older
+// bridge) → no-op, so nothing activates.
+function captureBuild(res: Response): void {
+  observeServerBuild(res.headers.get(SERVER_BUILD_HEADER));
+}
+
 async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init?.method?.toUpperCase() ?? "GET";
@@ -86,6 +96,7 @@ async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
     signal: withTimeout(init?.signal, timeoutMs),
     headers: { "content-type": "application/json", ...init?.headers },
   });
+  captureBuild(res);
   if (!res.ok) {
     throw new ApiError(`${path} → ${res.status} ${await errorDetail(res)}`, res.status);
   }
@@ -102,8 +113,17 @@ function req<T>(path: string, init?: RequestInit): Promise<T> {
   return method === "GET" ? op : trackBusy(op);
 }
 
-export function fetchSnapshot(session?: string, signal?: AbortSignal): Promise<SnapshotResponse> {
-  return req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
+export async function fetchSnapshot(
+  session?: string,
+  signal?: AbortSignal,
+): Promise<SnapshotResponse> {
+  const snap = await req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
+  // A snapshot whose herd link is UP is a provably-live moment — stamp the shared connection-health
+  // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
+  // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the
+  // clock, or the "Herdr is down" escalation could never surface.
+  if (snap.bridge !== "disconnected") markLive();
+  return snap;
 }
 
 // Per-pane cache of the last ETag AND the body it belongs to, kept together on purpose. We send
@@ -142,9 +162,12 @@ export async function fetchPane(
   if (cached) headers["if-none-match"] = cached.etag;
 
   const res = await fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
 
   if (res.status === 304 && cached) {
-    // Unchanged — hand back the cached body (text included) so the mirror keeps its content.
+    // Unchanged — hand back the cached body (text included) so the mirror keeps its content. An
+    // unchanged poll is still a live poll: stamp the connection-health anchor (a 304 counts as live).
+    markLive();
     return { ...cached.response, notModified: true };
   }
 
@@ -164,6 +187,8 @@ export async function fetchPane(
     }
   }
 
+  // A pane body served from Herdr is provably-live data — stamp the connection-health anchor.
+  markLive();
   return data;
 }
 

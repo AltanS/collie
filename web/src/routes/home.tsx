@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate, useRouteLoaderData } from "react-router";
 
-import { ConnectionBar } from "@/components/connection-bar";
+import { AppHeader, SettingsGear } from "@/components/app-header";
+import { SessionSwitcher } from "@/components/session-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
@@ -10,7 +11,6 @@ import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
-import { useOnline } from "@/hooks/use-online";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { AGENT_GROUPS } from "@/lib/agent-groups";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
@@ -27,7 +27,6 @@ const REST_GROUPS = AGENT_GROUPS.filter((g) => !g.accent);
 // space drills into its detail route (/space/:id).
 export function HomeRoute() {
   const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
-  const online = useOnline();
   // A stalled load (a black-holed poll, or a pane-open tap whose navigation hangs) gallops the
   // Collie mark within the threshold — instant feedback while you're still on the dashboard, even
   // though the tap otherwise shows no visual change until its loader finally settles or times out.
@@ -40,14 +39,16 @@ export function HomeRoute() {
   const drillInto = (id: string) => navigate(spacePath(id, data.session));
 
   return (
-    <div className="mx-auto flex h-[100dvh] max-w-screen-sm flex-col">
-      <ConnectionBar
-        online={online}
+    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+      {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
+          and the Settings gear. The switcher self-hides on a single-session install. */}
+      <AppHeader
         bridge={data.bridge}
         error={data.error}
         stalled={stalled}
-        sessions={data.sessions}
-        session={data.session}
+        wordmark
+        rightLead={<SessionSwitcher sessions={data.sessions ?? []} current={data.session} />}
+        rightTrail={<SettingsGear session={data.session} />}
       />
 
       {/* Content region below the header: a viewport-clipped internal scroller. */}
