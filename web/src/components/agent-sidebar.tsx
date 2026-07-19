@@ -1,8 +1,7 @@
-import { Loader2, TerminalSquare, X } from "lucide-react";
+import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
-import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { AGENT_GROUPS } from "@/lib/agent-groups";
 import { shortCwd } from "@/lib/format";
 import { paneDisplayName } from "@/lib/types";
@@ -14,34 +13,22 @@ interface ThreadSidebarProps {
   shellPanes?: AgentView[];
   currentPaneId: string;
   onSelect: (paneId: string) => void;
-  /** When set, each row gets a ✕ that closes that pane (two-tap confirm). Omit to hide it. */
-  onClose?: (paneId: string) => void;
-  /** The pane currently being closed — shows a spinner on its row. */
-  closingId?: string;
   /** Override the list container padding (e.g. flush inside a bottom sheet). */
   className?: string;
 }
 
 // The pane switcher reused by both the side drawer's PANES section and the swipe-up bottom sheet:
 // every agent pane grouped/sorted like the home triage, then any bare shell panes under a "Shells"
-// group, scrollable, with the open one highlighted. Mirrors the Herdr TUI's pane list. When onClose
-// is given, each row carries its own close affordance so it's always unambiguous which pane you end.
+// group, scrollable, with the open one highlighted. Mirrors the Herdr TUI's pane list. Switching is
+// the ONLY action here — closing a pane lives in the pane pill's long-press sheet (with its own
+// confirm), so a fat-thumbed switch can never destroy a pane.
 export function ThreadSidebar({
   agents,
   shellPanes = [],
   currentPaneId,
   onSelect,
-  onClose,
-  closingId,
   className,
 }: ThreadSidebarProps) {
-  // Two-tap confirm, keyed by paneId, so arming one row's ✕ doesn't arm the others.
-  const { pending, confirm } = usePendingConfirm();
-  const requestClose = onClose
-    ? (paneId: string) => {
-        if (confirm(paneId)) onClose(paneId);
-      }
-    : undefined;
   if (agents.length === 0 && shellPanes.length === 0) {
     return (
       <div className="px-4 py-12 text-center text-sm text-muted-foreground">No agents running.</div>
@@ -54,16 +41,13 @@ export function ThreadSidebar({
         const members = agents.filter((a) => g.match(a.status));
         if (members.length === 0) return null;
         return (
-          <Section key={g.key} label={g.label} count={members.length} accent={g.accent}>
+          <Section key={g.key} label={g.label} count={members.length} accent={g.accent} dot={g.dot}>
             {members.map((a) => (
               <PaneRow
                 key={a.paneId}
                 pane={a}
                 active={a.paneId === currentPaneId}
                 onSelect={onSelect}
-                onClose={requestClose}
-                confirming={pending === a.paneId}
-                closing={closingId === a.paneId}
               />
             ))}
           </Section>
@@ -71,16 +55,13 @@ export function ThreadSidebar({
       })}
 
       {shellPanes.length > 0 && (
-        <Section label="Shells" count={shellPanes.length}>
+        <Section label="Shells" count={shellPanes.length} dot="bg-status-unknown">
           {shellPanes.map((p) => (
             <PaneRow
               key={p.paneId}
               pane={p}
               active={p.paneId === currentPaneId}
               onSelect={onSelect}
-              onClose={requestClose}
-              confirming={pending === p.paneId}
-              closing={closingId === p.paneId}
             />
           ))}
         </Section>
@@ -93,21 +74,26 @@ function Section({
   label,
   count,
   accent,
+  dot,
   children,
 }: {
   label: string;
   count: number;
   accent?: boolean;
+  /** Status-palette bullet beside the header — the same colors the status badges use, so each
+   *  section carries its at-a-glance color key. */
+  dot: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-0.5">
       <h3
         className={cn(
-          "px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide",
+          "flex items-center gap-1.5 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide",
           accent ? "text-status-blocked" : "text-muted-foreground",
         )}
       >
+        <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", dot)} />
         {label} <span className="opacity-60">({count})</span>
       </h3>
       {children}
@@ -119,75 +105,40 @@ function PaneRow({
   pane,
   active,
   onSelect,
-  onClose,
-  confirming,
-  closing,
 }: {
   pane: AgentView;
   active: boolean;
   onSelect: (paneId: string) => void;
-  onClose?: (paneId: string) => void;
-  confirming?: boolean;
-  closing?: boolean;
 }) {
   const isShell = pane.kind === "shell";
   // A user label leads, then Claude's /rename session name, then the agent/shell name (the icon still
   // conveys the agent). See paneDisplayName.
   const name = paneDisplayName(pane);
-  // A row is a container, not one big button: the select tap and the ✕ are separate controls, so they
-  // can't be nested <button>s. The active/hover highlight lives on the container; the inner button is
-  // transparent and carries aria-current.
   return (
-    <div
+    <button
+      type="button"
+      onClick={() => onSelect(pane.paneId)}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-1 rounded-lg pr-1 transition-colors",
+        "flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
         active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60 active:bg-muted",
       )}
     >
-      <button
-        type="button"
-        onClick={() => onSelect(pane.paneId)}
-        aria-current={active ? "page" : undefined}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
-      >
-        {isShell ? (
-          <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          // Status is conveyed by the section grouping; the row leads with the agent's logo.
-          <AgentIcon agent={pane.agent} className="size-5" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium">{name}</span>
-            <span className="truncate text-[11px] text-muted-foreground">· {pane.workspaceLabel}</span>
-          </div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
-            {shortCwd(pane.cwd)}
-          </div>
-        </div>
-      </button>
-      {onClose && (
-        <button
-          type="button"
-          onClick={() => onClose(pane.paneId)}
-          disabled={closing}
-          aria-label={confirming ? `Confirm closing ${name}` : `Close ${name}`}
-          className={cn(
-            "shrink-0 rounded-md text-[11px] font-medium transition-colors disabled:opacity-60",
-            confirming
-              ? "bg-destructive px-2 py-1.5 text-destructive-foreground"
-              : "flex size-8 items-center justify-center text-muted-foreground/50 hover:bg-muted hover:text-destructive",
-          )}
-        >
-          {closing ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : confirming ? (
-            "Close?"
-          ) : (
-            <X className="size-4" />
-          )}
-        </button>
+      {isShell ? (
+        <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
+      ) : (
+        // Status is conveyed by the section grouping; the row leads with the agent's logo.
+        <AgentIcon agent={pane.agent} className="size-5" />
       )}
-    </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{name}</span>
+          <span className="truncate text-[11px] text-muted-foreground">· {pane.workspaceLabel}</span>
+        </div>
+        <div className="truncate font-mono text-[11px] text-muted-foreground">
+          {shortCwd(pane.cwd)}
+        </div>
+      </div>
+    </button>
   );
 }

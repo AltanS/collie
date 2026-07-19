@@ -22,7 +22,6 @@ import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { StatusArea } from "@/components/status-area";
 import { ShellBadge, StatusBadge } from "@/components/status-badge";
-import * as api from "@/lib/api";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
@@ -110,7 +109,6 @@ export function AgentChat({
   // composer drops to read-only (and shows a banner). The mirror still polls (reading is fine).
   const readOnly = isReadOnly(device);
 
-  const [closingId, setClosingId] = useState<string | null>(null);
   // Drawers/sheets are mutually exclusive — at most one open. A single value makes that invariant
   // unrepresentable to violate.
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -448,31 +446,6 @@ export function AgentChat({
     composerRef.current?.focusInput();
   }
 
-  // Close a pane from the switcher's per-row ✕. Closing the pane you're viewing returns Home (the
-  // return is the confirmation, no toast); closing any other just revalidates so it drops out of the
-  // list. One close at a time (closingId gates re-entry and drives the row spinner).
-  async function closePane(id: string) {
-    if (closingId) return;
-    if (readOnly) {
-      setStatus("Read-only — device not authorised", "error");
-      return;
-    }
-    setClosingId(id);
-    try {
-      const res = await api.closePane(id, session);
-      if (res.ok) {
-        if (id === paneId) onBack();
-        else revalidator.revalidate();
-      } else {
-        setStatus(res.error ?? "Close failed", "error");
-      }
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
-    } finally {
-      setClosingId(null);
-    }
-  }
-
   return (
     <div className="flex h-[100dvh] min-w-0 w-full max-w-[100dvw] flex-col overflow-x-hidden">
       {/* Header — while find is open, the find bar takes over this row (one-handed, thumb-reachable). */}
@@ -692,15 +665,14 @@ export function AgentChat({
         </div>
       </div>
 
-      {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture */}
+      {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
+          Switch-only: pane closing lives in the pane pill's long-press sheet, not here. */}
       <BottomSheet open={drawer === "switcher"} onClose={closeDrawer} title="Switch pane">
         <ThreadSidebar
           agents={agents}
           shellPanes={shellPanes}
           currentPaneId={paneId}
           onSelect={switchTo}
-          onClose={closePane}
-          closingId={closingId ?? undefined}
           className="px-0 py-1"
         />
       </BottomSheet>
