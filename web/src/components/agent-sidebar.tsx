@@ -5,6 +5,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { AGENT_GROUPS } from "@/lib/agent-groups";
 import { shortCwd } from "@/lib/format";
+import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 
 interface ThreadSidebarProps {
@@ -130,8 +131,9 @@ function PaneRow({
   closing?: boolean;
 }) {
   const isShell = pane.kind === "shell";
-  // A user-set pane label leads (the icon still conveys the agent); falls back to the agent/shell name.
-  const name = pane.paneLabel ?? (isShell ? "shell" : pane.agent);
+  // A user label leads, then Claude's /rename session name, then the agent/shell name (the icon still
+  // conveys the agent). See paneDisplayName.
+  const name = paneDisplayName(pane);
   // A row is a container, not one big button: the select tap and the ✕ are separate controls, so they
   // can't be nested <button>s. The active/hover highlight lives on the container; the inner button is
   // transparent and carries aria-current.

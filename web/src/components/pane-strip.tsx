@@ -6,6 +6,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { StatusDot } from "@/components/status-badge";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
+import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 
 interface PaneStripProps {
@@ -88,8 +89,9 @@ function PanePill({
   const isShell = pane.kind === "shell";
   // The "pN" suffix of the pane id disambiguates same-named panes (two claudes in one tab).
   const tag = pane.paneId.split(":").pop();
-  // Prefer a user-set label over the agent/shell name — the icon still conveys which agent it is.
-  const name = pane.paneLabel ?? (isShell ? "shell" : pane.agent);
+  // A user label, then Claude's /rename session name, then the agent/shell name (see paneDisplayName)
+  // — the icon still conveys which agent it is.
+  const name = paneDisplayName(pane);
   const longPress = useLongPress(onLongPress);
 
   return (
