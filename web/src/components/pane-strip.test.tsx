@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PaneStrip } from "./pane-strip";
@@ -55,5 +55,34 @@ describe("PaneStrip", () => {
     );
     await user.click(screen.getByRole("button", { name: /codex/ }));
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p2");
+  });
+
+  // A long-press on a pill reaches the DOM as a `contextmenu` event (Android Chrome / right-click);
+  // with the write actions wired it opens the actions sheet. This is the path the on-device bug broke.
+  it("opens the actions sheet on a long-press (contextmenu) when actions are wired", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    fireEvent.contextMenu(screen.getByRole("button", { name: /codex/ }));
+    expect(screen.getByPlaceholderText("name this pane")).toBeInTheDocument();
+  });
+
+  it("stays inert on contextmenu when the write actions are not wired", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("button", { name: /codex/ }));
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
   });
 });
