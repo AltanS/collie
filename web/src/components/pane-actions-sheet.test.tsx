@@ -7,9 +7,10 @@ import { clearStatus } from "@/lib/status";
 import type { AgentView } from "@/lib/types";
 import { PaneActionsSheet } from "./pane-actions-sheet";
 
-// The long-press pane actions sheet: rename (set/clear the label) and close (two-tap kill). Both are
-// wired straight to the bridge via lib/api (exercised through MSW here); the parent gets onRenamed /
-// onClosed callbacks for the revalidate/navigate side-effects.
+// The long-press pane actions sheet: an action-list first view (Rename / Close pane), with rename
+// tucked behind its own tap so opening the sheet never shoves a keyboard-triggering input at you.
+// Both actions are wired straight to the bridge via lib/api (exercised through MSW here); the parent
+// gets onRenamed / onClosed callbacks for the revalidate/navigate side-effects.
 
 beforeEach(() => clearStatus());
 
@@ -38,10 +39,45 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof PaneActionsS
   return props;
 }
 
+describe("PaneActionsSheet — action list", () => {
+  it("opens on the action list, not the rename input", () => {
+    renderSheet();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close pane" })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+  });
+
+  it("color-codes the Close pane row as destructive from the first tap, not just once armed", () => {
+    renderSheet();
+    expect(screen.getByRole("button", { name: "Close pane" })).toHaveClass("text-destructive");
+  });
+});
+
 describe("PaneActionsSheet — rename", () => {
-  it("prefills the input from the pane's current label", () => {
+  it("stays on the action list until Rename is tapped, then shows the prefilled input", async () => {
+    const user = userEvent.setup();
     renderSheet({ pane: { ...agent, paneLabel: "deploy" } });
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Rename" }));
     expect(screen.getByPlaceholderText("name this pane")).toHaveValue("deploy");
+  });
+
+  it("autofocuses the input once rename mode opens", async () => {
+    const user = userEvent.setup();
+    renderSheet();
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(screen.getByPlaceholderText("name this pane")).toHaveFocus());
+  });
+
+  it("Back returns to the action list without saving", async () => {
+    const user = userEvent.setup();
+    renderSheet();
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
   });
 
   it("posts the trimmed label, then calls onRenamed and closes", async () => {
@@ -54,6 +90,7 @@ describe("PaneActionsSheet — rename", () => {
       }),
     );
     const props = renderSheet();
+    await user.click(screen.getByRole("button", { name: "Rename" }));
     const input = screen.getByPlaceholderText("name this pane");
     await user.type(input, "  deploy  ");
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -73,6 +110,7 @@ describe("PaneActionsSheet — rename", () => {
       }),
     );
     const props = renderSheet({ pane: { ...agent, paneLabel: "deploy" } });
+    await user.click(screen.getByRole("button", { name: "Rename" }));
     await user.clear(screen.getByPlaceholderText("name this pane"));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -86,6 +124,7 @@ describe("PaneActionsSheet — rename", () => {
       http.post(/\/api\/pane\/[^/]+\/rename$/, () => HttpResponse.json({ ok: false, error: "pane not found" })),
     );
     const props = renderSheet();
+    await user.click(screen.getByRole("button", { name: "Rename" }));
     await user.type(screen.getByPlaceholderText("name this pane"), "x");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -93,6 +132,32 @@ describe("PaneActionsSheet — rename", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     expect(props.onRenamed).not.toHaveBeenCalled();
     expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it("resets back to the action list when the sheet reopens, even mid-rename", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<PaneActionsSheet open={true} onClose={vi.fn()} pane={agent} onRenamed={vi.fn()} onClosed={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.getByPlaceholderText("name this pane")).toBeInTheDocument();
+
+    rerender(<PaneActionsSheet open={false} onClose={vi.fn()} pane={agent} onRenamed={vi.fn()} onClosed={vi.fn()} />);
+    rerender(<PaneActionsSheet open={true} onClose={vi.fn()} pane={agent} onRenamed={vi.fn()} onClosed={vi.fn()} />);
+
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+  });
+
+  it("resets back to the action list when the target pane changes, even mid-rename", async () => {
+    const user = userEvent.setup();
+    const other: AgentView = { ...agent, paneId: "w1:p2" };
+    const { rerender } = render(<PaneActionsSheet open={true} onClose={vi.fn()} pane={agent} onRenamed={vi.fn()} onClosed={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.getByPlaceholderText("name this pane")).toBeInTheDocument();
+
+    rerender(<PaneActionsSheet open={true} onClose={vi.fn()} pane={other} onRenamed={vi.fn()} onClosed={vi.fn()} />);
+
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
   });
 });
 
@@ -114,6 +179,7 @@ describe("PaneActionsSheet — read-only", () => {
   it("shows a note and no write actions when the device isn't authorised", () => {
     renderSheet({ readOnly: true });
     expect(screen.getByText(/read-only/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
     expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
