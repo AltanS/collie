@@ -502,6 +502,13 @@ COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to 
 > and the **proxy must provide TLS and its own access control** — anyone who reaches the proxy gets
 > read access to every pane. Give the proxy the same respect you'd give the tailnet.
 
+**Caching: respect the origin's `Cache-Control` — never blanket-cache.** The bridge marks hashed
+assets (`/assets/*`) immutable and everything else (notably `/sw.js` and `index.html`) `no-cache`.
+A proxy cache that ignores this and holds onto `/sw.js` starves installed PWAs of updates
+indefinitely — clients keep running old code with no way to notice. If your proxy adds caching,
+honor origin headers (Caddy and stock Nginx `proxy_cache` do by default; CDNs often need it
+enabled explicitly).
+
 ## Web Push (optional)
 
 Off unless you opt in:
