@@ -103,6 +103,12 @@ export function SpaceRoute() {
               session={data.session}
               readOnly={isReadOnly(data.device)}
               onRenamed={() => revalidator.revalidate()}
+              // Closing the tab you're filtered to would strand you on an empty view — fall back to
+              // "All" (setTab(null)) in that case; either way revalidate so it drops out of the strip.
+              onClosed={(tabId) => {
+                if (tab === tabId) setTab(null);
+                revalidator.revalidate();
+              }}
             />
             <main className="flex-1">
               <SpaceView

@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { ChevronLeft, Loader2, Pencil, XCircle } from "lucide-react";
+import { Pencil, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
@@ -32,10 +30,10 @@ type Mode = "actions" | "rename";
 // Long-press actions for a single pane: rename (set/clear its label) and close (kill). Reached by
 // long-pressing a pane pill. Opens on an action-list view (Rename / Close pane); rename is a second
 // tap away so the sheet doesn't shove a keyboard-triggering input at you just to close a pane. The
-// label is user text rendered only into an <input> value / text node — never markup — so it stays
-// within the pane-output XSS boundary. Both actions are writes, so under read-only they're replaced
-// by a note. Close reuses the app's two-tap arm-then-confirm and is destructive-styled from the very
-// first tap, not just once armed.
+// action rows + rename view are the SHARED pieces (action-sheet-rows) the tab sheet also uses, so the
+// two stay identical. The label is user text rendered only into an <input> value / text node — never
+// markup — so it stays within the pane-output XSS boundary. Both actions are writes, so under
+// read-only they're replaced by a note.
 export function PaneActionsSheet({
   open,
   onClose,
@@ -108,13 +106,6 @@ export function PaneActionsSheet({
     }
   }
 
-  function onInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      void save();
-    }
-  }
-
   const confirming = !!pane && pending === pane.paneId;
 
   return (
@@ -125,60 +116,33 @@ export function PaneActionsSheet({
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
-          <button
-            type="button"
+          <ActionRow
+            icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+            label="Rename"
             onClick={() => setMode("rename")}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted"
-          >
-            <Pencil className="size-4 shrink-0 text-muted-foreground" />
-            Rename
-          </button>
-
-          {/* Close (kill) — destructive-styled from the first tap, not just once armed; two-tap confirmed. */}
-          <button
-            type="button"
+          />
+          <DestructiveActionRow
+            icon={<XCircle className="size-4 shrink-0" />}
+            label="Close pane"
+            confirmLabel="Tap again to close"
+            closingLabel="Closing…"
+            armed={confirming}
+            closing={closing}
             onClick={() => void requestClose()}
-            disabled={closing}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors disabled:opacity-60",
-              confirming
-                ? "bg-destructive text-destructive-foreground"
-                : "text-destructive hover:bg-destructive/10 active:bg-destructive/15",
-            )}
-          >
-            {closing ? (
-              <Loader2 className="size-4 shrink-0 animate-spin" />
-            ) : (
-              <XCircle className="size-4 shrink-0" />
-            )}
-            {closing ? "Closing…" : confirming ? "Tap again to close" : "Close pane"}
-          </button>
+          />
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => setMode("actions")}
-            className="flex items-center gap-1 self-start rounded-md py-1 pr-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted"
-          >
-            <ChevronLeft className="size-3.5" />
-            Back
-          </button>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Label</span>
-            <input
-              ref={inputRef}
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              onKeyDown={onInputKeyDown}
-              placeholder="name this pane"
-              className="h-11 rounded-lg border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            />
-          </label>
-          <Button onClick={() => void save()} disabled={saving} className="h-11">
-            {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
-          </Button>
-        </div>
+        <RenameView
+          inputRef={inputRef}
+          label={label}
+          onLabelChange={setLabel}
+          onSave={() => void save()}
+          onBack={() => setMode("actions")}
+          saving={saving}
+          // A blank pane field clears the label (blank → null on the bridge), so Save stays enabled.
+          canSave={true}
+          placeholder="name this pane"
+        />
       )}
     </BottomSheet>
   );

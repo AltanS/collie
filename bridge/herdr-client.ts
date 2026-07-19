@@ -397,6 +397,16 @@ export class HerdrClient {
     return this.request<void>("tab.rename", { tab_id: tabId, label });
   }
 
+  /**
+   * Close a tab, terminating EVERY pane inside it (live-verified 2026-07-19: the tab's shell/agent
+   * panes all disappear with it — closing a tab is a bulk pane-close). Resolves on herdr's
+   * `{type:"ok"}` reply; the closure surfaces on the next `session.snapshot` poll (tab.close also
+   * emits a `tab_closed` event, which Collie doesn't consume). Bad id → `tab_not_found`.
+   */
+  closeTab(tabId: string): Promise<void> {
+    return this.request<void>("tab.close", { tab_id: tabId });
+  }
+
   /** Reachability check for the connected/disconnected banner. */
   async ping(): Promise<boolean> {
     try {
