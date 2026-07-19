@@ -171,9 +171,9 @@ export function AgentChat({
   // A user draft stranded on the input box's "❯" line — a message queued while the agent was busy
   // then recalled, which persists across turns. stripChrome peels the box off the mirror so it goes
   // invisible, and (worse) pane.send_text appends to it, corrupting the next send. We surface it to
-  // the composer, which offers a one-tap "Edit here" recovery (clear the terminal line, adopt the
-  // text locally). Same parse source + same adapter as the statusline, so the two can't drift; null
-  // when raw-terminal is on, there's no adapter, no box is at the tail, or the line is empty/a placeholder.
+  // the composer as a read-only preview the user can deliberately Take over — the input is otherwise
+  // exclusively phone-owned. Same parse source + same adapter as the statusline, so the two can't
+  // drift; null when raw-terminal is on, there's no adapter, no box is at the tail, or the line is empty.
   const rawTerminalDraft = useMemo(
     () =>
       grammarsOn
@@ -181,11 +181,12 @@ export function AgentChat({
         : null,
     [display, agent?.agent, grammarsOn],
   );
-  // Stabilise it across polls before it reaches the composer: extractInputDraft is stateless, so it
-  // can't distinguish a stranded draft from the ~350ms flash where our OWN just-sent reply sits on
-  // the "❯" line waiting for the bridge's pending Enter. Requiring the same text to persist drops
-  // that false positive (the composer adds a second guard: it also suppresses a draft matching what
-  // it just sent) without losing real stranded drafts, which persist across turns.
+  // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
+  // is stateless, so it can't distinguish a stranded draft from the ~350ms flash where our OWN
+  // just-sent reply sits on the "❯" line waiting for the bridge's pending Enter. The stabilised value
+  // (same text must persist ~1.5s) gates the preview's APPEARANCE so that flash never surfaces (the
+  // composer adds a second guard: it suppresses a draft matching what it just sent); once shown, the
+  // preview's text tracks the RAW line live, so host typing streams in without ever touching the input.
   const terminalDraft = useStableTerminalDraft(rawTerminalDraft);
 
   // Find-in-output: search the already-fetched buffer. The bar takes over the header while open;
@@ -677,6 +678,7 @@ export function AgentChat({
             readOnly={readOnly}
             text={text}
             terminalDraft={terminalDraft}
+            rawTerminalDraft={rawTerminalDraft}
             prefs={prefs}
             setWrap={setWrap}
             stepFontSize={stepFontSize}

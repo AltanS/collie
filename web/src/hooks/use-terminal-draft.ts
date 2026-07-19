@@ -50,10 +50,12 @@ export function useStableTerminalDraft(raw: string | null): string | null {
   return stable;
 }
 
-// Normalise a draft/reply for the "is this my own in-flight reply?" comparison AND the cross-poll
-// stability key above: trim, and collapse internal whitespace runs, since the mirror can pad or
-// re-flow spacing on the "❯" line (and a wrapped draft is folded to one space-joined line upstream).
-function normalizeDraft(s: string): string {
+// Normalise a draft/reply for the "is this my own in-flight reply?" comparison, the cross-poll
+// stability key above, AND the composer's per-draft "handled" bookkeeping: trim, and collapse internal
+// whitespace runs, since the mirror can pad or re-flow spacing on the "❯" line (and a wrapped draft is
+// folded to one space-joined line upstream). Exported so the composer keys its dismissed/take-over
+// state on the same normalisation the stabiliser uses — cosmetic wobble can't re-surface a handled draft.
+export function normalizeDraft(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 

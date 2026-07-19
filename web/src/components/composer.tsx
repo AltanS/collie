@@ -16,7 +16,8 @@ import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
 import { useHoldReload } from "@/lib/reload-guard";
-import { isSelfEcho } from "@/hooks/use-terminal-draft";
+import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
+import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -37,10 +38,14 @@ interface ComposerProps {
   readOnly: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
-  /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), or null. When set
-   * and the composer is empty, it's auto-adopted (text-only) into the input; when the composer
-   * already holds other text, a chip offers to recover it here instead. */
+  /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
+   * polls (useStableTerminalDraft) — non-null only once the same text has held for ~1.5s. Gates the
+   * APPEARANCE of the read-only draft preview, so a one-poll blip or an in-flight send never flashes it. */
   terminalDraft: string | null;
+  /** The SAME draft, but the RAW per-poll value (pre-stabilisation). Once the preview is showing, its
+   * text tracks this live so host typing streams into it; it also drives the send()-time pre-clear (the
+   * actual current "❯" line) and unmounts the preview when it goes null. Never written into the input. */
+  rawTerminalDraft: string | null;
   /** Mirror display prefs — the View row lives here, but the mirror (in AgentChat) reads the same
    * single instance, so they're threaded through rather than each calling useDisplayPrefs. */
   prefs: DisplayPrefs;
@@ -106,7 +111,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
+  { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -120,20 +125,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false); // brief ✓ on the send button after a send
-  // Terminal-draft recovery: `dismissedDraft` holds the draft the user has handled (dismissed the
-  // chip, cleared/edited it out of the composer, or sent it) — neither the chip nags about it nor
-  // does it re-adopt while `terminalDraft` still equals it; a NEW distinct stranded draft is fair
-  // game again. `recovering` disables the chip's Edit-here while its backspace-then-adopt round-trip
-  // is in flight.
-  const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
-  const [recovering, setRecovering] = useState(false);
-  // Auto-adoption provenance: the EXACT terminal-draft text we auto-filled into `input` (null = not
-  // mirroring). While the input still equals this, we own it — a changed terminal draft updates the
-  // input in place, a vanished one clears it back to empty. The moment the user edits (input ≠ this)
-  // we detach: it's theirs, no more syncing. Adoption is TEXT-ONLY — no keys are sent to the terminal
-  // at adopt time; the send()-time pre-clear handles the stranded line only when the user actually
-  // sends. See the adopt/sync effect below for the full state machine.
-  const [adoptedDraft, setAdoptedDraft] = useState<string | null>(null);
+  // Terminal-draft preview bookkeeping. The composer input is EXCLUSIVELY phone-owned — a host draft
+  // is never written into it implicitly; it only surfaces in a read-only preview the user can
+  // deliberately Take over. `dismissedKey` is the NORMALISED text the user has handled (took over,
+  // dismissed, or sent) — the preview stays hidden while the live draft still normalises to it; a
+  // genuinely different draft is fair game again. `previewLatched` is the show/hide latch: a STABLE
+  // draft flips it on (gating appearance behind the 1.5s stability), and it stays on — its text
+  // tracking the RAW draft live — until the host line clears or the user acts (see the effects below).
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const [previewLatched, setPreviewLatched] = useState(false);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
   const closeDrawer = () => setDrawer(null);
@@ -154,17 +154,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // spam) coalesces into a single pane refetch instead of one per press.
   const keyRevalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Second guard against a false stranded-draft (the parent already stabilises across polls): if the
-  // detected draft is what we JUST sent, it's our own reply still echoing on the "❯" line before the
-  // bridge's pending Enter — suppress the chip AND the destructive clear-prefix on the next Send.
-  // Recomputed each render (each poll re-renders), so it lapses on its own once the grace expires or
-  // the echo resolves. A genuinely stranded draft (never matches a recent send) is untouched.
-  const isInFlightEcho =
-    terminalDraft !== null &&
-    lastSentRef.current !== null &&
-    Date.now() - lastSentRef.current.at < SENT_ECHO_GRACE_MS &&
-    isSelfEcho(terminalDraft, lastSentRef.current.text);
-  const effectiveDraft = isInFlightEcho ? null : terminalDraft;
+  // Guard against a false stranded-draft: if the detected draft is what we JUST sent, it's our own
+  // reply still echoing on the "❯" line before the bridge's pending Enter — suppress both the preview
+  // AND the destructive clear-prefix on the next Send. Applied to the raw and the stabilised value
+  // alike (during the echo both carry our text). Recomputed each render (each poll re-renders), so it
+  // lapses on its own once the grace expires or the echo resolves; a genuinely stranded draft (never
+  // matches a recent send) is untouched.
+  const suppressEcho = (draft: string | null): string | null => {
+    if (
+      draft !== null &&
+      lastSentRef.current !== null &&
+      Date.now() - lastSentRef.current.at < SENT_ECHO_GRACE_MS &&
+      isSelfEcho(draft, lastSentRef.current.text)
+    ) {
+      return null;
+    }
+    return draft;
+  };
+  // effectiveStable gates the preview's APPEARANCE (stabilised value); effectiveRaw is the live line
+  // its text tracks and that the send()-time pre-clear sweeps.
+  const effectiveStable = suppressEcho(terminalDraft);
+  const effectiveRaw = suppressEcho(rawTerminalDraft);
 
   useImperativeHandle(ref, () => ({ focusInput: focusInputEnd }), []);
 
@@ -187,65 +197,57 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }, [text]);
 
-  // Are we currently mirroring a terminal draft, unedited? (adoptedDraft is only ever set together
-  // with input, so this is true exactly while the auto-filled text is untouched.)
-  const mirroring = adoptedDraft !== null && input === adoptedDraft;
-
-  // Block a self-update reload while there's unsent work here: real typed text OR an upload in
-  // flight. The auto-adopted mirrored draft is SAFE — it lives on the terminal's "❯" line and
-  // re-adopts after a reload — so it must NOT hold (else a stranded draft would wedge the update
-  // forever). When held, the self-updater shows the "tap to update" banner instead and updates once
+  // Block a self-update reload while there's unsent work here: real typed text OR an upload in flight.
+  // The composer input is phone-owned, so any non-empty value is genuine unsent work. A terminal draft
+  // is SAFE on its own — it lives on the "❯" line and its preview re-derives after a reload — so it
+  // never holds. When held, the self-updater shows the "tap to update" banner instead and updates once
   // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
-  useHoldReload(`composer:${paneId}`, (input.trim() !== "" && !mirroring) || uploading);
+  useHoldReload(`composer:${paneId}`, input.trim() !== "" || uploading);
 
-  // Auto-adopt + sync state machine. Two disjoint cases:
-  //   A — MIRRORING (adoptedDraft set, input unedited): follow the terminal draft. It CHANGED →
-  //       update the input in place; it VANISHED (submitted/cleared in the terminal) → clear the
-  //       input back to empty. Either way keep input and adoptedDraft in lockstep.
-  //   B — ADOPT (not mirroring, input empty, a fresh non-dismissed stranded draft exists): auto-fill
-  //       it. Text only — no keys go to the terminal here (read-only devices can't, and an unprompted
-  //       write is wrong); the send()-time pre-clear sweeps the stranded line when the user sends.
-  // Skipped entirely when the pane is gone. Read-only is allowed: adoption is display-only text.
-  // The user detaching (editing/clearing) is handled in onInputChange, not here — a programmatic
-  // setInput below never triggers onChange, so it can't be mistaken for a user edit.
+  // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
+  // this is the ONLY gate that waits for the 1.5s stability, so a blip or an in-flight send never
+  // flashes it. Deliberately one-directional: once latched, rapid host typing (which keeps blanking
+  // the stabilised value) can't turn it back off — the raw-tracking + unlatch effects own the hide
+  // side. Skipped when the pane is gone.
   useEffect(() => {
     if (gone) return;
-    if (adoptedDraft !== null && input === adoptedDraft) {
-      if (effectiveDraft === null) {
-        setInput("");
-        setAdoptedDraft(null);
-      } else if (effectiveDraft !== adoptedDraft) {
-        setInput(effectiveDraft);
-        setAdoptedDraft(effectiveDraft);
-      }
-      return;
+    if (effectiveStable !== null && normalizeDraft(effectiveStable) !== dismissedKey) {
+      setPreviewLatched(true);
     }
-    if (
-      adoptedDraft === null &&
-      input === "" &&
-      effectiveDraft !== null &&
-      effectiveDraft !== dismissedDraft
-    ) {
-      setInput(effectiveDraft);
-      setAdoptedDraft(effectiveDraft);
-    }
-  }, [effectiveDraft, adoptedDraft, input, dismissedDraft, gone]);
+  }, [effectiveStable, dismissedKey, gone]);
 
-  // The user changed the composer text. If we were mirroring a terminal draft they've now taken
-  // ownership — detach (stop syncing) and mark that draft handled so it neither re-adopts nor
-  // re-chips (whether they edited it or cleared it back to empty). A no-op when nothing was adopted.
-  function onInputChange(next: string) {
-    if (adoptedDraft !== null && next !== adoptedDraft) detachAdopted();
-    setInput(next);
+  // Unlatch when the host clears the "❯" line — the draft was submitted or wiped on the host, or our
+  // own send echoed back and got suppressed to null. The preview unmounts on the next render.
+  useEffect(() => {
+    if (effectiveRaw === null) setPreviewLatched(false);
+  }, [effectiveRaw]);
+
+  // Show the preview while it's latched, the host line still carries a (non-echo) draft, and the user
+  // hasn't already handled this exact text. Its displayed text is the LIVE raw line — host typing
+  // streams straight into it (display-only; it can never write back into the phone-owned input).
+  // Not gated on `locked`: read-only devices get the preview + Take over (a local text copy); only
+  // the actual Send stays gated.
+  const showPreview =
+    !gone && previewLatched && effectiveRaw !== null && normalizeDraft(effectiveRaw) !== dismissedKey;
+
+  // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
+  // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
+  // survives), mark that exact text handled, and hide the preview. No keys touch the terminal here —
+  // the stranded line is only ever swept by the send()-time pre-clear. If the host keeps typing and
+  // produces a DIFFERENT draft afterwards, the preview honestly reappears with the new text.
+  function takeOverDraft() {
+    if (effectiveRaw === null) return;
+    const draft = effectiveRaw;
+    setInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
+    setDismissedKey(normalizeDraft(draft));
+    setPreviewLatched(false);
+    focusInputEnd();
   }
 
-  // Detach the auto-adopted draft (user typed over it, inserted a command, added an image path, …):
-  // stop mirroring and remember it as handled. The stranded terminal line is untouched — the
-  // send()-time pre-clear deals with it if/when the user sends.
-  function detachAdopted() {
-    if (adoptedDraft === null) return;
-    setDismissedDraft(adoptedDraft);
-    setAdoptedDraft(null);
+  // Dismiss: hide the preview for this draft (marks it handled). A genuinely different draft re-shows.
+  function dismissPreview() {
+    if (effectiveRaw !== null) setDismissedKey(normalizeDraft(effectiveRaw));
+    setPreviewLatched(false);
   }
 
   const commands = commandsFor(agent);
@@ -267,11 +269,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
       // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip when
-      // there's no draft: a blind sweep races the TUI and Enter can fire before the PTY settles. Uses
-      // effectiveDraft, so our own in-flight echo never triggers a (destructive) clear of a message
-      // that's already on its way.
-      if (effectiveDraft !== null) {
-        const clearCount = [...effectiveDraft].length + 8;
+      // there's no draft: a blind sweep races the TUI and Enter can fire before the PTY settles. Keys
+      // on effectiveRaw (the actual current line, echo-suppressed), so our own in-flight echo never
+      // triggers a (destructive) clear of a message that's already on its way, and a live host draft
+      // is swept exactly once whether or not the user took it over first.
+      if (effectiveRaw !== null) {
+        const clearCount = [...effectiveRaw].length + 8;
         const clearRes = await api.sendKeys(
           paneId,
           ["ctrl+k", ...Array(clearCount).fill("Backspace")],
@@ -287,14 +290,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
       const res = await api.sendReply(paneId, t, true, session);
       if (res.ok) {
-        if (isDraft) {
-          setInput("");
-          setAdoptedDraft(null); // sent — drop the mirror so a later stranded draft can re-adopt
-        }
+        if (isDraft) setInput(""); // phone-owned input — clear it once the reply is on its way
         // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
-        // line as our own in-flight reply rather than a stranded draft (isInFlightEcho above).
+        // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
         lastSentRef.current = { text: t, at: Date.now() };
-        if (effectiveDraft !== null) setDismissedDraft(effectiveDraft);
+        // The stranded line was just swept and our text sent — mark it handled and drop the preview so
+        // it can't flash back before the mirror echoes the cleared line.
+        if (effectiveRaw !== null) {
+          setDismissedKey(normalizeDraft(effectiveRaw));
+          setPreviewLatched(false);
+        }
         // ✓ flash on the send button + status line acknowledge the send immediately. The mirror only
         // echoes in 1–3s; the "You sent: …" pending preview keeps the typed text visible until it
         // lands (cleared by the next text update or a 6s safety timeout).
@@ -358,55 +363,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
-    detachAdopted(); // the user is now composing by hand — stop mirroring the terminal draft
     setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
   }
-
-  // Recover a draft stranded on the terminal's "❯" line (extractInputDraft surfaced it as the chip).
-  // Two moves, in order: (1) clear the terminal line so the next pane.send_text isn't corrupted —
-  // one Backspace per code point plus a harmless overshoot (extra Backspace on an empty input is a
-  // no-op); (2) only if that succeeds, adopt the text into the composer (set an empty draft, else
-  // append on a new line, mirroring insertCommand's set-or-append). On failure we surface the error
-  // and leave the composer alone — the text is still in the terminal, so we mustn't duplicate it.
-  async function recoverDraft() {
-    if (effectiveDraft === null || locked || recovering) return;
-    const draft = effectiveDraft;
-    setRecovering(true);
-    try {
-      const n = [...draft].length + 8;
-      const res = await api.sendKeys(paneId, Array(n).fill("Backspace"), session);
-      if (res.ok) {
-        detachAdopted(); // recovering by hand — stop any stale mirror before we append the draft
-        setInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
-        focusInputEnd();
-        scheduleKeyRevalidate();
-        // Mark it dismissed so the chip doesn't flash back before the mirror echoes the cleared line.
-        setDismissedDraft(draft);
-      } else {
-        setStatus(res.error ?? "Couldn't clear the terminal draft", "error");
-      }
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
-    } finally {
-      setRecovering(false);
-    }
-  }
-
-  // The chip is the FALLBACK for when auto-adoption can't apply: the composer already holds other
-  // text (input non-empty) so we can't quietly drop the draft into it. It shows only when there's a
-  // live stranded draft, the composer can write, no send is in flight, the user hasn't dismissed this
-  // exact draft, and we're not mirroring it (an adopted draft is already visible in the editor —
-  // showing a chip too would be redundant). Preview truncates like the send preview.
-  const showDraftChip =
-    effectiveDraft !== null &&
-    !locked &&
-    !sending &&
-    effectiveDraft !== dismissedDraft &&
-    input !== "" &&
-    !mirroring;
-  const draftPreview =
-    effectiveDraft && effectiveDraft.length > 60 ? `${effectiveDraft.slice(0, 57)}…` : effectiveDraft;
 
   // Upload an image; on success append its host path to the composer so the user can add context.
   async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
@@ -418,7 +377,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.uploadImage(paneId, file, session);
       if (res.ok) {
         const path = res.path;
-        detachAdopted(); // the user is now composing by hand — stop mirroring the terminal draft
         setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
         setStatus("Image added — path in message", "success");
@@ -585,37 +543,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           )}
         </div>
-        {/* Terminal-draft recovery chip (fallback path): a message queued-then-recalled lands on the
-            terminal's "❯" line and stripChrome hides it from the mirror; worse, the next send appends
-            to it. When the composer is empty we auto-adopt it into the input silently; but when you're
-            already typing something else, this slim strip surfaces it instead with a one-tap "Edit
-            here" (clear the line, append the text) and a dismiss. Same zinc/text-xs chrome as the
-            "You sent:" strip above. */}
-        {showDraftChip && (
-          <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
-            <Terminal className="size-3 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">
-              <span className="font-medium">Draft in terminal:</span> &ldquo;{draftPreview}&rdquo;
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 shrink-0 px-2 text-xs font-medium"
-              onClick={recoverDraft}
-              disabled={recovering}
-            >
-              {recovering ? <Loader2 className="size-3 animate-spin" /> : "Edit here"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 text-muted-foreground"
-              onClick={() => setDismissedDraft(effectiveDraft)}
-              aria-label="Dismiss terminal draft"
-            >
-              <X className="size-3.5" />
-            </Button>
-          </div>
+        {/* Terminal-draft preview: a read-only view of a stranded "❯"-line draft (a message queued
+            then recalled on the HOST, which stripChrome hides from the mirror). It appears only after
+            the draft stabilises (never a blip/self-echo), then its text tracks the live line — host
+            typing streams straight in. It NEVER writes into the phone-owned input; only the explicit
+            Take over copies the text here. Same zinc/text-xs chrome as the "You sent:" strip above. */}
+        {showPreview && effectiveRaw !== null && (
+          <TerminalDraftPreview
+            text={effectiveRaw}
+            onTakeOver={takeOverDraft}
+            onDismiss={dismissPreview}
+          />
         )}
         <div className="flex items-end gap-2">
           {/* Attach image — messenger-style, left of the input, always available (previously buried
@@ -636,7 +574,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <ChatInput
             ref={inputRef}
             value={input}
-            onChange={(e) => onInputChange(e.target.value)}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
