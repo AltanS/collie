@@ -397,18 +397,11 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   });
 });
 
-// The pane header now mounts the shared AppHeader, so it carries the SAME connection pill as the
-// dashboard/space — the audit gap (a pane outage showed no connection text) is closed. And the agent
-// StatusBadge, which shows the LAST snapshot's status, must stop reading as current during an outage.
-describe("AgentChat — shared header: connection pill + stale-status dimming", () => {
+// Connection copy now lives in the single top ConnectionBanner (mounted in RootLayout), not in the
+// header — so the pane header has no pill. What it still owns: the agent StatusBadge, which shows the
+// LAST snapshot's status and must stop reading as current during an outage (it dims on any not-live).
+describe("AgentChat — shared header: stale-status dimming", () => {
   beforeEach(() => __resetConnectionHealth());
-
-  it("renders the shared connection pill in the pane header", () => {
-    // A refresh error → the pane header shows the same amber "reconnecting…" pill the dashboard shows,
-    // instead of the old bare-dog-only header with no connection text at all.
-    renderChat({ error: true });
-    expect(screen.getByText("reconnecting…")).toBeInTheDocument();
-  });
 
   it("dims the agent StatusBadge while the connection is not live and restores it on recovery", () => {
     // fixtureAgents[0] is a blocked claude agent → StatusBadge reads "needs you".

@@ -1,7 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 
-import { CONNECTION_LOST_MS, useConnectionLost } from "./use-connection-lost";
-import { __resetConnectionHealth, markLive, markWake } from "@/lib/connection-health";
+import {
+  CONNECTION_LOST_MS,
+  TROUBLE_MS,
+  useConnectionLost,
+  useConnectionTrouble,
+} from "./use-connection-lost";
+import { __resetConnectionHealth, isLostLatched, markLive, markWake } from "@/lib/connection-health";
 
 // Wall-clock derived, so fake timers (which also advance Date.now in Vitest) drive both the countdown
 // and the elapsed-time comparison the hook reads. Escalation now anchors on the SHARED
@@ -146,5 +151,53 @@ describe("useConnectionLost", () => {
     expect(result.current).toBe(false);
     act(() => vi.advanceTimersByTime(1)); // it CAN escalate again if failure genuinely persists
     expect(result.current).toBe(true);
+  });
+});
+
+// The 4s ambient TROUBLE threshold — the amber bar + the galloping dog. Same shared anchor as the 15s
+// lost escalation, just shorter and NON-latching, so a single slow poll never flashes a bar.
+describe("useConnectionTrouble", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetConnectionHealth();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("stays false while healthy", () => {
+    const { result } = renderHook(({ c }) => useConnectionTrouble(c), { initialProps: { c: false } });
+    act(() => vi.advanceTimersByTime(TROUBLE_MS * 4));
+    expect(result.current).toBe(false);
+  });
+
+  it("flips true only after TROUBLE_MS of continuous not-live — a single slow beat isn't yet trouble", () => {
+    const { result } = renderHook(({ c }) => useConnectionTrouble(c), { initialProps: { c: true } });
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(TROUBLE_MS - 1));
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(true);
+  });
+
+  it("never latches — observing trouble does NOT set the sticky escalation latch", () => {
+    const { result } = renderHook(({ c }) => useConnectionTrouble(c), { initialProps: { c: true } });
+    act(() => vi.advanceTimersByTime(TROUBLE_MS));
+    expect(result.current).toBe(true);
+    expect(isLostLatched()).toBe(false); // only the 15s lost threshold latches
+    // Because it never latched, a pre-lost wake still grants fresh grace: trouble drops on the wake…
+    act(() => markWake());
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(TROUBLE_MS)); // …and only returns after another full window
+    expect(result.current).toBe(true);
+  });
+
+  it("runs in lockstep with useConnectionLost off the ONE clock: amber at 4s, red at 15s", () => {
+    const trouble = renderHook(({ c }) => useConnectionTrouble(c), { initialProps: { c: true } });
+    const lost = renderHook(({ c }) => useConnectionLost(c), { initialProps: { c: true } });
+    act(() => vi.advanceTimersByTime(TROUBLE_MS)); // 4s
+    expect(trouble.result.current).toBe(true); // amber
+    expect(lost.result.current).toBe(false); // not red yet
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - TROUBLE_MS)); // 15s total
+    expect(trouble.result.current).toBe(true);
+    expect(lost.result.current).toBe(true); // red — and trouble is still true beneath it
   });
 });

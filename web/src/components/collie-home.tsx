@@ -4,10 +4,12 @@ import { DogGallop } from "@/components/dog-gallop";
 interface CollieHomeProps {
   /** Return to the dashboard. */
   onHome?: () => void;
-  /** While the connection isn't live, run the gallop sprite; otherwise show the static app icon. */
-  connecting: boolean;
-  /** The outage has passed the escalation threshold (useConnectionLost). The mark stops galloping and
-   *  rests on the static app icon, muted — a galloping mark that never stops reads as "still trying"
+  /** The connection has been not-live for a sustained beat (useConnectionTrouble, ≥4s) — run the
+   *  gallop sprite. Below that (healthy, or a single slow poll) the static app icon shows: the 4s
+   *  delay is the flicker fix, so a normal polling hiccup never kicks the dog into a run. */
+  trouble: boolean;
+  /** The outage has passed the escalation threshold (useConnectionLost, ≥15s). The mark stops galloping
+   *  and rests on the static app icon, muted — a galloping mark that never stops reads as "still trying"
    *  when we've in fact given up; the muted icon says "not connected" at a glance, matching the boot
    *  splash. (Never a gallop rest-frame — that full-stretch pose looks frozen mid-run.) */
   lost?: boolean;
@@ -17,23 +19,23 @@ interface CollieHomeProps {
 }
 
 // The single, shared Collie mark: brand + home button + connection loader in one, so the top-left of
-// every screen means the same thing. At rest it's the familiar static app icon (favicon.svg); the
-// moment the connection isn't live it springs into the galloping sprite — until the outage escalates
-// (`lost`), when it drops the gallop and rests on the SAME static icon, muted, then settles back to
-// the full-color icon once live. The rest state is always the static icon, never a paused sprite: a
-// gallop strip's rest frame is a full-stretch mid-stride pose that reads as frozen mid-run. Tapping it
-// returns to the dashboard. The dashboard shows the "Collie" wordmark too; inside a pane the mark
-// stands alone (the breadcrumb carries the context). Both headers render THIS component — the
-// consistency is structural, not a convention two files have to keep agreeing on.
-export function CollieHome({ onHome, connecting, lost = false, wordmark = false, className }: CollieHomeProps) {
-  const gallop = connecting && !lost;
+// every screen means the same thing. At rest it's the familiar static app icon (favicon.svg); once the
+// connection has been not-live for a sustained beat (`trouble`) it springs into the galloping sprite —
+// until the outage escalates (`lost`), when it drops the gallop and rests on the SAME static icon,
+// muted, then settles back to the full-color icon once live. The rest state is always the static icon,
+// never a paused sprite: a gallop strip's rest frame is a full-stretch mid-stride pose that reads as
+// frozen mid-run. Tapping it returns to the dashboard. The dashboard shows the "Collie" wordmark too;
+// inside a pane the mark stands alone (the breadcrumb carries the context). Both headers render THIS
+// component — the consistency is structural, not a convention two files have to keep agreeing on.
+export function CollieHome({ onHome, trouble, lost = false, wordmark = false, className }: CollieHomeProps) {
+  const gallop = trouble && !lost;
   return (
     <button
       type="button"
       onClick={onHome}
       // The gallop conveys connection state visually; fold it into the button's accessible name too,
       // so screen-reader and reduced-motion users get it (inside a pane there's no other cue).
-      aria-label={!connecting ? "Collie home" : lost ? "Collie home — not connected" : "Collie home — reconnecting"}
+      aria-label={!trouble ? "Collie home" : lost ? "Collie home — not connected" : "Collie home — reconnecting"}
       className={cn(
         "-mx-1 flex items-center gap-2 rounded px-1 transition-opacity active:opacity-70",
         className,

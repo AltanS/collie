@@ -64,9 +64,8 @@ interface AgentChatProps {
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
   // Global connection state — fed straight to the shared AppHeader, which drives the header Collie
-  // mark AND the connection pill (identically to the dashboard), and lets us dim the stale StatusBadge
-  // while not live. Defaults describe a healthy link so tests that don't care render "live".
-  online?: boolean;
+  // mark (gallop/rest, identically to the dashboard), and lets us dim the stale StatusBadge while not
+  // live. Defaults describe a healthy link so tests that don't care render "live".
   bridge?: BridgeStatus | undefined;
   error?: boolean;
   stalled?: boolean;
@@ -100,7 +99,6 @@ export function AgentChat({
   requestedLines = 0,
   revision = 0,
   device,
-  online = true,
   bridge = "connected",
   error = false,
   stalled = false,
@@ -496,12 +494,11 @@ export function AgentChat({
 
   return (
     <div className="flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden">
-      {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Collie mark and the
-          connection pill are identical on every screen (no hand-rolled bar to drift). The pane's own
-          bits ride in via slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as
-          the pill's left neighbour, and the find bar as the full-row takeover while searching. */}
+      {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Collie mark is
+          identical on every screen (no hand-rolled bar to drift). The pane's own bits ride in via
+          slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as the right-cluster
+          lead, and the find bar as the full-row takeover while searching. */}
       <AppHeader
-        online={online}
         bridge={bridge}
         error={error}
         stalled={stalled}
