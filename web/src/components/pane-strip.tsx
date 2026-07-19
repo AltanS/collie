@@ -99,7 +99,9 @@ function PanePill({
       {...longPress}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex shrink-0 select-none items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-sm font-medium transition-colors active:scale-95",
+        // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch callout,
+        // whose native long-press gesture otherwise fires pointercancel and kills our hold timer.
+        "flex shrink-0 select-none [-webkit-touch-callout:none] items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-sm font-medium transition-colors active:scale-95",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-muted text-muted-foreground hover:bg-muted/70",
