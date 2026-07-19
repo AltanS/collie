@@ -22,6 +22,12 @@ export interface AgentView {
   kind?: "agent" | "shell";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
+  /**
+   * Claude's OWN session name, set in-agent via `/rename` and read out of the pane's rendered text
+   * (see `extractClaudeSessionName` in state-engine.ts). Claude-only and derived, not a wire field —
+   * absent for unnamed sessions and every non-claude pane. Display priority is `paneLabel` first.
+   */
+  sessionName?: string;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */

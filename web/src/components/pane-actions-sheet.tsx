@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
+import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 
 interface PaneActionsSheetProps {
@@ -23,11 +24,6 @@ interface PaneActionsSheetProps {
   /** Fired after a successful close, with the closed pane id — the parent navigates Home if it's the
    *  pane currently open, or revalidates so it drops out of the list. */
   onClosed: (paneId: string) => void;
-}
-
-/** The display name of a pane: its user label if set, else the agent name (or "shell"). */
-function paneName(pane: AgentView): string {
-  return pane.paneLabel ?? (pane.kind === "shell" ? "shell" : pane.agent);
 }
 
 // Long-press actions for a single pane: rename (set/clear its label) and close (kill). Reached by
@@ -107,7 +103,7 @@ export function PaneActionsSheet({
   const confirming = !!pane && pending === pane.paneId;
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={pane ? paneName(pane) : "Pane"}>
+    <BottomSheet open={open} onClose={onClose} title={pane ? paneDisplayName(pane) : "Pane"}>
       {readOnly ? (
         <p className="py-2 text-sm text-muted-foreground">
           Read-only — this device isn't authorised to rename or close panes.

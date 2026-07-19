@@ -4,7 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { PaneStrip } from "./pane-strip";
 import type { AgentView } from "@/lib/types";
 
-function pane(paneId: string, agent: string, kind: "agent" | "shell" = "agent"): AgentView {
+function pane(
+  paneId: string,
+  agent: string,
+  kind: "agent" | "shell" = "agent",
+  extra: Partial<AgentView> = {},
+): AgentView {
   return {
     paneId,
     workspaceId: "w1",
@@ -16,6 +21,7 @@ function pane(paneId: string, agent: string, kind: "agent" | "shell" = "agent"):
     cwd: "/home/proj",
     focused: false,
     kind,
+    ...extra,
   };
 }
 
@@ -41,6 +47,23 @@ describe("PaneStrip", () => {
     // The current pane (codex / w1:p2) is the one marked active.
     expect(screen.getByRole("button", { name: /codex/ })).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("button", { name: /claude/ })).not.toHaveAttribute("aria-current");
+  });
+
+  it("shows Claude's /rename session name on a pill when no user label is set", () => {
+    render(
+      <PaneStrip
+        panes={[
+          pane("w1:p1", "claude", "agent", { sessionName: "auth-refactor" }),
+          // A user label still wins over the session name.
+          pane("w1:p2", "claude", "agent", { sessionName: "ignored", paneLabel: "deploy" }),
+        ]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("auth-refactor")).toBeInTheDocument();
+    expect(screen.getByText("deploy")).toBeInTheDocument();
+    expect(screen.queryByText("ignored")).toBeNull();
   });
 
   it("fires onSelect with the pane id when a pane is tapped", async () => {

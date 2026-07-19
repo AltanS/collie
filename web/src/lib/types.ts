@@ -17,6 +17,24 @@ export interface AgentView {
   kind?: "agent" | "shell";
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
+  /**
+   * Claude's OWN session name (set in-agent via `/rename`), derived bridge-side from the pane text.
+   * Claude-only; absent for unnamed sessions and non-claude panes. Shown below an explicit `paneLabel`
+   * — see {@link paneDisplayName}. Render as text only (never markup) — same XSS boundary as paneLabel.
+   */
+  sessionName?: string;
+}
+
+/**
+ * The name to show for a pane, in priority order: an explicit user label (herdr `pane.rename`) wins,
+ * then Claude's own `/rename` session name, then the agent name (or "shell"). Both label and session
+ * name are rendered only as React text nodes by callers — never markup — so they stay within the
+ * pane-output XSS boundary.
+ */
+export function paneDisplayName(pane: AgentView): string {
+  if (pane.paneLabel) return pane.paneLabel;
+  if (pane.sessionName) return pane.sessionName;
+  return pane.kind === "shell" ? "shell" : pane.agent;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. */

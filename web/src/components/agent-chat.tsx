@@ -514,10 +514,13 @@ export function AgentChat({
                   <AgentIcon agent={agent.agent} className="size-6" />
                 )}
                 <div className="min-w-0 flex-1">
-                  {/* A user-set pane label leads when present (the identifier they chose); otherwise
-                      the default space › tab. The cwd subline keeps context either way. */}
+                  {/* A user-set pane label leads when present (the identifier they chose), then
+                      Claude's own /rename session name, otherwise the default space › tab. The cwd
+                      subline keeps context either way. */}
                   <div className="truncate font-semibold leading-tight">
-                    {agent.paneLabel ?? `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
+                    {agent.paneLabel ??
+                      agent.sessionName ??
+                      `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
                   </div>
                   <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
                     {shortCwd(agent.cwd)}
