@@ -111,7 +111,7 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
     return toHomeData(snap, session, false);
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
-    // Keep the last good herd on screen, flagged so the ConnectionBar can say "reconnecting…".
+    // Keep the last good herd on screen, flagged so the ConnectionPill can say "reconnecting…".
     const cached = lastSnapshot.get(session ?? "");
     return cached
       ? toHomeData(cached, session, true)

@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
 
+import { __resetConnectionHealth } from "@/lib/connection-health";
+
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
 // prompt-select-block.test.tsx). The other tests in this file never reach it.
@@ -392,5 +394,49 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
 
     await user.click(screen.getByText("recent pane output"));
     await waitFor(() => expect(box).toHaveFocus());
+  });
+});
+
+// The pane header now mounts the shared AppHeader, so it carries the SAME connection pill as the
+// dashboard/space — the audit gap (a pane outage showed no connection text) is closed. And the agent
+// StatusBadge, which shows the LAST snapshot's status, must stop reading as current during an outage.
+describe("AgentChat — shared header: connection pill + stale-status dimming", () => {
+  beforeEach(() => __resetConnectionHealth());
+
+  it("renders the shared connection pill in the pane header", () => {
+    // A refresh error → the pane header shows the same amber "reconnecting…" pill the dashboard shows,
+    // instead of the old bare-dog-only header with no connection text at all.
+    renderChat({ error: true });
+    expect(screen.getByText("reconnecting…")).toBeInTheDocument();
+  });
+
+  it("dims the agent StatusBadge while the connection is not live and restores it on recovery", () => {
+    // fixtureAgents[0] is a blocked claude agent → StatusBadge reads "needs you".
+    let setError: (e: boolean) => void = () => {};
+    function Harness() {
+      const [error, setErr] = useState(true);
+      setError = setErr;
+      const agent = fixtureAgents[0]!;
+      return (
+        <AgentChat
+          paneId={agent.paneId}
+          agent={agent}
+          agents={fixtureAgents}
+          shellPanes={[]}
+          tabs={[]}
+          text="out"
+          error={error}
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+
+    const badge = screen.getByText("needs you");
+    expect(badge).toHaveClass("opacity-40"); // not live → frozen status dimmed
+    act(() => setError(false)); // snapshot recovers → live
+    expect(badge).not.toHaveClass("opacity-40"); // undimmed instantly
   });
 });

@@ -34,9 +34,23 @@ export function StatusDot({ status, className }: { status: AgentStatus; classNam
   );
 }
 
-export function StatusBadge({ status, className }: { status: AgentStatus; className?: string }) {
+export function StatusBadge({
+  status,
+  stale,
+  className,
+}: {
+  status: AgentStatus;
+  /** The badge is showing the LAST snapshot's status while the connection is not live — dim it so
+   *  frozen data doesn't read as current. No animation to remove here (the badge dot never pulses),
+   *  so opacity alone carries it; the transition restores it instantly on recovery. */
+  stale?: boolean;
+  className?: string;
+}) {
   return (
-    <Badge variant="outline" className={cn("gap-1.5", CHIP[status], className)}>
+    <Badge
+      variant="outline"
+      className={cn("gap-1.5 transition-opacity", CHIP[status], stale && "opacity-40", className)}
+    >
       <span className={cn("size-1.5 rounded-full", DOT[status])} />
       {STATUS_LABEL[status]}
     </Badge>
@@ -44,11 +58,12 @@ export function StatusBadge({ status, className }: { status: AgentStatus; classN
 }
 
 /** Muted "shell" tag shown in place of a StatusBadge for a bare shell pane (no agent). */
-export function ShellBadge({ className }: { className?: string }) {
+export function ShellBadge({ stale, className }: { stale?: boolean; className?: string }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+        "shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-opacity",
+        stale && "opacity-40",
         className,
       )}
     >

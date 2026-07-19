@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRouteLoaderData } from "react-router";
 
-import { ConnectionBar } from "@/components/connection-bar";
+import { AppHeader, SettingsGear } from "@/components/app-header";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
@@ -66,15 +66,16 @@ export function SpaceRoute() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <ConnectionBar
+      {/* The space header: same shell as the dashboard, minus the session switcher (you switch
+          sessions from home). Wordmark + shared pill + Settings gear. */}
+      <AppHeader
         online={online}
         bridge={data.bridge}
         error={data.error}
         stalled={stalled}
         onHome={toDashboard}
-        sessions={data.sessions}
-        session={data.session}
-        showSessionSwitcher={false}
+        wordmark
+        rightTrail={<SettingsGear session={data.session} />}
       />
 
       {/* Content region below the header: the viewport-clipped scroller. */}
