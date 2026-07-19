@@ -56,6 +56,9 @@ export function PaneStrip({
             active={p.paneId === currentPaneId}
             onSelect={onSelect}
             onLongPress={actionsEnabled ? () => setSheetPane(p) : undefined}
+            // Tapping the already-active pill would otherwise be a useless re-navigate; repurpose it
+            // to open the same actions sheet a long-press would, so it's not a dead tap.
+            onTapActive={actionsEnabled ? () => setSheetPane(p) : undefined}
           />
         ))}
       </div>
@@ -80,11 +83,14 @@ function PanePill({
   active,
   onSelect,
   onLongPress,
+  onTapActive,
 }: {
   pane: AgentView;
   active: boolean;
   onSelect: (paneId: string) => void;
   onLongPress?: () => void;
+  /** A plain tap on the pill when it's already `active` — opens actions instead of a no-op re-select. */
+  onTapActive?: () => void;
 }) {
   const isShell = pane.kind === "shell";
   // The "pN" suffix of the pane id disambiguates same-named panes (two claudes in one tab).
@@ -94,12 +100,23 @@ function PanePill({
   const name = paneDisplayName(pane);
   const longPress = useLongPress(onLongPress);
 
+  // A long-press already suppresses the ensuing click via longPress.onClickCapture (stops it before
+  // this ever runs), so this only ever sees a genuine tap.
+  function onClick() {
+    if (active && onTapActive) {
+      onTapActive();
+      return;
+    }
+    onSelect(pane.paneId);
+  }
+
   return (
     <button
       type="button"
-      onClick={() => onSelect(pane.paneId)}
+      onClick={onClick}
       {...longPress}
       aria-current={active ? "true" : undefined}
+      title={active && onTapActive ? "Tap for pane actions" : undefined}
       className={cn(
         // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch callout,
         // whose native long-press gesture otherwise fires pointercancel and kills our hold timer.

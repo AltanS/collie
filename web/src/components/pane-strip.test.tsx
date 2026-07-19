@@ -108,4 +108,56 @@ describe("PaneStrip", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: /codex/ }));
     expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
   });
+
+  // Tapping the already-active pill used to be a dead re-navigate (onSelect with the same id it's
+  // already on). With actions wired, that tap now opens the same sheet a long-press would — so the
+  // pill is never a dead tap.
+  it("opens the actions sheet on a plain tap of the ACTIVE pill when actions are wired", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={onSelect}
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /claude/ }));
+    expect(screen.getByPlaceholderText("name this pane")).toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("still navigates on a tap of an INACTIVE pill even when actions are wired", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={onSelect}
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /codex/ }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p2");
+    expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
+  });
+
+  it("a tap of the ACTIVE pill still just re-selects (no-op) when actions are NOT wired", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={onSelect}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /claude/ }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p1");
+  });
 });
