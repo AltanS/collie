@@ -386,6 +386,17 @@ export class HerdrClient {
     return this.request<void>("pane.rename", { pane_id: paneId, label });
   }
 
+  /**
+   * Set a tab's label. Unlike {@link renamePane}, `label` is a NON-null string: herdr's `tab.rename`
+   * rejects `null` (`invalid type: null, expected a string`) and stores an empty string literally
+   * rather than clearing to the default number — both live-verified 2026-07-19 — so a tab has no
+   * "clear". Resolves on herdr's `tab_info` reply; the new label surfaces on the next snapshot poll
+   * (tab.rename also emits a `tab_renamed` event, which Collie doesn't consume). Bad id → `tab_not_found`.
+   */
+  renameTab(tabId: string, label: string): Promise<void> {
+    return this.request<void>("tab.rename", { tab_id: tabId, label });
+  }
+
   /** Reachability check for the connected/disconnected banner. */
   async ping(): Promise<boolean> {
     try {

@@ -4,6 +4,7 @@ import {
   checkAccess,
   deviceAuth,
   isHostAllowed,
+  normalizeTabLabel,
   paneReadResponse,
   resolveStaticPath,
   sendReplySteps,
@@ -428,5 +429,25 @@ describe("startupWarnings — security-posture nags", () => {
   test("populated publicHosts: no Host-validation warning", () => {
     const ws = startupWarnings(cfg({ publicHosts: ["collie.example.ts.net"] }));
     expect(has(ws, "COLLIE_PUBLIC_HOSTS")).toBe(false);
+  });
+});
+
+// A tab's label is a non-null, non-empty string (herdr rejects null and stores "" literally — no
+// "clear" for a tab, unlike a pane). normalizeTabLabel is the gate that enforces that before the RPC.
+describe("normalizeTabLabel", () => {
+  test("accepts a non-empty string, trimming surrounding whitespace", () => {
+    expect(normalizeTabLabel("deploy")).toEqual({ ok: true, label: "deploy" });
+    expect(normalizeTabLabel("  deploy  ")).toEqual({ ok: true, label: "deploy" });
+  });
+
+  test("rejects a blank label (empty or whitespace-only) — a tab has no clear", () => {
+    expect(normalizeTabLabel("")).toEqual({ ok: false, error: "label required" });
+    expect(normalizeTabLabel("   ")).toEqual({ ok: false, error: "label required" });
+  });
+
+  test("rejects a non-string label (null / number / missing)", () => {
+    expect(normalizeTabLabel(null)).toEqual({ ok: false, error: "bad label" });
+    expect(normalizeTabLabel(42)).toEqual({ ok: false, error: "bad label" });
+    expect(normalizeTabLabel(undefined)).toEqual({ ok: false, error: "bad label" });
   });
 });

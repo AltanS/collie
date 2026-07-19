@@ -104,9 +104,14 @@ Three sibling RPCs set a display label on a workspace, tab, or pane. Live-verifi
   `event` field is snake_case on the stream, as everywhere).
 - **Errors:** an unknown id → `{code:"pane_not_found" | "tab_not_found" | "workspace_not_found",
   message:"<kind> <id> not found"}`.
-- **No length limit; empty string accepted** (stored as-is on tab/workspace). Collie itself maps a
-  blank pane label to `null` before sending, so an empty "Save" clears — a Collie choice, not a Herdr
-  rule; see `bridge/server.ts`.
+- **No length limit; empty string accepted** (stored as-is on tab/workspace). Re-verified on
+  `tab.rename` 2026-07-19: `label:""` is stored **literally** (the tab's label becomes empty — it does
+  **not** reset to the default number), and `label:null` is rejected with
+  ``{code:"invalid_request", message:"invalid request: invalid type: null, expected a string"}`` —
+  confirming tabs/workspaces have **no "clear"** (only `pane.rename` clears, via `null`). Collie makes
+  its own opposite choices per object: a blank pane "Save" clears (blank → `null`), while a blank tab
+  "Save" is refused client- and bridge-side, since a literal-empty tab chip is useless. See
+  `bridge/server.ts` (`normalizeTabLabel`).
 - **Undocumented field:** once set, a pane's label rides along as **`label?: string`** in `pane.list`,
   `pane.get`, `pane.current`, and `session.snapshot` panes (omitted when unset — so it's absent from
   the base pane shape below). Workspaces already expose `label`; tabs likewise.
