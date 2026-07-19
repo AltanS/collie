@@ -36,8 +36,9 @@ interface ComposerProps {
   readOnly: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
-  /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), or null. When set,
-   * the composer offers a chip to recover it here — clearing the terminal line + adopting the text. */
+  /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), or null. When set
+   * and the composer is empty, it's auto-adopted (text-only) into the input; when the composer
+   * already holds other text, a chip offers to recover it here instead. */
   terminalDraft: string | null;
   /** Mirror display prefs — the View row lives here, but the mirror (in AgentChat) reads the same
    * single instance, so they're threaded through rather than each calling useDisplayPrefs. */
@@ -118,11 +119,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false); // brief ✓ on the send button after a send
-  // Terminal-draft recovery chip: `dismissedDraft` holds the draft the user dismissed (the chip
-  // stays hidden while `terminalDraft` still equals it, and reappears if the stranded text changes);
-  // `recovering` disables Edit-here while its backspace-then-adopt round-trip is in flight.
+  // Terminal-draft recovery: `dismissedDraft` holds the draft the user has handled (dismissed the
+  // chip, cleared/edited it out of the composer, or sent it) — neither the chip nags about it nor
+  // does it re-adopt while `terminalDraft` still equals it; a NEW distinct stranded draft is fair
+  // game again. `recovering` disables the chip's Edit-here while its backspace-then-adopt round-trip
+  // is in flight.
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
+  // Auto-adoption provenance: the EXACT terminal-draft text we auto-filled into `input` (null = not
+  // mirroring). While the input still equals this, we own it — a changed terminal draft updates the
+  // input in place, a vanished one clears it back to empty. The moment the user edits (input ≠ this)
+  // we detach: it's theirs, no more syncing. Adoption is TEXT-ONLY — no keys are sent to the terminal
+  // at adopt time; the send()-time pre-clear handles the stranded line only when the user actually
+  // sends. See the adopt/sync effect below for the full state machine.
+  const [adoptedDraft, setAdoptedDraft] = useState<string | null>(null);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
   const closeDrawer = () => setDrawer(null);
@@ -176,6 +186,60 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }, [text]);
 
+  // Are we currently mirroring a terminal draft, unedited? (adoptedDraft is only ever set together
+  // with input, so this is true exactly while the auto-filled text is untouched.)
+  const mirroring = adoptedDraft !== null && input === adoptedDraft;
+
+  // Auto-adopt + sync state machine. Two disjoint cases:
+  //   A — MIRRORING (adoptedDraft set, input unedited): follow the terminal draft. It CHANGED →
+  //       update the input in place; it VANISHED (submitted/cleared in the terminal) → clear the
+  //       input back to empty. Either way keep input and adoptedDraft in lockstep.
+  //   B — ADOPT (not mirroring, input empty, a fresh non-dismissed stranded draft exists): auto-fill
+  //       it. Text only — no keys go to the terminal here (read-only devices can't, and an unprompted
+  //       write is wrong); the send()-time pre-clear sweeps the stranded line when the user sends.
+  // Skipped entirely when the pane is gone. Read-only is allowed: adoption is display-only text.
+  // The user detaching (editing/clearing) is handled in onInputChange, not here — a programmatic
+  // setInput below never triggers onChange, so it can't be mistaken for a user edit.
+  useEffect(() => {
+    if (gone) return;
+    if (adoptedDraft !== null && input === adoptedDraft) {
+      if (effectiveDraft === null) {
+        setInput("");
+        setAdoptedDraft(null);
+      } else if (effectiveDraft !== adoptedDraft) {
+        setInput(effectiveDraft);
+        setAdoptedDraft(effectiveDraft);
+      }
+      return;
+    }
+    if (
+      adoptedDraft === null &&
+      input === "" &&
+      effectiveDraft !== null &&
+      effectiveDraft !== dismissedDraft
+    ) {
+      setInput(effectiveDraft);
+      setAdoptedDraft(effectiveDraft);
+    }
+  }, [effectiveDraft, adoptedDraft, input, dismissedDraft, gone]);
+
+  // The user changed the composer text. If we were mirroring a terminal draft they've now taken
+  // ownership — detach (stop syncing) and mark that draft handled so it neither re-adopts nor
+  // re-chips (whether they edited it or cleared it back to empty). A no-op when nothing was adopted.
+  function onInputChange(next: string) {
+    if (adoptedDraft !== null && next !== adoptedDraft) detachAdopted();
+    setInput(next);
+  }
+
+  // Detach the auto-adopted draft (user typed over it, inserted a command, added an image path, …):
+  // stop mirroring and remember it as handled. The stranded terminal line is untouched — the
+  // send()-time pre-clear deals with it if/when the user sends.
+  function detachAdopted() {
+    if (adoptedDraft === null) return;
+    setDismissedDraft(adoptedDraft);
+    setAdoptedDraft(null);
+  }
+
   const commands = commandsFor(agent);
 
   function focusInputEnd() {
@@ -215,7 +279,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
       const res = await api.sendReply(paneId, t, true, session);
       if (res.ok) {
-        if (isDraft) setInput("");
+        if (isDraft) {
+          setInput("");
+          setAdoptedDraft(null); // sent — drop the mirror so a later stranded draft can re-adopt
+        }
         // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
         // line as our own in-flight reply rather than a stranded draft (isInFlightEcho above).
         lastSentRef.current = { text: t, at: Date.now() };
@@ -283,6 +350,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
+    detachAdopted(); // the user is now composing by hand — stop mirroring the terminal draft
     setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
   }
@@ -301,6 +369,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const n = [...draft].length + 8;
       const res = await api.sendKeys(paneId, Array(n).fill("Backspace"), session);
       if (res.ok) {
+        detachAdopted(); // recovering by hand — stop any stale mirror before we append the draft
         setInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
         focusInputEnd();
         scheduleKeyRevalidate();
@@ -316,10 +385,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }
 
-  // The chip shows only when there's a live stranded draft, the composer can write, no send is in
-  // flight, and the user hasn't dismissed this exact draft. Preview truncates like the send preview.
+  // The chip is the FALLBACK for when auto-adoption can't apply: the composer already holds other
+  // text (input non-empty) so we can't quietly drop the draft into it. It shows only when there's a
+  // live stranded draft, the composer can write, no send is in flight, the user hasn't dismissed this
+  // exact draft, and we're not mirroring it (an adopted draft is already visible in the editor —
+  // showing a chip too would be redundant). Preview truncates like the send preview.
   const showDraftChip =
-    effectiveDraft !== null && !locked && !sending && effectiveDraft !== dismissedDraft;
+    effectiveDraft !== null &&
+    !locked &&
+    !sending &&
+    effectiveDraft !== dismissedDraft &&
+    input !== "" &&
+    !mirroring;
   const draftPreview =
     effectiveDraft && effectiveDraft.length > 60 ? `${effectiveDraft.slice(0, 57)}…` : effectiveDraft;
 
@@ -333,6 +410,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.uploadImage(paneId, file, session);
       if (res.ok) {
         const path = res.path;
+        detachAdopted(); // the user is now composing by hand — stop mirroring the terminal draft
         setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
         setStatus("Image added — path in message", "success");
@@ -499,10 +577,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           )}
         </div>
-        {/* Terminal-draft recovery chip: a message queued-then-recalled lands on the terminal's "❯"
-            line and stripChrome hides it from the mirror; worse, the next send appends to it. This
-            slim strip surfaces it with a one-tap "Edit here" (clear the line, adopt the text) and a
-            dismiss. Same zinc/text-xs chrome as the "You sent:" strip above. */}
+        {/* Terminal-draft recovery chip (fallback path): a message queued-then-recalled lands on the
+            terminal's "❯" line and stripChrome hides it from the mirror; worse, the next send appends
+            to it. When the composer is empty we auto-adopt it into the input silently; but when you're
+            already typing something else, this slim strip surfaces it instead with a one-tap "Edit
+            here" (clear the line, append the text) and a dismiss. Same zinc/text-xs chrome as the
+            "You sent:" strip above. */}
         {showDraftChip && (
           <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
             <Terminal className="size-3 shrink-0" />
@@ -548,7 +628,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <ChatInput
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();

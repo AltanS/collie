@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ComponentProps } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -214,43 +214,218 @@ describe("Composer — destructive-input confirm", () => {
   });
 });
 
-describe("Composer — terminal-draft recovery chip", () => {
+// Drives `terminalDraft` dynamically, the way the parent (useStableTerminalDraft) would across polls:
+// a hidden control input sets the draft atomically (empty string → null, i.e. the line cleared) while
+// the test types into the composer's own textarea. `initialDraft` seeds the mount-time draft.
+function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+  const { terminalDraft: initialDraft = null, ...rest } = overrides;
+  function Harness() {
+    const [draft, setDraft] = useState<string | null>(initialDraft);
+    const props: ComponentProps<typeof Composer> = {
+      paneId: "w1:p1",
+      agent: "claude",
+      isShell: false,
+      gone: false,
+      readOnly: false,
+      text: "pane output",
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      setWrap: vi.fn(),
+      stepFontSize: vi.fn(),
+      setRawTerminal: vi.fn(),
+      onSent: vi.fn(),
+      ...rest,
+      terminalDraft: draft,
+    };
+    return (
+      <>
+        <input
+          data-testid="draft-control"
+          defaultValue={initialDraft ?? ""}
+          onChange={(e) => setDraft(e.target.value === "" ? null : e.target.value)}
+        />
+        <Composer {...props} />
+      </>
+    );
+  }
+  const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+  render(<RouterProvider router={router} />);
+}
+
+const setTerminalDraft = (value: string) =>
+  fireEvent.change(screen.getByTestId("draft-control"), { target: { value } });
+
+describe("Composer — stranded-draft auto-adoption", () => {
+  it("auto-adopts a stranded draft into the empty composer, text only (no keys to the terminal)", async () => {
+    const keyCalls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        keyCalls.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderDraftHarness({ terminalDraft: "adopt me" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    // The draft appears IN the editor — no chip (redundant) and no terminal writes at adopt time.
+    await waitFor(() => expect(box).toHaveValue("adopt me"));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+    expect(keyCalls).toEqual([]);
+  });
+
+  it("does NOT adopt when the composer already has text — shows the recovery chip instead", async () => {
+    const user = userEvent.setup();
+    renderDraftHarness();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "my own text");
+    setTerminalDraft("leftover"); // a draft strands while the user is mid-compose
+
+    expect(box).toHaveValue("my own text"); // the user's text is untouched
+    expect(await screen.findByText(/draft in terminal/i)).toBeInTheDocument(); // chip, not adoption
+  });
+
+  it("syncs an adopted draft in place when the terminal draft changes (still unedited)", async () => {
+    renderDraftHarness({ terminalDraft: "first" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("first"));
+
+    setTerminalDraft("second");
+    await waitFor(() => expect(box).toHaveValue("second"));
+  });
+
+  it("clears the composer when an adopted draft vanishes from the terminal (submitted/cleared there)", async () => {
+    renderDraftHarness({ terminalDraft: "ephemeral" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("ephemeral"));
+
+    setTerminalDraft(""); // → null: the "❯" line was cleared/submitted in the terminal
+    await waitFor(() => expect(box).toHaveValue(""));
+  });
+
+  it("detaches the moment the user edits the adopted text — later terminal changes don't overwrite it", async () => {
+    const user = userEvent.setup();
+    renderDraftHarness({ terminalDraft: "draft" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("draft"));
+
+    await user.type(box, "!"); // "draft!" → the user owns it now
+    expect(box).toHaveValue("draft!");
+
+    setTerminalDraft("changed"); // a NEW distinct draft → chip path, NOT a silent overwrite
+    expect(await screen.findByText(/draft in terminal/i)).toBeInTheDocument();
+    expect(box).toHaveValue("draft!");
+  });
+
+  it("clearing the adopted text by hand counts as a dismiss — the same draft does not re-adopt, a new one does", async () => {
+    const user = userEvent.setup();
+    renderDraftHarness({ terminalDraft: "sticky" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("sticky"));
+
+    await user.clear(box); // clear by hand → dismiss "sticky"
+    expect(box).toHaveValue("");
+    // "sticky" is still stranded on the terminal, but a dismissed draft must not re-adopt…
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument(); // empty input → no chip either
+    await new Promise((r) => setTimeout(r, 20));
+    expect(box).toHaveValue("");
+
+    // …while a NEW, distinct stranded draft is fair game again.
+    setTerminalDraft("fresh");
+    await waitFor(() => expect(box).toHaveValue("fresh"));
+  });
+
+  it("send() still fires the terminal pre-clear for an auto-adopted draft (sent once, no duplication)", async () => {
+    const user = userEvent.setup();
+    const callOrder: string[] = [];
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sentKeys = ((await request.json()) as { keys: string[] }).keys;
+        callOrder.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        callOrder.push(`reply:${((await request.json()) as { text: string }).text}`);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderDraftHarness({ terminalDraft: "adopted line" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("adopted line"));
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    // The stranded line is swept (ctrl+k + backspaces) BEFORE the reply, so the text lands once.
+    await waitFor(() => expect(callOrder).toEqual(["keys", "reply:adopted line"]));
+    expect(sentKeys![0]).toBe("ctrl+k");
+    await waitFor(() => expect(box).toHaveValue("")); // cleared after send
+  });
+
+  it("adopts without stealing focus (no keyboard pop)", async () => {
+    renderDraftHarness({ terminalDraft: "quiet adopt" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(box).toHaveValue("quiet adopt"));
+    expect(box).not.toHaveFocus();
+  });
+
+  it("read-only device: adopts the stranded draft as display-only text, writing nothing to the terminal", async () => {
+    const keyCalls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => {
+        keyCalls.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderDraftHarness({ terminalDraft: "read only draft", readOnly: true });
+    const box = screen.getByPlaceholderText(/read-only/i);
+
+    await waitFor(() => expect(box).toHaveValue("read only draft"));
+    expect(box).toBeDisabled(); // still locked — can't edit or send
+    expect(keyCalls).toEqual([]); // text-only: a read-only device never writes to the terminal
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Composer — terminal-draft recovery chip (non-empty composer fallback)", () => {
   it("does not render the chip when there's no stranded draft", () => {
     renderComposer({ terminalDraft: null });
     expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
   });
 
-  it("recovers the draft: clears the terminal line with backspaces and populates the textarea", async () => {
+  it("'Edit here' clears the terminal line with backspaces and appends the draft to the existing text", async () => {
     const user = userEvent.setup();
     let sentKeys: string[] | null = null;
     server.use(
       http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
-        const body = (await request.json()) as { keys: string[] };
-        sentKeys = body.keys;
+        sentKeys = ((await request.json()) as { keys: string[] }).keys;
         return HttpResponse.json({ ok: true });
       }),
     );
-    renderComposer({ terminalDraft: "recover me" });
+    renderDraftHarness();
+    const box = screen.getByPlaceholderText(/type a reply/i);
 
-    // The chip surfaces the stranded draft with its recovery affordance.
-    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /edit here/i }));
+    await user.type(box, "my note"); // composer non-empty → chip path, not adoption
+    setTerminalDraft("recover me");
+    await user.click(await screen.findByRole("button", { name: /edit here/i }));
 
     // One Backspace per code point plus the 8-key overshoot clears the "❯" line.
     await waitFor(() => expect(sentKeys).not.toBeNull());
-    expect(sentKeys).toHaveLength([..."recover me"].length + 8);
     expect(sentKeys!.every((k) => k === "Backspace")).toBe(true);
 
-    // …and the draft lands in the composer for editing, with the chip gone.
-    const box = screen.getByPlaceholderText(/type a reply/i);
-    await waitFor(() => expect(box).toHaveValue("recover me"));
+    // …and the draft appends on a new line below the user's existing text, with the chip gone.
+    await waitFor(() => expect(box).toHaveValue("my note\nrecover me"));
     expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
   });
 
-  it("dismiss hides the chip for that draft", async () => {
+  it("dismiss (X) hides the chip for that draft", async () => {
     const user = userEvent.setup();
-    renderComposer({ terminalDraft: "dismiss me" });
-    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+    renderDraftHarness();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "typing");
+    setTerminalDraft("dismiss me");
+    expect(await screen.findByText(/draft in terminal/i)).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: /dismiss terminal draft/i }));
     expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
   });
@@ -331,7 +506,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
     ]);
   });
 
-  it("still surfaces a genuinely different stranded draft (does not over-suppress)", async () => {
+  it("still treats a genuinely different stranded draft as real (auto-adopts it; the next Send pre-clears)", async () => {
     const user = userEvent.setup();
     const callLog: string[] = [];
     server.use(
@@ -352,14 +527,16 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(callLog).toContain("reply:hello"));
 
-    // A draft that is NOT what we sent is a real stranded draft — the chip returns and the next Send
-    // clears the line first.
+    // A draft that is NOT what we just sent is a real stranded draft — not suppressed. The composer
+    // is now empty, so it AUTO-ADOPTS (rather than showing a chip).
     await user.click(screen.getByRole("button", { name: "__set-draft" }));
-    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+    await waitFor(() => expect(box).toHaveValue("someone else's leftover"));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
 
-    await user.type(box, "reply2");
+    // Sending the adopted draft fires the destructive clear-prefix first (it's a real stranded line).
+    callLog.length = 0;
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(callLog).toContain("reply:reply2"));
+    await waitFor(() => expect(callLog).toContain("reply:someone else's leftover"));
     expect(callLog).toContain("keys");
   });
 });
