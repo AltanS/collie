@@ -107,6 +107,10 @@ Product details that shaped the loop:
   races.
 - **Close the trust loop.** A "Sent" state on the `POST`'s HTTP response, then the visible
   blocked→working transition. Without it, latency makes users double-tap.
+- **Manage a pane in place.** Long-pressing a pane pill in the tab's pane switcher opens a small
+  actions sheet — rename it (the label then leads its cards/headers) or close it. Both are the same
+  `pane.rename` / `pane.close` writes the security posture already covers
+  (`web/src/components/pane-actions-sheet.tsx`).
 
 **Known gap — the notification body doesn't carry the question.** The design called for putting the
 agent's question *in* the notification, so a tap is actionable even before the app loads (§7 explains

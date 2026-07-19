@@ -12,6 +12,45 @@ import {
 // transition events. Polling (vs the per-pane event subscription) keeps this resync-free: a failed
 // poll just retries next tick, and reconnection needs no special handling. See HERDR_API.md.
 
+// How many recent lines to read per claude pane when sniffing its `/rename` session name. Claude's
+// input box (and the named rule above it) sits at the very tail, so a small window is plenty and
+// keeps the extra per-poll reads cheap.
+const SESSION_NAME_READ_LINES = 40;
+
+// Claude renders its input box as a horizontal rule, the ❯ prompt line, then a closing rule. After
+// `/rename <name>` the TOP rule carries the session name inside it: "────────── my-name ──". This
+// matches that named rule. `\S` also matches box-drawing chars, but a *plain* rule has no embedded
+// space-delimited text, so it can't match — and the ❯-prompt anchor (below) rules out any decorative
+// rule elsewhere in the output. Rule chars: ─ (U+2500, light) and ━ (U+2501, heavy).
+const NAMED_RULE = /^[─━]{2,}[ \t]+(\S.*?\S|\S)[ \t]+[─━]+[ \t]*$/;
+// Claude's input prompt marker, anchored at column 0. Its menu/selection cursors render as " ❯"
+// (leading space), so the column-0 anchor discriminates the real input prompt from a selected row.
+const PROMPT_LINE = /^❯/;
+
+/**
+ * Pull Claude's own session name (set via `/rename`) out of a pane's recent text, or `undefined` when
+ * the session is unnamed (a plain rule) or the pane isn't showing its input box (a dialog, a working
+ * spinner). Claude draws the name INTO the horizontal rule directly above the ❯ prompt, e.g.
+ * `────────── my-name ──`; we accept that rule ONLY when the very next line is the ❯ prompt, so a
+ * decorative rule anywhere else in the output can never be mistaken for it (no false positives).
+ * Derived from Claude's UI grammar — claude-only; other harnesses never call this. Pure + exported so
+ * it's unit-tested against the pane fixtures without standing up the socket client.
+ */
+export function extractClaudeSessionName(text: string): string | undefined {
+  if (!text) return undefined;
+  const lines = text.split(/\r?\n/);
+  // Scan bottom-up: the input box's top rule is the lowest named-rule-above-❯ in the buffer.
+  for (let i = lines.length - 2; i >= 0; i--) {
+    const below = lines[i + 1];
+    if (below === undefined || !PROMPT_LINE.test(below)) continue;
+    const m = NAMED_RULE.exec(lines[i]!);
+    if (!m) continue;
+    const name = m[1]!.trim();
+    if (name) return name;
+  }
+  return undefined;
+}
+
 export interface EngineSnapshot {
   agents: AgentView[];
   shellPanes: AgentView[];
@@ -31,6 +70,10 @@ export class StateEngine {
   private tabs: TabView[] = [];
   private bridge: BridgeStatus = "disconnected";
   private readonly prevStatus = new Map<string, AgentStatus>();
+  // Last-known claude `/rename` session name per pane. Kept sticky so the name doesn't flicker away
+  // when a pane momentarily hides its input box (a dialog / working spinner) — only cleared when the
+  // pane itself vanishes (see the removal loop). Enriched from pane text each poll (see enrichSessionNames).
+  private readonly sessionNames = new Map<string, string>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
@@ -167,6 +210,8 @@ export class StateEngine {
           cwd: p.cwd,
           focused: p.focused,
           kind,
+          // A user-set pane label (herdr pane.rename); omitted when unset so "absent stays absent".
+          ...(typeof p.label === "string" && p.label.length > 0 ? { paneLabel: p.label } : {}),
         };
       };
 
@@ -227,8 +272,13 @@ export class StateEngine {
       for (const id of [...this.prevStatus.keys()]) {
         if (live.has(id)) continue;
         this.prevStatus.delete(id);
+        this.sessionNames.delete(id); // drop the cached name so a reused pane id starts clean
         for (const fn of this.removeListeners) fn(id);
       }
+
+      // Enrich claude panes with their own `/rename` session name (read from pane text). Best-effort:
+      // a failed read keeps the last-known name and never fails the poll.
+      await this.enrichSessionNames(agents);
 
       this.agents = agents;
       this.shellPanes = shellPanes;
@@ -251,6 +301,36 @@ export class StateEngine {
         this.queuedPoll = false;
         if (this.started) void this.poll();
       }
+    }
+  }
+
+  /**
+   * Read each claude pane's recent text and attach its `/rename` session name (see
+   * {@link extractClaudeSessionName}) to the view, exactly parallel to `paneLabel`. The name lives
+   * only in the pane's rendered text — Herdr's pane metadata doesn't carry it — so this is the one
+   * place all panes can pick it up (the web app only holds text for the open pane). Reads run in
+   * parallel and are individually best-effort: a read that fails or times out keeps the last-known
+   * name (sticky cache) and never fails the poll. Claude-only; other harnesses never set it. A
+   * herdr client without `readPane` (the unit-test fake) short-circuits, so it's a no-op there.
+   */
+  private async enrichSessionNames(agents: AgentView[]): Promise<void> {
+    if (typeof this.herdr.readPane !== "function") return;
+    const claude = agents.filter((a) => a.agent === "claude");
+    if (claude.length === 0) return;
+    await Promise.all(
+      claude.map(async (a) => {
+        try {
+          const read = await this.herdr.readPane(a.paneId, "recent", SESSION_NAME_READ_LINES, "text");
+          const name = extractClaudeSessionName(read.text);
+          if (name) this.sessionNames.set(a.paneId, name);
+        } catch {
+          // Keep whatever's cached (if anything) — a transient read failure must not blank the name.
+        }
+      }),
+    );
+    for (const a of agents) {
+      const name = this.sessionNames.get(a.paneId);
+      if (name) a.sessionName = name;
     }
   }
 }

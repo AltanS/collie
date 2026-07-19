@@ -1,6 +1,7 @@
 import { Outlet, useLoaderData, useParams, useRouteError } from "react-router";
 
 import { usePolling } from "@/hooks/use-polling";
+import { usePollBusy } from "@/hooks/use-poll-busy";
 import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { OfflineBanner } from "@/components/offline-banner";
@@ -20,6 +21,10 @@ export function RootLayout() {
   const { paneId } = useParams();
 
   usePolling(data, paneId);
+  // Surface the busy bar when a navigation or a poll runs slow, each against its own threshold —
+  // routine fast polls/navigations stay invisible. Mounted here so the whole app shares one
+  // detector inside the router context.
+  usePollBusy();
   useAgentTransitions(data.agents, paneId ?? null);
   usePushSetup();
 

@@ -35,6 +35,18 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   const titleId = React.useId();
   useDialogFocus(open, panelRef);
 
+  // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
+  // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on. A
+  // long-press that opens this sheet has its finger still down at the moment the sheet mounts; the
+  // browser's release click then lands on whatever is now under the finger, which is the backdrop —
+  // and without this guard that click would immediately close the sheet it just opened. Arming only
+  // on a backdrop `pointerdown` means a click that originated elsewhere (e.g. the pill's release)
+  // never dismisses.
+  const backdropArmed = React.useRef(false);
+  React.useEffect(() => {
+    if (open) backdropArmed.current = false;
+  }, [open]);
+
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -104,13 +116,21 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
       aria-labelledby={title ? titleId : undefined}
     >
       {/* Backdrop: still dismisses on tap, but hidden from assistive tech — the ✕ in the header is
-          the single accessible "Close", so the dialog isn't announced with a giant duplicate. */}
+          the single accessible "Close", so the dialog isn't announced with a giant duplicate. Dismiss
+          fires only when the pointer went DOWN on the backdrop too — see backdropArmed above. */}
       <button
         type="button"
         aria-hidden="true"
         tabIndex={-1}
         className="absolute inset-0 bg-black/50 duration-200 animate-in fade-in"
-        onClick={onClose}
+        onPointerDown={() => {
+          backdropArmed.current = true;
+        }}
+        onClick={() => {
+          if (!backdropArmed.current) return;
+          backdropArmed.current = false;
+          onClose();
+        }}
       />
       <div
         ref={panelRef}
@@ -176,6 +196,19 @@ export function SideSheet({
   const panelRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
   useDialogFocus(open, panelRef);
+
+  // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
+  // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on. A
+  // long-press that opens this sheet has its finger still down at the moment the sheet mounts; the
+  // browser's release click then lands on whatever is now under the finger, which is the backdrop —
+  // and without this guard that click would immediately close the sheet it just opened. Arming only
+  // on a backdrop `pointerdown` means a click that originated elsewhere (e.g. the pill's release)
+  // never dismisses.
+  const backdropArmed = React.useRef(false);
+  React.useEffect(() => {
+    if (open) backdropArmed.current = false;
+  }, [open]);
+
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -227,13 +260,21 @@ export function SideSheet({
         )}
       </div>
       {/* Backdrop: dismisses on tap but hidden from assistive tech — the header ✕ is the accessible
-          "Close", so the drawer isn't announced with a giant duplicate close target. */}
+          "Close", so the drawer isn't announced with a giant duplicate close target. Dismiss fires
+          only when the pointer went DOWN on the backdrop too — see backdropArmed above. */}
       <button
         type="button"
         aria-hidden="true"
         tabIndex={-1}
         className="flex-1 bg-black/50 duration-200 animate-in fade-in"
-        onClick={onClose}
+        onPointerDown={() => {
+          backdropArmed.current = true;
+        }}
+        onClick={() => {
+          if (!backdropArmed.current) return;
+          backdropArmed.current = false;
+          onClose();
+        }}
       />
     </div>
   );

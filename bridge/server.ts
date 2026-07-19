@@ -76,7 +76,10 @@ const SECURITY_HEADERS: Record<string, string> = {
 // (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename))?$/;
+// A tab supports rename + close — an action group like the pane route. The `/api/tab` POST above
+// (create) is an exact match on `/api/tab`, so it never collides with this `/api/tab/<id>/<action>`.
+const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
 
 export function startServer(opts: {
   cfg: Config;
@@ -149,6 +152,20 @@ export function startServer(opts: {
         return createWorkspace(rt.herdr, req, audit, deviceAuth(req, cfg).device, rt.name);
       }
 
+      // ── Tab actions: rename (set its label) / close (kill it + every pane in it) ──
+      const tabMatch = pathname.match(TAB_ACTION_ROUTE);
+      if (tabMatch && req.method === "POST") {
+        const denied = guard(req, cfg, "write");
+        if (denied) return denied;
+        const rt = registry.get(sessionName);
+        if (!rt) return unknownSession();
+        const tabId = decodeURIComponent(tabMatch[1]!);
+        const action = tabMatch[2];
+        const device = deviceAuth(req, cfg).device;
+        if (action === "close") return closeTab(rt.herdr, tabId, req, audit, device, rt.name);
+        return renameTab(rt.herdr, tabId, req, audit, device, rt.name);
+      }
+
       // ── Per-pane read / send ─────────────────────────────────────────────
       const paneMatch = pathname.match(PANE_ROUTE);
       if (paneMatch) {
@@ -169,6 +186,7 @@ export function startServer(opts: {
         if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req, audit, device, session);
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
         if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device, session);
+        if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit, device, session);
         return text("method not allowed", 405);
       }
 
@@ -487,6 +505,104 @@ async function closePane(
   try {
     await herdr.closePane(paneId);
     audit.record({ action: "pane.close", paneId, session, device, detail: {} });
+    return json({ ok: true } satisfies ActionResponse, ae);
+  } catch (err) {
+    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+  }
+}
+
+// Set or clear a pane's label. Structural metadata op — strictly less powerful than the text/keys
+// injection the bridge already allows, so it stays within the existing remote-shell threat model.
+// The body's `label` must be a string or null; a blank string clears (so a user can wipe a label by
+// saving an empty field), which we send to Herdr as `label: null`.
+async function renamePane(
+  herdr: HerdrClient,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: { label?: unknown };
+  try {
+    body = (await req.json()) as typeof body;
+  } catch {
+    return text("bad body", 400);
+  }
+  if (body.label !== null && typeof body.label !== "string") return text("bad label", 400);
+  const trimmed = typeof body.label === "string" ? body.label.trim() : "";
+  const label = trimmed.length > 0 ? trimmed : null;
+  try {
+    await herdr.renamePane(paneId, label);
+    audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
+    return json({ ok: true } satisfies ActionResponse, ae);
+  } catch (err) {
+    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+  }
+}
+
+/**
+ * Validate an untrusted tab-rename body's `label`. A tab label is a NON-null, NON-empty string:
+ * herdr's `tab.rename` rejects `null`, and an empty string is stored literally (a blank tab chip)
+ * rather than clearing to the default number — both live-verified 2026-07-19. So, unlike a pane label
+ * (where a blank field clears to `null`), Collie has no "clear" for a tab and rejects a blank label.
+ * Pure + exported so the rule is unit-testable without standing up Bun.serve.
+ */
+export function normalizeTabLabel(
+  v: unknown,
+): { ok: true; label: string } | { ok: false; error: string } {
+  if (typeof v !== "string") return { ok: false, error: "bad label" };
+  const label = v.trim();
+  if (!label) return { ok: false, error: "label required" };
+  return { ok: true, label };
+}
+
+// Set a tab's label. Structural metadata op — strictly less powerful than the text/keys injection the
+// bridge already allows, so it stays within the existing remote-shell threat model. A tab has no
+// "clear" (see normalizeTabLabel): a blank label is a 400, not a reset to the tab number.
+async function renameTab(
+  herdr: HerdrClient,
+  tabId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: { label?: unknown };
+  try {
+    body = (await req.json()) as typeof body;
+  } catch {
+    return text("bad body", 400);
+  }
+  const parsed = normalizeTabLabel(body.label);
+  if (!parsed.ok) return text(parsed.error, 400);
+  try {
+    await herdr.renameTab(tabId, parsed.label);
+    audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
+    return json({ ok: true } satisfies ActionResponse, ae);
+  } catch (err) {
+    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+  }
+}
+
+// Close a tab, killing every pane inside it (live-verified 2026-07-19: the tab's panes disappear with
+// it — see HERDR_API.md). Structural op — no more powerful than closing those panes one-by-one, which
+// the bridge already allows via pane.close — so it stays within the existing remote-shell threat
+// model. No body: the tab id is in the path.
+async function closeTab(
+  herdr: HerdrClient,
+  tabId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  try {
+    await herdr.closeTab(tabId);
+    audit.record({ action: "tab.close", session, device, detail: { tabId } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
