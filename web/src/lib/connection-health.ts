@@ -20,6 +20,19 @@ import { useSyncExternalStore } from "react";
 // (a 10s fetch timeout, a poll gap) can no longer stack BEFORE the clock starts, and the wake anchor
 // gives a phone waking from sleep a fresh grace window instead of an instant red flash while its first
 // poll is still in flight.
+//
+// Sticky escalation (`lostLatched`): the wake grace above is honest ONLY before we've escalated. Once
+// the app is already showing "not connected" (red pill + banner) and the user switches apps and comes
+// back MID-OUTAGE, the wake stamp used to reset the anchor to now and downgrade red → amber
+// "reconnecting…" for another full window, even though nothing had changed — a dishonest de-escalation.
+// So we LATCH the escalated state: `latchLost()` is called the moment a real connecting consumer
+// observes `lost` (see use-connection-lost), and while latched `effectiveAnchor()` DROPS the wake grace
+// (measures from `lastLiveAt` alone). Red therefore stays red across backgrounding until the connection
+// proves itself — the latch clears ONLY when `markLive()` stamps a genuine live poll, at which point the
+// live stamp and the latch clear together and everything recovers as before. The latch is coupled to a
+// consumer actually crossing the threshold (not merely the wall-clock going stale) because the anchor
+// can go stale for benign reasons too — e.g. the idle-lock pausing polling — where nobody is
+// `connecting` and no red UI is showing, so nothing should latch.
 
 // How long the app must stay continuously not-live before we escalate from the quiet header pill
 // ("reconnecting…") to a prominent prompt. Long enough that a normal poll blip, a pane-open hiccup,
@@ -30,6 +43,11 @@ export const CONNECTION_LOST_MS = 15_000;
 // after open (the BootSplash case) — the first successful poll then advances `lastLiveAt` for real.
 let lastLiveAt = Date.now();
 let lastWakeAt = Date.now();
+// Sticky-escalation latch — set once a real connecting consumer OBSERVES the lost condition (see
+// latchLost + use-connection-lost) and cleared ONLY by a provably-live poll (markLive). While latched,
+// effectiveAnchor() drops the wake grace, so backgrounding + returning MID-OUTAGE can no longer
+// downgrade red → amber. Module-scoped so every consumer agrees on one escalated/not answer.
+let lostLatched = false;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -39,20 +57,43 @@ function emit() {
 /**
  * Stamp a provably-live moment: a snapshot/pane fetch that returned live data (a 304 counts). Called
  * from lib/api.ts at the same fetch interception point that captures X-Collie-Build, so the anchor
- * can't drift from reality. Every stamp advances the wall-clock and notifies subscribers.
+ * can't drift from reality. Every stamp advances the wall-clock and notifies subscribers. This is also
+ * the ONLY thing that clears the sticky-escalation latch: recovery proves itself with a real poll, so
+ * the live stamp and the latch clear together and every consumer de-escalates at once.
  */
 export function markLive(): void {
   lastLiveAt = Date.now();
+  lostLatched = false;
   emit();
 }
 
 /**
  * Stamp a wake: the tab returned to the foreground, granting a fresh grace window before escalation
- * (a phone resuming from sleep shouldn't flash red while its first poll is still in flight).
+ * (a phone resuming from sleep shouldn't flash red while its first poll is still in flight). Does NOT
+ * touch the latch: while escalated, effectiveAnchor() ignores this stamp, so a mid-outage app switch
+ * can't reset the countdown or downgrade red back to amber.
  */
 export function markWake(): void {
   lastWakeAt = Date.now();
   emit();
+}
+
+/**
+ * Latch the sticky-escalation state. Idempotent — only the first call (per outage) flips the flag and
+ * notifies; repeats are no-ops. Called from use-connection-lost the instant a consumer observes `lost`
+ * true, so the latch is coupled to a real connecting consumer crossing the threshold rather than the
+ * bare wall-clock anchor going stale (which happens for benign reasons too, e.g. the idle-lock pausing
+ * polling, with nobody connecting and no red UI showing — that must NOT latch).
+ */
+export function latchLost(): void {
+  if (lostLatched) return;
+  lostLatched = true;
+  emit();
+}
+
+/** Whether the sticky-escalation latch is currently set (exported for tests / diagnostics). */
+export function isLostLatched(): boolean {
+  return lostLatched;
 }
 
 /** The most recent provably-live anchor — the later of the last live poll and the last wake. */
@@ -60,14 +101,31 @@ export function lastHealthyAt(): number {
   return Math.max(lastLiveAt, lastWakeAt);
 }
 
+/**
+ * The anchor escalation is measured from. NOT latched → `max(lastLiveAt, lastWakeAt)`: a wake grants a
+ * fresh grace window so a phone resuming from sleep on a HEALTHY network never flashes red while its
+ * first poll is still in flight. LATCHED → `lastLiveAt` alone (wake grace dropped): once we've
+ * escalated, a wake can no longer reset the countdown, so an already-red outage that is still failing
+ * stays red across app switches. Safe because `lostLatched` implies `lastLiveAt` is already at least
+ * CONNECTION_LOST_MS stale — markLive is the only thing that freshens it, and markLive also clears the
+ * latch — so dropping the wake grace can never manufacture a false escalation.
+ */
+export function effectiveAnchor(): number {
+  return lostLatched ? lastLiveAt : lastHealthyAt();
+}
+
 export function subscribeHealth(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
 
-/** Reactive read of the shared anchor — re-renders a consumer whenever markLive/markWake fires. */
+/**
+ * Reactive read of the shared ESCALATION anchor — re-renders a consumer whenever markLive/markWake/
+ * latchLost fires. Returns effectiveAnchor(), so it already honours the sticky latch (drops the wake
+ * grace once escalated); consumers derive `lost` from this single value and cannot disagree.
+ */
 export function useConnectionHealth(): number {
-  return useSyncExternalStore(subscribeHealth, lastHealthyAt, lastHealthyAt);
+  return useSyncExternalStore(subscribeHealth, effectiveAnchor, effectiveAnchor);
 }
 
 // A phone backgrounds Collie (screen off, app switch) far more than it truly disconnects; timers
@@ -79,8 +137,9 @@ if (typeof document !== "undefined") {
   });
 }
 
-/** Test helper — reset both anchors (defaults to now) between cases. */
+/** Test helper — reset both anchors (defaults to now) AND clear the sticky latch between cases. */
 export function __resetConnectionHealth(now = Date.now()): void {
   lastLiveAt = now;
   lastWakeAt = now;
+  lostLatched = false;
 }
