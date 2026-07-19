@@ -5,24 +5,37 @@ import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 
 // The tone-colored wrapper around the pill label — amber (working) while trying, red (blocked) once
-// lost, green (done) while live. Grabbing the label's parent lets a test assert the escalation TONE,
-// not just the copy, so "amber pre-threshold, red at lost" is provable.
+// lost. Grabbing the label's parent lets a test assert the escalation TONE, not just the copy, so
+// "amber pre-threshold, red at lost" is provable.
 function toneOf(label: string): HTMLElement {
   const el = screen.getByText(label).parentElement;
   if (!el) throw new Error(`no tone wrapper for "${label}"`);
   return el;
 }
 
-describe("ConnectionPill", () => {
+describe("ConnectionPill — quiet by default", () => {
   // Fresh anchor per case so a fast suite never drifts past CONNECTION_LOST_MS on its own and turns a
   // pre-threshold assertion red. (Escalation cases below drive the clock explicitly with fake timers.)
   beforeEach(() => __resetConnectionHealth());
 
-  it("shows 'live' even when the browser claims offline, as long as polls are healthy (poll-truth)", () => {
-    // The lying-onLine case: onLine stuck false while the snapshot path is fine must NOT show an
-    // outage — liveness is poll-truth, not navigator.onLine.
-    render(<ConnectionPill online={false} bridge="connected" error={false} />);
-    expect(screen.getByText("live")).toBeInTheDocument();
+  it("renders NOTHING while live — a healthy header is calm, no pill", () => {
+    const { container } = render(<ConnectionPill online bridge="connected" error={false} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("live")).toBeNull();
+  });
+
+  it("renders nothing while live even when the browser claims offline (poll-truth)", () => {
+    // The lying-onLine case: onLine stuck false while the snapshot path is fine must NOT show anything —
+    // liveness is poll-truth, not navigator.onLine.
+    const { container } = render(<ConnectionPill online={false} bridge="connected" error={false} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("appears amber 'reconnecting…' on a refresh error, as an accessible live region", () => {
+    render(<ConnectionPill online bridge="connected" error />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("reconnecting…");
+    expect(status).toHaveClass("text-status-working");
   });
 
   it("stays amber 'reconnecting…' pre-threshold even when the browser reports offline (onLine copy-only)", () => {
@@ -34,17 +47,12 @@ describe("ConnectionPill", () => {
     expect(toneOf("reconnecting…")).toHaveClass("text-status-working");
   });
 
-  it("shows 'reconnecting…' when there is a refresh error", () => {
-    render(<ConnectionPill online bridge="connected" error />);
-    expect(screen.getByText("reconnecting…")).toBeInTheDocument();
-  });
-
-  it("shows 'reconnecting…' when the bridge status is unknown", () => {
+  it("appears 'reconnecting…' when the bridge status is unknown", () => {
     render(<ConnectionPill online bridge={undefined} error={false} />);
     expect(screen.getByText("reconnecting…")).toBeInTheDocument();
   });
 
-  it("shows 'reconnecting…' when the bridge reports disconnected (no separate warn label)", () => {
+  it("appears 'reconnecting…' when the bridge reports disconnected (no separate warn label)", () => {
     // Herdr-down is just another not-live cause here — the OutageBanner names it ("Herdr is down on
     // the host") once escalated; the pill stays a single, honest liveness signal that escalates in
     // lockstep with the banner instead of sitting on its own amber "Herdr offline" forever.
@@ -52,17 +60,12 @@ describe("ConnectionPill", () => {
     expect(screen.getByText("reconnecting…")).toBeInTheDocument();
   });
 
-  it("shows 'live' when online, connected, and no error", () => {
-    render(<ConnectionPill online bridge="connected" error={false} />);
-    expect(screen.getByText("live")).toBeInTheDocument();
-  });
-
-  it("shows 'reconnecting…' when a load has stalled (online + connected, no dedicated label)", () => {
+  it("appears 'reconnecting…' when a load has stalled (online + connected, no dedicated label)", () => {
     render(<ConnectionPill online bridge="connected" error={false} stalled />);
     expect(screen.getByText("reconnecting…")).toBeInTheDocument();
   });
 
-  it("does not render a per-poll spinner while live (no flicker on revalidate)", () => {
+  it("shows no spinner or status role while live (nothing renders)", () => {
     const { container } = render(<ConnectionPill online bridge="connected" error={false} />);
     expect(container.querySelector(".animate-spin")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
@@ -98,13 +101,15 @@ describe("ConnectionPill — escalates after a sustained outage", () => {
     expect(toneOf("offline")).toHaveClass("text-status-blocked");
   });
 
-  it("does not escalate a stall that recovers before the threshold", () => {
-    const { rerender } = render(<ConnectionPill online bridge="connected" error={false} stalled />);
+  it("goes quiet again (no pill) when a stall recovers before the threshold", () => {
+    const { container, rerender } = render(
+      <ConnectionPill online bridge="connected" error={false} stalled />,
+    );
     expect(screen.getByText("reconnecting…")).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - 3_000));
     rerender(<ConnectionPill online bridge="connected" error={false} />); // recovered → live
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
-    expect(screen.getByText("live")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
     expect(screen.queryByText("not connected")).not.toBeInTheDocument();
   });
 });
