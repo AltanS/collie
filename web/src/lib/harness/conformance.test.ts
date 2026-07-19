@@ -16,13 +16,15 @@ const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
 // The neutral (no-dialog) Claude states: they must never lift an interactive block. Includes the
 // in-flight-send captures — a `❯ …` input box (with or without a slash-autocomplete menu above it) is
-// composer chrome, not a dialog, so it must stay raw.
+// composer chrome, not a dialog, so it must stay raw. The wrapped-draft capture is the same: a
+// (multi-line) input box, stripped as chrome, never lifted.
 const NEUTRAL = [
   "claude--working.txt",
   "claude--fresh-idle.txt",
   "claude--done.txt",
   "claude--send-inflight.txt",
   "claude--rename-resolved.txt",
+  "claude--draft-wrapped.txt",
 ];
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

@@ -16,6 +16,13 @@ import { isBlank, isBoxBorder, lineText } from "./markers";
 // shape, so we leave the buffer raw.
 const MAX_STATUS_LINES = 3;
 
+// A long draft WRAPS inside the input box: the "❯ …" prompt line plus continuation lines (indented,
+// no leading "❯") before the bottom border. We scan up past those to find the prompt, but only this
+// many — a bound that keeps the match tight (a borderless buffer can't strip unboundedly) while
+// comfortably covering a very long draft even on a narrow phone pane. A taller box falls back to the
+// raw mirror (safe: at worst the draft stays visible, exactly the pre-wrap-support behaviour).
+const MAX_DRAFT_LINES = 12;
+
 // Text Claude draws on the "❯" prompt line that is NOT a real user draft — it's a hint the TUI paints
 // when the box is otherwise empty. Must never be surfaced as a recoverable draft. Kept as an array so
 // more variants can be added without touching the extraction logic.
@@ -79,13 +86,11 @@ export function extractStatusLine(lines: StyledLine[]): string | null {
  * state only) never learns of it. This re-surfaces it so the app can offer to recover it.
  *
  * Reads the prompt line found by locateInputBox: drop the leading "❯" marker and its separator space
- * (Claude renders a U+00A0 there, which JS trim() strips), then trim. Returns `null` when there's no
- * input box at the tail, the box is empty (bare "❯"), or the line is a known TUI placeholder
- * (INPUT_PLACEHOLDERS) rather than a real draft.
- *
- * Known limitation: a multi-line / wrapped draft doesn't match the single-"❯"-line box shape
- * locateInputBox requires, so the box is left UNstripped in the mirror (visible raw) — acceptable, as
- * the draft is at least not hidden in that case.
+ * (Claude renders a U+00A0 there, which JS trim() strips), then trim. A draft too long for one line
+ * WRAPS onto continuation lines inside the box; those are folded back in (each trimmed of its
+ * alignment indent, joined with a single space — Claude soft-wraps at word boundaries, so the dropped
+ * break was a space). Returns `null` when there's no input box at the tail, the box is empty (bare
+ * "❯"), or the line is a known TUI placeholder (INPUT_PLACEHOLDERS) rather than a real draft.
  */
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const texts = lines.map(lineText);
@@ -96,9 +101,16 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   const box = locateInputBox(texts, end);
   if (box === null) return null;
 
-  let draft = texts[box.prompt]!.trimStart();
-  if (draft.startsWith("❯")) draft = draft.slice(1);
-  draft = draft.trim();
+  let head = texts[box.prompt]!.trimStart();
+  if (head.startsWith("❯")) head = head.slice(1);
+  const parts = [head.trim()];
+  // Continuation lines of a wrapped draft: everything between the prompt and the bottom border,
+  // de-indented. Blank lines are dropped (interior/trailing padding), so they never inject a space.
+  for (let j = box.prompt + 1; j < box.bottomBorder; j++) {
+    const t = texts[j]!.trim();
+    if (t.length > 0) parts.push(t);
+  }
+  const draft = parts.join(" ").trim();
   if (draft.length === 0 || INPUT_PLACEHOLDERS.includes(draft)) return null;
   return draft;
 }
@@ -118,11 +130,13 @@ interface InputBox {
  *
  *     <top border>
  *     ❯ <draft>            (the prompt line)
+ *     <continuation…>      (0..MAX_DRAFT_LINES wrapped-draft lines, no leading "❯")
  *     <bottom border>
  *     <statusline>         (0..MAX_STATUS_LINES lines, matched by position not content)
  *     <hint line>
  *
- * return the top and bottom border indices. Otherwise null. Scans bottom-up.
+ * return the top and bottom border indices plus the prompt-line index. Otherwise null. Scans
+ * bottom-up.
  */
 function locateInputBox(texts: string[], end: number): InputBox | null {
   let i = end - 1;
@@ -140,8 +154,21 @@ function locateInputBox(texts: string[], end: number): InputBox | null {
   const bottomBorder = i;
   i--;
 
-  // (c) the "❯" prompt line (allow blank padding on either side, defensively)
+  // (c) the "❯" prompt line — the FIRST line of the draft. A long draft wraps onto continuation lines
+  //     (indented, no "❯") between the prompt and the bottom border, so scan up past them to the
+  //     prompt. Bounded by MAX_DRAFT_LINES, and any box border en route aborts the match (we'd have
+  //     left the box). Blank padding on either side is tolerated defensively.
   while (i >= 0 && isBlank(texts[i]!)) i--;
+  let wrapped = 0;
+  while (
+    i >= 0 &&
+    !isBoxBorder(texts[i]!) &&
+    !texts[i]!.trimStart().startsWith("❯") &&
+    wrapped < MAX_DRAFT_LINES
+  ) {
+    wrapped++;
+    i--;
+  }
   if (i < 0 || !texts[i]!.trimStart().startsWith("❯")) return null;
   const prompt = i;
   i--;
