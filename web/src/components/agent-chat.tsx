@@ -561,6 +561,9 @@ export function AgentChat({
             onSelect={(id) => id && goToTab(id)}
             onNewTab={newTab}
             allowAll={false}
+            session={session}
+            readOnly={readOnly}
+            onRenamed={() => revalidator.revalidate()}
           />
         )}
 

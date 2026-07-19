@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useRouteLoaderData } from "react-router";
+import { useNavigate, useParams, useRevalidator, useRouteLoaderData } from "react-router";
 
 import { ConnectionBar } from "@/components/connection-bar";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -16,6 +16,7 @@ import { useSpaceActions } from "@/hooks/use-spaces";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { homePath, panePath, spacePath } from "@/lib/nav";
 import { setStatus } from "@/lib/status";
+import { isReadOnly } from "@/lib/types";
 
 // Space detail route: one space's tabs + panes, with the space/tab strips for in-space navigation.
 // Shares the root snapshot (no own loader), reading :spaceId from the URL — a deep-linkable,
@@ -26,6 +27,7 @@ export function SpaceRoute() {
   const online = useOnline();
   const stalled = useLoadingStalled();
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
   const { newTab, newSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
 
@@ -98,6 +100,9 @@ export function SpaceRoute() {
               selected={tab}
               onSelect={switchTab}
               onNewTab={newTab}
+              session={data.session}
+              readOnly={isReadOnly(data.device)}
+              onRenamed={() => revalidator.revalidate()}
             />
             <main className="flex-1">
               <SpaceView
