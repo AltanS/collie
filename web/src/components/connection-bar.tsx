@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 
 import { cn } from "@/lib/utils";
 import { isConnecting } from "@/lib/connection";
+import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { SessionSwitcher } from "@/components/session-switcher";
@@ -30,16 +31,23 @@ interface ConnectionBarProps {
 
 // One-line truth about whether the data on screen is live, and why not if it isn't. Deliberately
 // does NOT reflect the per-poll fetch state — "live" stays put while we revalidate in the
-// background, so the indicator doesn't flicker between states on every tick.
-function resolve(props: ConnectionBarProps) {
+// background, so the indicator doesn't flicker between states on every tick. `lost` = the reconnect
+// has run past CONNECTION_LOST_MS (the same threshold that raises the prominent prompt), which
+// escalates the transient "reconnecting…" to an honest "not connected".
+function resolve(props: ConnectionBarProps, lost: boolean) {
   const { online, bridge, error, stalled } = props;
   // `isConnecting` is the single source of truth for live-vs-not (shared with the in-pane loader);
   // resolve only picks which message/icon to show for the not-live cause.
   if (!isConnecting(props)) return { label: "live", tone: "ok", Icon: PlugZap } as const;
   if (!online) return { label: "offline", tone: "bad", Icon: WifiOff } as const;
   // A stall reads as "reconnecting…" too — same warn label, no new state: a fetch that hasn't
-  // settled is, from the user's seat, indistinguishable from a reconnect in progress.
-  if (error || bridge === undefined || stalled) return { label: "reconnecting…", tone: "warn", Icon: Plug } as const;
+  // settled is, from the user's seat, indistinguishable from a reconnect in progress. Once it has
+  // dragged on past the threshold, though, stop implying it's still trying — call it what it is.
+  if (error || bridge === undefined || stalled) {
+    return lost
+      ? ({ label: "not connected", tone: "bad", Icon: Plug } as const)
+      : ({ label: "reconnecting…", tone: "warn", Icon: Plug } as const);
+  }
   return { label: "Herdr offline", tone: "warn", Icon: Plug } as const;
 }
 
@@ -50,14 +58,20 @@ const TONE: Record<"ok" | "warn" | "bad", string> = {
 };
 
 export function ConnectionBar(props: ConnectionBarProps) {
-  const { label, tone, Icon } = resolve(props);
+  const connecting = isConnecting(props);
+  // Same 15s wall-clock as the prominent prompt, so the pill and the prompt agree on when a blip has
+  // become a real outage. Self-contained here (the pill renders inside each route header, not under
+  // RootLayout) — worst case a route change during an outage restarts its clock; the prompt, which
+  // lives in the persistent RootLayout, is the stable escalation.
+  const lost = useConnectionLost(connecting);
+  const { label, tone, Icon } = resolve(props, lost);
   const navigate = useNavigate();
   // The Collie mark doubles as the connection loader: it gallops while we're not yet live —
   // connecting, reconnecting, or offline — and rests once the data on screen is live. The same
   // CollieHome renders inside a pane, so the top-left mark means the same thing on every screen.
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/60 bg-zinc-800 px-4 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
-      <CollieHome onHome={props.onHome} connecting={isConnecting(props)} wordmark />
+      <CollieHome onHome={props.onHome} connecting={connecting} wordmark />
       <div className="flex items-center gap-3">
         {/* Session switcher — dashboard-only (hidden when drilled into a space). Also self-hides
             unless there's more than one reachable session (or you're on a non-primary one), so a

@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import type { ReactElement } from "react";
 
 import { ConnectionBar } from "./connection-bar";
+import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 
 // The bar calls useNavigate (the Settings gear) and renders router-aware children, so it needs a
 // router context.
@@ -85,5 +86,33 @@ describe("ConnectionBar", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByTestId("loc").textContent).toBe("/settings?s=collie-demo");
+  });
+});
+
+// The transient "reconnecting…" pill escalates to an honest "not connected" once the reconnect has
+// dragged on past CONNECTION_LOST_MS — the same threshold that raises the prominent prompt, so the
+// two agree. Fake timers drive the wall-clock hook (Vitest advances Date.now with them).
+describe("ConnectionBar — escalates the pill after a sustained outage", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("reconnecting… → not connected once past the threshold", () => {
+    render(<ConnectionBar online bridge="connected" error />, { wrapper: MemoryRouter });
+    expect(screen.getByText("reconnecting…")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
+    expect(screen.queryByText("reconnecting…")).not.toBeInTheDocument();
+    expect(screen.getByText("not connected")).toBeInTheDocument();
+  });
+
+  it("does not escalate a stall that recovers before the threshold", () => {
+    const { rerender } = render(<ConnectionBar online bridge="connected" error={false} stalled />, {
+      wrapper: MemoryRouter,
+    });
+    expect(screen.getByText("reconnecting…")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - 3_000));
+    rerender(<ConnectionBar online bridge="connected" error={false} />); // recovered → live
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
+    expect(screen.getByText("live")).toBeInTheDocument();
+    expect(screen.queryByText("not connected")).not.toBeInTheDocument();
   });
 });
