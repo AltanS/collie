@@ -362,24 +362,26 @@ describe("Composer — terminal-draft preview", () => {
     await waitFor(() => expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument());
   });
 
-  it("dismiss hides it; the same draft never re-shows, a distinct one does", async () => {
-    const user = userEvent.setup();
+  it("renders no dismiss button — the preview has no user-facing dismiss", async () => {
     renderDraftHarness();
-    strandDraft("dismiss me");
+    strandDraft("no dismiss here");
     await screen.findByText(/draft in terminal/i);
 
-    await user.click(screen.getByRole("button", { name: /dismiss terminal draft/i }));
-    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/dismiss terminal draft/i)).not.toBeInTheDocument();
+  });
 
-    // The SAME text is still on the host line — it must not re-surface.
-    strandDraft("dismiss me");
-    await new Promise((r) => setTimeout(r, 20));
-    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+  it("persists across subsequent polls of the same text with no user action", async () => {
+    renderDraftHarness();
+    strandDraft("still here");
+    await screen.findByText(/draft in terminal/i);
 
-    // A genuinely different draft is fair game again.
-    strandDraft("something new");
-    expect(await screen.findByText(/draft in terminal/i)).toBeInTheDocument();
-    expect(screen.getByText("something new")).toBeInTheDocument();
+    // Repeated polls that just re-report the SAME raw text (no take-over, no send, no change) must
+    // never hide the preview — it's honest state, not a one-shot notice.
+    for (let i = 0; i < 3; i++) {
+      setRawDraft("still here");
+      expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+      expect(screen.getByText("still here")).toBeInTheDocument();
+    }
   });
 
   it("Take over copies the CURRENT draft into the composer, marks it handled, and hides the preview", async () => {

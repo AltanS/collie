@@ -127,12 +127,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [justSent, setJustSent] = useState(false); // brief ✓ on the send button after a send
   // Terminal-draft preview bookkeeping. The composer input is EXCLUSIVELY phone-owned — a host draft
   // is never written into it implicitly; it only surfaces in a read-only preview the user can
-  // deliberately Take over. `dismissedKey` is the NORMALISED text the user has handled (took over,
-  // dismissed, or sent) — the preview stays hidden while the live draft still normalises to it; a
-  // genuinely different draft is fair game again. `previewLatched` is the show/hide latch: a STABLE
-  // draft flips it on (gating appearance behind the 1.5s stability), and it stays on — its text
-  // tracking the RAW draft live — until the host line clears or the user acts (see the effects below).
-  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  // deliberately Take over. There is no user-facing dismiss — the preview is honest state (a draft
+  // really is stranded on the host's line), so it stays visible until the host line clears, the user
+  // takes it over, or the user sends. `handledKey` is the NORMALISED text the user has handled (took
+  // over or sent) — the preview stays hidden while the live draft still normalises to it, so it can't
+  // re-latch onto the same text we just copied/sent (the raw line still holds it until the host clears
+  // or Enter lands); a genuinely different draft is fair game again. `previewLatched` is the show/hide
+  // latch: a STABLE draft flips it on (gating appearance behind the 1.5s stability), and it stays on —
+  // its text tracking the RAW draft live — until the host line clears or the user acts (see the effects
+  // below).
+  const [handledKey, setHandledKey] = useState<string | null>(null);
   const [previewLatched, setPreviewLatched] = useState(false);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
@@ -211,10 +215,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // side. Skipped when the pane is gone.
   useEffect(() => {
     if (gone) return;
-    if (effectiveStable !== null && normalizeDraft(effectiveStable) !== dismissedKey) {
+    if (effectiveStable !== null && normalizeDraft(effectiveStable) !== handledKey) {
       setPreviewLatched(true);
     }
-  }, [effectiveStable, dismissedKey, gone]);
+  }, [effectiveStable, handledKey, gone]);
 
   // Unlatch when the host clears the "❯" line — the draft was submitted or wiped on the host, or our
   // own send echoed back and got suppressed to null. The preview unmounts on the next render.
@@ -224,30 +228,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   // Show the preview while it's latched, the host line still carries a (non-echo) draft, and the user
   // hasn't already handled this exact text. Its displayed text is the LIVE raw line — host typing
-  // streams straight into it (display-only; it can never write back into the phone-owned input).
-  // Not gated on `locked`: read-only devices get the preview + Take over (a local text copy); only
-  // the actual Send stays gated.
+  // streams straight into it (display-only; it can never write back into the phone-owned input). There
+  // is no dismiss action — this is the ONLY way the preview hides short of the host line itself
+  // clearing, since a draft that still normalises to `handledKey` is the one the user just took over
+  // or sent, not a fresh one to re-show. Not gated on `locked`: read-only devices get the preview +
+  // Take over (a local text copy); only the actual Send stays gated.
   const showPreview =
-    !gone && previewLatched && effectiveRaw !== null && normalizeDraft(effectiveRaw) !== dismissedKey;
+    !gone && previewLatched && effectiveRaw !== null && normalizeDraft(effectiveRaw) !== handledKey;
 
   // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
   // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
-  // survives), mark that exact text handled, and hide the preview. No keys touch the terminal here —
+  // survives), mark that exact text handled (so it can't instantly re-latch the preview — the raw line
+  // still holds it until the host clears it), and hide the preview. No keys touch the terminal here —
   // the stranded line is only ever swept by the send()-time pre-clear. If the host keeps typing and
   // produces a DIFFERENT draft afterwards, the preview honestly reappears with the new text.
   function takeOverDraft() {
     if (effectiveRaw === null) return;
     const draft = effectiveRaw;
     setInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
-    setDismissedKey(normalizeDraft(draft));
+    setHandledKey(normalizeDraft(draft));
     setPreviewLatched(false);
     focusInputEnd();
-  }
-
-  // Dismiss: hide the preview for this draft (marks it handled). A genuinely different draft re-shows.
-  function dismissPreview() {
-    if (effectiveRaw !== null) setDismissedKey(normalizeDraft(effectiveRaw));
-    setPreviewLatched(false);
   }
 
   const commands = commandsFor(agent);
@@ -297,7 +298,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // The stranded line was just swept and our text sent — mark it handled and drop the preview so
         // it can't flash back before the mirror echoes the cleared line.
         if (effectiveRaw !== null) {
-          setDismissedKey(normalizeDraft(effectiveRaw));
+          setHandledKey(normalizeDraft(effectiveRaw));
           setPreviewLatched(false);
         }
         // ✓ flash on the send button + status line acknowledge the send immediately. The mirror only
@@ -547,13 +548,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             then recalled on the HOST, which stripChrome hides from the mirror). It appears only after
             the draft stabilises (never a blip/self-echo), then its text tracks the live line — host
             typing streams straight in. It NEVER writes into the phone-owned input; only the explicit
-            Take over copies the text here. Same zinc/text-xs chrome as the "You sent:" strip above. */}
+            Take over copies the text here. No dismiss — it's honest state and persists until the user
+            takes over, sends, or the host line clears. Same zinc/text-xs chrome as the "You sent:"
+            strip above. */}
         {showPreview && effectiveRaw !== null && (
-          <TerminalDraftPreview
-            text={effectiveRaw}
-            onTakeOver={takeOverDraft}
-            onDismiss={dismissPreview}
-          />
+          <TerminalDraftPreview text={effectiveRaw} onTakeOver={takeOverDraft} />
         )}
         <div className="flex items-end gap-2">
           {/* Attach image — messenger-style, left of the input, always available (previously buried
