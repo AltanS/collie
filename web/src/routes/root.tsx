@@ -3,6 +3,7 @@ import { Outlet, useLoaderData, useParams, useRouteError } from "react-router";
 import { usePolling } from "@/hooks/use-polling";
 import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
+import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { OfflineBanner } from "@/components/offline-banner";
 import { ConnectionLostPrompt } from "@/components/connection-lost-prompt";
 import { DogGallop } from "@/components/dog-gallop";
@@ -38,12 +39,39 @@ export function RootLayout() {
   );
 }
 
-// Shown once, on the very first load, while the snapshot loader resolves (SPA hydration).
+// Shown once, on the very first load, while the snapshot loader resolves (SPA hydration). This is the
+// router's HydrateFallback, so it stays mounted until the FIRST loader run settles — and over a dead
+// tailnet that initial fetch can hang well past its timeout (or forever on a WebView without
+// AbortSignal.timeout). Left as-is, a PWA reopened while the host is unreachable would gallop the dog
+// on "Connecting to the herd…" indefinitely, with no way to retry. So once we've been stuck here for
+// CONNECTION_LOST_MS (the same wall-clock threshold as the in-app prompt — `connecting` is trivially
+// true the whole time we're mounted), the splash escalates to an honest, actionable "Not connected"
+// state: the dog rests, the copy says we can't reach Collie, and a Retry re-runs the loaders from
+// scratch (a full reload clears most transient failures). Below the threshold it's unchanged.
 export function BootSplash() {
+  const stuck = useConnectionLost(true);
+  if (!stuck) {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <DogGallop running size="4rem" label="Loading" />
+        <span className="text-sm">Connecting to the herd…</span>
+      </div>
+    );
+  }
   return (
-    <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
-      <DogGallop running size="4rem" label="Loading" />
-      <span className="text-sm">Connecting to the herd…</span>
+    <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 p-6 text-center">
+      <DogGallop size="4rem" label="Not connected" />
+      <p className="font-medium text-foreground">Not connected</p>
+      <p className="max-w-xs text-sm text-muted-foreground">
+        Can&rsquo;t reach Collie — check your connection to the host, then try again.
+      </p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="text-sm underline underline-offset-4"
+      >
+        Retry
+      </button>
     </div>
   );
 }
