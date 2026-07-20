@@ -84,7 +84,8 @@ describe("Composer — send", () => {
 
     await waitFor(() => expect(callOrder).toEqual(["keys", "reply"]));
     expect(sentKeys![0]).toBe("ctrl+k");
-    expect(sentKeys).toHaveLength([..."leftover"].length + 9);
+    // Draft length + the 32-Backspace overshoot (mid-poll-gap host typing margin) + the ctrl+k.
+    expect(sentKeys).toHaveLength([..."leftover"].length + 33);
     expect(sentKeys!.slice(1).every((k) => k === "Backspace")).toBe(true);
   });
 
@@ -418,6 +419,24 @@ describe("Composer — terminal-draft preview", () => {
     strandDraft("original plus more");
     expect(await screen.findByText(/draft in terminal/i)).toBeInTheDocument();
     expect(screen.getByText("original plus more")).toBeInTheDocument();
+  });
+
+  it("re-stranding the SAME text after the line cleared is a fresh draft — the preview returns", async () => {
+    // Regression: the handled key used to persist past the line clearing, so taking over "continue"
+    // once muted every future "continue" in the pane until a navigation reset the component.
+    const user = userEvent.setup();
+    renderDraftHarness();
+    strandDraft("continue");
+    await screen.findByText(/draft in terminal/i);
+
+    await user.click(screen.getByRole("button", { name: /take over/i }));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+
+    strandDraft(""); // the host line empties (submitted/wiped on the host)
+    strandDraft("continue"); // …and later the very same text strands again
+    const label = await screen.findByText(/draft in terminal/i);
+    // Scope to the preview block — "continue" also sits in the composer input from the take-over.
+    expect(label.parentElement).toHaveTextContent("continue");
   });
 
   it("send after Take over pre-clears the host line exactly once, then clears the composer", async () => {
