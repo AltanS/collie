@@ -50,9 +50,7 @@ export function TabStrip({
   // chips stay plain tap-to-switch — long-press is inert.
   const actionsEnabled = !!onRenamed && !!onClosed;
 
-  const wsTabs = tabs
-    .filter((t) => t.workspaceId === workspaceId)
-    .sort((a, b) => a.number - b.number);
+  const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
   if (wsTabs.length === 0) return null;
 
   return (
