@@ -79,6 +79,11 @@ against a real pane). Empirically enumerated against Herdr 0.7.0 — it is **NOT
 - **Modifier chords (join with `+`):** `ctrl+c`, `ctrl+u`, `ctrl+d`, `ctrl+l`, `ctrl+r`,
   `shift+tab`, `ctrl+left`, `alt+f`, … Modifiers: `ctrl` / `shift` / `alt` / `cmd` / `super`
   (case-insensitive). This is the **same grammar as `config.toml [keys]`**.
+- **Multi-modifier chords work, in any modifier order** (live-verified 2026-07-20 against 0.7.3 on
+  a throwaway sandbox pane, with `PageUp` → `invalid_key` in the same run as proof the validator was
+  active): `ctrl+shift+p` / `shift+ctrl+p`, `alt+shift+p` / `shift+alt+p`, triple
+  `ctrl+alt+shift+p` / `ctrl+shift+alt+p`, and modifier+special `alt+Up` all ack. Independently
+  confirmed against 0.7.4 by @bnivanov (issue #20).
 - **NOT supported** (all return `invalid_key`): tmux-style `C-c` / `BTab`; and the keys
   `PageUp` `PageDown` `Home` `End` `Insert` `Delete` (in any spelling). There is no forward-delete
   and no scrollback paging via keys — the web mirror is scrollable instead.
