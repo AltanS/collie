@@ -138,6 +138,30 @@ Two sibling structural ops remove panes. `tab.close` live-verified 2026-07-19 on
 - **Errors:** unknown id → `{code:"tab_not_found", message:"tab <id> not found"}`; a missing `tab_id`
   → ``{code:"invalid_request", message:"invalid request: missing field `tab_id` …"}``.
 
+## Move methods — reorder tabs and workspaces (verified)
+
+Two sibling structural ops reorder objects. Both live-verified 2026-07-20 on the sandbox session.
+
+| Method | Params | Returns (`result.type`) |
+|---|---|---|
+| `tab.move` | `{tab_id, insert_index}` | `tab_list` → that workspace's tabs, post-move order |
+| `workspace.move` | `{workspace_id, insert_index}` | `workspace_list` → all workspaces, post-move order |
+
+- **Tabs: array order is authoritative, `number` is stable.** `tab.move` reorders the array
+  returned by `tab.list` / `session.snapshot` **without renumbering** — after moving `t2` (number 2)
+  before `t1` (number 1), the snapshot lists `[t2, t1]` with numbers unchanged. Herdr itself renders
+  array order: the default label of an unlabeled tab is **positional** (post-move, `t2` displays as
+  "1"). ⚠️ Consequence: a client that sorts tabs by `number` un-does the user's reorder — render
+  tabs in array order, never number order.
+- **Workspaces are the opposite: `workspace.move` renumbers.** After moving `w7` (number 5) to the
+  front, it becomes `number 1` and every other workspace shifts — `number` always equals position,
+  so array order and number order never disagree and sorting workspaces by `number` is safe.
+- **`insert_index` counts positions in the PRE-removal list** (workspace-scoped for tabs, clamped at
+  the end). Moving an item toward the end therefore needs `target + 1`: with `[t2, t1]`,
+  `tab.move {tab_id: t2, insert_index: 1}` is a **no-op**; `insert_index: 2` yields `[t1, t2]`.
+- The event catalog lists sibling `tab.moved` / `workspace.moved` events (0.7.2); emission not
+  observed here (no live subscription during the probe).
+
 ## Object shapes (observed)
 
 ```jsonc
