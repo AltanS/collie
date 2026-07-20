@@ -76,3 +76,29 @@ describe("extractClaudeSessionName — no name / no false positives", () => {
     expect(extractClaudeSessionName("")).toBeUndefined();
   });
 });
+
+describe("extractClaudeSessionName — bottommost prompt wins", () => {
+  test("a named-rule/❯ pair in scrollback cannot name a session whose live prompt is unnamed", () => {
+    // Scrollback holds an echoed shell prompt line starting with ❯ under a decorative rule; the LIVE
+    // input box at the bottom has a plain (unnamed) rule. Only the bottommost ❯ may decide.
+    const text = [
+      "──────── looks like a name ────────",
+      "❯ echo hello   # pasted/echoed shell prompt in scrollback",
+      "hello",
+      "──────────────────────────────────",
+      "❯ ",
+    ].join("\n");
+    expect(extractClaudeSessionName(text)).toBeUndefined();
+  });
+
+  test("the live prompt's own named rule still wins over anything above", () => {
+    const text = [
+      "──────── stale-name ────────",
+      "❯ old prompt in scrollback",
+      "output",
+      "──────── real-name ────────",
+      "❯ ",
+    ].join("\n");
+    expect(extractClaudeSessionName(text)).toBe("real-name");
+  });
+});
