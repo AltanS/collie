@@ -221,9 +221,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }, [effectiveStable, handledKey, gone]);
 
   // Unlatch when the host clears the "❯" line — the draft was submitted or wiped on the host, or our
-  // own send echoed back and got suppressed to null. The preview unmounts on the next render.
+  // own send echoed back and got suppressed to null. The preview unmounts on the next render. Also
+  // forget the handled key: it exists only to stop the JUST-handled text re-latching before the line
+  // clears — once the line has actually emptied, a later re-strand of the same text is a fresh draft
+  // and must surface again (without this, taking over "continue" once muted every future "continue"
+  // in the pane until you navigated away).
   useEffect(() => {
-    if (effectiveRaw === null) setPreviewLatched(false);
+    if (effectiveRaw === null) {
+      setPreviewLatched(false);
+      setHandledKey(null);
+    }
   }, [effectiveRaw]);
 
   // Show the preview while it's latched, the host line still carries a (non-echo) draft, and the user
@@ -275,7 +282,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // triggers a (destructive) clear of a message that's already on its way, and a live host draft
       // is swept exactly once whether or not the user took it over first.
       if (effectiveRaw !== null) {
-        const clearCount = [...effectiveRaw].length + 8;
+        // Overshoot well past the snapshotted length: the count comes from the LAST-POLLED line, so
+        // anything the host typed inside the poll gap (~1.5s) isn't counted. Extra Backspace on an
+        // already-empty input is a no-op, so a generous margin costs nothing and shrinks the window
+        // where a mid-gap host burst leaves a remnant that corrupts the send.
+        const clearCount = [...effectiveRaw].length + 32;
         const clearRes = await api.sendKeys(
           paneId,
           ["ctrl+k", ...Array(clearCount).fill("Backspace")],
