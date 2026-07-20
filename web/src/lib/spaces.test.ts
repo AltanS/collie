@@ -25,22 +25,22 @@ const tab = (tabId: string, workspaceId: string, number: number): TabView => ({
 });
 
 describe("groupPanesByTab", () => {
-  const tabs = [tab("w1:t2", "w1", 2), tab("w1:t1", "w1", 1)]; // deliberately out of order
+  const tabs = [tab("w1:t2", "w1", 2), tab("w1:t1", "w1", 1)]; // differs from stable number order
 
-  it("groups panes by tab in tab-number order", () => {
+  it("preserves snapshot tab order when grouping panes", () => {
     const a1 = agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1" });
     const a2 = agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t2" });
     const groups = groupPanesByTab("w1", tabs, [a1, a2], []);
-    expect(groups.map((g) => g.tabId)).toEqual(["w1:t1", "w1:t2"]);
-    expect(groups[0]!.panes).toEqual([a1]);
-    expect(groups[1]!.panes).toEqual([a2]);
+    expect(groups.map((g) => g.tabId)).toEqual(["w1:t2", "w1:t1"]);
+    expect(groups[0]!.panes).toEqual([a2]);
+    expect(groups[1]!.panes).toEqual([a1]);
   });
 
   it("includes shell panes alongside agents in their tab", () => {
     const a1 = agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1" });
     const shell = agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t1", kind: "shell" });
-    const [first] = groupPanesByTab("w1", tabs, [a1], [shell]);
-    expect(first!.panes).toEqual([a1, shell]);
+    const group = groupPanesByTab("w1", tabs, [a1], [shell]).find((item) => item.tabId === "w1:t1");
+    expect(group!.panes).toEqual([a1, shell]);
   });
 
   it("collects panes whose tab isn't listed yet into a trailing '…' group", () => {
