@@ -1,5 +1,5 @@
 import { useState, type ComponentProps } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
@@ -382,8 +382,6 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
 
     await user.click(yes);
     await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
-    // focusInput() is deferred (setTimeout 0); let any buggy queued focus fire before asserting.
-    await new Promise((r) => setTimeout(r, 20));
     expect(box).not.toHaveFocus();
   });
 
@@ -394,6 +392,15 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
 
     await user.click(screen.getByText("recent pane output"));
     await waitFor(() => expect(box).toHaveFocus());
+  });
+
+  it("focuses during the tap event so mobile browsers can open the software keyboard", () => {
+    renderChat({ text: "recent pane output" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    fireEvent.click(screen.getByText("recent pane output"));
+
+    expect(box).toHaveFocus();
   });
 });
 

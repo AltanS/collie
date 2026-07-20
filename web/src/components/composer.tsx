@@ -180,7 +180,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
-  useImperativeHandle(ref, () => ({ focusInput: focusInputEnd }), []);
+  useImperativeHandle(ref, () => ({ focusInput: focusInputImmediately }), []);
 
   useEffect(
     () => () => {
@@ -260,14 +260,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const commands = commandsFor(agent);
 
+  function focusInputImmediately() {
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }
+
   function focusInputEnd() {
-    setTimeout(() => {
-      const el = inputRef.current;
-      if (el) {
-        el.focus();
-        el.setSelectionRange(el.value.length, el.value.length);
-      }
-    }, 0);
+    setTimeout(focusInputImmediately, 0);
   }
 
   async function send(value: string, isDraft: boolean) {
