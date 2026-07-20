@@ -39,14 +39,15 @@ const PROMPT_LINE = /^❯/;
 export function extractClaudeSessionName(text: string): string | undefined {
   if (!text) return undefined;
   const lines = text.split(/\r?\n/);
-  // Scan bottom-up: the input box's top rule is the lowest named-rule-above-❯ in the buffer.
-  for (let i = lines.length - 2; i >= 0; i--) {
-    const below = lines[i + 1];
-    if (below === undefined || !PROMPT_LINE.test(below)) continue;
-    const m = NAMED_RULE.exec(lines[i]!);
-    if (!m) continue;
-    const name = m[1]!.trim();
-    if (name) return name;
+  // Only the BOTTOMMOST ❯ counts — that's the live input prompt; anything above it is scrollback.
+  // The rule directly above it decides, and a plain rule means "unnamed", full stop. Scanning past it
+  // for older named-rule-above-❯ pairs (as this once did) let a scrollback line that merely starts
+  // with ❯ — an echoed shell prompt, pasted text — sit under a decorative rule and pin a bogus name
+  // on an unnamed session (the caller's sticky cache only overwrites on truthy matches).
+  for (let i = lines.length - 1; i >= 1; i--) {
+    if (!PROMPT_LINE.test(lines[i]!)) continue;
+    const m = NAMED_RULE.exec(lines[i - 1]!);
+    return m ? m[1]!.trim() || undefined : undefined;
   }
   return undefined;
 }
