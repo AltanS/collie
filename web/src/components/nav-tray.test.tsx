@@ -92,10 +92,10 @@ describe("NavTray", () => {
     const shiftBtn = screen.getByRole("button", { name: /Shift/ });
     expect(shiftBtn).toHaveAttribute("aria-pressed", "false");
 
-    await user.click(shiftBtn);
+    await user.click(shiftBtn); // once
     expect(shiftBtn).toHaveAttribute("aria-pressed", "true");
 
-    // Pressing a key while armed STAGES it (nothing sent yet) and disarms Shift.
+    // Pressing a key while armed STAGES it (nothing sent yet) and spends the one-shot Shift.
     await user.click(screen.getByRole("button", { name: /Enter/ }));
     expect(onSend).not.toHaveBeenCalled();
     expect(shiftBtn).toHaveAttribute("aria-pressed", "false");
@@ -192,7 +192,43 @@ describe("NavTray", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("arming Shift then Ctrl leaves only Ctrl armed (radio modifiers)", async () => {
+  // ── Combinable + lockable modifiers (#19 / #20) ──
+
+  it("the Alt modifier renders alongside Shift and Ctrl", () => {
+    render(<NavTray onSend={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "⇧ Shift" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ctrl" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
+  });
+
+  it("tapping a modifier cycles off → once → locked → off (aria-pressed + Lock glyph)", async () => {
+    const user = userEvent.setup();
+    render(<NavTray onSend={vi.fn()} />);
+
+    const alt = () => screen.getByRole("button", { name: "Alt" });
+    const isLocked = () => alt().querySelector(".lucide-lock") !== null;
+
+    // off
+    expect(alt()).toHaveAttribute("aria-pressed", "false");
+    expect(isLocked()).toBe(false);
+
+    // once — armed, no lock glyph yet
+    await user.click(alt());
+    expect(alt()).toHaveAttribute("aria-pressed", "true");
+    expect(isLocked()).toBe(false);
+
+    // locked — armed, lock glyph shows
+    await user.click(alt());
+    expect(alt()).toHaveAttribute("aria-pressed", "true");
+    expect(isLocked()).toBe(true);
+
+    // off again
+    await user.click(alt());
+    expect(alt()).toHaveAttribute("aria-pressed", "false");
+    expect(isLocked()).toBe(false);
+  });
+
+  it("modifiers are checkboxes: arming Shift then Ctrl leaves BOTH armed and combines into one chord", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
     render(<NavTray onSend={onSend} />);
@@ -200,12 +236,63 @@ describe("NavTray", () => {
     const shiftBtn = screen.getByRole("button", { name: /Shift/ });
     const ctrlBtn = screen.getByRole("button", { name: "Ctrl" });
 
+    await user.click(ctrlBtn);
     await user.click(shiftBtn);
+    // Both stay armed (not radio) — that's the combine.
+    expect(ctrlBtn).toHaveAttribute("aria-pressed", "true");
     expect(shiftBtn).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(ctrlBtn);
-    expect(ctrlBtn).toHaveAttribute("aria-pressed", "true");
-    expect(shiftBtn).toHaveAttribute("aria-pressed", "false");
+    // Ghost chip previews the combined chord in canonical order.
+    expect(screen.getByText("Ctrl ⇧ + …")).toBeInTheDocument();
+
+    // Type the base — composes ctrl+shift+p regardless of the shift-then… tap order.
+    const keyInput = screen.getByRole("textbox", { name: "Type a key to combine" });
+    fireEvent.change(keyInput, { target: { value: "p" } });
+    expect(screen.getByRole("button", { name: "Remove Ctrl ⇧ P" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+shift+p"]);
+  });
+
+  it("a locked modifier survives Send — the same chord re-stages without re-arming", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} />);
+
+    const ctrlBtn = () => screen.getByRole("button", { name: "Ctrl" });
+    await user.click(ctrlBtn()); // once
+    await user.click(ctrlBtn()); // locked
+    expect(ctrlBtn().querySelector(".lucide-lock")).not.toBeNull();
+
+    // Stage ctrl+Tab and send.
+    await user.click(screen.getByRole("button", { name: "Tab" }));
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenLastCalledWith(["ctrl+Tab"]);
+
+    // Ctrl is still locked, so tapping Tab again re-stages ctrl+Tab with no re-arm.
+    expect(ctrlBtn()).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Tab" }));
+    expect(screen.getByRole("button", { name: "Remove Ctrl Tab" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenLastCalledWith(["ctrl+Tab"]);
+    expect(onSend).toHaveBeenCalledTimes(2); // locked chord sent twice, no re-arm between
+  });
+
+  it("Clear releases a locked modifier (the one explicit escape hatch)", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} />);
+
+    const ctrlBtn = () => screen.getByRole("button", { name: "Ctrl" });
+    await user.click(ctrlBtn()); // once
+    await user.click(ctrlBtn()); // locked
+    await user.click(screen.getByRole("button", { name: "Tab" })); // stage ctrl+Tab
+
+    await user.click(screen.getByRole("button", { name: "Clear queued keys" }));
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull(); // not composing
+    expect(ctrlBtn()).toHaveAttribute("aria-pressed", "false"); // lock released
+    expect(ctrlBtn().querySelector(".lucide-lock")).toBeNull();
   });
 
   // ── Ctrl presets: immediate two-tap when idle; plain stage when composing ──
