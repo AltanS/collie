@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import type { Modifier } from "@/lib/key-queue";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useKeyQueue } from "@/hooks/use-key-queue";
 import { KeyQueueStrip } from "@/components/key-queue-strip";
@@ -14,10 +15,12 @@ import { KeyQueueStrip } from "@/components/key-queue-strip";
 // `pane.send_keys` grammar (see HERDR_API.md): special keys bare, modifier chords joined with "+".
 //
 // Two modes, driven by useKeyQueue. When nothing is armed and the queue is empty, a key press fires
-// immediately (the classic path). Arm a modifier (⇧ Shift / Ctrl) — or once any key is queued — and
-// the tray enters compose mode: presses stage a visible key queue (the strip) that you review and
-// Send as ONE call. Herdr rejects a bare "Shift"/"Ctrl" keypress, so the modifiers are one-shot: arm,
-// and the next key is composed as `shift+…` / `ctrl+…`, then the modifier disarms.
+// immediately (the classic path). Arm one or more modifiers (⇧ Shift / Ctrl / Alt) — or once any key
+// is queued — and the tray enters compose mode: presses stage a visible key queue (the strip) that
+// you review and Send as ONE call. Herdr rejects a bare "Shift"/"Ctrl"/"Alt" keypress, so modifiers
+// only exist as part of a chord. Each modifier is a CHECKBOX that cycles off → once → locked → off:
+// tap once for a one-shot (composed into the next staged key, then released), tap again to LOCK it
+// armed across presses and Sends, tap a third time to clear. Any subset combines — `ctrl+shift+p`.
 
 interface NavTrayProps {
   onSend: (keys: string[]) => void;
@@ -51,7 +54,8 @@ type Tab = "keys" | "digits";
 export function NavTray({ onSend, disabled }: NavTrayProps) {
   const [tab, setTab] = useState<Tab>("keys");
   const [ctrlOpen, setCtrlOpen] = useState(false);
-  const { queue, mod, composing, arm, press, pushBase, removeAt, clear, take } = useKeyQueue();
+  const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take } =
+    useKeyQueue();
   const { pending, confirm, reset } = usePendingConfirm(); // danger ctrl two-tap (immediate path only)
 
   // Route a key press through the queue: fire immediately when idle, stage when composing.
@@ -92,19 +96,26 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
     </Button>
   );
 
-  const modBtn = (m: "shift" | "ctrl", label: ReactNode) => (
-    <Button
-      type="button"
-      variant={mod === m ? "default" : "outline"}
-      size="sm"
-      disabled={disabled}
-      onClick={() => arm(m)}
-      aria-pressed={mod === m}
-      className="h-10 px-0 text-sm font-medium"
-    >
-      {label}
-    </Button>
-  );
+  // A modifier button reads its own three-state mode from `mods`: outline when off, filled (default)
+  // when armed — once OR locked — with a small Lock glyph beside the label to distinguish locked from
+  // one-shot. Tapping cycles off → once → locked → off.
+  const modBtn = (m: Modifier, label: ReactNode) => {
+    const mode = mods[m];
+    return (
+      <Button
+        type="button"
+        variant={mode === "off" ? "outline" : "default"}
+        size="sm"
+        disabled={disabled}
+        onClick={() => arm(m)}
+        aria-pressed={mode !== "off"}
+        className="h-10 px-0 text-sm font-medium"
+      >
+        {mode === "locked" && <Lock className="size-3" />}
+        {label}
+      </Button>
+    );
+  };
 
   return (
     <div className="space-y-2 border-t border-border/60 bg-muted/30 px-3 py-2.5">
@@ -112,7 +123,7 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
           both tabs; the review-and-Send surface replaces the old "⇧ armed" hint line. */}
       <KeyQueueStrip
         queue={queue}
-        mod={mod}
+        mods={activeMods}
         onRemove={removeAt}
         onClear={clear}
         onSend={sendQueue}
@@ -172,11 +183,14 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
             Space
           </Button>
 
-          {/* Modifiers (sticky, one-shot, radio): arm one and the next key composes as its chord.
-              Same pressed styling as everything else (default = armed, outline = idle). */}
-          <div className="grid grid-cols-2 gap-1.5">
+          {/* Modifiers (checkboxes that cycle off → once → locked → off): arm any subset and the
+              next key composes as their combined chord. Locked (Lock glyph) stays armed across
+              presses and Sends. Same pressed styling as everything else (default = armed, outline =
+              idle). Display order Shift · Ctrl · Alt; compose order is canonical regardless of taps. */}
+          <div className="grid grid-cols-3 gap-1.5">
             {modBtn("shift", "⇧ Shift")}
             {modBtn("ctrl", "Ctrl")}
+            {modBtn("alt", "Alt")}
           </div>
 
           {/* Ctrl presets (collapsed by default; expanding keeps everything inline, never covering

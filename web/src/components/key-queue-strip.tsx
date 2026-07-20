@@ -3,14 +3,15 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { Modifier } from "@/lib/key-queue";
-import { isDangerKey, keyLabel } from "@/lib/key-queue";
+import { isDangerKey, keyLabel, modifierLabel } from "@/lib/key-queue";
 
 // The staging strip that sits at the top of the nav tray while composing: a chip per queued key
-// (tap to remove), a ghost chip + one-char input while a modifier is armed, and an explicit Send.
+// (tap to remove), a ghost chip + one-char input while any modifier is armed, and an explicit Send.
 // Presentational only — all state lives in useKeyQueue; every visible string is a plain text node.
 interface KeyQueueStripProps {
   queue: string[];
-  mod: Modifier | null;
+  /** The active modifiers in canonical order (pass activeMods from useKeyQueue). */
+  mods: readonly Modifier[];
   onRemove: (i: number) => void;
   onClear: () => void;
   onSend: () => void;
@@ -21,7 +22,7 @@ interface KeyQueueStripProps {
 
 export function KeyQueueStrip({
   queue,
-  mod,
+  mods,
   onRemove,
   onClear,
   onSend,
@@ -29,10 +30,11 @@ export function KeyQueueStrip({
   disabled,
 }: KeyQueueStripProps) {
   // Self-guarding: nothing to show unless a modifier is armed or keys are queued.
-  if (mod === null && queue.length === 0) return null;
+  if (mods.length === 0 && queue.length === 0) return null;
 
   const danger = queue.some(isDangerKey);
-  const modLabel = mod === "shift" ? "⇧" : mod === "ctrl" ? "Ctrl" : null;
+  const modsArmed = mods.length > 0;
+  const modLabels = mods.map(modifierLabel).join(" ");
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border/60 bg-background/60 p-1.5">
@@ -56,16 +58,16 @@ export function KeyQueueStrip({
         );
       })}
 
-      {/* Modifier armed, no base yet: a ghost chip showing what's awaited (e.g. "Ctrl + …"). */}
-      {mod !== null && (
+      {/* Modifiers armed, no base yet: a ghost chip showing the awaited chord (e.g. "Ctrl ⇧ + …"). */}
+      {modsArmed && (
         <span className="inline-flex h-8 items-center rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground">
-          {modLabel} + …
+          {modLabels} + …
         </span>
       )}
 
       {/* One-char key input — only while a modifier is armed. Controlled to "" so each keystroke
           fires onChange and the field stays empty; the model takes the last char typed. */}
-      {mod !== null && (
+      {modsArmed && (
         <input
           type="text"
           inputMode="text"
