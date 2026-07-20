@@ -249,16 +249,14 @@ export class StateEngine {
         }))
         .sort((a, b) => a.number - b.number);
 
-      const tabViews: TabView[] = tabs
-        .map((t) => ({
-          tabId: t.tab_id,
-          workspaceId: t.workspace_id,
-          number: t.number,
-          label: t.label,
-          focused: t.focused,
-          paneCount: t.pane_count,
-        }))
-        .sort((a, b) => a.number - b.number);
+      const tabViews: TabView[] = tabs.map((t) => ({
+        tabId: t.tab_id,
+        workspaceId: t.workspace_id,
+        number: t.number,
+        label: t.label,
+        focused: t.focused,
+        paneCount: t.pane_count,
+      }));
 
       // Detect transitions against the previous poll. First sighting of a pane never fires a
       // transition (so we don't notify for agents already blocked when the bridge starts).

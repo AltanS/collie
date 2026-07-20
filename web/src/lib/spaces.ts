@@ -19,7 +19,7 @@ export function groupPanesByTab(
   shellPanes: AgentView[],
 ): TabGroup[] {
   const panes = [...agents, ...shellPanes].filter((p) => p.workspaceId === workspaceId);
-  const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId).sort((a, b) => a.number - b.number);
+  const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
 
   const groups: TabGroup[] = wsTabs.map((t) => ({
     tabId: t.tabId,

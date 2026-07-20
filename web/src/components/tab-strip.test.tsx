@@ -13,6 +13,28 @@ const tabs: TabView[] = [
 ];
 
 describe("TabStrip", () => {
+  it("renders tabs in snapshot order even when their stable numbers differ", () => {
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={[
+          { ...tabs[1]!, label: "Second" },
+          { ...tabs[0]!, label: "First" },
+        ]}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+
+    const renderedTabs = screen
+      .getAllByRole("button")
+      .map((button) => button.textContent)
+      .filter((label) => label === "First" || label === "Second");
+    expect(renderedTabs).toEqual(["Second", "First"]);
+  });
+
   it("shows All plus only this workspace's tabs, and reports selection", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

@@ -189,6 +189,18 @@ describe("StateEngine — in-flight guard", () => {
 });
 
 describe("StateEngine — snapshot shaping", () => {
+  test("preserves the tab order reported by Herdr", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.tabs = [
+      { ...herdr.tabs[0]!, tab_id: "w1:t2", number: 2, label: "second" },
+      { ...herdr.tabs[0]!, tab_id: "w1:t1", number: 1, label: "first" },
+    ];
+
+    await poll();
+
+    expect(engine.current().tabs.map((tab) => tab.tabId)).toEqual(["w1:t2", "w1:t1"]);
+  });
+
   test("splits agent panes from bare shell panes", async () => {
     const { herdr, engine, poll } = makeEngine();
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), pane("w1:p2", "w1", "unknown", null)];
