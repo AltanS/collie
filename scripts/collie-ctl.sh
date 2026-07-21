@@ -88,7 +88,7 @@ ensure_build() {
 }
 
 self_dnsname() {
-  tailscale status --json 2>/dev/null | node -e \
+  tailscale status --json 2>/dev/null | bun -e \
     "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{process.stdout.write(JSON.parse(d).Self.DNSName.replace(/\.\$/,''))}catch{}})"
 }
 
