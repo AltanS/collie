@@ -131,6 +131,21 @@ deps by hand — the build runs `bun install` for you; the backend imports only 
 [`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see [Web
 Push](#web-push-optional)).
 
+### Windows
+
+Collie runs on Windows with two caveats:
+
+- **`herdr` must be on `PATH`** (or point `HERDR_BIN_PATH` / `COLLIE_HERDR_BIN` at it). On Windows,
+  Herdr's control socket is a named pipe the bridge can't open directly, so it talks to Herdr by
+  spawning the `herdr` CLI per request instead — this needs the same-version binary reachable.
+- **Change detection is poll-only.** There's no live `events.subscribe` stream over the CLI, so the
+  UI refreshes on the poll cadence (`COLLIE_POLL_MS`, default 1.5s) rather than being poked instantly
+  on a herd change. Events were only ever a poke — polling is the source of truth — so nothing but
+  refresh latency changes.
+
+The control script (`collie-ctl.sh`) shells out via `bash`, so run it under Git Bash; without
+`systemd --user` it supervises the bridge as a `nohup` process with a pidfile.
+
 ## Install
 
 On the host, not your phone. Two ways in.

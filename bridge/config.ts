@@ -57,6 +57,13 @@ function envBool(name: string, fallback: boolean): boolean {
 export interface Config {
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
+  /**
+   * Path to the `herdr` binary. Only used on Windows, where the bridge talks to Herdr by spawning
+   * this CLI (Herdr's socket is a Windows named pipe Bun can't open directly — see herdr-client.ts).
+   * Herdr injects `HERDR_BIN_PATH` into plugin commands; we fall back to that, then `COLLIE_HERDR_BIN`,
+   * then a bare `herdr` resolved on PATH. Inert on mac/Linux (the socket transport ignores it).
+   */
+  herdrBin: string;
   /** TCP port the bridge listens on (loopback only). `tailscale serve` proxies to it. */
   port: number;
   /**
@@ -149,6 +156,7 @@ export function loadConfig(): Config {
 
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? join(homedir(), ".config", "herdr", "herdr.sock"),
+    herdrBin: process.env.HERDR_BIN_PATH ?? process.env.COLLIE_HERDR_BIN ?? "herdr",
     port: envInt("COLLIE_PORT", 8787, { min: 1, max: 65535 }),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),

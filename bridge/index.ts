@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { loadConfig } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
-import { HerdrClient } from "./herdr-client.ts";
+import { createHerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { Push } from "./push.ts";
@@ -104,7 +104,7 @@ updateTimer.unref();
 // registry calls this for the primary at construction and for each session discovered later. Push,
 // snooze, notify-prefs, the audit log and the uploads dir stay process-global (shared here).
 const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
-  const herdr = new HerdrClient(socketPath);
+  const herdr = createHerdrClient({ socketPath, herdrBin: cfg.herdrBin });
   const engine = new StateEngine(herdr, cfg.pollMs);
 
   // Event-poked polling: a long-lived events.subscribe stream pokes an immediate re-poll on any herd

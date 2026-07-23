@@ -31,6 +31,7 @@ function req(headers: Record<string, string>): Request {
 function cfg(overrides: Partial<Config> = {}): Config {
   return {
     socketPath: "/tmp/herdr.sock",
+    herdrBin: "herdr",
     port: 8787,
     host: "127.0.0.1",
     pollMs: 1500,
