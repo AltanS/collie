@@ -124,6 +124,14 @@ app. Closing this needs the server-side blocking-message capture described above
   `agent.send`, `events.subscribe`, …). It translates to/from an internal domain model
   (`AgentStatus`, `AgentView`, `SnapshotResponse` — `bridge/types.ts`), so a Herdr API rename is a
   one-file fix, not a shatter.
+- **Two transports behind one interface, chosen by platform.** `herdr-client.ts` exports a
+  `HerdrClient` interface with two implementations selected by `createHerdrClient()`:
+  `SocketHerdrClient` (mac/Linux) opens Herdr's Unix socket directly, the verified default;
+  `CliHerdrClient` (Windows) spawns the `herdr` CLI once per RPC, because Herdr maps the socket path
+  onto a Windows named pipe that `Bun.connect({unix})` can't reach. Both emit identical JSON
+  envelopes, so nothing above the adapter changes. On Windows there's no `events.subscribe` CLI
+  equivalent, so the poke stream reports down and the poll below carries the whole load — which it's
+  designed to do anyway.
 - **Output model: poll, not stream — event-poked.** Herdr exposes `pane.read` (snapshot) and
   `pane.output_matched` (regex event) but **no raw output-stream event**, so there is nothing to
   stream even if we wanted to; the live pane view is poll-on-status-change + caching. The bridge's

@@ -6,6 +6,16 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.15.0] - 2026-07-23
+
+### Added
+- Windows support: the bridge talks to Herdr by spawning the `herdr` CLI per RPC, since Herdr's Windows control socket is a named pipe `Bun.connect({unix})` can't reach. Selected by platform — mac/Linux keep the direct Unix-socket transport unchanged
+- `HERDR_BIN_PATH` / `COLLIE_HERDR_BIN` config for the `herdr` binary path (Windows only; defaults to `herdr` on PATH)
+
+### Changed
+- `herdr-client.ts` split into a `HerdrClient` interface with `SocketHerdrClient` (mac/Linux) and `CliHerdrClient` (Windows) implementations, chosen by `createHerdrClient()`
+- On Windows there is no `events.subscribe` stream (no CLI equivalent), so change detection is poll-only — events were always just a poke, never a source of truth, so correctness is unaffected
+
 ## [0.14.2] - 2026-07-23
 
 ### Added

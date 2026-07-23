@@ -1,9 +1,9 @@
 id = "herdr.collie"
 name = "Collie"
-version = "0.14.2"
+version = "0.15.0"
 min_herdr_version = "0.7.0"
 description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
-platforms = ["linux", "macos"]
+platforms = ["linux", "macos", "windows"]
 
 # This plugin is a thin launcher. The actual bridge runs as a systemd --user service so it
 # outlives Herdr restarts (see ARCHITECTURE.md §3). The actions below shell out to
@@ -16,7 +16,7 @@ platforms = ["linux", "macos"]
 # Still needs Bun on PATH — building the frontend is the one unavoidable Bun step.
 [[build]]
 command = ["bash", "scripts/collie-ctl.sh", "build"]
-platforms = ["linux", "macos"]
+platforms = ["linux", "macos", "windows"]
 
 [[actions]]
 id = "start"
