@@ -6,6 +6,11 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.14.2] - 2026-07-23
+
+### Added
+- Paste an image straight from the clipboard into the composer, same upload path as the picker (#24) (ad6957b)
+
 ## [0.14.1] - 2026-07-22
 
 ### Fixed
