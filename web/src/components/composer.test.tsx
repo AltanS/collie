@@ -681,6 +681,33 @@ describe("Composer — quick keys / image attach", () => {
   });
 });
 
+describe("Composer — clipboard image paste", () => {
+  it("uploads a pasted image the same way the picker does and appends its path", async () => {
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/tmp/shot.png" })),
+    );
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const file = new File(["x"], "shot.png", { type: "image/png" });
+    const item = { kind: "file", type: "image/png", getAsFile: () => file };
+
+    fireEvent.paste(box, { clipboardData: { items: [item] } });
+
+    await waitFor(() => expect(box).toHaveValue("/tmp/shot.png"));
+  });
+
+  it("leaves a plain-text paste alone — no upload, nothing written by the paste handler", () => {
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const item = { kind: "string", type: "text/plain", getAsFile: () => null };
+
+    fireEvent.paste(box, { clipboardData: { items: [item] } });
+
+    expect(box).toHaveValue("");
+    expect(screen.queryByText(/Image added/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("Composer — keys dock (in-flow, not an overlay)", () => {
   it("tapping Keys docks the NavTray in the normal flow (no fixed overlay) and toggles it closed", async () => {
     const user = userEvent.setup();
