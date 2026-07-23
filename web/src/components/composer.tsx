@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { ChangeEvent, ReactNode } from "react";
+import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Search, Send, Slash, Terminal, WrapText, X, Zap } from "lucide-react";
 
@@ -381,10 +381,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   // Upload an image; on success append its host path to the composer so the user can add context.
-  async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
-    if (!file || locked) return;
+  // Shared by the file picker and clipboard paste.
+  async function uploadImage(file: File) {
+    if (locked) return;
     setUploading(true);
     try {
       const res = await api.uploadImage(paneId, file, session);
@@ -400,6 +399,32 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setStatus(err instanceof Error ? err.message : String(err), "error");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    await uploadImage(file);
+  }
+
+  // Paste an image straight from the clipboard (e.g. a screenshot) the same way the picker does.
+  // Only intercepts when the clipboard actually carries an image file — a plain text paste (the
+  // common case) falls through untouched.
+  function onPasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
+    if (locked) return;
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          void uploadImage(file);
+          return;
+        }
+      }
     }
   }
 
@@ -592,6 +617,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onSendClick();
               }
             }}
+            onPaste={onPasteImage}
             placeholder={
               gone
                 ? "Pane is gone"
