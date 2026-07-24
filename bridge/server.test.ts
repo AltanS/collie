@@ -31,11 +31,12 @@ function req(headers: Record<string, string>): Request {
 function cfg(overrides: Partial<Config> = {}): Config {
   return {
     socketPath: "/tmp/herdr.sock",
-    herdrBin: "herdr",
+    transportMode: "auto",
     port: 8787,
     host: "127.0.0.1",
     pollMs: 1500,
     pollIdleMs: 12_000,
+    pollNoEventsMs: 4000,
     notifyDelayMs: 30_000,
     readLines: 200,
     submitKeys: ["Enter"],

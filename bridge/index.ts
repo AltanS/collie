@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { loadConfig } from "./config.ts";
-import { EventPoker } from "./event-poker.ts";
+import { EventPoker, type PollMode } from "./event-poker.ts";
 import { createHerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
@@ -104,16 +104,22 @@ updateTimer.unref();
 // registry calls this for the primary at construction and for each session discovered later. Push,
 // snooze, notify-prefs, the audit log and the uploads dir stay process-global (shared here).
 const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
-  const herdr = createHerdrClient({ socketPath, herdrBin: cfg.herdrBin });
+  const herdr = createHerdrClient({ socketPath, herdrBin: cfg.herdrBin ?? "herdr", transport: cfg.transportMode });
   const engine = new StateEngine(herdr, cfg.pollMs);
 
   // Event-poked polling: a long-lived events.subscribe stream pokes an immediate re-poll on any herd
   // change, and while it's healthy the interval relaxes to the safety-net cadence. Events are ONLY a
   // poke — the snapshot poll stays the source of truth — so a missed event costs one interval, not
   // correctness. The fresh snapshot after any pane lifecycle change re-scopes the subscriptions.
+  // A transport with no stream (Windows CLI) reports `no-events` and polls on its own cadence.
   const poker = new EventPoker(herdr);
+  const cadenceFor: Record<PollMode, number> = {
+    streaming: cfg.pollIdleMs,
+    fast: cfg.pollMs,
+    "no-events": cfg.pollNoEventsMs,
+  };
   poker.onPoke(() => engine.pokeNow());
-  poker.onHealth((h) => engine.setCadence(h ? cfg.pollIdleMs : cfg.pollMs));
+  poker.onPollMode((mode) => engine.setCadence(cadenceFor[mode]));
   engine.onUpdate((s) => poker.setAgentPanes(s.agents.map((a) => a.paneId)));
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by

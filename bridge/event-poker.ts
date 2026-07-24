@@ -6,10 +6,23 @@ import type { HerdrClient } from "./herdr-client.ts";
 // relaxes to a safety-net cadence; when it's down the engine falls back to fast
 // polling. Events are never state here — a missed event costs one interval, never
 // correctness — so the snapshot poll stays the single source of truth. See index.ts.
+//
+// Some transports (the Windows CLI) have NO event stream: subscribeEvents returns
+// null. That's a steady state, not a transient drop — so it gets its own poll mode
+// (`no-events`) with a dedicated cadence and NO reconnect loop, rather than being
+// treated as a stream that keeps failing.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** A subscription request entry: global (just `type`) or pane-scoped (needs `pane_id`). */
 export type Subscription = { type: string; pane_id?: string };
+
+/**
+ * How the engine should be polling, derived from the event stream's state:
+ *   • `streaming`  — stream healthy; events poke re-polls, so relax to the safety-net cadence.
+ *   • `fast`       — stream is (transiently) down and reconnecting; poll fast until it recovers.
+ *   • `no-events`  — transport can't stream at all; poll on the dedicated no-events cadence forever.
+ */
+export type PollMode = "streaming" | "fast" | "no-events";
 
 // Global events that change what Collie's snapshot renders. We deliberately DROP layout.*,
 // worktree.*, pane.scroll_changed and pane.output_matched — none of them alter the herd view we
@@ -67,15 +80,17 @@ export class EventPoker {
   private readonly backoff: number[];
   private agentPanes: string[] = [];
   private started = false;
-  private healthy = false;
+  private mode: PollMode = "fast";
   private backoffIdx = 0;
   // The active stream handle; identity-compared in callbacks so a superseded stream's late `onDown`
-  // (from a deliberate close during reconnect/stop) is ignored instead of flapping health.
+  // (from a deliberate close during reconnect/stop) is ignored instead of flapping the mode.
   private stream: { close(): void } | null = null;
+  // Set once a connect() attempt returns null: this transport has no event stream, so stop trying.
+  private streamUnsupported = false;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly pokeListeners = new Set<() => void>();
-  private readonly healthListeners = new Set<(healthy: boolean) => void>();
+  private readonly modeListeners = new Set<(mode: PollMode) => void>();
 
   constructor(
     private readonly client: HerdrClient,
@@ -90,9 +105,10 @@ export class EventPoker {
     return () => this.pokeListeners.delete(cb);
   }
 
-  onHealth(cb: (healthy: boolean) => void): () => void {
-    this.healthListeners.add(cb);
-    return () => this.healthListeners.delete(cb);
+  /** Notified whenever the poll mode changes (drives StateEngine's cadence). Fires once per change. */
+  onPollMode(cb: (mode: PollMode) => void): () => void {
+    this.modeListeners.add(cb);
+    return () => this.modeListeners.delete(cb);
   }
 
   start(): void {
@@ -121,7 +137,8 @@ export class EventPoker {
   setAgentPanes(ids: string[]): void {
     if (sameIdSet(ids, this.agentPanes)) return;
     this.agentPanes = [...ids];
-    if (this.started) this.reconnect();
+    // No stream to re-scope on a poll-only transport — the snapshot poll already covers every pane.
+    if (this.started && !this.streamUnsupported) this.reconnect();
   }
 
   private connect(): void {
@@ -131,10 +148,10 @@ export class EventPoker {
       onUp: () => {
         if (this.stream !== handle) return;
         this.backoffIdx = 0;
-        // A resubscribe acks while already healthy, so setHealthy dedupes it silently — but it's
-        // the only journal evidence that the per-pane subscriptions followed the herd. Log it.
-        if (this.healthy) console.log(`[events] resubscribed (${subs.length} subscriptions)`);
-        this.setHealthy(true, subs.length);
+        // A resubscribe acks while already streaming, so setMode dedupes it silently — but it's the
+        // only journal evidence that the per-pane subscriptions followed the herd. Log it.
+        if (this.mode === "streaming") console.log(`[events] resubscribed (${subs.length} subscriptions)`);
+        this.setMode("streaming", subs.length);
       },
       onEvent: () => {
         if (this.stream !== handle) return;
@@ -143,10 +160,19 @@ export class EventPoker {
       onDown: (reason) => {
         if (this.stream !== handle) return;
         this.stream = null;
-        this.setHealthy(false, subs.length, reason);
+        this.setMode("fast", subs.length, reason);
         if (this.started) this.scheduleReconnect();
       },
     });
+    // A null handle means this transport can't stream at all (Windows CLI). Latch it: no stream to
+    // track, no reconnect loop, and poll on the dedicated no-events cadence. Correctness is
+    // unaffected — events were only ever a poke; the snapshot poll is the source of truth.
+    if (handle == null) {
+      this.streamUnsupported = true;
+      this.stream = null;
+      this.setMode("no-events", subs.length);
+      return;
+    }
     this.stream = handle;
   }
 
@@ -179,11 +205,12 @@ export class EventPoker {
     }, this.debounceMs);
   }
 
-  private setHealthy(healthy: boolean, subCount: number, reason?: string): void {
-    if (this.healthy === healthy) return;
-    this.healthy = healthy;
-    if (healthy) console.log(`[events] stream up (${subCount} subscriptions)`);
-    else console.log(`[events] stream down: ${reason ?? "unknown"} — fast polling until it recovers`);
-    for (const cb of this.healthListeners) cb(healthy);
+  private setMode(mode: PollMode, subCount: number, reason?: string): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (mode === "streaming") console.log(`[events] stream up (${subCount} subscriptions)`);
+    else if (mode === "fast") console.log(`[events] stream down: ${reason ?? "unknown"} — fast polling until it recovers`);
+    else console.log("[events] no event stream on this transport — polling on the no-events cadence");
+    for (const cb of this.modeListeners) cb(mode);
   }
 }

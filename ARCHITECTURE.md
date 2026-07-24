@@ -124,14 +124,17 @@ app. Closing this needs the server-side blocking-message capture described above
   `agent.send`, `events.subscribe`, …). It translates to/from an internal domain model
   (`AgentStatus`, `AgentView`, `SnapshotResponse` — `bridge/types.ts`), so a Herdr API rename is a
   one-file fix, not a shatter.
-- **Two transports behind one interface, chosen by platform.** `herdr-client.ts` exports a
-  `HerdrClient` interface with two implementations selected by `createHerdrClient()`:
-  `SocketHerdrClient` (mac/Linux) opens Herdr's Unix socket directly, the verified default;
-  `CliHerdrClient` (Windows) spawns the `herdr` CLI once per RPC, because Herdr maps the socket path
-  onto a Windows named pipe that `Bun.connect({unix})` can't reach. Both emit identical JSON
-  envelopes, so nothing above the adapter changes. On Windows there's no `events.subscribe` CLI
-  equivalent, so the poke stream reports down and the poll below carries the whole load — which it's
-  designed to do anyway.
+- **One client, a pluggable transport chosen by platform.** `herdr-client.ts` exports a single
+  `HerdrClient` class — every method and its verified doc comment, written once — over a `Transport`
+  seam (`request()` + `subscribeEvents()`), selected by `createHerdrClient()`. The divergence between
+  platforms is transport, not semantics: `SocketTransport` (mac/Linux) opens Herdr's Unix socket
+  directly, the verified default; `CliTransport` (Windows) spawns the `herdr` CLI once per RPC via a
+  method→argv table, because Herdr maps the socket path onto a Windows named pipe that
+  `Bun.connect({unix})` can't reach. Both yield identical JSON envelopes, so nothing above the client
+  changes, and adding a Herdr method is one method plus one argv entry — never a change duplicated
+  across platforms. `COLLIE_HERDR_TRANSPORT=auto|cli|socket` forces a transport (so the CLI path can
+  be exercised off-Windows). The CLI has no `events.subscribe` equivalent, so `subscribeEvents()`
+  returns `null` and the poll below carries the whole load — which it's designed to do anyway.
 - **Output model: poll, not stream — event-poked.** Herdr exposes `pane.read` (snapshot) and
   `pane.output_matched` (regex event) but **no raw output-stream event**, so there is nothing to
   stream even if we wanted to; the live pane view is poll-on-status-change + caching. The bridge's
@@ -141,8 +144,10 @@ app. Closing this needs the server-side blocking-message capture described above
   alongside purely to **poke** that poll: lifecycle events plus a per-agent-pane
   `pane.agent_status_changed` subscription trigger an immediate debounced re-poll, while the interval
   relaxes to `COLLIE_POLL_IDLE_MS` (12 s default) whenever the stream is healthy and drops back to
-  the fast `COLLIE_POLL_MS` when it isn't. **The snapshot poll stays the source of truth throughout —
-  a missed event costs one interval, never correctness.**
+  the fast `COLLIE_POLL_MS` when it transiently drops. A transport with **no** stream at all (the
+  Windows CLI) is a distinct steady state — not a flapping stream — so it polls on its own
+  `COLLIE_POLL_NO_EVENTS_MS` cadence (4 s default) with no reconnect loop. **The snapshot poll stays
+  the source of truth throughout — a missed event costs one interval, never correctness.**
 - **The browser polls too.** `useRevalidator` → `/api/snapshot` on an adaptive interval. There is no
   WebSocket fan-out to the browser and no push of state; pulling is what makes the two recovery loops
   below trivial.

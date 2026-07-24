@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { TransportMode } from "./herdr-client.ts";
+
 // All bridge configuration, resolved once at startup. Env-driven so the systemd unit and the
 // plugin launcher can configure it without code changes. Defaults are safe for a single-user,
 // tailnet-only deployment.
@@ -32,6 +34,20 @@ function envInt(
   return n;
 }
 
+/**
+ * Read an env var constrained to a fixed set of string values, falling back (with a warning) on
+ * anything not in `allowed`. Empty/unset → `fallback`. Case-insensitive.
+ */
+function envEnum<T extends string>(name: string, allowed: readonly T[], fallback: T): T {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const v = raw.trim().toLowerCase();
+  const match = allowed.find((a) => a.toLowerCase() === v);
+  if (match !== undefined) return match;
+  console.warn(`[config] ${name}="${raw}" is not one of ${allowed.join("|")} — using default ${fallback}`);
+  return fallback;
+}
+
 function envList(name: string): string[] {
   return (process.env[name] ?? "")
     .split(",")
@@ -58,12 +74,19 @@ export interface Config {
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
   /**
-   * Path to the `herdr` binary. Only used on Windows, where the bridge talks to Herdr by spawning
-   * this CLI (Herdr's socket is a Windows named pipe Bun can't open directly — see herdr-client.ts).
-   * Herdr injects `HERDR_BIN_PATH` into plugin commands; we fall back to that, then `COLLIE_HERDR_BIN`,
-   * then a bare `herdr` resolved on PATH. Inert on mac/Linux (the socket transport ignores it).
+   * Path to the `herdr` binary. Only used by the CLI transport (Windows, or a forced
+   * {@link transportMode}), where the bridge talks to Herdr by spawning this CLI — Herdr's socket is
+   * a Windows named pipe Bun can't open directly (see herdr-client.ts). Herdr injects `HERDR_BIN_PATH`
+   * into plugin commands; we fall back to that, then `COLLIE_HERDR_BIN`, then a bare `herdr` on PATH.
+   * Optional: the socket transport ignores it, so mac/Linux configs (and tests) can omit it.
    */
-  herdrBin: string;
+  herdrBin?: string;
+  /**
+   * Which Herdr transport to use. `auto` (default) = the CLI on Windows, the Unix socket elsewhere.
+   * `cli`/`socket` force one regardless of platform — the only way someone on macOS/Linux (no Windows
+   * box) can exercise the CLI path. Set via `COLLIE_HERDR_TRANSPORT`.
+   */
+  transportMode: TransportMode;
   /** TCP port the bridge listens on (loopback only). `tailscale serve` proxies to it. */
   port: number;
   /**
@@ -79,6 +102,14 @@ export interface Config {
    * one of these, never correctness. Falls back to {@link pollMs} the moment the stream drops.
    */
   pollIdleMs: number;
+  /**
+   * Poll cadence, ms, when the transport has NO event stream at all (the Windows CLI). This is a
+   * steady state, not a transient drop, so it gets its own knob between the two socket cadences:
+   * {@link pollMs} (fast, transient-drop) would spawn herdr.exe far too often, and {@link pollIdleMs}
+   * (relaxed, stream-healthy) is too stale when polling is the ONLY signal. Set via
+   * `COLLIE_POLL_NO_EVENTS_MS`.
+   */
+  pollNoEventsMs: number;
   /**
    * Debounce window before a blocked/done transition becomes a push, ms. An agent that resolves
    * within this window (you handled it at your desk) never notifies; one that fires is retracted
@@ -157,10 +188,12 @@ export function loadConfig(): Config {
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? join(homedir(), ".config", "herdr", "herdr.sock"),
     herdrBin: process.env.HERDR_BIN_PATH ?? process.env.COLLIE_HERDR_BIN ?? "herdr",
+    transportMode: envEnum("COLLIE_HERDR_TRANSPORT", ["auto", "cli", "socket"] as const, "auto"),
     port: envInt("COLLIE_PORT", 8787, { min: 1, max: 65535 }),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),
     pollIdleMs: envInt("COLLIE_POLL_IDLE_MS", 12_000, { min: 1000 }),
+    pollNoEventsMs: envInt("COLLIE_POLL_NO_EVENTS_MS", 4000, { min: 1000 }),
     notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }),
     readLines: envInt("COLLIE_READ_LINES", 200, { min: 1 }),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],

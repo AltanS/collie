@@ -139,9 +139,10 @@ Collie runs on Windows with two caveats:
   Herdr's control socket is a named pipe the bridge can't open directly, so it talks to Herdr by
   spawning the `herdr` CLI per request instead — this needs the same-version binary reachable.
 - **Change detection is poll-only.** There's no live `events.subscribe` stream over the CLI, so the
-  UI refreshes on the poll cadence (`COLLIE_POLL_MS`, default 1.5s) rather than being poked instantly
-  on a herd change. Events were only ever a poke — polling is the source of truth — so nothing but
-  refresh latency changes.
+  UI refreshes on a dedicated poll cadence (`COLLIE_POLL_NO_EVENTS_MS`, default 4s) rather than being
+  poked instantly on a herd change. Events were only ever a poke — polling is the source of truth — so
+  nothing but refresh latency changes. (`COLLIE_HERDR_TRANSPORT=auto|cli|socket` forces the transport;
+  `auto` picks the CLI on Windows and the socket elsewhere.)
 
 The control script (`collie-ctl.sh`) shells out via `bash`, so run it under Git Bash; without
 `systemd --user` it supervises the bridge as a `nohup` process with a pidfile.
