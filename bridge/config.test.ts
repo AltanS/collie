@@ -24,6 +24,7 @@ const KEYS = [
   "COLLIE_STATE_DIR",
   "COLLIE_MULTI_SESSION",
   "COLLIE_SKIP_SERVE",
+  "COLLIE_FRONT_DOOR",
   "HERDR_SOCKET_PATH",
   "HERDR_PLUGIN_STATE_DIR",
 ];
@@ -65,7 +66,8 @@ describe("loadConfig", () => {
     expect(cfg.deviceAllowlist).toEqual([]);
     // Multi-session support is on by default.
     expect(cfg.multiSession).toBe(true);
-    // tailscale serve is used by default (reverse-proxy bypass is opt-in).
+    // Tailscale serve is the default front door.
+    expect(cfg.frontDoor).toBe("tailscale");
     expect(cfg.skipServe).toBe(false);
   });
 
@@ -87,22 +89,45 @@ describe("loadConfig", () => {
     expect(loadConfig().multiSession).toBe(true);
   });
 
-  test("parses COLLIE_SKIP_SERVE as a boolean toggle (default off)", () => {
-    // Truthy spellings turn it on (reverse-proxy mode; bypass tailscale serve).
+  test("parses COLLIE_SKIP_SERVE as the legacy proxy-front-door toggle", () => {
+    // Truthy spellings select proxy mode (bypass tailscale serve).
     for (const on of ["on", "1", "true", "yes", "ON", " True "]) {
       process.env.COLLIE_SKIP_SERVE = on;
+      expect(loadConfig().frontDoor).toBe("proxy");
       expect(loadConfig().skipServe).toBe(true);
     }
-    // Falsey spellings keep it off (the default tailscale serve path).
+    // Falsey spellings keep the default tailscale path.
     for (const off of ["off", "0", "false", "no", "OFF", " False "]) {
       process.env.COLLIE_SKIP_SERVE = off;
+      expect(loadConfig().frontDoor).toBe("tailscale");
       expect(loadConfig().skipServe).toBe(false);
     }
-    // Garbage and empty fall back to the default (off).
+    // Garbage and empty fall back to the default (tailscale).
     process.env.COLLIE_SKIP_SERVE = "banana";
+    expect(loadConfig().frontDoor).toBe("tailscale");
     expect(loadConfig().skipServe).toBe(false);
     process.env.COLLIE_SKIP_SERVE = "";
+    expect(loadConfig().frontDoor).toBe("tailscale");
     expect(loadConfig().skipServe).toBe(false);
+  });
+
+  test("parses COLLIE_FRONT_DOOR and treats non-tailscale tracks as skipServe", () => {
+    process.env.COLLIE_FRONT_DOOR = "netbird";
+    expect(loadConfig().frontDoor).toBe("netbird");
+    expect(loadConfig().skipServe).toBe(true);
+
+    process.env.COLLIE_FRONT_DOOR = " proxy ";
+    expect(loadConfig().frontDoor).toBe("proxy");
+    expect(loadConfig().skipServe).toBe(true);
+
+    process.env.COLLIE_FRONT_DOOR = "banana";
+    expect(loadConfig().frontDoor).toBe("tailscale");
+    expect(loadConfig().skipServe).toBe(false);
+
+    process.env.COLLIE_FRONT_DOOR = "netbird";
+    process.env.COLLIE_SKIP_SERVE = "1";
+    expect(loadConfig().frontDoor).toBe("proxy");
+    expect(loadConfig().skipServe).toBe(true);
   });
 
   test("reads the per-device auth header and allowlist", () => {

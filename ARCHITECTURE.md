@@ -26,18 +26,19 @@ A Herdr web bridge — a long-lived local process that
 - connects to Herdr's Unix-socket API (`$HERDR_SOCKET_PATH`),
 - serves a **mobile-first web app**, with live state polled over HTTP (see §5),
 - translates browser actions → socket methods,
-- sits behind **one hardened front door** — `tailscale serve` (default; tailnet-only HTTPS +
-  MagicDNS) or a conforming reverse proxy
-  ([README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)) —
-  installable as a **PWA**.
+- sits behind **exactly one selected hardened front door** — `tailscale serve` (tailnet-only HTTPS +
+  MagicDNS), `netbird expose` (public HTTPS protected by NetBird auth), or a conforming reverse
+  proxy ([README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)) —
+  installable as a **PWA**. Starting or switching tracks retires stale managed ingress; proxy mode
+  leaves the operator's proxy as the sole ingress.
 
 The browser never touches the socket directly; the bridge is the only thing that does.
 
 ```
    phone / laptop (PWA)
-        │  HTTPS over tailnet  (https://herd.<tailnet>.ts.net)
+        │  HTTPS over selected front door
         ▼
-   tailscale serve  ── injects identity headers, terminates TLS   (Variant C: a reverse proxy instead)
+   tailscale serve / netbird expose / reverse proxy
         │  127.0.0.1:PORT   (bridge binds loopback ONLY)
         ▼
    Collie (this project)
@@ -157,18 +158,19 @@ app. Closing this needs the server-side blocking-message capture described above
 ## 6. Security model
 
 This socket equals **arbitrary code execution on the host** (`agent.send` / `pane.send_text` type
-into live terminals). The posture is single-user, behind one hardened front door (tailnet-only by
-default). These four are genuine RCE vectors and are **load-bearing — do not regress them:**
+into live terminals). The posture is single-user, behind one hardened front door. These four are
+genuine RCE vectors and are **load-bearing — do not regress them:**
 
 - **The bridge binds `127.0.0.1` only** and lets its single front door proxy it. Binding `0.0.0.0`
   makes the whole access check theater. Under `tailscale serve`, the `Tailscale-User-Login` header is
   the person gate — trusted **only** when the request source is loopback (i.e. it came from
   tailscaled), with the owner login asserted and any other tailnet user rejected. That header exists
-  **only** under `tailscale serve` ingress; under a reverse-proxy front door
+  **only** under `tailscale serve` ingress. Under `netbird expose` there is no Collie-readable
+  identity header; NetBird auth is the front-door gate. Under a reverse-proxy front door
   ([README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
-  there is none, and the equivalent write gate is **per-device auth** (`COLLIE_DEVICE_HEADER`) with
-  the proxy contract (README Variant B/C requirements) as the load-bearing piece. The loopback bind is
-  load-bearing either way.
+  the equivalent write gate is **per-device auth** (`COLLIE_DEVICE_HEADER`) with the proxy contract
+  (README Variant B/C requirements) as the load-bearing piece. The loopback bind is load-bearing
+  either way.
 - **`pane.read` output renders safely** — it's attacker-influenceable (filenames, agent output,
   fetched web content). Never `innerHTML`; it renders as React text nodes under a **strict CSP**
   (`default-src 'self'`), so an escaping miss can't run injected script that calls back into the
@@ -177,12 +179,13 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   the `Host` header the bridge receives (loopback always allowed), so a page on any other tailnet
   device can't CSRF the bridge. With a plain `tailscale serve` on the MagicDNS name these match
   automatically (no config). When Collie is fronted by a *different* public hostname or an extra
-  reverse proxy / TLS terminator (custom domain, load balancer, Headscale + upstream TLS, or a
-  reverse-proxy front door — [README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)),
+  reverse proxy / TLS terminator (NetBird generated/custom domain, custom vanity domain, load
+  balancer, Headscale + upstream TLS, or a reverse-proxy front door —
+  [README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)),
   the public origin no longer matches the forwarded `Host` — list that exact origin in
   `COLLIE_ALLOWED_ORIGINS` (the only sanctioned way to widen the gate; never bind off-loopback to
   "fix" it).
-- **Idle timeout.** Tailscale identity proves the *device*, not *who's holding it*. The PWA stays
+- **Idle timeout.** The front door proves the *device/account*, not *who's holding it*. The PWA stays
   "signed in" with no session, so a stolen unlocked phone would be a root shell. The idle-lock
   unmounts the router — pausing all polling — until tapped.
 
@@ -203,10 +206,12 @@ Considered, not built:
 Full passthrough (no command allow-list) is acceptable for a personal tool — an allow-list would
 defeat the purpose. **Never use `tailscale funnel`** (public exposure).
 
-## 7. Tailscale & PWA
+## 7. Front door & PWA
 
 - `tailscale serve` → tailnet-only HTTPS on a stable MagicDNS hostname; the node cert doesn't rotate,
   so the PWA stays signed in. No credential management, no login screen.
+- `netbird expose` → HTTPS through NetBird's reverse proxy. Prefer a custom domain for an installed
+  PWA; generated expose names can change across sidecar restarts.
 - Install as a PWA (Add to Home Screen) → app icon, instant open, persistent.
 - Known failure mode (accept, don't engineer around): if `tailscaled` is down, the bridge is reachable
   on localhost but not via MagicDNS. On **Android specifically**, the OS backgrounds Tailscale

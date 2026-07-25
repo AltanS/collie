@@ -62,9 +62,11 @@ the unit name; the Herdr action runs from anywhere.
   tsc), then build web to `dist-staging` and swap it in atomically — a failed build never empties a
   live `web/dist`. Bare `cd web && bun run build` still skips typechecking; don't ship from it.
 - **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
-  browser); backend pure-logic `bun run test` at the root (Bun's own runner — covers `checkAccess`,
-  `StateEngine`, `loadConfig`). A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
-  every push — override once with `SKIP_TESTS=1 git push`. The bits that genuinely need `Bun.serve` /
+  browser); root `bun run test` runs Bun's backend pure-logic suite (`checkAccess`, `StateEngine`,
+  `loadConfig`) plus `scripts/collie-ctl.test.sh` lifecycle mocks. The **pre-push hook**
+  (`scripts/git-hooks/pre-push`) runs the frontend Vitest and backend Bun suites; run root
+  `bun run test` explicitly to include the shell lifecycle suite. Override the hook once with
+  `SKIP_TESTS=1 git push`. The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
   so keep new backend logic pure/injectable enough for `bun test`, or exercise it through `web/`.
 - Service: `systemd --user` unit `collie` on the deployment host; logs `journalctl --user -u collie -f`.
@@ -96,7 +98,7 @@ the unit name; the Herdr action runs from anywhere.
 
 ## Security posture (don't regress)
 
-Loopback bind only · exactly one hardened front door — `tailscale serve` (never `funnel`) or a
-conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate · optional
-identity/device gates · strict CSP. A socket call can type into a real terminal — treat the bridge as
-remote shell access.
+Loopback bind only · exactly one hardened front door — `tailscale serve` (never `funnel`),
+`netbird expose` with NetBird auth (README Variant D), or a conforming reverse proxy per README
+Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate · optional identity/device gates · strict CSP. A
+socket call can type into a real terminal — treat the bridge as remote shell access.

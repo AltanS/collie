@@ -48,6 +48,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     vapidSubject: "mailto:admin@example.com",
     stateDir: "/tmp/state",
     multiSession: true,
+    frontDoor: "tailscale",
     skipServe: false,
     ...overrides,
   };
@@ -397,8 +398,10 @@ describe("deviceAuth — per-device authorisation", () => {
 describe("startupWarnings — security-posture nags", () => {
   const has = (ws: string[], needle: string) => ws.some((w) => w.includes(needle));
 
-  test("skipServe + trustedUser: warns the identity gate is inert and points at the device header", () => {
-    const ws = startupWarnings(cfg({ skipServe: true, trustedUser: "me@example.com" }));
+  test("proxy front door + trustedUser: warns the identity gate is inert and points at the device header", () => {
+    const ws = startupWarnings(
+      cfg({ frontDoor: "proxy", skipServe: true, trustedUser: "me@example.com" }),
+    );
     expect(has(ws, "COLLIE_TRUSTED_USER has no effect")).toBe(true);
     expect(has(ws, "COLLIE_DEVICE_HEADER")).toBe(true);
     expect(has(ws, "Variant C")).toBe(true);
@@ -406,19 +409,36 @@ describe("startupWarnings — security-posture nags", () => {
     expect(has(ws, "any tailnet device/user")).toBe(false);
   });
 
-  test("skipServe + empty trustedUser: no empty-trustedUser warning at all", () => {
-    const ws = startupWarnings(cfg({ skipServe: true, trustedUser: "" }));
+  test("proxy front door + empty trustedUser: no empty-trustedUser warning at all", () => {
+    const ws = startupWarnings(cfg({ frontDoor: "proxy", skipServe: true, trustedUser: "" }));
     expect(has(ws, "COLLIE_TRUSTED_USER")).toBe(false);
   });
 
-  test("no skipServe + empty trustedUser: the existing Variant-A warning still fires", () => {
-    const ws = startupWarnings(cfg({ skipServe: false, trustedUser: "" }));
+  test("netbird front door + trustedUser: warns the identity gate is inert and names NetBird auth", () => {
+    const ws = startupWarnings(
+      cfg({ frontDoor: "netbird", skipServe: true, trustedUser: "me@example.com" }),
+    );
+    expect(has(ws, "COLLIE_TRUSTED_USER has no effect")).toBe(true);
+    expect(has(ws, "COLLIE_FRONT_DOOR=netbird")).toBe(true);
+    expect(has(ws, "NetBird expose authentication")).toBe(true);
+    expect(has(ws, "Variant D")).toBe(true);
+  });
+
+  test("netbird front door + empty trustedUser: no Variant-A warning", () => {
+    const ws = startupWarnings(cfg({ frontDoor: "netbird", skipServe: true, trustedUser: "" }));
+    expect(has(ws, "COLLIE_TRUSTED_USER")).toBe(false);
+  });
+
+  test("tailscale front door + empty trustedUser: the existing Variant-A warning still fires", () => {
+    const ws = startupWarnings(cfg({ frontDoor: "tailscale", skipServe: false, trustedUser: "" }));
     expect(has(ws, "COLLIE_TRUSTED_USER is empty")).toBe(true);
     expect(has(ws, "Variant A")).toBe(true);
   });
 
-  test("no skipServe + trustedUser set: no identity warning (correctly configured)", () => {
-    const ws = startupWarnings(cfg({ skipServe: false, trustedUser: "me@example.com" }));
+  test("tailscale front door + trustedUser set: no identity warning (correctly configured)", () => {
+    const ws = startupWarnings(
+      cfg({ frontDoor: "tailscale", skipServe: false, trustedUser: "me@example.com" }),
+    );
     expect(has(ws, "COLLIE_TRUSTED_USER")).toBe(false);
   });
 

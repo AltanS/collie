@@ -297,10 +297,9 @@ export function startServer(opts: {
  * The security-posture warnings emitted once at startup, as plain strings (each already prefixed
  * `[bridge] WARNING:`). Pure + exported so the exact set that fires for a given {@link Config} is
  * unit-testable without standing up Bun.serve; the bootstrap in {@link startServer} just logs each
- * via `console.warn`. The identity-gate advice forks on {@link Config.skipServe}: behind a reverse
- * proxy the `Tailscale-User-Login` header is never injected, so trustedUser is inert (nag toward
- * COLLIE_DEVICE_HEADER instead), whereas under `tailscale serve` an empty trustedUser is the open
- * door Variant A closes.
+ * via `console.warn`. The identity-gate advice forks on {@link Config.frontDoor}: only
+ * `tailscale serve` injects `Tailscale-User-Login`; proxy and NetBird tracks must put their own
+ * access control in front of the loopback bridge.
  */
 export function startupWarnings(cfg: Config): string[] {
   const warnings: string[] = [];
@@ -314,22 +313,29 @@ export function startupWarnings(cfg: Config): string[] {
       `[bridge] WARNING: COLLIE_DEVICE_HEADER set but COLLIE_DEVICE_ALLOWLIST is empty — every device is read-only`,
     );
   }
-  if (cfg.skipServe) {
-    // Reverse-proxy mode: no tailscale serve injects Tailscale-User-Login, so checkAccess never has
-    // an identity to enforce — trustedUser is dead config. Only nag when it's set (a likely mistake).
-    if (cfg.trustedUser) {
+  if (cfg.frontDoor === "tailscale") {
+    if (!cfg.trustedUser) {
       warnings.push(
-        `[bridge] WARNING: COLLIE_TRUSTED_USER has no effect under COLLIE_SKIP_SERVE=1 — without tailscale serve in front, the Tailscale-User-Login header is never injected. Use COLLIE_DEVICE_HEADER for per-device auth (see README → Variant C).`,
+        `[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).`,
       );
     }
-  } else if (!cfg.trustedUser) {
+  } else if (cfg.trustedUser) {
+    const frontDoor =
+      cfg.frontDoor === "netbird"
+        ? "COLLIE_FRONT_DOOR=netbird"
+        : "COLLIE_SKIP_SERVE=1 / COLLIE_FRONT_DOOR=proxy";
+    const gate =
+      cfg.frontDoor === "netbird"
+        ? "NetBird expose authentication"
+        : "COLLIE_DEVICE_HEADER for per-device auth";
+    const variant = cfg.frontDoor === "netbird" ? "Variant D" : "Variant C";
     warnings.push(
-      `[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).`,
+      `[bridge] WARNING: COLLIE_TRUSTED_USER has no effect under ${frontDoor} — without tailscale serve in front, the Tailscale-User-Login header is never injected. Use ${gate} (see README → ${variant}).`,
     );
   }
   if (cfg.publicHosts.length === 0) {
     warnings.push(
-      `[bridge] WARNING: COLLIE_PUBLIC_HOSTS is empty — Host-header validation is OFF (DNS rebinding not blocked). Set it to your MagicDNS name, especially under plain-HTTP serve mode or behind a reverse proxy.`,
+      `[bridge] WARNING: COLLIE_PUBLIC_HOSTS is empty — Host-header validation is OFF (DNS rebinding not blocked). Set it to your public bridge hostname, especially under plain-HTTP serve mode, NetBird expose, or behind a reverse proxy.`,
     );
   }
   return warnings;

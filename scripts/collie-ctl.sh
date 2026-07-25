@@ -7,6 +7,8 @@ set -euo pipefail
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT="collie"
 UNIT_FILE="${HOME}/.config/systemd/user/${UNIT}.service"
+NETBIRD_EXPOSE_UNIT="collie-netbird-expose"
+NETBIRD_EXPOSE_UNIT_FILE="${HOME}/.config/systemd/user/${NETBIRD_EXPOSE_UNIT}.service"
 PLUGIN_ID="herdr.collie"
 
 # Resolve the plugin config dir (where .env lives) the SAME way no matter how we're launched.
@@ -38,10 +40,33 @@ if [ -f "${CONFIG_DIR}/.env" ]; then set -a; . "${CONFIG_DIR}/.env"; set +a; fi
 
 PORT="${COLLIE_PORT:-8787}"
 SOCKET="${HERDR_SOCKET_PATH:-${HOME}/.config/herdr/herdr.sock}"
-# How tailscale serve exposes the bridge: "https" (default, needs a cert from the control
-# server) or "http" (plain HTTP over the tailnet — use this on Headscale / .internal domains).
+# Which ingress fronts the loopback bridge:
+#   tailscale (default): durable tailnet-only `tailscale serve`
+#   netbird:             supervised `netbird expose` sidecar (public URL; require NetBird auth)
+#   proxy:               no managed ingress; an operator-run reverse proxy owns the front door
+FRONT_DOOR="$(printf '%s' "${COLLIE_FRONT_DOOR:-tailscale}" | tr '[:upper:]' '[:lower:]')"
+FRONT_DOOR="${FRONT_DOOR//[[:space:]]/}"
+if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then FRONT_DOOR="proxy"; fi
+# Tailscale-only mode: "https" (default, needs a cert from the control server) or "http"
+# (plain HTTP over the tailnet — use this on Headscale / .internal domains).
 SERVE_MODE="${COLLIE_SERVE_MODE:-https}"
+NETBIRD_EXPOSE_LOG="${CONFIG_DIR}/netbird-expose.log"
+NETBIRD_EXPOSE_PID="${CONFIG_DIR}/netbird-expose.pid"
+NETBIRD_EXPOSE_IDENTITY="${CONFIG_DIR}/netbird-expose.identity"
+NETBIRD_EXPOSE_RUNNER="${CONFIG_DIR}/netbird-expose.sh"
+TAILSCALE_HANDLER_FILE="${CONFIG_DIR}/tailscale-managed-handler"
 BUN="$(command -v bun || true)"
+resolve_netbird_bin() {
+  local path
+  path="$(type -P netbird || true)"
+  [ -n "$path" ] || return 0
+  case "$path" in
+    /*) printf '%s\n' "$path" ;;
+    *) printf '%s/%s\n' "$(cd "$(dirname "$path")" && pwd -P)" "$(basename "$path")" ;;
+  esac
+}
+NETBIRD_BIN="$(resolve_netbird_bin)"
+
 WEB_DIST="${PLUGIN_ROOT}/web/dist/index.html"
 
 have_systemd() { command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; }
@@ -92,10 +117,77 @@ self_dnsname() {
     "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{process.stdout.write(JSON.parse(d).Self.DNSName.replace(/\.\$/,''))}catch{}})"
 }
 
-bridge_url() {
+tailscale_bridge_url() {
   local name; name="$(self_dnsname)"
   if [ -z "$name" ]; then echo "http://127.0.0.1:${PORT} (Tailscale name unavailable)"; return; fi
   if [ "$SERVE_MODE" = "http" ]; then echo "http://${name}:${PORT}"; else echo "https://${name}"; fi
+}
+
+netbird_process_running() {
+  local pid="$1" state
+  kill -0 "$pid" 2>/dev/null || return 1
+  state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+  [ -n "$state" ] || return 1
+  case "$state" in
+    Z*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+netbird_process_identity() {
+  local pid="$1" stat rest started
+  if [ -r "/proc/${pid}/stat" ]; then
+    stat="$(cat "/proc/${pid}/stat" 2>/dev/null)" || return 1
+    rest="${stat##*) }"
+    set -- $rest
+    [ "$#" -ge 20 ] || return 1
+    printf 'proc:%s\n' "${20}"
+    return 0
+  fi
+  started="$(ps -o lstart= -p "$pid" 2>/dev/null || true)"
+  [ -n "$started" ] || return 1
+  printf 'ps:%s\n' "$started"
+}
+
+
+netbird_expose_running() {
+  if have_systemd; then
+    systemctl --user is-active "$NETBIRD_EXPOSE_UNIT" >/dev/null 2>&1
+    return
+  fi
+  local pid expected_identity current_identity
+  [ -f "$NETBIRD_EXPOSE_PID" ] && [ -f "$NETBIRD_EXPOSE_IDENTITY" ] || return 1
+  pid="$(cat "$NETBIRD_EXPOSE_PID" 2>/dev/null || true)"
+  case "$pid" in
+    ''|0|*[!0-9]*) return 1 ;;
+  esac
+  netbird_process_running "$pid" || return 1
+  expected_identity="$(cat "$NETBIRD_EXPOSE_IDENTITY" 2>/dev/null || true)"
+  current_identity="$(netbird_process_identity "$pid" 2>/dev/null || true)"
+  [ -n "$expected_identity" ] && [ "$current_identity" = "$expected_identity" ]
+}
+
+netbird_url_from_log() {
+  netbird_expose_running || return 0
+  [ -f "$NETBIRD_EXPOSE_LOG" ] || return 0
+  sed -n 's/^[[:space:]]*URL:[[:space:]]*//p' "$NETBIRD_EXPOSE_LOG" | tail -1
+}
+
+netbird_bridge_url() {
+  if [ -n "${COLLIE_PUBLIC_URL:-}" ]; then echo "$COLLIE_PUBLIC_URL"; return; fi
+  if [ -n "${COLLIE_NETBIRD_CUSTOM_DOMAIN:-}" ]; then echo "https://${COLLIE_NETBIRD_CUSTOM_DOMAIN}"; return; fi
+  local url; url="$(netbird_url_from_log)"
+  [ -n "$url" ] && echo "$url" || echo "NetBird URL unavailable yet (check 'collie-ctl.sh status')"
+}
+
+bridge_url() {
+  case "$FRONT_DOOR" in
+    tailscale) tailscale_bridge_url ;;
+    netbird)   netbird_bridge_url ;;
+    proxy)
+      [ -n "${COLLIE_PUBLIC_URL:-}" ] && echo "$COLLIE_PUBLIC_URL" || echo "http://127.0.0.1:${PORT} (set COLLIE_PUBLIC_URL to your proxy URL)"
+      ;;
+    *) echo "http://127.0.0.1:${PORT} (unknown COLLIE_FRONT_DOOR=${FRONT_DOOR})" ;;
+  esac
 }
 
 # The version Collie is actually serving — read from the built bundle's stamp
@@ -149,15 +241,24 @@ print_status_banner() {
   fi
   echo "    service   ${svc}"
   echo "    local     http://127.0.0.1:${PORT}"
-  if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
-    if [ -n "${COLLIE_PUBLIC_URL:-}" ]; then
-      echo "    proxy     ${COLLIE_PUBLIC_URL}"
-    else
-      echo "    proxy     (COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)"
-    fi
-  else
-    echo "    tailnet   $(bridge_url)"
-  fi
+  case "$FRONT_DOOR" in
+    proxy)
+      if [ -n "${COLLIE_PUBLIC_URL:-}" ]; then
+        echo "    proxy     ${COLLIE_PUBLIC_URL}"
+      else
+        echo "    proxy     (COLLIE_FRONT_DOOR=proxy — set COLLIE_PUBLIC_URL to your reverse-proxy URL)"
+      fi
+      ;;
+    netbird)
+      echo "    netbird   $(netbird_bridge_url)"
+      ;;
+    tailscale)
+      echo "    tailnet   $(tailscale_bridge_url)"
+      ;;
+    *)
+      echo "    ingress   unknown COLLIE_FRONT_DOOR=${FRONT_DOOR}"
+      ;;
+  esac
   echo
 }
 
@@ -184,6 +285,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 Environment=HERDR_SOCKET_PATH=${SOCKET}
 Environment=COLLIE_PORT=${PORT}
+Environment=COLLIE_FRONT_DOOR=${FRONT_DOOR}
 Environment=HERDR_PLUGIN_CONFIG_DIR=${CONFIG_DIR}
 EnvironmentFile=-${CONFIG_DIR}/.env
 
@@ -203,8 +305,8 @@ cmd_start() {
     # Fallback: background process with a pidfile (e.g. macOS without lingering systemd).
     mkdir -p "$CONFIG_DIR"
     [ -n "$BUN" ] || { echo "error: bun not found" >&2; exit 1; }
-    HERDR_SOCKET_PATH="$SOCKET" COLLIE_PORT="$PORT" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
-      nohup "$BUN" run "${PLUGIN_ROOT}/bridge/index.ts" >>"${CONFIG_DIR}/collie.log" 2>&1 &
+    HERDR_SOCKET_PATH="$SOCKET" COLLIE_PORT="$PORT" COLLIE_FRONT_DOOR="$FRONT_DOOR" \
+      HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" nohup "$BUN" run "${PLUGIN_ROOT}/bridge/index.ts" >>"${CONFIG_DIR}/collie.log" 2>&1 &
     echo $! > "${CONFIG_DIR}/collie.pid"
     echo "bridge started (pid $(cat "${CONFIG_DIR}/collie.pid"), no systemd)"
   fi
@@ -225,20 +327,20 @@ cmd_stop() {
 cmd_restart() { cmd_stop; cmd_start; }
 
 # Tear the service down completely (the inverse of `start`): stop + disable it, remove the
-# systemd --user unit, remove Collie's tailscale serve mapping, and drop the pidfile. Deliberately leaves your
+# systemd --user unit, remove Collie's managed ingress, and drop the pidfile. Deliberately leaves your
 # config (${CONFIG_DIR}/.env) and the on-disk checkout in place — `uninstall` removes only what
 # `start` created. To remove the plugin registration too, run `herdr plugin uninstall herdr.collie`
 # (or, for a linked clone, just delete the checkout).
 cmd_uninstall() {
   cmd_stop
   cmd_unserve
+  rm -f "$UNIT_FILE" "$NETBIRD_EXPOSE_UNIT_FILE"
   if have_systemd; then
-    rm -f "$UNIT_FILE"
     systemctl --user daemon-reload 2>/dev/null || true
-    systemctl --user reset-failed "$UNIT" 2>/dev/null || true
+    systemctl --user reset-failed "$UNIT" "$NETBIRD_EXPOSE_UNIT" 2>/dev/null || true
   fi
   rm -f "${CONFIG_DIR}/collie.pid"
-  echo "✓ uninstalled: service stopped & disabled, systemd unit removed, Collie's tailscale serve mapping removed"
+  echo "✓ uninstalled: service stopped & disabled, systemd unit removed, Collie's managed ingress removed"
   echo "  kept: ${CONFIG_DIR}/.env and the checkout — delete those to remove every trace"
 }
 
@@ -277,54 +379,548 @@ cmd_apply_update() {
   echo "✓ update complete"
 }
 
-cmd_serve() {
-  if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
-    echo "tailscale serve skipped (COLLIE_SKIP_SERVE=1) — bridge is on 127.0.0.1:${PORT} only"
-    return
+write_netbird_expose_runner() {
+  mkdir -p "$CONFIG_DIR"
+  local netbird_bin_literal
+  printf -v netbird_bin_literal '%q' "$NETBIRD_BIN"
+  cat > "$NETBIRD_EXPOSE_RUNNER" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+CONFIG_DIR="\${1:?config dir required}"
+if [ -f "\${CONFIG_DIR}/.env" ]; then set -a; . "\${CONFIG_DIR}/.env"; set +a; fi
+PORT="\${COLLIE_PORT:-8787}"
+NETBIRD_BIN=${netbird_bin_literal}
+
+has_auth=0
+[ -n "\${COLLIE_NETBIRD_PIN:-}" ] && has_auth=1
+[ -n "\${COLLIE_NETBIRD_PASSWORD:-}" ] && has_auth=1
+[ -n "\${COLLIE_NETBIRD_USER_GROUPS:-}" ] && has_auth=1
+if [ "\$has_auth" -eq 0 ] && [ "\${COLLIE_NETBIRD_ALLOW_PUBLIC:-}" != "1" ]; then
+  echo "error: refusing unauthenticated netbird expose for Collie; set COLLIE_NETBIRD_PIN, COLLIE_NETBIRD_PASSWORD, COLLIE_NETBIRD_USER_GROUPS, or COLLIE_NETBIRD_ALLOW_PUBLIC=1" >&2
+  exit 2
+fi
+
+args=(expose "\$PORT" --with-name-prefix "\${COLLIE_NETBIRD_NAME_PREFIX:-collie}")
+[ -n "\${COLLIE_NETBIRD_CUSTOM_DOMAIN:-}" ] && args+=(--with-custom-domain "\$COLLIE_NETBIRD_CUSTOM_DOMAIN")
+[ -n "\${COLLIE_NETBIRD_PIN:-}" ] && args+=(--with-pin "\$COLLIE_NETBIRD_PIN")
+[ -n "\${COLLIE_NETBIRD_PASSWORD:-}" ] && args+=(--with-password "\$COLLIE_NETBIRD_PASSWORD")
+[ -n "\${COLLIE_NETBIRD_USER_GROUPS:-}" ] && args+=(--with-user-groups "\$COLLIE_NETBIRD_USER_GROUPS")
+
+exec "\$NETBIRD_BIN" "\${args[@]}"
+EOF
+  chmod 700 "$NETBIRD_EXPOSE_RUNNER"
+}
+
+write_netbird_expose_unit() {
+  write_netbird_expose_runner
+  mkdir -p "$(dirname "$NETBIRD_EXPOSE_UNIT_FILE")"
+  cat > "$NETBIRD_EXPOSE_UNIT_FILE" <<EOF
+[Unit]
+Description=Collie NetBird expose
+After=default.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=${PLUGIN_ROOT}
+ExecStart=${NETBIRD_EXPOSE_RUNNER} ${CONFIG_DIR}
+Restart=on-failure
+RestartSec=5
+Environment=HERDR_PLUGIN_CONFIG_DIR=${CONFIG_DIR}
+StandardOutput=append:${NETBIRD_EXPOSE_LOG}
+StandardError=append:${NETBIRD_EXPOSE_LOG}
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload
+}
+
+wait_netbird_expose() {
+  local i url
+  for i in $(seq 1 25); do
+    url="$(netbird_url_from_log)"
+    if [ -n "$url" ]; then
+      echo "netbird expose → ${url} -> 127.0.0.1:${PORT}"
+      return
+    fi
+    if [ -f "$NETBIRD_EXPOSE_LOG" ] && grep -qi '^error:' "$NETBIRD_EXPOSE_LOG"; then
+      echo "note: netbird expose failed:"
+      cat "$NETBIRD_EXPOSE_LOG"
+      return 1
+    fi
+    if ! netbird_expose_running; then
+      echo "note: netbird expose exited before publishing a URL:"
+      cat "$NETBIRD_EXPOSE_LOG" 2>/dev/null || true
+      return 1
+    fi
+    sleep 0.2
+  done
+  echo "note: netbird expose did not publish a URL before the startup timeout" >&2
+  return 1
+}
+
+discard_netbird_child() {
+  local pid="$1" stopped=0 i
+  kill "$pid" 2>/dev/null || true
+  for i in $(seq 1 25); do
+    if ! netbird_process_running "$pid"; then
+      stopped=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [ "$stopped" -ne 1 ]; then
+    kill -KILL "$pid" 2>/dev/null || true
+    for i in $(seq 1 25); do
+      if ! netbird_process_running "$pid"; then
+        stopped=1
+        break
+      fi
+      sleep 0.1
+    done
   fi
-  command -v tailscale >/dev/null || { echo "note: tailscale not found; bridge is on 127.0.0.1:${PORT} only"; return; }
-  local out="${CONFIG_DIR}/serve.out"
-  if [ "$SERVE_MODE" = "http" ]; then
-    if tailscale serve --bg --http="$PORT" "$PORT" >"$out" 2>&1; then
-      echo "tailscale serve (http) → tailnet :${PORT} -> 127.0.0.1:${PORT}"
+  if [ "$stopped" -ne 1 ]; then
+    echo "error: spawned NetBird expose process ${pid} could not be stopped; retained partial state" >&2
+    return 1
+  fi
+  wait "$pid" 2>/dev/null || true
+  if ! rm -f "$NETBIRD_EXPOSE_PID" "$NETBIRD_EXPOSE_IDENTITY"; then
+    echo "error: could not remove partial NetBird expose state" >&2
+    return 1
+  fi
+}
+
+cmd_netbird_serve() {
+  local pid identity
+  # Stop the old sidecar before checking for a replacement binary, so a missing CLI cannot leave
+  # stale credentials and a stale public URL active.
+  stop_netbird_expose || return 1
+  if [ -z "$NETBIRD_BIN" ] || [ ! -x "$NETBIRD_BIN" ]; then
+    echo "error: netbird not found; cannot start NetBird expose" >&2
+    return 1
+  fi
+  : > "$NETBIRD_EXPOSE_LOG"
+  if have_systemd; then
+    write_netbird_expose_unit
+    if systemctl --user enable "$NETBIRD_EXPOSE_UNIT" >/dev/null && systemctl --user restart "$NETBIRD_EXPOSE_UNIT"; then
+      if ! wait_netbird_expose; then
+        if ! stop_netbird_expose; then
+          echo "error: NetBird expose failed and cleanup could not confirm it stopped" >&2
+        fi
+        return 1
+      fi
     else
-      echo "note: tailscale serve failed (try 'sudo tailscale set --operator=\$USER'):"; cat "$out"
+      echo "note: netbird expose service failed to start:"
+      cat "$NETBIRD_EXPOSE_LOG" 2>/dev/null || true
+      if ! stop_netbird_expose; then
+        echo "error: failed NetBird systemd start left teardown incomplete" >&2
+      fi
+      return 1
     fi
   else
-    if tailscale serve --bg "$PORT" >"$out" 2>&1; then
-      echo "tailscale serve (https) → tailnet :443 -> 127.0.0.1:${PORT}"
-    else
-      echo "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http:"; cat "$out"
+    write_netbird_expose_runner
+    nohup "$NETBIRD_EXPOSE_RUNNER" "$CONFIG_DIR" >>"$NETBIRD_EXPOSE_LOG" 2>&1 &
+    pid=$!
+    if ! printf '%s\n' "$pid" > "$NETBIRD_EXPOSE_PID"; then
+      discard_netbird_child "$pid" || true
+      echo "error: could not record NetBird expose PID" >&2
+      return 1
+    fi
+    if ! identity="$(netbird_process_identity "$pid")"; then
+      discard_netbird_child "$pid" || true
+      echo "error: could not record NetBird expose process identity" >&2
+      return 1
+    fi
+    if ! printf '%s\n' "$identity" > "$NETBIRD_EXPOSE_IDENTITY"; then
+      discard_netbird_child "$pid" || true
+      echo "error: could not persist NetBird expose process identity" >&2
+      return 1
+    fi
+    if ! wait_netbird_expose; then
+      if ! stop_netbird_expose; then
+        echo "error: NetBird expose failed and cleanup could not confirm it stopped" >&2
+      fi
+      return 1
     fi
   fi
 }
 
-# Remove ONLY Collie's tailscale serve mapping — the inverse of cmd_serve, NOT a blanket
-# `tailscale serve reset` (which would wipe every unrelated mapping on the host). We turn off
-# exactly the listener cmd_serve created, keyed off the same SERVE_MODE so the two stay symmetric:
-# https:443 by default, or http:$PORT in http mode. Best-effort (|| true) so teardown is idempotent
-# when the mapping is already gone.
-cmd_unserve() {
-  # Always attempt teardown, even under COLLIE_SKIP_SERVE=1: it's idempotent (|| true) and guarded by
-  # the `command -v tailscale` check, and skipping it would strand a stale serve mapping (from before
-  # the flag was flipped on) still publishing the app — a security hazard, not a convenience.
-  command -v tailscale >/dev/null || { echo "note: tailscale not found; no serve mapping to remove"; return; }
-  if [ "$SERVE_MODE" = "http" ]; then
-    tailscale serve --http="$PORT" off >/dev/null 2>&1 || true
-    echo "tailscale serve: removed Collie's http :${PORT} mapping"
+stop_netbird_expose() {
+  local failed=0 pid="" stopped=0 i expected_identity="" current_identity=""
+  local active_state="" enabled_state=""
+  if have_systemd; then
+    systemctl --user disable --now "$NETBIRD_EXPOSE_UNIT" >/dev/null 2>&1 || true
+    active_state="$(systemctl --user is-active "$NETBIRD_EXPOSE_UNIT" 2>/dev/null || true)"
+    case "$active_state" in
+      inactive|failed|unknown) ;;
+      active|activating|reloading|deactivating)
+        echo "error: NetBird expose unit is still ${active_state}" >&2
+        failed=1
+        ;;
+      *)
+        echo "error: could not confirm NetBird expose unit is inactive" >&2
+        failed=1
+        ;;
+    esac
+    enabled_state="$(systemctl --user is-enabled "$NETBIRD_EXPOSE_UNIT" 2>/dev/null || true)"
+    case "$enabled_state" in
+      disabled|masked|not-found) ;;
+      enabled|enabled-runtime|static|indirect|generated|transient|linked|linked-runtime|alias)
+        echo "error: NetBird expose unit is not disabled (${enabled_state})" >&2
+        failed=1
+        ;;
+      *)
+        echo "error: could not confirm NetBird expose unit is disabled" >&2
+        failed=1
+        ;;
+    esac
+  elif [ -f "$NETBIRD_EXPOSE_UNIT_FILE" ]; then
+    echo "error: NetBird expose unit exists but the systemd user manager is inaccessible" >&2
+    failed=1
+  fi
+  if [ -f "$NETBIRD_EXPOSE_PID" ]; then
+    pid="$(cat "$NETBIRD_EXPOSE_PID" 2>/dev/null || true)"
+    case "$pid" in
+      ''|0|*[!0-9]*)
+        echo "error: invalid NetBird expose PID state; retained ${NETBIRD_EXPOSE_PID}" >&2
+        failed=1
+        ;;
+      *)
+        if ! netbird_process_running "$pid"; then
+          stopped=1
+        elif [ ! -f "$NETBIRD_EXPOSE_IDENTITY" ]; then
+          echo "error: missing identity for live NetBird expose PID ${pid}; refusing to signal it" >&2
+          failed=1
+        else
+          expected_identity="$(cat "$NETBIRD_EXPOSE_IDENTITY" 2>/dev/null || true)"
+          current_identity="$(netbird_process_identity "$pid" 2>/dev/null || true)"
+          if [ -z "$expected_identity" ] || [ "$current_identity" != "$expected_identity" ]; then
+            echo "error: NetBird expose PID ${pid} identity mismatch; refusing to signal it" >&2
+            failed=1
+          elif ! kill "$pid" 2>/dev/null; then
+            if netbird_process_running "$pid"; then
+              echo "error: failed to stop NetBird expose process ${pid}; retained PID state" >&2
+              failed=1
+            else
+              stopped=1
+            fi
+          else
+            for i in $(seq 1 25); do
+              if ! netbird_process_running "$pid"; then
+                stopped=1
+                break
+              fi
+              sleep 0.1
+            done
+            if [ "$stopped" -ne 1 ]; then
+              echo "error: NetBird expose process ${pid} did not stop; retained PID state" >&2
+              failed=1
+            fi
+          fi
+        fi
+        if [ "$stopped" -eq 1 ] && ! rm -f "$NETBIRD_EXPOSE_PID" "$NETBIRD_EXPOSE_IDENTITY"; then
+          echo "error: NetBird expose stopped but PID/identity state could not be removed" >&2
+          failed=1
+        fi
+        ;;
+    esac
+  elif [ -f "$NETBIRD_EXPOSE_IDENTITY" ]; then
+    echo "error: NetBird expose identity exists without PID state; retained identity for investigation" >&2
+    failed=1
+  fi
+  if [ "$failed" -ne 0 ]; then
+    return 1
+  fi
+  echo "netbird expose: stopped Collie's expose session"
+}
+
+
+remove_tailscale_handler() {
+  local description="$1" output
+  shift
+  if output="$(tailscale serve "$@" off 2>&1)"; then
+    return 0
+  fi
+  case "$output" in
+    *"handler does not exist"*) return 0 ;;
+  esac
+  [ -z "$output" ] || printf '%s\n' "$output" >&2
+  echo "error: failed to remove Collie's ${description} mapping" >&2
+  return 1
+}
+
+tailscale_root_fingerprint() {
+  local host_port="$1" port="$2" status_json result
+  [ -n "$BUN" ] || return 1
+  status_json="$(tailscale serve status --json 2>/dev/null)" || return 1
+  result="$(
+    printf '%s' "$status_json" |
+      COLLIE_SERVE_HOST_PORT="$host_port" COLLIE_SERVE_PORT="$port" "$BUN" -e '
+        let data = "";
+        process.stdin.on("data", chunk => data += chunk).on("end", () => {
+          try {
+            const config = JSON.parse(data || "{}");
+            const hostPort = process.env.COLLIE_SERVE_HOST_PORT;
+            const port = process.env.COLLIE_SERVE_PORT;
+            const handlers = config?.Web?.[hostPort]?.Handlers ?? {};
+            if (!Object.prototype.hasOwnProperty.call(handlers, "/")) {
+              process.stdout.write("absent");
+              return;
+            }
+            const listener = config?.TCP?.[port];
+            const protocol = listener?.HTTP === true ? "http" :
+              listener?.HTTPS === true ? "https" : "other";
+            const proxy = handlers["/"]?.Proxy;
+            process.stdout.write(typeof proxy === "string" && proxy ?
+              `${protocol}|proxy:${proxy}` : `${protocol}|other`);
+          } catch {
+            process.exitCode = 2;
+          }
+        });
+      '
+  )" || return 1
+  printf '%s\n' "$result"
+}
+
+stop_tailscale_serve() {
+  local managed_state="" managed_handler="" managed_mode="" managed_port=""
+  local managed_host_port="" managed_proxy="" extra="" current_fingerprint=""
+  if [ -f "$TAILSCALE_HANDLER_FILE" ]; then
+    managed_state="$(cat "$TAILSCALE_HANDLER_FILE" 2>/dev/null || true)"
+    IFS='|' read -r managed_handler managed_host_port managed_proxy extra <<< "$managed_state"
+    case "$managed_handler" in
+      http:*)
+        managed_mode="http"
+        managed_port="${managed_handler#http:}"
+        case "$managed_port" in
+          ''|*[!0-9]*) managed_mode="" ;;
+        esac
+        ;;
+      https:443)
+        managed_mode="https"
+        managed_port="443"
+        ;;
+    esac
+    if [ -z "$managed_mode" ] || [ -z "$managed_host_port" ] || [ -z "$managed_proxy" ] || [ -n "$extra" ]; then
+      echo "error: invalid managed Tailscale handler state: ${managed_state}" >&2
+      return 1
+    fi
+    case "$managed_host_port" in
+      *":${managed_port}") ;;
+      *)
+        echo "error: managed Tailscale HostPort does not match its listener: ${managed_state}" >&2
+        return 1
+        ;;
+    esac
+    case "$managed_proxy" in
+      http://127.0.0.1:[0-9]*) ;;
+      *)
+        echo "error: invalid managed Tailscale proxy target: ${managed_state}" >&2
+        return 1
+        ;;
+    esac
   else
-    tailscale serve --https=443 off >/dev/null 2>&1 || true
-    echo "tailscale serve: removed Collie's https :443 mapping"
+    echo "tailscale serve: no Collie-managed mapping recorded"
+    return 0
+  fi
+  if ! command -v tailscale >/dev/null; then
+    echo "error: tailscale not found; retained the managed ${managed_handler} state for retry" >&2
+    return 1
+  fi
+  if ! current_fingerprint="$(tailscale_root_fingerprint "$managed_host_port" "$managed_port")"; then
+    echo "error: cannot inspect the managed Tailscale root; retained ownership state" >&2
+    return 1
+  fi
+  if [ "$current_fingerprint" = "absent" ]; then
+    if ! rm -f "$TAILSCALE_HANDLER_FILE"; then
+      echo "error: managed Tailscale root is absent but ownership state could not be removed" >&2
+      return 1
+    fi
+    echo "tailscale serve: managed root is already absent; cleared stale ownership state"
+    return 0
+  fi
+  if [ "$current_fingerprint" != "${managed_mode}|proxy:${managed_proxy}" ]; then
+    echo "error: managed Tailscale root was replaced; refusing to remove the current handler" >&2
+    return 1
+  fi
+  if [ "$managed_mode" = "http" ]; then
+    remove_tailscale_handler "HTTP :${managed_port} root mount" --http="$managed_port" --set-path=/ || {
+      echo "error: managed ingress cleanup incomplete; retained ${TAILSCALE_HANDLER_FILE} for retry" >&2
+      return 1
+    }
+  else
+    remove_tailscale_handler "HTTPS :443 root mount" --https=443 --set-path=/ || {
+      echo "error: managed ingress cleanup incomplete; retained ${TAILSCALE_HANDLER_FILE} for retry" >&2
+      return 1
+    }
+  fi
+  if ! rm -f "$TAILSCALE_HANDLER_FILE"; then
+    echo "error: Tailscale root was removed but ownership state could not be removed" >&2
+    return 1
+  fi
+  echo "tailscale serve: removed Collie's managed ${managed_handler} mapping"
+}
+
+ensure_tailscale_root_available() {
+  local port="$1" protocol="$2" status_json result
+  [ -n "$BUN" ] || {
+    echo "error: bun is required to inspect Tailscale serve ownership before publishing" >&2
+    return 1
+  }
+  if ! status_json="$(tailscale serve status --json 2>/dev/null)"; then
+    echo "error: cannot inspect Tailscale serve status; refusing to overwrite the root mount on :${port}" >&2
+    return 1
+  fi
+  if ! result="$(
+    printf '%s' "$status_json" |
+      COLLIE_SERVE_PORT="$port" COLLIE_SERVE_PROTOCOL="$protocol" "$BUN" -e '
+        let data = "";
+        process.stdin.on("data", chunk => data += chunk).on("end", () => {
+          try {
+            const config = JSON.parse(data || "{}");
+            const port = process.env.COLLIE_SERVE_PORT;
+            const protocol = process.env.COLLIE_SERVE_PROTOCOL;
+            const hasRoot = serveConfig =>
+              Object.entries(serveConfig?.Web ?? {}).some(([hostPort, server]) => {
+                const match = hostPort.match(/:(\d+)$/);
+                const handlers = server?.Handlers ?? {};
+                return match?.[1] === port && Object.prototype.hasOwnProperty.call(handlers, "/");
+              }) ||
+              Object.values(serveConfig?.Foreground ?? {}).some(hasRoot);
+            const hasProtocolMismatch = serveConfig => {
+              const listener = serveConfig?.TCP?.[port];
+              const mismatch = listener !== undefined &&
+                (protocol === "http" ? listener?.HTTP !== true : listener?.HTTPS !== true);
+              return mismatch ||
+                Object.values(serveConfig?.Foreground ?? {}).some(hasProtocolMismatch);
+            };
+            if (hasProtocolMismatch(config)) {
+              process.stdout.write("protocol-mismatch");
+              return;
+            }
+            const occupied = hasRoot(config);
+            process.stdout.write(occupied ? "occupied" : "free");
+          } catch {
+            process.exitCode = 2;
+          }
+        });
+      '
+  )"; then
+    echo "error: invalid Tailscale serve status; refusing to overwrite the root mount on :${port}" >&2
+    return 1
+  fi
+  if [ "$result" = "protocol-mismatch" ]; then
+    echo "error: Tailscale serve :${port} already uses the opposite listener protocol" >&2
+    return 1
+  fi
+  if [ "$result" = "occupied" ]; then
+    echo "error: Tailscale serve already has an unowned root mount on :${port}; refusing to overwrite it" >&2
+    return 1
   fi
 }
+
+cmd_serve() {
+  local cleanup_failed=0 tailscale_host="" expected_proxy=""
+  case "$FRONT_DOOR" in
+    proxy)
+      stop_tailscale_serve || cleanup_failed=1
+      stop_netbird_expose || cleanup_failed=1
+      [ "$cleanup_failed" -eq 0 ] || return 1
+      echo "managed serve skipped (COLLIE_FRONT_DOOR=proxy) — bridge is on 127.0.0.1:${PORT} only"
+      return
+      ;;
+    netbird)
+      stop_tailscale_serve || return 1
+      cmd_netbird_serve
+      return
+      ;;
+    tailscale)
+      stop_netbird_expose || return 1
+      stop_tailscale_serve || return 1
+      ;;
+    *)
+      stop_tailscale_serve >/dev/null 2>&1 || true
+      stop_netbird_expose >/dev/null 2>&1 || true
+      echo "error: unknown COLLIE_FRONT_DOOR=${FRONT_DOOR} (expected tailscale, netbird, or proxy)" >&2
+      return 1
+      ;;
+  esac
+  command -v tailscale >/dev/null || {
+    echo "error: tailscale not found; cannot publish the selected Tailscale front door" >&2
+    return 1
+  }
+  tailscale_host="$(self_dnsname)"
+  if [ -z "$tailscale_host" ]; then
+    echo "error: cannot determine Tailscale hostname; refusing to publish an untrackable root mount" >&2
+    return 1
+  fi
+  expected_proxy="http://127.0.0.1:${PORT}"
+  local out="${CONFIG_DIR}/serve.out"
+  if [ "$SERVE_MODE" = "http" ]; then
+    ensure_tailscale_root_available "$PORT" http || return 1
+    printf '%s|%s|%s\n' "http:${PORT}" "${tailscale_host}:${PORT}" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
+    if tailscale serve --bg --http="$PORT" --set-path=/ "$PORT" >"$out" 2>&1; then
+      echo "tailscale serve (http) → tailnet :${PORT} -> 127.0.0.1:${PORT}"
+    else
+      rm -f "$TAILSCALE_HANDLER_FILE"
+      echo "note: tailscale serve failed (try 'sudo tailscale set --operator=\$USER'):"
+      cat "$out"
+      return 1
+    fi
+  else
+    ensure_tailscale_root_available 443 https || return 1
+    printf '%s|%s|%s\n' "https:443" "${tailscale_host}:443" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
+    if tailscale serve --bg --set-path=/ "$PORT" >"$out" 2>&1; then
+      echo "tailscale serve (https) → tailnet :443 -> 127.0.0.1:${PORT}"
+    else
+      rm -f "$TAILSCALE_HANDLER_FILE"
+      echo "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http:"
+      cat "$out"
+      return 1
+    fi
+  fi
+}
+
+# Remove Collie's managed ingress from both supported front-door implementations. This is deliberately
+# not `tailscale serve reset`, which would wipe every unrelated mapping on the host.
+cmd_unserve() {
+  local failed=0
+  stop_tailscale_serve || failed=1
+  stop_netbird_expose || failed=1
+  return "$failed"
+}
+
 
 cmd_status() {
   print_status_banner
-  if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
-    echo "  serve config: skipped (COLLIE_SKIP_SERVE=1)"
-  else
-    echo "  serve config:"; tailscale serve status 2>/dev/null | sed 's/^/    /' || true
-  fi
+  case "$FRONT_DOOR" in
+    proxy)
+      echo "  serve config: skipped (COLLIE_FRONT_DOOR=proxy)"
+      ;;
+    netbird)
+      echo "  netbird expose:"
+      if have_systemd; then
+        echo "    service $(systemctl --user is-active "$NETBIRD_EXPOSE_UNIT" 2>/dev/null || echo inactive)"
+      elif netbird_expose_running; then
+        echo "    pid     $(cat "$NETBIRD_EXPOSE_PID" 2>/dev/null)"
+      elif [ -f "$NETBIRD_EXPOSE_PID" ] || [ -f "$NETBIRD_EXPOSE_IDENTITY" ]; then
+        echo "    process stale (stopped or identity mismatch; state retained)"
+      else
+        echo "    process inactive"
+      fi
+      echo "    url     $(netbird_bridge_url)"
+      [ -f "$NETBIRD_EXPOSE_LOG" ] && tail -n 8 "$NETBIRD_EXPOSE_LOG" | sed 's/^/    /' || true
+      ;;
+    tailscale)
+      echo "  serve config:"; tailscale serve status 2>/dev/null | sed 's/^/    /' || true
+      ;;
+    *)
+      echo "  serve config: unknown COLLIE_FRONT_DOOR=${FRONT_DOOR}"
+      ;;
+  esac
 }
 
 cmd_logs() {
@@ -341,6 +937,10 @@ cmd_push_test() {
   [ -n "$BUN" ] || { echo "error: bun not found on PATH" >&2; exit 1; }
   "$BUN" run "${PLUGIN_ROOT}/scripts/push-test.ts" "$@"
 }
+
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  return 0
+fi
 
 case "${1:-}" in
   start)   cmd_start ;;

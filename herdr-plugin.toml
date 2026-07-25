@@ -36,9 +36,9 @@ title = "Restart web bridge"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "restart"]
 
-# Full teardown: stops + disables the service, removes the systemd --user unit, and resets
-# tailscale serve. Leaves the .env and the checkout (so `start` can bring it right back). See
-# scripts/collie-ctl.sh → cmd_uninstall.
+# Full teardown: stops + disables the service, removes the systemd --user unit, and removes Collie's
+# managed ingress (Tailscale serve mapping or NetBird expose sidecar). Leaves the .env and the
+# checkout (so `start` can bring it right back). See scripts/collie-ctl.sh → cmd_uninstall.
 [[actions]]
 id = "uninstall"
 title = "Uninstall web bridge (remove service)"

@@ -63,11 +63,12 @@ one thumb. Collie is that.
 
 You, if you run [Herdr](https://herdr.dev) agents on a machine and want to resume a session from
 your phone — read what an agent is asking, type a reply, fire a special key — without SSHing in and
-wrestling a TUI. It assumes a **[Tailscale](https://tailscale.com) tailnet (mesh) setup**: your
-phone and the host are on the same tailnet, and `tailscale serve` is the only way in. It's
-deliberately **single-user**: one operator, one tailnet, no multi-tenant auth. If that's your setup,
-Collie fits. If you need shared or public access, it isn't built for that — and see the security
-note below before you run it.
+wrestling a TUI. The default track assumes a **[Tailscale](https://tailscale.com) tailnet (mesh)
+setup**: your phone and the host are on the same tailnet, and `tailscale serve` is the default way in.
+The NetBird and reverse-proxy tracks below use the same single-operator model. It's deliberately
+**single-user**: one operator, one front door, no multi-tenant auth. If that's your setup, Collie fits.
+If you need shared or public access, it isn't built for that — and see the security note below before
+you run it.
 
 ## ⚠️ Security — read before you run it
 
@@ -79,70 +80,78 @@ secrets, env, agent output) and run any command as your user. No sandbox, no com
 Three sharp edges:
 
 - **It acts as _you_**, with your full privileges — `~/.ssh`, `git push --force`, `rm -rf`, `sudo`.
-- **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it.
-  No password, no session — an unlocked or stolen phone (or anyone else on your tailnet) is an open
-  shell. The idle-lock is UX, not auth. Every write action (replies, keys, uploads, pane/tab
-  create/close) is appended to `<state-dir>/audit.log`, so there is at least a trail — but a trail
-  is not a gate.
+- **Access is front-door-level, not person-at-keyboard-level.** Tailscale proves the device/user
+  header it injects; NetBird expose or your proxy proves whatever authentication you configured.
+  No Collie password, no Collie session — an unlocked or stolen phone (or anyone else allowed
+  through ingress) is an open shell. The idle-lock is UX, not auth. Every write action (replies,
+  keys, uploads, pane/tab create/close) is appended to `<state-dir>/audit.log`, so there is at
+  least a trail — but a trail is not a gate.
 - **One bridge fronts _every_ session.** With `COLLIE_MULTI_SESSION` on (the default), the bridge
   discovers and serves every named Herdr session under your config root — a private or sandbox
   session (e.g. `collie-demo`) is readable and drivable through the same URL as your primary, and the
   set is rescanned periodically. Set `COLLIE_MULTI_SESSION=0` to serve only the primary session.
 
-It's built single-user and tailnet-only. The defenses:
+It's built for one operator behind one hardened front door. The defenses:
 
 - **Loopback bind only** (`127.0.0.1`) — never `0.0.0.0`.
-- **Exactly one hardened front door** — either `tailscale serve` (default, Variant A: terminates
-  TLS, injects the identity header) or a conforming reverse proxy
+- **Exactly one hardened front door** — `tailscale serve` (default, Variant A: terminates TLS,
+  injects the identity header), `netbird expose` (Variant D: public URL protected by NetBird auth),
+  or a conforming reverse proxy
   ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)). Never
   `tailscale funnel`, never a bare port.
-- **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject anyone but you.
+- **Optional Tailscale identity gate** — set `COLLIE_TRUSTED_USER` only with `tailscale serve`;
+  it rejects anyone whose injected `Tailscale-User-Login` does not match.
 - **Optional per-device gate** — behind a proxy that injects a device-identity header, set
   `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` so only allowlisted devices can drive agents;
   any other device is read-only. Off by default; revoke a device by dropping it from the list.
   See [Deployment variants](#deployment-variants) for the proxy this requires.
+- **At most one Collie-managed ingress.** Starting or switching tracks removes stale managed
+  Tailscale or NetBird ingress before publishing the selected one. Proxy mode leaves your
+  operator-run external proxy in place; Collie does not stop it. `unserve` and `uninstall` remove
+  Collie's managed ingress.
 - **Same-origin gate + strict CSP**; pane output renders as React text nodes, never `innerHTML`.
 - **Optional Host allowlist** — set `COLLIE_PUBLIC_HOSTS` to the exact host(s) you serve on (e.g.
   your MagicDNS name) and the bridge rejects any request addressed to another Host before the
   origin logic runs. **Strongly recommended, and effectively mandatory with
-  `COLLIE_SERVE_MODE=http`** — without TLS, DNS rebinding can otherwise make a hostile page
-  same-origin with the bridge.
+  `COLLIE_SERVE_MODE=http`, NetBird expose, or any extra proxy** — otherwise DNS rebinding can make
+  a hostile page same-origin with the bridge.
 
 > 🚫 **Never `tailscale funnel` this** — funnel exposes it to the public internet; `serve` keeps it
 > tailnet-only. There is no scenario where funneling Collie is correct.
 
-Narrow the blast radius with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, no warranty.
+Narrow the blast radius with Tailscale ACLs, NetBird auth restrictions, and the smallest possible
+device set. Provided as-is, no warranty.
 
 ## Requirements
 
-On the **host** (the tailnet node your agents run on):
+On the **host** (the machine your agents run on):
 
 | Tool | Why |
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
 | [**Herdr**](https://herdr.dev) ≥ 0.7.0 | The herd Collie mirrors; its CLI registers the plugin. |
-| [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, the bridge is `127.0.0.1`-only. |
+| [**Tailscale**](https://tailscale.com) | Required only for the default Tailscale front door; optional for [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) or [Variant D](#variant-d--netbird-expose--netbird-auth). |
+| [**NetBird**](https://netbird.io) ≥ 0.66 | Required only for [Variant D](#variant-d--netbird-expose--netbird-auth). |
 | **git** | Clone, and the `update` command. |
 
-Soft dependencies: **Node.js** (the control script uses it to extract your MagicDNS name from
-`tailscale status --json`; without it the banner falls back to the loopback URL) and **`systemd
---user`** (supervises the service; falls back to a `nohup` process without it). You never install JS
-deps by hand — the build runs `bun install` for you; the backend imports only Bun + `node:*`.
-[`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see [Web
-Push](#web-push-optional)).
+Soft dependency: **`systemd --user`** supervises the bridge and, for NetBird, the expose sidecar.
+Without it the script uses `nohup` plus PID files. You never install JS deps by hand — the build
+runs `bun install` for you; the backend imports only Bun + `node:*`.
+[`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see
+[Web Push](#web-push-optional)).
 
 ## Install
 
-On the host, not your phone. Two ways in.
+On the host, not your phone. The default Tailscale path needs no config.
 
-**From GitHub (turnkey)** — Herdr clones and builds for you:
+**From GitHub (turnkey)** — Herdr clones and builds; then start it:
 
 ```bash
 herdr plugin install AltanS/collie
 herdr plugin action invoke start --plugin herdr.collie
 ```
 
-**From a local clone (for development)** — registered by path:
+**From a local clone (for development)** — registered by path and built on first start:
 
 ```bash
 git clone https://github.com/AltanS/collie.git && cd collie
@@ -150,13 +159,28 @@ herdr plugin link "$(pwd)"
 herdr plugin action invoke start --plugin herdr.collie
 ```
 
+Those commands use Tailscale ([Variant A](#variant-a--tailscale-serve--person-identity-default)).
+For NetBird or your own proxy, omit the `start` line, create the config, add the selected variant's
+required values, then start:
+
+```bash
+config_dir="$(herdr plugin config-dir herdr.collie)"
+mkdir -p "$config_dir"
+touch "$config_dir/.env"
+# Configure Variant D (NetBird) or Variant C (your proxy), then:
+herdr plugin action invoke start --plugin herdr.collie
+```
+
+- [Variant C — your reverse proxy](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
+- [Variant D — NetBird expose](#variant-d--netbird-expose--netbird-auth)
+
 They differ only in *when* the UI builds: a GitHub install builds at install time (the manifest's
-`[[build]]` step); a linked clone builds on first `start`. Either way, `start` does four things:
+`[[build]]` step); a linked clone builds on first `start`. Either way, `start`:
 
 1. **builds** `web/dist` if it's missing (typechecked, staged, swapped in atomically),
 2. **starts the bridge** as the `systemd --user` service `collie` (`nohup` fallback without systemd),
-3. **publishes it on the tailnet** — literally `tailscale serve --bg 8787`: HTTPS on the host's
-   MagicDNS name, `:443 → 127.0.0.1:8787`, tailnet-only,
+3. **removes stale managed ingress and publishes the selected front door** — Tailscale mapping,
+   NetBird expose sidecar, or neither for proxy mode,
 4. **prints the banner** with the URL to open — walked through line by line in
    [First run](#first-run--what-youll-see).
 
@@ -182,6 +206,9 @@ tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
     tailnet   https://myhost.tail1234.ts.net
 ```
 
+The NetBird track prints `netbird https://…` instead of `tailnet https://…` and also starts the
+`collie-netbird-expose` sidecar.
+
 The `✓` is a real probe — the script connected to the bridge's port and got an answer, not just
 "the unit is active". If you get `⚠ Collie isn't answering on :8787 yet` instead, see
 [Troubleshooting](#troubleshooting).
@@ -196,23 +223,31 @@ The `✓` is a real probe — the script connected to the bridge's port and got 
    `~/.config/systemd/user/collie.service`, enabled and started, auto-restarting on failure.
    Inspect it with `systemctl --user status collie`. (No usable systemd? A `nohup` process with a
    pidfile in the config dir instead.)
-3. **A tailnet-only `tailscale serve` mapping** — the script ran `tailscale serve --bg 8787`:
-   HTTPS on the host's MagicDNS name, `:443 → 127.0.0.1:8787`. Tailscale terminates TLS (managed
-   cert, nothing to obtain or renew) and injects the identity header the bridge checks. Inspect
-   with `tailscale serve status`; remove just this mapping with `scripts/collie-ctl.sh unserve`.
+3. **The selected ingress**:
+   - Tailscale track: a tailnet-only `tailscale serve` mapping (`:443 → 127.0.0.1:8787`) that
+     injects `Tailscale-User-Login`.
+   - NetBird track: `collie-netbird-expose`, a second user service running `netbird expose 8787 …`.
+     Its expose session is ephemeral, so systemd keeps the sidecar alive and restarts it after a
+     failure; without systemd it is a `nohup` process with a PID file and has no automatic restart
+     or boot start.
+   - Proxy track: no managed ingress; your configured external proxy is the sole front door.
 
-`stop` merely pauses the service; `uninstall` reverses 2 + 3 and keeps your `.env` and the checkout.
+Before publishing the selected track, `start` removes stale managed Tailscale and NetBird ingress.
+Proxy mode leaves the operator-run external proxy alone; Collie never stops it. `stop` stops only
+the bridge and leaves managed ingress running. `unserve` removes Collie's managed ingress, while
+`uninstall` stops the bridge and removes managed ingress, service units, and PID files but keeps your
+`.env` and checkout.
 
 ### Open it on your phone
 
-The URL is the banner's `tailnet` line (print it again anytime with `scripts/collie-ctl.sh url`).
-It resolves for any device on your tailnet — so the phone needs the Tailscale app installed and
-connected to the same tailnet as the host.
+The URL is the banner's `tailnet`, `netbird`, or `proxy` line (print it again anytime with
+`scripts/collie-ctl.sh url`). Tailscale URLs require the phone to be on the same tailnet; NetBird
+expose URLs require whatever NetBird auth option you configured.
 
 Then install it as an app: **iOS** — Safari → share sheet → *Add to Home Screen*. **Android** —
-Chrome → ⋮ menu → *Add to Home screen* (or *Install app*). Installing (and Web Push) needs the
-HTTPS origin the default serve mode already provides; over `COLLIE_SERVE_MODE=http` the page works,
-but service worker and install silently no-op.
+Chrome → ⋮ menu → *Add to Home screen* (or *Install app*). Installing (and Web Push) needs HTTPS:
+Tailscale HTTPS mode, NetBird expose, or your reverse proxy. Plain HTTP modes work in-browser, but
+service worker and install silently no-op.
 
 ### Is it actually working?
 
@@ -250,15 +285,17 @@ see [Troubleshooting](#troubleshooting).
 
 ### Surviving reboots
 
-A `systemd --user` service only runs while you have a login session. On a host that should serve
+A `systemd --user` service runs while your user manager is available. On a host that should serve
 Collie unattended, enable lingering once:
 
 ```bash
 loginctl enable-linger $USER
 ```
 
-The unit is `enable`d, so with lingering it starts at boot with your user manager; the
-`tailscale serve` mapping is persistent (`--bg`) and comes back on its own.
+With lingering, the enabled bridge unit and (for NetBird) the enabled `collie-netbird-expose` sidecar
+start at boot and restart on failure. Tailscale serve state is persistent (`--bg`). Without a usable
+systemd user manager, both the bridge and NetBird sidecar fall back to `nohup` plus PID files: they
+do not restart after a crash and do not start at boot, so start them manually after either event.
 
 ## Configure
 
@@ -266,19 +303,15 @@ Out of the box Collie runs **open single-user**: anyone on your tailnet who can 
 full control — that's exactly what the two startup WARNINGs are about. Close both in one sitting:
 
 ```bash
-# in your .env
-COLLIE_TRUSTED_USER=you@example.com           # your tailnet login — the bridge rejects anyone else
+# in your .env (Tailscale track)
+COLLIE_TRUSTED_USER=you@example.com           # Tailscale serve only; the bridge rejects anyone else
 COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net    # exact host(s) you serve on — blocks DNS rebinding
 ```
 
 Config is a `.env` in the plugin's config dir — find it with
 `herdr plugin config-dir herdr.collie` (typically `~/.config/herdr/plugins/config/herdr.collie`;
 without Herdr, `~/.config/collie`). `collie-ctl.sh` resolves this same dir whether you run it
-directly or via a Herdr action:
-
-```bash
-cp .env.example "$(herdr plugin config-dir herdr.collie)/.env"
-```
+directly or via a Herdr action.
 
 The bridge reads `.env` only at startup — after any edit, `scripts/collie-ctl.sh restart`. See
 [`.env.example`](./.env.example) for the full option list — commonly `COLLIE_PORT`, or
@@ -303,11 +336,11 @@ below as `invoke <cmd>`). The ones you'll actually use:
 
 | Action | Control script | Herdr action |
 | --- | --- | --- |
-| **Start** — build if needed, serve, print the URL | `collie-ctl.sh start` | `invoke start` |
-| **Stop** — pause the bridge; removes nothing | `collie-ctl.sh stop` | `invoke stop` |
+| **Start** — build if needed, publish front door, print the URL | `collie-ctl.sh start` | `invoke start` |
+| **Stop** — pause the bridge; managed ingress remains | `collie-ctl.sh stop` | `invoke stop` |
 | **Restart** | `collie-ctl.sh restart` | `invoke restart` |
 | **Status** — the *Collie is running* banner + URLs | `collie-ctl.sh status` | `invoke status` |
-| **URL** — print the tailnet URL | `collie-ctl.sh url` | `invoke url` |
+| **URL** — print the bridge URL | `collie-ctl.sh url` | `invoke url` |
 | **Version** — the running version (`0.x.y+sha`) | `collie-ctl.sh version` | `invoke version` |
 | **Update** — `git pull` + rebuild + restart | `collie-ctl.sh update` | `invoke update` |
 | **Uninstall** — remove the service; keep `.env` + checkout | `collie-ctl.sh uninstall` | `invoke uninstall` |
@@ -330,11 +363,11 @@ Collie registers these actions in `herdr-plugin.toml`; invoke any with
 
 | `<id>` | Title | What it does |
 | --- | --- | --- |
-| `start` | Start web bridge | Build if needed, start the service, `tailscale serve`, print URL + banner |
+| `start` | Start web bridge | Build if needed, start the service, publish the selected front door, print URL + banner |
 | `stop` | Stop web bridge | Pause the bridge; removes nothing |
 | `restart` | Restart web bridge | `stop` + `start` |
 | `status` | Bridge status | The *Collie is running* banner — readiness ✓/⚠, version, URLs |
-| `url` | Show bridge URL | Print the tailnet URL |
+| `url` | Show bridge URL | Print the selected front-door URL |
 | `version` | Show version | Print the running version (`0.x.y+sha`) |
 | `update` | Update plugin | `git pull --ff-only` + rebuild + restart |
 | `uninstall` | Uninstall web bridge (remove service) | Tear down the service (keeps `.env` + checkout) |
@@ -343,15 +376,22 @@ Collie registers these actions in `herdr-plugin.toml`; invoke any with
 
 ### Stop or uninstall
 
-Pause the bridge without removing anything (a later `start` brings it right back):
+Pause the bridge without removing anything (a later `start` brings it right back). `stop` leaves
+managed ingress running and does not stop an operator-run external proxy:
 
 ```bash
 scripts/collie-ctl.sh stop      # or: herdr plugin action invoke stop --plugin herdr.collie
 ```
 
-To tear the service down completely — stop + disable it, remove the `systemd --user` unit, and remove
-Collie's own `tailscale serve` mapping (port-scoped, so other tailnet mappings on the host survive) —
-use `uninstall`. It leaves your `.env` and the checkout untouched:
+Use `unserve` to remove Collie's managed Tailscale mapping or NetBird expose sidecar without
+removing the bridge:
+
+```bash
+scripts/collie-ctl.sh unserve
+```
+
+Use `uninstall` to stop and disable the bridge, remove Collie's managed ingress and its service
+units/PID files, and leave your `.env` and checkout untouched:
 
 ```bash
 scripts/collie-ctl.sh uninstall # or: herdr plugin action invoke uninstall --plugin herdr.collie
@@ -381,8 +421,9 @@ repo's pre-commit / pre-push checks.
 ## Deployment variants
 
 The bridge always binds **loopback only**; what changes between deployments is *what sits in front
-of it* and *how a request proves who it is*. Three supported shapes — Tailscale by **person** (A),
-Tailscale/proxy by **device** (B), or a reverse proxy as the sole front door (C). Pick one.
+of it* and *how a request proves who it is*. Four supported shapes — Tailscale by **person** (A),
+Tailscale/proxy by **device** (B), a reverse proxy as the sole front door (C), or NetBird expose
+with NetBird auth (D). Pick one.
 
 ### Variant A — `tailscale serve` + person identity (default)
 
@@ -440,7 +481,7 @@ COLLIE_HOST=127.0.0.1                       # keep loopback (default)
 COLLIE_DEVICE_HEADER=X-Device-Id            # the header your proxy injects
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop  # ids allowed to drive agents; others → read-only
 # COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # only if the proxy does NOT forward the public Host
-# COLLIE_TRUSTED_USER still composes on top if your ingress also injects Tailscale-User-Login
+# Tailscale-only: COLLIE_TRUSTED_USER composes on top if the ingress also injects Tailscale-User-Login
 ```
 
 Illustrative nginx — the auth layer is yours; the load-bearing lines are the **override** and the
@@ -466,9 +507,9 @@ A reverse proxy (Caddy, Nginx, …) is the **sole ingress** — no Tailscale in 
 when the host isn't on a tailnet, or when you already run a TLS-terminating proxy with its own access
 control (SSO, mTLS, a VPN gateway) and want Collie behind it like any other upstream.
 
-Set `COLLIE_SKIP_SERVE=1` so `collie-ctl.sh start` builds, starts and supervises the bridge but
-**never touches `tailscale serve`** — the proxy owns ingress. The bridge still binds loopback only;
-your proxy reaches it on `127.0.0.1:$COLLIE_PORT`.
+Set `COLLIE_FRONT_DOOR=proxy` (or legacy `COLLIE_SKIP_SERVE=1`) so `collie-ctl.sh start` builds,
+starts and supervises the bridge but **never starts a managed ingress** — the proxy owns ingress. The
+bridge still binds loopback only; your proxy reaches it on `127.0.0.1:$COLLIE_PORT`.
 
 The **four proxy requirements from
 [Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) apply verbatim** — the proxy
@@ -488,7 +529,7 @@ collie.example.com {
 Required env (`.env`):
 
 ```bash
-COLLIE_SKIP_SERVE=1                                 # proxy is ingress; never run tailscale serve
+COLLIE_FRONT_DOOR=proxy                              # proxy is ingress; never run tailscale/netbird serve
 COLLIE_PUBLIC_HOSTS=collie.example.com              # Host allowlist — blocks DNS rebinding
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
 COLLIE_DEVICE_HEADER=X-Device-Id                    # the header your proxy injects…
@@ -509,6 +550,56 @@ indefinitely — clients keep running old code with no way to notice. If your pr
 honor origin headers (Caddy and stock Nginx `proxy_cache` do by default; CDNs often need it
 enabled explicitly).
 
+### Variant D — `netbird expose` + NetBird auth
+
+Use this when the host is on NetBird instead of Tailscale, or when you want NetBird's reverse proxy
+to publish the loopback bridge.
+
+#### NetBird prerequisites
+
+Before starting, verify all of these on the host and in the NetBird account:
+
+- NetBird CLI **v0.66 or newer**: `netbird version`.
+- The NetBird client is logged in and **Connected**: `netbird status`.
+- **Peer Expose** is enabled for the account.
+- The host peer belongs to a peer group allowed by that account's Peer Expose policy.
+
+**Configure a stable custom domain in NetBird first.** Do not build the secure recipe around the
+generated expose name. Generated names can change when the ephemeral expose session or sidecar is
+restarted; they are unsuitable for static `COLLIE_PUBLIC_HOSTS`/`COLLIE_ALLOWED_ORIGINS` values and
+for a PWA installed from a stable origin.
+
+`collie-ctl.sh start` starts the Collie bridge and then publishes it through
+`collie-netbird-expose`. With `systemd --user`, that sidecar is enabled and supervised with
+`Restart=on-failure`; without systemd it is a `nohup` process with a PID file, with no automatic
+restart or boot start. NetBird expose sessions are ephemeral; `unserve` and `uninstall` remove the
+sidecar and its public URL.
+
+Required env (`.env`) for the authenticated, stable-domain recipe:
+
+```bash
+COLLIE_FRONT_DOOR=netbird
+COLLIE_NETBIRD_CUSTOM_DOMAIN=collie.example.com    # configure this in NetBird before these allowlists
+COLLIE_NETBIRD_USER_GROUPS=operators                # or PIN/password; this is URL access auth
+COLLIE_PUBLIC_HOSTS=collie.example.com              # exact stable Host; blocks DNS rebinding
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact stable browser origin
+# COLLIE_PUBLIC_URL=https://collie.example.com       # optional banner override
+```
+
+> ⚠️ **Do not run NetBird expose without auth.** NetBird says an expose URL is public unless
+> protected by PIN, password, or user groups. Collie refuses to start the sidecar unless one auth
+> env var is set. `COLLIE_NETBIRD_ALLOW_PUBLIC=1` bypasses the guard only when you explicitly accept
+> public read/write access; it is not part of this secure recipe.
+
+> ⚠️ **`COLLIE_TRUSTED_USER` is Tailscale-only.** It gates on `Tailscale-User-Login`, which only
+> `tailscale serve` injects. NetBird expose does not inject Collie's `COLLIE_DEVICE_HEADER` either;
+> use NetBird auth as the front-door gate. Anyone who passes NetBird auth gets full Collie access.
+
+With a configured custom domain, `collie-ctl.sh status` and `url` report that stable origin. A
+generated URL is shown only while the expose process/service is live; its log remains in the config
+directory for diagnostics, including errors from the launched sidecar. Treat generated names as
+temporary troubleshooting URLs, not values for static host/origin allowlists or PWA installation.
+
 ## Web Push (optional)
 
 Off unless you opt in:
@@ -519,11 +610,10 @@ bunx web-push generate-vapid-keys
 # set COLLIE_VAPID_PUBLIC / _PRIVATE / _SUBJECT in your .env, then restart
 ```
 
-Push needs a **secure context (HTTPS)**, which any HTTPS-terminating front door provides — the
-default `tailscale serve` (Tailscale manages the MagicDNS cert; nothing to obtain or renew) or a
-[Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) proxy that terminates TLS.
-Plain-HTTP modes (`COLLIE_SERVE_MODE=http`) are **not** a secure context, so push silently won't fire
-there — Settings flags it `insecure`.
+Push needs a **secure context (HTTPS)**, which any HTTPS-terminating front door provides: Tailscale
+HTTPS mode, NetBird expose, or a [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
+proxy that terminates TLS. Plain-HTTP modes (`COLLIE_SERVE_MODE=http`) are **not** a secure context,
+so push silently won't fire there — Settings flags it `insecure`.
 
 Collie pushes when an agent goes **blocked** or **done**, with the agent's message in the body;
 **tapping it opens Collie at that agent**. Test it without waiting for an agent to block:
@@ -544,6 +634,14 @@ talks to the server — while `herdr plugin --help` still works (it never opens 
 Herdr first (`herdr server &`, or just launch the Herdr TUI — it boots the server), confirm
 `ls ~/.config/herdr/herdr.sock` now exists, then retry the install. `herdr plugin list` is a quick
 probe: if it throws the same error, the server is down.
+
+**NetBird expose fails, says permission denied, or stays `URL pending`.** If `start` or a Herdr
+action reports `netbird not found`, fix the CLI or its `PATH` from that command output; the sidecar
+was not launched. Otherwise read `netbird-expose.log` in the plugin config directory.
+`scripts/collie-ctl.sh status` shows the current sidecar state and recent log lines; under systemd,
+`systemctl --user status collie-netbird-expose` shows supervision state. For generated URLs that
+change between sessions, use the stable-domain recipe in
+[Variant D](#variant-d--netbird-expose--netbird-auth).
 
 **`start` prints `note: tailscale serve failed`.** The bridge itself is fine (still up on
 `127.0.0.1`) — only the tailnet ingress didn't come up, and the script prints tailscale's own error
@@ -568,14 +666,15 @@ host is online — check `tailscale status` on the host, or ping the host from t
 app.
 
 **Page loads but stays empty; API calls fail `403 cross-origin rejected`.** You're reaching Collie
-through an origin the bridge doesn't expect — a custom domain, or a proxy that rewrites `Host`.
-Allow the exact public origin with `COLLIE_ALLOWED_ORIGINS` (see [Configure](#configure)), or make
-the proxy forward `Host` unchanged (Variant B, rule 4).
+through an origin the bridge doesn't expect — a custom domain, NetBird expose, or a proxy that
+rewrites `Host`. Allow the exact public origin with `COLLIE_ALLOWED_ORIGINS` (see
+[Configure](#configure)), or make the proxy forward `Host` unchanged (Variant B, rule 4).
 
-**Collie is gone after a reboot.** A `systemd --user` unit only runs while you have a session — on a
-headless host enable lingering once (`loginctl enable-linger $USER`) and the `collie` unit (already
-`enable`d) starts at boot with your user manager. The `tailscale serve` mapping persists on its own
-(`--bg`), so lingering is usually the whole fix.
+**Collie is gone after a reboot.** With `systemd --user`, enable lingering once
+(`loginctl enable-linger $USER`) so the enabled `collie` unit and, for NetBird, the
+`collie-netbird-expose` sidecar start at boot. Without a usable systemd user manager, the `nohup`
+bridge/sidecar fallback has no boot start or automatic restart; run `start` manually after reboot or
+a crash. Tailscale serve state persists on its own (`--bg`).
 
 **Phone shows a stale UI after a rebuild.** A PWA's service-worker cache is per-origin, so reaching
 Collie at two origins (a custom domain *and* the raw `host:8787`) gives you two installs, each
@@ -591,9 +690,9 @@ A small Bun process sits between your phone and Herdr — the browser never touc
 
 ```
   phone (PWA)
-     │  HTTPS over the tailnet
+     │  HTTPS over the selected front door
      ▼
-  tailscale serve        terminates TLS, injects the identity header
+  tailscale serve / netbird expose / reverse proxy
      │  127.0.0.1:PORT    (the bridge binds loopback only)
      ▼
   Collie bridge (Bun)    serves the UI + a small JSON API; polls Herdr
@@ -603,7 +702,7 @@ A small Bun process sits between your phone and Herdr — the browser never touc
 ```
 
 Under [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) a reverse proxy
-replaces the `tailscale serve` box; everything below the front door is identical.
+replaces the managed front door; everything below the front door is identical.
 
 - **One module touches the socket** (`bridge/herdr-client.ts`); everything else speaks the bridge's HTTP API.
 - **Polling is still the model** — the bridge polls Herdr (via `session.snapshot`, one RPC per tick) and the browser polls `/api/snapshot`; a long-lived Herdr event stream only pokes the bridge's poll to go faster, it never replaces it. No resync logic.

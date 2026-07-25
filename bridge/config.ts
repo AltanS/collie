@@ -2,8 +2,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 // All bridge configuration, resolved once at startup. Env-driven so the systemd unit and the
-// plugin launcher can configure it without code changes. Defaults are safe for a single-user,
-// tailnet-only deployment.
+// plugin launcher can configure it without code changes. Defaults are safe for a single-user
+// deployment behind one managed front door.
 
 /**
  * Read an integer env var, falling back to `fallback` (with one warning line) on anything invalid:
@@ -54,10 +54,27 @@ function envBool(name: string, fallback: boolean): boolean {
   return fallback;
 }
 
+export type FrontDoor = "tailscale" | "netbird" | "proxy";
+
+function envFrontDoor(): FrontDoor {
+  if (envBool("COLLIE_SKIP_SERVE", false)) return "proxy";
+
+  const raw = process.env.COLLIE_FRONT_DOOR;
+  if (raw === undefined || raw.trim() === "") return "tailscale";
+
+  const v = raw.trim().toLowerCase();
+  if (v === "tailscale" || v === "netbird" || v === "proxy") return v;
+
+  console.warn(
+    `[config] COLLIE_FRONT_DOOR="${raw}" is not one of tailscale, netbird, proxy — using default tailscale`,
+  );
+  return "tailscale";
+}
+
 export interface Config {
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
-  /** TCP port the bridge listens on (loopback only). `tailscale serve` proxies to it. */
+  /** TCP port the bridge listens on (loopback only). The selected front door proxies to it. */
   port: number;
   /**
    * Bind host. ALWAYS loopback by default — binding 0.0.0.0 would make the Tailscale identity
@@ -86,8 +103,8 @@ export interface Config {
    * Tailscale identity gate. If set, any request carrying a `Tailscale-User-Login` header
    * (injected by `tailscale serve`) must match this login — a mismatching tailnet user is
    * rejected. A request with no such header still passes (direct-loopback callers don't get one),
-   * so this narrows *which* user is trusted rather than mandating the header. Empty = trust any
-   * loopback caller (fine when only tailscaled can reach the port).
+   * so this narrows *which* Tailscale user is trusted rather than mandating the header. Empty = trust
+   * any loopback caller (fine when only the selected front door can reach the port).
    */
   trustedUser: string;
   /**
@@ -130,11 +147,14 @@ export interface Config {
    */
   multiSession: boolean;
   /**
-   * Whether `tailscale serve` is bypassed (COLLIE_SKIP_SERVE=1) because an operator-run reverse
-   * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
-   * identically either way — this flag only informs the startup warnings: without `tailscale serve`
-   * in front, the `Tailscale-User-Login` header is never injected, so {@link trustedUser} is inert
-   * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (README → Variant C).
+   * Which ingress the control script is expected to put in front of the loopback bridge. The bridge
+   * handles requests the same way for all front doors; this only steers startup warnings for config
+   * that is inert without a matching identity-header injector.
+   */
+  frontDoor: FrontDoor;
+  /**
+   * Back-compat alias for "do not run tailscale serve". True for the explicit proxy track and the
+   * NetBird expose track; old deployments can still set COLLIE_SKIP_SERVE=1 to select proxy mode.
    */
   skipServe: boolean;
 }
@@ -146,6 +166,7 @@ export function loadConfig(): Config {
     join(homedir(), ".local", "state", "collie");
 
   const submitKeys = envList("COLLIE_SUBMIT_KEYS");
+  const frontDoor = envFrontDoor();
 
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? join(homedir(), ".config", "herdr", "herdr.sock"),
@@ -166,6 +187,7 @@ export function loadConfig(): Config {
     vapidSubject: process.env.COLLIE_VAPID_SUBJECT ?? "mailto:admin@example.com",
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true),
-    skipServe: envBool("COLLIE_SKIP_SERVE", false),
+    frontDoor,
+    skipServe: frontDoor !== "tailscale",
   };
 }
