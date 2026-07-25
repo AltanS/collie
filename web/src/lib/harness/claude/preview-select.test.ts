@@ -73,6 +73,22 @@ describe("detectPreviewSelect — the preview-variant fixtures", () => {
     expect(model).not.toBeNull();
     expect(model!.note).toEqual({ state: "attached", text: "keep cards compact" });
   });
+
+  it("keeps a literal contiguous region signature for every preview fixture", () => {
+    for (const name of [
+      "claude--select-preview.txt",
+      "claude--select-preview-note-input.txt",
+      "claude--select-preview-note-attached.txt",
+      "claude--wizard-preview-q1.txt",
+      "claude--wizard-preview-note-attached.txt",
+    ]) {
+      const lines = fixtureLines(name);
+      const screenText = lines.map(lineText).join("\n");
+      const model = detectPreviewSelect(lines);
+      expect(model).not.toBeNull();
+      expect(screenText.includes(model!.regionSignature)).toBe(true);
+    }
+  });
 });
 
 describe("detectPreviewSelect — core signature (pointer/note-independent identity)", () => {

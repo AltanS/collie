@@ -31,6 +31,7 @@ export const POLL_DELAY_MS = 350;
 
 /** Derive the on-screen dialog model from a fresh pane's styled lines (null = no dialog there). */
 type Detect<M> = (lines: StyledLine[]) => M | null;
+type RegionOf<M> = (model: M) => string;
 
 /** One fresh read + re-derivation. Returns the model (null = no dialog on screen). */
 export async function readModel<M>(
@@ -45,9 +46,18 @@ export async function readModel<M>(
 
 /**
  * The shared entry guard: a FRESH pane read, the UNCONDITIONAL revision check, and a full model
- * re-derivation compared (via `equals`) against `tapped` — what the user actually tapped. Returns a
- * terminal `ActionResult` when the guard fails ("changed") or the read errors, or `null` when the
- * guard passes and the caller may proceed to send.
+ * re-derivation compared (via `equals`) against `tapped` — what the user actually tapped.
+ *
+ * The return is two-valued and discriminated by TYPE, not by truthiness: an `ActionResult` object
+ * means the guard refused (`"changed"`) or the read failed, and a STRING means it passed and carries
+ * the verified region (via `regionOf`) that the caller binds to its write. A bare string reads oddly
+ * at first glance, but it keeps the passing path impossible to confuse with a result object, and
+ * callers discriminate with `typeof guarded !== "string"`. Note the old contract returned `null` on
+ * success, so a truthiness check here would now treat a passing guard as a failure.
+ *
+ * The region the caller gets back is the one derived from THIS fresh read, so it describes the pane
+ * as of a moment ago, not as of the render the user tapped. That is deliberate: the client guard has
+ * already established the two are the same dialog, and the bridge needs the current text to find it.
  */
 export async function entryGuard<M>(
   args: {
@@ -61,7 +71,8 @@ export async function entryGuard<M>(
   tapped: M,
   detect: Detect<M>,
   equals: (a: M, b: M) => boolean,
-): Promise<ActionResult | null> {
+  regionOf: RegionOf<M>,
+): Promise<ActionResult | string> {
   let fresh;
   try {
     fresh = await readModel(args.paneId, args.requestedLines, args.session, detect);
@@ -79,7 +90,7 @@ export async function entryGuard<M>(
   // path, including 304: the fresh (= latest cached) text is exactly what a tap on a possibly
   // frozen mirror must be compared against. One parse per tap — taps are rare, correctness isn't.
   if (!fresh.model || !equals(fresh.model, tapped)) return { status: "changed" };
-  return null;
+  return regionOf(fresh.model);
 }
 
 /**

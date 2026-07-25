@@ -6,6 +6,11 @@ import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
+import {
+  DEFAULT_PROMPT_TAIL_LINES,
+  verifyExpectedPrompt,
+  type PromptBindingResult,
+} from "./prompt-binding.ts";
 import type { Push, PushSubscription } from "./push.ts";
 import { herdTagFor, type SessionRegistry } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
@@ -36,6 +41,8 @@ const MAX_UPLOAD_OVERHEAD = 64 * 1024; // 64 KB
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
 // Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
 const MAX_READ_LINES = 10_000;
+const MAX_EXPECTED_PROMPT_CHARS = 8192;
+const PROMPT_BINDING_BLANK_LINE_HEADROOM = 6;
 const IMAGE_EXT: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -206,7 +213,7 @@ export function startServer(opts: {
         if (action === "history" && req.method === "GET")
           return paneHistory(cfg, transcripts, rt.engine, paneId, url, req);
         if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device, session);
-        if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req, audit, device, session);
+        if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
         if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device, session);
         if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit, device, session);
@@ -512,7 +519,7 @@ export async function sendReplySteps(
   }
 }
 
-async function replyPane(
+export async function replyPane(
   herdr: HerdrClient,
   cfg: Config,
   paneId: string,
@@ -521,15 +528,36 @@ async function replyPane(
   device: string | null,
   session: string,
 ): Promise<Response> {
-  let body: { text?: string; submit?: boolean };
+  let body: { text?: string; submit?: boolean; expected_prompt?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return text("bad body", 400);
   }
+  const expected = expectedPrompt(body);
+  if (!expected.ok) return text("bad expected_prompt", 400);
   const txt = body.text ?? "";
   const submit = body.submit ?? true;
   const ae = req.headers.get("accept-encoding");
+  const binding = expected.present
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value)
+    : null;
+  if (binding && !binding.ok) {
+    audit.record({
+      action: "reply",
+      paneId,
+      session,
+      device,
+      detail: {
+        text: txt,
+        submit,
+        submitted: false,
+        textDelivered: false,
+        promptBinding: binding.audit,
+      },
+    });
+    return promptBindingFailure(binding, ae);
+  }
   const outcome = await sendReplySteps(herdr, paneId, txt, submit, cfg.submitKeys);
   // Audit the attempt regardless of outcome — text may have landed even when the submit failed.
   audit.record({
@@ -537,7 +565,13 @@ async function replyPane(
     paneId,
     session,
     device,
-    detail: { text: txt, submit, submitted: outcome.ok, textDelivered: outcome.textDelivered },
+    detail: {
+      text: txt,
+      submit,
+      submitted: outcome.ok,
+      textDelivered: outcome.textDelivered,
+      ...(binding ? { promptBinding: binding.audit } : {}),
+    },
   });
   if (outcome.ok) return json({ ok: true } satisfies ActionResponse, ae);
   return json(
@@ -546,30 +580,164 @@ async function replyPane(
   );
 }
 
-async function keysPane(
+export async function keysPane(
   herdr: HerdrClient,
+  cfg: Config,
   paneId: string,
   req: Request,
   audit: AuditLog,
   device: string | null,
   session: string,
 ): Promise<Response> {
-  let body: { keys?: unknown };
+  let body: { keys?: unknown; expected_prompt?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return text("bad body", 400);
   }
+  const expected = expectedPrompt(body);
+  if (!expected.ok) return text("bad expected_prompt", 400);
   const keys = Array.isArray(body.keys) ? body.keys.filter((k): k is string => typeof k === "string") : [];
   if (keys.length === 0) return text("no keys", 400);
   const ae = req.headers.get("accept-encoding");
+  const binding = expected.present
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value)
+    : null;
+  if (binding && !binding.ok) {
+    audit.record({
+      action: "keys",
+      paneId,
+      session,
+      device,
+      detail: { keys, promptBinding: binding.audit },
+    });
+    return promptBindingFailure(binding, ae);
+  }
   try {
     await herdr.sendPaneKeys(paneId, keys);
-    audit.record({ action: "keys", paneId, session, device, detail: { keys } });
+    audit.record({
+      action: "keys",
+      paneId,
+      session,
+      device,
+      detail: { keys, ...(binding ? { promptBinding: binding.audit } : {}) },
+    });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
+    if (binding) {
+      audit.record({
+        action: "keys",
+        paneId,
+        session,
+        device,
+        detail: { keys, sent: false, promptBinding: binding.audit },
+      });
+    }
     return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
   }
+}
+
+type ExpectedPrompt =
+  | { ok: true; present: false }
+  | { ok: true; present: true; value: string }
+  | { ok: false };
+
+function expectedPrompt(body: object): ExpectedPrompt {
+  if (!Object.prototype.hasOwnProperty.call(body, "expected_prompt")) {
+    return { ok: true, present: false };
+  }
+  const value = (body as { expected_prompt?: unknown }).expected_prompt;
+  if (typeof value !== "string" || value.length > MAX_EXPECTED_PROMPT_CHARS) {
+    return { ok: false };
+  }
+  return { ok: true, present: true, value };
+}
+
+type PromptBindingCheck =
+  | {
+      ok: true;
+      audit: { checked: true; passed: true; expected: string };
+    }
+  | {
+      ok: false;
+      error: string;
+      status: 409 | 502;
+      code?: "prompt_changed";
+      audit: {
+        checked: true;
+        passed: false;
+        expected: string;
+        reason: Extract<PromptBindingResult, { ok: false }>["reason"] | "read_failed";
+      };
+    };
+
+// There is deliberately no expected_blocked flag. agent_status is not carried by pane.read, only by
+// session.snapshot, so checking it would cost a second RPC before the write and widen the very
+// window this feature exists to shrink. The region check already subsumes it: if the exact prompt
+// text is still on screen, that prompt is still what the pane is showing.
+async function checkPromptBinding(
+  herdr: HerdrClient,
+  cfg: Config,
+  paneId: string,
+  expected: string,
+): Promise<PromptBindingCheck> {
+  let fresh: PaneRead;
+  try {
+    const expectedRawLines = expected.split(/\r\n?|\n/).length;
+    const bindingReadLines = Math.min(
+      MAX_READ_LINES,
+      Math.max(
+        cfg.readLines,
+        expectedRawLines + DEFAULT_PROMPT_TAIL_LINES + PROMPT_BINDING_BLANK_LINE_HEADROOM,
+      ),
+    );
+    // Keep this coupled to readPane(): use its recent source and ANSI format so the bridge verifies
+    // the same kind of pane data the GET handler serves. The line count deliberately does not follow
+    // cfg.readLines alone because a small legal setting may not contain the expected region; include
+    // room for the accepted tail and for blank separator lines that normalization drops.
+    fresh = await herdr.readPane(paneId, "recent", bindingReadLines, "ansi");
+  } catch (err) {
+    return {
+      ok: false,
+      error: `herdr read failed: ${(err as Error).message}`,
+      status: 502,
+      audit: { checked: true, passed: false, expected, reason: "read_failed" },
+    };
+  }
+
+  const result = verifyExpectedPrompt(fresh.text, expected);
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: "prompt changed",
+      status: 409,
+      code: "prompt_changed",
+      audit: { checked: true, passed: false, expected, reason: result.reason },
+    };
+  }
+
+  // This is a mitigation, not a guarantee. The re-read and the send_keys are two separate herdr
+  // RPCs, so a TOCTOU window remains by construction; it shrinks from seconds (poll interval + push
+  // latency + human reaction time) to the few milliseconds between two local RPCs. It removes the
+  // human-latency portion of the window, which is where essentially all of the real risk lives.
+  // Closing the window completely would need a conditional-input primitive in herdr (send_keys with
+  // a precondition rejected atomically server-side), which does not exist today.
+  return { ok: true, audit: { checked: true, passed: true, expected } };
+}
+
+function promptBindingFailure(
+  result: Extract<PromptBindingCheck, { ok: false }>,
+  acceptEncoding: string | null,
+): Response {
+  return json(
+    {
+      ok: false,
+      error: result.error,
+      ...(result.code ? { code: result.code } : {}),
+    } satisfies ActionResponse,
+    acceptEncoding,
+    result.status,
+  );
 }
 
 // Close a pane ("kill the agent"). Structural op — strictly less powerful than the text/keys
@@ -976,8 +1144,10 @@ function secure(res: Response): Response {
   return res;
 }
 
-function json(data: unknown, acceptEncoding: string | null): Response {
-  return secure(gzipJsonResponse(data, acceptEncoding));
+function json(data: unknown, acceptEncoding: string | null, status = 200): Response {
+  const response = gzipJsonResponse(data, acceptEncoding);
+  if (status === 200) return secure(response);
+  return secure(new Response(response.body, { status, headers: response.headers }));
 }
 
 /**
