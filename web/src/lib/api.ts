@@ -85,6 +85,26 @@ async function errorDetail(res: Response): Promise<string> {
   }
 }
 
+function promptChangedResponse(detail: string): ActionResponse | null {
+  try {
+    const body = JSON.parse(detail) as {
+      ok?: unknown;
+      code?: unknown;
+      error?: unknown;
+    };
+    if (
+      body.ok === false &&
+      body.code === "prompt_changed" &&
+      typeof body.error === "string"
+    ) {
+      return { ok: false, error: body.error, code: "prompt_changed" };
+    }
+  } catch {
+    // A non-JSON error body follows the existing ApiError path below.
+  }
+  return null;
+}
+
 // Capture the bridge's build id off any response that carries it. Every poll (snapshot/pane) — and
 // config + mutations — funnels through the two fetch sites below, so the store stays current for
 // free, powering the no-service-worker self-updater (lib/self-update.ts). Absent header (older
@@ -104,7 +124,12 @@ async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
   });
   captureBuild(res);
   if (!res.ok) {
-    throw new ApiError(`${path} → ${res.status} ${await errorDetail(res)}`, res.status);
+    const detail = await errorDetail(res);
+    if (res.status === 409) {
+      const changed = promptChangedResponse(detail);
+      if (changed) return changed as T;
+    }
+    throw new ApiError(`${path} → ${res.status} ${detail}`, res.status);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -225,17 +250,30 @@ export function sendReply(
   text: string,
   submit = true,
   session?: string,
+  expectedPrompt?: string,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/reply`, session), {
     method: "POST",
-    body: JSON.stringify({ text, submit }),
+    body: JSON.stringify({
+      text,
+      submit,
+      ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
+    }),
   });
 }
 
-export function sendKeys(paneId: string, keys: string[], session?: string): Promise<ActionResponse> {
+export function sendKeys(
+  paneId: string,
+  keys: string[],
+  session?: string,
+  expectedPrompt?: string,
+): Promise<ActionResponse> {
   return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/keys`, session), {
     method: "POST",
-    body: JSON.stringify({ keys }),
+    body: JSON.stringify({
+      keys,
+      ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
+    }),
   });
 }
 

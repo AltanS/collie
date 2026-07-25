@@ -8,16 +8,19 @@ import {
   guard,
   historyParams,
   isHostAllowed,
+  keysPane,
   normalizeTabLabel,
   paneReadResponse,
+  replyPane,
   resolveStaticPath,
   sendReplySteps,
   startupWarnings,
   withBuildHeader,
   type ReplySender,
 } from "./server.ts";
+import { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
-import type { PaneRead } from "./herdr-client.ts";
+import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -304,6 +307,249 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
     const out = await sendReplySteps(client, "p1", "hello", false, ["Enter"], noSleep);
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text"]);
+  });
+});
+
+describe("pane write prompt binding", () => {
+  type ReadArgs = Parameters<HerdrClient["readPane"]>;
+
+  class FakePaneClient {
+    text = "Approve this command?\n1. Yes\n2. No";
+    readonly reads: ReadArgs[] = [];
+    readonly texts: Array<[string, string]> = [];
+    readonly keys: Array<[string, string[]]> = [];
+
+    readPane(
+      paneId: string,
+      source: ReadArgs[1],
+      lines: number,
+      format: ReadArgs[3],
+    ): Promise<PaneRead> {
+      this.reads.push([paneId, source, lines, format]);
+      return Promise.resolve({
+        pane_id: paneId,
+        text: this.text,
+        truncated: false,
+        revision: 1,
+      });
+    }
+
+    sendPaneText(paneId: string, text: string): Promise<void> {
+      this.texts.push([paneId, text]);
+      return Promise.resolve();
+    }
+
+    sendPaneKeys(paneId: string, keys: string[]): Promise<void> {
+      this.keys.push([paneId, keys]);
+      return Promise.resolve();
+    }
+  }
+
+  function request(body: unknown): Request {
+    return new Request("http://localhost/api/pane/w1%3Ap1/action", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function auditEntries(): { audit: AuditLog; entries: Array<Record<string, unknown>> } {
+    const entries: Array<Record<string, unknown>> = [];
+    return {
+      audit: new AuditLog((line) => {
+        entries.push(JSON.parse(line));
+      }),
+      entries,
+    };
+  }
+
+  test("keys without expected_prompt writes without an extra pane read", async () => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await keysPane(
+      client as unknown as HerdrClient,
+      cfg(),
+      "w1:p1",
+      request({ keys: ["1"] }),
+      audit,
+      null,
+      "default",
+    );
+    expect(res.status).toBe(200);
+    expect(client.reads).toEqual([]);
+    expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+  });
+
+  test("reply without expected_prompt writes without an extra pane read", async () => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await replyPane(
+      client as unknown as HerdrClient,
+      cfg(),
+      "w1:p1",
+      request({ text: "hello", submit: false }),
+      audit,
+      null,
+      "default",
+    );
+    expect(res.status).toBe(200);
+    expect(client.reads).toEqual([]);
+    expect(client.texts).toEqual([["w1:p1", "hello"]]);
+  });
+
+  test("matching expected_prompt reads the GET window then sends keys", async () => {
+    const client = new FakePaneClient();
+    const { audit, entries } = auditEntries();
+    const res = await keysPane(
+      client as unknown as HerdrClient,
+      cfg({ readLines: 321 }),
+      "w1:p1",
+      request({ keys: ["1"], expected_prompt: "Approve this command?\n1. Yes\n2. No" }),
+      audit,
+      "phone",
+      "default",
+    );
+    expect(res.status).toBe(200);
+    expect(client.reads).toEqual([["w1:p1", "recent", 321, "ansi"]]);
+    expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+    expect(entries[0]?.detail).toMatchObject({
+      promptBinding: { checked: true, passed: true },
+    });
+  });
+
+  test("binding read depth grows beyond a small configured window to contain the expectation", async () => {
+    const client = new FakePaneClient();
+    const expected = Array.from({ length: 32 }, (_, index) => `prompt line ${index + 1}`).join("\n");
+    client.text = expected;
+    const { audit } = auditEntries();
+    const res = await keysPane(
+      client as unknown as HerdrClient,
+      cfg({ readLines: 20 }),
+      "w1:p1",
+      request({ keys: ["1"], expected_prompt: expected }),
+      audit,
+      null,
+      "default",
+    );
+
+    expect(res.status).toBe(200);
+    expect(client.reads).toHaveLength(1);
+    expect(client.reads[0]?.[0]).toBe("w1:p1");
+    expect(client.reads[0]?.[1]).toBe("recent");
+    expect(client.reads[0]?.[2]).toBeGreaterThan(32);
+    expect(client.reads[0]?.[3]).toBe("ansi");
+    expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+  });
+
+  test("matching expected_prompt reads the GET window then sends reply text", async () => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await replyPane(
+      client as unknown as HerdrClient,
+      cfg({ readLines: 321 }),
+      "w1:p1",
+      request({
+        text: "hello",
+        submit: false,
+        expected_prompt: "Approve this command?\n1. Yes\n2. No",
+      }),
+      audit,
+      null,
+      "default",
+    );
+    expect(res.status).toBe(200);
+    expect(client.reads).toEqual([["w1:p1", "recent", 321, "ansi"]]);
+    expect(client.texts).toEqual([["w1:p1", "hello"]]);
+  });
+
+  test("stale expected_prompt returns prompt_changed and sends no keys", async () => {
+    const client = new FakePaneClient();
+    client.text = "Command finished";
+    const { audit, entries } = auditEntries();
+    const res = await keysPane(
+      client as unknown as HerdrClient,
+      cfg(),
+      "w1:p1",
+      request({ keys: ["1"], expected_prompt: "Approve this command?\n1. Yes\n2. No" }),
+      audit,
+      null,
+      "default",
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: "prompt changed",
+      code: "prompt_changed",
+    });
+    expect(client.keys).toEqual([]);
+    expect(client.texts).toEqual([]);
+    expect(entries[0]?.detail).toMatchObject({
+      promptBinding: { checked: true, passed: false, reason: "not_found" },
+    });
+  });
+
+  test("stale expected_prompt returns prompt_changed and sends no reply text or keys", async () => {
+    const client = new FakePaneClient();
+    client.text = "Command finished";
+    const { audit } = auditEntries();
+    const res = await replyPane(
+      client as unknown as HerdrClient,
+      cfg(),
+      "w1:p1",
+      request({
+        text: "hello",
+        submit: true,
+        expected_prompt: "Approve this command?\n1. Yes\n2. No",
+      }),
+      audit,
+      null,
+      "default",
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ ok: false, code: "prompt_changed" });
+    expect(client.keys).toEqual([]);
+    expect(client.texts).toEqual([]);
+  });
+
+  test("rejects oversized and non-string expected_prompt before a keys write", async () => {
+    for (const expected_prompt of ["x".repeat(8193), 42]) {
+      const client = new FakePaneClient();
+      const { audit } = auditEntries();
+      const res = await keysPane(
+        client as unknown as HerdrClient,
+        cfg(),
+        "w1:p1",
+        request({ keys: ["1"], expected_prompt }),
+        audit,
+        null,
+        "default",
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toBe("bad expected_prompt");
+      expect(client.reads).toEqual([]);
+      expect(client.keys).toEqual([]);
+    }
+  });
+
+  test("rejects oversized and non-string expected_prompt before a reply write", async () => {
+    for (const expected_prompt of ["x".repeat(8193), null]) {
+      const client = new FakePaneClient();
+      const { audit } = auditEntries();
+      const res = await replyPane(
+        client as unknown as HerdrClient,
+        cfg(),
+        "w1:p1",
+        request({ text: "hello", expected_prompt }),
+        audit,
+        null,
+        "default",
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toBe("bad expected_prompt");
+      expect(client.reads).toEqual([]);
+      expect(client.texts).toEqual([]);
+      expect(client.keys).toEqual([]);
+    }
   });
 });
 

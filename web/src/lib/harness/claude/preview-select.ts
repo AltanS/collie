@@ -57,6 +57,14 @@ export interface PreviewSelectModel {
    *  single-question dialog. Navigation uses the same Left/Right keys as the standard wizard. */
   steps: WizardStepChip[] | null;
   /**
+   * The literal, contiguous dialog region from the bounded lookback through the footer. The bridge
+   * must find this text in its fresh pane.read before writing. Unlike `coreSignature`, this includes
+   * the pointer and note state, so it changes during the choreography and binds only the first write
+   * after the client guard. `coreSignature` remains the pointer- and note-independent identity used
+   * by client comparisons across the full choreography.
+   */
+  regionSignature: string;
+  /**
    * A pointer- and note-INDEPENDENT byte-signature of the dialog's identity, computed at detection
    * time: the head lines above the options (the stepper/chip header + question + any subject/preamble
    * within a bounded lookback, mirroring prompt-select's SIGNATURE_LOOKBACK) joined with the LEFT
@@ -219,6 +227,9 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
       preview,
       note,
       steps,
+      regionSignature: texts
+        .slice(Math.max(0, firstOpt - SIGNATURE_LOOKBACK), fi + 1)
+        .join("\n"),
       coreSignature: computeCoreSignature(texts, firstOpt, lastOpt, noteCol),
     },
     startLine,

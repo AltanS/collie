@@ -106,11 +106,24 @@ interface GuardArgs {
 export async function submitPreviewOption(
   args: GuardArgs & { option: PreviewOption },
 ): Promise<ActionResult> {
-  const guarded = await entryGuard(args, args.preview, detectPreviewSelect, previewsEqual);
-  if (guarded) return guarded;
+  const guarded = await entryGuard(
+    args,
+    args.preview,
+    detectPreviewSelect,
+    previewsEqual,
+    (model) => model.regionSignature,
+  );
+  if (typeof guarded !== "string") return guarded;
 
   try {
-    const digit = await sendKeys(args.paneId, [String(args.option.n)], args.session);
+    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
+    const digit = await sendKeys(
+      args.paneId,
+      [String(args.option.n)],
+      args.session,
+      guarded,
+    );
+    if (!digit.ok && digit.code === "prompt_changed") return { status: "changed" };
     if (!digit.ok) return { status: "error", error: digit.error };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
@@ -152,14 +165,22 @@ export async function submitPreviewNote(
   args: GuardArgs & { text: string },
 ): Promise<ActionResult> {
   if (args.preview.note.state === "editing") return { status: "changed" };
-  const guarded = await entryGuard(args, args.preview, detectPreviewSelect, previewsEqual);
-  if (guarded) return guarded;
+  const guarded = await entryGuard(
+    args,
+    args.preview,
+    detectPreviewSelect,
+    previewsEqual,
+    (model) => model.regionSignature,
+  );
+  if (typeof guarded !== "string") return guarded;
 
   const text = sanitizeTypedText(args.text, NOTE_MAX_LENGTH);
   const editing = (m: PreviewSelectModel) => coreEqual(m, args.preview) && m.note.state === "editing";
 
   try {
-    const open = await sendKeys(args.paneId, ["n"], args.session);
+    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
+    const open = await sendKeys(args.paneId, ["n"], args.session, guarded);
+    if (!open.ok && open.code === "prompt_changed") return { status: "changed" };
     if (!open.ok) return { status: "error", error: open.error };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
@@ -242,10 +263,18 @@ export async function submitPreviewNote(
 export async function submitPreviewKeys(
   args: GuardArgs & { keys: string[] },
 ): Promise<ActionResult> {
-  const guarded = await entryGuard(args, args.preview, detectPreviewSelect, previewsEqual);
-  if (guarded) return guarded;
+  const guarded = await entryGuard(
+    args,
+    args.preview,
+    detectPreviewSelect,
+    previewsEqual,
+    (model) => model.regionSignature,
+  );
+  if (typeof guarded !== "string") return guarded;
   try {
-    const res = await sendKeys(args.paneId, args.keys, args.session);
+    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
+    const res = await sendKeys(args.paneId, args.keys, args.session, guarded);
+    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
   } catch (e) {
