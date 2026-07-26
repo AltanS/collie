@@ -852,8 +852,11 @@ export function isHostAllowed(host: string, cfg: Config): boolean {
  * (same-origin / CSRF + optional Tailscale identity). A `"write"` request — one that types into a
  * terminal or creates panes — must additionally come from an authorised device (see
  * {@link deviceAuth}). Returns a 403 Response to short-circuit on denial, or null to proceed.
+ *
+ * Exported for tests: {@link deviceAuth} being correct in isolation proves nothing if this wiring
+ * regresses, and the write/read asymmetry below is exactly what a device gate stands or falls on.
  */
-function guard(req: Request, cfg: Config, level: "read" | "write"): Response | null {
+export function guard(req: Request, cfg: Config, level: "read" | "write"): Response | null {
   const gate = checkAccess(req, cfg, level);
   if (!gate.ok) return text(gate.reason, 403);
   if (level === "write" && !deviceAuth(req, cfg).authorized) {
@@ -869,19 +872,31 @@ function guard(req: Request, cfg: Config, level: "read" | "write"): Response | n
  * so a direct client can't forge it (the same trust basis as the Tailscale identity header). Matrix:
  *
  *   - feature off (no header configured) → not enforced, fully authorised (today's behaviour).
- *   - header absent                      → authorised, unchanged. The proxy injects the header for
- *                                          real device traffic; an absent header is the on-host
- *                                          loopback operator (same tolerance as a missing identity).
+ *   - header absent                      → read-only, same as an unlisted device. Configuring the
+ *                                          header is the operator asserting that the proxy sets it
+ *                                          on every request, so a request without one did not come
+ *                                          through that proxy and must not drive a terminal.
  *   - header present, value allowlisted  → authorised; the session is attributed to that device.
  *   - header present, value not listed   → read-only. The "unknown" sentinel is never authorised,
  *                                          and an empty allowlist makes every device read-only — a
  *                                          fail-closed default for a security toggle you turned on.
+ *
+ * "Read-only" is the whole scope of this gate, deliberately: {@link guard} consults it only for
+ * `"write"`, so a header-less caller still reads panes. That is the existing design (a read-only
+ * device is meant to watch), and this function does not change it. What changes is that a missing
+ * header no longer counts as the operator.
+ *
+ * The absent-header case deliberately has no loopback exemption. It looks like the natural place for
+ * one, but every supported front door is a proxy co-located with the bridge (tailscale serve and the
+ * documented reverse proxies all connect to 127.0.0.1), so a loopback peer says nothing about
+ * whether the caller is the operator on the host or a remote client whose proxy failed to inject the
+ * header. Driving a pane from the host is still one flag away: send an allowlisted id yourself.
  */
 export function deviceAuth(req: Request, cfg: Config): DeviceAuth {
   if (!cfg.deviceHeader) return { enforced: false, device: null, authorized: true };
   const raw = req.headers.get(cfg.deviceHeader);
   const device = raw?.trim() ? raw.trim() : null;
-  if (!device) return { enforced: true, device: null, authorized: true };
+  if (!device) return { enforced: true, device: null, authorized: false };
   const authorized = device !== "unknown" && cfg.deviceAllowlist.includes(device);
   return { enforced: true, device, authorized };
 }
