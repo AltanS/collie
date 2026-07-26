@@ -12,6 +12,8 @@ const KEYS = [
   "COLLIE_POLL_IDLE_MS",
   "COLLIE_NOTIFY_DELAY_MS",
   "COLLIE_READ_LINES",
+  "COLLIE_TRANSCRIPT",
+  "COLLIE_TRANSCRIPT_ROOT",
   "COLLIE_SUBMIT_KEYS",
   "COLLIE_TRUSTED_USER",
   "COLLIE_DEVICE_HEADER",
@@ -54,6 +56,9 @@ describe("loadConfig", () => {
     expect(cfg.pollMs).toBe(1500);
     expect(cfg.pollIdleMs).toBe(12_000);
     expect(cfg.readLines).toBe(200);
+    // Transcript history defaults ON — it's the only scrollback a Claude pane can ever have.
+    expect(cfg.transcript).toBe(true);
+    expect(cfg.transcriptRoot).toEndWith("/.claude/projects");
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
     expect(cfg.allowedOrigins).toEqual([]);
@@ -103,6 +108,26 @@ describe("loadConfig", () => {
     expect(loadConfig().skipServe).toBe(false);
     process.env.COLLIE_SKIP_SERVE = "";
     expect(loadConfig().skipServe).toBe(false);
+  });
+
+  test("parses COLLIE_TRANSCRIPT as a boolean toggle (default ON)", () => {
+    for (const off of ["off", "0", "false", "no", "OFF"]) {
+      process.env.COLLIE_TRANSCRIPT = off;
+      expect(loadConfig().transcript).toBe(false);
+    }
+    for (const on of ["on", "1", "true", "yes"]) {
+      process.env.COLLIE_TRANSCRIPT = on;
+      expect(loadConfig().transcript).toBe(true);
+    }
+    // Garbage falls back to the default — a typo must not silently remove the only scrollback a
+    // Claude pane has.
+    process.env.COLLIE_TRANSCRIPT = "banana";
+    expect(loadConfig().transcript).toBe(true);
+  });
+
+  test("COLLIE_TRANSCRIPT_ROOT relocates the transcript root", () => {
+    process.env.COLLIE_TRANSCRIPT_ROOT = "/srv/claude/projects";
+    expect(loadConfig().transcriptRoot).toBe("/srv/claude/projects");
   });
 
   test("reads the per-device auth header and allowlist", () => {

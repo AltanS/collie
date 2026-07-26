@@ -11,11 +11,13 @@ import { herdTagFor, type SessionRegistry } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import type { UpdateMonitor } from "./update.ts";
 import type { StateEngine } from "./state-engine.ts";
+import { ClaudeTranscriptSource, TranscriptStore } from "./transcript.ts";
 import type {
   ActionResponse,
   BridgeConfig,
   CreateResponse,
   DeviceAuth,
+  PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
   UploadResponse,
@@ -76,7 +78,13 @@ const SECURITY_HEADERS: Record<string, string> = {
 // (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history))?$/;
+// Turns per history page. "Show entire history" means the WHOLE conversation, so the client asks for
+// everything and this ceiling is a safety net against a pathological log, not the normal path — a
+// 1400-turn session is ~1.4 MB raw / ~400 KB gzipped, which a tailnet link serves fine. The default
+// only applies when a caller omits `limit` entirely.
+const DEFAULT_HISTORY_LIMIT = 200;
+const MAX_HISTORY_LIMIT = 5000;
 // A tab supports rename + close — an action group like the pane route. The `/api/tab` POST above
 // (create) is an exact match on `/api/tab`, so it never collides with this `/api/tab/<id>/<action>`.
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
@@ -91,6 +99,12 @@ export function startServer(opts: {
   audit: AuditLog;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit } = opts;
+  // One transcript store for the process: it caches parsed session logs across requests, and the
+  // cache is keyed by absolute path, so sharing it across herdr sessions is correct (two sessions
+  // can front panes whose agents write into the same ~/.claude/projects root).
+  const transcripts = cfg.transcript
+    ? new TranscriptStore(new ClaudeTranscriptSource(cfg.transcriptRoot))
+    : null;
   // Per-session background notifications live in each session's runtime (built by the factory in
   // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
   // snooze-clears across every live session's coordinator.
@@ -178,15 +192,19 @@ export function startServer(opts: {
         const action = paneMatch[2];
         // Reading a pane is allowed for any access-gated client; every action (reply/keys/upload/
         // close) types into or restructures a terminal, so it additionally needs an authorised device.
-        const denied = guard(req, cfg, action ? "write" : "read");
+        // `history` is a READ despite being an action segment — it only ever reads a log off disk.
+        const denied = guard(req, cfg, action && action !== "history" ? "write" : "read");
         if (denied) return denied;
         const rt = registry.get(sessionName);
         if (!rt) return unknownSession();
         const { herdr, name: session } = rt;
         // Every action is a write; attribute it to the authorised device for the audit trail.
-        const device = action ? deviceAuth(req, cfg).device : null;
+        // `history` is a read, so it gets no device attribution (nothing is written to attribute).
+        const device = action && action !== "history" ? deviceAuth(req, cfg).device : null;
 
         if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
+        if (action === "history" && req.method === "GET")
+          return paneHistory(cfg, transcripts, rt.engine, paneId, url, req);
         if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "keys" && req.method === "POST") return keysPane(herdr, paneId, req, audit, device, session);
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
@@ -387,6 +405,55 @@ async function readPane(
  */
 export function paneReadResponse(paneId: string, read: PaneRead): PaneReadResponse {
   return { paneId, text: read.text, truncated: read.truncated, revision: read.revision };
+}
+
+/**
+ * Parse the history page params. Pure + exported so the clamping is unit-tested without Bun.serve.
+ * `before` is an opaque cursor (a turn's uuid) that only ever reaches an in-memory `findIndex`, so it
+ * needs no validation beyond length — it never touches the filesystem.
+ */
+export function historyParams(url: URL): { limit: number; before?: string } {
+  const raw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+  const limit =
+    Number.isFinite(raw) && raw > 0 ? Math.min(raw, MAX_HISTORY_LIMIT) : DEFAULT_HISTORY_LIMIT;
+  const before = url.searchParams.get("before");
+  return { limit, ...(before && before.length <= 100 ? { before } : {}) };
+}
+
+/**
+ * GET /api/pane/:id/history — the conversation history a Claude pane's terminal cannot provide.
+ *
+ * The session id is resolved HERE, from the live snapshot, keyed by pane id — the client never sends
+ * one. That is the whole safety story for a route that reads files: the only client-controlled inputs
+ * are a pane id (a Map lookup) and an opaque cursor (an array lookup).
+ */
+async function paneHistory(
+  cfg: Config,
+  transcripts: TranscriptStore | null,
+  engine: StateEngine,
+  paneId: string,
+  url: URL,
+  req: Request,
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  const unavailable = (reason: "disabled" | "no-session" | "no-log") =>
+    json({ paneId, available: false, reason } satisfies PaneHistoryResponse, accept);
+
+  if (!cfg.transcript || transcripts === null) return unavailable("disabled");
+
+  const { agents, shellPanes } = engine.current();
+  const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
+  // No pane, or an agent that reported no id-kind session (a shell, or a harness that doesn't keep
+  // one): there is nothing to read, and that's an ordinary answer rather than an error.
+  if (!pane?.agentSessionId) return unavailable("no-session");
+
+  try {
+    const page = await transcripts.page(pane.agentSessionId, historyParams(url));
+    if (page === null) return unavailable("no-log");
+    return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
+  } catch (err) {
+    return text(`transcript read failed: ${(err as Error).message}`, 502);
+  }
 }
 
 /** Just the two one-shot RPCs a reply needs — real HerdrClient in the bridge, fake in tests. */
