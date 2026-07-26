@@ -4,12 +4,12 @@
   <img src="assets/collie-hero.webp" alt="A collie herding a flock of sheep" width="640">
 </p>
 
-A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL,
-see which agent needs you, and reply with your phone's keyboard. The reply box is a plain text field,
-so your phone's own voice dictation (Android & iOS) works in it for free — Collie doesn't ship any
-voice support of its own. Each agent gets a colored terminal mirror, a slash-command palette, a
-special-keys pad, and a **conversation history** you can scroll and search — read from the agent's
-own transcript, because a terminal on the alternate screen has no scrollback of its own.
+A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL, see
+which agent is waiting on you, and answer it with your phone's keyboard.
+
+Each agent gets a colored terminal mirror, a slash-command palette, a special-keys pad, and a
+conversation history you can scroll and search. The reply box is an ordinary text field, so your
+phone's own voice dictation works in it; Collie ships none of its own.
 
 A Herdr plugin (thin launcher) plus a Bun/TypeScript bridge running as a `systemd --user` service,
 serving a Vite + React + shadcn PWA.
@@ -63,13 +63,11 @@ one thumb. Collie is that.
 
 ## Who is this for
 
-You, if you run [Herdr](https://herdr.dev) agents on a machine and want to resume a session from
-your phone — read what an agent is asking, type a reply, fire a special key — without SSHing in and
-wrestling a TUI. It assumes a **[Tailscale](https://tailscale.com) tailnet (mesh) setup**: your
-phone and the host are on the same tailnet, and `tailscale serve` is the only way in. It's
-deliberately **single-user**: one operator, one tailnet, no multi-tenant auth. If that's your setup,
-Collie fits. If you need shared or public access, it isn't built for that — and see the security
-note below before you run it.
+You, if you run [Herdr](https://herdr.dev) agents on a machine and want to pick a session back up
+from your phone. It assumes a **[Tailscale](https://tailscale.com) tailnet**: your phone and the host
+are on the same tailnet, and `tailscale serve` is the only way in. It is **single-user** — one
+operator, one tailnet, no multi-tenant auth. If you need shared or public access, Collie isn't built
+for it. Read the security note below either way.
 
 ## ⚠️ Security — read before you run it
 
