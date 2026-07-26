@@ -1,11 +1,18 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
 import net from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { dialHerdr, toPipeName } from "./dial.ts";
 
-// toPipeName is pure and runs everywhere. The live-pipe suite needs a real Windows named pipe, so
-// it is skipped off win32 — mirroring the repo convention that transport code is exercised where
-// it actually runs (the Unix Bun.connect path stays untested here for the same reason).
+// toPipeName is pure and runs everywhere.
+//
+// The live-dial suite runs EVERYWHERE too, by forcing dialMode "net" — node:net addresses a named
+// pipe on win32 and an AF_UNIX path on POSIX, so the same test exercises the same branch on both.
+// That matters: this is the code Windows depends on, and without forcing it the branch would be
+// unexercised on every machine that can review or merge it. The only genuinely win32-specific
+// step is the pipe-name mapping, covered by the pure toPipeName tests above.
 
 describe("toPipeName", () => {
   test("prefixes a plain socket path with the pipe namespace", () => {
@@ -20,10 +27,18 @@ describe("toPipeName", () => {
   });
 });
 
-const describeWin = process.platform === "win32" ? describe : describe.skip;
+describe("dialHerdr over a live endpoint (node:net dialer, both platforms)", () => {
+  // POSIX needs a real filesystem path for the AF_UNIX socket; win32 pipe names are namespaced and
+  // need no temp dir at all. Cleaned up either way.
+  const dir = process.platform === "win32" ? null : mkdtempSync(join(tmpdir(), "collie-dial-"));
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
 
-describeWin("dialHerdr over a live named pipe (win32 only)", () => {
-  const pipeFor = (tag: string) => `\\\\.\\pipe\\collie-dial-test-${process.pid}-${tag}`;
+  const pipeFor = (tag: string) =>
+    dir === null
+      ? `\\\\.\\pipe\\collie-dial-test-${process.pid}-${tag}`
+      : join(dir, `${tag}.sock`);
 
   /** One-connection line server: waits for a request line, replies with `chunks`, then closes. */
   const serveOnce = async (pipe: string, chunks: Buffer[], gapMs = 0): Promise<net.Server> => {
@@ -70,7 +85,7 @@ describeWin("dialHerdr over a live named pipe (win32 only)", () => {
         close() {
           once(() => reject(new Error("closed before a full reply line")));
         },
-      })
+      }, "net")
         .then((s) => s.write('{"id":"t","method":"probe","params":{}}\n'))
         .catch((err) => once(() => reject(err)));
     });
@@ -97,25 +112,33 @@ describeWin("dialHerdr over a live named pipe (win32 only)", () => {
     }
   });
 
-  test("dialing a nonexistent pipe rejects and fires the error handler", async () => {
+  test("dialing a nonexistent endpoint rejects and fires the error handler", async () => {
     let sawError = false;
     await expect(
-      dialHerdr(pipeFor("nonexistent"), {
-        error() {
-          sawError = true;
+      dialHerdr(
+        pipeFor("nonexistent"),
+        {
+          error() {
+            sawError = true;
+          },
         },
-      }),
+        "net",
+      ),
     ).rejects.toBeDefined();
     expect(sawError).toBe(true);
   });
 
   test("onDial cancel settles the promise instead of leaving it pending", async () => {
     let cancel: (() => void) | null = null;
-    const p = dialHerdr(pipeFor("cancelled"), {
-      onDial(c) {
-        cancel = c;
+    const p = dialHerdr(
+      pipeFor("cancelled"),
+      {
+        onDial(c) {
+          cancel = c;
+        },
       },
-    });
+      "net",
+    );
     expect(cancel).not.toBeNull();
     cancel!();
     // Whether the abort lands as "closed before connect" or the connect error races first,

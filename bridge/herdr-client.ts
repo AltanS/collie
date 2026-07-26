@@ -1,5 +1,5 @@
 import type { AgentStatus } from "./types.ts";
-import { dialHerdr, type SockHandle } from "./dial.ts";
+import { dialHerdr, type DialMode, type SockHandle } from "./dial.ts";
 import { decodeReplyLine, decodeStreamLine } from "./wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,10 +91,15 @@ type ReadFormat = "text" | "ansi";
 
 let idCounter = 0;
 
+/** Per-request wall-clock budget. Exported so callers can pass it explicitly alongside a dial mode. */
+export const DEFAULT_TIMEOUT_MS = 5000;
+
 export class HerdrClient {
   constructor(
     private readonly socketPath: string,
-    private readonly timeoutMs = 5000,
+    private readonly timeoutMs = DEFAULT_TIMEOUT_MS,
+    /** Which dialer to use; see {@link DialMode}. `auto` picks by platform. */
+    private readonly dialMode: DialMode = "auto",
   ) {}
 
   /** One request, one reply, one connection. Rejects on error reply, timeout, or early close. */
@@ -168,7 +173,7 @@ export class HerdrClient {
         close() {
           finish(() => reject(new Error(`herdr ${method}: connection closed before reply`)));
         },
-      })
+      }, this.dialMode)
         .then((s) => {
           // Already settled (e.g. timed out) before the connection opened — close it so the FD
           // doesn't leak, and don't bother writing.
@@ -313,7 +318,7 @@ export class HerdrClient {
       close() {
         fireDown("connection closed");
       },
-    })
+    }, this.dialMode)
       .then((s) => {
         if (down) {
           try {
