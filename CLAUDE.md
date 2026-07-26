@@ -100,3 +100,10 @@ Loopback bind only · exactly one hardened front door — `tailscale serve` (nev
 conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate · optional
 identity/device gates · strict CSP. A socket call can type into a real terminal — treat the bridge as
 remote shell access.
+
+**Collie manages exactly one front door: `tailscale serve`.** That's the one this project runs and
+tests, so it's the one whose lifecycle we own (`collie-ctl.sh` publishes it, records the mapping in
+`tailscale-managed-handler`, and only ever tears down a mapping matching that record). Every other
+tunnel — NetBird, ZeroTier, Cloudflare Tunnel — is `COLLIE_SKIP_SERVE=1` + README Variant E: the
+operator owns the ingress and Collie publishes nothing. **Don't add a second managed front door**;
+we'd be maintaining a CLI contract we can't test. See PR #26 for the full reasoning.

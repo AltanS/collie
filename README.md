@@ -385,9 +385,10 @@ repo's pre-commit / pre-push checks.
 ## Deployment variants
 
 The bridge always binds **loopback only**; what changes between deployments is *what sits in front
-of it* and *how a request proves who it is*. Four supported shapes — Tailscale by **person** (A),
-a co-located proxy by **device** (B), a reverse proxy as the sole front door (C), or an
-**off-host** identity proxy reached over the tailnet (D). Pick one.
+of it* and *how a request proves who it is*. Five supported shapes — Tailscale by **person** (A),
+a co-located proxy by **device** (B), a reverse proxy as the sole front door (C), an **off-host**
+identity proxy reached over the tailnet (D), or any other mesh or tunnel
+([E](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)). Pick one.
 
 ### Variant A — `tailscale serve` + person identity (default)
 
@@ -662,6 +663,48 @@ A header-less request must be read-only. **If it says `"authorized":true`, your 
 > succeeds *there* even when the ACL is flawless. It is the most obvious machine to test from, since
 > it's the one you're configuring, and it will tell you your ACL is broken when it isn't. Reachability
 > is only observable from a second device.
+
+### Variant E — any other mesh or tunnel (NetBird, ZeroTier, Cloudflare Tunnel)
+
+Tailscale is the **default**, not a requirement. Collie's own Tailscale coupling is one header read
+and a convenience in `collie-ctl.sh`; the bridge itself is a loopback HTTP server that gates on
+`Host`, `Origin`, and two optional headers. Anything that can reach `127.0.0.1:$COLLIE_PORT` can
+front it.
+
+Collie deliberately **manages** only one front door — the one this project runs and tests. For every
+other tunnel you own the ingress and Collie stays out of the way:
+
+```bash
+COLLIE_SKIP_SERVE=1                                 # never run tailscale serve
+COLLIE_PUBLIC_HOSTS=collie.example.com              # exact public host — blocks DNS rebinding
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
+```
+
+Then point your tunnel at `127.0.0.1:$COLLIE_PORT` and start it however you start your other
+services. `netbird expose 8787`, a ZeroTier-routed reverse proxy and `cloudflared tunnel` all work
+this way. `collie-ctl.sh start` will build, launch and supervise the bridge and publish nothing;
+`unserve` and `uninstall` likewise leave your tunnel alone, exactly as under
+[Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
+
+Three things to get right, none of them Collie-specific:
+
+1. **The [Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) proxy requirements
+   apply verbatim.** Loopback upstream, the public `Host` forwarded unchanged (or listed in
+   `COLLIE_ALLOWED_ORIGINS`), and — if you use the device gate — the identity header **overridden**
+   on every request, never merely added.
+2. **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only
+   `tailscale serve` injects. If your tunnel authenticates and injects a device identity, use
+   `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` instead; if it authenticates but injects
+   nothing, its own auth *is* the whole gate and anyone who passes it gets full Collie access.
+3. **Pin a stable hostname before you install the PWA.** A service-worker cache is per-origin, and
+   several tunnels hand out a fresh generated name per session. A name that changes gives you a new
+   install each time and makes `COLLIE_PUBLIC_HOSTS` unpinnable.
+
+> ⚠️ **Anything that publishes to the open internet is a `funnel` by another name.** The rule in
+> [Security](#-security--read-before-you-run-it) isn't about Tailscale, it's about reachability: this
+> socket is a shell running as you. If your tunnel offers a public URL, the auth in front of it is
+> the only thing between a stranger and that shell, so treat a shared PIN the way you'd treat a root
+> password — and prefer a tunnel scoped to your own devices over a public URL with a gate on it.
 
 ## Windows (experimental)
 
