@@ -141,6 +141,15 @@ app. Closing this needs the server-side blocking-message capture described above
   relaxes to `COLLIE_POLL_IDLE_MS` (12 s default) whenever the stream is healthy and drops back to
   the fast `COLLIE_POLL_MS` when it isn't. **The snapshot poll stays the source of truth throughout —
   a missed event costs one interval, never correctness.**
+- **Scrollback comes from the transcript, not the terminal.** An agent's TUI runs on the *alternate
+  screen* (`ESC[?1049h`), so the emulator keeps no scrollback ring and `pane.read` can never return
+  more than the visible viewport — the live mirror physically cannot scroll back. Pane history is
+  therefore read from the agent's **own transcript file** off disk (`bridge/transcript.ts`,
+  `/api/pane/:id/history`), a separate source from the mirror with different fidelity: turns and
+  their text, not a replay of the screen. The client fetches the whole conversation in one request
+  and renders a window that grows upward, which is what lets find-in-history and jump-to-user-turn
+  work across turns you haven't scrolled to. Rationale and the measured numbers are commented at the
+  top of `web/src/routes/history.tsx`.
 - **The browser polls too.** `useRevalidator` → `/api/snapshot` on an adaptive interval. There is no
   WebSocket fan-out to the browser and no push of state; pulling is what makes the two recovery loops
   below trivial.

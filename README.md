@@ -7,8 +7,9 @@
 A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL,
 see which agent needs you, and reply with your phone's keyboard. The reply box is a plain text field,
 so your phone's own voice dictation (Android & iOS) works in it for free — Collie doesn't ship any
-voice support of its own. Each agent gets a colored terminal mirror, a slash-command palette, and a
-special-keys pad.
+voice support of its own. Each agent gets a colored terminal mirror, a slash-command palette, a
+special-keys pad, and a **conversation history** you can scroll and search — read from the agent's
+own transcript, because a terminal on the alternate screen has no scrollback of its own.
 
 A Herdr plugin (thin launcher) plus a Bun/TypeScript bridge running as a `systemd --user` service,
 serving a Vite + React + shadcn PWA.
@@ -181,7 +182,7 @@ building web UI (first run)…                    # linked clone only; a GitHub 
 bridge started (systemd --user: collie)
 tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
 
-  ✓ Collie is running  ·  v0.9.0+debcff9
+  ✓ Collie is running  ·  v0.15.0+174c4e4
     service   systemd --user (collie) · active
     local     http://127.0.0.1:8787
     tailnet   https://myhost.tail1234.ts.net
@@ -226,7 +227,7 @@ A sixty-second check, host side then phone side:
 ```console
 $ scripts/collie-ctl.sh status
 
-  ✓ Collie is running  ·  v0.9.0+debcff9
+  ✓ Collie is running  ·  v0.15.0+174c4e4
     service   systemd --user (collie) · active
     local     http://127.0.0.1:8787
     tailnet   https://myhost.tail1234.ts.net
@@ -476,10 +477,18 @@ location / {
 }
 ```
 
-Revoke a device by dropping its id from `COLLIE_DEVICE_ALLOWLIST` and
-`systemctl --user restart collie`. With the header set but the allowlist **empty**, every device is
-read-only (fail-closed), and so is a request that arrives without the header. In that state nothing
-can drive a pane, including a hand-made `curl`; recovery is an `.env` edit plus a restart.
+Revoke a device by dropping its id from `COLLIE_DEVICE_ALLOWLIST` and restarting
+(`herdr plugin action invoke restart --plugin herdr.collie`). With the header set but the allowlist
+**empty**, every device is read-only (fail-closed), and so is a request that arrives without the
+header. In that state nothing can drive a pane, including a hand-made `curl`; recovery is an `.env`
+edit plus a restart.
+
+> **If your proxy's upstream is the bridge's own `tailscale serve` URL**, that URL stays reachable
+> tailnet-wide by design — it has to be, or the proxy couldn't reach it. Anything on the tailnet can
+> therefore call the bridge directly and skip the proxy that injects the header. The device gate is
+> what makes that harmless: since 0.15.0 a header-less request is read-only, so the direct path can
+> watch but never drive. Before 0.15.0 it had full write access. Scope who can reach the port at all
+> with a Tailscale ACL if the tailnet has devices you don't control.
 
 ### Variant C — reverse proxy as the only front door (no Tailscale)
 
