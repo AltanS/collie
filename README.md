@@ -100,7 +100,8 @@ It's built single-user and tailnet-only. The defenses:
 - **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject anyone but you.
 - **Optional per-device gate** — behind a proxy that injects a device-identity header, set
   `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` so only allowlisted devices can drive agents;
-  any other device is read-only. Off by default; revoke a device by dropping it from the list.
+  any other device is read-only, and so is a request that arrives without the header at all. Off by
+  default; revoke a device by dropping it from the list.
   See [Deployment variants](#deployment-variants) for the proxy this requires.
 - **Same-origin gate + strict CSP**; pane output renders as React text nodes, never `innerHTML`.
 - **Optional Host allowlist** — set `COLLIE_PUBLIC_HOSTS` to the exact host(s) you serve on (e.g.
@@ -411,17 +412,32 @@ This is the right choice unless you specifically need per-device control.
 Use this when some devices should **drive** agents and others should be **read-only** — e.g. your
 phone can reply, but a shared/less-trusted device can only watch. Collie reads an opaque device id
 from a request header (`COLLIE_DEVICE_HEADER`) and checks it against `COLLIE_DEVICE_ALLOWLIST`:
-allow-listed → full access, any other id → read-only, header absent → treated as the on-host
-operator (full access).
+allow-listed → full access, any other id → read-only, header absent → read-only as well.
 
-That last rule is the catch: **device-auth only works behind a reverse proxy that authenticates the
+Treating an absent header as read-only is the point: switching this on is you asserting that your
+proxy sets the header on every request, so a request without one did not come through that proxy and
+must not drive a terminal. **Device-auth only works behind a reverse proxy that authenticates the
 device and injects the header.** It is not a standalone flag.
 
-> ⚠️ **Do not enable `COLLIE_DEVICE_HEADER` on plain `tailscale serve`.** An *absent* header means
-> full access, and `tailscale serve` injects only its own `Tailscale-*` headers — it *forwards* an
-> arbitrary `X-Device-Id` untouched. So a remote request with no header gets full access (the gate
-> is a no-op), and a client that *sets* `X-Device-Id: my-phone` itself is trusted (spoofable).
-> Sound only behind a proxy that does both things below.
+Note what "read-only" means here: the gate covers writes (replies, keys, uploads, pane and tab
+create/close). Reading panes, polling the snapshot and listing sessions stay open to any caller that
+gets past the same-origin and Host checks, exactly as they do for a device that is simply not on the
+allowlist. Pane text can contain anything your agents printed, so the header is not a confidentiality
+boundary.
+
+Two consequences worth knowing before you turn this on:
+
+- **The bridge's own loopback URL becomes read-only.** `http://127.0.0.1:$COLLIE_PORT` bypasses your
+  proxy, so the PWA loaded from it sends no device header and shows its read-only state. Drive the
+  herd through the proxied URL instead.
+- **To drive a pane from the host by hand**, send an allowlisted id yourself, against the loopback
+  bridge rather than the public URL (the proxy's mandatory override in point 2 below would replace
+  your header): `curl -H 'X-Device-Id: my-laptop' http://127.0.0.1:$COLLIE_PORT/api/...`
+
+> ⚠️ **Do not enable `COLLIE_DEVICE_HEADER` on plain `tailscale serve`.** `tailscale serve` injects
+> only its own `Tailscale-*` headers and *forwards* an arbitrary `X-Device-Id` untouched, so a
+> client that *sets* `X-Device-Id: my-phone` itself is trusted. Spoofing is what makes this unsound,
+> and only a proxy that **overrides** the header (point 2 below) closes it.
 
 Your fronting proxy **must**:
 
@@ -462,7 +478,8 @@ location / {
 
 Revoke a device by dropping its id from `COLLIE_DEVICE_ALLOWLIST` and
 `systemctl --user restart collie`. With the header set but the allowlist **empty**, every device is
-read-only (fail-closed).
+read-only (fail-closed), and so is a request that arrives without the header. In that state nothing
+can drive a pane, including a hand-made `curl`; recovery is an `.env` edit plus a restart.
 
 ### Variant C — reverse proxy as the only front door (no Tailscale)
 
