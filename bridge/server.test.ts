@@ -5,6 +5,7 @@ import {
   cacheControlFor,
   checkAccess,
   deviceAuth,
+  guard,
   historyParams,
   isHostAllowed,
   normalizeTabLabel,
@@ -382,19 +383,71 @@ describe("deviceAuth — per-device authorisation", () => {
     });
   });
 
-  test("feature on, header absent: authorised and unchanged (on-host loopback operator)", () => {
+  test("feature on, header absent: refused", () => {
     const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
     expect(deviceAuth(req({ host: "h" }), c)).toEqual({
       enforced: true,
       device: null,
-      authorized: true,
+      authorized: false,
     });
     // A blank/whitespace header value is treated as absent, not as a device named "".
     expect(deviceAuth(req({ host: "h", "x-device-id": "  " }), c)).toEqual({
       enforced: true,
       device: null,
-      authorized: true,
+      authorized: false,
     });
+  });
+
+  // The absent-header case has no loopback exemption, and a loopback-looking Host must not create
+  // one by the back door: Host is set by the caller and rewritten by the proxy, so it attests
+  // nothing. This pins that no future "but it came from localhost" shortcut sneaks in here.
+  test("feature on, header absent: a loopback Host does not buy an exemption", () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    for (const host of ["127.0.0.1", "127.0.0.1:8787", "localhost", "[::1]:8787"]) {
+      expect(deviceAuth(req({ host }), c).authorized).toBe(false);
+    }
+  });
+});
+
+// deviceAuth being right in isolation proves nothing if the wiring in guard() regresses, and that
+// wiring is where the whole gate lives: it consults deviceAuth for "write" and deliberately not for
+// "read". Both halves are asserted here, so neither the gate nor the read-only scope can drift
+// silently. The write cases carry a matching Origin so checkAccess passes and the device decision is
+// the only thing under test.
+describe("guard applies the device gate to writes only", () => {
+  const HDR = "x-device-id";
+  const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+  const write = (headers: Record<string, string>) =>
+    guard(req({ host: "collie.ts.net", origin: "https://collie.ts.net", ...headers }), c, "write");
+  const read = (headers: Record<string, string>) =>
+    guard(req({ host: "collie.ts.net", ...headers }), c, "read");
+
+  test("write with no device header is refused with 403", () => {
+    const denied = write({});
+    expect(denied).not.toBeNull();
+    expect(denied!.status).toBe(403);
+  });
+
+  test("write with a non-allowlisted device is refused with 403", () => {
+    const denied = write({ "x-device-id": "intruder" });
+    expect(denied).not.toBeNull();
+    expect(denied!.status).toBe(403);
+  });
+
+  test("write with an allowlisted device proceeds", () => {
+    expect(write({ "x-device-id": "phone" })).toBeNull();
+  });
+
+  // The scope of the gate, stated as a test rather than only in prose: a header-less caller keeps
+  // READ access (it is read-only, not rejected outright). If someone later tightens this, it should
+  // be a deliberate change with this test updated, not an accident.
+  test("read with no device header still proceeds (read-only, not rejected)", () => {
+    expect(read({})).toBeNull();
+    expect(read({ "x-device-id": "intruder" })).toBeNull();
+  });
+
+  test("with the feature off, a write with no device header proceeds", () => {
+    expect(guard(req({ host: "127.0.0.1:8787" }), cfg(), "write")).toBeNull();
   });
 
   test("feature on, allowlisted device: authorised and attributed (header is trimmed)", () => {
