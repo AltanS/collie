@@ -13,7 +13,7 @@
 // no flag, no race — and because a navigation aborts any in-flight revalidation, the nav is instant
 // even while a poll's doomed fetch is still hanging.
 
-import { fetchPane, fetchSnapshot } from "@/lib/api";
+import { fetchPane, fetchSnapshot, isApiErrorStatus } from "@/lib/api";
 import { isLostLatched } from "@/lib/connection-health";
 import { SESSION_PARAM, normalizeSession } from "@/lib/session";
 import type {
@@ -75,6 +75,8 @@ export interface HomeData {
   update: UpdateInfo | undefined;
   /** True when this render is the last-good snapshot after a failed refresh. */
   error: boolean;
+  /** True when the failed refresh was rejected with HTTP 401 or 403. */
+  authError: boolean;
 }
 
 export interface PaneData {
@@ -91,11 +93,31 @@ export interface PaneData {
    * the degraded (stale-text) path, where the guard's fresh fetch will reject a mismatch anyway. */
   revision: number;
   error: boolean;
+  /** True when the failed refresh was rejected with HTTP 401 or 403. */
+  authError: boolean;
 }
 
 // Keep-previous-data cache is now PER-SESSION: switching sessions must not show the other session's
 // herd flagged as stale. Keyed by session name ("" = primary).
 const lastSnapshot = new Map<string, SnapshotResponse>();
+
+// A latched navigation skips the network, so retain whether the last real outcome for each session
+// was an auth rejection. Store only rejected sessions; every other real outcome removes the marker.
+const authErrorSessions = new Set<string>();
+
+function rememberAuthError(session: string | undefined, authError: boolean): void {
+  const key = session ?? "";
+  if (authError) authErrorSessions.add(key);
+  else authErrorSessions.delete(key);
+}
+
+function hasAuthError(session: string | undefined): boolean {
+  return authErrorSessions.has(session ?? "");
+}
+
+function isAuthError(error: unknown): boolean {
+  return isApiErrorStatus(error, 401) || isApiErrorStatus(error, 403);
+}
 
 // The URL each loader last RAN for — the nav-vs-revalidate discriminator for the offline fast path (see
 // the header comment). Module-scoped so it survives revalidations (the loader re-runs every poll) and
@@ -128,6 +150,7 @@ function toHomeData(snap: SnapshotResponse, session: string | undefined, error: 
     snoozedUntil: snap.notifications?.snoozedUntil ?? null,
     update: snap.update,
     error,
+    authError: error && hasAuthError(session),
   };
 }
 
@@ -151,6 +174,7 @@ function staleHome(session: string | undefined): HomeData {
         snoozedUntil: null,
         update: undefined,
         error: true,
+        authError: hasAuthError(session),
       };
 }
 
@@ -173,9 +197,11 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
   try {
     const snap = await fetchSnapshot(session, request?.signal);
     lastSnapshot.set(session ?? "", snap);
+    rememberAuthError(session, false);
     return toHomeData(snap, session, false);
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
+    rememberAuthError(session, isAuthError(e));
     // Keep the last good herd on screen, flagged so the ConnectionBanner can say "reconnecting…".
     return staleHome(session);
   }
@@ -254,6 +280,7 @@ function stalePane(paneId: string, session: string | undefined, lines: number): 
     requestedLines: lines,
     revision: 0,
     error: true,
+    authError: hasAuthError(session),
   };
 }
 
@@ -289,9 +316,20 @@ export async function paneLoader({
     const read: PaneReadResponse = await fetchPane(paneId, lines, session, request?.signal);
     const text = read.text || lastPaneText.get(key) || "";
     rememberPaneText(key, text);
-    return { paneId, session, text, truncated: read.truncated, requestedLines: lines, revision: read.revision, error: false };
+    rememberAuthError(session, false);
+    return {
+      paneId,
+      session,
+      text,
+      truncated: read.truncated,
+      requestedLines: lines,
+      revision: read.revision,
+      error: false,
+      authError: false,
+    };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
+    rememberAuthError(session, isAuthError(e));
     // Genuine network / server failure: show stale text flagged as degraded.
     return stalePane(paneId, session, lines);
   }

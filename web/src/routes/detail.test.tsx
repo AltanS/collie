@@ -46,6 +46,7 @@ const connected = (agents: AgentView[], shellPanes: AgentView[] = []): HomeData 
   snoozedUntil: null,
   update: undefined,
   error: false,
+  authError: false,
 });
 
 function makeRouter(initialPath: string, homeLoader: () => HomeData) {
@@ -68,6 +69,7 @@ function makeRouter(initialPath: string, homeLoader: () => HomeData) {
               requestedLines: 600,
               revision: 0,
               error: false,
+              authError: false,
             }),
             element: <DetailRoute />,
           },

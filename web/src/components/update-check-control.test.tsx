@@ -35,6 +35,7 @@ function homeData(update: UpdateInfo | undefined): HomeData {
     snoozedUntil: null,
     update,
     error: false,
+    authError: false,
   };
 }
 

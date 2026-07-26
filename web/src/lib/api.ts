@@ -26,6 +26,11 @@ class ApiError extends Error {
   }
 }
 
+/** True when an API request failed with the given HTTP status. */
+export function isApiErrorStatus(error: unknown, status: number): boolean {
+  return error instanceof ApiError && error.status === status;
+}
+
 // Every request gets a deadline so a black-holed connection (phone sleep/wake, a Tailscale route
 // that goes dark) can't leave a fetch pending forever — which would zombify the app: the poller
 // gates on `revalidator.state === "idle"` and never fires again, and route navigations wait on a
