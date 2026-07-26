@@ -1,4 +1,5 @@
 import type { AgentStatus } from "./types.ts";
+import { dialHerdr, type SockHandle } from "./dial.ts";
 import { decodeReplyLine, decodeStreamLine } from "./wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,9 +103,9 @@ export class HerdrClient {
     return new Promise<T>((resolve, reject) => {
       let buf = "";
       let settled = false;
-      // The live socket, once Bun.connect opens one. Hoisted so EVERY terminal path (timeout
+      // The live socket, once the dial opens one. Hoisted so EVERY terminal path (timeout
       // included) can close it — otherwise a timeout leaves the FD dangling.
-      let socket: Bun.Socket | null = null;
+      let socket: SockHandle | null = null;
       // Stream-decode so a multi-byte UTF-8 codepoint split across chunk boundaries isn't
       // corrupted into replacement characters.
       const decoder = new TextDecoder("utf-8");
@@ -129,32 +130,29 @@ export class HerdrClient {
         this.timeoutMs,
       );
 
-      Bun.connect({
-        unix: this.socketPath,
-        socket: {
-          open(s) {
-            socket = s;
-          },
-          data(s, chunk) {
-            socket = s;
-            buf += decoder.decode(chunk, { stream: true });
-            const nl = buf.indexOf("\n");
-            if (nl < 0) return;
-            const line = buf.slice(0, nl);
-            finish(() => {
-              try {
-                resolve(decodeReplyLine<T>(line, method));
-              } catch (e) {
-                reject(e as Error);
-              }
-            });
-          },
-          error(_s, err) {
-            finish(() => reject(err));
-          },
-          close() {
-            finish(() => reject(new Error(`herdr ${method}: connection closed before reply`)));
-          },
+      dialHerdr(this.socketPath, {
+        open(s) {
+          socket = s;
+        },
+        data(s, chunk) {
+          socket = s;
+          buf += decoder.decode(chunk, { stream: true });
+          const nl = buf.indexOf("\n");
+          if (nl < 0) return;
+          const line = buf.slice(0, nl);
+          finish(() => {
+            try {
+              resolve(decodeReplyLine<T>(line, method));
+            } catch (e) {
+              reject(e as Error);
+            }
+          });
+        },
+        error(_s, err) {
+          finish(() => reject(err));
+        },
+        close() {
+          finish(() => reject(new Error(`herdr ${method}: connection closed before reply`)));
         },
       })
         .then((s) => {
@@ -219,7 +217,7 @@ export class HerdrClient {
     const id = `es${++idCounter}`;
     const decoder = new TextDecoder("utf-8");
     let buf = "";
-    let socket: Bun.Socket | null = null;
+    let socket: SockHandle | null = null;
     let down = false;
     let acked = false;
 
@@ -265,31 +263,28 @@ export class HerdrClient {
       opts.onEvent(decoded.event, decoded.data);
     };
 
-    Bun.connect({
-      unix: this.socketPath,
-      socket: {
-        open(s) {
-          socket = s;
-        },
-        // Multiple lines can arrive per chunk (bursty events); drain ALL complete lines and keep the
-        // stream open. Stream-decode so a multi-byte codepoint split across chunks isn't corrupted.
-        data(s, chunk) {
-          socket = s;
-          buf += decoder.decode(chunk, { stream: true });
-          let nl = buf.indexOf("\n");
-          while (nl >= 0 && !down) {
-            const line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
-            handleLine(line);
-            nl = buf.indexOf("\n");
-          }
-        },
-        error(_s, err) {
-          fireDown(err.message || "socket error");
-        },
-        close() {
-          fireDown("connection closed");
-        },
+    dialHerdr(this.socketPath, {
+      open(s) {
+        socket = s;
+      },
+      // Multiple lines can arrive per chunk (bursty events); drain ALL complete lines and keep the
+      // stream open. Stream-decode so a multi-byte codepoint split across chunks isn't corrupted.
+      data(s, chunk) {
+        socket = s;
+        buf += decoder.decode(chunk, { stream: true });
+        let nl = buf.indexOf("\n");
+        while (nl >= 0 && !down) {
+          const line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          handleLine(line);
+          nl = buf.indexOf("\n");
+        }
+      },
+      error(_s, err) {
+        fireDown(err.message || "socket error");
+      },
+      close() {
+        fireDown("connection closed");
       },
     })
       .then((s) => {
