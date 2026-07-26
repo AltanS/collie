@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useRevalidator } from "react-router";
-import { ArrowUpToLine, Loader2, TerminalSquare } from "lucide-react";
+import { ArrowUpToLine, Loader2, ScrollText, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
@@ -31,7 +31,7 @@ import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-sel
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
-import { spacePath } from "@/lib/nav";
+import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
 import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
 import type {
@@ -54,8 +54,6 @@ interface AgentChatProps {
   tabLabel?: string;
   /** Pane output from the route loader (refreshed by polling/revalidation). */
   text: string;
-  /** True when the pane buffer was cut off at the requested line count — older scrollback exists. */
-  truncated?: boolean;
   /** The scrollback window `text` was fetched with — tells a grown fetch from a stale in-flight poll. */
   requestedLines?: number;
   /** The pane's `revision` for `text` — the race guard checks a tapped menu against this. */
@@ -94,7 +92,6 @@ export function AgentChat({
   tabs,
   tabLabel,
   text,
-  truncated,
   requestedLines = 0,
   revision = 0,
   device,
@@ -220,6 +217,17 @@ export function AgentChat({
     setFindOpen(false);
     setFindQuery("");
   }
+
+  // What the top of the buffer can offer — see the JSX for why these are mutually exclusive.
+  // `historyAvailable`: the pane reported an agent session, so a transcript exists to open.
+  // `moreScrollback`: Herdr says this pane can still yield lines beyond the window we've asked for,
+  // AND we're under the cap Herdr's own read clamp imposes. `readableLines` is undefined on an older
+  // bridge/Herdr; treat that as "no idea" and stay hidden rather than offer a tap that fetches nothing.
+  const historyAvailable = Boolean(agent?.agentSessionId);
+  const moreScrollback =
+    agent?.readableLines !== undefined &&
+    requestedLines < agent.readableLines &&
+    canGrowRequestedLines(paneId, session);
 
   // Load older scrollback: raise the per-pane requested line count and refetch. The enlarged buffer
   // prepends older lines at the top, so we adopt it into the frozen display and re-anchor the scroll
@@ -489,15 +497,37 @@ export function AgentChat({
             />
           ) : undefined
         }
-        // The agent status pill, dimmed while the connection isn't live so a frozen "working"/"idle"
+        // Right cluster, in reading order: History, then the agent status pill. The pill is the
+        // rightmost item on every pane screen (it's the thing you glance at), so History sits to its
+        // LEFT rather than trailing it. Both ride in `rightLead` because AppHeader renders
+        // `rightLead` before `rightTrail` — the order here IS the on-screen order.
+        //
+        // History opens the agent's own transcript, the only real conversation history a Claude pane
+        // has: its terminal runs on the alternate screen, so the mirror below can never show more
+        // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
+        // transcript can exist at all), so the button never leads to an empty screen.
+        //
+        // The status pill is dimmed while the connection isn't live, so a frozen "working"/"idle"
         // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
         rightLead={
           agent ? (
-            isShell ? (
-              <ShellBadge stale={connecting} />
-            ) : (
-              <StatusBadge status={agent.status} stale={connecting} />
-            )
+            <>
+              {agent.agentSessionId && (
+                <button
+                  type="button"
+                  onClick={() => navigate(historyPath(paneId, session))}
+                  aria-label="Conversation history"
+                  className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                >
+                  <ScrollText className="size-4" />
+                </button>
+              )}
+              {isShell ? (
+                <ShellBadge stale={connecting} />
+              ) : (
+                <StatusBadge status={agent.status} stale={connecting} />
+              )}
+            </>
           ) : undefined
         }
       >
@@ -603,9 +633,30 @@ export function AgentChat({
           >
             {display ? (
               <>
-                {/* Load older scrollback — sits at the top of the buffer, so it's reached by scrolling
-                    up. Shown while the buffer is still truncated (older lines exist) and below the cap. */}
-                {truncated && canGrowRequestedLines(paneId, session) && (
+                {/* Top-of-buffer affordance, reached by scrolling up. WHICH button appears is decided
+                    by what the pane can actually offer, because the two are never both possible:
+
+                      • an agent pane with a transcript → "Show entire history". Its terminal runs on
+                        the alternate screen, which keeps no scrollback ring, so the mirror can never
+                        show more than the viewport — the agent's own session log is the only history
+                        that exists (see bridge/transcript.ts).
+                      • a pane with real scrollback (a shell, on the primary screen) → "Load older",
+                        which grows the requested window.
+                      • neither → nothing.
+
+                    This used to be gated on `truncated`, which Herdr never sets true — so the button
+                    rendered on no pane at all. `readableLines` (scrollback depth + viewport) is the
+                    signal that actually works. */}
+                {historyAvailable ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(historyPath(paneId, session))}
+                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
+                  >
+                    <ScrollText className="size-3.5" />
+                    Show entire history
+                  </button>
+                ) : moreScrollback ? (
                   <button
                     type="button"
                     onClick={loadOlder}
@@ -619,7 +670,7 @@ export function AgentChat({
                     )}
                     {loadingOlder ? "Loading…" : "Load older"}
                   </button>
-                )}
+                ) : null}
                 <AnsiOutput
                   text={display}
                   wrap={prefs.wrap}

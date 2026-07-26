@@ -7,6 +7,15 @@ export function panePath(paneId: string, session?: string): string {
   return `/pane/${encodeURIComponent(paneId)}${sessionSearch(session)}`;
 }
 
+/**
+ * A pane's conversation history — the agent's own transcript, which is the only scrollback a Claude
+ * pane can have (its terminal runs on the alternate screen and retains nothing). A child path of the
+ * pane so "back" lands on the live mirror.
+ */
+export function historyPath(paneId: string, session?: string): string {
+  return `/pane/${encodeURIComponent(paneId)}/history${sessionSearch(session)}`;
+}
+
 /** A space's detail route (its tabs + panes). Deep-linkable; carries the session like panePath. */
 export function spacePath(spaceId: string, session?: string): string {
   return `/space/${encodeURIComponent(spaceId)}${sessionSearch(session)}`;

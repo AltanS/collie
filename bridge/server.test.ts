@@ -5,6 +5,7 @@ import {
   cacheControlFor,
   checkAccess,
   deviceAuth,
+  historyParams,
   isHostAllowed,
   normalizeTabLabel,
   paneReadResponse,
@@ -37,6 +38,8 @@ function cfg(overrides: Partial<Config> = {}): Config {
     pollIdleMs: 12_000,
     notifyDelayMs: 30_000,
     readLines: 200,
+    transcript: true,
+    transcriptRoot: "/tmp/claude-projects",
     submitKeys: ["Enter"],
     trustedUser: "",
     deviceHeader: "",
@@ -322,6 +325,43 @@ describe("paneReadResponse — pane read → REST body", () => {
       truncated: false,
       revision: 0,
     });
+  });
+});
+
+describe("historyParams — transcript paging params", () => {
+  const params = (qs: string) => historyParams(new URL(`http://x/api/pane/w1:p1/history${qs}`));
+
+  test("no params means the newest page at the default size", () => {
+    expect(params("")).toEqual({ limit: 200 });
+  });
+
+  test("an explicit limit is honoured", () => {
+    expect(params("?limit=10")).toEqual({ limit: 10 });
+  });
+
+  // "Show entire history" asks for the whole conversation, so the ceiling is a safety net against a
+  // pathological log rather than a paging window.
+  test("an absurd limit is clamped to the safety ceiling", () => {
+    expect(params("?limit=99999")).toEqual({ limit: 5000 });
+  });
+
+  test.each([["zero", "?limit=0"], ["negative", "?limit=-5"], ["garbage", "?limit=abc"]])(
+    "a %s limit falls back to the default",
+    (_label, qs) => {
+      expect(params(qs).limit).toBe(200);
+    },
+  );
+
+  test("a cursor is carried through as an opaque string", () => {
+    expect(params("?before=abc-123")).toEqual({ limit: 200, before: "abc-123" });
+  });
+
+  test("an absurdly long cursor is dropped rather than carried", () => {
+    expect(params(`?before=${"x".repeat(500)}`)).toEqual({ limit: 200 });
+  });
+
+  test("an empty cursor is omitted, not passed as an empty match", () => {
+    expect(params("?before=")).toEqual({ limit: 200 });
   });
 });
 

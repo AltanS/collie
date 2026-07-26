@@ -18,6 +18,12 @@ interface FakePane {
   agent_status: AgentStatus;
   label?: string | null;
   revision: number;
+  agent_session?: { source?: string; agent?: string; kind?: string; value?: string } | null;
+  scroll?: {
+    offset_from_bottom: number;
+    max_offset_from_bottom: number;
+    viewport_rows: number;
+  } | null;
 }
 
 function pane(
@@ -492,5 +498,57 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
     expect(cadence()).toBe(12_000);
     expect(timer()).not.toBe(before);
     engine.stop();
+  });
+});
+
+// The two capability fields the pane detail view gates on. Both come straight off Herdr's pane
+// record, and both must stay ABSENT rather than defaulting when the server doesn't report them —
+// an older Herdr should read as "unknown", not as "zero scrollback" or "no transcript".
+describe("StateEngine — pane capability fields", () => {
+  test("maps an id-kind agent session to agentSessionId", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" };
+    herdr.panes = [p];
+    await poll();
+    expect(engine.current().agents[0]!.agentSessionId).toBe("abc-123");
+  });
+
+  test.each([
+    ["a non-id session kind", { kind: "name", value: "my-session" }],
+    ["a session with no value", { kind: "id" }],
+    ["no agent_session at all", undefined],
+  ])("omits agentSessionId for %s", async (_label, session) => {
+    const { herdr, engine, poll } = makeEngine();
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    if (session) p.agent_session = session;
+    herdr.panes = [p];
+    await poll();
+    expect(engine.current().agents[0]!.agentSessionId).toBeUndefined();
+  });
+
+  test("readableLines is scrollback depth PLUS the viewport (what a recent read can return)", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.scroll = { offset_from_bottom: 0, max_offset_from_bottom: 6895, viewport_rows: 51 };
+    herdr.panes = [p];
+    await poll();
+    expect(engine.current().agents[0]!.readableLines).toBe(6946);
+  });
+
+  test("an alt-screen pane reports just its viewport — the case that has no scrollback at all", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.scroll = { offset_from_bottom: 0, max_offset_from_bottom: 0, viewport_rows: 51 };
+    herdr.panes = [p];
+    await poll();
+    expect(engine.current().agents[0]!.readableLines).toBe(51);
+  });
+
+  test("omits readableLines when the server doesn't report scroll (older Herdr)", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    await poll();
+    expect(engine.current().agents[0]!.readableLines).toBeUndefined();
   });
 });
