@@ -43,7 +43,7 @@ export function RootLayout() {
           in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
           red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
           same shared-clock signals as the header dog, so the two always agree. */}
-      <ConnectionBanner bridge={data.bridge} error={data.error} />
+      <ConnectionBanner bridge={data.bridge} error={data.error} authError={data.authError} />
       <Outlet />
     </div>
   );

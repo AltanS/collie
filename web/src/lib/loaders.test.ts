@@ -16,16 +16,31 @@ afterEach(() => {
 const failSnapshot = () =>
   server.use(http.get("/api/snapshot", () => new HttpResponse(null, { status: 500 })));
 
+const rejectSnapshot = (status: 401 | 403) =>
+  server.use(http.get("/api/snapshot", () => new HttpResponse(null, { status })));
+
 const failPane = () =>
   server.use(http.get(/\/api\/pane\/[^/]+$/, () => new HttpResponse(null, { status: 500 })));
+
+const rejectPane = (status: 401 | 403) =>
+  server.use(http.get(/\/api\/pane\/[^/]+$/, () => new HttpResponse(null, { status })));
 
 describe("rootLoader", () => {
   it("returns the live snapshot on success", async () => {
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader();
     expect(data.error).toBe(false);
+    expect(data.authError).toBe(false);
     expect(data.bridge).toBe("connected");
     expect(data.agents).toHaveLength(2);
+  });
+
+  it.each([401, 403] as const)("marks a %i response as an auth error", async (status) => {
+    rejectSnapshot(status);
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.error).toBe(true);
+    expect(data.authError).toBe(true);
   });
 
   it("keeps the last-good herd (flagged error) when a refresh fails", async () => {
@@ -36,9 +51,18 @@ describe("rootLoader", () => {
     const stale = await rootLoader();
 
     expect(stale.error).toBe(true);
+    expect(stale.authError).toBe(false);
     expect(stale.bridge).toBe("connected"); // from the cached snapshot
     expect(stale.agents).toHaveLength(2);
     expect(stale.agents[0]!.paneId).toBe(fixtureAgents[0]!.paneId);
+  });
+
+  it("does not mark a network error as an auth error", async () => {
+    const { rootLoader } = await import("./loaders");
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network failed"));
+    const data = await rootLoader();
+    expect(data.error).toBe(true);
+    expect(data.authError).toBe(false);
   });
 
   it("returns empty + error when there is no last-good snapshot", async () => {
@@ -59,6 +83,7 @@ describe("rootLoader", () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("timed out", "TimeoutError"));
     const data = await rootLoader();
     expect(data.error).toBe(true);
+    expect(data.authError).toBe(false);
     expect(data.bridge).toBeUndefined();
     expect(data.agents).toEqual([]);
   });
@@ -91,8 +116,17 @@ describe("paneLoader", () => {
     const { paneLoader } = await import("./loaders");
     const data = await paneLoader({ params: { paneId: "w1:p1" } });
     expect(data.error).toBe(false);
+    expect(data.authError).toBe(false);
     expect(data.paneId).toBe("w1:p1");
     expect(data.text).toBe("hello from the pane");
+  });
+
+  it.each([401, 403] as const)("marks a %i response as an auth error", async (status) => {
+    rejectPane(status);
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" } });
+    expect(data.error).toBe(true);
+    expect(data.authError).toBe(true);
   });
 
   it("keeps the last-good pane text (flagged error) when a refresh fails", async () => {
@@ -103,6 +137,7 @@ describe("paneLoader", () => {
     const stale = await paneLoader({ params: { paneId: "w1:p1" } });
 
     expect(stale.error).toBe(true);
+    expect(stale.authError).toBe(false);
     expect(stale.text).toBe("hello from the pane");
     expect(stale.paneId).toBe("w1:p1");
   });
@@ -128,6 +163,7 @@ describe("paneLoader", () => {
     const stale = await paneLoader({ params: { paneId: "w1:p1" } });
 
     expect(stale.error).toBe(true);
+    expect(stale.authError).toBe(false);
     expect(stale.text).toBe("hello from the pane");
     expect(stale.paneId).toBe("w1:p1");
   });
@@ -273,6 +309,23 @@ describe("loaders — offline navigation fast path", () => {
     expect(data.error).toBe(true); // flagged stale
     expect(data.bridge).toBe("connected"); // last-known herd
     expect(data.agents).toHaveLength(2);
+  });
+
+  it("keeps the last auth classification on the navigation fast path", async () => {
+    rejectSnapshot(401);
+    const { rootLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+
+    const rejected = await rootLoader({ request: new Request("http://localhost/") });
+    expect(rejected.authError).toBe(true);
+    latchLost();
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const data = await rootLoader({ request: new Request("http://localhost/space/w1") });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(data.error).toBe(true);
+    expect(data.authError).toBe(true);
   });
 
   it("a revalidation (same url) still really fetches while latched — polls keep probing", async () => {
