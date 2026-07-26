@@ -387,8 +387,9 @@ repo's pre-commit / pre-push checks.
 ## Deployment variants
 
 The bridge always binds **loopback only**; what changes between deployments is *what sits in front
-of it* and *how a request proves who it is*. Three supported shapes — Tailscale by **person** (A),
-Tailscale/proxy by **device** (B), or a reverse proxy as the sole front door (C). Pick one.
+of it* and *how a request proves who it is*. Four supported shapes — Tailscale by **person** (A),
+a co-located proxy by **device** (B), a reverse proxy as the sole front door (C), or an
+**off-host** identity proxy reached over the tailnet (D). Pick one.
 
 ### Variant A — `tailscale serve` + person identity (default)
 
@@ -483,12 +484,9 @@ Revoke a device by dropping its id from `COLLIE_DEVICE_ALLOWLIST` and restarting
 header. In that state nothing can drive a pane, including a hand-made `curl`; recovery is an `.env`
 edit plus a restart.
 
-> **If your proxy's upstream is the bridge's own `tailscale serve` URL**, that URL stays reachable
-> tailnet-wide by design — it has to be, or the proxy couldn't reach it. Anything on the tailnet can
-> therefore call the bridge directly and skip the proxy that injects the header. The device gate is
-> what makes that harmless: since 0.15.0 a header-less request is read-only, so the direct path can
-> watch but never drive. Before 0.15.0 it had full write access. Scope who can reach the port at all
-> with a Tailscale ACL if the tailnet has devices you don't control.
+This variant assumes the proxy is **on the same host**, reaching the bridge on loopback. If your
+proxy runs on a *different* node and its upstream is the bridge's own `tailscale serve` URL, the
+trust story changes — see [Variant D](#variant-d--off-host-identity-proxy-over-the-tailnet).
 
 ### Variant C — reverse proxy as the only front door (no Tailscale)
 
@@ -538,6 +536,94 @@ A proxy cache that ignores this and holds onto `/sw.js` starves installed PWAs o
 indefinitely — clients keep running old code with no way to notice. If your proxy adds caching,
 honor origin headers (Caddy and stock Nginx `proxy_cache` do by default; CDNs often need it
 enabled explicitly).
+
+### Variant D — off-host identity proxy over the tailnet
+
+Choose this when you already run a **central ingress node** for your tailnet — one forward-auth/SSO
+layer, one wildcard cert, a row of services behind it — and you want Collie to be another entry in
+that table rather than a second auth stack configured on the agent host.
+
+The proxy is on a *different machine*, so it can't reach the bridge on loopback. The agent host
+publishes the bridge **tailnet-only** with `tailscale serve --http`, and the proxy's upstream is that
+tailnet URL:
+
+```
+  phone ──── https ────► ingress node          TLS + forward-auth; SETS the device header
+                            │
+                            │  http, never leaves the tailnet (WireGuard encrypts it)
+                            ▼
+                        host.your-tailnet.ts.net:8787     tailscale serve --http, tailnet-only
+                            │
+                            ▼
+                        127.0.0.1:8787                    the bridge
+```
+
+Plain HTTP on the middle hop is fine *because it rides the tailnet* — TLS terminates at the proxy.
+That is not the same thing as serving Collie over plain HTTP publicly, which is what the
+`COLLIE_SERVE_MODE=http` warnings elsewhere are about.
+
+The **four proxy requirements from
+[Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) apply**, except (3): proxy to
+the host's tailnet URL rather than `127.0.0.1`.
+
+> ⚠️ **A Tailscale ACL is mandatory in this variant.** The bridge's tailnet URL has to stay reachable
+> or the proxy couldn't reach it either, so there is a permanent second path to the bridge that skips
+> your forward-auth entirely — and **`tailscale serve` forwards a client-supplied device header
+> untouched** (verified: it arrives at the bridge unmodified). Your proxy's mandatory *override* only
+> protects the proxy path; on the direct path there is no override, so a tailnet peer who supplies an
+> allow-listed id gets full write access. Device ids are human-readable names, so treat them as
+> guessable, not secret. **Restrict who can reach the port at all:**
+>
+> ```jsonc
+> // tailnet policy — only the ingress node may reach the bridge's port
+> "grants": [
+>   { "src": ["tag:ingress"], "dst": ["tag:agent-host"], "ip": ["tcp:8787"] },
+> ]
+> ```
+>
+> Per-device auth is still required, and it does real work: since 0.15.0 a request arriving *without*
+> the header is read-only, so a stray client, another service or the host's own loopback URL can watch
+> but never drive. What it cannot do is stop a peer who deliberately sets the header. The ACL is what
+> stops that, and the two together are the posture.
+
+**Host and Origin are different values here** — the one place this trips people up. `tailscale serve`
+Host-routes on the host's own MagicDNS name, so the proxy generally must rewrite `Host` to the
+upstream (in Traefik, `pass_host_header: false`). The bridge then sees the *tailnet* Host while the
+browser's Origin is your *public* name, so the two settings take different values:
+
+```bash
+COLLIE_SERVE_MODE=http                                # proxy terminates TLS; this hop is tailnet-internal
+COLLIE_HOST=127.0.0.1                                 # keep loopback (default)
+COLLIE_DEVICE_HEADER=X-Tailnet-Device                 # header your forward-auth injects — REQUIRED here
+COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop            # ids allowed to drive; others + header-less → read-only
+COLLIE_PUBLIC_HOSTS=host:8787,host.your-tailnet.ts.net:8787   # the Host the proxy forwards
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com     # the public origin the browser actually uses
+```
+
+> **`COLLIE_TRUSTED_USER` is not a person gate in this shape.** `tailscale serve --http` *does* still
+> inject `Tailscale-User-Login`, but it names the **calling node's owner** — through the proxy that's
+> the ingress node, identically on every request no matter who is holding the phone. It remains
+> useful for rejecting nodes owned by a *different* tailnet user (shared machines), so it is worth
+> setting; it just cannot tell your own devices apart. The device header does that.
+
+**Is it actually working?** Three probes, from a tailnet device that is *not* the ingress node:
+
+```console
+$ curl -s https://collie.example.com/api/snapshot | jq -c .device
+{"enforced":true,"device":"my-phone","authorized":true}
+
+$ curl -s http://host.your-tailnet.ts.net:8787/api/snapshot | jq -c .device
+{"enforced":true,"device":null,"authorized":false}
+
+$ curl -s -H 'X-Tailnet-Device: my-phone' http://host.your-tailnet.ts.net:8787/api/snapshot
+curl: (28) Connection timed out
+```
+
+The first proves the proxy injects the header *and* that the id is allow-listed. The second proves a
+header-less direct request is read-only — **if it says `"authorized":true`, your bridge predates
+0.15.0** and every tailnet peer can drive your agents; update before going further. The third is the
+one people skip: it must **fail to connect**, because the ACL denied it. If it instead returns
+`"authorized":true`, your ACL isn't in place and the device gate alone will not save you.
 
 ## Windows (experimental)
 
