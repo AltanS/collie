@@ -11,7 +11,8 @@
     "build": "bun run typecheck && cd web && bun install && bun run typecheck && bun run build",
     "build:web": "cd web && bun run build",
     "web:dev": "cd web && bun run dev",
-    "test": "bun test ./bridge",
+    "test": "bun test ./bridge && bash scripts/collie-ctl.test.sh",
+    "test:ctl": "bash scripts/collie-ctl.test.sh",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {

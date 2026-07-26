@@ -41,6 +41,9 @@ SOCKET="${HERDR_SOCKET_PATH:-${HOME}/.config/herdr/herdr.sock}"
 # How tailscale serve exposes the bridge: "https" (default, needs a cert from the control
 # server) or "http" (plain HTTP over the tailnet — use this on Headscale / .internal domains).
 SERVE_MODE="${COLLIE_SERVE_MODE:-https}"
+# Records the ONE `tailscale serve` root mount Collie published, so teardown can prove the mapping
+# it is about to remove is still the one it created. Format: `<mode>:<port>|<HostPort>|<proxy>`.
+TAILSCALE_HANDLER_FILE="${CONFIG_DIR}/tailscale-managed-handler"
 BUN="$(command -v bun || true)"
 WEB_DIST="${PLUGIN_ROOT}/web/dist/index.html"
 
@@ -277,46 +280,248 @@ cmd_apply_update() {
   echo "✓ update complete"
 }
 
+# `tailscale serve … off` for one handler, treating "already gone" as success so teardown is
+# idempotent. Any other failure is real and must not be swallowed.
+remove_tailscale_handler() {
+  local description="$1" output
+  shift
+  if output="$(tailscale serve "$@" off 2>&1)"; then
+    return 0
+  fi
+  case "$output" in
+    *"handler does not exist"*) return 0 ;;
+  esac
+  [ -z "$output" ] || printf '%s\n' "$output" >&2
+  echo "error: failed to remove Collie's ${description} mapping" >&2
+  return 1
+}
+
+# Identify what currently owns the root mount we recorded: "absent", or "<protocol>|proxy:<target>".
+# This is the evidence teardown checks before removing anything.
+tailscale_root_fingerprint() {
+  local host_port="$1" port="$2" status_json result
+  [ -n "$BUN" ] || return 1
+  status_json="$(tailscale serve status --json 2>/dev/null)" || return 1
+  result="$(
+    printf '%s' "$status_json" |
+      COLLIE_SERVE_HOST_PORT="$host_port" COLLIE_SERVE_PORT="$port" "$BUN" -e '
+        let data = "";
+        process.stdin.on("data", chunk => data += chunk).on("end", () => {
+          try {
+            const config = JSON.parse(data || "{}");
+            const hostPort = process.env.COLLIE_SERVE_HOST_PORT;
+            const port = process.env.COLLIE_SERVE_PORT;
+            const handlers = config?.Web?.[hostPort]?.Handlers ?? {};
+            if (!Object.prototype.hasOwnProperty.call(handlers, "/")) {
+              process.stdout.write("absent");
+              return;
+            }
+            const listener = config?.TCP?.[port];
+            const protocol = listener?.HTTP === true ? "http" :
+              listener?.HTTPS === true ? "https" : "other";
+            const proxy = handlers["/"]?.Proxy;
+            process.stdout.write(typeof proxy === "string" && proxy ?
+              `${protocol}|proxy:${proxy}` : `${protocol}|other`);
+          } catch {
+            process.exitCode = 2;
+          }
+        });
+      '
+  )" || return 1
+  printf '%s\n' "$result"
+}
+
+# Remove ONLY the mapping Collie recorded as its own — never a blanket `tailscale serve reset`, and
+# never a blind `--https=443 off` that could take down a mapping someone else put there. With no
+# ownership record there is nothing to remove. If the recorded root has since been replaced, refuse
+# and keep the record: a wrong removal here silently unpublishes somebody else's service.
+stop_tailscale_serve() {
+  local managed_state="" managed_handler="" managed_mode="" managed_port=""
+  local managed_host_port="" managed_proxy="" extra="" current_fingerprint=""
+  if [ -f "$TAILSCALE_HANDLER_FILE" ]; then
+    managed_state="$(cat "$TAILSCALE_HANDLER_FILE" 2>/dev/null || true)"
+    IFS='|' read -r managed_handler managed_host_port managed_proxy extra <<< "$managed_state"
+    case "$managed_handler" in
+      http:*)
+        managed_mode="http"
+        managed_port="${managed_handler#http:}"
+        case "$managed_port" in
+          ''|*[!0-9]*) managed_mode="" ;;
+        esac
+        ;;
+      https:443)
+        managed_mode="https"
+        managed_port="443"
+        ;;
+    esac
+    if [ -z "$managed_mode" ] || [ -z "$managed_host_port" ] || [ -z "$managed_proxy" ] || [ -n "$extra" ]; then
+      echo "error: invalid managed Tailscale handler state: ${managed_state}" >&2
+      return 1
+    fi
+    case "$managed_host_port" in
+      *":${managed_port}") ;;
+      *)
+        echo "error: managed Tailscale HostPort does not match its listener: ${managed_state}" >&2
+        return 1
+        ;;
+    esac
+    case "$managed_proxy" in
+      http://127.0.0.1:[0-9]*) ;;
+      *)
+        echo "error: invalid managed Tailscale proxy target: ${managed_state}" >&2
+        return 1
+        ;;
+    esac
+  else
+    echo "tailscale serve: no Collie-managed mapping recorded"
+    return 0
+  fi
+  if ! command -v tailscale >/dev/null; then
+    echo "error: tailscale not found; retained the managed ${managed_handler} state for retry" >&2
+    return 1
+  fi
+  if ! current_fingerprint="$(tailscale_root_fingerprint "$managed_host_port" "$managed_port")"; then
+    echo "error: cannot inspect the managed Tailscale root; retained ownership state" >&2
+    return 1
+  fi
+  if [ "$current_fingerprint" = "absent" ]; then
+    if ! rm -f "$TAILSCALE_HANDLER_FILE"; then
+      echo "error: managed Tailscale root is absent but ownership state could not be removed" >&2
+      return 1
+    fi
+    echo "tailscale serve: managed root is already absent; cleared stale ownership state"
+    return 0
+  fi
+  if [ "$current_fingerprint" != "${managed_mode}|proxy:${managed_proxy}" ]; then
+    echo "error: managed Tailscale root was replaced; refusing to remove the current handler" >&2
+    return 1
+  fi
+  if [ "$managed_mode" = "http" ]; then
+    remove_tailscale_handler "HTTP :${managed_port} root mount" --http="$managed_port" --set-path=/ || {
+      echo "error: managed ingress cleanup incomplete; retained ${TAILSCALE_HANDLER_FILE} for retry" >&2
+      return 1
+    }
+  else
+    remove_tailscale_handler "HTTPS :443 root mount" --https=443 --set-path=/ || {
+      echo "error: managed ingress cleanup incomplete; retained ${TAILSCALE_HANDLER_FILE} for retry" >&2
+      return 1
+    }
+  fi
+  if ! rm -f "$TAILSCALE_HANDLER_FILE"; then
+    echo "error: Tailscale root was removed but ownership state could not be removed" >&2
+    return 1
+  fi
+  echo "tailscale serve: removed Collie's managed ${managed_handler} mapping"
+}
+
+# Refuse to publish over a root mount we don't own. `tailscale serve --bg … /` silently REPLACES an
+# existing root handler, so without this check a Collie start could unpublish an unrelated service
+# that got there first.
+ensure_tailscale_root_available() {
+  local port="$1" protocol="$2" status_json result
+  [ -n "$BUN" ] || {
+    echo "error: bun is required to inspect Tailscale serve ownership before publishing" >&2
+    return 1
+  }
+  if ! status_json="$(tailscale serve status --json 2>/dev/null)"; then
+    echo "error: cannot inspect Tailscale serve status; refusing to overwrite the root mount on :${port}" >&2
+    return 1
+  fi
+  if ! result="$(
+    printf '%s' "$status_json" |
+      COLLIE_SERVE_PORT="$port" COLLIE_SERVE_PROTOCOL="$protocol" "$BUN" -e '
+        let data = "";
+        process.stdin.on("data", chunk => data += chunk).on("end", () => {
+          try {
+            const config = JSON.parse(data || "{}");
+            const port = process.env.COLLIE_SERVE_PORT;
+            const protocol = process.env.COLLIE_SERVE_PROTOCOL;
+            const hasRoot = serveConfig =>
+              Object.entries(serveConfig?.Web ?? {}).some(([hostPort, server]) => {
+                const match = hostPort.match(/:(\d+)$/);
+                const handlers = server?.Handlers ?? {};
+                return match?.[1] === port && Object.prototype.hasOwnProperty.call(handlers, "/");
+              }) ||
+              Object.values(serveConfig?.Foreground ?? {}).some(hasRoot);
+            const hasProtocolMismatch = serveConfig => {
+              const listener = serveConfig?.TCP?.[port];
+              const mismatch = listener !== undefined &&
+                (protocol === "http" ? listener?.HTTP !== true : listener?.HTTPS !== true);
+              return mismatch ||
+                Object.values(serveConfig?.Foreground ?? {}).some(hasProtocolMismatch);
+            };
+            if (hasProtocolMismatch(config)) {
+              process.stdout.write("protocol-mismatch");
+              return;
+            }
+            const occupied = hasRoot(config);
+            process.stdout.write(occupied ? "occupied" : "free");
+          } catch {
+            process.exitCode = 2;
+          }
+        });
+      '
+  )"; then
+    echo "error: invalid Tailscale serve status; refusing to overwrite the root mount on :${port}" >&2
+    return 1
+  fi
+  if [ "$result" = "protocol-mismatch" ]; then
+    echo "error: Tailscale serve :${port} already uses the opposite listener protocol" >&2
+    return 1
+  fi
+  if [ "$result" = "occupied" ]; then
+    echo "error: Tailscale serve already has an unowned root mount on :${port}; refusing to overwrite it" >&2
+    return 1
+  fi
+}
+
 cmd_serve() {
   if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
+    # Still tear down: skipping teardown would strand a mapping published before the flag was
+    # flipped on, leaving the app reachable by a path the operator thinks is closed.
+    stop_tailscale_serve || return 1
     echo "tailscale serve skipped (COLLIE_SKIP_SERVE=1) — bridge is on 127.0.0.1:${PORT} only"
     return
   fi
-  command -v tailscale >/dev/null || { echo "note: tailscale not found; bridge is on 127.0.0.1:${PORT} only"; return; }
+  stop_tailscale_serve || return 1
+  command -v tailscale >/dev/null || {
+    echo "error: tailscale not found; cannot publish the tailnet front door" >&2
+    return 1
+  }
+  local tailscale_host; tailscale_host="$(self_dnsname)"
+  if [ -z "$tailscale_host" ]; then
+    echo "error: cannot determine Tailscale hostname; refusing to publish an untrackable root mount" >&2
+    return 1
+  fi
+  local expected_proxy="http://127.0.0.1:${PORT}"
   local out="${CONFIG_DIR}/serve.out"
   if [ "$SERVE_MODE" = "http" ]; then
-    if tailscale serve --bg --http="$PORT" "$PORT" >"$out" 2>&1; then
+    ensure_tailscale_root_available "$PORT" http || return 1
+    printf '%s|%s|%s\n' "http:${PORT}" "${tailscale_host}:${PORT}" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
+    if tailscale serve --bg --http="$PORT" --set-path=/ "$PORT" >"$out" 2>&1; then
       echo "tailscale serve (http) → tailnet :${PORT} -> 127.0.0.1:${PORT}"
     else
-      echo "note: tailscale serve failed (try 'sudo tailscale set --operator=\$USER'):"; cat "$out"
+      rm -f "$TAILSCALE_HANDLER_FILE"
+      echo "note: tailscale serve failed (try 'sudo tailscale set --operator=\$USER'):"
+      cat "$out"
+      return 1
     fi
   else
-    if tailscale serve --bg "$PORT" >"$out" 2>&1; then
+    ensure_tailscale_root_available 443 https || return 1
+    printf '%s|%s|%s\n' "https:443" "${tailscale_host}:443" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
+    if tailscale serve --bg --set-path=/ "$PORT" >"$out" 2>&1; then
       echo "tailscale serve (https) → tailnet :443 -> 127.0.0.1:${PORT}"
     else
-      echo "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http:"; cat "$out"
+      rm -f "$TAILSCALE_HANDLER_FILE"
+      echo "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http:"
+      cat "$out"
+      return 1
     fi
   fi
 }
 
-# Remove ONLY Collie's tailscale serve mapping — the inverse of cmd_serve, NOT a blanket
-# `tailscale serve reset` (which would wipe every unrelated mapping on the host). We turn off
-# exactly the listener cmd_serve created, keyed off the same SERVE_MODE so the two stay symmetric:
-# https:443 by default, or http:$PORT in http mode. Best-effort (|| true) so teardown is idempotent
-# when the mapping is already gone.
-cmd_unserve() {
-  # Always attempt teardown, even under COLLIE_SKIP_SERVE=1: it's idempotent (|| true) and guarded by
-  # the `command -v tailscale` check, and skipping it would strand a stale serve mapping (from before
-  # the flag was flipped on) still publishing the app — a security hazard, not a convenience.
-  command -v tailscale >/dev/null || { echo "note: tailscale not found; no serve mapping to remove"; return; }
-  if [ "$SERVE_MODE" = "http" ]; then
-    tailscale serve --http="$PORT" off >/dev/null 2>&1 || true
-    echo "tailscale serve: removed Collie's http :${PORT} mapping"
-  else
-    tailscale serve --https=443 off >/dev/null 2>&1 || true
-    echo "tailscale serve: removed Collie's https :443 mapping"
-  fi
-}
+# The inverse of cmd_serve: remove Collie's own mapping and nothing else.
+cmd_unserve() { stop_tailscale_serve; }
 
 cmd_status() {
   print_status_banner
@@ -341,6 +546,12 @@ cmd_push_test() {
   [ -n "$BUN" ] || { echo "error: bun not found on PATH" >&2; exit 1; }
   "$BUN" run "${PLUGIN_ROOT}/scripts/push-test.ts" "$@"
 }
+
+# Sourced (by scripts/collie-ctl.test.sh) rather than run: define the functions and stop before the
+# dispatch, so a test can call one function in isolation with its dependencies stubbed out.
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  return 0
+fi
 
 case "${1:-}" in
   start)   cmd_start ;;
