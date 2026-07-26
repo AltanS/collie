@@ -76,9 +76,14 @@ keystrokes into a live terminal pane, so anyone who can reach the URL can read e
 secrets, env, agent output) and run any command as your user. No sandbox, no command allow-list
 (that would defeat the purpose). Treat the URL like a root login.
 
-Three sharp edges:
+Four sharp edges:
 
 - **It acts as _you_**, with your full privileges — `~/.ssh`, `git push --force`, `rm -rf`, `sudo`.
+- **It's reachable by every uid on the host, not just yours.** Herdr's socket is a file, so its
+  permissions keep other local users out; Collie's port is TCP, so they're all in. An agent you
+  deliberately ran as another user to contain it can still `curl 127.0.0.1:8787` and type into any
+  pane. Set the device gate below if that uid boundary was your containment
+  ([ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
 - **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it.
   No password, no session — an unlocked or stolen phone (or anyone else on your tailnet) is an open
   shell. The idle-lock is UX, not auth. Every write action (replies, keys, uploads, pane/tab
@@ -96,7 +101,9 @@ It's built single-user and tailnet-only. The defenses:
   TLS, injects the identity header) or a conforming reverse proxy
   ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)). Never
   `tailscale funnel`, never a bare port.
-- **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject anyone but you.
+- **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject any tailnet login but yours. It
+  rejects a *mismatching* `Tailscale-User-Login` and passes an absent one, so it narrows who is
+  trusted under `tailscale serve` (which always injects it) rather than mandating the header.
 - **Optional per-device gate** — behind a proxy that injects a device-identity header, set
   `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` so only allowlisted devices can drive agents;
   any other device is read-only, and so is a request that arrives without the header at all. Off by
