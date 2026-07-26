@@ -248,10 +248,83 @@ EOF
   bash "$harness" > "${CASE_DIR}/delete-failure.out" 2>&1
 }
 
+# An install that predates ownership tracking has Collie's OWN root mount and no record of it.
+# Publishing must adopt that mount, not refuse it — refusing breaks start/restart/update on every
+# deployment that upgrades into this feature.
+test_adopts_preexisting_collie_mount() {
+  setup_case adopt-preexisting
+  install_fake_tailscale
 
+  local preexisting='{"TCP":{"8787":{"HTTP":true}},"Web":{"host.example:8787":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8787"}}}}}'
+  printf '%s\n' "$preexisting" > "$TS_STATUS"
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_SERVE_MODE=http
+COLLIE_PORT=8787
+EOF
+  [ ! -e "${CONFIG_DIR}/tailscale-managed-handler" ] || fail "fixture already had ownership state"
+
+  run_ctl serve > "${CASE_DIR}/adopt-http.out" 2>&1 ||
+    fail "serve refused to adopt Collie's own pre-existing HTTP mount"
+  assert_eq "$(cat "${CONFIG_DIR}/tailscale-managed-handler")" \
+    'http:8787|host.example:8787|http://127.0.0.1:8787'
+
+  # Same for the HTTPS default, whose mount lives on :443 while the proxy target stays $PORT.
+  setup_case adopt-preexisting-https
+  install_fake_tailscale
+  printf '%s\n' '{"TCP":{"443":{"HTTPS":true}},"Web":{"host.example:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8787"}}}}}' > "$TS_STATUS"
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_PORT=8787
+EOF
+  run_ctl serve > "${CASE_DIR}/adopt-https.out" 2>&1 ||
+    fail "serve refused to adopt Collie's own pre-existing HTTPS mount"
+  assert_eq "$(cat "${CONFIG_DIR}/tailscale-managed-handler")" \
+    'https:443|host.example:443|http://127.0.0.1:8787'
+
+  # Negative control: a root mount proxying somewhere ELSE is still refused, so adoption can't be
+  # used to justify clobbering a stranger's mapping.
+  setup_case adopt-negative-control
+  install_fake_tailscale
+  foreign='{"TCP":{"8787":{"HTTP":true}},"Web":{"host.example:8787":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:7000"}}}}}'
+  printf '%s\n' "$foreign" > "$TS_STATUS"
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_SERVE_MODE=http
+COLLIE_PORT=8787
+EOF
+  if run_ctl serve > "${CASE_DIR}/adopt-foreign.out" 2>&1; then
+    fail "adoption swallowed a foreign root mount"
+  fi
+  assert_eq "$(cat "$TS_STATUS")" "$foreign"
+  [ ! -e "${CONFIG_DIR}/tailscale-managed-handler" ] || fail "foreign mount created ownership state"
+}
+
+# A failed front door must not abort `start` — the bridge is up on loopback and the banner still has
+# to print, which is what the README's troubleshooting flow tells people to read.
+test_serve_failure_does_not_abort_start() {
+  setup_case serve-failure-start
+  local harness="${CASE_DIR}/harness.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+ensure_build() { return 0; }
+have_systemd() { return 1; }
+BUN=/bin/true
+cmd_serve() { echo "error: simulated serve failure" >&2; return 1; }
+print_status_banner() { echo "BANNER"; }
+cmd_start
+EOF
+  bash "$harness" > "${CASE_DIR}/start.out" 2>&1 ||
+    fail "a failing cmd_serve aborted cmd_start"
+  assert_contains "$(cat "${CASE_DIR}/start.out")" 'BANNER'
+}
 
 test_tailscale_cutovers_and_collisions
 test_missing_tailscale_cli
 test_state_delete_failures
+test_adopts_preexisting_collie_mount
+test_serve_failure_does_not_abort_start
 
 echo "collie-ctl lifecycle tests: passed"

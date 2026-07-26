@@ -211,7 +211,10 @@ cmd_start() {
     echo $! > "${CONFIG_DIR}/collie.pid"
     echo "bridge started (pid $(cat "${CONFIG_DIR}/collie.pid"), no systemd)"
   fi
-  cmd_serve
+  # A front door that won't come up must not abort `start`. The bridge is already running on
+  # loopback, and the banner is what the README's troubleshooting flow tells people to read — under
+  # `set -e` a bare `cmd_serve` would exit here and print nothing. cmd_serve reports its own reason.
+  cmd_serve || echo "note: the tailnet front door did not come up; the bridge is still on 127.0.0.1:${PORT}" >&2
   print_status_banner
 }
 
@@ -417,8 +420,15 @@ stop_tailscale_serve() {
 # Refuse to publish over a root mount we don't own. `tailscale serve --bg … /` silently REPLACES an
 # existing root handler, so without this check a Collie start could unpublish an unrelated service
 # that got there first.
+#
+# "Don't own" is decided by where the mount points, not by our ownership file. Every install that
+# predates ownership tracking has Collie's own root mount and NO record of it, so a pure file check
+# would refuse to republish on exactly the deployments that already work — bricking start/restart/
+# update on upgrade. A root already proxying to our own `http://127.0.0.1:$PORT` is therefore
+# adopted: republishing over it is a no-op, and we then record it. A foreground serve session is
+# never adopted — it belongs to a live process that is not us.
 ensure_tailscale_root_available() {
-  local port="$1" protocol="$2" status_json result
+  local port="$1" protocol="$2" expected_proxy="$3" status_json result
   [ -n "$BUN" ] || {
     echo "error: bun is required to inspect Tailscale serve ownership before publishing" >&2
     return 1
@@ -429,20 +439,25 @@ ensure_tailscale_root_available() {
   fi
   if ! result="$(
     printf '%s' "$status_json" |
-      COLLIE_SERVE_PORT="$port" COLLIE_SERVE_PROTOCOL="$protocol" "$BUN" -e '
+      COLLIE_SERVE_PORT="$port" COLLIE_SERVE_PROTOCOL="$protocol" \
+      COLLIE_SERVE_EXPECTED_PROXY="$expected_proxy" "$BUN" -e '
         let data = "";
         process.stdin.on("data", chunk => data += chunk).on("end", () => {
           try {
             const config = JSON.parse(data || "{}");
             const port = process.env.COLLIE_SERVE_PORT;
             const protocol = process.env.COLLIE_SERVE_PROTOCOL;
-            const hasRoot = serveConfig =>
-              Object.entries(serveConfig?.Web ?? {}).some(([hostPort, server]) => {
-                const match = hostPort.match(/:(\d+)$/);
-                const handlers = server?.Handlers ?? {};
-                return match?.[1] === port && Object.prototype.hasOwnProperty.call(handlers, "/");
-              }) ||
-              Object.values(serveConfig?.Foreground ?? {}).some(hasRoot);
+            const expectedProxy = process.env.COLLIE_SERVE_EXPECTED_PROXY;
+            // Proxy targets of every root handler bound to our port, in one serve config level.
+            const rootTargets = serveConfig =>
+              Object.entries(serveConfig?.Web ?? {})
+                .filter(([hostPort]) => hostPort.match(/:(\d+)$/)?.[1] === port)
+                .map(([, server]) => server?.Handlers ?? {})
+                .filter(handlers => Object.prototype.hasOwnProperty.call(handlers, "/"))
+                .map(handlers => handlers["/"]?.Proxy);
+            const foregroundTargets = serveConfig =>
+              Object.values(serveConfig?.Foreground ?? {})
+                .flatMap(fg => rootTargets(fg).concat(foregroundTargets(fg)));
             const hasProtocolMismatch = serveConfig => {
               const listener = serveConfig?.TCP?.[port];
               const mismatch = listener !== undefined &&
@@ -454,8 +469,17 @@ ensure_tailscale_root_available() {
               process.stdout.write("protocol-mismatch");
               return;
             }
-            const occupied = hasRoot(config);
-            process.stdout.write(occupied ? "occupied" : "free");
+            if (foregroundTargets(config).length > 0) {
+              process.stdout.write("occupied");
+              return;
+            }
+            const targets = rootTargets(config);
+            if (targets.length === 0) {
+              process.stdout.write("free");
+              return;
+            }
+            process.stdout.write(
+              targets.every(target => target === expectedProxy) ? "adoptable" : "occupied");
           } catch {
             process.exitCode = 2;
           }
@@ -472,6 +496,9 @@ ensure_tailscale_root_available() {
   if [ "$result" = "occupied" ]; then
     echo "error: Tailscale serve already has an unowned root mount on :${port}; refusing to overwrite it" >&2
     return 1
+  fi
+  if [ "$result" = "adoptable" ]; then
+    echo "tailscale serve: adopting the existing Collie root mount on :${port}"
   fi
 }
 
@@ -496,7 +523,7 @@ cmd_serve() {
   local expected_proxy="http://127.0.0.1:${PORT}"
   local out="${CONFIG_DIR}/serve.out"
   if [ "$SERVE_MODE" = "http" ]; then
-    ensure_tailscale_root_available "$PORT" http || return 1
+    ensure_tailscale_root_available "$PORT" http "$expected_proxy" || return 1
     printf '%s|%s|%s\n' "http:${PORT}" "${tailscale_host}:${PORT}" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
     if tailscale serve --bg --http="$PORT" --set-path=/ "$PORT" >"$out" 2>&1; then
       echo "tailscale serve (http) → tailnet :${PORT} -> 127.0.0.1:${PORT}"
@@ -507,7 +534,7 @@ cmd_serve() {
       return 1
     fi
   else
-    ensure_tailscale_root_available 443 https || return 1
+    ensure_tailscale_root_available 443 https "$expected_proxy" || return 1
     printf '%s|%s|%s\n' "https:443" "${tailscale_host}:443" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
     if tailscale serve --bg --set-path=/ "$PORT" >"$out" 2>&1; then
       echo "tailscale serve (https) → tailnet :443 -> 127.0.0.1:${PORT}"
