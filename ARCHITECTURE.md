@@ -124,6 +124,12 @@ app. Closing this needs the server-side blocking-message capture described above
   `agent.send`, `events.subscribe`, …). It translates to/from an internal domain model
   (`AgentStatus`, `AgentView`, `SnapshotResponse` — `bridge/types.ts`), so a Herdr API rename is a
   one-file fix, not a shatter.
+- **One protocol, two dialers.** Herdr's control socket is AF_UNIX on Linux/macOS and a *named pipe*
+  on Windows (named after the full socket path). `bridge/dial.ts` is the only place that knows the
+  difference: `Bun.connect({unix})` on POSIX, `node:net` on Windows. The wire protocol is identical —
+  the `interprocess` crate Herdr uses inserts no framing or metadata, so the same newline-delimited
+  JSON-RPC speaks to both, streaming `events.subscribe` included. `COLLIE_HERDR_DIAL=net` forces the
+  Windows dialer anywhere, which is how that branch stays tested off Windows.
 - **Output model: poll, not stream — event-poked.** Herdr exposes `pane.read` (snapshot) and
   `pane.output_matched` (regex event) but **no raw output-stream event**, so there is nothing to
   stream even if we wanted to; the live pane view is poll-on-status-change + caching. The bridge's

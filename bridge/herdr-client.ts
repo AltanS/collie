@@ -1,4 +1,5 @@
 import type { AgentStatus } from "./types.ts";
+import { dialHerdr, type DialMode, type SockHandle } from "./dial.ts";
 import { decodeReplyLine, decodeStreamLine } from "./wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,10 +116,15 @@ type ReadFormat = "text" | "ansi";
 
 let idCounter = 0;
 
+/** Per-request wall-clock budget. Exported so callers can pass it explicitly alongside a dial mode. */
+export const DEFAULT_TIMEOUT_MS = 5000;
+
 export class HerdrClient {
   constructor(
     private readonly socketPath: string,
-    private readonly timeoutMs = 5000,
+    private readonly timeoutMs = DEFAULT_TIMEOUT_MS,
+    /** Which dialer to use; see {@link DialMode}. `auto` picks by platform. */
+    private readonly dialMode: DialMode = "auto",
   ) {}
 
   /** One request, one reply, one connection. Rejects on error reply, timeout, or early close. */
@@ -127,9 +133,12 @@ export class HerdrClient {
     return new Promise<T>((resolve, reject) => {
       let buf = "";
       let settled = false;
-      // The live socket, once Bun.connect opens one. Hoisted so EVERY terminal path (timeout
+      // The live socket, once the dial opens one. Hoisted so EVERY terminal path (timeout
       // included) can close it — otherwise a timeout leaves the FD dangling.
-      let socket: Bun.Socket | null = null;
+      let socket: SockHandle | null = null;
+      // Aborts a dial that is still connecting — a timeout that fires mid-connect has no socket
+      // to end() yet, and without this the pending OS handle lives until the connect settles.
+      let cancelDial: (() => void) | null = null;
       // Stream-decode so a multi-byte UTF-8 codepoint split across chunk boundaries isn't
       // corrupted into replacement characters.
       const decoder = new TextDecoder("utf-8");
@@ -147,41 +156,49 @@ export class HerdrClient {
             /* ignore */
           }
           socket = null;
+        } else if (cancelDial) {
+          // Timed out (or failed) while still connecting — abort the in-flight dial.
+          try {
+            cancelDial();
+          } catch {
+            /* ignore */
+          }
         }
+        cancelDial = null;
       };
       const timer = setTimeout(
         () => finish(() => reject(new Error(`herdr ${method}: timed out after ${this.timeoutMs}ms`))),
         this.timeoutMs,
       );
 
-      Bun.connect({
-        unix: this.socketPath,
-        socket: {
-          open(s) {
-            socket = s;
-          },
-          data(s, chunk) {
-            socket = s;
-            buf += decoder.decode(chunk, { stream: true });
-            const nl = buf.indexOf("\n");
-            if (nl < 0) return;
-            const line = buf.slice(0, nl);
-            finish(() => {
-              try {
-                resolve(decodeReplyLine<T>(line, method));
-              } catch (e) {
-                reject(e as Error);
-              }
-            });
-          },
-          error(_s, err) {
-            finish(() => reject(err));
-          },
-          close() {
-            finish(() => reject(new Error(`herdr ${method}: connection closed before reply`)));
-          },
+      dialHerdr(this.socketPath, {
+        onDial(cancel) {
+          cancelDial = cancel;
         },
-      })
+        open(s) {
+          socket = s;
+        },
+        data(s, chunk) {
+          socket = s;
+          buf += decoder.decode(chunk, { stream: true });
+          const nl = buf.indexOf("\n");
+          if (nl < 0) return;
+          const line = buf.slice(0, nl);
+          finish(() => {
+            try {
+              resolve(decodeReplyLine<T>(line, method));
+            } catch (e) {
+              reject(e as Error);
+            }
+          });
+        },
+        error(_s, err) {
+          finish(() => reject(err));
+        },
+        close() {
+          finish(() => reject(new Error(`herdr ${method}: connection closed before reply`)));
+        },
+      }, this.dialMode)
         .then((s) => {
           // Already settled (e.g. timed out) before the connection opened — close it so the FD
           // doesn't leak, and don't bother writing.
@@ -244,7 +261,8 @@ export class HerdrClient {
     const id = `es${++idCounter}`;
     const decoder = new TextDecoder("utf-8");
     let buf = "";
-    let socket: Bun.Socket | null = null;
+    let socket: SockHandle | null = null;
+    let cancelDial: (() => void) | null = null;
     let down = false;
     let acked = false;
 
@@ -260,7 +278,16 @@ export class HerdrClient {
           /* ignore */
         }
         socket = null;
+      } else if (cancelDial) {
+        // Ack timeout (or close()) while the dial was still connecting — abort it so repeated
+        // reconnect attempts can't stack pending OS handles.
+        try {
+          cancelDial();
+        } catch {
+          /* ignore */
+        }
       }
+      cancelDial = null;
       opts.onDown(reason);
     };
 
@@ -290,33 +317,33 @@ export class HerdrClient {
       opts.onEvent(decoded.event, decoded.data);
     };
 
-    Bun.connect({
-      unix: this.socketPath,
-      socket: {
-        open(s) {
-          socket = s;
-        },
-        // Multiple lines can arrive per chunk (bursty events); drain ALL complete lines and keep the
-        // stream open. Stream-decode so a multi-byte codepoint split across chunks isn't corrupted.
-        data(s, chunk) {
-          socket = s;
-          buf += decoder.decode(chunk, { stream: true });
-          let nl = buf.indexOf("\n");
-          while (nl >= 0 && !down) {
-            const line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
-            handleLine(line);
-            nl = buf.indexOf("\n");
-          }
-        },
-        error(_s, err) {
-          fireDown(err.message || "socket error");
-        },
-        close() {
-          fireDown("connection closed");
-        },
+    dialHerdr(this.socketPath, {
+      onDial(cancel) {
+        cancelDial = cancel;
       },
-    })
+      open(s) {
+        socket = s;
+      },
+      // Multiple lines can arrive per chunk (bursty events); drain ALL complete lines and keep the
+      // stream open. Stream-decode so a multi-byte codepoint split across chunks isn't corrupted.
+      data(s, chunk) {
+        socket = s;
+        buf += decoder.decode(chunk, { stream: true });
+        let nl = buf.indexOf("\n");
+        while (nl >= 0 && !down) {
+          const line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          handleLine(line);
+          nl = buf.indexOf("\n");
+        }
+      },
+      error(_s, err) {
+        fireDown(err.message || "socket error");
+      },
+      close() {
+        fireDown("connection closed");
+      },
+    }, this.dialMode)
       .then((s) => {
         if (down) {
           try {

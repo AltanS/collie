@@ -25,6 +25,7 @@ serving a Vite + React + shadcn PWA.
 - [Update](#update-to-a-new-release)
 - [Uninstall](#stop-or-uninstall)
 - [Deployment variants](#deployment-variants)
+- [Windows (experimental)](#windows-experimental)
 - [Web Push](#web-push-optional)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
@@ -130,6 +131,9 @@ Soft dependencies: **Node.js** (the control script uses it to extract your Magic
 deps by hand — the build runs `bun install` for you; the backend imports only Bun + `node:*`.
 [`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see [Web
 Push](#web-push-optional)).
+
+**Linux and macOS are the supported hosts.** The bridge itself also runs on **Windows**
+(experimental) against Herdr's Windows beta — see [Windows](#windows-experimental).
 
 ## Install
 
@@ -508,6 +512,31 @@ A proxy cache that ignores this and holds onto `/sw.js` starves installed PWAs o
 indefinitely — clients keep running old code with no way to notice. If your proxy adds caching,
 honor origin headers (Caddy and stock Nginx `proxy_cache` do by default; CDNs often need it
 enabled explicitly).
+
+## Windows (experimental)
+
+The **bridge** runs on Windows against Herdr's Windows beta; the **launcher** does not. Herdr there
+exposes its control socket as a *named pipe* named after the full socket path, not an AF_UNIX
+socket, so Collie dials it through `node:net` instead of `Bun.connect` — one shim,
+[`bridge/dial.ts`](./bridge/dial.ts), which explains the mapping at the top of the file.
+
+What that means in practice:
+
+- **Run the bridge directly** — `bun run bridge/index.ts`. There's no systemd unit, and the Herdr
+  action buttons shell out to `bash`, so they only work if Git Bash is on `PATH`. The manifest
+  therefore still declares `linux`/`macos` only, rather than advertising buttons that may not fire.
+- **`tailscale serve` isn't wired up here.** Use the [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
+  posture: loopback bind, your own ingress in front, `COLLIE_PUBLIC_HOSTS` pinned. The security
+  rules in [§Security](#️-security--read-before-you-run-it) are not relaxed on Windows.
+- **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
+- The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
+  (an explicit `\\.\pipe\…` value is passed through untouched).
+
+**Is it actually working?** The bridge logs `[events] stream up` on start — the event stream works
+over the pipe, so Windows gets the same live updates as Linux, not degraded polling.
+
+`COLLIE_HERDR_DIAL=net` forces that same dialer on Linux/macOS. It exists so the Windows code path
+can be exercised — and regression-tested — without a Windows box; `bridge/dial.test.ts` uses it.
 
 ## Web Push (optional)
 
