@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { DialMode } from "./dial.ts";
+
 // All bridge configuration, resolved once at startup. Env-driven so the systemd unit and the
 // plugin launcher can configure it without code changes. Defaults are safe for a single-user,
 // tailnet-only deployment.
@@ -44,6 +46,20 @@ function envList(name: string): string[] {
  * `yes` → true (case-insensitive); anything else falls back with a warning. Used for feature toggles
  * that default on, where a typo silently flipping the feature would be surprising.
  */
+/**
+ * Read an env var constrained to a fixed set of string values, falling back (with a warning) on
+ * anything not in `allowed`. Empty/unset → `fallback`. Case-insensitive.
+ */
+function envEnum<T extends string>(name: string, allowed: readonly T[], fallback: T): T {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const v = raw.trim().toLowerCase();
+  const match = allowed.find((a) => a.toLowerCase() === v);
+  if (match !== undefined) return match;
+  console.warn(`[config] ${name}="${raw}" is not one of ${allowed.join("|")} — using default ${fallback}`);
+  return fallback;
+}
+
 function envBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
@@ -57,6 +73,16 @@ function envBool(name: string, fallback: boolean): boolean {
 export interface Config {
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
+  /**
+   * Which dialer opens that socket. `auto` (the default) is correct everywhere: `node:net` on
+   * Windows, where herdr's socket is a named pipe, and Bun's native transport elsewhere. Forcing
+   * `net` on Linux/macOS exercises the Windows dial path against the real socket — the only way to
+   * run that code without a Windows box. Set via `COLLIE_HERDR_DIAL`.
+   *
+   * Optional so it stays out of unrelated test fixtures: `loadConfig` always resolves it, and an
+   * absent value means the same thing as `auto` at the one place it's consumed.
+   */
+  dialMode?: DialMode;
   /** TCP port the bridge listens on (loopback only). `tailscale serve` proxies to it. */
   port: number;
   /**
@@ -166,6 +192,7 @@ export function loadConfig(): Config {
 
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),
+    dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto"),
     port: envInt("COLLIE_PORT", 8787, { min: 1, max: 65535 }),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),

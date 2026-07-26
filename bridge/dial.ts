@@ -3,6 +3,11 @@
 // transport is a named pipe whose name is the full socket path (\\.\pipe\C:\...\herdr.sock).
 // Bun.connect({unix}) cannot open named pipes, but Bun's node:net can, so we adapt it to the
 // same handler shape the two call sites in herdr-client.ts use (write/flush/end only).
+//
+// There is NO application-level handshake on either transport — herdr's `interprocess` local
+// sockets carry the raw bytes ("Interprocess never inserts its own message framing or any other
+// type of metadata into the stream"), so the same newline-delimited JSON-RPC speaks to both. A
+// raw node:net client dialing the Unix socket was verified against a live herd on 2026-07-26.
 import net from "node:net";
 
 export type SockHandle = {
@@ -32,6 +37,18 @@ export type DialHandlers = {
 };
 
 /**
+ * Which dialer to use. `auto` picks by platform — `node:net` on Windows (named pipes), Bun's
+ * native `Bun.connect({unix})` everywhere else, which is the long-deployed path and stays the
+ * default there. `net`/`bun` force one regardless of platform.
+ *
+ * `net` exists so the Windows dial path is RUNNABLE OFF WINDOWS: `net.connect(path)` opens an
+ * AF_UNIX socket on POSIX and a named pipe on win32, so forcing it on Linux exercises the exact
+ * code Windows runs, minus {@link toPipeName} (pure, and unit-tested on its own). Without it,
+ * nobody who can merge this change is able to run the branch it adds.
+ */
+export type DialMode = "auto" | "net" | "bun";
+
+/**
  * herdr's Windows beta names its pipe after the full socket path. Pass through a value that is
  * already a pipe name (either slash direction) so an explicit HERDR_SOCKET_PATH=\\.\pipe\… works.
  */
@@ -42,8 +59,13 @@ export function toPipeName(socketPath: string): string {
   return "\\\\.\\pipe\\" + socketPath;
 }
 
-export function dialHerdr(socketPath: string, handlers: DialHandlers): Promise<SockHandle> {
-  if (process.platform !== "win32") {
+export function dialHerdr(
+  socketPath: string,
+  handlers: DialHandlers,
+  mode: DialMode = "auto",
+): Promise<SockHandle> {
+  const useNet = mode === "net" || (mode === "auto" && process.platform === "win32");
+  if (!useNet) {
     const promise = Bun.connect({
       unix: socketPath,
       socket: {
@@ -79,9 +101,11 @@ export function dialHerdr(socketPath: string, handlers: DialHandlers): Promise<S
     return promise;
   }
 
-  const pipeName = toPipeName(socketPath);
+  // node:net addresses a named pipe by name on win32 and an AF_UNIX path on POSIX — only the
+  // former needs the `\\.\pipe\` mapping, so forcing `net` off Windows dials the socket directly.
+  const address = process.platform === "win32" ? toPipeName(socketPath) : socketPath;
   return new Promise<SockHandle>((resolve, reject) => {
-    const sock = net.connect(pipeName);
+    const sock = net.connect(address);
     const handle: SockHandle = {
       write: (data) => sock.write(data),
       flush: () => {},

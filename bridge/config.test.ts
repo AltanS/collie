@@ -27,6 +27,7 @@ const KEYS = [
   "COLLIE_SKIP_SERVE",
   "HERDR_SOCKET_PATH",
   "HERDR_PLUGIN_STATE_DIR",
+  "COLLIE_HERDR_DIAL",
 ];
 
 let saved: Record<string, string | undefined>;
@@ -177,6 +178,19 @@ describe("loadConfig", () => {
     const cfg = loadConfig();
     expect(cfg.trustedUser).toBe("me@example.com");
     expect(cfg.host).toBe("0.0.0.0");
+  });
+
+  test("dial mode defaults to auto and accepts a forced dialer", () => {
+    expect(loadConfig().dialMode).toBe("auto");
+    process.env.COLLIE_HERDR_DIAL = "net";
+    expect(loadConfig().dialMode).toBe("net");
+    process.env.COLLIE_HERDR_DIAL = "BUN"; // case-insensitive
+    expect(loadConfig().dialMode).toBe("bun");
+  });
+
+  test("an unrecognised dial mode falls back to auto rather than dialling nothing", () => {
+    process.env.COLLIE_HERDR_DIAL = "carrier-pigeon";
+    expect(loadConfig().dialMode).toBe("auto");
   });
 });
 
