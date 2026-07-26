@@ -80,6 +80,19 @@ export interface Config {
   notifyDelayMs: number;
   /** How many lines of scrollback to pull for the agent detail view. */
   readLines: number;
+  /**
+   * Serve agent conversation history from the agent's own on-disk session log. This is the only
+   * way to get scrollback for a Claude pane at all — Claude runs on the terminal's alternate
+   * screen, which has no scrollback ring, so Herdr retains nothing behind the viewport (see
+   * transcript.ts). Off disables the feature and its route wholesale.
+   */
+  transcript: boolean;
+  /**
+   * Root of the agent's session logs — Claude Code's `~/.claude/projects`. Every transcript read is
+   * confined to this directory (after symlink resolution). Override only to relocate a non-default
+   * Claude home; it is never derived from a request.
+   */
+  transcriptRoot: string;
   /** Key sequence sent to submit a reply after the text (agent-dependent; see HERDR_API.md). */
   submitKeys: string[];
   /**
@@ -155,6 +168,9 @@ export function loadConfig(): Config {
     pollIdleMs: envInt("COLLIE_POLL_IDLE_MS", 12_000, { min: 1000 }),
     notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }),
     readLines: envInt("COLLIE_READ_LINES", 200, { min: 1 }),
+    transcript: envBool("COLLIE_TRANSCRIPT", true),
+    transcriptRoot:
+      process.env.COLLIE_TRANSCRIPT_ROOT ?? join(homedir(), ".claude", "projects"),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
     deviceHeader: (process.env.COLLIE_DEVICE_HEADER ?? "").trim(),

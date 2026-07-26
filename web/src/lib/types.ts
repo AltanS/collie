@@ -23,6 +23,20 @@ export interface AgentView {
    * — see {@link paneDisplayName}. Render as text only (never markup) — same XSS boundary as paneLabel.
    */
   sessionName?: string;
+  /**
+   * The agent's own session id, when it reported one. Its presence is what tells the UI a transcript
+   * may exist for this pane, so the History affordance shows without a speculative fetch. Opaque
+   * here — the bridge re-derives it server-side and never accepts one from the client.
+   */
+  agentSessionId?: string;
+  /**
+   * Upper bound on the lines a pane read can return (Herdr's scrollback depth + viewport). The only
+   * reliable "is there more scrollback" signal — `PaneReadResponse.truncated` is always false even
+   * when history was cut off, which is why "Load older" never used to render. A Claude pane reports
+   * just its viewport, because the alternate screen it runs on keeps no scrollback. Absent on older
+   * bridges/Herdr, which reads as "unknown" (the button then falls back to hidden).
+   */
+  readableLines?: number;
 }
 
 /**
@@ -145,6 +159,53 @@ export interface PaneReadResponse {
   /** Set to true by the client when the server returns 304 Not Modified. Never sent over the wire. */
   notModified?: boolean;
 }
+
+/**
+ * One renderable piece of a transcript turn. Mirrors `bridge/transcript.ts` (wire types are
+ * hand-mirrored across the two sides, as with every other response here).
+ */
+export type TranscriptPart =
+  | { kind: "text"; text: string; truncated?: boolean }
+  | { kind: "thinking"; text: string; truncated?: boolean }
+  | {
+      kind: "tool";
+      name: string;
+      summary: string;
+      result?: { text: string; truncated?: boolean; isError?: boolean };
+    };
+
+/**
+ * One turn. `user`/`assistant` are speech; the other two are not, and render set apart so they can't
+ * be mistaken for it — `summary` is Claude's own compaction summary, `note` is machine-injected
+ * content that still belongs on screen (a background task finishing, a local command's output).
+ */
+export interface TranscriptEntry {
+  uuid: string;
+  ts: string;
+  role: "user" | "assistant" | "summary" | "note";
+  parts: TranscriptPart[];
+}
+
+/**
+ * GET /api/pane/:id/history — real conversation history, read from the agent's own session log.
+ *
+ * This is NOT terminal scrollback and can't be: a Claude pane runs on the terminal's alternate
+ * screen, which keeps no scrollback ring, so Herdr only ever holds the visible viewport. `available:
+ * false` is an ordinary answer (a shell pane, a harness with no session log, or the feature off) —
+ * the UI hides the History affordance rather than showing an error.
+ */
+export type PaneHistoryResponse =
+  | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
+  | {
+      paneId: string;
+      available: true;
+      /** Oldest-first, ready to render top-down. */
+      entries: TranscriptEntry[];
+      /** Older turns exist before `entries[0]` — page with `?before=<its uuid>`. */
+      hasMore: boolean;
+      total: number;
+      fileTruncated: boolean;
+    };
 
 export type ActionResponse =
   | { ok: true }

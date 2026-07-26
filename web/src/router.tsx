@@ -4,8 +4,9 @@ import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
 import { SpaceRoute } from "@/routes/space";
 import { DetailRoute } from "@/routes/detail";
+import { HistoryRoute } from "@/routes/history";
 import { SettingsRoute } from "@/routes/settings";
-import { rootLoader, paneLoader, ROOT_ROUTE_ID } from "@/lib/loaders";
+import { historyLoader, rootLoader, paneLoader, ROOT_ROUTE_ID } from "@/lib/loaders";
 
 // We don't use view transitions. React Router persists an "applied view transitions" map to
 // sessionStorage ("remix-router-transitions") and replays a phantom same-location transition on every
@@ -37,6 +38,16 @@ export const router = createBrowserRouter([
       { path: "space/:spaceId", element: <SpaceRoute /> },
       { path: "settings", element: <SettingsRoute /> },
       { path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
+      {
+        path: "pane/:paneId/history",
+        loader: historyLoader,
+        element: <HistoryRoute />,
+        // Opt OUT of the poll loop. revalidate() re-runs every active loader, and a transcript can be
+        // hundreds of turns — re-pulling it every 1.5s would be pure waste, and it would fight the
+        // view's own "load older" paging by resetting the page under it. History is fetched on
+        // navigation; the view pages back through it with direct api calls.
+        shouldRevalidate: () => false,
+      },
     ],
   },
 ]);

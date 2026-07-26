@@ -48,7 +48,32 @@ interface WirePane {
    *  cleared with `label: null`, so absent/null both read as "no label". */
   label?: string | null;
   revision: number;
-  /** Scroll position (herdr ≥ 0.7.2); optional so older servers that omit it still typecheck. Unused for now. */
+  /**
+   * The agent's OWN session identity, as the agent reported it to Herdr (herdr ≥ 0.7.2). For Claude
+   * this is `{kind:"id", value:"<uuid>"}` — the uuid naming its on-disk session log, which is how
+   * Collie serves real conversation history for a pane whose terminal keeps no scrollback (see
+   * transcript.ts). Optional + defensively typed: older servers omit it, and `kind` may be something
+   * other than "id" for other agents.
+   */
+  agent_session?: {
+    source?: string;
+    agent?: string;
+    kind?: string;
+    value?: string;
+  } | null;
+  /**
+   * Scroll geometry (herdr ≥ 0.7.2); optional so older servers that omit it still typecheck.
+   *
+   * `max_offset_from_bottom` is how far the pane can scroll UP — the depth of its scrollback ring —
+   * so `max_offset_from_bottom + viewport_rows` is the line count a `pane.read source:"recent"` can
+   * return. Live-verified on a sandbox pane (2026-07-26): 95+31 → 127 lines read, 498+31 → 530 (the
+   * +1 is the trailing newline). Exact once scrollback exists; an OVER-estimate on a near-empty
+   * screen, where trailing blank rows are trimmed from the read (0+31 → 4 lines read).
+   *
+   * This is the only trustworthy "is there more to load" signal Herdr gives us — `PaneRead.truncated`
+   * is ALWAYS false, even when a read demonstrably cut scrollback off (200 requested of 6895
+   * available still reports `truncated: false`). Gate on this, never on `truncated`.
+   */
   scroll?: {
     offset_from_bottom: number;
     max_offset_from_bottom: number;

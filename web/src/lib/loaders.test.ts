@@ -139,37 +139,37 @@ describe("paneLoader", () => {
 });
 
 describe("requested-lines bookkeeping (Load older)", () => {
-  it("defaults to the base window and grows a step per tap, capped", async () => {
+  // The cap is 1000 because HERDR clamps `pane.read` there (live-probed: 2000 and 6000 both return
+  // 1001 lines against a 6895-line buffer). With a 600-line base window that means exactly ONE
+  // useful tap — which is the honest ceiling, not a shortfall in the stepping.
+  it("defaults to the base window and grows to Herdr's real ceiling in one tap", async () => {
     const { getRequestedLines, growRequestedLines, canGrowRequestedLines, DETAIL_HISTORY_MAX } =
       await import("./loaders");
+    expect(DETAIL_HISTORY_MAX).toBe(1000);
     expect(getRequestedLines("w1:p1")).toBe(600);
     expect(canGrowRequestedLines("w1:p1")).toBe(true);
 
-    expect(growRequestedLines("w1:p1")).toBe(1200);
-    expect(growRequestedLines("w1:p1")).toBe(1800);
-    expect(getRequestedLines("w1:p1")).toBe(1800);
+    // A 600 step would overshoot the cap, so the first tap lands exactly on it.
+    expect(growRequestedLines("w1:p1")).toBe(DETAIL_HISTORY_MAX);
+    expect(getRequestedLines("w1:p1")).toBe(DETAIL_HISTORY_MAX);
 
-    // Grow all the way to the cap; further taps clamp and canGrow flips false.
-    let last = 1800;
-    while (last < DETAIL_HISTORY_MAX) last = growRequestedLines("w1:p1");
-    expect(last).toBe(DETAIL_HISTORY_MAX);
-    expect(growRequestedLines("w1:p1")).toBe(DETAIL_HISTORY_MAX); // stays clamped
+    // Further taps clamp rather than climb, and the affordance switches off.
+    expect(growRequestedLines("w1:p1")).toBe(DETAIL_HISTORY_MAX);
     expect(canGrowRequestedLines("w1:p1")).toBe(false);
   });
 
   it("tracks each pane independently", async () => {
     const { getRequestedLines, growRequestedLines } = await import("./loaders");
     growRequestedLines("w1:p1");
-    expect(getRequestedLines("w1:p1")).toBe(1200);
+    expect(getRequestedLines("w1:p1")).toBe(1000);
     expect(getRequestedLines("w2:p1")).toBe(600); // untouched
   });
 
   it("the loader fetches with (and reports) the pane's requested window", async () => {
     const { paneLoader, growRequestedLines } = await import("./loaders");
-    growRequestedLines("w1:p1"); // 600 → 1200
+    growRequestedLines("w1:p1"); // 600 → 1000 (the cap)
     const data = await paneLoader({ params: { paneId: "w1:p1" } });
-    expect(data.requestedLines).toBe(1200);
-    expect(data.truncated).toBe(false); // from the MSW fixture
+    expect(data.requestedLines).toBe(1000);
   });
 
   it("resetRequestedLines clears back to the base window", async () => {
@@ -246,7 +246,7 @@ describe("loaders — session scoping", () => {
   it("tracks requested scrollback per (session, pane) so ids can't collide across sessions", async () => {
     const { getRequestedLines, growRequestedLines } = await import("./loaders");
     growRequestedLines("w1:p1", "collie-demo");
-    expect(getRequestedLines("w1:p1", "collie-demo")).toBe(1200);
+    expect(getRequestedLines("w1:p1", "collie-demo")).toBe(1000);
     expect(getRequestedLines("w1:p1")).toBe(600); // the primary session's same id is untouched
   });
 });
@@ -388,6 +388,109 @@ describe("loaders — aborted request", () => {
     const { paneLoader } = await import("./loaders");
     await expect(
       paneLoader({ params: { paneId: "w1:p1" }, request: abortedRequest() }),
+    ).rejects.toThrow();
+  });
+});
+
+// historyLoader reads the agent's OWN transcript — the only conversation history a Claude pane can
+// have, since its terminal runs on the alternate screen and keeps no scrollback ring. Every
+// "unavailable" answer is an ordinary state the view explains, never an error banner.
+describe("historyLoader", () => {
+  const failHistory = (status: number) =>
+    server.use(http.get(/\/api\/pane\/[^/]+\/history/, () => new HttpResponse(null, { status })));
+
+  const unavailable = (reason: string) =>
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () =>
+        HttpResponse.json({ paneId: "w1:p1", available: false, reason }),
+      ),
+    );
+
+  it("returns the newest page of turns", async () => {
+    const { historyLoader } = await import("./loaders");
+    const data = await historyLoader({ params: { paneId: "w1:p1" } });
+    expect(data.unavailable).toBeUndefined();
+    expect(data.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]);
+    expect(data.total).toBe(2);
+    expect(data.hasMore).toBe(false);
+  });
+
+  it("asks for a bounded first page rather than the whole transcript", async () => {
+    let seen = "";
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, ({ request }) => {
+        seen = new URL(request.url).searchParams.get("limit") ?? "";
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          entries: [],
+          hasMore: false,
+          total: 0,
+          fileTruncated: false,
+        });
+      }),
+    );
+    const { historyLoader, HISTORY_PAGE_SIZE } = await import("./loaders");
+    await historyLoader({ params: { paneId: "w1:p1" } });
+    expect(seen).toBe(String(HISTORY_PAGE_SIZE));
+  });
+
+  it.each([["disabled"], ["no-session"], ["no-log"]])(
+    "passes through the %s reason so the view can explain it",
+    async (reason) => {
+      unavailable(reason);
+      const { historyLoader } = await import("./loaders");
+      const data = await historyLoader({ params: { paneId: "w1:p1" } });
+      expect(data.unavailable).toBe(reason);
+      expect(data.entries).toEqual([]);
+    },
+  );
+
+  it("degrades to an error state (not a throw) when the fetch fails", async () => {
+    failHistory(500);
+    const { historyLoader } = await import("./loaders");
+    const data = await historyLoader({ params: { paneId: "w1:p1" } });
+    expect(data.unavailable).toBe("error");
+    expect(data.entries).toEqual([]);
+  });
+
+  it("throws on a missing :paneId route param (a misconfigured route, not a user state)", async () => {
+    const { historyLoader } = await import("./loaders");
+    await expect(historyLoader({ params: {} })).rejects.toThrow(/paneId/);
+  });
+
+  it("scopes the request to the session in the request url", async () => {
+    let seen: string | null = "unset";
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, ({ request }) => {
+        seen = new URL(request.url).searchParams.get("session");
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          entries: [],
+          hasMore: false,
+          total: 0,
+          fileTruncated: false,
+        });
+      }),
+    );
+    const { historyLoader } = await import("./loaders");
+    await historyLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1:p1/history?s=demo"),
+    });
+    expect(seen).toBe("demo");
+  });
+
+  it("rethrows an abort instead of returning an error state", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { historyLoader } = await import("./loaders");
+    await expect(
+      historyLoader({
+        params: { paneId: "w1:p1" },
+        request: new Request("http://localhost/", { signal: controller.signal }),
+      }),
     ).rejects.toThrow();
   });
 });
