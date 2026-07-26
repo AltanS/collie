@@ -16,6 +16,8 @@ interface ConnectionBannerProps {
   bridge: BridgeStatus | undefined;
   /** The last snapshot fetch failed (stale data on screen). */
   error: boolean;
+  /** The failed snapshot request was rejected with HTTP 401 or 403. */
+  authError: boolean;
 }
 
 // The result of the /api/config probe (which never touches Herdr): "unknown" until it resolves,
@@ -40,7 +42,49 @@ export const EXIT_MS = 200;
 // disagree; `connecting` is poll-truth (isConnecting) — navigator.onLine is COPY-only (it picks the
 // red cause), never a gate. Threshold lockstep with the shared clock is proven in use-connection-lost;
 // here we own the amber→red→green state machine and the smooth mount/unmount.
-export function ConnectionBanner({ bridge, error }: ConnectionBannerProps) {
+export function ConnectionBanner({ bridge, error, authError }: ConnectionBannerProps) {
+  if (authError) return <AuthErrorBanner />;
+  return <ConnectionStateBanner bridge={bridge} error={error} />;
+}
+
+// A refusal is not an outage, so it gets its own surface ahead of the connection state machine: no
+// probe, no reconnect spinner, no escalation clock. The copy stays deliberately non-specific about
+// the cause. The flag covers 401 and 403 alike, and a 403 can equally mean "this device is not
+// allowlisted", "host not allowed" or "cross-origin rejected", so naming any one of them would be
+// wrong more often than right. What the operator needs here is the one fact the old behaviour hid:
+// this is not the network. Reload is the useful action either way, because it is what lets a
+// fronting proxy serve its sign-in page.
+function AuthErrorBanner() {
+  return (
+    <div className="grid shrink-0 grid-rows-[1fr] overflow-hidden opacity-100">
+      <div className="min-h-0 overflow-hidden">
+        <div
+          role="alert"
+          aria-live="polite"
+          className={cn(
+            "flex items-center gap-2 border-b px-4 py-1 text-xs [padding-top:calc(env(safe-area-inset-top)_+_0.25rem)]",
+            TINT.blocked.row,
+          )}
+        >
+          <TriangleAlert className={cn("size-3.5 shrink-0", TINT.blocked.icon)} />
+          <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+            Access refused. This is not a connection problem.
+          </span>
+          <Button
+            size="sm"
+            className="h-6 gap-1 px-2 text-xs"
+            onClick={() => window.location.reload()}
+          >
+            <RefreshCw className="size-3.5" />
+            Reload
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionStateBanner({ bridge, error }: Omit<ConnectionBannerProps, "authError">) {
   const stalled = useLoadingStalled();
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
