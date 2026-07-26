@@ -1,6 +1,12 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in herdr-client.ts). The rest of the app talks in these terms.
 
+import type { TranscriptEntry } from "./transcript.ts";
+
+// Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
+// entry shape from here too, without reaching into the parser module.
+export type { TranscriptEntry, TranscriptPart } from "./transcript.ts";
+
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
 /**
@@ -28,6 +34,21 @@ export interface AgentView {
    * absent for unnamed sessions and every non-claude pane. Display priority is `paneLabel` first.
    */
   sessionName?: string;
+  /**
+   * The agent's own session id (Herdr `agent_session.value`), present only when the agent reported
+   * an id-kind session. Its presence is what tells the UI a transcript may exist for this pane, so
+   * the History affordance can be offered without a speculative fetch. The history endpoint
+   * re-derives this server-side from the pane id and NEVER trusts a client-supplied value.
+   */
+  agentSessionId?: string;
+  /**
+   * Upper bound on the lines a `recent` read of this pane can return — Herdr's scrollback depth plus
+   * the viewport. This is the ONLY reliable "is there more scrollback" signal: `PaneRead.truncated`
+   * is always false even when a read cut history off, which is why the mirror's "Load older" button
+   * never used to appear. A pane on the alternate screen (any Claude agent) reports just its viewport
+   * here, because the alt screen keeps no scrollback ring at all. Absent on older Herdr servers.
+   */
+  readableLines?: number;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */
@@ -141,6 +162,27 @@ export interface PaneReadResponse {
   /** Herdr's monotonic pane revision — passed through for the client's prompt-select race guard. */
   revision: number;
 }
+
+/**
+ * GET /api/pane/:id/history — real conversation history for a pane, read from the agent's own
+ * session log. This is NOT terminal scrollback: a Claude pane runs on the alternate screen, so no
+ * scrollback exists to page (see transcript.ts). `available:false` is the normal answer for a pane
+ * with no agent session, a non-Claude agent, or a bridge with the feature switched off.
+ */
+export type PaneHistoryResponse =
+  | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
+  | {
+      paneId: string;
+      available: true;
+      /** Oldest-first, ready to render top-down. */
+      entries: TranscriptEntry[];
+      /** Older turns exist before `entries[0]` — page with `?before=<its uuid>`. */
+      hasMore: boolean;
+      /** Turns available in the parsed window. */
+      total: number;
+      /** The log exceeded the read cap, so only its tail was parsed. */
+      fileTruncated: boolean;
+    };
 
 /**
  * POST /api/pane/:id/{reply,keys} — result of a send. Discriminated on `ok`: a failure always

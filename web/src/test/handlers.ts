@@ -5,6 +5,7 @@ import type {
   SessionSummary,
   SnapshotResponse,
   TabView,
+  TranscriptEntry,
   WorkspaceView,
 } from "@/lib/types";
 
@@ -94,11 +95,41 @@ export const fixtureSnapshot: SnapshotResponse = {
   ts: 0,
 };
 
+/** A minimal two-turn transcript: a human ask and the agent's tool-call-plus-answer reply. */
+export const fixtureTranscript: TranscriptEntry[] = [
+  {
+    uuid: "t1",
+    ts: "2026-07-25T06:22:21.253Z",
+    role: "user",
+    parts: [{ kind: "text", text: "what changed today?" }],
+  },
+  {
+    uuid: "t2",
+    ts: "2026-07-25T06:22:24.093Z",
+    role: "assistant",
+    parts: [
+      { kind: "tool", name: "Bash", summary: "git log --oneline", result: { text: "abc1234 fix" } },
+      { kind: "text", text: "One commit: abc1234." },
+    ],
+  },
+];
+
 // Default happy-path handlers; individual tests can override via server.use(...).
 export const handlers = [
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: "hello from the pane", truncated: false, revision: 1 }),
+  ),
+  // Pane transcript history. Two turns, newest-anchored, with nothing older behind them.
+  http.get(/\/api\/pane\/[^/]+\/history/, () =>
+    HttpResponse.json({
+      paneId: "w1:p1",
+      available: true,
+      entries: fixtureTranscript,
+      hasMore: false,
+      total: fixtureTranscript.length,
+      fileTruncated: false,
+    }),
   ),
   http.post(/\/api\/pane\/[^/]+\/reply$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),

@@ -9,6 +9,7 @@ import type {
   BridgeConfig,
   CreateResponse,
   NotifyPrefs,
+  PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
   UpdateInfo,
@@ -190,6 +191,28 @@ export async function fetchPane(
   // A pane body served from Herdr is provably-live data — stamp the connection-health anchor.
   markLive();
   return data;
+}
+
+/**
+ * Fetch a page of the pane's conversation history — the scrollback its terminal can't hold (a Claude
+ * pane runs on the alternate screen, which has no scrollback ring). Newest-anchored: no cursor gives
+ * the most recent turns; `before` walks backwards from a turn already on screen.
+ *
+ * Deliberately NOT ETag-cached like fetchPane: history is fetched on navigation and on an explicit
+ * "load older" tap, never on the poll loop, so there's no repeat-fetch to save.
+ */
+export function fetchHistory(
+  paneId: string,
+  opts: { limit?: number; before?: string } = {},
+  session?: string,
+  signal?: AbortSignal,
+): Promise<PaneHistoryResponse> {
+  const q = new URLSearchParams();
+  if (opts.limit) q.set("limit", String(opts.limit));
+  if (opts.before) q.set("before", opts.before);
+  const qs = q.toString();
+  const path = `/api/pane/${encodeURIComponent(paneId)}/history${qs ? `?${qs}` : ""}`;
+  return req<PaneHistoryResponse>(withSession(path, session), { signal });
 }
 
 export function sendReply(
