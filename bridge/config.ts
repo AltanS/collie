@@ -139,6 +139,23 @@ export interface Config {
   skipServe: boolean;
 }
 
+/**
+ * herdr's default socket location: `~/.config/herdr/herdr.sock` on Unix, `%APPDATA%\herdr\herdr.sock`
+ * on Windows (the Windows beta keeps its config root under AppData\Roaming). Pure so both branches
+ * are unit-testable on any platform.
+ */
+export function defaultSocketPath(
+  platform: NodeJS.Platform = process.platform,
+  env: Record<string, string | undefined> = process.env,
+  home: string = homedir(),
+): string {
+  if (platform === "win32") {
+    const appData = env.APPDATA ?? join(home, "AppData", "Roaming");
+    return join(appData, "herdr", "herdr.sock");
+  }
+  return join(home, ".config", "herdr", "herdr.sock");
+}
+
 export function loadConfig(): Config {
   const stateDir =
     process.env.HERDR_PLUGIN_STATE_DIR ??
@@ -148,7 +165,7 @@ export function loadConfig(): Config {
   const submitKeys = envList("COLLIE_SUBMIT_KEYS");
 
   return {
-    socketPath: process.env.HERDR_SOCKET_PATH ?? join(homedir(), ".config", "herdr", "herdr.sock"),
+    socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),
     port: envInt("COLLIE_PORT", 8787, { min: 1, max: 65535 }),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),

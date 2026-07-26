@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
-import { loadConfig } from "./config.ts";
+import { defaultSocketPath, loadConfig } from "./config.ts";
 
 // loadConfig is the deployment contract — env vars in, a resolved Config out. Pure (just reads
 // process.env + homedir), so we drive it by mutating the environment and restoring it after.
@@ -176,5 +177,26 @@ describe("loadConfig", () => {
     const cfg = loadConfig();
     expect(cfg.trustedUser).toBe("me@example.com");
     expect(cfg.host).toBe("0.0.0.0");
+  });
+});
+
+// Pure — both platform branches are testable from any host (expectations use join() so the
+// host's separator never leaks into the assertion).
+describe("defaultSocketPath", () => {
+  test("unix default lives under ~/.config/herdr", () => {
+    expect(defaultSocketPath("linux", {}, "/home/u")).toBe(join("/home/u", ".config", "herdr", "herdr.sock"));
+    expect(defaultSocketPath("darwin", {}, "/Users/u")).toBe(join("/Users/u", ".config", "herdr", "herdr.sock"));
+  });
+
+  test("win32 default honours APPDATA", () => {
+    expect(defaultSocketPath("win32", { APPDATA: "C:\\Users\\u\\AppData\\Roaming" }, "C:\\Users\\u")).toBe(
+      join("C:\\Users\\u\\AppData\\Roaming", "herdr", "herdr.sock"),
+    );
+  });
+
+  test("win32 falls back to <home>/AppData/Roaming when APPDATA is unset", () => {
+    expect(defaultSocketPath("win32", {}, "C:\\Users\\u")).toBe(
+      join("C:\\Users\\u", "AppData", "Roaming", "herdr", "herdr.sock"),
+    );
   });
 });

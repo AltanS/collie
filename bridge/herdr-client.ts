@@ -106,6 +106,9 @@ export class HerdrClient {
       // The live socket, once the dial opens one. Hoisted so EVERY terminal path (timeout
       // included) can close it — otherwise a timeout leaves the FD dangling.
       let socket: SockHandle | null = null;
+      // Aborts a dial that is still connecting — a timeout that fires mid-connect has no socket
+      // to end() yet, and without this the pending OS handle lives until the connect settles.
+      let cancelDial: (() => void) | null = null;
       // Stream-decode so a multi-byte UTF-8 codepoint split across chunk boundaries isn't
       // corrupted into replacement characters.
       const decoder = new TextDecoder("utf-8");
@@ -123,7 +126,15 @@ export class HerdrClient {
             /* ignore */
           }
           socket = null;
+        } else if (cancelDial) {
+          // Timed out (or failed) while still connecting — abort the in-flight dial.
+          try {
+            cancelDial();
+          } catch {
+            /* ignore */
+          }
         }
+        cancelDial = null;
       };
       const timer = setTimeout(
         () => finish(() => reject(new Error(`herdr ${method}: timed out after ${this.timeoutMs}ms`))),
@@ -131,6 +142,9 @@ export class HerdrClient {
       );
 
       dialHerdr(this.socketPath, {
+        onDial(cancel) {
+          cancelDial = cancel;
+        },
         open(s) {
           socket = s;
         },
@@ -218,6 +232,7 @@ export class HerdrClient {
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     let socket: SockHandle | null = null;
+    let cancelDial: (() => void) | null = null;
     let down = false;
     let acked = false;
 
@@ -233,7 +248,16 @@ export class HerdrClient {
           /* ignore */
         }
         socket = null;
+      } else if (cancelDial) {
+        // Ack timeout (or close()) while the dial was still connecting — abort it so repeated
+        // reconnect attempts can't stack pending OS handles.
+        try {
+          cancelDial();
+        } catch {
+          /* ignore */
+        }
       }
+      cancelDial = null;
       opts.onDown(reason);
     };
 
@@ -264,6 +288,9 @@ export class HerdrClient {
     };
 
     dialHerdr(this.socketPath, {
+      onDial(cancel) {
+        cancelDial = cancel;
+      },
       open(s) {
         socket = s;
       },
