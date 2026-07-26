@@ -570,19 +570,42 @@ the host's tailnet URL rather than `127.0.0.1`.
 > untouched** (verified: it arrives at the bridge unmodified). Your proxy's mandatory *override* only
 > protects the proxy path; on the direct path there is no override, so a tailnet peer who supplies an
 > allow-listed id gets full write access. Device ids are human-readable names, so treat them as
-> guessable, not secret. **Restrict who can reach the port at all:**
+> guessable, not secret. **Restrict who can reach the port at all.**
+>
+> On Tailscale (or headscale ≥ 0.29), `grants`:
 >
 > ```jsonc
-> // tailnet policy — only the ingress node may reach the bridge's port
 > "grants": [
 >   { "src": ["tag:ingress"], "dst": ["tag:agent-host"], "ip": ["tcp:8787"] },
 > ]
 > ```
 >
+> On **headscale ≤ 0.28** `grants` does not exist, and an unparseable policy will take the control
+> plane down rather than fail safe — use the older `acls:` form. Tags may not be an option either:
+> 0.28 makes tag ownership and user ownership mutually exclusive, so tagging a node can detach it from
+> its user. Name the nodes or users directly instead:
+>
+> ```yaml
+> acls:
+>   - action: accept
+>     src: ["ingress-node"]
+>     dst: ["agent-host:8787"]
+> ```
+>
+> **Adding that rule is not enough on its own.** These policies are default-deny, so a broad rule you
+> already have (`dst: ["agent-host:*"]`) will keep the port open to everyone it covers. The port has
+> to be *carved out* of the broader grant, which in practice means splitting the range:
+>
+> ```yaml
+>   - action: accept
+>     src: ["my-phone", "my-laptop"]
+>     dst: ["agent-host:1-8786", "agent-host:8788-65535"]   # everything EXCEPT the bridge
+> ```
+>
 > Per-device auth is still required, and it does real work: since 0.15.0 a request arriving *without*
 > the header is read-only, so a stray client, another service or the host's own loopback URL can watch
-> but never drive. What it cannot do is stop a peer who deliberately sets the header. The ACL is what
-> stops that, and the two together are the posture.
+> but never drive. What it cannot do is stop a caller who deliberately sets the header. The ACL is
+> what stops that, and the two together are the posture.
 
 **Host and Origin are different values here** — the one place this trips people up. `tailscale serve`
 Host-routes on the host's own MagicDNS name, so the proxy generally must rewrite `Host` to the
@@ -604,24 +627,41 @@ COLLIE_ALLOWED_ORIGINS=https://collie.example.com     # the public origin the br
 > useful for rejecting nodes owned by a *different* tailnet user (shared machines), so it is worth
 > setting; it just cannot tell your own devices apart. The device header does that.
 
-**Is it actually working?** Three probes, from a tailnet device that is *not* the ingress node:
+**Is it actually working?** Two controls are doing the work here — the ACL decides *who reaches the
+port*, the device gate decides *what a request that got there may do* — and each has to be tested
+from a machine that can actually observe it.
+
+**From a tailnet peer** (your phone, a laptop — anything that is neither the ingress node nor the
+agent host):
 
 ```console
 $ curl -s https://collie.example.com/api/snapshot | jq -c .device
 {"enforced":true,"device":"my-phone","authorized":true}
 
-$ curl -s http://host.your-tailnet.ts.net:8787/api/snapshot | jq -c .device
-{"enforced":true,"device":null,"authorized":false}
-
-$ curl -s -H 'X-Tailnet-Device: my-phone' http://host.your-tailnet.ts.net:8787/api/snapshot
+$ curl -s --max-time 10 -H 'X-Tailnet-Device: my-phone' http://host.your-tailnet.ts.net:8787/api/snapshot
 curl: (28) Connection timed out
 ```
 
-The first proves the proxy injects the header *and* that the id is allow-listed. The second proves a
-header-less direct request is read-only — **if it says `"authorized":true`, your bridge predates
-0.15.0** and every tailnet peer can drive your agents; update before going further. The third is the
-one people skip: it must **fail to connect**, because the ACL denied it. If it instead returns
-`"authorized":true`, your ACL isn't in place and the device gate alone will not save you.
+The first proves the proxy injects the header *and* that the id is allow-listed. The second is the
+one people skip: it must **fail to connect**. A reply of any kind means that peer reached the port
+directly, and since the header is forgeable there, your forward-auth is decoration for anyone who
+bothers.
+
+**On the agent host** (where the port is reachable by definition, so the gate is what's under test):
+
+```console
+$ curl -s http://127.0.0.1:8787/api/snapshot | jq -c .device
+{"enforced":true,"device":null,"authorized":false}
+```
+
+A header-less request must be read-only. **If it says `"authorized":true`, your bridge predates
+0.15.0** — update before going further.
+
+> ⚠️ **Don't test reachability from the agent host.** A connection to your own tailnet IP is handled
+> locally and never crosses the peer packet filter, so `curl http://host.your-tailnet.ts.net:8787`
+> succeeds *there* even when the ACL is flawless. It is the most obvious machine to test from, since
+> it's the one you're configuring, and it will tell you your ACL is broken when it isn't. Reachability
+> is only observable from a second device.
 
 ## Windows (experimental)
 
