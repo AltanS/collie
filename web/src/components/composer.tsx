@@ -17,6 +17,7 @@ import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
+import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 
 export interface ComposerHandle {
@@ -36,6 +37,9 @@ interface ComposerProps {
   gone: boolean;
   /** This device isn't authorised to type — locks the composer with a distinct placeholder. */
   readOnly: boolean;
+  /** A dialog (prompt/wizard/preview/multi-select) is on screen, so the TUI's keyboard belongs to it.
+   * Free-text sending is refused while true — see send(). Answer it with its own buttons instead. */
+  dialogPresent: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -111,7 +115,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, session, agent, isShell, gone, readOnly, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
+  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -274,6 +278,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function send(value: string, isDraft: boolean) {
     const t = value.trim();
     if (!t || locked || sending) return;
+    // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
+    // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
+    // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
+    // kept: the user answers the dialog with its own buttons, then taps Send again. We never
+    // queue-and-auto-send, because the text may be a reaction to state the dialog just changed —
+    // sending is consent, and the conditions moved.
+    if (dialogPresent) {
+      setStatus("A dialog is waiting — answer it first, then send.", "error");
+      return;
+    }
     setSending(true);
     try {
       // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
@@ -301,8 +315,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         await new Promise((resolve) => setTimeout(resolve, TUI_SETTLE_MS));
       }
 
-      const res = await api.sendReply(paneId, t, true, session);
-      if (res.ok) {
+      // Guarded: types the text, verifies it reached the input box, and only THEN sends the submit
+      // key. A "stalled" outcome means nothing was submitted and the draft must survive (#34).
+      const res = await sendGuardedReply({ paneId, text: t, agent, session });
+      if (res.status === "sent") {
         if (isDraft) setInput(""); // phone-owned input — clear it once the reply is on its way
         // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
         // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
@@ -313,9 +329,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           setHandledKey(normalizeDraft(effectiveRaw));
           setPreviewLatched(false);
         }
-        // ✓ flash on the send button + status line acknowledge the send immediately. The mirror only
-        // echoes in 1–3s; the "You sent: …" pending preview keeps the typed text visible until it
-        // lands (cleared by the next text update or a 6s safety timeout).
+        // ✓ flash on the send button + status line acknowledge a VERIFIED send (the text was seen in
+        // the input box before the submit key went out), so this lands slightly later than the old
+        // fire-and-forget ✓ but is now actually true. The "You sent: …" pending preview keeps the
+        // typed text visible until the mirror catches up (cleared by the next text update or a 6s
+        // safety timeout).
         setJustSent(true);
         if (sentTimer.current) clearTimeout(sentTimer.current);
         sentTimer.current = setTimeout(() => setJustSent(false), 1500);
@@ -326,9 +344,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
         onSent(); // you just acted — snap the mirror back to the live tail to see the result
       } else {
-        // textDelivered: text landed but Enter failed — keep the draft and surface the bridge's
-        // partial-failure message so the user checks the pane instead of double-sending.
-        setStatus(res.error ?? "Send failed", "error");
+        // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
+        // probably holding focus). "error" with textDelivered = the text is in the pane but the
+        // submit failed. Either way the draft stays put: the user checks the pane rather than
+        // double-sending, and on a stall their message is still here to re-send once the dialog is
+        // answered.
+        setStatus(res.error, "error");
       }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e), "error");
