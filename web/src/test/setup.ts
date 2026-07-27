@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { setupServer } from "msw/node";
 
-import { handlers } from "./handlers";
+import { handlers, resetTypedDraft } from "./handlers";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`.
@@ -18,6 +18,7 @@ beforeEach(() => __resetConnectionHealth());
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  resetTypedDraft(); // the fake pane's input line, so a draft can't leak into the next test
 });
 afterAll(() => server.close());
 
