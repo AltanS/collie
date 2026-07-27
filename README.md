@@ -17,7 +17,7 @@ serving a Vite + React + shadcn PWA.
 ## Contents
 
 - [Demo](#demo)
-- [Security — read first](#-security--read-before-you-run-it)
+- [Security — read first](#%EF%B8%8F-security--read-before-you-run-it)
 - [Requirements](#requirements)
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
@@ -76,9 +76,14 @@ keystrokes into a live terminal pane, so anyone who can reach the URL can read e
 secrets, env, agent output) and run any command as your user. No sandbox, no command allow-list
 (that would defeat the purpose). Treat the URL like a root login.
 
-Three sharp edges:
+Four sharp edges:
 
 - **It acts as _you_**, with your full privileges — `~/.ssh`, `git push --force`, `rm -rf`, `sudo`.
+- **It's reachable by every uid on the host, not just yours.** Herdr's socket is a file, so its
+  permissions keep other local users out; Collie's port is TCP, so they're all in. An agent you
+  deliberately ran as another user to contain it can still `curl 127.0.0.1:8787` and type into any
+  pane. Set the device gate below if that uid boundary was your containment
+  ([ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
 - **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it.
   No password, no session — an unlocked or stolen phone (or anyone else on your tailnet) is an open
   shell. The idle-lock is UX, not auth. Every write action (replies, keys, uploads, pane/tab
@@ -96,7 +101,9 @@ It's built single-user and tailnet-only. The defenses:
   TLS, injects the identity header) or a conforming reverse proxy
   ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)). Never
   `tailscale funnel`, never a bare port.
-- **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject anyone but you.
+- **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject any tailnet login but yours. It
+  rejects a *mismatching* `Tailscale-User-Login` and passes an absent one, so it narrows who is
+  trusted under `tailscale serve` (which always injects it) rather than mandating the header.
 - **Optional per-device gate** — behind a proxy that injects a device-identity header, set
   `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` so only allowlisted devices can drive agents;
   any other device is read-only, and so is a request that arrives without the header at all. Off by
@@ -524,7 +531,8 @@ COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to 
 ```
 
 > ⚠️ **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only
-> `tailscale serve` injects — with no Tailscale in the path there is no injector, and the bridge
+> `tailscale serve` injects — with no Tailscale in the path there is no injector, so the check has
+> nothing to compare against and every request passes it. It fails *open*, not closed, and the bridge
 > logs a startup warning saying so. **Per-device auth (`COLLIE_DEVICE_HEADER`) is the write gate**,
 > and the **proxy must provide TLS and its own access control** — anyone who reaches the proxy gets
 > read access to every pane. Give the proxy the same respect you'd give the tailnet.
@@ -692,8 +700,10 @@ Three things to get right, none of them Collie-specific:
    apply verbatim.** Loopback upstream, the public `Host` forwarded unchanged (or listed in
    `COLLIE_ALLOWED_ORIGINS`), and — if you use the device gate — the identity header **overridden**
    on every request, never merely added.
-2. **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only
-   `tailscale serve` injects. If your tunnel authenticates and injects a device identity, use
+2. **`COLLIE_TRUSTED_USER` does nothing here**, for the reason it does nothing behind a reverse proxy
+   ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)): nothing injects
+   `Tailscale-User-Login`, so the check passes every request rather than blocking it, and the bridge
+   warns about that at startup. If your tunnel authenticates and injects a device identity, use
    `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` instead; if it authenticates but injects
    nothing, its own auth *is* the whole gate and anyone who passes it gets full Collie access.
 3. **Pin a stable hostname before you install the PWA.** A service-worker cache is per-origin, and
@@ -701,10 +711,11 @@ Three things to get right, none of them Collie-specific:
    install each time and makes `COLLIE_PUBLIC_HOSTS` unpinnable.
 
 > ⚠️ **Anything that publishes to the open internet is a `funnel` by another name.** The rule in
-> [Security](#-security--read-before-you-run-it) isn't about Tailscale, it's about reachability: this
-> socket is a shell running as you. If your tunnel offers a public URL, the auth in front of it is
-> the only thing between a stranger and that shell, so treat a shared PIN the way you'd treat a root
-> password — and prefer a tunnel scoped to your own devices over a public URL with a gate on it.
+> [Security](#%EF%B8%8F-security--read-before-you-run-it) isn't about Tailscale, it's about
+> reachability: this socket is a shell running as you. If your tunnel offers a public URL, the auth
+> in front of it is the only thing between a stranger and that shell, so treat a shared PIN the way
+> you'd treat a root password — and prefer a tunnel scoped to your own devices over a public URL
+> with a gate on it.
 
 ## Windows (experimental)
 
@@ -720,7 +731,7 @@ What that means in practice:
   therefore still declares `linux`/`macos` only, rather than advertising buttons that may not fire.
 - **`tailscale serve` isn't wired up here.** Use the [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
   posture: loopback bind, your own ingress in front, `COLLIE_PUBLIC_HOSTS` pinned. The security
-  rules in [§Security](#️-security--read-before-you-run-it) are not relaxed on Windows.
+  rules in [§Security](#%EF%B8%8F-security--read-before-you-run-it) are not relaxed on Windows.
 - **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
   (an explicit `\\.\pipe\…` value is passed through untouched).
