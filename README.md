@@ -82,8 +82,11 @@ Four sharp edges:
 - **It's reachable by every uid on the host, not just yours.** Herdr's socket is a file, so its
   permissions keep other local users out; Collie's port is TCP, so they're all in. An agent you
   deliberately ran as another user to contain it can still `curl 127.0.0.1:8787` and type into any
-  pane. Set the device gate below if that uid boundary was your containment
-  ([ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
+  pane. Set the device gate below if that uid boundary was your containment — but it gates **writes
+  only**. Snapshots, pane output and transcript history stay readable by any local uid, so the gate
+  bounds damage, not disclosure
+  ([Variant B](#variant-b--identity-aware-proxy--per-device-authorisation),
+  [ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
 - **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it.
   No password, no session — an unlocked or stolen phone (or anyone else on your tailnet) is an open
   shell. The idle-lock is UX, not auth. Every write action (replies, keys, uploads, pane/tab
