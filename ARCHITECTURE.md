@@ -182,9 +182,13 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   So a process running as a *different* user — an agent you deliberately put under
   `sudo -u agent-review` to contain it — cannot open your herdr socket but **can** open
   `127.0.0.1:$COLLIE_PORT` and drive any pane in the herd. Installing Collie removes that uid
-  boundary; if it is the containment you were relying on, close the port with the device gate below,
-  which is the one write gate that doesn't rest on "local means trusted" (raised in
-  [#33](https://github.com/AltanS/collie/issues/33)).
+  boundary; if it is the containment you were relying on, the device gate below makes that port
+  **read-only** — the one write gate that doesn't rest on "local means trusted". Note its scope: it
+  gates writes and only writes, so that uid keeps reading snapshots, pane output and transcript
+  history. It bounds damage, not disclosure. Closing the read side is outside what the bridge does —
+  it needs the port not to be shared in the first place (its own network namespace, or a uid
+  owner-match filter such as nftables `meta skuid`); a plain port firewall rule won't stop a
+  same-host peer (raised in [#33](https://github.com/AltanS/collie/issues/33)).
   Under `tailscale serve`, the `Tailscale-User-Login` header is the person gate — trusted **only**
   when the request source is loopback (i.e. it came from tailscaled). `COLLIE_TRUSTED_USER` rejects a
   *mismatching* login and **passes an absent one**: it narrows which tailnet user is trusted, it does
