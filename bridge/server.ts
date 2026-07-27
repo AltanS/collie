@@ -215,6 +215,14 @@ export function startServer(opts: {
 
       // ── Misc API ─────────────────────────────────────────────────────────
       if (pathname === "/api/config") {
+        // Read-level, like the other non-terminal endpoints. Nothing here is secret — the VAPID
+        // public key is handed to every browser by design — but this was the one route that skipped
+        // checkAccess entirely, so COLLIE_PUBLIC_HOSTS didn't cover it and a rebound DNS name could
+        // still read the build id. The client only ever calls this same-origin, and a refusal can't
+        // be mistaken for an outage: ConnectionBanner short-circuits to AuthErrorBanner before its
+        // red-state probe runs. Noted in #32.
+        const denied = guard(req, cfg, "read");
+        if (denied) return denied;
         return json({
           push: push.enabled,
           vapidPublicKey: push.publicKey,
