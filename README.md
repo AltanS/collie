@@ -17,7 +17,7 @@ serving a Vite + React + shadcn PWA.
 ## Contents
 
 - [Demo](#demo)
-- [Security — read first](#-security--read-before-you-run-it)
+- [Security — read first](#%EF%B8%8F-security--read-before-you-run-it)
 - [Requirements](#requirements)
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
@@ -711,10 +711,11 @@ Three things to get right, none of them Collie-specific:
    install each time and makes `COLLIE_PUBLIC_HOSTS` unpinnable.
 
 > ⚠️ **Anything that publishes to the open internet is a `funnel` by another name.** The rule in
-> [Security](#-security--read-before-you-run-it) isn't about Tailscale, it's about reachability: this
-> socket is a shell running as you. If your tunnel offers a public URL, the auth in front of it is
-> the only thing between a stranger and that shell, so treat a shared PIN the way you'd treat a root
-> password — and prefer a tunnel scoped to your own devices over a public URL with a gate on it.
+> [Security](#%EF%B8%8F-security--read-before-you-run-it) isn't about Tailscale, it's about
+> reachability: this socket is a shell running as you. If your tunnel offers a public URL, the auth
+> in front of it is the only thing between a stranger and that shell, so treat a shared PIN the way
+> you'd treat a root password — and prefer a tunnel scoped to your own devices over a public URL
+> with a gate on it.
 
 ## Windows (experimental)
 
@@ -730,7 +731,7 @@ What that means in practice:
   therefore still declares `linux`/`macos` only, rather than advertising buttons that may not fire.
 - **`tailscale serve` isn't wired up here.** Use the [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
   posture: loopback bind, your own ingress in front, `COLLIE_PUBLIC_HOSTS` pinned. The security
-  rules in [§Security](#️-security--read-before-you-run-it) are not relaxed on Windows.
+  rules in [§Security](#%EF%B8%8F-security--read-before-you-run-it) are not relaxed on Windows.
 - **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
   (an explicit `\\.\pipe\…` value is passed through untouched).
