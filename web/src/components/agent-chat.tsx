@@ -182,6 +182,22 @@ export function AgentChat({
         : null,
     [display, agent?.agent, grammarsOn],
   );
+  // Is a dialog (prompt/wizard/preview/multi-select) on screen right now? Any non-raw block means
+  // the TUI's keyboard belongs to it, so the composer must refuse a free-text send: the text would
+  // be swallowed and the submit key would answer the dialog (#34). Same parse source and adapter as
+  // the two probes above, so the three can't drift. This is the zero-latency fail-fast; the
+  // load-bearing protection is reply-action's verify-before-submit, which also covers a dialog that
+  // appears after this render.
+  const dialogPresent = useMemo(
+    () =>
+      grammarsOn
+        ? (adapterFor(agent?.agent)?.buildBlocks(splitLines(parseAnsi(display))) ?? []).some(
+            (b) => b.kind !== "raw",
+          )
+        : false,
+    [display, agent?.agent, grammarsOn],
+  );
+
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
   // is stateless, so it can't distinguish a stranded draft from the ~350ms flash where our OWN
   // just-sent reply sits on the "❯" line waiting for the bridge's pending Enter. The stabilised value
@@ -731,6 +747,7 @@ export function AgentChat({
             isShell={isShell}
             gone={gone}
             readOnly={readOnly}
+            dialogPresent={dialogPresent}
             text={text}
             terminalDraft={terminalDraft}
             rawTerminalDraft={rawTerminalDraft}
