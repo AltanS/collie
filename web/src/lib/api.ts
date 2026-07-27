@@ -113,7 +113,14 @@ function captureBuild(res: Response): void {
   observeServerBuild(res.headers.get(SERVER_BUILD_HEADER));
 }
 
-async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * Lets ONE caller claim a non-ok response instead of having it thrown. The transport stays generic:
+ * it knows a caller may recognise a refusal and turn it into a normal value, but nothing about which
+ * status or which body shape. Return null to fall through to the usual {@link ApiError}.
+ */
+type Recover<T> = (status: number, detail: string) => T | null;
+
+async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise<T> {
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init?.method?.toUpperCase() ?? "GET";
   const timeoutMs = method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS;
@@ -125,10 +132,8 @@ async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
   captureBuild(res);
   if (!res.ok) {
     const detail = await errorDetail(res);
-    if (res.status === 409) {
-      const changed = promptChangedResponse(detail);
-      if (changed) return changed as T;
-    }
+    const recovered = recover?.(res.status, detail);
+    if (recovered !== null && recovered !== undefined) return recovered;
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status);
   }
   if (res.status === 204) return undefined as T;
@@ -138,8 +143,8 @@ async function doReq<T>(path: string, init?: RequestInit): Promise<T> {
 // Every mutating request (non-GET) feeds the app-wide busy signal so the top progress bar shows
 // while it's in flight; GET reads (snapshot/config polling) don't, or the bar would never rest.
 // trackBusy increments synchronously, so a caller sees `isBusy()` true the instant it fires.
-function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const op = doReq<T>(path, init);
+function req<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise<T> {
+  const op = doReq<T>(path, init, recover);
   const method = init?.method?.toUpperCase() ?? "GET";
   return method === "GET" ? op : trackBusy(op);
 }
@@ -268,13 +273,20 @@ export function sendKeys(
   session?: string,
   expectedPrompt?: string,
 ): Promise<ActionResponse> {
-  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/keys`, session), {
-    method: "POST",
-    body: JSON.stringify({
-      keys,
-      ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
-    }),
-  });
+  return req<ActionResponse>(
+    withSession(`/api/pane/${encodeURIComponent(paneId)}/keys`, session),
+    {
+      method: "POST",
+      body: JSON.stringify({
+        keys,
+        ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
+      }),
+    },
+    // A rejected binding is this endpoint's normal answer, not a transport failure: the bridge
+    // refuses the write because the prompt moved, and the caller renders "the dialog changed".
+    // Claiming it here keeps that knowledge with the feature that sends `expected_prompt`.
+    (status, detail) => (status === 409 ? promptChangedResponse(detail) : null),
+  );
 }
 
 /** Close a pane ("kill the agent"). */

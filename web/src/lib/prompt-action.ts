@@ -70,10 +70,10 @@ export async function submitPromptOption(args: {
     promptsEqual,
     (model) => model.signature,
   );
-  if (typeof guarded !== "string") return guarded;
+  if (!guarded.ok) return guarded.result;
 
   try {
-    const res = await sendKeys(paneId, option.keys, session, guarded);
+    const res = await sendKeys(paneId, option.keys, session, guarded.region);
     if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };

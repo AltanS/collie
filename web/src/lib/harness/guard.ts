@@ -20,6 +20,16 @@ export type ActionResult =
   | { status: "changed" }
   | { status: "error"; error: string };
 
+/**
+ * What {@link entryGuard} returns. Discriminated on `ok`, the same shape the bridge side uses for
+ * `PromptBindingResult`, `ExpectedPrompt` and `PromptBindingCheck`, so both ends of this feature
+ * read alike. The passing case carries its payload instead of borrowing a type that reads as a
+ * failure, and no call site has to reason about truthiness to tell the two apart.
+ */
+export type GuardOutcome =
+  | { ok: true; region: string }
+  | { ok: false; result: ActionResult };
+
 /** Test seam for the verification polls' pacing. */
 export type Sleep = (ms: number) => Promise<void>;
 export const defaultSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,12 +58,9 @@ export async function readModel<M>(
  * The shared entry guard: a FRESH pane read, the UNCONDITIONAL revision check, and a full model
  * re-derivation compared (via `equals`) against `tapped` — what the user actually tapped.
  *
- * The return is two-valued and discriminated by TYPE, not by truthiness: an `ActionResult` object
- * means the guard refused (`"changed"`) or the read failed, and a STRING means it passed and carries
- * the verified region (via `regionOf`) that the caller binds to its write. A bare string reads oddly
- * at first glance, but it keeps the passing path impossible to confuse with a result object, and
- * callers discriminate with `typeof guarded !== "string"`. Note the old contract returned `null` on
- * success, so a truthiness check here would now treat a passing guard as a failure.
+ * Returns a {@link GuardOutcome}: `{ ok: false, result }` when the guard refused (`"changed"`) or
+ * the read failed, and `{ ok: true, region }` when it passed, carrying the verified region (via
+ * `regionOf`) that the caller binds to its write.
  *
  * The region the caller gets back is the one derived from THIS fresh read, so it describes the pane
  * as of a moment ago, not as of the render the user tapped. That is deliberate: the client guard has
@@ -72,25 +79,28 @@ export async function entryGuard<M>(
   detect: Detect<M>,
   equals: (a: M, b: M) => boolean,
   regionOf: RegionOf<M>,
-): Promise<ActionResult | string> {
+): Promise<GuardOutcome> {
   let fresh;
   try {
     fresh = await readModel(args.paneId, args.requestedLines, args.session, detect);
   } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
+    const error = e instanceof Error ? e.message : String(e);
+    return { ok: false, result: { status: "error", error } };
   }
 
   // Revision check is UNCONDITIONAL: a 304 only means "unchanged since the last poll", and polls
   // keep advancing the ETag cache under a frozen mirror — it does NOT vouch for the snapshot the
   // user actually tapped on. The cached 304 body carries its revision, so this covers both paths.
-  if (fresh.revision !== args.detectedRevision) return { status: "changed" };
+  if (fresh.revision !== args.detectedRevision) return { ok: false, result: { status: "changed" } };
   // EMPIRICAL (Herdr 0.7.x, live-verified 2026-07-05): pane.read's `revision` is a stub upstream —
   // it is always 0, even for actively-changing panes. The gate above is therefore defense-in-depth
   // for future Herdr versions, NOT load-bearing. So the model re-derivation below runs on EVERY
   // path, including 304: the fresh (= latest cached) text is exactly what a tap on a possibly
   // frozen mirror must be compared against. One parse per tap — taps are rare, correctness isn't.
-  if (!fresh.model || !equals(fresh.model, tapped)) return { status: "changed" };
-  return regionOf(fresh.model);
+  if (!fresh.model || !equals(fresh.model, tapped)) {
+    return { ok: false, result: { status: "changed" } };
+  }
+  return { ok: true, region: regionOf(fresh.model) };
 }
 
 /**
