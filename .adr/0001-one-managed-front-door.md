@@ -29,10 +29,9 @@ Three things settled it, each checked rather than assumed:
 1. **Nobody was blocked.** `COLLIE_SKIP_SERVE=1` plus `netbird expose 8787` *is* the whole
    integration. What the PR added on top was supervision and teardown of that one command — the same
    thing Variant C already, deliberately, declines to do for anyone's Caddy.
-2. **We would have been shipping blind.** NetBird isn't installed on the deployment host, there's no
-   CI for it, and shell code sat outside both test suites. Its CLI contract — flag names, the v0.66
-   floor, what `expose` actually publishes — would have been maintained by reading a PR description.
-   Two prior PRs from a different contributor had described changes their diffs did not contain.
+2. **We would have been shipping blind.** NetBird isn't installed on the deployment host and there's
+   no CI for it, so its CLI contract — flag names, the v0.66 floor, what `expose` actually publishes
+   — would have been maintained by reading a PR description rather than by anything that runs.
 3. **Managing someone else's authenticated process means owning their credentials.** The PR
    demonstrated the cost rather than hypothesising it: the generated runner passed `--with-pin` and
    `--with-password` as command-line arguments, so `ps -eo args` and `/proc/<pid>/cmdline` (mode
