@@ -113,7 +113,7 @@ export async function submitPreviewOption(
     previewsEqual,
     (model) => model.regionSignature,
   );
-  if (typeof guarded !== "string") return guarded;
+  if (!guarded.ok) return guarded.result;
 
   try {
     // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
@@ -121,7 +121,7 @@ export async function submitPreviewOption(
       args.paneId,
       [String(args.option.n)],
       args.session,
-      guarded,
+      guarded.region,
     );
     if (!digit.ok && digit.code === "prompt_changed") return { status: "changed" };
     if (!digit.ok) return { status: "error", error: digit.error };
@@ -172,14 +172,14 @@ export async function submitPreviewNote(
     previewsEqual,
     (model) => model.regionSignature,
   );
-  if (typeof guarded !== "string") return guarded;
+  if (!guarded.ok) return guarded.result;
 
   const text = sanitizeTypedText(args.text, NOTE_MAX_LENGTH);
   const editing = (m: PreviewSelectModel) => coreEqual(m, args.preview) && m.note.state === "editing";
 
   try {
     // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const open = await sendKeys(args.paneId, ["n"], args.session, guarded);
+    const open = await sendKeys(args.paneId, ["n"], args.session, guarded.region);
     if (!open.ok && open.code === "prompt_changed") return { status: "changed" };
     if (!open.ok) return { status: "error", error: open.error };
   } catch (e) {
@@ -270,10 +270,10 @@ export async function submitPreviewKeys(
     previewsEqual,
     (model) => model.regionSignature,
   );
-  if (typeof guarded !== "string") return guarded;
+  if (!guarded.ok) return guarded.result;
   try {
     // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const res = await sendKeys(args.paneId, args.keys, args.session, guarded);
+    const res = await sendKeys(args.paneId, args.keys, args.session, guarded.region);
     if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
