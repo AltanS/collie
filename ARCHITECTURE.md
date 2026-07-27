@@ -176,14 +176,28 @@ into live terminals). The posture is single-user, behind one hardened front door
 default). These four are genuine RCE vectors and are **load-bearing — do not regress them:**
 
 - **The bridge binds `127.0.0.1` only** and lets its single front door proxy it. Binding `0.0.0.0`
-  makes the whole access check theater. Under `tailscale serve`, the `Tailscale-User-Login` header is
-  the person gate — trusted **only** when the request source is loopback (i.e. it came from
-  tailscaled), with the owner login asserted and any other tailnet user rejected. That header exists
-  **only** under `tailscale serve` ingress; under a reverse-proxy front door
+  makes the whole access check theater. But be exact about what that bind buys: it bounds **remote**
+  reach, not local. Herdr's socket is a filesystem object, so its permissions bound callers to the
+  owning uid; a TCP port bounds callers to the network namespace, which every uid on the host shares.
+  So a process running as a *different* user — an agent you deliberately put under
+  `sudo -u agent-review` to contain it — cannot open your herdr socket but **can** open
+  `127.0.0.1:$COLLIE_PORT` and drive any pane in the herd. Installing Collie removes that uid
+  boundary; if it is the containment you were relying on, close the port with the device gate below,
+  which is the one write gate that doesn't rest on "local means trusted" (raised in
+  [#33](https://github.com/AltanS/collie/issues/33)).
+  Under `tailscale serve`, the `Tailscale-User-Login` header is the person gate — trusted **only**
+  when the request source is loopback (i.e. it came from tailscaled). `COLLIE_TRUSTED_USER` rejects a
+  *mismatching* login and **passes an absent one**: it narrows which tailnet user is trusted, it does
+  not mandate the header. That is safe under `tailscale serve`, which injects it on every request, and
+  not safe behind anything that might stop injecting it — the header exists **only** under
+  `tailscale serve` ingress. Under a reverse-proxy front door
   ([README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
   there is none, and the equivalent write gate is **per-device auth** (`COLLIE_DEVICE_HEADER`) with
-  the proxy contract (README Variant B/C requirements) as the load-bearing piece. The loopback bind is
-  load-bearing either way.
+  the proxy contract (README Variant B/C requirements) as the load-bearing piece. That gate **fails
+  closed since 0.15.0**: with `COLLIE_DEVICE_HEADER` set, a request arriving without the header is
+  read-only, so reaching the port is no longer sufficient to write. Device ids are names your proxy
+  asserts, not secrets — treat them as guessable and keep the front door and its ACL as the real
+  containment.
 - **`pane.read` output renders safely** — it's attacker-influenceable (filenames, agent output,
   fetched web content). Never `innerHTML`; it renders as React text nodes under a **strict CSP**
   (`default-src 'self'`), so an escaping miss can't run injected script that calls back into the
