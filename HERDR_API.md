@@ -35,6 +35,20 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
   **`format: "text"` returns clean plain text (no ANSI escapes)** → safe to render, no XSS surface.
 - `agent.send` writes literal text only; to submit a reply, follow with an Enter keypress
   (`pane.send_keys {keys: ["Enter"]}`) — submit-key name needs live confirmation per agent.
+- **`pane.send_text` writes RAW bytes — no bracketed paste.** Live-probed 2026-07-27 (herdr 0.7.4) by
+  sending into a pane running `/usr/bin/cat -v`, which renders control bytes visibly: the text came
+  back bare, with no `^[[200~` / `^[[201~` framing. Two consequences worth keeping:
+  - A PTY is an ordered byte stream, so a following `send_keys` **cannot** overtake the text. Any
+    "the Enter arrived before the text" theory is dead on arrival — including blaming the settle
+    delay between the two calls (`sendReplySteps`, `bridge/server.ts`). See #34, where that was the
+    first and wrong hypothesis.
+  - A `\n` inside `text` is delivered as a real newline keypress, not as pasted content. What the TUI
+    does with it (submit vs. insert) is the harness's choice, not something the paste framing hides.
+- **An ack means "herdr took the bytes", never "the TUI acted on them".** Both `send_text` and
+  `send_keys` return before the target program has read, let alone rendered, anything. So a
+  successful RPC pair is not evidence a reply was delivered — a focused TUI dialog can swallow the
+  text and consume the Enter with both calls reporting success. Anything that needs delivery
+  *confirmed* must read the pane back and look (`web/src/lib/reply-action.ts`).
 
 ## `session.snapshot` — one RPC, the whole herd (new in 0.7.2)
 
