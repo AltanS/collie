@@ -531,7 +531,8 @@ COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to 
 ```
 
 > ⚠️ **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only
-> `tailscale serve` injects — with no Tailscale in the path there is no injector, and the bridge
+> `tailscale serve` injects — with no Tailscale in the path there is no injector, so the check has
+> nothing to compare against and every request passes it. It fails *open*, not closed, and the bridge
 > logs a startup warning saying so. **Per-device auth (`COLLIE_DEVICE_HEADER`) is the write gate**,
 > and the **proxy must provide TLS and its own access control** — anyone who reaches the proxy gets
 > read access to every pane. Give the proxy the same respect you'd give the tailnet.
@@ -699,8 +700,10 @@ Three things to get right, none of them Collie-specific:
    apply verbatim.** Loopback upstream, the public `Host` forwarded unchanged (or listed in
    `COLLIE_ALLOWED_ORIGINS`), and — if you use the device gate — the identity header **overridden**
    on every request, never merely added.
-2. **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only
-   `tailscale serve` injects. If your tunnel authenticates and injects a device identity, use
+2. **`COLLIE_TRUSTED_USER` does nothing here**, for the reason it does nothing behind a reverse proxy
+   ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)): nothing injects
+   `Tailscale-User-Login`, so the check passes every request rather than blocking it, and the bridge
+   warns about that at startup. If your tunnel authenticates and injects a device identity, use
    `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` instead; if it authenticates but injects
    nothing, its own auth *is* the whole gate and anyone who passes it gets full Collie access.
 3. **Pin a stable hostname before you install the PWA.** A service-worker cache is per-origin, and
