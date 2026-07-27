@@ -5,7 +5,18 @@ Tailscale. A mobile-first PWA (Vite + React + TS + Tailwind v4 + shadcn) plus a 
 talks to Herdr's Unix socket, letting you monitor and reply to agents from a phone. The Herdr
 plugin id is `herdr.collie` (manifest: `herdr-plugin.toml`). Orientation:
 [`README.md`](./README.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · verified API
-[`HERDR_API.md`](./HERDR_API.md).
+[`HERDR_API.md`](./HERDR_API.md) · decisions [`.adr/`](./.adr/).
+
+## Decision records — read before reopening a settled question
+
+[`.adr/`](./.adr/) holds the decisions whose reasoning would otherwise live only in a PR thread —
+specifically the ones that **close off an option someone will reasonably propose again**. If you're
+about to argue *why not* rather than *how*, check there first; if the answer isn't there and the
+decision is that shape, add one (numbering + format: [`.adr/README.md`](./.adr/README.md)).
+
+Rules elsewhere in this file stay short and normative and link to the ADR for the argument. Don't
+restate an ADR's reasoning here, and don't edit a superseded ADR into agreement with the present —
+mark it superseded and write the next one.
 
 ## Versioning — MANDATORY
 
@@ -101,9 +112,8 @@ conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-or
 identity/device gates · strict CSP. A socket call can type into a real terminal — treat the bridge as
 remote shell access.
 
-**Collie manages exactly one front door: `tailscale serve`.** That's the one this project runs and
-tests, so it's the one whose lifecycle we own (`collie-ctl.sh` publishes it, records the mapping in
-`tailscale-managed-handler`, and only ever tears down a mapping matching that record). Every other
-tunnel — NetBird, ZeroTier, Cloudflare Tunnel — is `COLLIE_SKIP_SERVE=1` + README Variant E: the
-operator owns the ingress and Collie publishes nothing. **Don't add a second managed front door**;
-we'd be maintaining a CLI contract we can't test. See PR #26 for the full reasoning.
+**Collie manages exactly one front door: `tailscale serve`** — `collie-ctl.sh` publishes it, records
+the mapping in `tailscale-managed-handler`, and only ever tears down a mapping matching that record.
+Every other tunnel (NetBird, ZeroTier, Cloudflare Tunnel) is `COLLIE_SKIP_SERVE=1` + README Variant
+E: the operator owns the ingress, Collie publishes nothing. **Don't add a second managed front
+door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
