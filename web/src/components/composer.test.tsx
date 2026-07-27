@@ -8,7 +8,22 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { server } from "@/test/setup";
+import { recordReply } from "@/test/handlers";
 import { Composer } from "./composer";
+
+// A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
+// input line — submit-only (empty text). Overriding the reply handler therefore has to keep the fake
+// pane's input line honest via recordReply, or the verification poll never passes. Helper so each
+// override says what it is asserting rather than repeating the protocol.
+function replyHandler(onTyped: (text: string) => void, onSubmit?: () => void) {
+  return http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+    const body = (await request.json()) as { text: string; submit?: boolean };
+    recordReply(body);
+    if (body.submit) onSubmit?.();
+    else onTyped(body.text);
+    return HttpResponse.json({ ok: true });
+  });
+}
 
 // Composer owns the send flow (draft → api.sendReply → clear/error) plus the destructive-command
 // two-tap guard. It uses useRevalidator, so it needs a data router like AgentChat's tests.
@@ -25,6 +40,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     isShell: false,
     gone: false,
     readOnly: false,
+    dialogPresent: false,
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
@@ -45,7 +61,67 @@ function StatusSentinel() {
   return <div data-testid="status">{status?.text ?? ""}</div>;
 }
 
+/** renderComposer + the status sentinel, for cases that assert on the status line. */
+function renderComposerWithStatus(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+  const props: ComponentProps<typeof Composer> = {
+    paneId: "w1:p1",
+    agent: "claude",
+    isShell: false,
+    gone: false,
+    readOnly: false,
+    dialogPresent: false,
+    text: "pane output",
+    terminalDraft: null,
+    rawTerminalDraft: null,
+    prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+    setWrap: vi.fn(),
+    stepFontSize: vi.fn(),
+    setRawTerminal: vi.fn(),
+    onSent: vi.fn(),
+    ...overrides,
+  };
+  const router = createMemoryRouter([
+    {
+      path: "/",
+      element: (
+        <>
+          <StatusSentinel />
+          <Composer {...props} />
+        </>
+      ),
+    },
+  ]);
+  render(<RouterProvider router={router} />);
+  return props;
+}
+
 describe("Composer — send", () => {
+  // #34: a dialog owns the TUI's keyboard. Sending free text at one loses the message AND makes the
+  // submit key answer the dialog, approving whatever was highlighted. Nothing may leave the phone.
+  it("refuses to send while a dialog is on screen, and keeps the draft", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+        calls.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      replyHandler(() => calls.push("reply")),
+    );
+    // A stranded raw draft too, so the destructive pre-clear sweep would fire if the refusal came
+    // after it instead of before — those ctrl+k/Backspaces would land in the dialog.
+    const props = renderComposerWithStatus({ dialogPresent: true, rawTerminalDraft: "leftover" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "please do not approve anything");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
+    expect(calls).toEqual([]); // no keys, no reply — nothing reached the pane at all
+    expect(box).toHaveValue("please do not approve anything"); // the message survives
+    expect(props.onSent).not.toHaveBeenCalled();
+  });
+
   it("sends non-destructive input on the first tap and clears the draft", async () => {
     const user = userEvent.setup();
     const props = renderComposer();
@@ -119,11 +195,7 @@ describe("Composer — send", () => {
         callLog.push("keys");
         return HttpResponse.json({ ok: true });
       }),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { text: string };
-        callLog.push(`reply:${body.text}`);
-        return HttpResponse.json({ ok: true });
-      }),
+      replyHandler((typed) => callLog.push(`reply:${typed}`)),
     );
     renderComposer();
     const box = screen.getByPlaceholderText(/type a reply/i);
@@ -154,6 +226,7 @@ describe("Composer — send", () => {
       isShell: false,
       gone: false,
       readOnly: false,
+      dialogPresent: false,
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
@@ -236,6 +309,7 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       isShell: false,
       gone: false,
       readOnly: false,
+      dialogPresent: false,
       text: "pane output",
       prefs: { wrap: true, fontSize: 11, rawTerminal: false },
       setWrap: vi.fn(),
@@ -449,10 +523,7 @@ describe("Composer — terminal-draft preview", () => {
         callOrder.push("keys");
         return HttpResponse.json({ ok: true });
       }),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        callOrder.push(`reply:${((await request.json()) as { text: string }).text}`);
-        return HttpResponse.json({ ok: true });
-      }),
+      replyHandler((typed) => callOrder.push(`reply:${typed}`)),
     );
     renderDraftHarness();
     strandDraft("adopted line");
@@ -506,6 +577,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       isShell: false,
       gone: false,
       readOnly: false,
+      dialogPresent: false,
       text: "pane output",
       terminalDraft: draft,
       rawTerminalDraft: draft,
@@ -538,11 +610,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
         callLog.push("keys");
         return HttpResponse.json({ ok: true });
       }),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { text: string };
-        callLog.push(`reply:${body.text}`);
-        return HttpResponse.json({ ok: true });
-      }),
+      replyHandler((typed) => callLog.push(`reply:${typed}`)),
     );
     renderEcho("/rename");
     const box = screen.getByPlaceholderText(/type a reply/i);
@@ -576,11 +644,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
         callLog.push("keys");
         return HttpResponse.json({ ok: true });
       }),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { text: string };
-        callLog.push(`reply:${body.text}`);
-        return HttpResponse.json({ ok: true });
-      }),
+      replyHandler((typed) => callLog.push(`reply:${typed}`)),
     );
     renderEcho("someone else's leftover");
     const box = screen.getByPlaceholderText(/type a reply/i);
@@ -819,13 +883,7 @@ describe("Composer — quick dock (in-flow, matches the keys dock)", () => {
   it("a quick-action tap sends its text through the reply path and closes the dock", async () => {
     const user = userEvent.setup();
     let replyText: string | null = null;
-    server.use(
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { text: string };
-        replyText = body.text;
-        return HttpResponse.json({ ok: true });
-      }),
-    );
+    server.use(replyHandler((typed) => (replyText = typed)));
     const props = renderComposer();
 
     await user.click(screen.getByRole("button", { name: "Quick" }));
