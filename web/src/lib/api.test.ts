@@ -70,6 +70,26 @@ describe("api client", () => {
     });
   });
 
+  // The bridge runs the binding check on BOTH endpoints that accept `expected_prompt`, so reply
+  // must recover a 409 exactly like keys. They are easy to let drift apart: the recovery used to be
+  // blanket handling inside the transport, and moving it to the call sites is precisely the moment
+  // one of them gets forgotten and starts throwing where the other returns a value.
+  it("returns the structured prompt_changed result instead of throwing on 409 for reply too", async () => {
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () =>
+        HttpResponse.json(
+          { ok: false, error: "prompt changed", code: "prompt_changed" },
+          { status: 409 },
+        ),
+      ),
+    );
+    await expect(sendReply("w1:p1", "hi", true, undefined, "Approve?")).resolves.toEqual({
+      ok: false,
+      error: "prompt changed",
+      code: "prompt_changed",
+    });
+  });
+
   it("uploadImage posts multipart and returns the saved path", async () => {
     server.use(
       http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/tmp/x.png" })),

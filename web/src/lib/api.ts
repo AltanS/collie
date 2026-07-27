@@ -85,6 +85,15 @@ async function errorDetail(res: Response): Promise<string> {
   }
 }
 
+/**
+ * The recover handler for the two endpoints that accept `expected_prompt`: reply and keys. A
+ * rejected binding is their normal answer, not a transport failure. The bridge refuses the write
+ * because the prompt moved, and the caller renders "the dialog changed". Both must share it, or one
+ * of them starts throwing where the other returns a value.
+ */
+const recoverPromptChanged = (status: number, detail: string): ActionResponse | null =>
+  status === 409 ? promptChangedResponse(detail) : null;
+
 function promptChangedResponse(detail: string): ActionResponse | null {
   try {
     const body = JSON.parse(detail) as {
@@ -257,14 +266,18 @@ export function sendReply(
   session?: string,
   expectedPrompt?: string,
 ): Promise<ActionResponse> {
-  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/reply`, session), {
-    method: "POST",
-    body: JSON.stringify({
-      text,
-      submit,
-      ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
-    }),
-  });
+  return req<ActionResponse>(
+    withSession(`/api/pane/${encodeURIComponent(paneId)}/reply`, session),
+    {
+      method: "POST",
+      body: JSON.stringify({
+        text,
+        submit,
+        ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
+      }),
+    },
+    recoverPromptChanged,
+  );
 }
 
 export function sendKeys(
@@ -282,10 +295,7 @@ export function sendKeys(
         ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
       }),
     },
-    // A rejected binding is this endpoint's normal answer, not a transport failure: the bridge
-    // refuses the write because the prompt moved, and the caller renders "the dialog changed".
-    // Claiming it here keeps that knowledge with the feature that sends `expected_prompt`.
-    (status, detail) => (status === 409 ? promptChangedResponse(detail) : null),
+    recoverPromptChanged,
   );
 }
 
