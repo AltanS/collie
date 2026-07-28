@@ -6,6 +6,21 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.20.0] - 2026-07-29
+
+### Added
+- **The dashboard is triaged, not listed.** Needs you → Ready · unseen → Working → Recent; the first three are pinned, Recent sorts by when you last used each pane (3850d96)
+- **Ready · unseen** — agents that finished while you weren't looking. Opening one clears it, on every device (839d0f3)
+- Recent and Spaces fold and remember it; fold both and the page is the triaged herd and nothing else (3850d96)
+- Spaces are ordered by last used and filterable — 45 of them are now three keystrokes, not a scroll (3850d96)
+- The bridge keeps two timestamps per pane (`activeAt`, `seenAt`) in `activity.json`, because Herdr reports none (839d0f3)
+
+### Changed
+- **Agent rows are titled `project · tab`, not "claude".** The pane's own name moves to the second line; the agent stays in the avatar (3850d96)
+- Spaces moved BELOW every agent section — it's a navigator, not a work queue (3850d96)
+- Only Collie's own reads count as seeing a pane; a Herdr focus at the desk does not — [ADR 0003](.adr/0003-one-shared-seen.md) (16201fe)
+- MINOR, not MAJOR: additive, no config or API break. An older bridge reports no timestamps and simply renders the previous dashboard, minus the one section that would be empty
+
 ## [0.19.0] - 2026-07-29
 
 ### Added
