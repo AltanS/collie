@@ -24,6 +24,10 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Fixed
 - Marking a pane seen had made a read-level GET mutate state, so a cross-site `<img>` at a guessed pane id could silently clear your unseen agents. Only a request carrying the app's own header counts now — caught in this release's security review, never shipped (c84c8bd)
+- **Light `--accent` was byte-identical to `--background`**, so "this is the current one" showed nothing in light mode — the open pane in the switcher, the current session, every `hover:bg-accent`. Predates this release; found by the UX sweep (a18e8a9)
+- Titles truncated away the tab — the only part that identifies a row — leaving several panes rendering the same `moonward_os · t…` (6dc6ded)
+- Section headings rendered at two different sizes and cases, because a `<button>` doesn't inherit `text-transform` from its `<h2>` (6dc6ded)
+- A hollow status ring on the avatar's corner read as a notch cut out of the logo (55cb6b9)
 
 ## [0.19.0] - 2026-07-29
 
