@@ -25,10 +25,29 @@ export const PROXY_AUTH_PATH = "/auth/";
  * Navigation paths the SW passes straight to the network. `/api/` was always here (the API must
  * never be answered from a cache); `/auth` joins it, with or without the trailing slash, so a proxy
  * can serve its page at either.
+ *
+ * These are matched against `pathname + search`, NOT pathname alone — verified in the vendored
+ * workbox-routing/NavigationRoute.js (`_match` builds `url.pathname + url.search` and tests the
+ * denylist against that). Hence `[/?]` rather than a bare `/`: a proxy that bounces you to
+ * `/auth?rd=%2Fpane%2Fw1` — the shape Authelia and oauth2-proxy both use — produces the string
+ * "/auth?rd=%2Fpane%2Fw1", and a rule anchored on a trailing slash would miss it and hand the
+ * operator the precached app shell. That is this whole bug, in its most likely real-world form.
  */
-export const NAVIGATION_NETWORK_ONLY = [/^\/api\//, /^\/auth(?:\/|$)/] as const;
+export const NAVIGATION_NETWORK_ONLY = [
+  /^\/api\//,
+  /^\/auth(?:[/?]|$)/,
+  // Cloudflare Access serves its login and callback under `/cdn-cgi/access/` and the path is NOT
+  // relocatable, so pointing the operator at `/auth/` cannot help them — the flow would break on a
+  // callback the precache swallowed. `/cdn-cgi/` is Cloudflare-reserved; Collie will never route it.
+  // Proxies whose prefix IS movable (oauth2-proxy's `--proxy-prefix`, Authelia) are documented in
+  // the README instead of listed here — this list stays for paths nobody can move.
+  /^\/cdn-cgi\//,
+] as const;
 
-/** True when the SW must not answer this pathname from the precache. Mirrors the denylist above. */
-export function isNetworkOnlyNavigation(pathname: string): boolean {
-  return NAVIGATION_NETWORK_ONLY.some((re) => re.test(pathname));
+/**
+ * True when the SW must not answer this navigation from the precache. Takes `pathname + search`,
+ * matching what workbox feeds the denylist — pass the query string if there is one.
+ */
+export function isNetworkOnlyNavigation(pathnameAndSearch: string): boolean {
+  return NAVIGATION_NETWORK_ONLY.some((re) => re.test(pathnameAndSearch));
 }

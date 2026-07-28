@@ -23,6 +23,29 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/auth/oidc/callback")).toBe(true);
   });
 
+  // Workbox tests the denylist against `url.pathname + url.search` (verified in the vendored
+  // workbox-routing/NavigationRoute.js `_match`), so these inputs carry their query string — a rule
+  // anchored on a trailing slash passes every pathname-only test above and still bricks the app the
+  // moment a proxy bounces you to `/auth?rd=…`, which is what Authelia and oauth2-proxy do.
+  it("still passes through when the proxy appends a return-to query string", () => {
+    expect(isNetworkOnlyNavigation("/auth?rd=%2F")).toBe(true);
+    expect(isNetworkOnlyNavigation("/auth?rd=%2Fpane%2Fw1%3Ap1")).toBe(true);
+    expect(isNetworkOnlyNavigation("/auth/?next=/settings")).toBe(true);
+    expect(isNetworkOnlyNavigation("/api/snapshot?s=demo")).toBe(true);
+  });
+
+  // Cloudflare Access can't move off /cdn-cgi/access/, so the reservation has to come to it.
+  it("passes Cloudflare Access's non-relocatable prefix to the network", () => {
+    expect(isNetworkOnlyNavigation("/cdn-cgi/access/login")).toBe(true);
+    expect(isNetworkOnlyNavigation("/cdn-cgi/access/callback?code=abc")).toBe(true);
+  });
+
+  it("does not leak a Collie route that merely carries a query string", () => {
+    expect(isNetworkOnlyNavigation("/authors?x=1")).toBe(false);
+    expect(isNetworkOnlyNavigation("/?s=collie-demo")).toBe(false);
+    expect(isNetworkOnlyNavigation("/pane/w1:p1?s=demo")).toBe(false);
+  });
+
   it("still owns every Collie route, so deep links keep resolving offline", () => {
     for (const path of [
       "/",
@@ -50,7 +73,8 @@ describe("service-worker navigation passthrough", () => {
   it("keeps the denylist the SW installs to exactly these two rules", () => {
     expect(NAVIGATION_NETWORK_ONLY.map(String)).toEqual([
       String(/^\/api\//),
-      String(/^\/auth(?:\/|$)/),
+      String(/^\/auth(?:[/?]|$)/),
+      String(/^\/cdn-cgi\//),
     ]);
   });
 });

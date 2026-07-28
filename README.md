@@ -570,9 +570,24 @@ collie.example.com {
 ```
 
 Collie's refusal banner links to `/auth/` when the bridge or your proxy answers 401/403, so a
-signed-out phone has a tappable way back in. If your flow lives at a path you can't move, redirect
-`/auth/` to it — the redirect is followed on the network side, where the service worker isn't
-looking.
+signed-out phone has a tappable way back in. A `?rd=`/`?next=` return-to parameter on the redirect is
+fine — the passthrough matches the query string too. If your flow lives at a path you can't move,
+redirect `/auth/` to it; the redirect is followed on the network side, where the service worker isn't
+looking. Cloudflare Access is the exception that can't be redirected, since it owns `/cdn-cgi/access/`
+outright — that prefix is reserved as well, so its flow works untouched.
+
+> ⚠️ **Let the static bundle through even when the session has lapsed** — everything except `/api/`
+> and page navigations. It is public client code with no secrets in it, and it is the only way an
+> installed app can receive an update. If your proxy refuses `/sw.js` to a signed-out client, that
+> client's service worker can never be replaced: `registration.update()` fails outright, so a device
+> that lapsed while running an old build stays on that build forever. Measured, not theorised — with
+> the bundle refused, `update()` throws; with it allowed, the worker updates cleanly while `/api/` is
+> still answering 401.
+>
+> This bites hardest on the very fix described above: a device that was already locked out **before**
+> upgrading to 0.18.0 cannot pick up the new service worker, and its `/auth/` link won't exist. Those
+> devices need their site data cleared once (browser settings → the site → clear data), then a fresh
+> load. New installs and any device that updated while signed in are unaffected.
 
 ### Variant D — off-host identity proxy over the tailnet
 
