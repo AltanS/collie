@@ -132,7 +132,9 @@ describe("toggle / escape — one guarded keystroke", () => {
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "opt1" })));
     const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 3 } });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["3"], undefined]]);
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["3"], undefined, m.regionSignature],
+    ]);
   });
 
   it("escape sends the 'Chat about this' digit", async () => {
@@ -140,7 +142,28 @@ describe("toggle / escape — one guarded keystroke", () => {
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({})));
     const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "escape" } });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["6"], undefined]]);
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["6"], undefined, m.regionSignature],
+    ]);
+  });
+
+  it("returns changed when the bound key write reports prompt_changed", async () => {
+    const m = model(checkboxBuffer({ pointer: "opt1" }));
+    mockFetchPane.mockResolvedValueOnce(paneWith(checkboxBuffer({ pointer: "opt1" })));
+    mockSendKeys.mockResolvedValueOnce({
+      ok: false,
+      error: "Prompt changed before keys were sent",
+      code: "prompt_changed",
+    });
+    const res = await submitMultiSelectIntent({
+      ...base,
+      multi: m,
+      intent: { kind: "toggle", n: 3 },
+    });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["3"], undefined, m.regionSignature],
+    ]);
   });
 
   it("toggle rejects an out-of-range digit against the model, sending nothing (no stray keystroke)", async () => {
@@ -183,7 +206,10 @@ describe("review — confirm / cancel", () => {
     expect(await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "cancel" } })).toEqual({
       status: "sent",
     });
-    expect(keysSent()).toEqual([["1"], ["2"]]);
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["1"], undefined, m.regionSignature],
+      ["w1:p1", ["2"], undefined, m.regionSignature],
+    ]);
   });
 });
 
@@ -198,7 +224,29 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
     );
     const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
     expect(res).toEqual({ status: "sent" });
-    expect(keysSent()).toEqual([["Down"], ["Down"], ["Enter"]]);
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, m.regionSignature],
+      ["w1:p1", ["Down"], undefined],
+      ["w1:p1", ["Enter"], undefined],
+    ]);
+  });
+
+  it("returns changed when the first bound macro write reports prompt_changed", async () => {
+    const m = model(checkboxBuffer({ pointer: "opt1" }));
+    script(
+      checkboxBuffer({ pointer: "opt1" }), // entry guard
+      checkboxBuffer({ pointer: "opt1" }), // first pointer read leads to Down
+    );
+    mockSendKeys.mockResolvedValueOnce({
+      ok: false,
+      error: "Prompt changed before keys were sent",
+      code: "prompt_changed",
+    });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, m.regionSignature],
+    ]);
   });
 
   it("re-sends Down when a key is swallowed (the re-read still shows an option row)", async () => {

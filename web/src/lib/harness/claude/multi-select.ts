@@ -64,11 +64,25 @@ export type MultiSelectModel =
       escape: MultiSelectEscape | null;
       pointer: MultiPointer;
       signature: string;
+      /**
+       * Literal contiguous text over the same stepper-to-last-menu-row span as `signature`. It ends
+       * before the footer because pointer moves change that footer during the macro. The bridge must
+       * find this text in its fresh pane.read, while `signature` remains the pointer- and
+       * checkbox-independent identity used by client comparisons.
+       */
+      regionSignature: string;
     }
   | {
       phase: "review";
       incomplete: boolean;
       signature: string;
+      /**
+       * Literal contiguous text over the same stepper-to-tail span as `signature`. The checkbox
+       * phase uses the same rule and stops at its last menu row rather than its mutable footer. The
+       * bridge must find this text in its fresh pane.read, while `signature` remains the pointer- and
+       * checkbox-independent identity used by client comparisons.
+       */
+      regionSignature: string;
     };
 
 /** Detection result for buildBlocks: the model plus the region's first line — the multi-select
@@ -277,6 +291,9 @@ function detectCheckboxPhase(
       // pointer down the dialog, a footer-inclusive signature would mutate mid-macro and read as
       // drift, aborting the submit. The footer is chrome anyway — classifyFooter gates detection.
       signature: coreSignature(texts, stepperIdx, menu[menu.length - 1]!.index),
+      regionSignature: texts
+        .slice(stepperIdx, menu[menu.length - 1]!.index + 1)
+        .join("\n"),
     },
     startLine: stepperIdx,
   };
@@ -324,7 +341,12 @@ function detectReviewPhase(
   }
 
   return {
-    model: { phase: "review", incomplete, signature: coreSignature(texts, stepperIdx, fi) },
+    model: {
+      phase: "review",
+      incomplete,
+      signature: coreSignature(texts, stepperIdx, fi),
+      regionSignature: texts.slice(stepperIdx, fi + 1).join("\n"),
+    },
     startLine: stepperIdx,
   };
 }
