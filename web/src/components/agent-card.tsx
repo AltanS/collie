@@ -1,18 +1,19 @@
-import { ChevronRight, TerminalSquare } from "lucide-react";
+import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
-import { ShellBadge, StatusBadge } from "@/components/status-badge";
+import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { timeAgo } from "@/lib/format";
-import { paneTitle, paneTitleInTab } from "@/lib/pane-name";
+import { paneParts, paneTitleInTab } from "@/lib/pane-name";
+import { STATUS_LABEL } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 
 interface AgentCardProps {
   agent: AgentView;
   onClick: () => void;
   /**
-   * Show "how long ago" beside the badge, and which timestamp it means: "seen" for the Recent
+   * Show "how long ago" on the second line, and which timestamp it means: "seen" for the Recent
    * section (when you last opened it), "active" for Ready · unseen (when it finished). Omitted
    * elsewhere — a blocked agent's age is noise next to the fact that it's blocked.
    */
@@ -23,19 +24,35 @@ interface AgentCardProps {
    * them would say nothing, so the pane's own name leads instead.
    */
   scope?: "herd" | "tab";
+  /**
+   * How to show status. "badge" (default) spells it out. "dot" is for a list already GROUPED by
+   * status — the section heading says "Working", so eighteen rows repeating it in a pill buys
+   * nothing and costs a third of the row's width, which is exactly the width the title needs.
+   */
+  statusStyle?: "badge" | "dot";
 }
 
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
 // (kind:"shell") it shows a terminal glyph and a muted "shell" tag instead of a status badge.
 //
-// The title is `project · tab` (see paneTitle) — NOT the agent name, which every row would otherwise
-// share. The agent's identity lives in the avatar; the pane's own name, when it has one, sits on the
-// second line where the cwd used to be.
-export function AgentCard({ agent, onClick, age, scope = "herd" }: AgentCardProps) {
+// The title is `project · tab` — NOT the agent name, which every row would otherwise share. The two
+// parts render as separate spans on purpose: eight panes in one project all start `moonward_os · `,
+// so truncating the joined string would eat the tab and leave every row identical. The project
+// gives up width first; the tab, the only discriminator, survives.
+export function AgentCard({
+  agent,
+  onClick,
+  age,
+  scope = "herd",
+  statusStyle = "badge",
+}: AgentCardProps) {
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
-  const { primary, secondary } = scope === "tab" ? paneTitleInTab(agent) : paneTitle(agent);
+  const inTab = scope === "tab";
+  const parts = paneParts(agent);
+  const tabTitle = paneTitleInTab(agent);
   const stamp = age === "seen" ? agent.lastSeenAt : age === "active" ? agent.lastActiveAt : undefined;
+  const secondary = inTab ? tabTitle.secondary : parts.secondary;
 
   return (
     <button
@@ -56,19 +73,49 @@ export function AgentCard({ agent, onClick, age, scope = "herd" }: AgentCardProp
         ) : (
           <AgentIcon agent={agent.agent} className="size-9" />
         )}
+
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{primary}</div>
-          {secondary && (
-            <div className="truncate font-mono text-xs text-muted-foreground">{secondary}</div>
+          {inTab ? (
+            <div className="truncate font-medium">{tabTitle.primary}</div>
+          ) : (
+            <div className="flex min-w-0 items-baseline gap-1">
+              {/* The project yields first: capped and truncatable. */}
+              <span className="max-w-[45%] shrink truncate text-muted-foreground">
+                {parts.project}
+              </span>
+              {parts.tab && (
+                <>
+                  <span className="shrink-0 text-muted-foreground/60" aria-hidden>
+                    ·
+                  </span>
+                  {/* The tab is the discriminator — it gets the remaining width. */}
+                  <span className="min-w-0 flex-1 truncate font-medium">{parts.tab}</span>
+                </>
+              )}
+            </div>
           )}
+
+          <div className="flex min-w-0 items-baseline gap-2 font-mono text-xs text-muted-foreground">
+            {secondary && <span className="min-w-0 flex-1 truncate">{secondary}</span>}
+            {stamp !== undefined && (
+              <span className={cn("shrink-0 tabular-nums", !secondary && "flex-1")}>
+                {timeAgo(stamp)}
+              </span>
+            )}
+          </div>
         </div>
-        {stamp !== undefined && (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {timeAgo(stamp)}
-          </span>
+
+        {isShell ? (
+          <ShellBadge />
+        ) : statusStyle === "dot" ? (
+          <>
+            <StatusDot status={agent.status} />
+            {/* The dot alone is colour-only; give SR users the word the badge would have shown. */}
+            <span className="sr-only">{STATUS_LABEL[agent.status]}</span>
+          </>
+        ) : (
+          <StatusBadge status={agent.status} />
         )}
-        {isShell ? <ShellBadge /> : <StatusBadge status={agent.status} />}
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
       </Card>
     </button>
   );

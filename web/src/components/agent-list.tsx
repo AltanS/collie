@@ -1,7 +1,7 @@
-import { ArrowDown, ArrowUp, Inbox } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Inbox } from "lucide-react";
 
 import { SectionHeader } from "@/components/section-header";
-import { flipDir, triage, type RecentDir, type TriageKey } from "@/lib/triage";
+import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
 import { AgentCard } from "./agent-card";
 
@@ -51,11 +51,21 @@ export function AgentList({
     );
   }
 
-  const sections = triage(agents, recentDir).filter((s) => s.agents.length > 0);
+  const all = triage(agents, recentDir);
+  const sections = all.filter((s) => s.agents.length > 0);
   if (sections.length === 0) return null;
+  // "What needs me right now?" deserves an answer even when the answer is "nothing". Without this
+  // the section simply doesn't render, and an absence reads the same as a stale load.
+  const allClear = all.find((s) => s.key === "needs")!.agents.length === 0;
 
   return (
     <div className="flex flex-col gap-5 px-3 py-4">
+      {allClear && (
+        <p className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
+          <Check className="size-3.5 text-status-done" aria-hidden />
+          Nothing needs you
+        </p>
+      )}
       {sections.map((s) => {
         // Recent is the only foldable section, and only where the parent wired the state.
         const foldable = !!s.collapsible && onRecentOpenChange !== undefined;
@@ -66,9 +76,7 @@ export function AgentList({
         return (
           <section key={s.key} className="flex flex-col gap-2">
             <SectionHeader
-              label={s.label}
-              count={s.agents.length}
-              accent={s.accent}
+              {...sectionHeaderProps(s)}
               {...(foldable ? { open, onToggle: onRecentOpenChange, controls: bodyId } : {})}
               trailing={
                 // A sibling of the fold button, never a child: nesting would be invalid markup and
@@ -81,11 +89,14 @@ export function AgentList({
             />
             {open && (
               <div id={bodyId} className="flex flex-col gap-2">
+                {/* statusStyle="dot": the section heading already says the status, so a pill on
+                    every row restates it and costs the width the title needs. */}
                 {s.agents.map((a) => (
                   <AgentCard
                     key={a.paneId}
                     agent={a}
                     onClick={() => onOpen(a.paneId)}
+                    statusStyle="dot"
                     {...(age ? { age } : {})}
                   />
                 ))}
@@ -112,10 +123,12 @@ function SortToggle({ dir, onChange }: { dir: RecentDir; onChange: (dir: RecentD
           ? "Sorted by most recently used first — switch to oldest first"
           : "Sorted by oldest first — switch to most recently used first"
       }
-      className="flex min-h-9 items-center gap-1 rounded-md px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+      // A bordered chip, not bare text: unstyled it read as an annotation ("sorted newest") rather
+      // than something you can press. Fixed width so flipping it doesn't shift the header.
+      className="flex min-h-9 items-center justify-center gap-1 rounded-full border bg-muted/50 px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
     >
       <Icon className="size-3.5" aria-hidden />
-      {newest ? "Newest" : "Oldest"}
+      <span className="w-[3.25rem] text-left">{newest ? "Newest" : "Oldest"}</span>
     </button>
   );
 }

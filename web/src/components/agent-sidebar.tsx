@@ -3,8 +3,8 @@ import { TerminalSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
 import { SectionHeader } from "@/components/section-header";
-import { paneTitle } from "@/lib/pane-name";
-import { triage } from "@/lib/triage";
+import { paneParts } from "@/lib/pane-name";
+import { sectionHeaderProps, triage } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 
 interface ThreadSidebarProps {
@@ -61,10 +61,7 @@ export function ThreadSidebar({
           <Section
             key={g.key}
             id={`switch-${g.key}`}
-            label={g.label}
-            count={members.length}
-            accent={g.accent}
-            dot={g.dot}
+            {...sectionHeaderProps(g)}
             {...(foldable ? { open, onToggle: onRecentOpenChange } : {})}
           >
             {members.map((a) => (
@@ -152,9 +149,9 @@ function PaneRow({
   onSelect: (paneId: string) => void;
 }) {
   const isShell = pane.kind === "shell";
-  // project · tab, with the pane's own name (or cwd) beneath — see paneTitle. The agent's identity
-  // stays in the icon, which is why the title line is free to say where the work is.
-  const { primary, secondary } = paneTitle(pane);
+  // project · tab as separate spans so the TAB survives truncation — see paneParts. The agent's
+  // identity stays in the icon, which is why the title line is free to say where the work is.
+  const { project, tab, secondary } = paneParts(pane);
   return (
     <button
       type="button"
@@ -172,7 +169,17 @@ function PaneRow({
         <AgentIcon agent={pane.agent} className="size-5" />
       )}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{primary}</div>
+        <div className="flex min-w-0 items-baseline gap-1 text-sm">
+          <span className="max-w-[45%] shrink truncate text-muted-foreground">{project}</span>
+          {tab && (
+            <>
+              <span className="shrink-0 text-muted-foreground/60" aria-hidden>
+                ·
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium">{tab}</span>
+            </>
+          )}
+        </div>
         {secondary && (
           <div className="truncate font-mono text-[11px] text-muted-foreground">{secondary}</div>
         )}

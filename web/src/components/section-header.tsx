@@ -72,10 +72,15 @@ export function SectionHeader({
   const tone = accent
     ? "text-status-blocked"
     : cn("text-muted-foreground", foldable && "hover:text-foreground");
+  // Set explicitly on BOTH branches, never inherited from the heading: a <button> does not inherit
+  // text-transform or font-size (the UA sheet resets form controls), so leaving these on the
+  // <h2> rendered pinned sections as small-caps "WORKING" and foldable ones as larger, sentence-case
+  // "Recent" — making the low-priority tail the loudest heading on the page.
+  const type = "text-xs font-semibold uppercase tracking-wide";
 
   return (
     <div className={cn("flex items-center gap-2 px-1", className)}>
-      <Heading className="flex min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide">
+      <Heading className="flex min-w-0 flex-1">
         {foldable ? (
           <button
             type="button"
@@ -85,13 +90,14 @@ export function SectionHeader({
             // min-h-9 keeps the row on the 36px touch floor even though the text is tiny.
             className={cn(
               "flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded text-left transition-colors",
+              type,
               tone,
             )}
           >
             {inner}
           </button>
         ) : (
-          <span className={cn("flex min-w-0 flex-1 items-center gap-1.5", tone)}>{inner}</span>
+          <span className={cn("flex min-w-0 flex-1 items-center gap-1.5", type, tone)}>{inner}</span>
         )}
       </Heading>
       {trailing && <span className="flex shrink-0 items-center gap-1">{trailing}</span>}
