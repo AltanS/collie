@@ -126,8 +126,17 @@ export function AgentCard({
             </div>
           ) : (
             <div className="flex min-w-0 items-baseline gap-1">
-              {/* The project yields first: capped and truncatable. */}
-              <span className="max-w-[45%] shrink truncate text-muted-foreground">
+              {/* With a tab present the project yields width first (capped, truncatable) and the
+                  tab — the discriminator — takes the rest. With NO tab the project IS the name, so
+                  it takes the width itself; leaving the fill on the tab span meant an unlabelled
+                  row had no filler at all and its age butted against the name, reading as part of
+                  it ("comm_cli 37m"). */}
+              <span
+                className={cn(
+                  "truncate text-muted-foreground",
+                  parts.tab ? "max-w-[45%] shrink" : "min-w-0 flex-1",
+                )}
+              >
                 {parts.project}
               </span>
               {parts.tab && (
@@ -135,7 +144,6 @@ export function AgentCard({
                   <span className="shrink-0 text-muted-foreground/60" aria-hidden>
                     ·
                   </span>
-                  {/* The tab is the discriminator — it gets the remaining width. */}
                   <span className="min-w-0 flex-1 truncate font-medium">{parts.tab}</span>
                 </>
               )}
