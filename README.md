@@ -547,6 +547,33 @@ indefinitely — clients keep running old code with no way to notice. If your pr
 honor origin headers (Caddy and stock Nginx `proxy_cache` do by default; CDNs often need it
 enabled explicitly).
 
+**Serve your sign-in page under `/auth/`.** Collie reserves that path for you and routes nothing
+there. It matters because of how an installed PWA behaves: the service worker answers every
+navigation it owns from the precached app shell without touching the network, and there is no
+address bar to work around it. So a proxy page served anywhere Collie owns — including `/` — is
+invisible to the installed app, and a reload just re-renders the refused UI. `/auth/` (and anything
+beneath it) is the one path the service worker always passes through, so it is the only address that
+reaches you. When the bridge answers there itself, nothing claimed the path — that placeholder is
+your signal that the proxy rule is missing.
+
+```caddyfile
+collie.example.com {
+    handle /auth/* {
+        # your sign-in / device-enrolment flow, exempt from the auth check that guards the rest
+        reverse_proxy 127.0.0.1:9091
+    }
+    handle {
+        forward_auth 127.0.0.1:9091 { ... }
+        reverse_proxy 127.0.0.1:8787 { ... }
+    }
+}
+```
+
+Collie's refusal banner links to `/auth/` when the bridge or your proxy answers 401/403, so a
+signed-out phone has a tappable way back in. If your flow lives at a path you can't move, redirect
+`/auth/` to it — the redirect is followed on the network side, where the service worker isn't
+looking.
+
 ### Variant D — off-host identity proxy over the tailnet
 
 Choose this when you already run a **central ingress node** for your tailnet — one forward-auth/SSO
