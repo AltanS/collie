@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { ChevronRight, FolderPlus, LayoutGrid, Search } from "lucide-react";
+import { FolderPlus, LayoutGrid, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Card } from "@/components/ui/card";
 import { SectionHeader } from "@/components/section-header";
 import { StatusDot } from "@/components/status-badge";
 import {
@@ -54,7 +53,9 @@ export function SpaceOverview({
     <section className="flex flex-col gap-2 px-3 py-4">
       <SectionHeader
         label="Spaces"
-        count={workspaces.length}
+        // While filtering, the count reports what you can SEE — a header reading (45) above four
+        // rows makes you doubt the filter rather than trust it.
+        count={query.trim() ? visible.length : workspaces.length}
         open={open}
         onToggle={onOpenChange}
         controls="spaces-body"
@@ -83,11 +84,13 @@ export function SpaceOverview({
       />
 
       {open && (
-        <div id="spaces-body" className="flex flex-col gap-2">
+        <div id="spaces-body" className="flex flex-col divide-y divide-border/60">
           {/* Deliberately NOT autofocused: on a phone that would throw the keyboard over the list
               you just asked to see. */}
+          {/* Sticky: at 45 spaces the list is five screens, and a filter that scrolls away turns
+              "wrong part of the list" into scroll-up, type, scroll-down. */}
           {workspaces.length > 1 && (
-            <label className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
+            <label className="sticky top-0 z-10 flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-sm">
               <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <input
                 type="search"
@@ -117,12 +120,19 @@ export function SpaceOverview({
                   key={w.workspaceId}
                   type="button"
                   onClick={() => onOpen(w.workspaceId)}
-                  className="w-full text-left transition-transform active:scale-[0.99]"
+                  className={cn(
+                    "w-full rounded-lg text-left transition-colors active:scale-[0.99]",
+                    !blocked && "hover:bg-muted/50",
+                  )}
                 >
-                  <Card
+                  {/* Flat rows, not cards: these are single-line entries, so a card is 100% chrome
+                      around one string, forty-five times. Card treatment is reserved for the agent
+                      sections that mean "a human is required here". A blocked space still gets the
+                      tint — that's the one cue worth the weight. */}
+                  <div
                     className={cn(
-                      "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
-                      blocked && "border-status-blocked/40 bg-status-blocked/5",
+                      "flex flex-row items-center gap-3 px-2.5 py-2.5",
+                      blocked && "rounded-lg border border-status-blocked/40 bg-status-blocked/5",
                     )}
                   >
                     {status ? (
@@ -149,8 +159,7 @@ export function SpaceOverview({
                         {timeAgo(seen)}
                       </span>
                     )}
-                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                  </Card>
+                  </div>
                 </button>
               );
             })

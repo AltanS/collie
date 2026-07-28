@@ -27,12 +27,21 @@ describe("shortCwd", () => {
     expect(out).not.toContain("…");
   });
 
-  it("truncates a long tail with a leading ellipsis, respecting max", () => {
+  it("drops whole segments, never cutting one in half", () => {
+    // Cutting on a character count produced "…ropbox/dev/…", which reads as a rendering fault
+    // rather than an abbreviation.
+    const out = shortCwd("/home/you/Dropbox/dev/ai/moonward/moonward_os");
+    expect(out).toBe("…/dev/ai/moonward/moonward_os");
+    expect(out).not.toContain("…rop");
+    for (const seg of out.replace("…/", "").split("/")) {
+      expect("/home/you/Dropbox/dev/ai/moonward/moonward_os".split("/")).toContain(seg);
+    }
+  });
+
+  it("keeps the last segment even when it alone busts the budget", () => {
+    // It's the part that identifies the directory — a half of it identifies nothing.
     const out = shortCwd("/var/home/you/" + "x".repeat(40)); // default max = 32
-    expect(out.startsWith("…")).toBe(true);
-    expect(out).toHaveLength(32);
-    expect(out.endsWith("x")).toBe(true);
-    // The home "~" got truncated away — we keep the most-specific tail.
+    expect(out).toBe("…/" + "x".repeat(40));
     expect(out).not.toContain("~");
   });
 

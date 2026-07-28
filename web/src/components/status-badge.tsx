@@ -18,7 +18,25 @@ const CHIP: Record<AgentStatus, string> = {
   unknown: "border-status-unknown/30 bg-status-unknown/10 text-status-unknown",
 };
 
+/**
+ * As a FILL, the status palette needs a different ramp than it does as text. Every --status-* value
+ * is tuned near the same lightness for text contrast, so drawn as solid discs the resting states
+ * (idle / unknown) carry exactly as much weight as blocked — eighteen idle dots would out-shout the
+ * one thing that needs you. The resting states are therefore hollow rings; the states that mean
+ * something is happening stay solid.
+ */
+const RESTING: ReadonlySet<AgentStatus> = new Set(["idle", "unknown"]);
+
+const RING: Record<AgentStatus, string> = {
+  blocked: "border-status-blocked",
+  working: "border-status-working",
+  done: "border-status-done",
+  idle: "border-status-idle/60",
+  unknown: "border-status-unknown/60",
+};
+
 export function StatusDot({ status, className }: { status: AgentStatus; className?: string }) {
+  const hollow = RESTING.has(status);
   return (
     <span className={cn("relative flex size-2.5 shrink-0", className)}>
       {status === "working" && (
@@ -29,7 +47,12 @@ export function StatusDot({ status, className }: { status: AgentStatus; classNam
           )}
         />
       )}
-      <span className={cn("relative inline-flex size-2.5 rounded-full", DOT[status])} />
+      <span
+        className={cn(
+          "relative inline-flex size-2.5 rounded-full",
+          hollow ? cn("border-[1.5px] bg-transparent", RING[status]) : DOT[status],
+        )}
+      />
     </span>
   );
 }
