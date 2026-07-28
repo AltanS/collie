@@ -120,3 +120,121 @@ describe("ThreadSidebar", () => {
     }
   });
 });
+
+// The "Switch pane" sheet sees the WHOLE herd, so it has the dashboard's original problem: the two
+// long tails (Recent, and the bare shells) bury the handful of agents you opened it to reach.
+describe("ThreadSidebar — folding the long tails", () => {
+  const manyShells: AgentView[] = Array.from({ length: 12 }, (_, i) => ({
+    paneId: `w3:s${i}`,
+    workspaceId: "w3",
+    workspaceLabel: `scratch${i}`,
+    workspaceNumber: 3,
+    tabId: "w3:t2",
+    agent: "shell",
+    status: "unknown",
+    cwd: "/home/you/sandbox",
+    focused: false,
+    kind: "shell",
+  }));
+
+  it("folds Shells away, keeping the count and the agents visible", () => {
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        shellPanes={manyShells}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        shellsOpen={false}
+        onShellsOpenChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("scratch0")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /shells/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByText("(12)")).toBeInTheDocument();
+    // The agents you came for are still there.
+    expect(screen.getByText("webapp")).toBeInTheDocument();
+  });
+
+  it("shows the shells again when expanded", () => {
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        shellPanes={manyShells}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        shellsOpen
+        onShellsOpenChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("scratch0")).toBeInTheDocument();
+  });
+
+  it("reports the Shells fold to its owner rather than keeping the state itself", async () => {
+    const user = userEvent.setup();
+    const onShellsOpenChange = vi.fn();
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        shellPanes={manyShells}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        shellsOpen
+        onShellsOpenChange={onShellsOpenChange}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /shells/i }));
+    expect(onShellsOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("folds Recent too, the same way the dashboard does", async () => {
+    const user = userEvent.setup();
+    const onRecentOpenChange = vi.fn();
+    render(
+      <ThreadSidebar
+        agents={[...fixtureAgents, idleAgent]}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        recentOpen
+        onRecentOpenChange={onRecentOpenChange}
+      />,
+    );
+    expect(screen.getByText("sandbox")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    expect(onRecentOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("never offers a fold on the attention sections", () => {
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        shellPanes={manyShells}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        recentOpen
+        onRecentOpenChange={vi.fn()}
+        shellsOpen
+        onShellsOpenChange={vi.fn()}
+      />,
+    );
+    // fixtureAgents are blocked + working; only Shells should be expandable here.
+    const expandable = screen.getAllByRole("button", { expanded: true }).map((b) => b.textContent);
+    expect(expandable).toHaveLength(1);
+    expect(expandable[0]).toMatch(/shells/i);
+  });
+
+  it("stays un-foldable when the parent wires nothing, as before", () => {
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        shellPanes={manyShells}
+        currentPaneId=""
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("scratch0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { expanded: true })).not.toBeInTheDocument();
+  });
+});

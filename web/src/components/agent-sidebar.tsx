@@ -2,6 +2,7 @@ import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
+import { SectionHeader } from "@/components/section-header";
 import { paneTitle } from "@/lib/pane-name";
 import { triage } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
@@ -12,20 +13,34 @@ interface ThreadSidebarProps {
   shellPanes?: AgentView[];
   currentPaneId: string;
   onSelect: (paneId: string) => void;
+  /** Whether the Recent section is expanded, and how to fold it. Omit to leave it always open. */
+  recentOpen?: boolean;
+  onRecentOpenChange?: (open: boolean) => void;
+  /** Whether the Shells section is expanded, and how to fold it. Omit to leave it always open. */
+  shellsOpen?: boolean;
+  onShellsOpenChange?: (open: boolean) => void;
   /** Override the list container padding (e.g. flush inside a bottom sheet). */
   className?: string;
 }
 
-// The pane switcher reused by both the side drawer's PANES section and the swipe-up bottom sheet:
-// every agent pane grouped/sorted like the home triage, then any bare shell panes under a "Shells"
-// group, scrollable, with the open one highlighted. Mirrors the Herdr TUI's pane list. Switching is
+// The pane switcher behind the swipe-up "Switch pane" sheet: every agent pane grouped and sorted
+// exactly like the dashboard (lib/triage.ts — the two must not disagree about what needs you), then
+// any bare shell panes under a trailing "Shells" group, with the open one highlighted. Switching is
 // the ONLY action here — closing a pane lives in the pane pill's long-press sheet (with its own
 // confirm), so a fat-thumbed switch can never destroy a pane.
+//
+// This sheet sees the WHOLE herd, so it has the same problem the dashboard had: the two long tails
+// (Recent, and 30-odd bare shells) bury the handful of agents you actually came to switch to. Both
+// fold, and both remember it, using the dashboard's own header primitive.
 export function ThreadSidebar({
   agents,
   shellPanes = [],
   currentPaneId,
   onSelect,
+  recentOpen = true,
+  onRecentOpenChange,
+  shellsOpen = true,
+  onShellsOpenChange,
   className,
 }: ThreadSidebarProps) {
   if (agents.length === 0 && shellPanes.length === 0) {
@@ -36,14 +51,22 @@ export function ThreadSidebar({
 
   return (
     <div className={cn("flex flex-col gap-4 px-2 py-3", className)}>
-      {/* The same triage the dashboard uses (lib/triage.ts) — the two lists must not disagree about
-          what needs you. Recent renders newest-first here and doesn't fold: the sidebar is a
-          switcher you're already inside, not a page you're triaging. */}
       {triage(agents).map((g) => {
         const members = g.agents;
         if (members.length === 0) return null;
+        // Recent is the only foldable triage section, and only where the parent wired the state.
+        const foldable = !!g.collapsible && onRecentOpenChange !== undefined;
+        const open = foldable ? recentOpen : true;
         return (
-          <Section key={g.key} label={g.label} count={members.length} accent={g.accent} dot={g.dot}>
+          <Section
+            key={g.key}
+            id={`switch-${g.key}`}
+            label={g.label}
+            count={members.length}
+            accent={g.accent}
+            dot={g.dot}
+            {...(foldable ? { open, onToggle: onRecentOpenChange } : {})}
+          >
             {members.map((a) => (
               <PaneRow
                 key={a.paneId}
@@ -57,7 +80,13 @@ export function ThreadSidebar({
       })}
 
       {shellPanes.length > 0 && (
-        <Section label="Shells" count={shellPanes.length} dot="bg-status-unknown">
+        <Section
+          id="switch-shells"
+          label="Shells"
+          count={shellPanes.length}
+          dot="bg-status-unknown"
+          {...(onShellsOpenChange ? { open: shellsOpen, onToggle: onShellsOpenChange } : {})}
+        >
           {shellPanes.map((p) => (
             <PaneRow
               key={p.paneId}
@@ -72,33 +101,43 @@ export function ThreadSidebar({
   );
 }
 
+// Uses the dashboard's own header primitive so the fold affordance is identical in both places —
+// level 3 because the sheet's own title is the h2. Passing no `open`/`onToggle` renders a plain
+// pinned heading with nothing to press.
 function Section({
+  id,
   label,
   count,
   accent,
   dot,
+  open,
+  onToggle,
   children,
 }: {
+  id: string;
   label: string;
   count: number;
   accent?: boolean;
   /** Status-palette bullet beside the header — the same colors the status badges use, so each
    *  section carries its at-a-glance color key. */
   dot: string;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
+  const foldable = open !== undefined && onToggle !== undefined;
   return (
     <section className="flex flex-col gap-0.5">
-      <h3
-        className={cn(
-          "flex items-center gap-1.5 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide",
-          accent ? "text-status-blocked" : "text-muted-foreground",
-        )}
-      >
-        <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", dot)} />
-        {label} <span className="text-muted-foreground">({count})</span>
-      </h3>
-      {children}
+      <SectionHeader
+        level={3}
+        label={label}
+        count={count}
+        dot={dot}
+        className="px-2"
+        {...(accent ? { accent } : {})}
+        {...(foldable ? { open, onToggle, controls: id } : {})}
+      />
+      {(!foldable || open) && <div id={id}>{children}</div>}
     </section>
   );
 }

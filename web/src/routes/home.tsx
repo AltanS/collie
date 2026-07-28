@@ -11,7 +11,7 @@ import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
-import { useDashPrefs, spacesOpenFor } from "@/hooks/use-dash-prefs";
+import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
@@ -33,7 +33,7 @@ export function HomeRoute() {
   const { prefs, setSpacesOpen, setRecentOpen, setRecentDir } = useDashPrefs();
   // No stored choice yet? The space count decides — a two-space install shouldn't be handed a
   // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
-  const spacesOpen = spacesOpenFor(prefs.spacesOpen, data.workspaces.length);
+  const spacesOpen = openForCount(prefs.spacesOpen, data.workspaces.length);
 
   const open = (id: string) => navigate(panePath(id, data.session));
   const drillInto = (id: string) => navigate(spacePath(id, data.session));
