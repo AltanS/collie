@@ -2,9 +2,8 @@ import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
-import { AGENT_GROUPS } from "@/lib/agent-groups";
-import { shortCwd } from "@/lib/format";
-import { paneDisplayName } from "@/lib/types";
+import { paneTitle } from "@/lib/pane-name";
+import { triage } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 
 interface ThreadSidebarProps {
@@ -37,8 +36,11 @@ export function ThreadSidebar({
 
   return (
     <div className={cn("flex flex-col gap-4 px-2 py-3", className)}>
-      {AGENT_GROUPS.map((g) => {
-        const members = agents.filter((a) => g.match(a.status));
+      {/* The same triage the dashboard uses (lib/triage.ts) — the two lists must not disagree about
+          what needs you. Recent renders newest-first here and doesn't fold: the sidebar is a
+          switcher you're already inside, not a page you're triaging. */}
+      {triage(agents).map((g) => {
+        const members = g.agents;
         if (members.length === 0) return null;
         return (
           <Section key={g.key} label={g.label} count={members.length} accent={g.accent} dot={g.dot}>
@@ -111,9 +113,9 @@ function PaneRow({
   onSelect: (paneId: string) => void;
 }) {
   const isShell = pane.kind === "shell";
-  // A user label leads, then Claude's /rename session name, then the agent/shell name (the icon still
-  // conveys the agent). See paneDisplayName.
-  const name = paneDisplayName(pane);
+  // project · tab, with the pane's own name (or cwd) beneath — see paneTitle. The agent's identity
+  // stays in the icon, which is why the title line is free to say where the work is.
+  const { primary, secondary } = paneTitle(pane);
   return (
     <button
       type="button"
@@ -131,13 +133,10 @@ function PaneRow({
         <AgentIcon agent={pane.agent} className="size-5" />
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">{name}</span>
-          <span className="truncate text-[11px] text-muted-foreground">· {pane.workspaceLabel}</span>
-        </div>
-        <div className="truncate font-mono text-[11px] text-muted-foreground">
-          {shortCwd(pane.cwd)}
-        </div>
+        <div className="truncate text-sm font-medium">{primary}</div>
+        {secondary && (
+          <div className="truncate font-mono text-[11px] text-muted-foreground">{secondary}</div>
+        )}
       </div>
     </button>
   );

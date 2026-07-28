@@ -1,0 +1,96 @@
+import { ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
+
+interface SectionHeaderProps {
+  /** Section name, e.g. "Recent". Rendered uppercase. */
+  label: string;
+  /** Item count shown beside the label. Omit to show no count. */
+  count?: number;
+  /** Bullet colour class from the status palette (e.g. "bg-status-blocked"). */
+  dot?: string;
+  /** Render the label in the alert colour — the "Needs you" section. */
+  accent?: boolean;
+  /**
+   * Fold state. Omit entirely for a section that can't fold: the header then renders as a plain
+   * heading with no caret and no button, so there is nothing to press and nothing to announce.
+   */
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+  /** Id of the element this header folds — wired to `aria-controls`. Required when foldable. */
+  controls?: string;
+  /**
+   * The section's own control (a sort toggle, a "new" button). Rendered as a SIBLING of the fold
+   * button, never inside it: nesting would be invalid markup and would make pressing the control
+   * also fold the section.
+   */
+  trailing?: ReactNode;
+  className?: string;
+}
+
+// The one section heading the dashboard uses, foldable or not. Recent and Spaces fold; the three
+// attention sections don't (collapsing an alert defeats the alert), and they pass no `open` at all
+// rather than a disabled toggle — a control that never does anything shouldn't be in the a11y tree.
+//
+// Keeping both cases in one component is deliberate: the two foldable sections behaved identically
+// in the design, and two copies of "caret + aria-expanded + trailing slot" would drift.
+export function SectionHeader({
+  label,
+  count,
+  dot,
+  accent,
+  open,
+  onToggle,
+  controls,
+  trailing,
+  className,
+}: SectionHeaderProps) {
+  const foldable = open !== undefined && onToggle !== undefined;
+
+  const inner = (
+    <>
+      {foldable && (
+        <ChevronRight
+          className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")}
+          aria-hidden
+        />
+      )}
+      {dot && <span className={cn("size-2 shrink-0 rounded-full", dot)} aria-hidden />}
+      <span className="truncate">{label}</span>
+      {count !== undefined && <span className="opacity-60 tabular-nums">({count})</span>}
+    </>
+  );
+
+  // Always an <h2>, foldable or not — the sections are the page's outline, and a section that can
+  // be folded shouldn't vanish from it. When foldable the heading WRAPS the button (the standard
+  // disclosure pattern) instead of being replaced by one.
+  const tone = accent
+    ? "text-status-blocked"
+    : cn("text-muted-foreground", foldable && "hover:text-foreground");
+
+  return (
+    <div className={cn("flex items-center gap-2 px-1", className)}>
+      <h2 className="flex min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide">
+        {foldable ? (
+          <button
+            type="button"
+            onClick={() => onToggle(!open)}
+            aria-expanded={open}
+            {...(controls ? { "aria-controls": controls } : {})}
+            // min-h-9 keeps the row on the 36px touch floor even though the text is tiny.
+            className={cn(
+              "flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded text-left transition-colors",
+              tone,
+            )}
+          >
+            {inner}
+          </button>
+        ) : (
+          <span className={cn("flex min-w-0 flex-1 items-center gap-1.5", tone)}>{inner}</span>
+        )}
+      </h2>
+      {trailing && <span className="flex shrink-0 items-center gap-1">{trailing}</span>}
+    </div>
+  );
+}

@@ -11,21 +11,16 @@ import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
+import { useDashPrefs, spacesOpenFor } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
-import { AGENT_GROUPS } from "@/lib/agent-groups";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { panePath, spacePath } from "@/lib/nav";
 
-// "Needs you" is the urgent triage (accented group); hoist it above everything else. The rest of the
-// triage (working / idle · done) renders below the spaces overview.
-const ATTENTION_GROUPS = AGENT_GROUPS.filter((g) => g.accent);
-const REST_GROUPS = AGENT_GROUPS.filter((g) => !g.accent);
-
-// Dashboard home screen. Reads the herd from the root loader. "Needs you" sits at the very top (the
-// most important thing to act on), then the Spaces overview (each space with its tab/pane counts and
-// worst-agent status), then the rest of the agent triage: tapping an agent opens its pane, tapping a
-// space drills into its detail route (/space/:id).
+// Dashboard home screen. Everything you might ACT on comes first — Needs you → Ready · unseen →
+// Working → Recent (see lib/triage.ts) — and the Spaces navigator sits last, under the thing it
+// navigates to. Recent and Spaces fold; fold both and the page is the triaged herd and nothing else.
+// Tapping an agent opens its pane; tapping a space drills into /space/:id.
 export function HomeRoute() {
   const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
   // A stalled load (a black-holed poll, or a pane-open tap whose navigation hangs) gallops the
@@ -35,6 +30,10 @@ export function HomeRoute() {
   const navigate = useNavigate();
   const { newSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  const { prefs, setSpacesOpen, setRecentOpen, setRecentDir } = useDashPrefs();
+  // No stored choice yet? The space count decides — a two-space install shouldn't be handed a
+  // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
+  const spacesOpen = spacesOpenFor(prefs.spacesOpen, data.workspaces.length);
 
   const open = (id: string) => navigate(panePath(id, data.session));
   const drillInto = (id: string) => navigate(spacePath(id, data.session));
@@ -62,22 +61,27 @@ export function HomeRoute() {
         <ReadOnlyBanner device={data.device} />
 
         <main className="flex-1">
-          {/* Needs-you first — the most urgent triage, hoisted above the spaces overview. Renders
-              nothing when no agent is blocked (emptyState off, so the placeholder shows only once
-              below). */}
+          {/* One list, every section, in triage order. It used to be split in two so "Needs you"
+              could be hoisted above the spaces overview; with Spaces last there is nothing to
+              straddle. */}
           <AgentList
             agents={data.agents}
+            bridge={data.bridge}
             onOpen={open}
-            groups={ATTENTION_GROUPS}
-            emptyState={false}
+            recentDir={prefs.recentDir}
+            onRecentDirChange={setRecentDir}
+            recentOpen={prefs.recentOpen}
+            onRecentOpenChange={setRecentOpen}
           />
           <SpaceOverview
             workspaces={data.workspaces}
             agents={data.agents}
+            shellPanes={data.shellPanes}
             onOpen={drillInto}
             onNewSpace={() => setNewSpaceOpen(true)}
+            open={spacesOpen}
+            onOpenChange={setSpacesOpen}
           />
-          <AgentList agents={data.agents} bridge={data.bridge} onOpen={open} groups={REST_GROUPS} />
         </main>
 
         {/* An available update / needed restart, then the build stamp (which bundle you're

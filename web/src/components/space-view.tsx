@@ -41,8 +41,15 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
             <p className="px-1 text-xs text-muted-foreground">(empty tab)</p>
           ) : (
             <div className="flex flex-col gap-2">
+              {/* scope="tab": this list already sits under its space heading and per-tab section,
+                  so the cards lead with each pane's own name rather than repeating both. */}
               {g.panes.map((p) => (
-                <AgentCard key={p.paneId} agent={p} onClick={() => onOpen(p.paneId)} />
+                <AgentCard
+                  key={p.paneId}
+                  agent={p}
+                  onClick={() => onOpen(p.paneId)}
+                  scope="tab"
+                />
               ))}
             </div>
           )}
