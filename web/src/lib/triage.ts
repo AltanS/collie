@@ -38,6 +38,43 @@ export function isUnseen(a: AgentView): boolean {
   return a.status === "done" && (a.lastActiveAt ?? 0) > (a.lastSeenAt ?? 0);
 }
 
+/** Which section an agent belongs to. The single classifier — {@link triage} and
+ *  {@link worstTriage} both route through it, so a list and a chip can't disagree. */
+export function bucketOf(a: AgentView): TriageKey {
+  if (a.status === "blocked") return "needs";
+  if (isUnseen(a)) return "ready";
+  if (a.status === "working") return "working";
+  return "recent";
+}
+
+/** Display order, most urgent first. */
+export const TRIAGE_ORDER: readonly TriageKey[] = ["needs", "ready", "working", "recent"];
+
+/**
+ * The status one representative {@link StatusDot} should show for a bucket, so a tab chip, a space
+ * chip and a list row all draw the same colour for the same meaning.
+ */
+export const TRIAGE_STATUS: Record<TriageKey, AgentStatus> = {
+  needs: "blocked",
+  ready: "done",
+  working: "working",
+  recent: "idle",
+};
+
+/**
+ * The most urgent bucket among a set of panes — what a tab or space chip should advertise. Null when
+ * the set holds no agent at all, which is deliberately NOT the same as "idle": an empty tab has
+ * nothing to report, and showing it a resting dot would claim otherwise.
+ */
+export function worstTriage(agents: readonly AgentView[]): TriageKey | null {
+  let best: number | null = null;
+  for (const a of agents) {
+    const rank = TRIAGE_ORDER.indexOf(bucketOf(a));
+    if (best === null || rank < best) best = rank;
+  }
+  return best === null ? null : TRIAGE_ORDER[best]!;
+}
+
 /** Descending comparator over an optional timestamp; absent sorts last but ties, never throws. */
 function byDesc(key: (a: AgentView) => number | undefined) {
   return (x: AgentView, y: AgentView) => (key(y) ?? 0) - (key(x) ?? 0);
@@ -68,12 +105,8 @@ export function triage(agents: readonly AgentView[], dir: RecentDir = "newest"):
   const working: AgentView[] = [];
   const recent: AgentView[] = [];
 
-  for (const a of agents) {
-    if (a.status === "blocked") needs.push(a);
-    else if (isUnseen(a)) ready.push(a);
-    else if (a.status === "working") working.push(a);
-    else recent.push(a);
-  }
+  const into = { needs, ready, working, recent };
+  for (const a of agents) into[bucketOf(a)].push(a);
 
   needs.sort(byDesc((a) => a.lastActiveAt));
   ready.sort(byDesc((a) => a.lastActiveAt));

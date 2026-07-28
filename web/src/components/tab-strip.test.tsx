@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { TabStrip } from "./tab-strip";
-import type { TabView } from "@/lib/types";
+import type { AgentStatus, AgentView, TabView } from "@/lib/types";
 
 const tabs: TabView[] = [
   { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "1", focused: true, paneCount: 2 },
@@ -216,5 +216,67 @@ describe("TabStrip — long-press actions", () => {
     );
     expect(screen.getByRole("button", { name: xss })).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
+  });
+});
+
+describe("TabStrip — status on the chips", () => {
+  const tabs: TabView[] = [
+    { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "code", focused: false, paneCount: 1 },
+    { tabId: "w1:t2", workspaceId: "w1", number: 2, label: "empty", focused: false, paneCount: 0 },
+  ];
+  const pane = (tabId: string, status: AgentStatus, extra: Partial<AgentView> = {}): AgentView => ({
+    paneId: `${tabId}:p1`,
+    workspaceId: "w1",
+    workspaceLabel: "ws",
+    workspaceNumber: 1,
+    tabId,
+    agent: "claude",
+    status,
+    cwd: "/home/you/ws",
+    focused: false,
+    ...extra,
+  });
+
+  const strip = (agents: AgentView[]) =>
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={agents}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+
+  it("says what's going on in a tab, in words as well as colour", () => {
+    strip([pane("w1:t1", "blocked")]);
+    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("needs you");
+  });
+
+  it("reports the most urgent pane when a tab holds several", () => {
+    strip([pane("w1:t1", "idle"), { ...pane("w1:t1", "blocked"), paneId: "w1:t1:p2" }]);
+    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("needs you");
+  });
+
+  it("distinguishes a finished-but-unseen tab from a working one", () => {
+    const { unmount } = strip([pane("w1:t1", "done", { lastActiveAt: 9, lastSeenAt: 1 })]);
+    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("done");
+    unmount();
+    strip([pane("w1:t1", "working")]);
+    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("working");
+  });
+
+  it("says idle rather than staying silent about a quiet tab", () => {
+    strip([pane("w1:t1", "idle")]);
+    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("idle");
+  });
+
+  it("reports nothing for a tab with no agents — empty is not idle", () => {
+    strip([pane("w1:t1", "idle")]);
+    const empty = screen.getByRole("button", { name: /empty/ });
+    for (const word of ["idle", "working", "done", "needs you"]) {
+      expect(empty).not.toHaveTextContent(word);
+    }
   });
 });
