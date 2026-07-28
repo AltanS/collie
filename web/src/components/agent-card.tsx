@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
-import { timeAgo } from "@/lib/format";
+import { timeAgoShort } from "@/lib/format";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
 import { STATUS_LABEL } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -40,6 +40,12 @@ interface AgentCardProps {
    * signal — see a card, something wants you; all flat, nothing does.
    */
   density?: "card" | "row";
+}
+
+/** The row's age, in the trailing slot of whichever line it sits on. Not mono — it's a footnote,
+ *  not data; mono made it read like the path it replaced. */
+function Age({ at }: { at: number }) {
+  return <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeAgoShort(at)}</span>;
 }
 
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
@@ -82,8 +88,10 @@ export function AgentCard({
     >
       <Shell
         className={cn(
+          // The 15px inset matches the card's 14px padding + 1px border, so the avatar column runs
+          // straight down the page instead of stepping 5px sideways at each section boundary.
           flat
-            ? "flex flex-row items-center gap-3 px-2.5 py-2.5"
+            ? "flex flex-row items-center gap-3 px-[0.9375rem] py-2.5"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
           // The blocked tint survives both treatments — it's the one cue that reads at a glance.
           blocked && "border-status-blocked/40 bg-status-blocked/5",
@@ -100,15 +108,22 @@ export function AgentCard({
           {cornerDot && (
             <StatusDot
               status={agent.status}
-              // Ringed in the surface colour so it reads as a badge on the avatar, not a smudge.
-              className="absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-background"
+              // Filled and ringed in the surface it actually sits on — a card is white, a flat row
+              // is the page. Get this wrong and a hollow ring reads as a notch in the logo.
+              surface={flat ? "bg-background" : "bg-card"}
+              className={cn(
+                "absolute -bottom-0.5 -right-0.5 rounded-full ring-2",
+                flat ? "ring-background" : "ring-card",
+              )}
             />
           )}
         </div>
 
         <div className="min-w-0 flex-1">
           {inTab ? (
-            <div className="truncate font-medium">{tabTitle.primary}</div>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate font-medium">{tabTitle.primary}</span>
+            </div>
           ) : (
             <div className="flex min-w-0 items-baseline gap-1">
               {/* The project yields first: capped and truncatable. */}
@@ -124,17 +139,19 @@ export function AgentCard({
                   <span className="min-w-0 flex-1 truncate font-medium">{parts.tab}</span>
                 </>
               )}
+              {/* The age rides the title row: alone on a line of its own it claimed the same
+                  vertical presence as the title, for a footnote. */}
+              {stamp !== undefined && <Age at={stamp} />}
             </div>
           )}
 
-          <div className="flex min-w-0 items-baseline gap-2 font-mono text-xs text-muted-foreground">
-            {secondary && <span className="min-w-0 flex-1 truncate">{secondary}</span>}
-            {stamp !== undefined && (
-              <span className={cn("shrink-0 tabular-nums", !secondary && "flex-1")}>
-                {timeAgo(stamp)}
-              </span>
-            )}
-          </div>
+          {/* Only rendered when there's something to say — most rows are one line now. */}
+          {secondary && (
+            <div className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate font-mono">{secondary}</span>
+              {inTab && stamp !== undefined && <Age at={stamp} />}
+            </div>
+          )}
         </div>
 
         {isShell ? (

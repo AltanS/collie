@@ -24,6 +24,9 @@ interface AgentListProps {
  *  agent's age is noise beside the fact that it's blocked. */
 const AGE_BY_SECTION: Partial<Record<TriageKey, "seen" | "active">> = {
   ready: "active",
+  // "working for 3h" and "working for 40s" are very different facts, and now that the age rides
+  // the title row it costs no vertical space to say which.
+  working: "active",
   recent: "seen",
 };
 

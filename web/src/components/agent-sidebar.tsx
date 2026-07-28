@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
 import { SectionHeader } from "@/components/section-header";
 import { paneParts } from "@/lib/pane-name";
-import { sectionHeaderProps, triage } from "@/lib/triage";
+import { isAttention, sectionHeaderProps, triage } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 
 interface ThreadSidebarProps {
@@ -160,6 +160,11 @@ function PaneRow({
       className={cn(
         "flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
         active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60 active:bg-muted",
+        // The switcher is exactly where you jump TO the thing that needs you, so it must be able to
+        // SHOW that — it renders every pane identically otherwise. Staying denser than the dashboard
+        // is fine; being unable to mark a blocked pane is not. (isAttention, so the rule isn't
+        // re-derived here.)
+        !active && isAttention(pane.status) && "border border-status-blocked/40 bg-status-blocked/5",
       )}
     >
       {isShell ? (
