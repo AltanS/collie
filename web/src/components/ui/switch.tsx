@@ -21,8 +21,16 @@ function Switch({ checked, onCheckedChange, disabled, id, ...rest }: SwitchProps
       onClick={() => onCheckedChange(!checked)}
       data-slot="switch"
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-        checked ? "bg-primary" : "bg-muted",
+        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        // The OFF track needs real contrast against the card it sits on, or you can't read your own
+        // settings: `bg-muted` is 1.09:1 on a white card, and the thumb is white on top of that —
+        // a white blob on white, legible only by its shadow. WCAG 1.4.11 wants 3:1 for state.
+        // A border carries the off state instead, since a fill dark enough to read would look
+        // switched-on.
+        // Solid border, not /60: `rounded-full` on a 24px pill leaves no straight edge, so the whole
+        // stroke is antialiased and an alpha border renders lighter than it computes (2.65:1 spec →
+        // 1.74:1 actual). Full strength survives the antialiasing.
+        checked ? "bg-primary" : "border-2 border-muted-foreground bg-muted",
       )}
       {...rest}
     >
