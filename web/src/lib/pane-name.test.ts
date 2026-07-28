@@ -84,3 +84,27 @@ describe("paneSearchText", () => {
     expect(paneSearchText(pane({ cwd: "" }))).toBe("moonward_os claude");
   });
 });
+
+describe("paneTitle — the cwd fallback only when it says something", () => {
+  it("drops the cwd when the directory is just the project again", () => {
+    // The space is named after its directory on almost every row, so the fallback was printing
+    // line 1 twice.
+    expect(paneTitle(pane({ workspaceLabel: "collie", cwd: "/home/kon/dev/ai/collie" })).secondary)
+      .toBeNull();
+  });
+
+  it("is case-insensitive about that match", () => {
+    expect(paneTitle(pane({ workspaceLabel: "Collie", cwd: "/home/kon/dev/ai/collie" })).secondary)
+      .toBeNull();
+  });
+
+  it("KEEPS the cwd when the pane sits somewhere else — a worktree or a subdir", () => {
+    expect(paneTitle(pane({ workspaceLabel: "collie", cwd: "/home/kon/dev/ai/collie/web" })).secondary)
+      .toBe("~/dev/ai/collie/web");
+  });
+
+  it("still prefers the pane's own name over either", () => {
+    const t = paneTitle(pane({ workspaceLabel: "collie", cwd: "/home/kon/dev/ai/collie", sessionName: "oauth" }));
+    expect(t.secondary).toBe("oauth");
+  });
+});

@@ -5,7 +5,7 @@
 //
 // Nothing is lost: the pane's own name (a herdr `pane.rename` label, or Claude's own `/rename`
 // session name) moves down one line, where it displaces the cwd.
-import { shortCwd } from "./format";
+import { baseName, shortCwd } from "./format";
 import type { AgentView } from "./types";
 
 export interface PaneTitle {
@@ -34,6 +34,20 @@ export interface PaneParts {
 /** The separator between project and tab. Exported so tests and search-text builders agree. */
 export const TITLE_SEP = " · ";
 
+/**
+ * The cwd, but only when it says something the title doesn't.
+ *
+ * A space is almost always named after its directory, so the fallback line spent itself repeating
+ * line 1: `moonward_os` above `…/dev/moonward/moonward_os`, on row after row. Dropping it when the
+ * directory's own name matches the project keeps the path for exactly the case that carries
+ * information — a pane sitting somewhere OTHER than the space root, in a worktree or a subdirectory.
+ */
+function informativeCwd(cwd: string, project: string): string | null {
+  if (!cwd) return null;
+  if (baseName(cwd).toLowerCase() === project.trim().toLowerCase()) return null;
+  return shortCwd(cwd);
+}
+
 /** {@link PaneParts} for a pane — the render-time form of {@link paneTitle}. */
 export function paneParts(pane: AgentView): PaneParts {
   const project = pane.workspaceLabel || pane.workspaceId;
@@ -41,7 +55,7 @@ export function paneParts(pane: AgentView): PaneParts {
   return {
     project,
     tab: pane.tabLabel ?? null,
-    secondary: own || (pane.cwd ? shortCwd(pane.cwd) : null),
+    secondary: own || informativeCwd(pane.cwd, project),
   };
 }
 

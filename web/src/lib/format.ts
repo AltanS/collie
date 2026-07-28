@@ -1,11 +1,39 @@
 // Small presentational helpers.
 
-/** Collapse $HOME and keep the tail of a long path so it fits a phone row. */
+/** Collapse $HOME to `~` — handles /home/<user>, /Users/<user> (macOS), /var/home/<user> (Fedora). */
+export function tildeHome(cwd: string): string {
+  return cwd.replace(/^\/(?:var\/)?home\/[^/]+/, "~").replace(/^\/Users\/[^/]+/, "~");
+}
+
+/**
+ * Collapse $HOME and keep the tail of a long path so it fits a phone row.
+ *
+ * Drops WHOLE SEGMENTS, not characters: cutting mid-segment produced `…ropbox/dev/…`, which reads
+ * as a rendering fault rather than an abbreviation. The last segment is always kept even when it
+ * alone exceeds the budget — it's the part that identifies the directory.
+ */
 export function shortCwd(cwd: string, max = 32): string {
-  // Handles /home/<user>, /Users/<user> (macOS), and /var/home/<user> (Fedora Atomic / Silverblue).
-  let p = cwd.replace(/^\/(?:var\/)?home\/[^/]+/, "~").replace(/^\/Users\/[^/]+/, "~");
-  if (p.length > max) p = "…" + p.slice(p.length - max + 1);
-  return p;
+  const p = tildeHome(cwd);
+  if (p.length <= max) return p;
+
+  const segments = p.split("/").filter(Boolean);
+  const last = segments.pop();
+  if (last === undefined) return p;
+
+  const kept = [last];
+  let len = last.length + 1; // + the leading "…/"
+  for (const seg of segments.reverse()) {
+    if (len + seg.length + 1 > max) break;
+    kept.unshift(seg);
+    len += seg.length + 1;
+  }
+  return `…/${kept.join("/")}`;
+}
+
+/** The last path segment (the directory's own name), with any trailing slash ignored. */
+export function baseName(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? "";
 }
 
 /** Two-letter avatar fallback from an agent name (e.g. "claude" → "CL"). */

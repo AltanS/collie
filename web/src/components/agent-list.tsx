@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, Check, Inbox } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/section-header";
 import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
@@ -25,6 +26,9 @@ const AGE_BY_SECTION: Partial<Record<TriageKey, "seen" | "active">> = {
   ready: "active",
   recent: "seen",
 };
+
+/** The sections that mean "a human is required here" — the only ones that get card chrome. */
+const ATTENTION: ReadonlySet<TriageKey> = new Set<TriageKey>(["needs", "ready"]);
 
 // The herd in the one order the app agrees on: Needs you → Ready · unseen → Working → Recent
 // (lib/triage.ts). Only Recent folds, and only Recent takes the direction toggle; the three
@@ -60,9 +64,11 @@ export function AgentList({
 
   return (
     <div className="flex flex-col gap-5 px-3 py-4">
+      {/* The product of the twenty-times-a-day glance. Rendered with presence, not as a caption:
+          you should be able to resolve it one-handed at arm's length without focusing. */}
       {allClear && (
-        <p className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
-          <Check className="size-3.5 text-status-done" aria-hidden />
+        <p className="flex items-center gap-2 px-1 py-1 text-sm font-medium">
+          <Check className="size-5 shrink-0 text-status-done" aria-hidden />
           Nothing needs you
         </p>
       )}
@@ -88,7 +94,16 @@ export function AgentList({
               }
             />
             {open && (
-              <div id={bodyId} className="flex flex-col gap-2">
+              <div
+                id={bodyId}
+                className={cn(
+                  "flex flex-col",
+                  // Cards mean "a human is required here", so only the attention sections get them.
+                  // The rest are flat rows divided by a hairline — which also gives the page a
+                  // second boundary cue, so section gaps aren't doing that job alone.
+                  ATTENTION.has(s.key) ? "gap-2" : "divide-y divide-border/60",
+                )}
+              >
                 {/* statusStyle="dot": the section heading already says the status, so a pill on
                     every row restates it and costs the width the title needs. */}
                 {s.agents.map((a) => (
@@ -97,6 +112,7 @@ export function AgentList({
                     agent={a}
                     onClick={() => onOpen(a.paneId)}
                     statusStyle="dot"
+                    density={ATTENTION.has(s.key) ? "card" : "row"}
                     {...(age ? { age } : {})}
                   />
                 ))}
@@ -124,8 +140,10 @@ function SortToggle({ dir, onChange }: { dir: RecentDir; onChange: (dir: RecentD
           : "Sorted by oldest first — switch to most recently used first"
       }
       // A bordered chip, not bare text: unstyled it read as an annotation ("sorted newest") rather
-      // than something you can press. Fixed width so flipping it doesn't shift the header.
-      className="flex min-h-9 items-center justify-center gap-1 rounded-full border bg-muted/50 px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+      // than something you can press. Fixed width so flipping it doesn't shift the header. No fill —
+      // filled, it outweighed the heading it sits beside, which is backwards for a control that
+      // reorders the section you care least about.
+      className="flex min-h-9 items-center justify-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
     >
       <Icon className="size-3.5" aria-hidden />
       <span className="w-[3.25rem] text-left">{newest ? "Newest" : "Oldest"}</span>

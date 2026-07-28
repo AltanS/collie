@@ -30,6 +30,16 @@ interface AgentCardProps {
    * nothing and costs a third of the row's width, which is exactly the width the title needs.
    */
   statusStyle?: "badge" | "dot";
+  /**
+   * "card" (default) is the bordered, shadowed treatment. "row" is flat — no border, no shadow,
+   * separated by a hairline instead.
+   *
+   * Card chrome on 100% of rows is wallpaper, not emphasis: a Working row and a Recent row rendered
+   * pixel-identically, throwing away the four-level priority `triage()` had just computed. Reserving
+   * the card for the sections that mean "a human is required here" makes the shape itself carry the
+   * signal — see a card, something wants you; all flat, nothing does.
+   */
+  density?: "card" | "row";
 }
 
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
@@ -45,34 +55,56 @@ export function AgentCard({
   age,
   scope = "herd",
   statusStyle = "badge",
+  density = "card",
 }: AgentCardProps) {
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
+  const flat = density === "row";
   const parts = paneParts(agent);
   const tabTitle = paneTitleInTab(agent);
   const stamp = age === "seen" ? agent.lastSeenAt : age === "active" ? agent.lastActiveAt : undefined;
   const secondary = inTab ? tabTitle.secondary : parts.secondary;
+  // The dot rides the avatar's corner rather than the far right: at the right edge the eye read a
+  // title, then crossed 200px of empty card to a 10px mark describing it.
+  const cornerDot = statusStyle === "dot" && !isShell;
+
+  const Shell = flat ? "div" : Card;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left transition-transform active:scale-[0.99]"
+      className={cn(
+        "w-full text-left transition-transform active:scale-[0.99]",
+        flat && "rounded-lg transition-colors hover:bg-muted/50",
+      )}
     >
-      <Card
+      <Shell
         className={cn(
-          "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
+          flat
+            ? "flex flex-row items-center gap-3 px-2.5 py-2.5"
+            : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
+          // The blocked tint survives both treatments — it's the one cue that reads at a glance.
           blocked && "border-status-blocked/40 bg-status-blocked/5",
         )}
       >
-        {isShell ? (
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-muted">
-            <TerminalSquare className="size-4 text-muted-foreground" />
-          </div>
-        ) : (
-          <AgentIcon agent={agent.agent} className="size-9" />
-        )}
+        <div className="relative shrink-0">
+          {isShell ? (
+            <div className="flex size-9 items-center justify-center rounded-full border bg-muted">
+              <TerminalSquare className="size-4 text-muted-foreground" />
+            </div>
+          ) : (
+            <AgentIcon agent={agent.agent} className="size-9" />
+          )}
+          {cornerDot && (
+            <StatusDot
+              status={agent.status}
+              // Ringed in the surface colour so it reads as a badge on the avatar, not a smudge.
+              className="absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-background"
+            />
+          )}
+        </div>
 
         <div className="min-w-0 flex-1">
           {inTab ? (
@@ -107,16 +139,13 @@ export function AgentCard({
 
         {isShell ? (
           <ShellBadge />
-        ) : statusStyle === "dot" ? (
-          <>
-            <StatusDot status={agent.status} />
-            {/* The dot alone is colour-only; give SR users the word the badge would have shown. */}
-            <span className="sr-only">{STATUS_LABEL[agent.status]}</span>
-          </>
+        ) : cornerDot ? (
+          /* The dot itself is colour-only and lives on the avatar; give SR users the word. */
+          <span className="sr-only">{STATUS_LABEL[agent.status]}</span>
         ) : (
           <StatusBadge status={agent.status} />
         )}
-      </Card>
+      </Shell>
     </button>
   );
 }
