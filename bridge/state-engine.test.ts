@@ -505,26 +505,70 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
 // record, and both must stay ABSENT rather than defaulting when the server doesn't report them —
 // an older Herdr should read as "unknown", not as "zero scrollback" or "no transcript".
 describe("StateEngine — pane capability fields", () => {
-  test("maps an id-kind agent session to agentSessionId", async () => {
+  test("keeps an id-kind agent session (claude, codex)", async () => {
     const { herdr, engine, poll } = makeEngine();
     const p = pane("w1:p1", "w1", "idle", "claude");
     p.agent_session = { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" };
     herdr.panes = [p];
     await poll();
-    expect(engine.current().agents[0]!.agentSessionId).toBe("abc-123");
+    expect(engine.current().agents[0]!.agentSession).toEqual({ kind: "id", value: "abc-123" });
+  });
+
+  // The regression that kept pi journal-less: pi's herdr integration reports `agent_session_path`
+  // in preference to an id, and this mapper used to keep ONLY kind "id" — so a pi pane arrived with
+  // no session at all and its history could never be offered. Which kinds are meaningful is the
+  // journal adapter's call now, not this function's.
+  test("keeps a path-kind agent session (pi)", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const p = pane("w1:p1", "w1", "idle", "pi");
+    p.agent_session = {
+      source: "herdr:pi",
+      agent: "pi",
+      kind: "path",
+      value: "/home/you/.pi/agent/sessions/--repo--/2026-07-29T10-00-00-000Z_abc.jsonl",
+    };
+    herdr.panes = [p];
+    await poll();
+    expect(engine.current().agents[0]!.agentSession).toEqual({
+      kind: "path",
+      value: "/home/you/.pi/agent/sessions/--repo--/2026-07-29T10-00-00-000Z_abc.jsonl",
+    });
+  });
+
+  // Live-observed on a demo pane: Herdr keeps reporting the LAST session announced for a pane, so
+  // relaunching it as a different harness leaves the previous agent's ref behind — a pane running
+  // `pi` still advertised a `herdr:claude` id. Routing by pane agent would then hand pi's adapter a
+  // Claude uuid.
+  test("drops a session ref left behind by a different harness", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const p = pane("w1:p1", "w1", "idle", "pi");
+    p.agent_session = { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" };
+    herdr.panes = [p];
+    await poll();
+    expect(engine.current().agents[0]!.agentSession).toBeUndefined();
+  });
+
+  test("keeps a ref from an older Herdr that reports no owning agent", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const p = pane("w1:p1", "w1", "idle", "claude");
+    p.agent_session = { kind: "id", value: "abc-123" };
+    herdr.panes = [p];
+    await poll();
+    expect(engine.current().agents[0]!.agentSession).toEqual({ kind: "id", value: "abc-123" });
   });
 
   test.each([
-    ["a non-id session kind", { kind: "name", value: "my-session" }],
+    ["an unrecognised session kind", { kind: "name", value: "my-session" }],
     ["a session with no value", { kind: "id" }],
+    ["a session with an empty value", { kind: "id", value: "" }],
     ["no agent_session at all", undefined],
-  ])("omits agentSessionId for %s", async (_label, session) => {
+  ])("omits the session for %s", async (_label, session) => {
     const { herdr, engine, poll } = makeEngine();
     const p = pane("w1:p1", "w1", "idle", "claude");
     if (session) p.agent_session = session;
     herdr.panes = [p];
     await poll();
-    expect(engine.current().agents[0]!.agentSessionId).toBeUndefined();
+    expect(engine.current().agents[0]!.agentSession).toBeUndefined();
   });
 
   test("readableLines is scrollback depth PLUS the viewport (what a recent read can return)", async () => {

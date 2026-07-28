@@ -239,7 +239,7 @@ export function AgentChat({
   // `moreScrollback`: Herdr says this pane can still yield lines beyond the window we've asked for,
   // AND we're under the cap Herdr's own read clamp imposes. `readableLines` is undefined on an older
   // bridge/Herdr; treat that as "no idea" and stay hidden rather than offer a tap that fetches nothing.
-  const historyAvailable = Boolean(agent?.agentSessionId);
+  const historyAvailable = Boolean(agent?.hasSession);
   const moreScrollback =
     agent?.readableLines !== undefined &&
     requestedLines < agent.readableLines &&
@@ -528,7 +528,7 @@ export function AgentChat({
         rightLead={
           agent ? (
             <>
-              {agent.agentSessionId && (
+              {agent.hasSession && (
                 <button
                   type="button"
                   onClick={() => navigate(historyPath(paneId, session))}
