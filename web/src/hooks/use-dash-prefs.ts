@@ -13,6 +13,11 @@ export interface DashPrefs {
    * header while a forty-space one isn't handed a wall. An explicit choice always wins.
    */
   spacesOpen: boolean | null;
+  /**
+   * Whether the Shells section of the pane switcher is expanded. `null` = never chosen, so the
+   * count decides — a herd with 37 bare shells shouldn't bury the agents you actually switch to.
+   */
+  shellsOpen: boolean | null;
   /** Whether the Recent section is expanded. Defaults open — it's the recency list itself. */
   recentOpen: boolean;
   /** Which way Recent runs. Attention sections are never affected. */
@@ -21,15 +26,25 @@ export interface DashPrefs {
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
 
-/** Above this many spaces, an un-chosen Spaces section starts collapsed. */
-export const SPACES_COLLAPSE_THRESHOLD = 8;
+/** Above this many rows, an un-chosen foldable section starts collapsed. */
+export const COLLAPSE_THRESHOLD = 8;
 
-const DEFAULTS: DashPrefs = { spacesOpen: null, recentOpen: true, recentDir: "newest" };
+const DEFAULTS: DashPrefs = {
+  spacesOpen: null,
+  shellsOpen: null,
+  recentOpen: true,
+  recentDir: "newest",
+};
 
-/** Resolve the effective Spaces open state: an explicit choice, else the count threshold. */
-export function spacesOpenFor(pref: boolean | null, spaceCount: number): boolean {
+/**
+ * The effective open state of a count-sensitive section: an explicit choice always wins, otherwise
+ * it opens only while it's short enough to be worth showing. Used by Spaces on the dashboard and by
+ * Shells in the pane switcher — a two-item list shouldn't greet you as a mystery collapsed header,
+ * and a forty-item one shouldn't greet you as a wall.
+ */
+export function openForCount(pref: boolean | null, count: number): boolean {
   if (pref !== null) return pref;
-  return spaceCount <= SPACES_COLLAPSE_THRESHOLD;
+  return count <= COLLAPSE_THRESHOLD;
 }
 
 /**
@@ -41,6 +56,7 @@ export function coerceDashPrefs(raw: unknown): DashPrefs {
   const p = raw as Record<string, unknown>;
   return {
     spacesOpen: typeof p.spacesOpen === "boolean" ? p.spacesOpen : DEFAULTS.spacesOpen,
+    shellsOpen: typeof p.shellsOpen === "boolean" ? p.shellsOpen : DEFAULTS.shellsOpen,
     recentOpen: typeof p.recentOpen === "boolean" ? p.recentOpen : DEFAULTS.recentOpen,
     recentDir: p.recentDir === "oldest" || p.recentDir === "newest" ? p.recentDir : DEFAULTS.recentDir,
   };
@@ -69,6 +85,7 @@ function savePrefs(prefs: DashPrefs): void {
 export interface UseDashPrefsReturn {
   prefs: DashPrefs;
   setSpacesOpen: (open: boolean) => void;
+  setShellsOpen: (open: boolean) => void;
   setRecentOpen: (open: boolean) => void;
   setRecentDir: (dir: RecentDir) => void;
 }
@@ -85,8 +102,9 @@ export function useDashPrefs(): UseDashPrefsReturn {
   }, []);
 
   const setSpacesOpen = useCallback((spacesOpen: boolean) => update({ spacesOpen }), [update]);
+  const setShellsOpen = useCallback((shellsOpen: boolean) => update({ shellsOpen }), [update]);
   const setRecentOpen = useCallback((recentOpen: boolean) => update({ recentOpen }), [update]);
   const setRecentDir = useCallback((recentDir: RecentDir) => update({ recentDir }), [update]);
 
-  return { prefs, setSpacesOpen, setRecentOpen, setRecentDir };
+  return { prefs, setSpacesOpen, setShellsOpen, setRecentOpen, setRecentDir };
 }

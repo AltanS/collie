@@ -26,6 +26,8 @@ interface SectionHeaderProps {
    * also fold the section.
    */
   trailing?: ReactNode;
+  /** Heading level. 2 on a page; 3 inside the pane-switcher sheet, whose own title is the h2. */
+  level?: 2 | 3;
   className?: string;
 }
 
@@ -44,9 +46,11 @@ export function SectionHeader({
   onToggle,
   controls,
   trailing,
+  level = 2,
   className,
 }: SectionHeaderProps) {
   const foldable = open !== undefined && onToggle !== undefined;
+  const Heading = level === 3 ? "h3" : "h2";
 
   const inner = (
     <>
@@ -71,7 +75,7 @@ export function SectionHeader({
 
   return (
     <div className={cn("flex items-center gap-2 px-1", className)}>
-      <h2 className="flex min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide">
+      <Heading className="flex min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide">
         {foldable ? (
           <button
             type="button"
@@ -89,7 +93,7 @@ export function SectionHeader({
         ) : (
           <span className={cn("flex min-w-0 flex-1 items-center gap-1.5", tone)}>{inner}</span>
         )}
-      </h2>
+      </Heading>
       {trailing && <span className="flex shrink-0 items-center gap-1">{trailing}</span>}
     </div>
   );
