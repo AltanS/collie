@@ -72,16 +72,31 @@ export function spaceLastSeen(workspaceId: string, panes: readonly AgentView[]):
 }
 
 /**
+ * Last-used time for EVERY space in one pass over the panes. The dashboard needs this per space and
+ * again per rendered row, and it re-renders on every poll; deriving it per space would be
+ * spaces × panes each time (45 × 59 on a real herd, three times over). One pass, then map lookups.
+ */
+export function spaceLastSeenMap(panes: readonly AgentView[]): Map<string, number> {
+  const seen = new Map<string, number>();
+  for (const p of panes) {
+    const at = p.lastSeenAt ?? 0;
+    if (at > (seen.get(p.workspaceId) ?? 0)) seen.set(p.workspaceId, at);
+  }
+  return seen;
+}
+
+/**
  * Most-recently-used spaces first. Never-used spaces (and every space on an older bridge) tie at 0
  * and therefore keep Herdr's own workspace order behind the ones you actually touch — `sort` is
  * stable, so no timestamps means no reordering at all.
+ *
+ * Pass a prebuilt {@link spaceLastSeenMap} when the caller already has one.
  */
 export function sortSpacesByRecency(
   workspaces: readonly WorkspaceView[],
   panes: readonly AgentView[],
+  seen: Map<string, number> = spaceLastSeenMap(panes),
 ): WorkspaceView[] {
-  const seen = new Map<string, number>();
-  for (const w of workspaces) seen.set(w.workspaceId, spaceLastSeen(w.workspaceId, panes));
   return [...workspaces].sort(
     (a, b) => (seen.get(b.workspaceId) ?? 0) - (seen.get(a.workspaceId) ?? 0),
   );

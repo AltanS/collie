@@ -4,6 +4,7 @@ import {
   groupPanesByTab,
   sortSpacesByRecency,
   spaceLastSeen,
+  spaceLastSeenMap,
   worstSpaceStatus,
 } from "./spaces";
 import type { AgentStatus, AgentView, TabView, WorkspaceView } from "./types";
@@ -202,5 +203,29 @@ describe("filterSpaces", () => {
 
   it("returns nothing when nothing matches", () => {
     expect(filterSpaces(spaces, "zzz")).toEqual([]);
+  });
+});
+
+describe("spaceLastSeenMap", () => {
+  it("agrees with spaceLastSeen for every space, in one pass", () => {
+    const panes = [
+      agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 100 }),
+      agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 900 }),
+      agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", lastSeenAt: 400 }),
+    ];
+    const map = spaceLastSeenMap(panes);
+    for (const id of ["w1", "w2"]) expect(map.get(id)).toBe(spaceLastSeen(id, panes));
+  });
+
+  it("omits spaces with no panes, which callers read as 0", () => {
+    expect(spaceLastSeenMap([]).get("w1")).toBeUndefined();
+  });
+
+  it("gives the same ordering whether or not the map is passed in", () => {
+    const spaces = [ws("w1", "alpha", 1), ws("w2", "beta", 2)];
+    const panes = [agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", lastSeenAt: 900 })];
+    expect(sortSpacesByRecency(spaces, panes, spaceLastSeenMap(panes))).toEqual(
+      sortSpacesByRecency(spaces, panes),
+    );
   });
 });
