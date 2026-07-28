@@ -288,3 +288,30 @@ describe("AgentList — an older bridge with no timestamps", () => {
     expect(screen.queryByText(/^\d+[mhd]$|^now$/)).not.toBeInTheDocument();
   });
 });
+
+describe("AgentList — the age column", () => {
+  it("keeps the age off the end of the name when a row has no tab label", () => {
+    // An unlabelled single-tab space returns tab: null. Without a flex filler the age butted
+    // against the project and read as part of it ("comm_cli 37m").
+    render(
+      <AgentList
+        agents={[agent("p", "idle", { workspaceLabel: "comm_cli", lastSeenAt: Date.now() - 60_000 })]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("comm_cli").className).toMatch(/flex-1/);
+  });
+
+  it("hands the width to the tab instead when there IS one", () => {
+    render(
+      <AgentList
+        agents={[
+          agent("p", "idle", { workspaceLabel: "comm_cli", tabLabel: "main", lastSeenAt: 1 }),
+        ]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("comm_cli").className).toMatch(/max-w-\[45%\]/);
+    expect(screen.getByText("main").className).toMatch(/flex-1/);
+  });
+});

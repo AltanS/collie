@@ -164,7 +164,12 @@ function PaneRow({
         // SHOW that — it renders every pane identically otherwise. Staying denser than the dashboard
         // is fine; being unable to mark a blocked pane is not. (isAttention, so the rule isn't
         // re-derived here.)
-        !active && isAttention(pane.status) && "border border-status-blocked/40 bg-status-blocked/5",
+        //
+        // The border is applied even to the ACTIVE row, so the two cues compose: the pane you're in
+        // AND blocked keeps both its accent fill and its alarm edge. Only the fill is withheld,
+        // because two backgrounds can't both win.
+        isAttention(pane.status) && "border border-status-blocked/40",
+        !active && isAttention(pane.status) && "bg-status-blocked/5",
       )}
     >
       {isShell ? (
