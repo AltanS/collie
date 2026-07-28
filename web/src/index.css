@@ -61,7 +61,9 @@
      only while background is pure white; 0.18.0 deliberately moved background to 0.97 (see above),
      which silently made accent === background — so every "this is the current one" highlight
      (`bg-accent` in the pane switcher and session switcher) and every `hover:bg-accent` rendered
-     as nothing at all in light mode. Sits between --background (0.97) and --muted (0.94). */
+     as nothing at all in light mode. It sits a step BELOW --muted (0.94), not between it and
+     --background: the switcher needs three separable values — resting 0.97, hover (bg-muted/60)
+     ~0.94, active 0.92 — and 0.94 would have collided the last two. */
   --accent: light-dark(oklch(0.92 0 0), oklch(0.269 0 0));
   --accent-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
   --destructive: light-dark(oklch(0.577 0.245 27.325), oklch(0.704 0.191 22.216));
