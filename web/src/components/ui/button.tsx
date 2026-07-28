@@ -42,4 +42,6 @@ function Button({
   );
 }
 
-export { Button };
+// `buttonVariants` is exported so a real <a> can wear the button's clothes where a navigation, not a
+// click handler, is the point — see the access-refused banner's "Sign in".
+export { Button, buttonVariants };

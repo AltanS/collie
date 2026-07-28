@@ -80,6 +80,18 @@ describe("ConnectionBanner — the single connection surface", () => {
     expect(cfg.calls).toBe(0);
   });
 
+  // The escape hatch for an installed PWA, which has no address bar: a real link to the one path the
+  // service worker always passes to the network. It must stay an <a> with a real href — a button
+  // with an onClick would be a same-document action the SW never sees as a navigation, which is the
+  // whole bug (#31). If this assertion is ever "fixed" by swapping in a Button, the PWA is bricked
+  // again behind a refused session and nothing else will fail.
+  it("offers a real link to the reserved proxy path, not a click handler", () => {
+    renderBanner({ authError: true });
+
+    const signIn = screen.getByRole("link", { name: "Sign in" });
+    expect(signIn).toHaveAttribute("href", "/auth/");
+  });
+
   it("renders nothing while healthy — no bar at all", () => {
     renderBanner({ bridge: "connected" });
     expect(screen.queryByRole("status")).toBeNull();
