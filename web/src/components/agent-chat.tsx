@@ -11,6 +11,7 @@ import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
 import { AppHeader } from "@/components/app-header";
+import { ThemeToggle } from "@/components/theme-control";
 import { AnsiOutput } from "@/components/ansi-output";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -528,6 +529,10 @@ export function AgentChat({
         rightLead={
           agent ? (
             <>
+              {/* The pane is where you actually stare at the mirror, so the situational flip the
+                  theme control exists for bites hardest here. Leads the cluster rather than
+                  trailing it — the status pill stays the rightmost thing on every pane screen. */}
+              <ThemeToggle />
               {agent.agentSessionId && (
                 <button
                   type="button"
@@ -734,7 +739,7 @@ export function AgentChat({
               vanish with the stripped input box). Sits directly above the composer, as it did in the
               TUI. Verbatim text — a React text node, so no XSS surface. */}
           {statusLine && (
-            <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground/80">
+            <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground">
               {statusLine}
             </div>
           )}

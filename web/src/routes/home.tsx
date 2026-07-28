@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useRouteLoaderData } from "react-router";
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
+import { ThemeToggle } from "@/components/theme-control";
 import { SessionSwitcher } from "@/components/session-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
@@ -48,7 +49,12 @@ export function HomeRoute() {
         stalled={stalled}
         wordmark
         rightLead={<SessionSwitcher sessions={data.sessions ?? []} current={data.session} />}
-        rightTrail={<SettingsGear session={data.session} />}
+        rightTrail={
+          <>
+            <ThemeToggle />
+            <SettingsGear session={data.session} />
+          </>
+        }
       />
 
       {/* Content region below the header: a viewport-clipped internal scroller. */}

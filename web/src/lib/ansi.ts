@@ -22,14 +22,20 @@ export interface AnsiSegment {
   muted: boolean;
 }
 
-// 16-color palette (VS Code integrated-terminal dark) — readable on our dark background.
-const BASE16 = [
-  "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5",
-  "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff",
-];
+// The 16 indexed ANSI slots, emitted as CSS variables rather than literal hex. The light and dark
+// values live in index.css, so a segment parsed under one theme stays valid under the other and the
+// swap costs nothing at runtime — no re-parse, no theme state threaded through the render tree.
+// (Precedent: the inverse-video path below already emits var(--background)/var(--foreground).)
+//
+// Both spellings of an indexed colour must route through here. A real terminal resolves `ESC[31m`
+// and `ESC[38;5;1m` to the same palette slot, and many CLIs normalise everything to the latter — so
+// theming one and not the other would render the same logical colour two different ways in one pane.
+function ansiVar(n: number): string {
+  return `var(--ansi-${n})`;
+}
 
 function color256(n: number): string {
-  if (n < 16) return BASE16[n] ?? "#ffffff";
+  if (n < 16) return ansiVar(n);
   if (n >= 232) {
     const v = 8 + (n - 232) * 10;
     return `rgb(${v},${v},${v})`;
@@ -70,12 +76,12 @@ function applySgr(state: State, codes: number[]): void {
     else if (c === 24) state.underline = false;
     else if (c === 27) state.inverse = false;
     else if (c === 29) state.strike = false;
-    else if (c >= 30 && c <= 37) state.fg = BASE16[c - 30];
+    else if (c >= 30 && c <= 37) state.fg = ansiVar(c - 30);
     else if (c === 39) state.fg = undefined;
-    else if (c >= 40 && c <= 47) state.bg = BASE16[c - 40];
+    else if (c >= 40 && c <= 47) state.bg = ansiVar(c - 40);
     else if (c === 49) state.bg = undefined;
-    else if (c >= 90 && c <= 97) state.fg = BASE16[8 + c - 90];
-    else if (c >= 100 && c <= 107) state.bg = BASE16[8 + c - 100];
+    else if (c >= 90 && c <= 97) state.fg = ansiVar(8 + c - 90);
+    else if (c >= 100 && c <= 107) state.bg = ansiVar(8 + c - 100);
     else if (c === 38 || c === 48) {
       const isFg = c === 38;
       const mode = codes[i + 1];

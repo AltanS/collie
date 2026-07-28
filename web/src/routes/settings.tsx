@@ -9,6 +9,7 @@ import { ConnectionInfo } from "@/components/connection-info";
 import { Card } from "@/components/ui/card";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { SnoozeControl } from "@/components/snooze-control";
+import { ThemeControl } from "@/components/theme-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
@@ -59,6 +60,8 @@ export function SettingsRoute() {
         <Button
           variant="ghost"
           size="icon"
+          // size="icon" is 36px; the header's other controls are 44px since the tap-target pass.
+          className="size-11"
           onClick={() => navigate(homePath(session))}
           aria-label="Back"
         >
@@ -68,6 +71,10 @@ export function SettingsRoute() {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+        {/* First: it's the setting people come here to change, and below the notification stack it
+            sat off-screen on a phone, a scroll into a 1240px page. */}
+        <ThemeControl />
+
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">
             <div className="flex min-w-0 items-start gap-3">

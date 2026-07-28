@@ -94,7 +94,7 @@ function Section({
         )}
       >
         <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", dot)} />
-        {label} <span className="opacity-60">({count})</span>
+        {label} <span className="text-muted-foreground">({count})</span>
       </h3>
       {children}
     </section>

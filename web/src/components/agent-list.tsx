@@ -53,7 +53,7 @@ export function AgentList({
               g.accent ? "text-status-blocked" : "text-muted-foreground",
             )}
           >
-            {g.label} <span className="opacity-60">({members.length})</span>
+            {g.label} <span className="text-muted-foreground">({members.length})</span>
           </h2>
           <div className="flex flex-col gap-2">
             {members.map((a) => (

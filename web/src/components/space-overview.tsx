@@ -22,7 +22,7 @@ export function SpaceOverview({ workspaces, agents, onOpen, onNewSpace }: SpaceO
     <section className="flex flex-col gap-2 px-3 py-4">
       <div className="flex items-center justify-between px-1">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Spaces <span className="opacity-60">({workspaces.length})</span>
+          Spaces <span className="text-muted-foreground">({workspaces.length})</span>
         </h2>
         <button
           type="button"
@@ -61,7 +61,9 @@ export function SpaceOverview({ workspaces, agents, onOpen, onNewSpace }: SpaceO
                       <span className="sr-only">{STATUS_LABEL[status]}</span>
                     </>
                   ) : (
-                    <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
+                    // Solid, not /40: at 1px on a 10px circle the alpha ring measured 1.86:1 and
+                    // read as nothing at all. Same antialiasing problem as the switch's outline.
+                    <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground" />
                   )}
                   <span className="min-w-0 flex-1 truncate font-medium">{w.label}</span>
                   <Count icon={Layers} n={w.tabCount} unit="tab" />

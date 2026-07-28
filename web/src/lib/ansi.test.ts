@@ -41,17 +41,17 @@ describe("parseAnsi — SGR colour & weight", () => {
     const segs = parseAnsi(`${ESC}[31mred${ESC}[0m`);
     expect(segs).toHaveLength(1);
     expect(segs[0]!.text).toBe("red");
-    expect(segs[0]!.fg).toBe("#cd3131");
+    expect(segs[0]!.fg).toBe("var(--ansi-1)");
   });
 
   it("parses a background colour (42 = green bg)", () => {
     const segs = parseAnsi(`${ESC}[42mx`);
-    expect(segs[0]!.bg).toBe("#0dbc79");
+    expect(segs[0]!.bg).toBe("var(--ansi-2)");
   });
 
   it("parses bright foreground colours (91 = bright red)", () => {
     const segs = parseAnsi(`${ESC}[91mx`);
-    expect(segs[0]!.fg).toBe("#f14c4c");
+    expect(segs[0]!.fg).toBe("var(--ansi-9)");
   });
 
   it("parses weights/styles and resets them", () => {
@@ -84,6 +84,28 @@ describe("parseAnsi — SGR colour & weight", () => {
     expect(segs[0]!.fg).toBe("rgb(10,20,30)");
   });
 
+  // The palette boundary, asserted from both sides. Indices 0-15 are theme tokens; everything above
+  // them named an absolute colour and keeps its literal. A real terminal resolves `31m` and
+  // `38;5;1` to the same slot and many CLIs emit only the latter, so if these ever diverge one pane
+  // renders the same logical colour two different ways — invisibly wrong on a light background.
+  it("indexed colours 0-15 emit a theme variable in BOTH spellings", () => {
+    expect(parseAnsi(`${ESC}[31mx`)[0]!.fg).toBe("var(--ansi-1)");
+    expect(parseAnsi(`${ESC}[38;5;1mx`)[0]!.fg).toBe("var(--ansi-1)");
+    // ...including the bright half, reached directly (97m) or by index (38;5;15).
+    expect(parseAnsi(`${ESC}[97mx`)[0]!.fg).toBe("var(--ansi-15)");
+    expect(parseAnsi(`${ESC}[38;5;15mx`)[0]!.fg).toBe("var(--ansi-15)");
+    // Backgrounds route through the same table.
+    expect(parseAnsi(`${ESC}[41mx`)[0]!.bg).toBe("var(--ansi-1)");
+    expect(parseAnsi(`${ESC}[48;5;1mx`)[0]!.bg).toBe("var(--ansi-1)");
+  });
+
+  it("keeps literals above index 15 — the cube, the grey ramp, and truecolor", () => {
+    expect(parseAnsi(`${ESC}[38;5;16mx`)[0]!.fg).toBe("rgb(0,0,0)");
+    expect(parseAnsi(`${ESC}[38;5;46mx`)[0]!.fg).toBe("rgb(0,255,0)");
+    expect(parseAnsi(`${ESC}[38;5;255mx`)[0]!.fg).toBe("rgb(238,238,238)");
+    expect(parseAnsi(`${ESC}[38;2;10;20;30mx`)[0]!.fg).toBe("rgb(10,20,30)");
+  });
+
   it("swaps fg/bg for inverse video (7m), with sensible fallbacks", () => {
     const segs = parseAnsi(`${ESC}[7mx`);
     expect(segs[0]!.fg).toBe("var(--background)");
@@ -98,7 +120,7 @@ describe("parseAnsi — SGR colour & weight", () => {
 
   it("treats an empty CSI reset (ESC[m) as a full reset", () => {
     const segs = parseAnsi(`${ESC}[31mred${ESC}[mplain`);
-    expect(segs.find((s) => s.text === "red")!.fg).toBe("#cd3131");
+    expect(segs.find((s) => s.text === "red")!.fg).toBe("var(--ansi-1)");
     expect(segs.find((s) => s.text === "plain")!.fg).toBeUndefined();
   });
 });
@@ -133,7 +155,7 @@ describe("parseAnsi — XSS boundary (raw markup stays literal)", () => {
     const segs = parseAnsi(`${ESC}[31m${payload}${ESC}[0m`);
     expect(segs).toHaveLength(1);
     expect(segs[0]!.text).toBe(payload);
-    expect(segs[0]!.fg).toBe("#cd3131"); // still styled, but the body is inert text
+    expect(segs[0]!.fg).toBe("var(--ansi-1)"); // still styled, but the body is inert text
   });
 
   it("keeps angle brackets, ampersands and quotes intact (no HTML entity encoding)", () => {
@@ -166,7 +188,7 @@ describe("parseAnsi — CR overwrite semantics (last-write-wins per line)", () =
     // rendered in whatever colour was set before the \r.
     const segs = parseAnsi(`${ESC}[31mred\rblue`);
     expect(visible(`${ESC}[31mred\rblue`)).toBe("blue");
-    expect(segs[0]!.fg).toBe("#cd3131"); // "blue" text is in red colour
+    expect(segs[0]!.fg).toBe("var(--ansi-1)"); // "blue" text is in red colour
   });
 
   it("multiple lines: \\r only rolls back the current line, leaving prior lines intact", () => {
@@ -252,7 +274,7 @@ describe("parseAnsi — segment shape carries pre-computed style and muted flag"
 
   it("coloured segment has color set in style", () => {
     const segs = parseAnsi(`${ESC}[31mred${ESC}[0m`);
-    expect(segs[0]!.style.color).toBe("#cd3131");
+    expect(segs[0]!.style.color).toBe("var(--ansi-1)");
     expect(segs[0]!.muted).toBe(false);
   });
 
