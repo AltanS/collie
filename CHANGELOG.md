@@ -15,6 +15,7 @@ All notable changes to Collie are recorded here. The format follows
 - The swipe-up **Switch pane** sheet folds its long tails too — Recent, and the bare **Shells** group that buried the agents underneath it (ed0f0fa)
 - Spaces are ordered by last used and filterable — 45 of them are now three keystrokes, not a scroll (3850d96)
 - The bridge keeps two timestamps per pane (`activeAt`, `seenAt`) in `activity.json`, because Herdr reports none (839d0f3)
+- **Tab and space chips carry a status dot** — blocked / ready / working / idle, in the herd list's own palette. They only ever showed a dot for blocked before, so every other state read the same as every other (ba49eaf)
 
 ### Changed
 - **Agent rows are titled `project · tab`, not "claude".** The pane's own name moves to the second line; the agent stays in the avatar (3850d96)
