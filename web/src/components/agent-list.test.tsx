@@ -1,0 +1,258 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { AgentList } from "./agent-list";
+import type { AgentStatus, AgentView } from "@/lib/types";
+
+function agent(
+  paneId: string,
+  status: AgentStatus,
+  over: Partial<AgentView> = {},
+): AgentView {
+  return {
+    paneId,
+    workspaceId: "w0",
+    workspaceLabel: paneId,
+    workspaceNumber: 1,
+    tabId: "w0:t1",
+    agent: "claude",
+    status,
+    cwd: "/home/k/proj",
+    focused: false,
+    ...over,
+  };
+}
+
+/** Section headings, in the order they render. Queried by role, because "needs you" is also the
+ *  blocked STATUS_LABEL on every row's badge — matching on text alone catches both. */
+const headings = () =>
+  screen.getAllByRole("heading").map((el) => el.textContent?.toLowerCase() ?? "");
+
+describe("AgentList — sections", () => {
+  const herd = [
+    agent("blocked", "blocked", { lastActiveAt: 500, lastSeenAt: 1 }),
+    agent("unseen", "done", { lastActiveAt: 400, lastSeenAt: 1 }),
+    agent("busy", "working", { lastActiveAt: 300, lastSeenAt: 1 }),
+    agent("old", "idle", { lastActiveAt: 1, lastSeenAt: 200 }),
+  ];
+
+  it("renders the four sections in triage order, agents first", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} />);
+    expect(headings()).toEqual([
+      expect.stringContaining("needs you"),
+      expect.stringContaining("ready · unseen"),
+      expect.stringContaining("working"),
+      expect.stringContaining("recent"),
+    ]);
+  });
+
+  it("titles rows by project · tab, never by the agent name", () => {
+    render(
+      <AgentList
+        agents={[agent("p", "idle", { workspaceLabel: "moonward_os", tabLabel: "fix-auth" })]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("moonward_os · fix-auth")).toBeInTheDocument();
+    expect(screen.queryByText("claude")).not.toBeInTheDocument();
+  });
+
+  it("omits a section with no members rather than showing an empty heading", () => {
+    render(<AgentList agents={[agent("only", "working", { lastActiveAt: 1 })]} onOpen={vi.fn()} />);
+    expect(screen.queryByText(/needs you/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ready · unseen/i)).not.toBeInTheDocument();
+  });
+
+  it("opens the pane behind a tapped row", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    render(<AgentList agents={[agent("p1", "blocked")]} onOpen={onOpen} />);
+    await user.click(screen.getByRole("button", { name: /p1/ }));
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith("p1");
+  });
+
+  it("shows the herd-empty placeholder, and suppresses it when asked", () => {
+    const { rerender } = render(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} />);
+    expect(screen.getByText(/no agents running/i)).toBeInTheDocument();
+    rerender(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} emptyState={false} />);
+    expect(screen.queryByText(/no agents running/i)).not.toBeInTheDocument();
+  });
+
+  it("says it's waiting when the bridge is down, rather than 'no agents'", () => {
+    render(<AgentList agents={[]} bridge="disconnected" onOpen={vi.fn()} />);
+    expect(screen.getByText(/waiting for herdr/i)).toBeInTheDocument();
+  });
+});
+
+describe("AgentList — the attention sections are pinned", () => {
+  it("gives them no fold control at all", () => {
+    render(
+      <AgentList
+        agents={[agent("b", "blocked"), agent("w", "working")]}
+        onOpen={vi.fn()}
+        recentOpen
+        onRecentOpenChange={vi.fn()}
+      />,
+    );
+    // Only Recent may fold — and it isn't rendered here, so nothing is expandable.
+    expect(screen.queryByRole("button", { expanded: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { expanded: false })).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentList — Recent folds", () => {
+  const herd = [
+    agent("b", "blocked"),
+    agent("r1", "idle", { lastSeenAt: 900 }),
+    agent("r2", "idle", { lastSeenAt: 100 }),
+  ];
+
+  it("hides its rows when folded but keeps Needs you visible", () => {
+    render(
+      <AgentList agents={herd} onOpen={vi.fn()} recentOpen={false} onRecentOpenChange={vi.fn()} />,
+    );
+    expect(screen.queryByText(/^r1$/)).not.toBeInTheDocument();
+    expect(headings()).toEqual([
+      expect.stringContaining("needs you"),
+      expect.stringContaining("recent"),
+    ]);
+    expect(screen.getByText("b")).toBeInTheDocument();
+  });
+
+  it("reports the fold to its owner", async () => {
+    const user = userEvent.setup();
+    const onRecentOpenChange = vi.fn();
+    render(
+      <AgentList agents={herd} onOpen={vi.fn()} recentOpen onRecentOpenChange={onRecentOpenChange} />,
+    );
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    expect(onRecentOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("withdraws the sort control while folded — sorting invisible rows does nothing", () => {
+    const { rerender } = render(
+      <AgentList
+        agents={herd}
+        onOpen={vi.fn()}
+        recentOpen
+        onRecentOpenChange={vi.fn()}
+        recentDir="newest"
+        onRecentDirChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /switch to oldest first/i })).toBeInTheDocument();
+
+    rerender(
+      <AgentList
+        agents={herd}
+        onOpen={vi.fn()}
+        recentOpen={false}
+        onRecentOpenChange={vi.fn()}
+        recentDir="newest"
+        onRecentDirChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /switch to oldest first/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentList — the direction toggle", () => {
+  const herd = [
+    agent("fresh", "idle", { lastSeenAt: 900 }),
+    agent("stale", "idle", { lastSeenAt: 100 }),
+  ];
+
+  it("orders Recent newest-first and flips on tap", async () => {
+    const user = userEvent.setup();
+    const onRecentDirChange = vi.fn();
+    render(
+      <AgentList
+        agents={herd}
+        onOpen={vi.fn()}
+        recentDir="newest"
+        onRecentDirChange={onRecentDirChange}
+      />,
+    );
+    const rows = screen.getAllByRole("button", { name: /fresh|stale/ });
+    expect(rows[0]!.textContent).toContain("fresh");
+
+    await user.click(screen.getByRole("button", { name: /switch to oldest first/i }));
+    expect(onRecentDirChange).toHaveBeenCalledExactlyOnceWith("oldest");
+  });
+
+  it("renders oldest-first when told to", () => {
+    render(
+      <AgentList agents={herd} onOpen={vi.fn()} recentDir="oldest" onRecentDirChange={vi.fn()} />,
+    );
+    const rows = screen.getAllByRole("button", { name: /fresh|stale/ });
+    expect(rows[0]!.textContent).toContain("stale");
+  });
+
+  it("never reorders the pinned sections", () => {
+    const attention = [
+      agent("new", "blocked", { lastActiveAt: 900 }),
+      agent("old", "blocked", { lastActiveAt: 100 }),
+    ];
+    for (const dir of ["newest", "oldest"] as const) {
+      const { unmount } = render(
+        <AgentList agents={attention} onOpen={vi.fn()} recentDir={dir} onRecentDirChange={vi.fn()} />,
+      );
+      const rows = screen.getAllByRole("button", { name: /new|old/ });
+      expect(rows[0]!.textContent).toContain("new");
+      unmount();
+    }
+  });
+
+  it("shows no toggle when the parent doesn't wire one", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /switch to/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentList — timestamps on rows", () => {
+  it("dates a Recent row by when you last used it", () => {
+    const seen = Date.now() - 5 * 60 * 1000;
+    render(<AgentList agents={[agent("p", "idle", { lastSeenAt: seen })]} onOpen={vi.fn()} />);
+    expect(screen.getByText("5m ago")).toBeInTheDocument();
+  });
+
+  it("dates a Ready · unseen row by when it FINISHED, not when you last looked", () => {
+    const finished = Date.now() - 2 * 60 * 1000;
+    render(
+      <AgentList
+        agents={[agent("p", "done", { lastActiveAt: finished, lastSeenAt: finished - 60_000 })]}
+        onOpen={vi.fn()}
+      />,
+    );
+    const section = screen.getByText(/ready · unseen/i).closest("section")!;
+    expect(within(section).getByText("2m ago")).toBeInTheDocument();
+  });
+
+  it("puts no age on a blocked row — it's noise beside 'needs you'", () => {
+    render(
+      <AgentList
+        agents={[agent("p", "blocked", { lastActiveAt: Date.now() - 300_000, lastSeenAt: 1 })]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/ago/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentList — an older bridge with no timestamps", () => {
+  it("still renders a coherent dashboard, with Ready·unseen simply absent", () => {
+    render(
+      <AgentList
+        agents={[agent("b", "blocked"), agent("w", "working"), agent("d", "done")]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(headings()).toEqual([
+      expect.stringContaining("needs you"),
+      expect.stringContaining("working"),
+      expect.stringContaining("recent"),
+    ]);
+    expect(screen.queryByText(/ready · unseen/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ago/i)).not.toBeInTheDocument();
+  });
+});

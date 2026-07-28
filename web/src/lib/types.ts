@@ -37,6 +37,25 @@ export interface AgentView {
    * bridges/Herdr, which reads as "unknown" (the button then falls back to hidden).
    */
   readableLines?: number;
+  /**
+   * The pane's tab label, denormalised bridge-side alongside `workspaceLabel`. Absent when it says
+   * nothing: Herdr names an unlabelled tab positionally ("1"), which in a single-tab space would
+   * render as `project · 1` (see `meaningfulTabLabel` in bridge/activity.ts). Render as text only,
+   * never markup — same XSS boundary as `paneLabel`.
+   */
+  tabLabel?: string;
+  /**
+   * Epoch ms of this agent's last status transition, as the bridge observed it. Absent on an older
+   * bridge — which is exactly why triage degrades cleanly; see `triage()`.
+   */
+  lastActiveAt?: number;
+  /**
+   * Epoch ms you last opened or drove this pane through Collie. Absent as above.
+   *
+   * There is no "seen" flag anywhere: a `done` agent is unseen precisely when
+   * `lastActiveAt > lastSeenAt`, so opening the pane clears it by construction.
+   */
+  lastSeenAt?: number;
 }
 
 /**

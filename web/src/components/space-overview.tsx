@@ -1,93 +1,159 @@
-import { ChevronRight, FolderPlus, Layers, LayoutGrid } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, FolderPlus, LayoutGrid, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { SectionHeader } from "@/components/section-header";
 import { StatusDot } from "@/components/status-badge";
-import { blockedCount, worstSpaceStatus } from "@/lib/spaces";
+import {
+  blockedCount,
+  filterSpaces,
+  sortSpacesByRecency,
+  spaceLastSeen,
+  worstSpaceStatus,
+} from "@/lib/spaces";
+import { timeAgo } from "@/lib/format";
 import { STATUS_LABEL } from "@/lib/types";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
 interface SpaceOverviewProps {
   workspaces: WorkspaceView[];
   agents: AgentView[];
+  /** Bare shells too — a space you only ever opened a shell in still counts as used. */
+  shellPanes?: AgentView[];
   onOpen: (workspaceId: string) => void;
   onNewSpace: () => void;
+  /** Fold state, owned by the dashboard so it can be persisted. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-// The dashboard's top section: every space as a card with a status dot (its most-urgent agent), a
-// blocked tint, and compact tab/pane counts. Tapping a space drills into its tab/pane view.
-export function SpaceOverview({ workspaces, agents, onOpen, onNewSpace }: SpaceOverviewProps) {
+// The dashboard's navigator, and the LAST section on the page: everything you might act on comes
+// first. It folds to a single line — with 45 spaces that's the difference between a dashboard and a
+// scroll — and expands to a recency-ordered, filterable list.
+export function SpaceOverview({
+  workspaces,
+  agents,
+  shellPanes = [],
+  onOpen,
+  onNewSpace,
+  open,
+  onOpenChange,
+}: SpaceOverviewProps) {
+  // Ephemeral view state, like SpaceRoute's tab selection — a filter you typed yesterday should not
+  // greet you today with most of your spaces missing.
+  const [query, setQuery] = useState("");
+
+  const panes = [...agents, ...shellPanes];
+  const blockedSpaces = workspaces.filter((w) => blockedCount(w.workspaceId, agents) > 0).length;
+  const visible = filterSpaces(sortSpacesByRecency(workspaces, panes), query);
+
   return (
     <section className="flex flex-col gap-2 px-3 py-4">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Spaces <span className="text-muted-foreground">({workspaces.length})</span>
-        </h2>
-        <button
-          type="button"
-          onClick={onNewSpace}
-          aria-label="New space"
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted active:scale-95"
-        >
-          <FolderPlus className="size-4" />
-        </button>
-      </div>
-
-      {workspaces.length === 0 ? (
-        <p className="px-1 py-6 text-center text-sm text-muted-foreground">No spaces yet.</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {workspaces.map((w) => {
-            const status = worstSpaceStatus(w.workspaceId, agents);
-            const blocked = blockedCount(w.workspaceId, agents) > 0;
-            return (
-              <button
-                key={w.workspaceId}
-                type="button"
-                onClick={() => onOpen(w.workspaceId)}
-                className="w-full text-left transition-transform active:scale-[0.99]"
+      <SectionHeader
+        label="Spaces"
+        count={workspaces.length}
+        open={open}
+        onToggle={onOpenChange}
+        controls="spaces-body"
+        trailing={
+          <>
+            {/* Why you'd bother expanding — stays visible while folded. */}
+            {blockedSpaces > 0 && (
+              <span
+                className="flex items-center gap-1 text-[11px] font-semibold tabular-nums text-status-blocked"
+                aria-label={`${blockedSpaces} ${blockedSpaces === 1 ? "space needs" : "spaces need"} you`}
               >
-                <Card
-                  className={cn(
-                    "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
-                    blocked && "border-status-blocked/40 bg-status-blocked/5",
-                  )}
+                <span className="size-2 rounded-full bg-status-blocked" aria-hidden />
+                {blockedSpaces}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onNewSpace}
+              aria-label="New space"
+              className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+            >
+              <FolderPlus className="size-4" />
+            </button>
+          </>
+        }
+      />
+
+      {open && (
+        <div id="spaces-body" className="flex flex-col gap-2">
+          {/* Deliberately NOT autofocused: on a phone that would throw the keyboard over the list
+              you just asked to see. */}
+          {workspaces.length > 1 && (
+            <label className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
+              <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filter spaces…"
+                aria-label="Filter spaces"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </label>
+          )}
+
+          {workspaces.length === 0 ? (
+            <p className="px-1 py-6 text-center text-sm text-muted-foreground">No spaces yet.</p>
+          ) : visible.length === 0 ? (
+            <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+              No space matches “{query}”.
+            </p>
+          ) : (
+            visible.map((w) => {
+              const status = worstSpaceStatus(w.workspaceId, agents);
+              const blocked = blockedCount(w.workspaceId, agents) > 0;
+              const seen = spaceLastSeen(w.workspaceId, panes);
+              return (
+                <button
+                  key={w.workspaceId}
+                  type="button"
+                  onClick={() => onOpen(w.workspaceId)}
+                  className="w-full text-left transition-transform active:scale-[0.99]"
                 >
-                  {status ? (
-                    <>
-                      <StatusDot status={status} />
-                      {/* The dot alone is color-only; give SR users the status word (as StatusBadge). */}
-                      <span className="sr-only">{STATUS_LABEL[status]}</span>
-                    </>
-                  ) : (
-                    // Solid, not /40: at 1px on a 10px circle the alpha ring measured 1.86:1 and
-                    // read as nothing at all. Same antialiasing problem as the switch's outline.
-                    <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate font-medium">{w.label}</span>
-                  <Count icon={Layers} n={w.tabCount} unit="tab" />
-                  <Count icon={LayoutGrid} n={w.paneCount} unit="pane" />
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                </Card>
-              </button>
-            );
-          })}
+                  <Card
+                    className={cn(
+                      "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
+                      blocked && "border-status-blocked/40 bg-status-blocked/5",
+                    )}
+                  >
+                    {status ? (
+                      <>
+                        <StatusDot status={status} />
+                        {/* The dot alone is colour-only; give SR users the status word. */}
+                        <span className="sr-only">{STATUS_LABEL[status]}</span>
+                      </>
+                    ) : (
+                      <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate font-medium">{w.label}</span>
+                    {/* One count plus a relative time is what a 390px row has room for — the tab
+                        count went, the pane count is the useful one. */}
+                    <span
+                      aria-label={`${w.paneCount} ${w.paneCount === 1 ? "pane" : "panes"}`}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
+                    >
+                      <LayoutGrid className="size-3.5" aria-hidden />
+                      {w.paneCount}
+                    </span>
+                    {seen > 0 && (
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        {timeAgo(seen)}
+                      </span>
+                    )}
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  </Card>
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </section>
-  );
-}
-
-// A compact count pill — icon + number, with a spelled-out aria-label (e.g. "3 panes") for a11y.
-function Count({ icon: Icon, n, unit }: { icon: LucideIcon; n: number; unit: string }) {
-  return (
-    <span
-      aria-label={`${n} ${unit}${n === 1 ? "" : "s"}`}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
-    >
-      <Icon className="size-3.5" aria-hidden />
-      {n}
-    </span>
   );
 }

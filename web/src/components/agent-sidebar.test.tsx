@@ -23,30 +23,31 @@ describe("ThreadSidebar", () => {
     expect(screen.getByText("No agents running.")).toBeInTheDocument();
   });
 
-  it("groups agents into the triage sections it has members for", () => {
+  it("groups agents into the same triage sections the dashboard uses", () => {
     render(
       <ThreadSidebar agents={[...fixtureAgents, idleAgent]} currentPaneId="" onSelect={vi.fn()} />,
     );
-    // blocked → Needs you, working → Working, idle → Idle · done
+    // blocked → Needs you, working → Working, idle → Recent (lib/triage.ts)
     expect(screen.getByText("Needs you")).toBeInTheDocument();
     expect(screen.getByText("Working")).toBeInTheDocument();
-    expect(screen.getByText("Idle · done")).toBeInTheDocument();
+    expect(screen.getByText("Recent")).toBeInTheDocument();
   });
 
   it("omits groups that have no members", () => {
-    // Only a blocked agent → no Working / Idle headers.
+    // Only a blocked agent → no Working / Recent headers.
     render(<ThreadSidebar agents={[fixtureAgents[0]!]} currentPaneId="" onSelect={vi.fn()} />);
     expect(screen.getByText("Needs you")).toBeInTheDocument();
     expect(screen.queryByText("Working")).toBeNull();
-    expect(screen.queryByText("Idle · done")).toBeNull();
+    expect(screen.queryByText("Recent")).toBeNull();
   });
 
   it("marks the current pane with aria-current='page'", () => {
     render(<ThreadSidebar agents={fixtureAgents} currentPaneId="w2:p1" onSelect={vi.fn()} />);
     const current = screen.getByRole("button", { current: "page" });
-    // w2:p1 is the codex agent in the "collie" workspace.
-    expect(current).toHaveTextContent("codex");
+    // w2:p1 lives in the "collie" workspace. The row is titled by where the work IS, not by which
+    // agent is doing it — "codex" is carried by the avatar (see paneTitle).
     expect(current).toHaveTextContent("collie");
+    expect(current).not.toHaveTextContent("codex");
   });
 
   it("does not mark any pane current when the id matches nothing", () => {
@@ -58,7 +59,7 @@ describe("ThreadSidebar", () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     render(<ThreadSidebar agents={fixtureAgents} currentPaneId="w2:p1" onSelect={onSelect} />);
-    await user.click(screen.getByRole("button", { name: /claude/ }));
+    await user.click(screen.getByRole("button", { name: /webapp/ }));
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p1");
   });
 
@@ -87,7 +88,9 @@ describe("ThreadSidebar", () => {
       />,
     );
     expect(screen.getByText("Shells")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /shell/ }));
+    // The shell row is titled by its space like every other row; the terminal glyph is what marks
+    // it as a shell. It's the only pane in "sandbox" here, so the name is unambiguous.
+    await user.click(screen.getByRole("button", { name: /sandbox/ }));
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("w3:p2");
   });
 
