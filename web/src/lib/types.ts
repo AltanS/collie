@@ -209,7 +209,12 @@ export type PaneHistoryResponse =
 
 export type ActionResponse =
   | { ok: true }
-  | { ok: false; error: string; textDelivered?: boolean };
+  | {
+      ok: false;
+      error: string;
+      textDelivered?: boolean;
+      code?: "prompt_changed";
+    };
 
 export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };
 

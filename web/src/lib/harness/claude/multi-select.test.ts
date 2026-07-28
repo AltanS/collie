@@ -90,6 +90,22 @@ describe("detectMultiSelect — review phase", () => {
   });
 });
 
+describe("detectMultiSelect region signature", () => {
+  it("is literal contiguous fixture text in both phases", () => {
+    for (const name of [
+      "claude--select-multiselect-single.txt",
+      "claude--select-multiselect-checked.txt",
+      "claude--select-multiselect-review.txt",
+    ]) {
+      const lines = fixtureLines(name);
+      const screenText = lines.map(lineText).join("\n");
+      const model = detectMultiSelect(lines);
+      expect(model).not.toBeNull();
+      expect(screenText.includes(model!.regionSignature)).toBe(true);
+    }
+  });
+});
+
 describe("detectMultiSelectRegion — render boundary", () => {
   it("starts the checkbox region at the single-question stepper (raw scrollback stays above)", () => {
     const lines = fixtureLines("claude--select-multiselect-single.txt");

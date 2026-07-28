@@ -82,11 +82,18 @@ export async function submitWizardKeys(args: {
 }): Promise<PromptActionResult> {
   const { paneId, wizard, keys, session } = args;
 
-  const guarded = await entryGuard(args, wizard, detectWizard, wizardsEqual);
-  if (guarded) return guarded;
+  const guarded = await entryGuard(
+    args,
+    wizard,
+    detectWizard,
+    wizardsEqual,
+    (model) => model.signature,
+  );
+  if (!guarded.ok) return guarded.result;
 
   try {
-    const res = await sendKeys(paneId, keys, session);
+    const res = await sendKeys(paneId, keys, session, guarded.region);
+    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
   } catch (e) {

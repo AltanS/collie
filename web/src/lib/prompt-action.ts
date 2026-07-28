@@ -63,11 +63,18 @@ export async function submitPromptOption(args: {
 }): Promise<PromptActionResult> {
   const { paneId, prompt, option, session } = args;
 
-  const guarded = await entryGuard(args, prompt, detectPromptSelect, promptsEqual);
-  if (guarded) return guarded;
+  const guarded = await entryGuard(
+    args,
+    prompt,
+    detectPromptSelect,
+    promptsEqual,
+    (model) => model.signature,
+  );
+  if (!guarded.ok) return guarded.result;
 
   try {
-    const res = await sendKeys(paneId, option.keys, session);
+    const res = await sendKeys(paneId, option.keys, session, guarded.region);
+    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
   } catch (e) {
