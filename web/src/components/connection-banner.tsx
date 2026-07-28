@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRevalidator } from "react-router";
-import { CheckCircle2, Loader2, Plug, RefreshCw, RotateCw, TriangleAlert, WifiOff } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  LogIn,
+  Plug,
+  RefreshCw,
+  RotateCw,
+  TriangleAlert,
+  WifiOff,
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { PROXY_AUTH_PATH } from "@/lib/sw-routes";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
@@ -52,8 +62,15 @@ export function ConnectionBanner({ bridge, error, authError }: ConnectionBannerP
 // the cause. The flag covers 401 and 403 alike, and a 403 can equally mean "this device is not
 // allowlisted", "host not allowed" or "cross-origin rejected", so naming any one of them would be
 // wrong more often than right. What the operator needs here is the one fact the old behaviour hid:
-// this is not the network. Reload is the useful action either way, because it is what lets a
-// fronting proxy serve its sign-in page.
+// this is not the network.
+//
+// Reload alone is NOT enough to reach a fronting proxy, which is what this banner used to claim. In
+// an installed PWA the service worker answers every navigation it owns — a reload included — from
+// the precached app shell, so a reload re-renders the same refused UI and never touches the proxy.
+// "Sign in" is the escape: a real navigation to the one path the SW always passes to the network
+// (lib/sw-routes). An <a>, not a button, so it is an ordinary navigation the SW sees as such — and
+// so it still works if React is wedged. Reload stays alongside it, since a merely stale session on
+// an already-signed-in device recovers without leaving the app.
 function AuthErrorBanner() {
   return (
     <div className="grid shrink-0 grid-rows-[1fr] overflow-hidden opacity-100">
@@ -70,13 +87,24 @@ function AuthErrorBanner() {
           <span className="min-w-0 flex-1 truncate font-medium text-foreground">
             Access refused. This is not a connection problem.
           </span>
+          <a
+            href={PROXY_AUTH_PATH}
+            className={cn(
+              buttonVariants({ size: "sm" }),
+              "h-6 gap-1 px-2 text-xs no-underline",
+            )}
+          >
+            <LogIn className="size-3.5" />
+            Sign in
+          </a>
           <Button
-            size="sm"
-            className="h-6 gap-1 px-2 text-xs"
+            size="icon"
+            variant="ghost"
+            aria-label="Reload"
+            className="size-6 text-muted-foreground"
             onClick={() => window.location.reload()}
           >
             <RefreshCw className="size-3.5" />
-            Reload
           </Button>
         </div>
       </div>

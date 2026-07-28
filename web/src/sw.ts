@@ -4,6 +4,7 @@ import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
 import { decidePush, type PushPayload } from "./lib/push-decision";
+import { NAVIGATION_NETWORK_ONLY } from "./lib/sw-routes";
 
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
 // Workbox SW did — precache the app shell + SPA-fallback navigations — PLUS the two handlers a
@@ -21,8 +22,16 @@ declare const self: ServiceWorkerGlobalScope & {
 
 // ── App-shell caching (parity with the previous generateSW config) ──────────────────────────────
 precacheAndRoute(self.__WB_MANIFEST);
-// SPA fallback so deep links (/pane/:id) resolve offline too; never intercept the API.
-registerRoute(new NavigationRoute(createHandlerBoundToURL("/index.html"), { denylist: [/^\/api\//] }));
+// SPA fallback so deep links (/pane/:id) resolve offline too. The denylist is the set of paths this
+// SW must never answer from the precache — the API, and the `/auth/` namespace reserved for a
+// fronting proxy's sign-in page. Without that second entry an installed PWA, which has no address
+// bar, has no reachable path to the proxy at all: every navigation, including a reload, is answered
+// by the cached app shell. See lib/sw-routes for the contract.
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL("/index.html"), {
+    denylist: [...NAVIGATION_NETWORK_ONLY],
+  }),
+);
 
 // `registerType: "autoUpdate"` means a fresh build should take over without a user gesture. With
 // injectManifest we own that lifecycle: skip the waiting phase on install, claim open clients on
