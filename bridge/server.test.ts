@@ -4,6 +4,8 @@ import {
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
+  marksPaneSeen,
+  SEEN_HEADER,
   deviceAuth,
   guard,
   historyParams,
@@ -862,5 +864,37 @@ describe("isReservedAuthPath — the namespace a fronting proxy owns", () => {
     for (const path of ["/", "/settings", "/pane/w1:p1", "/authors", "/api/snapshot"]) {
       expect(isReservedAuthPath(path)).toBe(false);
     }
+  });
+});
+
+// marksPaneSeen guards the one place a READ mutates server state. checkAccess lets a read through
+// without an Origin (browsers omit it on same-origin GETs), so without this a cross-site <img> at a
+// guessed pane id could silently clear the "Ready · unseen" section.
+describe("marksPaneSeen — CSRF guard on marking a pane seen", () => {
+  const withHeader = (h: Record<string, string> = {}) => new Request("http://x/api/pane/w1:p1", { headers: h });
+
+  test("a read carrying the client header counts — only our own page can set it", () => {
+    expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "1" }), undefined)).toBe(true);
+  });
+
+  test("a bare cross-site GET does NOT count", () => {
+    // What an <img src="…/api/pane/w1:p1"> produces: no Origin, no custom header.
+    expect(marksPaneSeen(withHeader(), undefined)).toBe(false);
+  });
+
+  test("history is a read — it needs the header too", () => {
+    expect(marksPaneSeen(withHeader(), "history")).toBe(false);
+    expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "1" }), "history")).toBe(true);
+  });
+
+  test("write actions count without it — they already cleared the Origin-requiring write gate", () => {
+    for (const action of ["reply", "keys", "upload", "close", "rename"]) {
+      expect(marksPaneSeen(withHeader(), action)).toBe(true);
+    }
+  });
+
+  test("any header value counts — presence is the proof, not the contents", () => {
+    expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "" }), undefined)).toBe(true);
+    expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "anything" }), undefined)).toBe(true);
   });
 });

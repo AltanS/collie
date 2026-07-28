@@ -98,6 +98,37 @@ const MAX_HISTORY_LIMIT = 5000;
 // (create) is an exact match on `/api/tab`, so it never collides with this `/api/tab/<id>/<action>`.
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
 
+/**
+ * Header the web app sets on its own pane reads, and the ONLY thing that lets a read mark a pane
+ * seen. See {@link marksPaneSeen} for why a header, of all things, is the check.
+ */
+export const SEEN_HEADER = "x-collie-seen";
+
+/**
+ * Whether this request proves it came from Collie's own page, and may therefore stamp the pane as
+ * seen (bridge/activity.ts).
+ *
+ * This exists because marking-seen made a **read-level GET mutate server state**, which it never did
+ * before. `checkAccess` deliberately does not demand an `Origin` on reads — browsers omit it on
+ * same-origin GETs, so demanding one would reject the real client — and that exemption was safe only
+ * while reads had no side effects. Without this check, a page the operator visits while on the
+ * tailnet could fire `<img src="https://collie…/api/pane/w1:p1">` at guessable pane ids and silently
+ * clear the "Ready · unseen" section: the response is opaque to the attacker, but the write lands,
+ * and the operator simply stops being told their agents finished.
+ *
+ * A custom request header is the check because a no-cors cross-site request **cannot set one** —
+ * doing so promotes it to a preflighted CORS request, and the bridge answers no preflight. Our own
+ * same-origin `fetch` sets it freely.
+ *
+ * Write actions (reply/keys/upload/close/rename) need no header: they already cleared
+ * `guard(…, "write")`, which requires an `Origin`. `history` is a read despite being an action
+ * segment, so it needs the header like any other read.
+ */
+export function marksPaneSeen(req: Request, action: string | undefined): boolean {
+  if (req.headers.get(SEEN_HEADER) !== null) return true;
+  return action !== undefined && action !== "history";
+}
+
 export function startServer(opts: {
   cfg: Config;
   registry: SessionRegistry;
@@ -218,8 +249,9 @@ export function startServer(opts: {
         // You are in this pane: reading it, replying, sending keys, browsing its history. That is
         // the whole definition of "seen" (.adr/0003), and this is the one place every such request
         // passes through. It cannot false-positive from background polling — the dashboard loader
-        // only ever fetches /api/snapshot; paneLoader is the sole reader of pane text.
-        activity.noteSeen(session, paneId);
+        // only ever fetches /api/snapshot; paneLoader is the sole reader of pane text — nor from a
+        // cross-site request forged at a guessed pane id (see marksPaneSeen).
+        if (marksPaneSeen(req, action)) activity.noteSeen(session, paneId);
         // Every action is a write; attribute it to the authorised device for the audit trail.
         // `history` is a read, so it gets no device attribution (nothing is written to attribute).
         const device = action && action !== "history" ? deviceAuth(req, cfg).device : null;

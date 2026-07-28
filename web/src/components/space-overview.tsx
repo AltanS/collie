@@ -9,7 +9,7 @@ import {
   blockedCount,
   filterSpaces,
   sortSpacesByRecency,
-  spaceLastSeen,
+  spaceLastSeenMap,
   worstSpaceStatus,
 } from "@/lib/spaces";
 import { timeAgo } from "@/lib/format";
@@ -45,8 +45,10 @@ export function SpaceOverview({
   const [query, setQuery] = useState("");
 
   const panes = [...agents, ...shellPanes];
+  // One pass over the panes, then map lookups — this component re-renders on every poll.
+  const lastSeen = spaceLastSeenMap(panes);
   const blockedSpaces = workspaces.filter((w) => blockedCount(w.workspaceId, agents) > 0).length;
-  const visible = filterSpaces(sortSpacesByRecency(workspaces, panes), query);
+  const visible = filterSpaces(sortSpacesByRecency(workspaces, panes, lastSeen), query);
 
   return (
     <section className="flex flex-col gap-2 px-3 py-4">
@@ -108,7 +110,7 @@ export function SpaceOverview({
             visible.map((w) => {
               const status = worstSpaceStatus(w.workspaceId, agents);
               const blocked = blockedCount(w.workspaceId, agents) > 0;
-              const seen = spaceLastSeen(w.workspaceId, panes);
+              const seen = lastSeen.get(w.workspaceId) ?? 0;
               return (
                 <button
                   key={w.workspaceId}
