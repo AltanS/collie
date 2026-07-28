@@ -89,6 +89,20 @@ export function triage(agents: readonly AgentView[], dir: RecentDir = "newest"):
   ];
 }
 
+/**
+ * The presentation fields a section header needs, in one place. Both the dashboard and the pane
+ * switcher spread this rather than picking fields by hand — that's how the dashboard silently ended
+ * up without the status-colour bullet the switcher had, and a new field would have done it again.
+ */
+export function sectionHeaderProps(s: TriageSection) {
+  return {
+    label: s.label,
+    count: s.agents.length,
+    dot: s.dot,
+    ...(s.accent ? { accent: s.accent } : {}),
+  };
+}
+
 /** The other direction — for the toggle. */
 export function flipDir(dir: RecentDir): RecentDir {
   return dir === "newest" ? "oldest" : "newest";

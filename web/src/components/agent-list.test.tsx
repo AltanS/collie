@@ -53,14 +53,46 @@ describe("AgentList — sections", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByText("moonward_os · fix-auth")).toBeInTheDocument();
+    // Rendered as separate spans so the tab survives truncation — assert both parts, and that the
+    // row is still announced as one name.
+    expect(screen.getByText("moonward_os")).toBeInTheDocument();
+    expect(screen.getByText("fix-auth")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /moonward_os.*fix-auth/ })).toBeInTheDocument();
     expect(screen.queryByText("claude")).not.toBeInTheDocument();
+  });
+
+  it("gives the tab the width and lets the project truncate — the tab is the discriminator", () => {
+    render(
+      <AgentList
+        agents={[agent("p", "idle", { workspaceLabel: "moonward_os", tabLabel: "fix-auth" })]}
+        onOpen={vi.fn()}
+      />,
+    );
+    // The project yields width first (capped + shrinkable); the tab takes what's left.
+    expect(screen.getByText("moonward_os").className).toMatch(/max-w-\[45%\]/);
+    expect(screen.getByText("fix-auth").className).toMatch(/flex-1/);
   });
 
   it("omits a section with no members rather than showing an empty heading", () => {
     render(<AgentList agents={[agent("only", "working", { lastActiveAt: 1 })]} onOpen={vi.fn()} />);
-    expect(screen.queryByText(/needs you/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/ready · unseen/i)).not.toBeInTheDocument();
+    expect(headings()).toEqual([expect.stringContaining("working")]);
+  });
+
+  it("says so when nothing needs you, rather than leaving an absence to interpret", () => {
+    render(<AgentList agents={[agent("only", "working", { lastActiveAt: 1 })]} onOpen={vi.fn()} />);
+    expect(screen.getByText(/nothing needs you/i)).toBeInTheDocument();
+  });
+
+  it("stays quiet about it when something DOES need you", () => {
+    render(<AgentList agents={[agent("b", "blocked")]} onOpen={vi.fn()} />);
+    expect(screen.queryByText(/nothing needs you/i)).not.toBeInTheDocument();
+  });
+
+  it("drops the status pill inside triage sections — the heading already says it", () => {
+    render(<AgentList agents={[agent("w", "working", { lastActiveAt: 1 })]} onOpen={vi.fn()} />);
+    // The word survives for screen readers, but not as a pill on every row.
+    const row = screen.getByRole("button", { name: /w/ });
+    expect(row.querySelector(".sr-only")?.textContent).toBe("working");
   });
 
   it("opens the pane behind a tapped row", async () => {

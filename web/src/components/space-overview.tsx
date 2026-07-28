@@ -95,7 +95,8 @@ export function SpaceOverview({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter spaces…"
                 aria-label="Filter spaces"
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                // min-h-9 so the control itself clears the 36px touch floor, not just its padded label.
+                className="min-h-9 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </label>
           )}

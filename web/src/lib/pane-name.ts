@@ -15,8 +15,35 @@ export interface PaneTitle {
   secondary: string | null;
 }
 
+/**
+ * The title's parts, unjoined — because at 390px they must not truncate as one string.
+ *
+ * Eight panes in the same project all begin `moonward_os · `, so tail-truncating the joined title
+ * eats the tab name and leaves every row reading `moonward_os · t…`: the 11 characters that survive
+ * are the ones every row shares. Rendering the parts separately lets the PROJECT give up width
+ * first and the tab — the only discriminator — survive.
+ */
+export interface PaneParts {
+  project: string;
+  /** The tab label, or null when it says nothing (see meaningfulTabLabel, bridge-side). */
+  tab: string | null;
+  /** The pane's own name if it has one, else a shortened cwd. Null when there's neither. */
+  secondary: string | null;
+}
+
 /** The separator between project and tab. Exported so tests and search-text builders agree. */
 export const TITLE_SEP = " · ";
+
+/** {@link PaneParts} for a pane — the render-time form of {@link paneTitle}. */
+export function paneParts(pane: AgentView): PaneParts {
+  const project = pane.workspaceLabel || pane.workspaceId;
+  const own = pane.paneLabel || pane.sessionName;
+  return {
+    project,
+    tab: pane.tabLabel ?? null,
+    secondary: own || (pane.cwd ? shortCwd(pane.cwd) : null),
+  };
+}
 
 /**
  * Title and subtitle for a pane row.
@@ -29,11 +56,8 @@ export const TITLE_SEP = " · ";
  * the pane mirror keeps.
  */
 export function paneTitle(pane: AgentView): PaneTitle {
-  const project = pane.workspaceLabel || pane.workspaceId;
-  const primary = pane.tabLabel ? `${project}${TITLE_SEP}${pane.tabLabel}` : project;
-  const own = pane.paneLabel || pane.sessionName;
-  const secondary = own || (pane.cwd ? shortCwd(pane.cwd) : null);
-  return { primary, secondary };
+  const { project, tab, secondary } = paneParts(pane);
+  return { primary: tab ? `${project}${TITLE_SEP}${tab}` : project, secondary };
 }
 
 /**
