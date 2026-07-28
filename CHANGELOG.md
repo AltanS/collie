@@ -12,6 +12,7 @@ All notable changes to Collie are recorded here. The format follows
 - **The dashboard is triaged, not listed.** Needs you → Ready · unseen → Working → Recent; the first three are pinned, Recent sorts by when you last used each pane (3850d96)
 - **Ready · unseen** — agents that finished while you weren't looking. Opening one clears it, on every device (839d0f3)
 - Recent and Spaces fold and remember it; fold both and the page is the triaged herd and nothing else (3850d96)
+- The swipe-up **Switch pane** sheet folds its long tails too — Recent, and the bare **Shells** group that buried the agents underneath it (ed0f0fa)
 - Spaces are ordered by last used and filterable — 45 of them are now three keystrokes, not a scroll (3850d96)
 - The bridge keeps two timestamps per pane (`activeAt`, `seenAt`) in `activity.json`, because Herdr reports none (839d0f3)
 
