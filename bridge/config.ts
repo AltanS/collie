@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { DialMode } from "./dial.ts";
+import type { JournalRoots } from "./journal/registry.ts";
 
 // All bridge configuration, resolved once at startup. Env-driven so the systemd unit and the
 // plugin launcher can configure it without code changes. Defaults are safe for a single-user,
@@ -108,17 +109,17 @@ export interface Config {
   readLines: number;
   /**
    * Serve agent conversation history from the agent's own on-disk session log. This is the only
-   * way to get scrollback for a Claude pane at all — Claude runs on the terminal's alternate
+   * way to get scrollback for most agent panes at all — they run on the terminal's alternate
    * screen, which has no scrollback ring, so Herdr retains nothing behind the viewport (see
-   * transcript.ts). Off disables the feature and its route wholesale.
+   * journal/claude.ts). Off disables the feature and its route wholesale, for every harness.
    */
   transcript: boolean;
   /**
-   * Root of the agent's session logs — Claude Code's `~/.claude/projects`. Every transcript read is
-   * confined to this directory (after symlink resolution). Override only to relocate a non-default
-   * Claude home; it is never derived from a request.
+   * Where each harness keeps its session logs. Every read is confined to the matching root after
+   * symlink resolution, so these double as the security boundary for a feature that touches the
+   * filesystem — override only to relocate a non-default agent home, never from a request.
    */
-  transcriptRoot: string;
+  journalRoots: JournalRoots;
   /** Key sequence sent to submit a reply after the text (agent-dependent; see HERDR_API.md). */
   submitKeys: string[];
   /**
@@ -213,8 +214,19 @@ export function loadConfig(): Config {
     notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }),
     readLines: envInt("COLLIE_READ_LINES", 200, { min: 1 }),
     transcript: envBool("COLLIE_TRANSCRIPT", true),
-    transcriptRoot:
-      process.env.COLLIE_TRANSCRIPT_ROOT ?? join(homedir(), ".claude", "projects"),
+    journalRoots: {
+      // COLLIE_TRANSCRIPT_ROOT predates the per-harness split and meant Claude's root, so it keeps
+      // meaning exactly that — an existing deployment's env keeps working untouched.
+      claude: process.env.COLLIE_TRANSCRIPT_ROOT ?? join(homedir(), ".claude", "projects"),
+      // Each harness's own home var is honoured first, so relocating the agent relocates its journal
+      // without a second Collie setting to keep in sync.
+      codex:
+        process.env.COLLIE_CODEX_ROOT ??
+        join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "sessions"),
+      pi:
+        process.env.COLLIE_PI_ROOT ??
+        join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "sessions"),
+    },
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
     deviceHeader: (process.env.COLLIE_DEVICE_HEADER ?? "").trim(),
