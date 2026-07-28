@@ -21,6 +21,9 @@ All notable changes to Collie are recorded here. The format follows
 - Only Collie's own reads count as seeing a pane; a Herdr focus at the desk does not — [ADR 0003](.adr/0003-one-shared-seen.md) (16201fe)
 - MINOR, not MAJOR: additive, no config or API break. An older bridge reports no timestamps and simply renders the previous dashboard, minus the one section that would be empty
 
+### Fixed
+- Marking a pane seen had made a read-level GET mutate state, so a cross-site `<img>` at a guessed pane id could silently clear your unseen agents. Only a request carrying the app's own header counts now — caught in this release's security review, never shipped (c84c8bd)
+
 ## [0.19.0] - 2026-07-29
 
 ### Added
