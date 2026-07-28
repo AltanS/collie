@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { flipDir, isUnseen, triage, type TriageKey } from "./triage";
+import {
+  flipDir,
+  isUnseen,
+  triage,
+  TRIAGE_STATUS,
+  worstTriage,
+  type TriageKey,
+} from "./triage";
 import type { AgentStatus, AgentView } from "./types";
 
 function agent(
@@ -184,5 +191,52 @@ describe("flipDir", () => {
   it("round-trips", () => {
     expect(flipDir("newest")).toBe("oldest");
     expect(flipDir("oldest")).toBe("newest");
+  });
+});
+
+describe("worstTriage — what a tab or space chip advertises", () => {
+  it("reports the most urgent thing inside, not the first", () => {
+    expect(worstTriage([agent("a", "idle", { seen: 5 }), agent("b", "blocked")])).toBe("needs");
+    expect(worstTriage([agent("a", "idle", { seen: 5 }), agent("b", "working")])).toBe("working");
+  });
+
+  it("ranks blocked over ready over working over the rest", () => {
+    const blocked = agent("x", "blocked");
+    const ready = agent("y", "done", { active: 9, seen: 1 });
+    const working = agent("z", "working");
+    const idle = agent("i", "idle", { seen: 5 });
+    expect(worstTriage([idle, working, ready, blocked])).toBe("needs");
+    expect(worstTriage([idle, working, ready])).toBe("ready");
+    expect(worstTriage([idle, working])).toBe("working");
+    expect(worstTriage([idle])).toBe("recent");
+  });
+
+  it("is null for a container with no agents — that is NOT the same as idle", () => {
+    // An empty tab has nothing to report; a resting dot would claim otherwise.
+    expect(worstTriage([])).toBeNull();
+  });
+
+  it("agrees with triage() about which bucket an agent is in", () => {
+    const herd = [
+      agent("b", "blocked"),
+      agent("r", "done", { active: 9, seen: 1 }),
+      agent("w", "working"),
+      agent("i", "idle", { seen: 5 }),
+    ];
+    for (const a of herd) {
+      const section = triage([a]).find((s) => s.agents.length > 0)!;
+      expect(worstTriage([a])).toBe(section.key);
+    }
+  });
+});
+
+describe("TRIAGE_STATUS", () => {
+  it("maps every bucket to the status whose colour it should borrow", () => {
+    expect(TRIAGE_STATUS).toEqual({
+      needs: "blocked",
+      ready: "done",
+      working: "working",
+      recent: "idle",
+    });
   });
 });
