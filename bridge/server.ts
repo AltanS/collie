@@ -310,6 +310,14 @@ export function startServer(opts: {
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
       }
 
+      // ── Reserved for a fronting proxy's sign-in page ─────────────────────
+      // `/auth/` is the one path the service worker always passes to the network (web/src/lib/
+      // sw-routes.ts), so it is the only address an installed PWA can reach when a proxy in front of
+      // the bridge refuses a stale session. Collie never routes it. If a request gets this far, no
+      // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
+      // leave the operator staring at the UI they were trying to escape.
+      if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
+
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
       return serveStatic(pathname);
     },
@@ -1258,6 +1266,55 @@ export function resolveStaticPath(
   const full = normalize(join(webDir, rel));
   if (full !== webDir && !full.startsWith(webDir + sep)) return null;
   return { rel, full };
+}
+
+/**
+ * The namespace reserved for the operator's front door. Matches `/auth` with or without a trailing
+ * slash and anything beneath it — a proxy may serve one page or a whole flow. Kept in lockstep with
+ * the service worker's navigation denylist (`web/src/lib/sw-routes.ts`); if these two disagree, an
+ * installed PWA either can't reach the proxy or can't reach Collie. Pure + exported for tests.
+ */
+export function isReservedAuthPath(pathname: string): boolean {
+  return pathname === "/auth" || pathname.startsWith("/auth/");
+}
+
+/**
+ * What `/auth/` says when nothing is in front of the bridge. Deliberately a 404: the path is
+ * reserved, not implemented — Collie has no sign-in of its own and must not imply otherwise. Plain
+ * HTML with no inline style or script (the strict CSP forbids both) and a link home, because in an
+ * installed PWA this page may be the only thing on screen and there is no address bar to leave it.
+ * Unauthenticated by design: it sits outside every gate, since the reason to be here is that a gate
+ * refused you.
+ */
+function reservedAuthPlaceholder(): Response {
+  const body = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nothing configured here — Collie</title>
+</head>
+<body>
+<h1>Nothing is configured at this address</h1>
+<p>Collie reserves <code>/auth/</code> for a reverse proxy sitting in front of it, so that an
+installed app has somewhere to reach a sign-in or device-enrolment page. Collie itself serves
+nothing here and has no sign-in of its own.</p>
+<p>If you are the operator: point this path at your proxy's sign-in flow. See <em>Serving Collie
+behind your own reverse proxy</em> in the README.</p>
+<p><a href="/">Back to Collie</a></p>
+</body>
+</html>
+`;
+  return secure(
+    new Response(body, {
+      status: 404,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-security-policy": CSP,
+        "cache-control": "no-store",
+      },
+    }),
+  );
 }
 
 async function serveStatic(pathname: string): Promise<Response> {

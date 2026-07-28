@@ -8,6 +8,7 @@ import {
   guard,
   historyParams,
   isHostAllowed,
+  isReservedAuthPath,
   keysPane,
   normalizeTabLabel,
   paneReadResponse,
@@ -842,6 +843,24 @@ describe("cacheControlFor", () => {
       "apple-touch-icon.png",
     ]) {
       expect(cacheControlFor(rel)).toBe("no-cache");
+    }
+  });
+});
+
+// The other end of web/src/lib/sw-routes.ts. The service worker hands `/auth/` to the network; if
+// the bridge doesn't recognise the same set, the SPA fallback answers with the app shell and the
+// operator gets the very UI they were trying to escape. These two must agree exactly.
+describe("isReservedAuthPath — the namespace a fronting proxy owns", () => {
+  test("claims /auth with or without a trailing slash, and everything beneath it", () => {
+    expect(isReservedAuthPath("/auth")).toBe(true);
+    expect(isReservedAuthPath("/auth/")).toBe(true);
+    expect(isReservedAuthPath("/auth/sign-in")).toBe(true);
+    expect(isReservedAuthPath("/auth/oidc/callback")).toBe(true);
+  });
+
+  test("leaves Collie's own routes alone, including a mere prefix match", () => {
+    for (const path of ["/", "/settings", "/pane/w1:p1", "/authors", "/api/snapshot"]) {
+      expect(isReservedAuthPath(path)).toBe(false);
     }
   });
 });
