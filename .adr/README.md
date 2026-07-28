@@ -43,3 +43,4 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | # | Decision | Status |
 | --- | --- | --- |
 | [0001](./0001-one-managed-front-door.md) | Collie manages exactly one front door | Accepted |
+| [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted, not re-themed | Accepted |
