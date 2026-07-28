@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
+import type { ActivityLedger } from "./activity.ts";
 import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
@@ -19,6 +20,7 @@ import type { StateEngine } from "./state-engine.ts";
 import { ClaudeTranscriptSource, TranscriptStore } from "./transcript.ts";
 import type {
   ActionResponse,
+  AgentView,
   BridgeConfig,
   CreateResponse,
   DeviceAuth,
@@ -104,8 +106,9 @@ export function startServer(opts: {
   notifyPrefs: NotifyPrefsStore;
   updateMonitor: UpdateMonitor;
   audit: AuditLog;
+  activity: ActivityLedger;
 }) {
-  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit } = opts;
+  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity } = opts;
   // One transcript store for the process: it caches parsed session logs across requests, and the
   // cache is keyed by absolute path, so sharing it across herdr sessions is correct (two sessions
   // can front panes whose agents write into the same ~/.claude/projects root).
@@ -142,6 +145,13 @@ export function startServer(opts: {
         if (!rt) return unknownSession();
         const { agents, shellPanes, workspaces, tabs, bridge } = rt.engine.current();
         const device = deviceAuth(req, cfg);
+        // Attach each pane's activity timestamps. Done here rather than in the state engine so the
+        // engine stays a pure Herdr-poller with no knowledge of the ledger — and so the two numbers
+        // are read at serialise time, i.e. as fresh as the request.
+        const withActivity = (p: AgentView): AgentView => {
+          const a = activity.get(rt.name, p.paneId);
+          return a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+        };
         // Tag every snapshot poll with the on-disk build id so an open client notices a live rebuild
         // between polls — the no-service-worker self-update path (web/src/lib/self-update.ts).
         return withBuildHeader(
@@ -149,8 +159,8 @@ export function startServer(opts: {
             bridge,
             // Only report device state when the feature is on, so an off deployment sends nothing new.
             ...(device.enforced ? { device } : {}),
-            agents,
-            shellPanes,
+            agents: agents.map(withActivity),
+            shellPanes: shellPanes.map(withActivity),
             workspaces,
             tabs,
             sessions: registry.list(),
@@ -205,6 +215,11 @@ export function startServer(opts: {
         const rt = registry.get(sessionName);
         if (!rt) return unknownSession();
         const { herdr, name: session } = rt;
+        // You are in this pane: reading it, replying, sending keys, browsing its history. That is
+        // the whole definition of "seen" (.adr/0003), and this is the one place every such request
+        // passes through. It cannot false-positive from background polling — the dashboard loader
+        // only ever fetches /api/snapshot; paneLoader is the sole reader of pane text.
+        activity.noteSeen(session, paneId);
         // Every action is a write; attribute it to the authorised device for the audit trail.
         // `history` is a read, so it gets no device attribution (nothing is written to attribute).
         const device = action && action !== "history" ? deviceAuth(req, cfg).device : null;
