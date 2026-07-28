@@ -29,8 +29,11 @@ export function SpaceStrip({
   onNewSpace,
   onBack,
 }: SpaceStripProps) {
+  // shrink-0: this strip is a child of the space route's `flex-1 flex-col` scroller, so without it
+  // the strip flex-shrinks to 16px while its 32px chips overflow — the tab row below then paints
+  // straight over the chips.
   return (
-    <div className="flex items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {onBack ? (
         <button
           type="button"
