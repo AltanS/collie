@@ -35,7 +35,21 @@ const RING: Record<AgentStatus, string> = {
   unknown: "border-status-unknown/60",
 };
 
-export function StatusDot({ status, className }: { status: AgentStatus; className?: string }) {
+export function StatusDot({
+  status,
+  surface = "bg-background",
+  className,
+}: {
+  status: AgentStatus;
+  /**
+   * The colour the dot sits ON. A hollow ring must be FILLED with its surface, not left
+   * transparent: over the avatar's corner a transparent interior showed orange logo through one
+   * half and page grey through the other, reading as a notch cut out of the icon rather than a
+   * badge. Pass the card's surface when the dot sits on a card.
+   */
+  surface?: string;
+  className?: string;
+}) {
   const hollow = RESTING.has(status);
   return (
     <span className={cn("relative flex size-2.5 shrink-0", className)}>
@@ -50,7 +64,7 @@ export function StatusDot({ status, className }: { status: AgentStatus; classNam
       <span
         className={cn(
           "relative inline-flex size-2.5 rounded-full",
-          hollow ? cn("border-[1.5px] bg-transparent", RING[status]) : DOT[status],
+          hollow ? cn("border-[1.5px]", surface, RING[status]) : DOT[status],
         )}
       />
     </span>

@@ -245,7 +245,7 @@ describe("AgentList — timestamps on rows", () => {
   it("dates a Recent row by when you last used it", () => {
     const seen = Date.now() - 5 * 60 * 1000;
     render(<AgentList agents={[agent("p", "idle", { lastSeenAt: seen })]} onOpen={vi.fn()} />);
-    expect(screen.getByText("5m ago")).toBeInTheDocument();
+    expect(screen.getByText("5m")).toBeInTheDocument();
   });
 
   it("dates a Ready · unseen row by when it FINISHED, not when you last looked", () => {
@@ -257,7 +257,7 @@ describe("AgentList — timestamps on rows", () => {
       />,
     );
     const section = screen.getByText(/ready · unseen/i).closest("section")!;
-    expect(within(section).getByText("2m ago")).toBeInTheDocument();
+    expect(within(section).getByText("2m")).toBeInTheDocument();
   });
 
   it("puts no age on a blocked row — it's noise beside 'needs you'", () => {
@@ -267,7 +267,7 @@ describe("AgentList — timestamps on rows", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.queryByText(/ago/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+[mhd]$|^now$/)).not.toBeInTheDocument();
   });
 });
 
@@ -285,6 +285,6 @@ describe("AgentList — an older bridge with no timestamps", () => {
       expect.stringContaining("recent"),
     ]);
     expect(screen.queryByText(/ready · unseen/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/ago/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+[mhd]$|^now$/)).not.toBeInTheDocument();
   });
 });

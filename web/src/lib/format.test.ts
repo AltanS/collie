@@ -1,4 +1,4 @@
-import { initials, shortCwd, timeAgo } from "./format";
+import { initials, shortCwd, timeAgo, timeAgoShort } from "./format";
 
 describe("shortCwd", () => {
   it("collapses /home/<user> to ~", () => {
@@ -91,5 +91,18 @@ describe("timeAgo", () => {
   it("floors at the unit boundaries", () => {
     expect(timeAgo(now - 119_000, now)).toBe("1m ago"); // 1m59s → 1m
     expect(timeAgo(now - 90 * 60_000, now)).toBe("1h ago"); // 90m → 1h
+  });
+});
+
+describe("timeAgoShort", () => {
+  const now = 1_000_000_000;
+  it("drops the redundant 'ago' for a column of ages", () => {
+    expect(timeAgoShort(now - 5 * 60_000, now)).toBe("5m");
+    expect(timeAgoShort(now - 3 * 3_600_000, now)).toBe("3h");
+    expect(timeAgoShort(now - 2 * 86_400_000, now)).toBe("2d");
+  });
+
+  it("says 'now' rather than 'just now'", () => {
+    expect(timeAgoShort(now - 1000, now)).toBe("now");
   });
 });

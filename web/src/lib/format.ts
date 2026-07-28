@@ -46,6 +46,16 @@ export function initials(name: string): string {
  * Compact "time ago" for a past epoch-ms timestamp — "just now" under a minute, then "5m"/"2h"/"3d"
  * ago. A future or now timestamp reads "just now". Deliberately coarse: it's a footnote, not a clock.
  */
+/**
+ * The same age with the word "ago" dropped — for a right-aligned column of them, where every entry
+ * would repeat it and the column's meaning is already established. Worth ~25px a row, which is the
+ * difference between `interview-con…` and `interview-consistency`.
+ */
+export function timeAgoShort(ts: number, now: number = Date.now()): string {
+  const full = timeAgo(ts, now);
+  return full === "just now" ? "now" : full.replace(/ ago$/, "");
+}
+
 export function timeAgo(ts: number, now: number = Date.now()): string {
   const secs = Math.max(0, Math.round((now - ts) / 1000));
   if (secs < 60) return "just now";
