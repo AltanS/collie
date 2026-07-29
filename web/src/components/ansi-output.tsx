@@ -69,17 +69,18 @@ export interface AnsiOutputProps {
 const NO_MATCHES: FindMatch[] = [];
 
 // The mirror is always authored in DARK space, and light mode inverts it. See
-// .adr/0002-invert-the-light-terminal-mirror.md — in short, agents emit truecolor almost
-// exclusively (446 sequences in a live pane; zero basic ANSI), and truecolor names an absolute
+// .adr/0002-invert-the-light-terminal-mirror.md — in short, three of the four harnesses emit
+// overwhelmingly truecolor (opencode 100%, pi 89%, claude 79%), and truecolor names an absolute
 // colour no palette can re-theme. Rendering it unchanged on white leaves most of an agent's output
 // under 2:1.
 //
-// The colours here are LITERAL dark-space values, not theme tokens, and that is deliberate. A
-// `color-scheme: dark` on this element does NOT flip an inherited light-dark() token: Chrome
-// resolves those against the root's scheme, so `bg-background` on a light page yields white, which
-// the filter then inverts to black — a black mirror on a white app. Tokens cannot express
-// "dark-space regardless of theme"; literals can. They match --background / --foreground /
-// --muted-foreground's dark halves, so dark mode is pixel-identical to before.
+// The colours here are LITERAL dark-space values rather than theme tokens. That is a CONVENTION,
+// not a constraint: `color-scheme: dark` on this element DOES flip an inherited light-dark() token
+// (resolution is element-scoped, per spec), and these literals are byte-exact matches for
+// --background / --foreground / --muted-foreground's dark halves, so either spelling renders the
+// same pixels. Literals win because they sit beside the truecolor an agent emits — which nothing
+// can re-theme — and say at the point of use that the value is deliberately theme-independent.
+// What matters is that the mirror never mixes the two (ADR 0002, rule 2).
 //
 // `color-scheme: dark` still earns its place for native UI inside the pre (the x-overflow
 // scrollbar, selection), which the filter then maps to light along with everything else.
@@ -186,8 +187,8 @@ export const AnsiOutput = memo(function AnsiOutput({
 
   // Muted = box-drawing / rule glyphs. Drop ANSI dim opacity so table borders stay visible —
   // var(--border) + dim made them nearly invisible on mobile. #a1a1a1 is --muted-foreground's dark
-  // half, written literally for the same reason as MIRROR_SPACE above: everything inside the pre is
-  // dark-space, and a token here would resolve to the page's theme and then get inverted.
+  // half, written literally to match MIRROR_SPACE above — everything inside the pre is dark-space,
+  // and the mirror keeps one spelling throughout (ADR 0002, rule 2).
   const styleFor = (s: AnsiSegment): CSSProperties =>
     s.muted ? { ...s.style, color: "#a1a1a1", fontWeight: 400, opacity: 1 } : s.style;
 

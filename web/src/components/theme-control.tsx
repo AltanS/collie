@@ -6,9 +6,10 @@ import { useTheme } from "@/hooks/use-theme";
 import type { Theme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 
-// The two faces of one preference: a labelled three-way in Settings, and a cycling icon in the
-// header for the situational flip (outdoors, in bed) that is the whole reason this is worth a
-// control at all.
+// Appearance lives in ONE place: a labelled three-way in Settings. An earlier revision also put a
+// cycling icon in every header; it was removed because a control you meet three times per screen
+// implies you are meant to keep reaching for it, and this is a set-once preference — System already
+// follows the phone, which is the situational flip (outdoors, in bed) happening on its own.
 
 const OPTIONS: ReadonlyArray<{ value: Theme; label: string; icon: LucideIcon }> = [
   { value: "system", label: "System", icon: MonitorSmartphone },
@@ -20,33 +21,6 @@ const OPTIONS: ReadonlyArray<{ value: Theme; label: string; icon: LucideIcon }> 
  *  can also press. Tapping advances System → Light → Dark → System. */
 export function themeIcon(theme: Theme): LucideIcon {
   return OPTIONS.find((o) => o.value === theme)?.icon ?? MonitorSmartphone;
-}
-
-const LABEL: Record<Theme, string> = {
-  system: "Theme: follow system",
-  light: "Theme: light",
-  dark: "Theme: dark",
-};
-
-/** Header affordance. Styled to match SettingsGear exactly — they sit next to each other. */
-export function ThemeToggle() {
-  const { theme, cycleTheme } = useTheme();
-  const Icon = themeIcon(theme);
-  return (
-    <button
-      type="button"
-      onClick={cycleTheme}
-      aria-label={LABEL[theme]}
-      // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
-      // keeps the icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px
-      // against a 12px gap, so the gear stole 12px of the theme button's hit area) and drags the
-      // last one past the header's padding into document overflow. Costs horizontal room, which the
-      // breadcrumb absorbs — it already truncates by design. SettingsGear matches.
-      className="grid size-11 place-items-center text-muted-foreground transition-colors hover:text-foreground"
-    >
-      <Icon className="size-5" />
-    </button>
-  );
 }
 
 /** Settings card. Mirrors the icon/title/description shape of the other rows. */

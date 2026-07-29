@@ -12,7 +12,6 @@ import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
 import { AppHeader } from "@/components/app-header";
-import { ThemeToggle } from "@/components/theme-control";
 import { AnsiOutput } from "@/components/ansi-output";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -244,7 +243,7 @@ export function AgentChat({
   // `moreScrollback`: Herdr says this pane can still yield lines beyond the window we've asked for,
   // AND we're under the cap Herdr's own read clamp imposes. `readableLines` is undefined on an older
   // bridge/Herdr; treat that as "no idea" and stay hidden rather than offer a tap that fetches nothing.
-  const historyAvailable = Boolean(agent?.agentSessionId);
+  const historyAvailable = Boolean(agent?.hasSession);
   const moreScrollback =
     agent?.readableLines !== undefined &&
     requestedLines < agent.readableLines &&
@@ -533,11 +532,7 @@ export function AgentChat({
         rightLead={
           agent ? (
             <>
-              {/* The pane is where you actually stare at the mirror, so the situational flip the
-                  theme control exists for bites hardest here. Leads the cluster rather than
-                  trailing it — the status pill stays the rightmost thing on every pane screen. */}
-              <ThemeToggle />
-              {agent.agentSessionId && (
+              {agent.hasSession && (
                 <button
                   type="button"
                   onClick={() => navigate(historyPath(paneId, session))}

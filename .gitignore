@@ -1,5 +1,5 @@
 # Dependencies
-node_modules/
+node_modules
 .pnp
 .pnp.*
 
@@ -46,6 +46,3 @@ docs/bugs/
 
 # Local tooling scratch (browser-automation captures)
 .playwright-mcp/
-
-# Design + review artifacts (kept locally, not part of the repo)
-prp/
