@@ -44,7 +44,52 @@ SERVE_MODE="${COLLIE_SERVE_MODE:-https}"
 # Records the ONE `tailscale serve` root mount Collie published, so teardown can prove the mapping
 # it is about to remove is still the one it created. Format: `<mode>:<port>|<HostPort>|<proxy>`.
 TAILSCALE_HANDLER_FILE="${CONFIG_DIR}/tailscale-managed-handler"
-BUN="$(command -v bun || true)"
+# Find Bun on PATH, then in the usual install locations.
+#
+# Herdr spawns plugin actions with a minimal environment — no login shell, so nothing has sourced the
+# line `bun` puts in your profile and `~/.bun/bin` is simply absent from PATH. `update` therefore
+# pulled the new commit and then failed its build, leaving the checkout AHEAD of the web/dist being
+# served while every version string reported the new release. The systemd unit is written with an
+# absolute ExecStart, so the running service kept working and the breakage was visible only in the
+# plugin log — which is how it went unnoticed across four separate invocations.
+#
+# An empty result is still fine: callers already report "bun not found" and exit.
+resolve_bun() {
+  local candidate
+  if candidate="$(command -v bun 2>/dev/null)"; then
+    printf '%s' "$candidate"
+    return 0
+  fi
+  for candidate in \
+    "${BUN_INSTALL:-${HOME}/.bun}/bin/bun" \
+    "${HOME}/.bun/bin/bun" \
+    "${HOME}/.local/bin/bun" \
+    /usr/local/bin/bun \
+    /opt/homebrew/bin/bun \
+    /usr/bin/bun; do
+    if [ -x "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 0
+}
+BUN="$(resolve_bun)"
+# Put it on PATH too, not just in $BUN: this script shells out to a bare `bun` (the Tailscale
+# ownership probe), and `bun run build` spawns children that expect to find it themselves.
+#
+# ABSOLUTE paths only. `command -v` reports a shell function or alias as a bare word, and the plugin
+# .env is sourced above us — so a `bun()` defined there would resolve to `bun`, whose dirname is `.`,
+# and we'd prepend the CWD to the PATH used for every later `git` / `systemctl` / `tailscale`.
+case "$BUN" in
+  /*)
+    BUN_DIR="$(dirname "$BUN")"
+    case ":${PATH}:" in
+      *":${BUN_DIR}:"*) ;;
+      *) PATH="${BUN_DIR}:${PATH}"; export PATH ;;
+    esac
+    ;;
+esac
 WEB_DIST="${PLUGIN_ROOT}/web/dist/index.html"
 
 have_systemd() { command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; }
