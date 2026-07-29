@@ -5,7 +5,8 @@ Tailscale. A mobile-first PWA (Vite + React + TS + Tailwind v4 + shadcn) plus a 
 talks to Herdr's Unix socket, letting you monitor and reply to agents from a phone. The Herdr
 plugin id is `herdr.collie` (manifest: `herdr-plugin.toml`). Orientation:
 [`README.md`](./README.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · verified API
-[`HERDR_API.md`](./HERDR_API.md) · decisions [`.adr/`](./.adr/).
+[`HERDR_API.md`](./HERDR_API.md) · decisions [`.adr/`](./.adr/) · adding a harness
+[`HARNESS_CONTRIBUTING.md`](./HARNESS_CONTRIBUTING.md).
 
 ## Decision records — read before reopening a settled question
 
@@ -73,12 +74,18 @@ the unit name; the Herdr action runs from anywhere.
   tsc), then build web to `dist-staging` and swap it in atomically — a failed build never empties a
   live `web/dist`. Bare `cd web && bun run build` still skips typechecking; don't ship from it.
 - **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
-  browser); backend pure-logic `bun run test` at the root (Bun's own runner — covers `checkAccess`,
-  `StateEngine`, `loadConfig`). A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
+  browser); backend `bun run test` at the root — Bun's own runner over every pure-logic module in
+  `bridge/` (access checks, state engine, config, journal adapters, notifications, uploads, …) plus
+  `scripts/collie-ctl.test.sh`, which exercises the ctl lifecycle in a sandboxed HOME.
+  A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
   every push — override once with `SKIP_TESTS=1 git push`. The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
   so keep new backend logic pure/injectable enough for `bun test`, or exercise it through `web/`.
 - Service: `systemd --user` unit `collie` on the deployment host; logs `journalctl --user -u collie -f`.
+- **Dependencies must be 7 days old to install** (`bunfig.toml` + `web/bunfig.toml`, mirrored in
+  `.npmrc` for npm users) — a compromised release is usually pulled within hours. A brand-new
+  version resolving to an older one is the rule working, not a bug; CI's `--frozen-lockfile` is
+  unaffected.
 - TS is strict on both sides, with `noUnusedLocals/Parameters` everywhere. **`web/` additionally**
   enforces `verbatimModuleSyntax` + `erasableSyntaxOnly` (use `import type`, no parameter-property
   shorthand there). The **bridge** tsconfig does not enable those two — bridge code uses
@@ -90,7 +97,8 @@ the unit name; the Herdr action runs from anywhere.
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls
   followed by `revalidator.revalidate()`. There is **no TanStack Query** — don't reintroduce it.
-- Routes: `/` (home) and `/pane/:paneId` (detail). The idle-lock in `App.tsx` unmounts the
+- Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId` and
+  `/pane/:paneId/history`. The idle-lock in `App.tsx` unmounts the
   `RouterProvider` to pause polling; the router instance is module-scoped so it keeps its location.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
@@ -108,6 +116,16 @@ the unit name; the Herdr action runs from anywhere.
   backwards in a surface that renders dark under every theme and inverts in light
   ([ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md)). Fails silently;
   `ansi-output.test.tsx` guards it.
+
+## The journal (scrollback the mirror can't give you)
+
+`bridge/journal/` reads the agent's own session log off disk, per harness (`claude` / `codex` / `pi`,
+registered in `registry.ts`). It is the **only** thing in the bridge that touches the filesystem, so
+the containment rule in [`files.ts`](./bridge/journal/files.ts) is absolute: **every** path an
+adapter is about to read goes through `containedRealpath` — after symlink resolution, on the real
+paths, including paths derived from one already checked. The client never supplies a path. Run
+`bun scripts/journal-probe.ts` against real logs after touching an adapter; unit tests pin the
+grammar, the probe catches on-disk format drift.
 
 ## Security posture (don't regress)
 
