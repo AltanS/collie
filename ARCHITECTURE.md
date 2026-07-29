@@ -144,9 +144,11 @@ app. Closing this needs the server-side blocking-message capture described above
 - **Scrollback comes from the transcript, not the terminal.** An agent's TUI runs on the *alternate
   screen* (`ESC[?1049h`), so the emulator keeps no scrollback ring and `pane.read` can never return
   more than the visible viewport — the live mirror physically cannot scroll back. Pane history is
-  therefore read from the agent's **own transcript file** off disk (`bridge/transcript.ts`,
+  therefore read from the agent's **own transcript file** off disk (`bridge/journal/`,
   `/api/pane/:id/history`), a separate source from the mirror with different fidelity: turns and
-  their text, not a replay of the screen. The client fetches the whole conversation in one request
+  their text, not a replay of the screen. Each harness writes a different log in a different place,
+  so this is a **per-agent adapter** (`bridge/journal/registry.ts` maps the pane's `agent` to one);
+  a harness with no adapter simply has no journal. The client fetches the whole conversation in one request
   and renders a window that grows upward, which is what lets find-in-history and jump-to-user-turn
   work across turns you haven't scrolled to. Rationale and the measured numbers are commented at the
   top of `web/src/routes/history.tsx`.

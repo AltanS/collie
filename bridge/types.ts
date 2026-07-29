@@ -1,11 +1,11 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in herdr-client.ts). The rest of the app talks in these terms.
 
-import type { TranscriptEntry } from "./transcript.ts";
+import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
-// entry shape from here too, without reaching into the parser module.
-export type { TranscriptEntry, TranscriptPart } from "./transcript.ts";
+// entry shape from here too, without reaching into an adapter module.
+export type { TranscriptEntry, TranscriptPart } from "./journal/types.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -35,12 +35,14 @@ export interface AgentView {
    */
   sessionName?: string;
   /**
-   * The agent's own session id (Herdr `agent_session.value`), present only when the agent reported
-   * an id-kind session. Its presence is what tells the UI a transcript may exist for this pane, so
-   * the History affordance can be offered without a speculative fetch. The history endpoint
-   * re-derives this server-side from the pane id and NEVER trusts a client-supplied value.
+   * How the agent named its session (Herdr `agent_session`), when it named one at all.
+   *
+   * SERVER-SIDE ONLY — stripped before this pane goes on the wire (see {@link PaneWire}), because
+   * pi reports a kind-`path` ref whose value is an absolute filesystem path, and the client has no
+   * use for it: the history endpoint re-derives the ref from the pane id and never trusts a
+   * client-supplied one. What the client gets is the presence flag `hasSession`.
    */
-  agentSessionId?: string;
+  agentSession?: AgentSessionRef;
   /**
    * Upper bound on the lines a `recent` read of this pane can return — Herdr's scrollback depth plus
    * the viewport. This is the ONLY reliable "is there more scrollback" signal: `PaneRead.truncated`
@@ -67,6 +69,37 @@ export interface AgentView {
    * `done` agent IS the "finished while you weren't looking" state — there is no stored seen flag.
    */
   lastSeenAt?: number;
+}
+
+/**
+ * A pane as the BROWSER sees it: every {@link AgentView} field except the session ref, which is
+ * replaced by a presence flag.
+ *
+ * The two shapes differ on purpose. `agentSession.value` is either an opaque id (Claude, Codex) or an
+ * absolute path (pi) — the client needs neither, and shipping the path would hand out filesystem
+ * layout for nothing. All the UI ever asked of that field was "may this pane have history?", which is
+ * what `hasSession` answers, so the History affordance still shows without a speculative fetch.
+ *
+ * NOTE the `Omit` is opt-OUT: a future server-only field on AgentView goes on the wire unless it is
+ * added to the omit list here. If you add one, strip it here in the same change.
+ */
+export type PaneWire = Omit<AgentView, "agentSession"> & {
+  /** True when this pane's history is actually offerable: the agent named a session AND its harness
+   *  has a journal adapter. Says nothing about whether the log is readable — a named session whose
+   *  file is missing still answers `available:false` with reason `no-log`. */
+  hasSession?: boolean;
+};
+
+/**
+ * Strip a pane down to its wire shape. The one place the session ref leaves the bridge's hands.
+ *
+ * `hasJournal` is asked rather than assumed: a harness can name a session while having no adapter to
+ * read it (Herdr detects more agents than Collie has journals for). Keying the flag on the ref alone
+ * would advertise a History affordance that always comes back empty, so the registry gets a vote.
+ */
+export function toPaneWire(pane: AgentView, hasJournal: (agent: string) => boolean): PaneWire {
+  const { agentSession, ...rest } = pane;
+  return agentSession && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */
@@ -133,9 +166,9 @@ export interface SnapshotResponse {
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
   device?: DeviceAuth;
   /** Agent-bearing panes, triage-sorted (the home list). */
-  agents: AgentView[];
+  agents: PaneWire[];
   /** Bare shell panes (no agent) — surfaced so freshly-created tabs/spaces are reachable. */
-  shellPanes: AgentView[];
+  shellPanes: PaneWire[];
   /** All spaces (workspaces) and their tabs, for the space/tab navigator. */
   workspaces: WorkspaceView[];
   tabs: TabView[];

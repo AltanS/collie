@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRevalidator, useRouteLoaderData } from "react-router";
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
-import { ThemeToggle } from "@/components/theme-control";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
@@ -75,12 +74,7 @@ export function SpaceRoute() {
         stalled={stalled}
         onHome={toDashboard}
         wordmark
-        rightTrail={
-          <>
-            <ThemeToggle />
-            <SettingsGear session={data.session} />
-          </>
-        }
+        rightTrail={<SettingsGear session={data.session} />}
       />
 
       {/* Content region below the header: the viewport-clipped scroller. */}

@@ -22,6 +22,7 @@ serving a Vite + React + shadcn PWA.
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
 - [Configure](#configure)
+- [Dark mode / light mode](#dark-mode--light-mode)
 - [Commands](#commands) · [Herdr actions](#herdr-actions)
 - [Update](#update-to-a-new-release)
 - [Uninstall](#stop-or-uninstall)
@@ -308,6 +309,38 @@ your MagicDNS name works as-is, but a different hostname or TLS terminator makes
 ```bash
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 ```
+
+## Dark mode / light mode
+
+**Collie follows your phone by default.** Flip your device to dark at sunset and Collie goes with
+it, no setting touched.
+
+To pin it, open **Settings → Appearance** and pick **System**, **Light** or **Dark**. That's the
+only place it lives — there is no header shortcut, because a theme is set once, and System already
+does the situational flip for you.
+
+The choice is **per device**, stored in the browser, not on the bridge: your phone can sit on Dark
+while the laptop follows the OS. It survives reloads and reinstalls of the PWA on the same device.
+
+### The terminal mirror is deliberately different
+
+The mirror always renders on a **dark ground**, and light mode inverts the whole thing rather than
+re-colouring it. That is not a shortcut — agents emit absolute colours (`38;2;r;g;b`) chosen for a
+black terminal, and nothing downstream can re-theme them; dropped straight onto white, most of an
+agent's output falls below 3:1. Inverting keeps the contrast the agent designed for. The full
+measurement is in [ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md).
+
+Two things follow that are worth knowing:
+
+- **Keep your agents on a dark theme** — the default for Claude Code, codex, opencode and pi. An
+  agent set to a *light* theme emits dark-on-light colours, which are unreadable in Collie under
+  either appearance. This is a property of what the agent sends, not of Collie's rendering.
+- **Diffs and highlighted rows show as dark blocks** in light mode. Legibility is unaffected; only
+  the visual weight flips.
+
+> **Installed on iOS?** In light mode the status-bar text stays white and can disappear against the
+> page. iOS gives web apps no way to change this at runtime — use the browser rather than the
+> installed app if it bothers you.
 
 ## Commands
 

@@ -50,6 +50,21 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
   text and consume the Enter with both calls reporting success. Anything that needs delivery
   *confirmed* must read the pane back and look (`web/src/lib/reply-action.ts`).
 
+> **Herdr answers no `OSC 10` / `OSC 11` background query, and relays SGR verbatim** (live-probed
+> 2026-07-29 in a pane running a raw-mode `stty` probe: both queries returned nothing).
+>
+> Two things follow, and both matter to anything that renders pane output:
+> - **A harness that asks what background it is on gets no answer and falls back to dark.** Codex
+>   emits both queries at startup; with no reply its output is dark-authored (`#f6e2b7`, `#abdfa7` —
+>   L=0.774 and 0.642, light values that only make sense on a dark ground). Collie cannot answer
+>   either: it reads a rendered buffer downstream of the PTY, so the negotiation happens between the
+>   harness and herdr on a channel Collie does not own.
+> - **Herdr does not rewrite escape codes into its own theme.** `format:"ansi"` returns what the
+>   program wrote — `\x1b[38;5;1m` stays a palette index, never a resolved RGB. So herdr's
+>   `[theme]` setting governs how *herdr's own UI* paints a pane, not what a client receives, and the
+>   same palette-index colour can legitimately differ between the desktop TUI and Collie (which
+>   applies its own 16-slot table). See [`.adr/0002`](./.adr/0002-invert-the-light-terminal-mirror.md).
+
 ## `session.snapshot` — one RPC, the whole herd (new in 0.7.2)
 
 `session.snapshot` `{}` → `{"type":"session_snapshot","snapshot":{...}}`. One-shot like every RPC —
@@ -199,6 +214,21 @@ Two sibling structural ops reorder objects. Both live-verified 2026-07-20 on the
 ```
 
 `agent_status` ∈ `idle | working | blocked | done | unknown`. Panes without an agent omit/null `agent`.
+
+> **`agent_session` has TWO kinds, and it can outlive the agent that reported it** (live-verified
+> 2026-07-29 against claude, codex and pi panes). Each harness's herdr integration reports through
+> `pane.report_agent_session`, and what it reports differs:
+> - `kind:"id"` + a uuid — claude (`source:"herdr:claude"`) and codex (`source:"herdr:codex"`, from
+>   codex's `SessionStart` hook; verified on codex 0.145.0).
+> - `kind:"path"` + an **absolute path to the log file** — pi (`source:"herdr:pi"`). pi's integration
+>   prefers `agent_session_path` over an id whenever its session manager has a file open.
+>
+> Two consequences. A harness only reports at all once `herdr integration install <agent>` has been
+> run — pi's was missing on this host and the pane simply carried no session of its own. And Herdr
+> keeps reporting the LAST session announced for a pane, so relaunching a pane's agent as a different
+> harness leaves the previous one's ref behind: a pane running `pi` was observed still advertising a
+> `herdr:claude` id. The record's own `agent` field is what distinguishes the two — compare it against
+> the pane's `agent` before trusting the ref (`bridge/state-engine.ts`).
 
 > **Pane records now carry `scroll`** (new in 0.7.2, live-verified 2026-07-07): `pane.list`,
 > `pane.get`, `pane.current`, and `session.snapshot` panes all include

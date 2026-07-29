@@ -219,10 +219,27 @@ export class StateEngine {
           // A user-set pane label (herdr pane.rename); omitted when unset so "absent stays absent".
           ...(typeof p.label === "string" && p.label.length > 0 ? { paneLabel: p.label } : {}),
           ...(tabLabel ? { tabLabel } : {}),
-          // The agent's own session id — only the "id" kind names an on-disk transcript. Omitted
-          // otherwise, so "no history for this pane" is simply the field being absent.
-          ...(p.agent_session?.kind === "id" && typeof p.agent_session.value === "string"
-            ? { agentSessionId: p.agent_session.value }
+          // How the agent named its session. BOTH kinds are kept: Claude and Codex report an `id`,
+          // while pi reports a `path` (its herdr integration prefers `agent_session_path` whenever
+          // the session manager has a file open). Keeping only `id` — as this did until journals
+          // became per-agent — silently denied pi any history at all. Which kinds are meaningful is
+          // now the adapter's call, not this function's; anything else is omitted, so "no history
+          // for this pane" stays simply the field being absent.
+          //
+          // The ref must also BELONG to the agent currently in the pane. Herdr keeps reporting the
+          // last session announced for a pane, so relaunching a pane's agent as a different harness
+          // leaves the old one's ref behind — live-observed: a pane running `pi` still advertising
+          // `{source:"herdr:claude", kind:"id"}` from the claude that had been there before. Serving
+          // that would hand pi's adapter a Claude uuid; harmless today (it resolves to nothing) but
+          // only by luck. `agent_session.agent` is compared when Herdr reports it, and absence stays
+          // permissive so an older server that omits the field still works.
+          ...((p.agent_session?.kind === "id" || p.agent_session?.kind === "path") &&
+          typeof p.agent_session.value === "string" &&
+          p.agent_session.value !== "" &&
+          (typeof p.agent_session.agent !== "string" ||
+            p.agent_session.agent === "" ||
+            p.agent_session.agent === agent)
+            ? { agentSession: { kind: p.agent_session.kind, value: p.agent_session.value } }
             : {}),
           // Scrollback depth + viewport = what a `recent` read can yield. Omitted when the server
           // predates `scroll`, so an older Herdr simply reads as "unknown" rather than "zero".
