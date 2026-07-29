@@ -18,7 +18,12 @@ interface SectionHeaderProps {
    */
   open?: boolean;
   onToggle?: (open: boolean) => void;
-  /** Id of the element this header folds — wired to `aria-controls`. Required when foldable. */
+  /**
+   * Id of the element this header folds — wired to `aria-controls`, but ONLY while that element is
+   * actually rendered. Callers unmount the body when collapsed (rather than hiding it), so emitting
+   * the attribute in that state would point assistive tech at an id that does not exist — exactly
+   * when a screen-reader user is deciding whether to expand.
+   */
   controls?: string;
   /**
    * The section's own control (a sort toggle, a "new" button). Rendered as a SIBLING of the fold
@@ -86,7 +91,7 @@ export function SectionHeader({
             type="button"
             onClick={() => onToggle(!open)}
             aria-expanded={open}
-            {...(controls ? { "aria-controls": controls } : {})}
+            {...(controls && open ? { "aria-controls": controls } : {})}
             // min-h-9 keeps the row on the 36px touch floor even though the text is tiny.
             className={cn(
               "flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded text-left transition-colors",

@@ -4,13 +4,8 @@ import { FolderPlus, LayoutGrid, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/section-header";
 import { StatusDot } from "@/components/status-badge";
-import {
-  blockedCount,
-  filterSpaces,
-  sortSpacesByRecency,
-  spaceLastSeenMap,
-  worstSpaceStatus,
-} from "@/lib/spaces";
+import { filterSpaces, sortSpacesByRecency, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
+import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
 import { STATUS_LABEL } from "@/lib/types";
 import type { AgentView, WorkspaceView } from "@/lib/types";
@@ -46,7 +41,10 @@ export function SpaceOverview({
   const panes = [...agents, ...shellPanes];
   // One pass over the panes, then map lookups — this component re-renders on every poll.
   const lastSeen = spaceLastSeenMap(panes);
-  const blockedSpaces = workspaces.filter((w) => blockedCount(w.workspaceId, agents) > 0).length;
+  // One pass for "what's the most urgent thing in each space", shared with the chips so a row and a
+  // chip can never mean different things by the same colour (lib/spaces.ts).
+  const worstBySpace = spaceTriageMap(agents);
+  const blockedSpaces = [...worstBySpace.values()].filter((b) => b === "needs").length;
   const visible = filterSpaces(sortSpacesByRecency(workspaces, panes, lastSeen), query);
 
   return (
@@ -112,8 +110,9 @@ export function SpaceOverview({
             </p>
           ) : (
             visible.map((w) => {
-              const status = worstSpaceStatus(w.workspaceId, agents);
-              const blocked = blockedCount(w.workspaceId, agents) > 0;
+              const bucket = worstBySpace.get(w.workspaceId);
+              const status = bucket ? TRIAGE_STATUS[bucket] : null;
+              const blocked = bucket === "needs";
               const seen = lastSeen.get(w.workspaceId) ?? 0;
               return (
                 <button
