@@ -1,0 +1,19 @@
+[0m[38;2;175;175;175m[48;2;240;240;240m❯ [0m[38;2;0;0;0m[48;2;240;240;240mNow use the AskUserQuestion tool exactly once with TWO questions again, but this time make the SECOND question the multiSelect one. Question 1: header Size, multiSelect false, [0m[48;2;240;240;240m [0m
+[0m[48;2;240;240;240m  [0m[38;2;0;0;0m[48;2;240;240;240mtwo options. Question 2: header Extras, multiSelect true, three options each with a one-line description. Nothing else.[0m[48;2;240;240;240m                                                          [0m
+[0m[38;2;102;102;102m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☒ Size [0m[38;2;255;255;255m[48;2;87;105;247m ☐ Extras [0m ✔ Submit  →
+  
+[0m[1m[38;2;0;0;0mWhich extras should we add on the side?[0m
+
+[0m[38;2;87;105;247m❯[0m [0m[38;2;102;102;102m1.[0m [ ] [0m[38;2;87;105;247mGarlic knots[0m
+  [0m[38;2;102;102;102mWarm dough twists brushed with garlic butter and parsley.[0m
+  [0m[38;2;102;102;102m2.[0m [ ] Caesar salad
+  [0m[38;2;102;102;102mCrisp romaine, shaved parmesan, and croutons in a creamy dressing.[0m
+  [0m[38;2;102;102;102m3.[0m [ ] Dipping sauces
+  [0m[38;2;102;102;102mA trio of marinara, ranch, and garlic aioli for the crusts.[0m
+  [0m[38;2;102;102;102m4. [0m[ ] [0m[38;2;102;102;102mType something[0m
+     [0m[1mSubmit[0m
+[0m[38;2;102;102;102m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;102;102;102mEnter to select · Tab/Arrow keys to navigate · Esc to cancel[0m

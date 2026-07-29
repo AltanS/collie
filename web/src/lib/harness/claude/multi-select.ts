@@ -18,6 +18,7 @@
 import type { StyledLine } from "../../blocks";
 import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
 import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
+import { parseStepperLine, type WizardStepChip } from "./wizard";
 
 /** One checkable option of the current checkbox question. */
 export interface MultiSelectOption {
@@ -38,10 +39,10 @@ export interface MultiSelectEscape {
   label: string;
 }
 
-/** Which KIND of row the `❯` pointer sits on — the Submit macro drives it to `submit` before Enter.
+/** Which KIND of row the `❯` pointer sits on — the advance macro drives it to `advance` before Enter.
  *  Parsed SEPARATELY from the signature (which normalises the pointer out), so the macro's own
  *  Down/Up moves don't perturb the race-guard identity. */
-export type MultiPointer = "submit" | "chat" | "option" | "other" | null;
+export type MultiPointer = "advance" | "chat" | "option" | "other" | null;
 
 /**
  * The detected multi-select dialog, a union on `phase`:
@@ -63,6 +64,17 @@ export type MultiSelectModel =
       options: MultiSelectOption[];
       escape: MultiSelectEscape | null;
       pointer: MultiPointer;
+      /**
+       * The wizard stepper's chips when this checkbox question is one STEP of a multi-question
+       * dialog; null when it's a standalone single-question multiSelect. Same distinction (and same
+       * Left/Right navigation) as `PreviewSelectModel.steps`.
+       */
+      steps: WizardStepChip[] | null;
+      /**
+       * The advance row's literal label — `Submit` on the last question, `Next` on every earlier one.
+       * Captured rather than assumed so the button says what the terminal says.
+       */
+      advanceLabel: string;
       signature: string;
       /**
        * Literal contiguous text over the same stepper-to-last-menu-row span as `signature`. It ends
@@ -102,8 +114,14 @@ const STEPPER_SCAN_LIMIT = 10;
 const REVIEW_SCAN_WINDOW = 48;
 
 const CHAT_ESCAPE = /^chat about this\b/i;
-// The navigable Submit row (no digit — Enter activates it), possibly carrying the pointer.
-const SUBMIT_ROW = /^❯?\s*Submit$/;
+// The navigable ADVANCE row (no digit — Enter activates it), possibly carrying the pointer. Its label
+// is `Submit` on the LAST question and `Next` on every earlier one, so the word is captured rather
+// than assumed — hard-coding either would break half the steps of a multi-question dialog.
+//
+// Note this row exists ONLY on a checkbox question. A plain wizard question has none: its digits
+// select AND advance in one press, whereas a checkbox digit only toggles, so the advance needs its
+// own control. That is what makes the row a reliable part of this grammar rather than incidental.
+const ADVANCE_ROW = /^❯?\s*(Submit|Next)$/;
 const READY_PROMPT = /^ready to submit your answers\?/i;
 
 // ---------------------------------------------------------------------------------------------
@@ -129,6 +147,29 @@ function isSingleQuestionStepper(line: StyledLine): boolean {
   const submit = chips[1]!;
   if (SUBMIT_GLYPHS.includes(question.glyph) || question.label.length === 0) return false;
   return SUBMIT_GLYPHS.includes(submit.glyph) && /^submit$/i.test(submit.label);
+}
+
+/**
+ * Scan upward for the stepper above a CHECKBOX question, in either of its two shapes: the
+ * single-question stepper (`☐ Toppings  ✔ Submit`) or the multi-question wizard's own
+ * (`☐ Types  ☐ Anchoring  …  ✔ Submit`), parsed by the wizard's `parseStepperLine` so the chip
+ * grammar lives in exactly one place. `steps` is null for the single-question form — the same
+ * distinction `preview-select` draws, and for the same reason: a wizard step gains Left/Right
+ * navigation between questions, a standalone dialog has nowhere to navigate to.
+ */
+function findCheckboxStepper(
+  lines: StyledLine[],
+  texts: string[],
+  start: number,
+  floor: number,
+): { index: number; steps: WizardStepChip[] | null } | null {
+  for (let i = start; i >= 0 && i >= floor; i--) {
+    if (isHorizontalRule(texts[i]!)) return null;
+    if (isSingleQuestionStepper(lines[i]!)) return { index: i, steps: null };
+    const wizardStepper = parseStepperLine(lines[i]!);
+    if (wizardStepper) return { index: i, steps: wizardStepper.chips };
+  }
+  return null;
 }
 
 /** Scan upward from `start` down to `floor` for the single-question stepper, stopping at a horizontal
@@ -166,11 +207,12 @@ function coreSignature(texts: string[], from: number, to: number): string {
 
 /** Classify which row the `❯` pointer sits on across [`from` … `to`] (raw line text — the pointer is
  *  a leading glyph). `null` when no row carries it. */
-function pointerAt(texts: string[], from: number, to: number): MultiPointer {
+function pointerAt(texts: string[], from: number, to: number, advanceIdx: number): MultiPointer {
   for (let i = from; i <= to; i++) {
     if (!/^\s*❯/.test(texts[i]!)) continue;
     const trimmed = texts[i]!.trim();
-    if (SUBMIT_ROW.test(trimmed)) return "submit";
+    // By index: a line that merely READS "Submit"/"Next" is not the advance row (see its location above).
+    if (i === advanceIdx) return "advance";
     const parsed = parseOptionRow(trimmed);
     if (!parsed) return "other";
     if (CHAT_ESCAPE.test(parsed.label)) return "chat";
@@ -230,15 +272,40 @@ function detectCheckboxPhase(
   const firstOpt = menu[0]!.index;
   if (fi - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
 
-  // The screen MUST carry a navigable "Submit" row (Enter on it advances to review). The Submit macro
-  // walks the pointer ONTO that row before it ever Enters; if the row is absent (a partial / garbled
-  // render), fail closed to the raw mirror rather than lift a dialog whose Submit the macro would hunt
-  // for by typing nav keys into the live pane. (The `✔ Submit` stepper CHIP is not this row —
-  // SUBMIT_ROW anchors the whole line, so the chip never satisfies it.)
-  if (!texts.slice(firstOpt, fi).some((t) => SUBMIT_ROW.test(t.trim()))) return null;
+  // The screen MUST carry the navigable advance row, and we locate it by POSITION, not by scanning
+  // for the first line that reads "Submit"/"Next". Claude Code draws it in exactly one place: last
+  // non-blank line above the rule that separates the menu from the "Chat about this" escape.
+  //
+  // Position matters because the text is model-authored and untrusted. Matching on text alone, an
+  // option DESCRIPTION reading "Next" would (a) rename the button, so it advertises an action it
+  // doesn't perform, (b) satisfy the "row is absent → fail closed" check on a pane that has no
+  // advance row at all, leaving the macro to spray Down keys into a live pane hunting for it, and
+  // (c) via pointerAt, be reported as the pointer — making the macro press Enter on whatever row the
+  // terminal's ❯ is really on, which on "Chat about this" aborts the whole tool call.
+  //
+  // No rule below the options means a layout we don't know: bail rather than guess.
+  let ruleIdx = -1;
+  for (let i = fi - 1; i > firstOpt; i--) {
+    if (isHorizontalRule(texts[i]!)) {
+      ruleIdx = i;
+      break;
+    }
+  }
+  if (ruleIdx < 0) return null;
+  let advanceIdx = -1;
+  for (let i = ruleIdx - 1; i > firstOpt; i--) {
+    if (isBlank(texts[i]!)) continue;
+    advanceIdx = i;
+    break;
+  }
+  if (advanceIdx < 0) return null;
+  const advanceMatch = ADVANCE_ROW.exec(texts[advanceIdx]!.trim());
+  if (!advanceMatch) return null;
+  const advanceLabel = advanceMatch[1]!;
 
-  const stepperIdx = findSingleStepper(lines, texts, firstOpt - 1, firstOpt - STEPPER_SCAN_LIMIT);
-  if (stepperIdx < 0) return null;
+  const stepper = findCheckboxStepper(lines, texts, firstOpt - 1, firstOpt - STEPPER_SCAN_LIMIT);
+  if (!stepper) return null;
+  const stepperIdx = stepper.index;
 
   // The question: every non-blank line between the stepper and the first option, joined.
   const questionLines: string[] = [];
@@ -266,7 +333,7 @@ function detectCheckboxPhase(
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
-      if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t) || SUBMIT_ROW.test(t.trim())) continue;
+      if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t) || i === advanceIdx) continue;
       desc.push(t.trim());
     }
     options.push({
@@ -284,7 +351,9 @@ function detectCheckboxPhase(
       question,
       options,
       escape,
-      pointer: pointerAt(texts, firstOpt, fi),
+      steps: stepper.steps,
+      advanceLabel,
+      pointer: pointerAt(texts, firstOpt, fi, advanceIdx),
       // Signature ends at the LAST menu row, NOT the footer: Claude's footer gains/loses a
       // "· ctrl+g to edit in nano" hint depending on which row the ❯ sits on (present on the
       // free-text/Submit/chat rows, absent on the checkbox rows). Since the Submit macro walks the

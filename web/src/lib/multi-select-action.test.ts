@@ -222,7 +222,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
       checkboxBuffer({ pointer: "opt2" }), // read: still an option row → Down
       checkboxBuffer({ pointer: "submit" }), // read: on Submit → Enter (stops here, no overshoot)
     );
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "sent" });
     expect(mockSendKeys.mock.calls).toEqual([
       ["w1:p1", ["Down"], undefined, m.regionSignature],
@@ -242,7 +242,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
       error: "Prompt changed before keys were sent",
       code: "prompt_changed",
     });
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
     expect(mockSendKeys.mock.calls).toEqual([
       ["w1:p1", ["Down"], undefined, m.regionSignature],
@@ -257,7 +257,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
       checkboxBuffer({ pointer: "opt2" }), // read: STILL option (Down swallowed) → Down again
       checkboxBuffer({ pointer: "submit" }), // read: Submit → Enter
     );
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "sent" });
     expect(keysSent()).toEqual([["Down"], ["Down"], ["Enter"]]);
   });
@@ -269,7 +269,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
       checkboxBuffer({ pointer: "chat" }), // read: on the bottom row → Up
       checkboxBuffer({ pointer: "submit" }), // read: Submit → Enter
     );
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "sent" });
     expect(keysSent()).toEqual([["Up"], ["Enter"]]);
   });
@@ -279,7 +279,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
     // Every read shows an option row — the pointer never converges on Submit, so the bounded walk
     // exhausts and refreshes rather than blind-sending an Enter at an unverified row.
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "opt2" })));
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
     expect(keysSent()).not.toContainEqual(["Enter"]);
     expect(keysSent().every((k) => k[0] === "Down")).toBe(true); // only ever nudged downward
@@ -290,7 +290,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
     // The ❯ parked on "5. [ ] Type something" (the composer row) reads as a non-Submit row, so the
     // walk only ever nudges Down — it must never mistake it for Submit and blind-Enter.
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "free" })));
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
     expect(keysSent()).not.toContainEqual(["Enter"]);
     expect(keysSent().every((k) => k[0] === "Down")).toBe(true);
@@ -301,7 +301,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
     // A redraw with the ❯ absent → pointer null → still not Submit, so the walk nudges Down and never
     // blind-Enters at an unverified row.
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "none" })));
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
     expect(keysSent()).not.toContainEqual(["Enter"]);
     expect(keysSent().every((k) => k[0] === "Down")).toBe(true);
@@ -316,7 +316,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
       // check must reject it so NO Enter follows.
       checkboxBuffer({ pointer: "submit", question: "A different question?" }),
     );
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
     expect(keysSent()).toEqual([["Down"]]); // drift detected on the read, before any further key
     expect(keysSent()).not.toContainEqual(["Enter"]);
@@ -325,7 +325,7 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
   it("rejects at the entry guard (no keys at all) when the dialog already changed", async () => {
     const m = model(checkboxBuffer({ checked: [] }));
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ question: "Different?" })));
-    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
     expect(mockSendKeys).not.toHaveBeenCalled();
   });
@@ -345,9 +345,9 @@ describe("per-pane serialization — overlapping actions can't both fire", () =>
       return paneWith(checkboxBuffer({ pointer: "submit" }));
     });
 
-    const first = submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const first = submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     // The second tap lands while the first is parked mid-flight → rejected before any read/send.
-    const second = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "submit" } });
+    const second = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(second).toEqual({ status: "changed" });
 
     releaseFirst();
@@ -368,5 +368,53 @@ describe("per-pane serialization — overlapping actions can't both fire", () =>
       await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 3 } }),
     ).toEqual({ status: "sent" });
     expect(keysSent()).toEqual([["2"], ["3"]]);
+  });
+});
+
+// The `signature` normalises ☒/☑ → ☐ across the whole chip line, because the current question's chip
+// flips on the first tick. That also erases WHICH step you are on — so the comparators have to carry
+// the steps themselves, or a tap meant for one question lands on another.
+describe("multiSelectEquals / multiSelectIdentity — wizard step identity", () => {
+  const step = (
+    chips: { label: string; answered: boolean; current: boolean }[],
+  ): MultiSelectModel => ({
+    phase: "checkbox",
+    question: "Which changes should I keep?",
+    options: [
+      { n: 1, label: "Formatting", checked: false },
+      { n: 2, label: "Renames", checked: false },
+    ],
+    escape: { n: 3, label: "Chat about this" },
+    pointer: "option",
+    steps: chips,
+    advanceLabel: "Next",
+    // Deliberately IDENTICAL: this is what the normalisation leaves behind for two steps of one
+    // wizard whose questions and options happen to read the same.
+    signature: "same",
+    regionSignature: "region",
+  });
+
+  const q1 = step([
+    { label: "Backend", answered: false, current: true },
+    { label: "Frontend", answered: false, current: false },
+  ]);
+  const q2 = step([
+    { label: "Backend", answered: true, current: false },
+    { label: "Frontend", answered: false, current: true },
+  ]);
+
+  it("does not treat two steps of one wizard as the same screen", () => {
+    expect(multiSelectEquals(q1, q2)).toBe(false);
+    expect(multiSelectIdentity(q1, q2)).toBe(false);
+  });
+
+  it("still treats the same step as itself", () => {
+    expect(multiSelectEquals(q1, step(q1.phase === "checkbox" ? q1.steps! : []))).toBe(true);
+    expect(multiSelectIdentity(q1, step(q1.phase === "checkbox" ? q1.steps! : []))).toBe(true);
+  });
+
+  it("separates a Next step from the Submit step even if everything else matches", () => {
+    const onSubmit = { ...q1, advanceLabel: "Submit" } as MultiSelectModel;
+    expect(multiSelectEquals(q1, onSubmit)).toBe(false);
   });
 });
