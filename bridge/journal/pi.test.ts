@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { isPiSessionId, parsePiTranscript, PiTranscriptSource } from "./pi.ts";
@@ -147,50 +147,69 @@ describe("parsePiTranscript", () => {
 describe("PiTranscriptSource — path refs are confined to the root", () => {
   const SID = "019f4665-7df0-7540-a64f-7068335f21af";
 
+  /**
+   * Everything lives under one `base` so cleanup takes the "outside" file with it:
+   *   base/sessions/--repo--/<ts>_<uuid>.jsonl   the real log
+   *   base/outside.jsonl                          a file the root must never reach
+   *   base/sessions/--repo--/sneaky.jsonl → ../../outside.jsonl   a symlink out of the root
+   */
   async function fixture() {
-    const dir = `${tmpdir()}/collie-pi-${Math.floor(performance.now() * 1000)}`;
-    const project = `${dir}/--var-home-you-repo--`;
+    const base = `${tmpdir()}/collie-pi-${Math.floor(performance.now() * 1000)}`;
+    const root = `${base}/sessions`;
+    const project = `${root}/--var-home-you-repo--`;
     await mkdir(project, { recursive: true });
     const log = `${project}/2026-07-29T10-00-00-000Z_${SID}.jsonl`;
     await Bun.write(log, speech("a", "user", "hi"));
-    // A file OUTSIDE the sessions root — the thing a hostile path ref would reach for.
-    await Bun.write(`${dir}/../collie-pi-outside-${Math.floor(performance.now())}.jsonl`, "nope");
-    return { dir, log };
+    const outside = `${base}/outside.jsonl`;
+    await Bun.write(outside, speech("z", "user", "secrets"));
+    const sneaky = `${project}/2026-07-29T11-00-00-000Z_${OUTSIDE_SID}.jsonl`;
+    await symlink(outside, sneaky);
+    return { base, root, log, sneaky };
   }
 
+  const OUTSIDE_SID = "ffffffff-1111-2222-3333-444444444444";
+
   test("resolves a path ref that really is inside the root", async () => {
-    const { dir, log } = await fixture();
-    const src = new PiTranscriptSource(dir);
-    expect(await src.resolve({ kind: "path", value: log })).toBe(log);
-    await rm(dir, { recursive: true, force: true });
+    const { base, root, log } = await fixture();
+    expect(await new PiTranscriptSource(root).resolve({ kind: "path", value: log })).toBe(log);
+    await rm(base, { recursive: true, force: true });
   });
 
   test("refuses a path ref pointing outside the root", async () => {
-    const { dir, log } = await fixture();
-    const src = new PiTranscriptSource(dir);
+    const { base, root, log } = await fixture();
     const escape = `${log}/../../../../etc/hosts`;
-    expect(await src.resolve({ kind: "path", value: escape })).toBeNull();
-    await rm(dir, { recursive: true, force: true });
+    expect(await new PiTranscriptSource(root).resolve({ kind: "path", value: escape })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
+
+  // Symlink resolution is the ENTIRE reason containment runs on realpaths rather than on the strings
+  // we were handed: `..` traversal would be caught by plain normalisation, this would not. The file
+  // sits inside the root, has a plausible session filename, and still must not be readable.
+  test("refuses a symlink inside the root that points outside it", async () => {
+    const { base, root, sneaky } = await fixture();
+    const src = new PiTranscriptSource(root);
+    expect(await src.resolve({ kind: "path", value: sneaky })).toBeNull();
+    // …and the id fallback must not be a way around the same check.
+    expect(await src.resolve({ kind: "id", value: OUTSIDE_SID })).toBeNull();
+    await rm(base, { recursive: true, force: true });
   });
 
   test("refuses a path ref that isn't a session log at all", async () => {
-    const { dir } = await fixture();
-    const src = new PiTranscriptSource(dir);
-    expect(await src.resolve({ kind: "path", value: "/etc/passwd" })).toBeNull();
-    await rm(dir, { recursive: true, force: true });
+    const { base, root } = await fixture();
+    expect(await new PiTranscriptSource(root).resolve({ kind: "path", value: "/etc/passwd" })).toBeNull();
+    await rm(base, { recursive: true, force: true });
   });
 
   test("resolves the id fallback by scanning the per-cwd directories", async () => {
-    const { dir, log } = await fixture();
-    const src = new PiTranscriptSource(dir);
-    expect(await src.resolve({ kind: "id", value: SID })).toBe(log);
-    await rm(dir, { recursive: true, force: true });
+    const { base, root, log } = await fixture();
+    expect(await new PiTranscriptSource(root).resolve({ kind: "id", value: SID })).toBe(log);
+    await rm(base, { recursive: true, force: true });
   });
 
   test("an unknown id resolves to null rather than guessing", async () => {
-    const { dir } = await fixture();
-    const src = new PiTranscriptSource(dir);
+    const { base, root } = await fixture();
+    const src = new PiTranscriptSource(root);
     expect(await src.resolve({ kind: "id", value: "ffffffff-ffff-ffff-ffff-ffffffffffff" })).toBeNull();
-    await rm(dir, { recursive: true, force: true });
+    await rm(base, { recursive: true, force: true });
   });
 });
