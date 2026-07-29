@@ -1,0 +1,5 @@
+# web/ has its own lockfile and is installed from its own directory, so it needs its own copy of the
+# supply-chain cooldown — bunfig.toml is read from the install cwd, not inherited from the repo root.
+# Keep this in sync with ../bunfig.toml.
+[install]
+minimumReleaseAge = 604800 # 7 days, in seconds
