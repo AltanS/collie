@@ -19,6 +19,8 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   onAtBottomChange?: (atBottom: boolean) => void;
   /** Dot the "jump to latest" button when newer output arrived while you were scrolled up. */
   hasNew?: boolean;
+  /** Whether this component renders its own floating jump button. */
+  showJumpButton?: boolean;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -26,7 +28,7 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, showJumpButton = true, ...props },
     ref,
   ) {
     const { scrollRef, isAtBottom, scrollToBottom, onScroll } = useAutoScroll<HTMLDivElement>({
@@ -56,7 +58,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
           {children}
         </div>
 
-        {!isAtBottom && (
+        {showJumpButton && !isAtBottom && (
           <Button
             onClick={() => scrollToBottom()}
             size="icon"

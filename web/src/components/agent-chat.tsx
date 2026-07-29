@@ -656,6 +656,7 @@ export function AgentChat({
             dep={display}
             onAtBottomChange={setFollowing}
             hasNew={hasNew}
+            showJumpButton={false}
             className="px-2 py-3"
           >
             {display ? (
@@ -767,7 +768,14 @@ export function AgentChat({
             stepFontSize={stepFontSize}
             setRawTerminal={setRawTerminal}
             onSent={onSent}
-            // Find-in-output lives in the composer's View row now (the header was the wrong home for it).
+            canScrollToLatest={!following}
+            hasNewOutput={hasNew}
+            onScrollToLatest={() => {
+              setFollowing(true);
+              setShown({ text, revision });
+              listRef.current?.scrollToBottom();
+            }}
+            // Find-in-output lives in the composer's terminal toolbar now (the header was the wrong home for it).
             // Enabled only when there's buffered output to search; opening it freezes the tail (openFind).
             onOpenFind={display ? openFind : undefined}
           />

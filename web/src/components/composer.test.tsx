@@ -743,6 +743,30 @@ describe("Composer — quick keys / image attach", () => {
       expect(screen.queryByRole("button", { name: d })).not.toBeInTheDocument();
     }
   });
+
+  it("keeps Keys, Quick and Agent as icon-only toolbar buttons", () => {
+    renderComposer();
+
+    for (const label of ["Keys", "Quick", "Agent"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "Agent" }).querySelector("svg")).toHaveClass(
+      "lucide-bot",
+    );
+  });
+
+  it("uses the toolbar down-arrow to return to the live terminal tail", async () => {
+    const user = userEvent.setup();
+    const onScrollToLatest = vi.fn();
+    renderComposer({ canScrollToLatest: true, hasNewOutput: true, onScrollToLatest });
+
+    const button = screen.getByRole("button", { name: "Scroll to latest" });
+    expect(button).toBeEnabled();
+    await user.click(button);
+
+    expect(onScrollToLatest).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("Composer — clipboard image paste", () => {

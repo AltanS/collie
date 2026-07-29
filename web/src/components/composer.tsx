@@ -1,7 +1,22 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Search, Send, Slash, Terminal, WrapText, X, Zap } from "lucide-react";
+import {
+  AArrowDown,
+  AArrowUp,
+  ArrowDown,
+  Bot,
+  Check,
+  ImagePlus,
+  Keyboard,
+  Loader2,
+  Search,
+  Send,
+  Terminal,
+  WrapText,
+  X,
+  Zap,
+} from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -61,6 +76,12 @@ interface ComposerProps {
   /** Open find-in-output (freezes the tail in AgentChat). Undefined when there's no buffered output
    * to search — the View-row Find button hides in that case. */
   onOpenFind?: () => void;
+  /** Jump the terminal mirror back to the live tail. */
+  onScrollToLatest?: () => void;
+  /** Whether the terminal mirror is currently away from the live tail. */
+  canScrollToLatest?: boolean;
+  /** Whether newer output arrived while the mirror was frozen/scrolled up. */
+  hasNewOutput?: boolean;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -115,7 +136,27 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
+  {
+    paneId,
+    session,
+    agent,
+    isShell,
+    gone,
+    readOnly,
+    dialogPresent,
+    text,
+    terminalDraft,
+    rawTerminalDraft,
+    prefs,
+    setWrap,
+    stepFontSize,
+    setRawTerminal,
+    onSent,
+    onOpenFind,
+    onScrollToLatest,
+    canScrollToLatest = false,
+    hasNewOutput = false,
+  },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -468,85 +509,126 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             below (always visible, not gated behind the keyboard-open quick keys); structural commands
             (New tab/space, Kill) and Stop (Esc, in the Keys dock) live elsewhere. */}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickImage} />
-        {/* Display prefs (wrap + font size) on their own compact, right-aligned row. Kept off the
-            Keys/Quick/Agent action row below — three extra buttons there overflowed a narrow phone
-            and broke the layout. */}
-        <div className="mb-2 flex items-center gap-1">
-          <SectionLabel>View</SectionLabel>
-          <div className="ml-auto flex items-center gap-1">
-            {/* Find in output — search the already-fetched pane buffer without leaving the pane.
-                Lives here (not the header) so search sits with the other view controls; only shown
-                when AgentChat passes a handler (i.e. there's buffered output to search). */}
-            {onOpenFind && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground"
-                onClick={onOpenFind}
-                aria-label="Find in output"
-                title="Find in output"
-              >
-                <Search className="size-3.5" />
-              </Button>
+        {/* One thumb row for terminal view and input controls. It scrolls horizontally on the
+            narrowest phones, keeping all controls in one stable line without shrinking targets. */}
+        <div className="mb-2 -mx-1 flex items-center gap-1 overflow-x-auto overscroll-x-contain px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {onOpenFind && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground"
+              onClick={onOpenFind}
+              aria-label="Find in output"
+              title="Find in output"
+            >
+              <Search className="size-3.5" />
+            </Button>
+          )}
+          <Button
+            variant={prefs.rawTerminal ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            onClick={() => setRawTerminal(!prefs.rawTerminal)}
+            aria-label={
+              prefs.rawTerminal
+                ? "Raw terminal on — tap for the enhanced view"
+                : "Raw terminal off — tap to show the plain terminal"
+            }
+            aria-pressed={prefs.rawTerminal}
+            title="Toggle raw terminal (disable native prompt buttons)"
+          >
+            <Terminal className="size-3.5" />
+          </Button>
+          <Button
+            variant={prefs.wrap ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            onClick={() => setWrap(!prefs.wrap)}
+            aria-label={prefs.wrap ? "Wrap on — tap to disable" : "Wrap off — tap to enable"}
+            aria-pressed={prefs.wrap}
+            title="Toggle line wrap"
+          >
+            <WrapText className="size-3.5" />
+          </Button>
+          <Button
+            variant={hasNewOutput ? "secondary" : "ghost"}
+            size="icon"
+            className="relative h-8 w-8 shrink-0 text-muted-foreground"
+            disabled={!canScrollToLatest}
+            onClick={onScrollToLatest}
+            aria-label="Scroll to latest"
+            title="Scroll to latest"
+          >
+            <ArrowDown className="size-3.5" />
+            {hasNewOutput && (
+              <span className="absolute right-1 top-1 size-2 rounded-full bg-status-blocked ring-2 ring-background" />
             )}
-            {/* Raw-terminal escape hatch: turns off the block renderer (native prompt buttons, chrome
-                strip, status strip) so a mis-parsed dialog can always be driven by hand with the keys
-                pad. Highlighted when active so it's obvious the plain mirror is showing. */}
-            <Button
-              variant={prefs.rawTerminal ? "secondary" : "ghost"}
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              onClick={() => setRawTerminal(!prefs.rawTerminal)}
-              aria-label={
-                prefs.rawTerminal
-                  ? "Raw terminal on — tap for the enhanced view"
-                  : "Raw terminal off — tap to show the plain terminal"
-              }
-              aria-pressed={prefs.rawTerminal}
-              title="Toggle raw terminal (disable native prompt buttons)"
-            >
-              <Terminal className="size-3.5" />
-            </Button>
-            <Button
-              variant={prefs.wrap ? "secondary" : "ghost"}
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              onClick={() => setWrap(!prefs.wrap)}
-              aria-label={prefs.wrap ? "Wrap on — tap to disable" : "Wrap off — tap to enable"}
-              aria-pressed={prefs.wrap}
-              title="Toggle line wrap"
-            >
-              <WrapText className="size-3.5" />
-            </Button>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            disabled={prefs.fontSize <= 9}
+            onClick={() => stepFontSize(-1)}
+            aria-label="Decrease font size"
+            title="Smaller text"
+          >
+            <AArrowDown className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            disabled={prefs.fontSize >= 16}
+            onClick={() => stepFontSize(1)}
+            aria-label="Increase font size"
+            title="Larger text"
+          >
+            <AArrowUp className="size-3.5" />
+          </Button>
+          {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
+              again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
+              while open. Both share the single-valued `drawer`, so opening one closes the other. */}
+          <Button
+            variant={drawer === "keys" ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            disabled={locked}
+            aria-label="Keys"
+            aria-expanded={drawer === "keys"}
+            title="Keys"
+            onClick={() => setDrawer(drawer === "keys" ? null : "keys")}
+          >
+            <Keyboard className="size-4" />
+          </Button>
+          <Button
+            variant={drawer === "quick" ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            disabled={locked}
+            aria-label="Quick"
+            aria-expanded={drawer === "quick"}
+            title="Quick"
+            onClick={() => setDrawer(drawer === "quick" ? null : "quick")}
+          >
+            <Zap className="size-4" />
+          </Button>
+          {commands.length > 0 && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              disabled={prefs.fontSize <= 9}
-              onClick={() => stepFontSize(-1)}
-              aria-label="Decrease font size"
-              title="Smaller text"
+              className="h-8 w-8 shrink-0 text-muted-foreground"
+              disabled={locked}
+              aria-label="Agent"
+              title="Agent"
+              onClick={() => setDrawer("cmd")}
             >
-              <AArrowDown className="size-3.5" />
+              <Bot className="size-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              disabled={prefs.fontSize >= 16}
-              onClick={() => stepFontSize(1)}
-              aria-label="Increase font size"
-              title="Larger text"
-            >
-              <AArrowUp className="size-3.5" />
-            </Button>
-          </div>
+          )}
         </div>
-        {/* Keys / Quick dock — a single in-flow site ABOVE the Controls row (so the toggle you tapped
-            stays put and the panel grows over the mirror, not the input). Whichever of the mutually
-            exclusive drawers is active renders here via the shared ComposerDock chrome. Keys mounts
-            the NavTray (unmounts on close, so tab/queue reset each open); Quick mounts the two
-            one-tap reply grids. Agent stays a covering BottomSheet below (it's a palette, not a pad). */}
+        {/* Keys / Quick dock — a single in-flow site above the toolbar, so opening it reduces the
+            mirror rather than covering the terminal tail. */}
         {drawer === "keys" && (
           <ComposerDock title="Keys" onClose={closeDrawer}>
             <NavTray onSend={pressKeys} disabled={locked} />
@@ -561,47 +643,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </ComposerDock>
         )}
-        {/* Action row: Keys · Quick · Agent (Agent only when the pane's agent has commands). */}
-        <div className="mb-2 flex items-center gap-2">
-          <SectionLabel>Controls</SectionLabel>
-          {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
-              again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
-              while open. Both share the single-valued `drawer`, so opening one closes the other. */}
-          <Button
-            variant={drawer === "keys" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-8 flex-1 gap-1.5 text-muted-foreground"
-            disabled={locked}
-            aria-expanded={drawer === "keys"}
-            onClick={() => setDrawer(drawer === "keys" ? null : "keys")}
-          >
-            <Keyboard className="size-4" />
-            Keys
-          </Button>
-          <Button
-            variant={drawer === "quick" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-8 flex-1 gap-1.5 text-muted-foreground"
-            disabled={locked}
-            aria-expanded={drawer === "quick"}
-            onClick={() => setDrawer(drawer === "quick" ? null : "quick")}
-          >
-            <Zap className="size-4" />
-            Quick
-          </Button>
-          {commands.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 flex-1 gap-1.5 text-muted-foreground"
-              disabled={locked}
-              onClick={() => setDrawer("cmd")}
-            >
-              <Slash className="size-4" />
-              Agent
-            </Button>
-          )}
-        </div>
         {/* Terminal-draft preview: a read-only view of a stranded "❯"-line draft (a message queued
             then recalled on the HOST, which stripChrome hides from the mirror). It appears only after
             the draft stabilises (never a blip/self-echo), then its text tracks the live line — host
