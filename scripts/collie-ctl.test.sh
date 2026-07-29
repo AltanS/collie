@@ -321,10 +321,102 @@ EOF
   assert_contains "$(cat "${CASE_DIR}/start.out")" 'BANNER'
 }
 
+# A bun that reports only how it was found: its own path, and the PATH it inherited.
+install_fake_bun() {
+  local target="$1" calls="$2"
+  mkdir -p "$(dirname "$target")"
+  cat > "$target" <<EOF
+#!/bin/sh
+printf '%s|%s\n' "\$0" "\$PATH" > "$calls"
+exit 0
+EOF
+  chmod +x "$target"
+}
+
+# Herdr spawns plugin actions with a minimal environment — no login shell, so ~/.bun/bin is simply
+# absent from PATH and resolving with \`command -v bun\` alone found nothing. Because \`update\` pulls
+# BEFORE it builds, that left the checkout ahead of the web/dist still being served while every
+# version string reported the new release. Pin both halves of the fix: which Bun gets chosen, and
+# that its directory reaches child processes on PATH (the Tailscale ownership probe, and the children
+# `bun run build` spawns, look up a bare `bun` themselves).
+test_bun_resolution() {
+  setup_case bun-resolution
+  ln -s "$(command -v dirname)" "${BIN_DIR}/dirname"
+  local calls="${CASE_DIR}/calls"
+
+  install_fake_bun "${HOME_DIR}/.bun/bin/bun" "$calls"
+  # PATH holds no bun at all — this IS the Herdr-action environment. Resolution has to reach into
+  # $HOME, and the fixture wins over any real bun in /usr/bin because ~/.bun/bin is tried first.
+  # $BUN_INSTALL is scrubbed: a developer running these tests from a shell where Bun's installer
+  # exported it would otherwise resolve their REAL bun and the fixture would never be consulted.
+  env -u BUN_INSTALL HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" PATH="$BIN_DIR" \
+    /bin/bash "$CTL" push-test
+  assert_eq "$(cut -d'|' -f1 "$calls")" "${HOME_DIR}/.bun/bin/bun"
+  case "$(cut -d'|' -f2- "$calls")" in
+    "${HOME_DIR}/.bun/bin:"*) ;;
+    *) fail "resolved Bun's directory never reached children on PATH" ;;
+  esac
+
+  # $BUN_INSTALL is the operator's explicit choice, so it outranks the default ~/.bun.
+  install_fake_bun "${CASE_DIR}/alt/bin/bun" "$calls"
+  HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" PATH="$BIN_DIR" \
+    BUN_INSTALL="${CASE_DIR}/alt" /bin/bash "$CTL" push-test
+  assert_eq "$(cut -d'|' -f1 "$calls")" "${CASE_DIR}/alt/bin/bun"
+}
+
+# `command -v` reports a function or alias as a BARE word, and the plugin .env is sourced before we
+# resolve — so a `bun()` defined there yields dirname `.`, and prepending that would hand every later
+# `git` / `systemctl` / `tailscale` a cwd-relative lookup. Only absolute paths reach PATH.
+test_non_absolute_bun_never_reaches_path() {
+  setup_case bun-not-absolute
+  local harness="${CASE_DIR}/harness.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+bun() { :; }   # what a doctored .env would leave behind
+source "$CTL"
+echo "PATH=\$PATH"
+EOF
+  bash "$harness" > "${CASE_DIR}/path.out" 2>&1 ||
+    fail "sourcing the script with a bun function failed"
+  case "$(cat "${CASE_DIR}/path.out")" in
+    *"PATH=.:"*|*":.:"*) fail "a non-absolute Bun put the CWD on PATH" ;;
+  esac
+}
+
+# An empty resolution must still be reported and exit non-zero — that message is all an operator on a
+# host genuinely without Bun gets, and it's what stops a build from half-finishing.
+test_missing_bun_still_reports() {
+  setup_case bun-missing
+  local harness="${CASE_DIR}/harness.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+BUN=""
+cmd_build
+EOF
+  set +e
+  bash "$harness" > "${CASE_DIR}/build.out" 2>&1
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "cmd_build with no Bun reported success"
+  assert_contains "$(cat "${CASE_DIR}/build.out")" 'bun not found'
+}
+
 test_tailscale_cutovers_and_collisions
 test_missing_tailscale_cli
 test_state_delete_failures
 test_adopts_preexisting_collie_mount
 test_serve_failure_does_not_abort_start
+test_bun_resolution
+test_non_absolute_bun_never_reaches_path
+test_missing_bun_still_reports
 
 echo "collie-ctl lifecycle tests: passed"
