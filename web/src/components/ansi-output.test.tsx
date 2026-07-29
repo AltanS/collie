@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
+import type { ComponentProps } from "react";
 
 import { AnsiOutput } from "./ansi-output";
 
@@ -43,5 +44,76 @@ describe("terminal mirror colour space", () => {
     const pre = mirror(`${ESC}[31mred${ESC}[0m`);
     const span = [...pre.querySelectorAll("span")].find((s) => s.textContent === "red");
     expect(span!.style.color).toBe("var(--ansi-1)");
+  });
+});
+
+// URLs printed by an agent are plain characters — the mirror finds them and wraps those ranges in
+// anchors. The invariants worth guarding are the ones a refactor would silently break: the text is
+// still exactly what the terminal printed, and nothing but http(s) ever becomes an href.
+describe("clickable links in the mirror", () => {
+  function mirror(props: Partial<ComponentProps<typeof AnsiOutput>> & { text: string }) {
+    const { container } = render(<AnsiOutput {...props} />);
+    return container.querySelector("pre")!;
+  }
+
+  it("links a bare URL without changing the rendered text", () => {
+    const pre = mirror({ text: "opened https://herdr.dev/docs ok\n" });
+    const a = pre.querySelector("a")!;
+    expect(a.getAttribute("href")).toBe("https://herdr.dev/docs");
+    expect(a.textContent).toBe("https://herdr.dev/docs");
+    // The mirror must stay a faithful copy — the anchor adds structure, never characters.
+    expect(pre.textContent).toBe("opened https://herdr.dev/docs ok\n");
+  });
+
+  it("opens in a new tab and severs the opener — these hrefs come from agent output", () => {
+    const a = mirror({ text: "https://herdr.dev\n" }).querySelector("a")!;
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("never links a dangerous scheme", () => {
+    const pre = mirror({ text: "javascript:alert(1) data:text/html,<script>x</script>\n" });
+    expect(pre.querySelector("a")).toBeNull();
+    expect(pre.querySelector("script")).toBeNull(); // text nodes only — the XSS boundary holds
+  });
+
+  // A URL that changes colour mid-way (an agent underlining just the path, say) is split across
+  // segments. Each slice gets its own anchor, so the whole run is tappable and carries one href.
+  it("links a URL that straddles an SGR change", () => {
+    const pre = mirror({ text: `${ESC}[34mhttps://herdr.dev${ESC}[32m/docs${ESC}[0m\n` });
+    const anchors = [...pre.querySelectorAll("a")];
+    expect(anchors.length).toBeGreaterThan(1);
+    expect(anchors.every((a) => a.getAttribute("href") === "https://herdr.dev/docs")).toBe(true);
+    expect(anchors.map((a) => a.textContent).join("")).toBe("https://herdr.dev/docs");
+  });
+
+  // Find and links split the same coordinate space; the order they nest in is the easy thing to get
+  // wrong, and getting it wrong drops one of them.
+  it("still highlights a find match inside a link", () => {
+    const pre = mirror({ text: "see https://herdr.dev/docs\n", query: "herdr" });
+    const a = pre.querySelector("a")!;
+    const hit = a.querySelector("[data-find-match]")!;
+    expect(hit.textContent).toBe("herdr");
+    expect(a.textContent).toBe("https://herdr.dev/docs");
+  });
+
+  // The underline inherits the agent's colour rather than pinning one, so it stays legible whatever
+  // the pane printed and whichever theme is up.
+  it("underlines in currentColor rather than a fixed colour", () => {
+    const a = mirror({ text: "https://herdr.dev\n" }).querySelector("a")!;
+    expect(a.className).toContain("underline");
+    expect(a.className).not.toMatch(/decoration-\[#/);
+  });
+
+  // The tap-target pad must scale with the font-size control. jsdom has no layout, so this can only
+  // guard the unit — but the unit is the whole point: a px pad tuned for 12px text reaches past the
+  // neighbouring line's centre at 9px (the A− floor), and a tap on ordinary output opens a link.
+  // The padded box deliberately OVERLAPS its neighbours (~22px against a 15px line advance); what
+  // must hold is that it never reaches the neighbouring line's centre, which only an em value keeps
+  // true across the A+/A- range. See the LINK_CLASS comment for the full argument.
+  it("sizes the link tap target in em, never px", () => {
+    const a = mirror({ text: "https://herdr.dev\n" }).querySelector("a")!;
+    expect(a.className).toContain("py-[0.35em]");
+    expect(a.className).not.toMatch(/\bpy-\[[\d.]+px\]/);
   });
 });
