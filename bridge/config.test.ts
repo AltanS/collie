@@ -15,6 +15,12 @@ const KEYS = [
   "COLLIE_READ_LINES",
   "COLLIE_TRANSCRIPT",
   "COLLIE_TRANSCRIPT_ROOT",
+  "COLLIE_CODEX_ROOT",
+  "COLLIE_PI_ROOT",
+  // Each harness's own home var participates in journal-root resolution, so the suite must own them
+  // too — otherwise a developer with CODEX_HOME set gets different results than CI.
+  "CODEX_HOME",
+  "PI_CODING_AGENT_DIR",
   "COLLIE_SUBMIT_KEYS",
   "COLLIE_TRUSTED_USER",
   "COLLIE_DEVICE_HEADER",
@@ -60,7 +66,7 @@ describe("loadConfig", () => {
     expect(cfg.readLines).toBe(200);
     // Transcript history defaults ON — it's the only scrollback a Claude pane can ever have.
     expect(cfg.transcript).toBe(true);
-    expect(cfg.transcriptRoot).toEndWith("/.claude/projects");
+    expect(cfg.journalRoots.claude).toEndWith("/.claude/projects");
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
     expect(cfg.allowedOrigins).toEqual([]);
@@ -127,9 +133,25 @@ describe("loadConfig", () => {
     expect(loadConfig().transcript).toBe(true);
   });
 
-  test("COLLIE_TRANSCRIPT_ROOT relocates the transcript root", () => {
+  // COLLIE_TRANSCRIPT_ROOT predates the per-harness split and meant Claude's root — it keeps meaning
+  // exactly that, so an existing deployment's env survives the change untouched.
+  test("COLLIE_TRANSCRIPT_ROOT relocates the CLAUDE journal root", () => {
     process.env.COLLIE_TRANSCRIPT_ROOT = "/srv/claude/projects";
-    expect(loadConfig().transcriptRoot).toBe("/srv/claude/projects");
+    expect(loadConfig().journalRoots.claude).toBe("/srv/claude/projects");
+  });
+
+  test("each harness's own home var relocates its journal root", () => {
+    process.env.CODEX_HOME = "/srv/codex";
+    process.env.PI_CODING_AGENT_DIR = "/srv/pi";
+    const cfg = loadConfig();
+    expect(cfg.journalRoots.codex).toBe("/srv/codex/sessions");
+    expect(cfg.journalRoots.pi).toBe("/srv/pi/sessions");
+  });
+
+  test("an explicit COLLIE_* root beats the harness's home var", () => {
+    process.env.CODEX_HOME = "/srv/codex";
+    process.env.COLLIE_CODEX_ROOT = "/elsewhere/rollouts";
+    expect(loadConfig().journalRoots.codex).toBe("/elsewhere/rollouts");
   });
 
   test("reads the per-device auth header and allowlist", () => {
