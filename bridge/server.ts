@@ -252,7 +252,8 @@ export function startServer(opts: {
         // Reading a pane is allowed for any access-gated client; every action (reply/keys/upload/
         // close) types into or restructures a terminal, so it additionally needs an authorised device.
         // `history` is a READ despite being an action segment — it only ever reads a log off disk.
-        const denied = guard(req, cfg, action && action !== "history" ? "write" : "read");
+        const isRead = !action || action === "history";
+        const denied = guard(req, cfg, isRead ? "read" : "write");
         if (denied) return denied;
         const rt = registry.get(sessionName);
         if (!rt) return unknownSession();
@@ -262,10 +263,15 @@ export function startServer(opts: {
         // passes through. It cannot false-positive from background polling — the dashboard loader
         // only ever fetches /api/snapshot; paneLoader is the sole reader of pane text — nor from a
         // cross-site request forged at a guessed pane id (see marksPaneSeen).
-        if (marksPaneSeen(req, action)) activity.noteSeen(session, paneId);
+        //
+        // Gated on the request actually being ROUTED below. PANE_ROUTE constrains `action` to the
+        // known set, so the only way to reach here unrouted is a method mismatch (a GET at /reply, a
+        // POST at /history) — which 405s. Without this a malformed request still marked the pane seen.
+        const routed = isRead ? req.method === "GET" : req.method === "POST";
+        if (routed && marksPaneSeen(req, action)) activity.noteSeen(session, paneId);
         // Every action is a write; attribute it to the authorised device for the audit trail.
         // `history` is a read, so it gets no device attribution (nothing is written to attribute).
-        const device = action && action !== "history" ? deviceAuth(req, cfg).device : null;
+        const device = isRead ? null : deviceAuth(req, cfg).device;
 
         if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
         if (action === "history" && req.method === "GET")

@@ -50,7 +50,7 @@ function informativeCwd(cwd: string, project: string): string | null {
   return shortCwd(cwd);
 }
 
-/** {@link PaneParts} for a pane — the render-time form of {@link paneTitle}. */
+/** The parts of a herd-list row title, unjoined — see {@link PaneParts}. */
 export function paneParts(pane: AgentView): PaneParts {
   const project = pane.workspaceLabel || pane.workspaceId;
   const own = pane.paneLabel || pane.sessionName;
