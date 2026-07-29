@@ -1,7 +1,7 @@
 # CLAUDE.md — working agreement for this repo
 
-**Collie** (repo `AltanS/collie`) — a phone web UI for your Herdr agent herd, served over
-Tailscale. A mobile-first PWA (Vite + React + TS + Tailwind v4 + shadcn) plus a Bun/TS bridge that
+**Collie** (repo `konpyl/collie` — a **fork** of `AltanS/collie`, see *Fork*) — a phone web UI for
+your Herdr agent herd, served over Tailscale. A mobile-first PWA (Vite + React + TS + Tailwind v4 + shadcn) plus a Bun/TS bridge that
 talks to Herdr's Unix socket, letting you monitor and reply to agents from a phone. The Herdr
 plugin id is `herdr.collie` (manifest: `herdr-plugin.toml`). Orientation:
 [`README.md`](./README.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · verified API
@@ -18,9 +18,31 @@ Rules elsewhere in this file stay short and normative and link to the ADR for th
 restate an ADR's reasoning here, and don't edit a superseded ADR into agreement with the present —
 mark it superseded and write the next one.
 
+## Fork — this repo is not upstream
+
+`origin` is **`konpyl/collie`**; `upstream` is **`AltanS/collie`** (the owner's). Local work rides on
+top of upstream's `main`, and `main` here means *fork* `main`.
+
+- **Sync = rebase onto `upstream/main`**, never a merge — `git fetch upstream && git rebase
+  upstream/main`. The recurring conflict is bookkeeping (the CHANGELOG heading + the three version
+  files); code conflicts are rare and small. Tag backups before a big sync.
+- **The fork owns its own version lane, deliberately ahead of upstream.** Upstream released `0.18.0`
+  on 2026-07-28; the fork's `0.19.0` and `0.20.0` are *fork* releases. **A number here does not
+  correspond to the same number upstream** — never assume `vX.Y.Z` means the same code in both repos.
+- **Don't "fix" this with a suffix** (`0.18.0-fork.1`): `bridge/update.ts` matches release tags with
+  `/^v(\d+)\.(\d+)\.(\d+)$/` and compares via `split(".").map(Number)`, so any suffix becomes `NaN`
+  and pins the update banner to a permanent false "update available". A suffix scheme requires fixing
+  `compareSemver` + `SEMVER_TAG` first.
+- **The deployment must be installed from the fork** — `herdr plugin install konpyl/collie`, with
+  `COLLIE_UPDATE_REPO=konpyl/collie` in the plugin's `.env` so the release check tracks releases this
+  deployment can actually take. Installed from upstream instead, an owner release silently overwrites
+  the checkout and the fork's features disappear from the running app (this happened 2026-07-29).
+  **If Collie's features ever "vanish", check `herdr plugin list` for the source repo first.**
+
 ## Versioning — MANDATORY
 
 This plugin is **SemVer**ed, and the version is **enforced**, so it never silently drifts.
+Fork-specific numbering rules are in *Fork* above — read them before cutting a release.
 
 **The version lives in three files that must always agree, plus a matching CHANGELOG entry:**
 `herdr-plugin.toml` (canonical — Herdr reads it) · `package.json` · `web/package.json` ·
