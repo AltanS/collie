@@ -44,6 +44,8 @@ describe("terminal mirror colour space", () => {
     const pre = mirror(`${ESC}[31mred${ESC}[0m`);
     const span = [...pre.querySelectorAll("span")].find((s) => s.textContent === "red");
     expect(span!.style.color).toBe("var(--ansi-1)");
+  });
+});
 
 // URLs printed by an agent are plain characters — the mirror finds them and wraps those ranges in
 // anchors. The invariants worth guarding are the ones a refactor would silently break: the text is
