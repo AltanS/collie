@@ -643,7 +643,12 @@ export function AgentChat({
             (unless you're selecting text to copy, which the tap must not collapse). */}
         {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
             quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
-        <div className="min-h-0 min-w-0 flex-1" onClick={focusFromMirror}>
+        {/* border-t like the strips above it: every band in this stack draws its own TOP edge, so
+            whichever one ends up last still has a boundary under it. Without this the pane row ran
+            straight into terminal output — the chrome and the mirror read as one surface. Drawing it
+            here rather than as a border-b on PaneStrip covers the case where that strip is absent
+            (a tab holding a single pane), which is the common one. */}
+        <div className="min-h-0 min-w-0 flex-1 border-t border-border/40" onClick={focusFromMirror}>
           <ChatMessageList
             ref={listRef}
             dep={display}

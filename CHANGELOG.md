@@ -44,6 +44,9 @@ All notable changes to Collie are recorded here. The format follows
 - A space row and its chip could disagree about what a colour meant — the row still ranked by `STATUS_RANK` while the chip used the triage classifier, so a space holding one working agent and one unseen-done agent showed "working" on the dashboard and "ready" in the strip. Both route through `bucketOf` now, in one pass rather than spaces x agents per render
 - `aria-controls` on a collapsed section pointed at an element that isn't rendered — exactly when a screen-reader user is deciding whether to expand it
 - A status dot passed a smaller size only resized its wrapper, so chip dots rendered at the wrong size
+- The Settings page rearranged itself a frame after opening — Notify-when and Snooze mounted only once push state resolved, inserting ~400px into the middle of the page, and Notify-when then grew another ~180px waiting on its own prefs. Both render from the first frame now, switches disabled until their values land
+- The pane row ran straight into terminal output with no edge between them, so the chrome and the mirror read as one surface
+- Herd and space rows had a border radius with no border to own it, so a rounded hover fill sat under a straight `divide-y` hairline. Rows without a border are square; the ones with a real border keep their radius
 
 ## [0.19.0] - 2026-07-29
 
