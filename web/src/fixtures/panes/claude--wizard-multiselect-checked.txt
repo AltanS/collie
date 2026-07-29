@@ -1,0 +1,21 @@
+[0m[38;2;175;175;175m[48;2;240;240;240m❯ [0m[38;2;0;0;0m[48;2;240;240;240mUse the AskUserQuestion tool exactly once, with TWO questions in the one call. Question 1: header Toppings, multiSelect true, four options each with a one-line description. [0m[48;2;240;240;240m    [0m
+[0m[48;2;240;240;240m  [0m[38;2;0;0;0m[48;2;240;240;240mQuestion 2: header Crust, multiSelect false, two options. Do not read or write files, do not run commands, do nothing else.[0m[48;2;240;240;240m                                                      [0m
+[0m[38;2;102;102;102m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;102;102;102m← [0m[38;2;255;255;255m[48;2;87;105;247m ☒ Toppings [0m ☐ Crust  ✔ Submit  →
+
+[0m[1m[38;2;0;0;0mWhich toppings would you like on your pizza?[0m
+
+[0m[38;2;87;105;247m❯[0m [0m[38;2;102;102;102m1. [0m[38;2;44;122;57m[✔] [0m[38;2;87;105;247mPepperoni[0m
+  [0m[38;2;102;102;102mClassic cured pork-and-beef slices that crisp at the edges.[0m
+  [0m[38;2;102;102;102m2.[0m [ ] Mushrooms
+  [0m[38;2;102;102;102mEarthy sliced creminis that soften into the cheese.[0m
+  [0m[38;2;102;102;102m3. [0m[38;2;44;122;57m[✔] [0mBell peppers
+  [0m[38;2;102;102;102mSweet, slightly crunchy strips of red and green pepper.[0m
+  [0m[38;2;102;102;102m4. [0m[ ] Extra cheese
+  [0m[38;2;102;102;102mA double layer of mozzarella for a richer, stretchier bite.[0m
+  [0m[38;2;102;102;102m5. [0m[ ] [0m[38;2;102;102;102mType something[0m
+     [0m[1mNext[0m
+[0m[38;2;102;102;102m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  6. Chat about this
+
+[0m[38;2;102;102;102mEnter to select · Tab/Arrow keys to navigate · Esc to cancel[0m
