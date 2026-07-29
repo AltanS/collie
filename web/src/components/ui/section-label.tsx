@@ -8,7 +8,7 @@ export function SectionLabel({ children, className }: { children: ReactNode; cla
   return (
     <span
       className={cn(
-        "shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70",
+        "shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
         className,
       )}
     >

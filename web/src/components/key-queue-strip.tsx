@@ -80,7 +80,7 @@ export function KeyQueueStrip({
           disabled={disabled}
           onChange={(e) => onBaseChar(e.target.value)}
           aria-label="Type a key to combine"
-          className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:opacity-50"
         />
       )}
 

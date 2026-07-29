@@ -1,7 +1,8 @@
-import { Inbox } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Inbox } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { AGENT_GROUPS, type AgentGroup } from "@/lib/agent-groups";
+import { SectionHeader } from "@/components/section-header";
+import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
 import { AgentCard } from "./agent-card";
 
@@ -9,19 +10,40 @@ interface AgentListProps {
   agents: AgentView[];
   bridge?: BridgeStatus | undefined;
   onOpen: (paneId: string) => void;
-  /** Which triage groups to render (default: all). Lets the dashboard hoist "Needs you" above the
-   *  spaces overview while the rest render below it. */
-  groups?: readonly AgentGroup[];
-  /** Show the "no agents" placeholder when the herd is empty (default true). Turn off for a partial
-   *  slice (e.g. the hoisted "Needs you" list) so the placeholder only appears once, on the main list. */
+  /** Which way Recent runs, and how to flip it. Omit to render Recent newest-first with no toggle. */
+  recentDir?: RecentDir;
+  onRecentDirChange?: (dir: RecentDir) => void;
+  /** Whether Recent is expanded, and how to fold it. Omit to leave it always open (the sidebar). */
+  recentOpen?: boolean;
+  onRecentOpenChange?: (open: boolean) => void;
+  /** Show the "no agents" placeholder when the herd is empty (default true). */
   emptyState?: boolean;
 }
 
+/** Which timestamp a section's rows date themselves by. Attention rows show none — a blocked
+ *  agent's age is noise beside the fact that it's blocked. */
+const AGE_BY_SECTION: Partial<Record<TriageKey, "seen" | "active">> = {
+  ready: "active",
+  // "working for 3h" and "working for 40s" are very different facts, and now that the age rides
+  // the title row it costs no vertical space to say which.
+  working: "active",
+  recent: "seen",
+};
+
+/** The sections that mean "a human is required here" — the only ones that get card chrome. */
+const ATTENTION: ReadonlySet<TriageKey> = new Set<TriageKey>(["needs", "ready"]);
+
+// The herd in the one order the app agrees on: Needs you → Ready · unseen → Working → Recent
+// (lib/triage.ts). Only Recent folds, and only Recent takes the direction toggle; the three
+// attention sections are pinned open and never invert.
 export function AgentList({
   agents,
   bridge,
   onOpen,
-  groups = AGENT_GROUPS,
+  recentDir = "newest",
+  onRecentDirChange,
+  recentOpen = true,
+  onRecentOpenChange,
   emptyState = true,
 }: AgentListProps) {
   if (agents.length === 0) {
@@ -36,32 +58,98 @@ export function AgentList({
     );
   }
 
-  // Only render groups that actually have members — and nothing at all if this slice is empty (e.g.
-  // the hoisted "Needs you" list when no agent is blocked), so it adds no stray padding.
-  const sections = groups
-    .map((g) => ({ g, members: agents.filter((a) => g.match(a.status)) }))
-    .filter((s) => s.members.length > 0);
+  const all = triage(agents, recentDir);
+  const sections = all.filter((s) => s.agents.length > 0);
   if (sections.length === 0) return null;
+  // "What needs me right now?" deserves an answer even when the answer is "nothing". Without this
+  // the section simply doesn't render, and an absence reads the same as a stale load.
+  const allClear = all.find((s) => s.key === "needs")!.agents.length === 0;
 
   return (
     <div className="flex flex-col gap-5 px-3 py-4">
-      {sections.map(({ g, members }) => (
-        <section key={g.key} className="flex flex-col gap-2">
-          <h2
-            className={cn(
-              "px-1 text-xs font-semibold uppercase tracking-wide",
-              g.accent ? "text-status-blocked" : "text-muted-foreground",
+      {/* The product of the twenty-times-a-day glance. Rendered with presence, not as a caption:
+          you should be able to resolve it one-handed at arm's length without focusing. */}
+      {allClear && (
+        <p className="flex items-center gap-2 px-1 py-1 text-sm font-medium">
+          <Check className="size-5 shrink-0 text-status-done" aria-hidden />
+          Nothing needs you
+        </p>
+      )}
+      {sections.map((s) => {
+        // Recent is the only foldable section, and only where the parent wired the state.
+        const foldable = !!s.collapsible && onRecentOpenChange !== undefined;
+        const open = foldable ? recentOpen : true;
+        const bodyId = `agent-section-${s.key}`;
+        const age = AGE_BY_SECTION[s.key];
+
+        return (
+          <section key={s.key} className="flex flex-col gap-2">
+            <SectionHeader
+              {...sectionHeaderProps(s)}
+              {...(foldable ? { open, onToggle: onRecentOpenChange, controls: bodyId } : {})}
+              trailing={
+                // A sibling of the fold button, never a child: nesting would be invalid markup and
+                // would make flipping the sort also fold the section. Hidden while folded, since
+                // sorting rows nobody can see does nothing.
+                s.key === "recent" && onRecentDirChange && open ? (
+                  <SortToggle dir={recentDir} onChange={onRecentDirChange} />
+                ) : undefined
+              }
+            />
+            {open && (
+              <div
+                id={bodyId}
+                className={cn(
+                  "flex flex-col",
+                  // Cards mean "a human is required here", so only the attention sections get them.
+                  // The rest are flat rows divided by a hairline — which also gives the page a
+                  // second boundary cue, so section gaps aren't doing that job alone.
+                  ATTENTION.has(s.key) ? "gap-2" : "divide-y divide-border/60",
+                )}
+              >
+                {/* statusStyle="dot": the section heading already says the status, so a pill on
+                    every row restates it and costs the width the title needs. */}
+                {s.agents.map((a) => (
+                  <AgentCard
+                    key={a.paneId}
+                    agent={a}
+                    onClick={() => onOpen(a.paneId)}
+                    statusStyle="dot"
+                    density={ATTENTION.has(s.key) ? "card" : "row"}
+                    {...(age ? { age } : {})}
+                  />
+                ))}
+              </div>
             )}
-          >
-            {g.label} <span className="opacity-60">({members.length})</span>
-          </h2>
-          <div className="flex flex-col gap-2">
-            {members.map((a) => (
-              <AgentCard key={a.paneId} agent={a} onClick={() => onOpen(a.paneId)} />
-            ))}
-          </div>
-        </section>
-      ))}
+          </section>
+        );
+      })}
     </div>
+  );
+}
+
+// One tap flips the Recent order. Deliberately not a menu — the design offers a direction, not a
+// choice of sort keys. min-h-9 keeps it on the 36px touch floor.
+function SortToggle({ dir, onChange }: { dir: RecentDir; onChange: (dir: RecentDir) => void }) {
+  const newest = dir === "newest";
+  const Icon = newest ? ArrowDown : ArrowUp;
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(flipDir(dir))}
+      aria-label={
+        newest
+          ? "Sorted by most recently used first — switch to oldest first"
+          : "Sorted by oldest first — switch to most recently used first"
+      }
+      // A bordered chip, not bare text: unstyled it read as an annotation ("sorted newest") rather
+      // than something you can press. Fixed width so flipping it doesn't shift the header. No fill —
+      // filled, it outweighed the heading it sits beside, which is backwards for a control that
+      // reorders the section you care least about.
+      className="flex min-h-9 items-center justify-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+    >
+      <Icon className="size-3.5" aria-hidden />
+      <span className="w-[3.25rem] text-left">{newest ? "Newest" : "Oldest"}</span>
+    </button>
   );
 }

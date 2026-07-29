@@ -2,7 +2,7 @@ import { ChevronLeft, Plus } from "lucide-react";
 
 import { Chip } from "@/components/ui/chip";
 import { SectionLabel } from "@/components/ui/section-label";
-import { blockedCount } from "@/lib/spaces";
+import { worstTriage } from "@/lib/triage";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
 interface SpaceStripProps {
@@ -29,8 +29,11 @@ export function SpaceStrip({
   onNewSpace,
   onBack,
 }: SpaceStripProps) {
+  // shrink-0: this strip is a child of the space route's `flex-1 flex-col` scroller, so without it
+  // the strip flex-shrinks to 16px while its 32px chips overflow — the tab row below then paints
+  // straight over the chips.
   return (
-    <div className="flex items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {onBack ? (
         <button
           type="button"
@@ -52,7 +55,8 @@ export function SpaceStrip({
           label={w.label}
           active={selected === w.workspaceId}
           ring={w.focused}
-          alert={blockedCount(w.workspaceId, agents) > 0}
+          // Same dot language as the tab strip directly below it, and as the herd list.
+          status={worstTriage(agents.filter((a) => a.workspaceId === w.workspaceId))}
           onClick={() => onSelect(w.workspaceId)}
         />
       ))}

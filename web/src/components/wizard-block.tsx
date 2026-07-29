@@ -176,7 +176,7 @@ function QuestionStep({
           >
             <span className="min-w-0 flex-1">
               {option.label}
-              <span className="text-muted-foreground/70"> — ends the questions</span>
+              <span className="text-muted-foreground"> — ends the questions</span>
             </span>
             {sendingId === id ? (
               <Loader2 className="size-3.5 shrink-0 animate-spin" aria-label="Sending" />
@@ -213,7 +213,7 @@ function ReviewStep({
         </dl>
       )}
       {wizard.incomplete && (
-        <div className="flex items-center gap-1.5 text-xs text-yellow-500">
+        <div className="flex items-center gap-1.5 text-xs text-status-working">
           <AlertTriangle className="size-3.5 shrink-0" />
           You have not answered all questions
         </div>
