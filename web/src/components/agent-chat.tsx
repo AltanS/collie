@@ -487,6 +487,8 @@ export function AgentChat({
   //    collapsing the selection and popping the keyboard.
   function focusFromMirror(e: ReactMouseEvent<HTMLDivElement>) {
     const target = e.target as Element | null;
+    // The `a` is what keeps a tap on an autolinked URL (components/ansi-output) from popping the
+    // keyboard on top of the page it just opened. Don't trim it out of this selector.
     if (target?.closest?.("button, a, input, textarea, select, [role='textbox']")) return;
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
