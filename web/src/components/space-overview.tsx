@@ -120,7 +120,10 @@ export function SpaceOverview({
                   type="button"
                   onClick={() => onOpen(w.workspaceId)}
                   className={cn(
-                    "w-full rounded-lg text-left transition-colors active:scale-[0.99]",
+                    // Square, like the herd rows: this is a divide-y list, and a rounded fill under
+                    // a straight hairline reads as a fault. The blocked row below has a real border,
+                    // so it keeps its radius.
+                    "w-full text-left transition-colors active:scale-[0.99]",
                     !blocked && "hover:bg-muted/50",
                   )}
                 >

@@ -86,16 +86,20 @@ export function SettingsRoute() {
                 </p>
               </div>
             </div>
-            {state ? (
-              <Switch
-                checked={on}
-                disabled={toggleDisabled}
-                onCheckedChange={toggle}
-                aria-label="Push notifications"
-              />
-            ) : (
-              <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-            )}
+            {/* Fixed slot the size of the Switch (h-6 w-11): the spinner is smaller, so without it
+                the row — and the whole page under it — resized when state landed. */}
+            <div className="flex h-6 w-11 shrink-0 items-center justify-center">
+              {state ? (
+                <Switch
+                  checked={on}
+                  disabled={toggleDisabled}
+                  onCheckedChange={toggle}
+                  aria-label="Push notifications"
+                />
+              ) : (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
           </div>
 
           {state && blocked && (
@@ -110,7 +114,12 @@ export function SettingsRoute() {
           )}
         </Card>
 
-        {state && state.availability !== "server-off" && (
+        {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
+            bridge has no VAPID keys. Gating on `state` truthiness instead inserted ~400px into the
+            middle of the page one frame late, shoving everything below it down. These two are
+            bridge-wide settings — which transitions notify, and quiet hours — so they are meaningful
+            whatever this particular device's push status turns out to be. */}
+        {state?.availability !== "server-off" && (
           <>
             <NotifyPrefsControl />
             <SnoozeControl snoozedUntil={root?.snoozedUntil ?? null} />
