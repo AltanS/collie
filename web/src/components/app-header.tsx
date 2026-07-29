@@ -92,7 +92,11 @@ export function SettingsGear({ session }: { session?: string }) {
       type="button"
       onClick={() => navigate(settingsPath(session))}
       aria-label="Settings"
-      // A real 44px box — see ThemeToggle for why not a negative margin.
+      // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
+      // keeps icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px
+      // against a 12px gap, so a neighbour steals 12px of this one's hit area) and drags the last
+      // one past the header's padding into document overflow. Costs horizontal room, which the
+      // breadcrumb absorbs — it already truncates by design.
       className="grid size-11 place-items-center text-muted-foreground transition-colors hover:text-foreground"
     >
       <Settings className="size-5" />

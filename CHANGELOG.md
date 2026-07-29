@@ -9,7 +9,7 @@ All notable changes to Collie are recorded here. The format follows
 ## [0.20.0] - 2026-07-29
 
 ### Added
-- **Light and system themes.** Collie followed your phone's appearance from this release on; pick Light or Dark explicitly from Settings, or cycle System → Light → Dark with the new header button (513d368)
+- **Light and system themes.** Collie follows your phone's appearance by default; pin Light or Dark from **Settings → Appearance**. Per device, and documented under [Dark mode / light mode](./README.md#dark-mode--light-mode) (513d368)
 - ANSI slots 0–15 are now CSS variables (`--ansi-*`), so indexed terminal colour is defined in one place and reaches the mirror through both `31m` and `38;5;1` spellings (513d368)
 
 ### Changed
@@ -23,7 +23,7 @@ All notable changes to Collie are recorded here. The format follows
 - An off notification switch was unreadable in light — a white thumb on a 1.09:1 track, legible only by its shadow. It carries an outline now (513d368)
 - Focus rings were drawn at half strength, 1.77:1 in light and 1.87:1 in dark; both are full strength now (513d368)
 - Small muted text (section labels, the build stamp, the terminal status line, the `(n)` counts) fell under 3:1 in light — light `--muted-foreground` had no headroom left for the `/70` and `opacity-60` modifiers stacked on it, so it was darkened and the modifiers dropped (513d368)
-- Header controls had 20px touch targets; the Settings gear, the new theme button and the Settings back button are all 44px, with no change to how they look (513d368)
+- Header controls had 20px touch targets; the Settings gear and the Settings back button are both 44px now, with no change to how they look (513d368)
 - The boot splash stepped from white to the page colour when React took over, and its caption measured 3.45:1 — it used `#ffffff`/`#8a8a8a` under a comment claiming they matched `--background`/`--muted-foreground`, which rasterize to `#f5f5f5`/`#5d5d5d`. Same fix for the light `theme-color` meta, so Android's URL bar matches the page
 - Inverse-video segments in the mirror emitted theme tokens while the muted glyphs beside them used literals; the mirror keeps one spelling now (identical pixels — the literals are those tokens' dark halves)
 

@@ -11,10 +11,11 @@ import { useCallback, useSyncExternalStore } from "react";
 //      leaves `.dark` stamped and the page stays dark until a full reload.
 //   2. The theme-color metas, which carry `media` attributes and so follow the OS rather than a pin.
 //
-// State lives at module scope rather than in component state. Two reasons: the header button and the
-// settings control must agree without prop-drilling, and the OS listener then survives App.tsx
-// unmounting the router for the idle lock (a component-scoped listener would stop tracking the OS
-// for as long as the lock holds).
+// State lives at module scope rather than in component state, so the OS listener survives App.tsx
+// unmounting the router for the idle lock — a component-scoped listener would stop tracking the OS
+// for as long as the lock holds, and you'd come back to yesterday's appearance. It also means any
+// number of readers agree without prop-drilling, which is why the control can live in Settings
+// alone without the rest of the app having to be told.
 
 export type Theme = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -118,12 +119,8 @@ function getSnapshot(): ThemeState {
   return state;
 }
 
-/** System → Light → Dark → System. Every tap changes the icon, which is the feedback. */
-const NEXT: Record<Theme, Theme> = { system: "light", light: "dark", dark: "system" };
-
 export interface UseThemeReturn extends ThemeState {
   setTheme: (theme: Theme) => void;
-  cycleTheme: () => void;
 }
 
 export function useTheme(): UseThemeReturn {
@@ -134,11 +131,5 @@ export function useTheme(): UseThemeReturn {
     refresh(theme);
   }, []);
 
-  const cycleTheme = useCallback(() => {
-    const next = NEXT[state.theme];
-    saveTheme(next);
-    refresh(next);
-  }, []);
-
-  return { ...snapshot, setTheme, cycleTheme };
+  return { ...snapshot, setTheme };
 }

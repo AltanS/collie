@@ -57,29 +57,3 @@ describe("ThemeControl", () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
-
-describe("ThemeToggle", () => {
-  it("names the CURRENT mode, not the next one", async () => {
-    const { ThemeToggle } = await load("light");
-    render(<ThemeToggle />);
-    expect(screen.getByRole("button", { name: "Theme: light" })).toBeInTheDocument();
-  });
-
-  it("cycles system → light → dark → system, relabelling each time", async () => {
-    const { ThemeToggle } = await load(null);
-    render(<ThemeToggle />);
-
-    const seen = [screen.getByRole("button").getAttribute("aria-label")];
-    for (let i = 0; i < 3; i++) {
-      await userEvent.click(screen.getByRole("button"));
-      seen.push(screen.getByRole("button").getAttribute("aria-label"));
-    }
-
-    expect(seen).toEqual([
-      "Theme: follow system",
-      "Theme: light",
-      "Theme: dark",
-      "Theme: follow system",
-    ]);
-  });
-});
