@@ -143,3 +143,75 @@ describe("BottomSheet — backdrop dismiss requires press AND release on the bac
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+// `aria-modal="true"` tells assistive tech that everything behind the panel is inert. Before the
+// trap that was a lie: on the real "Switch pane" sheet, Tab #28 walked out of the dialog and landed
+// on the page header underneath — controls a screen reader was insisting weren't there.
+describe("sheet — focus containment (the aria-modal contract)", () => {
+  function Fixture({ Sheet }: { Sheet: typeof BottomSheet | typeof SideSheet }) {
+    return (
+      <>
+        <button type="button">behind the sheet</button>
+        <Sheet open onClose={vi.fn()} title="Panes">
+          <button type="button">first row</button>
+          <button type="button">last row</button>
+        </Sheet>
+      </>
+    );
+  }
+
+  for (const [name, Sheet] of [
+    ["BottomSheet", BottomSheet],
+    ["SideSheet", SideSheet],
+  ] as const) {
+    it(`${name}: Tab past the last control wraps to the first, never out of the dialog`, () => {
+      render(<Fixture Sheet={Sheet} />);
+      const dialog = screen.getByRole("dialog");
+      screen.getByRole("button", { name: "last row" }).focus();
+      fireEvent.keyDown(window, { key: "Tab" });
+      expect(dialog).toContainElement(document.activeElement as HTMLElement);
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
+    });
+
+    it(`${name}: Shift+Tab off the front wraps to the last control`, () => {
+      render(<Fixture Sheet={Sheet} />);
+      screen.getByRole("button", { name: "Close" }).focus();
+      fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "last row" }));
+    });
+
+    it(`${name}: Shift+Tab from the panel itself wraps inward rather than escaping backwards`, () => {
+      // The panel is where focus LANDS on open (tabIndex -1), so it's a boundary, not an item.
+      render(<Fixture Sheet={Sheet} />);
+      fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "last row" }));
+    });
+
+    it(`${name}: a stray focus outside is pulled back in on the next Tab`, () => {
+      render(<Fixture Sheet={Sheet} />);
+      screen.getByRole("button", { name: "behind the sheet" }).focus();
+      fireEvent.keyDown(window, { key: "Tab" });
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
+    });
+  }
+
+  it("opens on the row a panel nominates with data-autofocus, not at the top", () => {
+    render(
+      <BottomSheet open onClose={vi.fn()} title="Panes">
+        <button type="button">first row</button>
+        <button type="button" data-autofocus>
+          you are here
+        </button>
+      </BottomSheet>,
+    );
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "you are here" }));
+  });
+
+  it("keys other than Tab are left alone", () => {
+    render(<Fixture Sheet={BottomSheet} />);
+    const last = screen.getByRole("button", { name: "last row" });
+    last.focus();
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(last);
+  });
+});

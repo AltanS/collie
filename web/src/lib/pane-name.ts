@@ -54,7 +54,11 @@ export function paneParts(pane: AgentView): PaneParts {
   const own = pane.paneLabel || pane.sessionName;
   return {
     project,
-    tab: pane.tabLabel ?? null,
+    // `||` on the TRIMMED value, not `??`: an empty or whitespace-only label is not a name. The
+    // bridge's `meaningfulTabLabel` already drops both, so this only ever fires against an older or
+    // divergent bridge — but the failure it prevents is a row rendering as a bare "·" (herd scope) or
+    // as no name at all (space scope), which reads as a rendering fault rather than missing data.
+    tab: pane.tabLabel?.trim() || null,
     secondary: own || informativeCwd(pane.cwd, project),
   };
 }

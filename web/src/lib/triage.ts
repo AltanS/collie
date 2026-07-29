@@ -146,3 +146,24 @@ export function flipDir(dir: RecentDir): RecentDir {
 export function isAttention(status: AgentStatus): boolean {
   return status === "blocked";
 }
+
+/** Which of the two timestamps a row's age should read from. */
+export type AgeBasis = "seen" | "active";
+
+/**
+ * The timestamp a section is ORDERED by — and therefore the only one its rows may be dated with.
+ *
+ * This lives here, next to the sort, because the two drifting apart is not a cosmetic bug: the
+ * switcher dated every row `lastActiveAt` while Recent sorts on `lastSeenAt`, so the age column ran
+ * visibly out of order (13m, 13h, 41m, 15h, …) and disagreed with the dashboard by up to 13h about
+ * the same pane at the same instant. An age that contradicts the order is worse than no age — it
+ * makes a correct list read as broken.
+ */
+export function ageBasisFor(key: TriageKey): AgeBasis {
+  return key === "recent" ? "seen" : "active";
+}
+
+/** A pane's age stamp on a given basis. Undefined on an older bridge, which renders no age. */
+export function ageStampOf(pane: AgentView, basis: AgeBasis): number | undefined {
+  return basis === "seen" ? pane.lastSeenAt : pane.lastActiveAt;
+}

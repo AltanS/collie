@@ -2,7 +2,14 @@ import { ArrowDown, ArrowUp, Check, Inbox } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/section-header";
-import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
+import {
+  ageBasisFor,
+  flipDir,
+  sectionHeaderProps,
+  triage,
+  type RecentDir,
+  type TriageKey,
+} from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
 import { AgentCard } from "./agent-card";
 
@@ -20,15 +27,16 @@ interface AgentListProps {
   emptyState?: boolean;
 }
 
-/** Which timestamp a section's rows date themselves by. Attention rows show none — a blocked
- *  agent's age is noise beside the fact that it's blocked. */
-const AGE_BY_SECTION: Partial<Record<TriageKey, "seen" | "active">> = {
-  ready: "active",
-  // "working for 3h" and "working for 40s" are very different facts, and now that the age rides
-  // the title row it costs no vertical space to say which.
-  working: "active",
-  recent: "seen",
-};
+/**
+ * Which sections date their rows at all. "Needs you" doesn't — a blocked agent's age is noise
+ * beside the fact that it's blocked. ("Working for 3h" vs "working for 40s" ARE different facts,
+ * and now that the age rides the title row it costs no vertical space to say which.)
+ *
+ * WHICH timestamp is not decided here: `ageBasisFor` owns that, because it must match the sort, and
+ * the switcher listing the same panes has to reach the same answer. It didn't, and the two surfaces
+ * disagreed by up to 13h about the same pane.
+ */
+const SHOWS_AGE: ReadonlySet<TriageKey> = new Set<TriageKey>(["ready", "working", "recent"]);
 
 /** The sections that mean "a human is required here" — the only ones that get card chrome. */
 const ATTENTION: ReadonlySet<TriageKey> = new Set<TriageKey>(["needs", "ready"]);
@@ -80,7 +88,7 @@ export function AgentList({
         const foldable = !!s.collapsible && onRecentOpenChange !== undefined;
         const open = foldable ? recentOpen : true;
         const bodyId = `agent-section-${s.key}`;
-        const age = AGE_BY_SECTION[s.key];
+        const age = SHOWS_AGE.has(s.key) ? ageBasisFor(s.key) : undefined;
 
         return (
           <section key={s.key} className="flex flex-col gap-2">

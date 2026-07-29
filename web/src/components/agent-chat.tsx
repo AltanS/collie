@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useRevalidator } from "react-router";
-import { ArrowUpToLine, Loader2, ScrollText, TerminalSquare } from "lucide-react";
+import { ArrowUpToLine, Loader2, RefreshCw, ScrollText, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
@@ -19,7 +19,12 @@ import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
-import { ThreadSidebar } from "@/components/agent-sidebar";
+import {
+  matchPanes,
+  PaneFilterField,
+  shouldFilter,
+  ThreadSidebar,
+} from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
@@ -33,7 +38,9 @@ import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-sel
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
+import { paneTitle } from "@/lib/pane-name";
 import { historyPath, spacePath } from "@/lib/nav";
+import { bucketOf } from "@/lib/triage";
 import { isReadOnly } from "@/lib/types";
 import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
 import type {
@@ -75,6 +82,17 @@ interface AgentChatProps {
 // At most one drawer/sheet is open at a time; null = none. (The composer's own Keys/Quick/Agent
 // sheets are separate and live inside <Composer>.)
 type Drawer = "switcher" | null;
+
+/**
+ * The pane a switch is currently heading for, handed from the OUTGOING instance to the incoming one.
+ *
+ * Module scope on purpose: DetailRoute keys AgentChat by paneId, so a switch unmounts this whole
+ * component and no ref or state survives the trip. Without the handoff the arrival is silent and
+ * focus lands on `document.body` — the sheet's focus-restore correctly targets the "Switch pane"
+ * handle, but that button unmounts in the same commit. A keyboard user then has to tab back in from
+ * the top of the document, and a screen-reader user gets no signal they arrived anywhere at all.
+ */
+let arrivingAt: string | null = null;
 
 // The detail view mirrors a terminal pane, NOT a chat thread. The pane's output comes from the
 // route loader (`text`); polling revalidates it. Replies/keys are confirmed via the header status
@@ -124,15 +142,90 @@ export function AgentChat({
   // unrepresentable to violate.
   const [drawer, setDrawer] = useState<Drawer>(null);
   const closeDrawer = () => setDrawer(null);
+  // The switcher's filter query. It lives HERE rather than inside ThreadSidebar because the field is
+  // rendered into the sheet's sticky header (see PaneFilterField) — the list below it scrolls, the
+  // field must not. Opening the switcher always starts from a clean query.
+  const [paneQuery, setPaneQuery] = useState("");
+  /**
+   * The herd AS IT WAS when you opened the switcher.
+   *
+   * The list is live and the poll runs every 1.5s, so a pane changing triage bucket mid-sheet
+   * doesn't just shift the list — it REMOVES a row from one section and the row below slides into
+   * its exact coordinates. Measured: a row at y=506 was replaced, at the same pixel, by a different
+   * pane; every row below it moved up 44px while everything above held still. You tap where you were
+   * aiming and land somewhere else — and specifically NOT on the pane that just started needing you.
+   * At ~1.3 bucket transitions/minute on a quiet herd, a 5–10s browse has a real chance of eating one.
+   *
+   * (Scroll anchoring is NOT the answer and is already working: the browser compensates correctly
+   * for inserts above the viewport — measured scrollTop 700 → 1037 with the reference row moving 0px.
+   * Adjusting scrollTop by hand on list growth would double-correct that case.)
+   *
+   * So the sheet renders a frozen copy and offers a refresh, the same shape as the mirror's
+   * follow/hasNew pause. Nothing is hidden: `switcherChanged` counts what moved.
+   */
+  const [frozenHerd, setFrozenHerd] = useState<{ agents: AgentView[]; shellPanes: AgentView[] } | null>(
+    null,
+  );
+  const openSwitcher = () => {
+    setPaneQuery("");
+    setFrozenHerd({ agents, shellPanes });
+    setDrawer("switcher");
+  };
+  const closeSwitcher = () => {
+    setFrozenHerd(null);
+    closeDrawer();
+  };
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
+  const switchHandleRef = useRef<HTMLButtonElement>(null);
 
   const gone = !agent;
+
+  // Land the arrival: put focus on a real control in the pane we just switched to, and say where we
+  // are. Announced from an effect rather than at render because StatusArea is the live region and it
+  // mounts with this component — content present when a live region is created is not reliably
+  // announced. Focus goes to the switcher handle: it exists in every pane, it names itself, and it
+  // leaves the keyboard user one keypress from switching again rather than 30-odd from the top.
+  useEffect(() => {
+    if (arrivingAt !== paneId) return;
+    arrivingAt = null;
+    switchHandleRef.current?.focus();
+    setStatus(agent ? `Switched to ${paneTitle(agent).primary}` : "Switched pane", "success");
+    // paneId only: this fires once per arrival, not whenever the pane's title happens to change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneId]);
 
   // Swipe up (or just tap) the handle above the composer to bring up the pane switcher. A lowish
   // threshold + a taller hit area (below) make the gesture easy to land with a thumb; tapping is the
   // reliable fallback. "Up" naturally reveals a bottom sheet without fighting the mirror's scroll.
-  const swipe = useSwipeUp(() => setDrawer("switcher"), 24);
+  const swipe = useSwipeUp(openSwitcher, 24);
+  // What the switcher shows: the frozen copy while it's open, the live herd otherwise.
+  const switcherAgents = frozenHerd?.agents ?? agents;
+  const switcherShells = frozenHerd?.shellPanes ?? shellPanes;
+  // How far the frozen copy has drifted from the live herd — panes that appeared, vanished, or moved
+  // to a different triage section. Order changes WITHIN a section don't count: they don't move a row
+  // between sections, which is the thing that swaps what's under your thumb.
+  const switcherChanged = useMemo(() => {
+    if (!frozenHerd) return 0;
+    // A shell has no triage bucket; "shells" stands in for the section it renders under.
+    const was = new Map<string, string>(frozenHerd.agents.map((a) => [a.paneId, bucketOf(a)]));
+    for (const p of frozenHerd.shellPanes) was.set(p.paneId, "shells");
+    const now = new Map<string, string>(agents.map((a) => [a.paneId, bucketOf(a)]));
+    for (const p of shellPanes) now.set(p.paneId, "shells");
+    let n = 0;
+    for (const [id, bucket] of now) if (was.get(id) !== bucket) n++;
+    for (const id of was.keys()) if (!now.has(id)) n++;
+    return n;
+  }, [frozenHerd, agents, shellPanes]);
+
+  // What the switcher's filter is filtering. Derived here because the field lives in the sheet's
+  // header while the list lives in its body — both need the same herd and the same match rule.
+  const switcherTotal = switcherAgents.length + switcherShells.length;
+  const switcherFilterable = shouldFilter(switcherTotal);
+  const switcherMatches = useMemo(
+    () => matchPanes([...switcherAgents, ...switcherShells], paneQuery),
+    [switcherAgents, switcherShells, paneQuery],
+  );
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
@@ -461,8 +554,10 @@ export function AgentChat({
   // Switch to another thread from the sidebar or the swipe-up switcher (DetailRoute keys AgentChat
   // by pane, so this remounts fresh — composer resets — same as opening from home).
   function switchTo(id: string) {
-    closeDrawer();
-    if (id !== paneId) onSelect(id);
+    closeSwitcher();
+    if (id === paneId) return;
+    arrivingAt = id; // claimed by the incoming instance's mount effect — see `arrivingAt`
+    onSelect(id);
   }
 
   // Jump to another tab in this space by opening one of its panes (the in-pane tab bar).
@@ -729,11 +824,15 @@ export function AgentChat({
               browser scroll. */}
           {agents.length + shellPanes.length > 0 && (
             <button
+              ref={switchHandleRef}
               type="button"
               aria-label="Switch pane"
               {...swipe}
-              onClick={() => setDrawer("switcher")}
-              className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+              onClick={openSwitcher}
+              // min-h-11 is the 44px touch floor: this strip is the only way into the switcher, and
+              // at py-3.5 it measured 34px tall — the entry point to the flow was the one control
+              // in it below the bar.
+              className="flex min-h-11 w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
             >
               <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
             </button>
@@ -774,17 +873,69 @@ export function AgentChat({
 
       {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
           Switch-only: pane closing lives in the pane pill's long-press sheet, not here. */}
-      <BottomSheet open={drawer === "switcher"} onClose={closeDrawer} title="Switch pane">
+      <BottomSheet
+        open={drawer === "switcher"}
+        onClose={closeSwitcher}
+        title="Switch pane"
+        // The filter sits in the STICKY header, not the scrolling body — see PaneFilterField.
+        headerExtra={
+          switcherFilterable || switcherChanged > 0 ? (
+            <div className="flex flex-col gap-2">
+              {switcherFilterable && (
+                <PaneFilterField
+                  value={paneQuery}
+                  onChange={setPaneQuery}
+                  total={switcherTotal}
+                  // Enter commits ONLY when the query resolves to exactly one pane. Selecting
+                  // navigates you off what you were reading, so an ambiguous Enter must do nothing.
+                  {...(switcherMatches.length === 1
+                    ? { onCommit: () => switchTo(switcherMatches[0]!.paneId) }
+                    : {})}
+                />
+              )}
+              {/* The list is frozen, so say so rather than letting it silently go stale. Refreshing
+                  is the user's call, taken with both thumbs still — never under a moving list. */}
+              {switcherChanged > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFrozenHerd({ agents, shellPanes })}
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-border bg-muted/40 px-3 text-sm font-medium transition-colors hover:bg-muted active:scale-[0.99]"
+                >
+                  <RefreshCw className="size-4 shrink-0" aria-hidden />
+                  {switcherChanged} {switcherChanged === 1 ? "pane" : "panes"} changed — refresh
+                </button>
+              )}
+            </div>
+          ) : undefined
+        }
+        // PIN the panel height while the filter exists — not a floor, a fixed height. `max-h-[82dvh]`
+        // alone let the panel hug its content, so a narrowing result set collapsed the sheet from the
+        // top and slid the field being typed into 312px down the viewport between two keystrokes. A
+        // 70dvh floor only cut that to 52px, because a range still resizes. At a fixed height the
+        // header cannot move at all. The dead space under two results is where the keyboard sits.
+        // A short, content-hugging sheet is still right for a small herd — which is exactly the case
+        // where no filter is rendered.
+        {...(switcherFilterable ? { className: "h-[82dvh]" } : {})}
+      >
         <ThreadSidebar
-          agents={agents}
-          shellPanes={shellPanes}
+          agents={switcherAgents}
+          shellPanes={switcherShells}
           currentPaneId={paneId}
           onSelect={switchTo}
+          query={paneQuery}
+          onClearQuery={() => setPaneQuery("")}
+          // Where you're standing — what the sheet's "Here" section is scoped to, and the only
+          // input that makes the switcher differ depending on the pane you opened it from.
+          currentSpaceId={agent?.workspaceId}
+          onOpenSpace={(id) => {
+            closeSwitcher();
+            navigate(spacePath(id, session));
+          }}
           recentOpen={dash.prefs.recentOpen}
           onRecentOpenChange={dash.setRecentOpen}
           // Shells fold on the same count rule Spaces uses: on a herd with dozens of bare shells
           // they'd otherwise bury the agents you opened this sheet to reach.
-          shellsOpen={openForCount(dash.prefs.shellsOpen, shellPanes.length)}
+          shellsOpen={openForCount(dash.prefs.shellsOpen, switcherShells.length)}
           onShellsOpenChange={dash.setShellsOpen}
           className="px-0 py-1"
         />

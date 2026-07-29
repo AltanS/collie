@@ -6,6 +6,37 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.22.0] - 2026-07-29
+
+The "Switch pane" sheet, reworked for a herd that outgrew it, then put through three adversarial UX
+review passes against a live 61-pane herd. Evidence: `prp/2026-07-29-switch-pane-ux/ux/`.
+
+### Added
+- **Filter the "Switch pane" sheet** — past 8 panes a field in the sticky header narrows by space, tab, session name or cwd; `enterKeyHint="go"`, Enter commits on an unambiguous single match, one-tap clear
+- **"Here · <space>" leads the switcher** — the panes of the space you're already in, capped at 5 with the rest handed to the space route
+- **Each switcher row carries its status and age** — a status dot on the agent logo's corner, and the timestamp its own section sorts by
+- **The list is frozen while the sheet is open**, with an "N panes changed — refresh" affordance, so a pane re-bucketing mid-browse can't swap the row under your thumb
+
+### Changed
+- Switcher rows, the swipe-up handle, the filter's clear button and every sheet's Close are on the 44px touch floor (were 36 / 34 / — / 32)
+- "You are here" is a `--primary` rail, 15.7:1 against the sheet — the accent fill alone measured 1.31:1 dark / 1.17:1 light
+- A blocked row's alarm edge runs at full strength (was `/40` → 1.94:1)
+- Shells sort and date by `lastSeenAt` — `lastActiveAt` never advances for a bare shell, so 32 of 34 rows printed an identical age
+- Sheet headers are opaque and compact on a short viewport; sheet titles are real `<h2>`s, rooting the section outline
+
+### Fixed
+- The switcher showed **no "you are here" at all** when the open pane was a shell — the Shells group collapses past 12, so the row wasn't rendered to be marked. The section holding the current pane now opens regardless of the fold, and the row scrolls into view
+- Focus escaped both sheets despite `aria-modal="true"` (measured: Tab #28 landed on the page behind). `BottomSheet` and `SideSheet` now cycle focus, and open on the row a panel nominates
+- **The age column contradicted the sort** — rows dated by `lastActiveAt` while Recent sorts by `lastSeenAt`, so ages ran out of order and disagreed with the dashboard by up to 13h about the same pane. `ageBasisFor` now owns the rule for both surfaces
+- **Drag-to-dismiss was cancelled ~2×/second** — `onClose` sat in the sheet's effect deps, so every poll-driven re-render tore down the touch listeners and reset the drag offset under the user's finger
+- Scroll-into-view re-fired when the current row changed triage bucket, yanking a scrolled list 824px back to the top
+- Filtered results ignored triage order, listing a blocked pane 7th below four idle ones
+- The panel collapsed as results narrowed, sliding the field being typed into 312px down the viewport
+- `prefers-reduced-motion` was ignored by the sheet slide and by the status dot's infinite pulse
+- At 200% text zoom row titles clipped to 2–3 characters (WCAG 1.4.4); an unbroken 50-char filter query panned the whole sheet, sticky header included
+- Switching left focus on `document.body`; arrival now lands on a real control and announces where you are
+- A bare shell announced identically to an agent — the terminal glyph is decorative and nothing else said "shell"
+
 ## [0.21.0] - 2026-07-29
 
 ### Added

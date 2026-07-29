@@ -4,15 +4,64 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-// Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
-// keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
-// focused before it opened. The panel must carry tabIndex={-1} to be a focus target.
+const FOCUSABLE = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+// Modal focus handling (no deps): on open move focus into the panel, KEEP it there while the dialog
+// is up, and on close restore focus to whatever was focused before. The panel must carry
+// tabIndex={-1} to be a focus target.
+//
+// The containment is not optional politeness — these panels declare `aria-modal="true"`, which tells
+// assistive tech that everything behind them is inert. Without a trap that claim is a lie: tabbing
+// past the last row walked straight out into the page behind (measured: Tab #28 landed on the header
+// link under the "Switch pane" sheet), so a keyboard user could be driving controls a screen reader
+// insists aren't there.
+//
+// A panel may nominate where focus should LAND by marking one descendant `data-autofocus` — the
+// pane switcher points it at the row you're currently in, so the sheet opens on "you are here"
+// rather than at the top. Deliberately never put it on a text input: focusing one on open pops the
+// Android keyboard over the very list the sheet exists to show.
 function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
   React.useEffect(() => {
     if (!open) return;
+    const panel = panelRef.current;
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
+    (panel?.querySelector<HTMLElement>("[data-autofocus]") ?? panel)?.focus();
+
+    // Capture phase so the cycle wins over anything a child does with Tab.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !panel) return;
+      // Collapsed sections are unmounted rather than hidden, so everything this matches is real —
+      // no visibility filter (which would need layout boxes jsdom doesn't produce anyway).
+      const items = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) {
+        e.preventDefault(); // nothing to land on; hold focus on the panel itself
+        panel.focus();
+        return;
+      }
+      const active = document.activeElement;
+      const inside = panel.contains(active);
+      // The panel itself counts as a boundary, not as an item: it's tabIndex={-1}, so it is where
+      // focus starts but never something Tab returns to. Going FORWARD from it the browser already
+      // lands on `first`; going BACKWARD it would leave the dialog, so that direction wraps.
+      const atStart = !inside || active === first || active === panel;
+      const atEnd = !inside || active === last;
+      if (e.shiftKey ? atStart : atEnd) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
     return () => {
+      window.removeEventListener("keydown", onKey, true);
       previouslyFocused?.focus?.();
     };
   }, [open, panelRef]);
@@ -24,16 +73,41 @@ interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /**
+   * Rendered inside the STICKY header block, under the title row — for a control that must survive
+   * scrolling the body (a filter field). Body content scrolls away; this doesn't.
+   */
+  headerExtra?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
 
-export function BottomSheet({ open, onClose, title, children, className }: BottomSheetProps) {
+export function BottomSheet({
+  open,
+  onClose,
+  title,
+  headerExtra,
+  children,
+  className,
+}: BottomSheetProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
   const [dragY, setDragY] = React.useState(0);
   const titleId = React.useId();
   useDialogFocus(open, panelRef);
+  // `onClose` through a ref, and OUT of the effect deps below.
+  //
+  // Callers write `onClose={() => setDrawer(null)}` — a new function identity every render — and this
+  // app re-renders about twice a second under the poll. With `onClose` in the deps, every one of
+  // those tore down and re-attached the touch listeners AND re-ran `setDragY(0)`: measured 18
+  // teardown/re-attach cycles in 9 seconds, and a drag-to-dismiss that snapped back to zero under
+  // the user's finger three times during a single 3-second pull. Since `transition` is `none` while
+  // dragging, each reset was an instant hard snap. Fixing it caller-side with useCallback would work
+  // and would silently re-break for the next caller.
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
   // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on. A
@@ -44,17 +118,20 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   // never dismisses.
   const backdropArmed = React.useRef(false);
   React.useEffect(() => {
-    if (open) backdropArmed.current = false;
+    if (open) {
+      backdropArmed.current = false;
+      setDragY(0);
+    }
   }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   // Drag-to-dismiss: pull the sheet down from the top to close it. The touchmove listener is
   // attached NON-PASSIVE so we can `preventDefault()` the downward pull — that's what suppresses
@@ -64,7 +141,6 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   React.useEffect(() => {
     const panel = panelRef.current;
     if (!open || !panel) return;
-    setDragY(0);
     const SLOP = 6; // ignore taps / tiny jitter before engaging the drag
     const CLOSE = 90; // px past which release closes instead of snapping back
 
@@ -90,7 +166,7 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
     const onEnd = () => {
       const off = drag.current.dy;
       drag.current = { startY: 0, atTop: false, engaged: false, dy: 0 };
-      if (off > CLOSE) onClose();
+      if (off > CLOSE) onCloseRef.current();
       else setDragY(0);
     };
 
@@ -104,7 +180,8 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
       panel.removeEventListener("touchend", onEnd);
       panel.removeEventListener("touchcancel", onEnd);
     };
-  }, [open, onClose]);
+    // Deliberately NOT [open, onClose] — see onCloseRef above.
+  }, [open]);
 
   if (!open) return null;
 
@@ -145,25 +222,37 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
           className,
         )}
       >
-        <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 backdrop-blur-md">
-          {/* Grab handle — pull down (from anywhere at the top) to dismiss. */}
-          <div className="flex justify-center pt-2 pb-1">
+        {/* Opaque, not `bg-background/95 backdrop-blur-md`: over a dense list the translucency left a
+            legible ghost of the scrolled-past section header sitting behind the title. */}
+        <div className="sticky top-0 z-10 border-b border-border/60 bg-background">
+          {/* Grab handle — pull down (from anywhere at the top) to dismiss. Dropped on a short
+              viewport, where the header's fixed height is the scarce resource: at 844x390 it took 40%
+              of the panel, and with the Android keyboard up (index.html sets
+              `interactive-widget=resizes-content`, so the keyboard shrinks dvh) it took 68% and left
+              ZERO whole rows visible — typing into a filter whose results you cannot see. */}
+          <div className="flex justify-center pt-2 pb-1 [@media(max-height:500px)]:hidden">
             <span className="h-1 w-9 rounded-full bg-muted-foreground/40" />
           </div>
-          <div className="flex items-center justify-between px-4 pb-3">
-            <span id={title ? titleId : undefined} className="text-sm font-semibold">
+          <div className="flex items-center justify-between px-4 pb-3 [@media(max-height:500px)]:py-1 [@media(max-height:500px)]:pb-1">
+            {/* A real <h2>: the sections inside these sheets are h3s "because the sheet's own title
+                is the h2" — which was false while this was a <span>, leaving a heading outline with
+                no root and a level skipped for anyone navigating by headings. */}
+            <h2 id={title ? titleId : undefined} className="text-sm font-semibold">
               {title}
-            </span>
+            </h2>
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="size-11"
               onClick={onClose}
               aria-label="Close"
             >
               <X className="size-4" />
             </Button>
           </div>
+          {headerExtra && (
+            <div className="px-4 pb-3 [@media(max-height:500px)]:pb-2">{headerExtra}</div>
+          )}
         </div>
         <div className="px-4 py-3">{children}</div>
       </div>
@@ -196,6 +285,13 @@ export function SideSheet({
   const panelRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
   useDialogFocus(open, panelRef);
+  // Same reason as BottomSheet: callers pass a fresh `onClose` identity every render, and this app
+  // re-renders twice a second under the poll. Keeping it out of the effect deps stops the Escape
+  // listener being torn down and re-attached on every one of them.
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
   // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on. A
@@ -212,11 +308,11 @@ export function SideSheet({
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

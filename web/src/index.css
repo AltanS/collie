@@ -227,6 +227,22 @@
   .dog-gallop--running {
     animation: none;
   }
+
+  /* tw-animate-css does NOT wrap its own utilities in this query, so every `animate-in` surface —
+     the sheets' slide-up + the backdrop fade — kept moving for users who asked it not to. The slide
+     is a ~300px translate on a full-width panel, which is the size of motion this query exists for.
+     The sheets already respect the preference elsewhere in this file; they were the gap. */
+  .animate-in,
+  .animate-out {
+    animation: none !important;
+  }
+
+  /* The status dot's pulse is worse in kind than a one-shot transition: it is INFINITE motion with
+     no pause control (WCAG 2.2.2), it sits inside a modal list, and it scales with the herd — one
+     ping per working agent. Held as a static disc, the dot still reads as "working" via colour. */
+  .animate-ping {
+    animation: none;
+  }
 }
 
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a
