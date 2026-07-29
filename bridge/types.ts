@@ -51,6 +51,24 @@ export interface AgentView {
    * here, because the alt screen keeps no scrollback ring at all. Absent on older Herdr servers.
    */
   readableLines?: number;
+  /**
+   * The pane's tab label, denormalised from `tab.list` exactly as `workspaceLabel` already is — so
+   * every client surface (card, sidebar, palette, space view) gets it without joining `tabs[]`.
+   * Absent when the label carries no information: an unlabelled tab in a single-tab space is named
+   * positionally by Herdr ("1"), which would render as `project · 1`. See `meaningfulTabLabel`.
+   */
+  tabLabel?: string;
+  /**
+   * Epoch ms of this agent's last observed status transition (bridge/activity.ts). The only thing
+   * that can make a pane read as unseen. Absent until the ledger has an entry, and on the very
+   * first poll after a fresh install.
+   */
+  lastActiveAt?: number;
+  /**
+   * Epoch ms you last opened or drove this pane through Collie. `lastActiveAt > lastSeenAt` on a
+   * `done` agent IS the "finished while you weren't looking" state — there is no stored seen flag.
+   */
+  lastSeenAt?: number;
 }
 
 /**

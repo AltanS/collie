@@ -42,7 +42,9 @@ export function ConnectionInfo({
         <Row label="Device access">
           <span className={d.tone}>{d.text}</span>
         </Row>
-        {build && <Row label="Server build">{build}</Row>}
+        {/* Always present, even before the value lands: appearing late grew this card and moved
+            everything under it. An em dash is a truthful "not known yet" and the same height. */}
+        <Row label="Server build">{build ?? "—"}</Row>
       </dl>
     </Card>
   );

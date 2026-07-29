@@ -22,14 +22,27 @@ export interface AnsiSegment {
   muted: boolean;
 }
 
-// 16-color palette (VS Code integrated-terminal dark) — readable on our dark background.
-const BASE16 = [
-  "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5",
-  "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff",
-];
+// The 16 indexed ANSI slots, emitted as CSS variables rather than literal hex. index.css defines
+// ONE set of values for them — the dark one — because the mirror renders in dark space under every
+// theme and light inverts it wholesale (.adr/0002). The variables are not a theme seam, then; they
+// are the single place indexed colour is defined, so it can be re-pointed without touching parsing.
+//
+// Both spellings of an indexed colour must route through here. A real terminal resolves `ESC[31m`
+// and `ESC[38;5;1m` to the same palette slot, and many CLIs normalise everything to the latter — so
+// theming one and not the other would render the same logical colour two different ways in one pane.
+// Codex is the harness that makes this concrete: it emits `38;5;1`/`38;5;3`/`38;5;6` and no basic
+// codes at all, so a table keyed only on `3xm` would miss its chrome entirely.
+function ansiVar(n: number): string {
+  return `var(--ansi-${n})`;
+}
+
+/** The mirror's own ground, for inverse video that names no colours of its own. Byte-exact matches
+ *  for --background / --foreground's dark halves, and for MIRROR_SPACE in components/ansi-output. */
+const MIRROR_BG = "#0a0a0a";
+const MIRROR_FG = "#fafafa";
 
 function color256(n: number): string {
-  if (n < 16) return BASE16[n] ?? "#ffffff";
+  if (n < 16) return ansiVar(n);
   if (n >= 232) {
     const v = 8 + (n - 232) * 10;
     return `rgb(${v},${v},${v})`;
@@ -70,12 +83,12 @@ function applySgr(state: State, codes: number[]): void {
     else if (c === 24) state.underline = false;
     else if (c === 27) state.inverse = false;
     else if (c === 29) state.strike = false;
-    else if (c >= 30 && c <= 37) state.fg = BASE16[c - 30];
+    else if (c >= 30 && c <= 37) state.fg = ansiVar(c - 30);
     else if (c === 39) state.fg = undefined;
-    else if (c >= 40 && c <= 47) state.bg = BASE16[c - 40];
+    else if (c >= 40 && c <= 47) state.bg = ansiVar(c - 40);
     else if (c === 49) state.bg = undefined;
-    else if (c >= 90 && c <= 97) state.fg = BASE16[8 + c - 90];
-    else if (c >= 100 && c <= 107) state.bg = BASE16[8 + c - 100];
+    else if (c >= 90 && c <= 97) state.fg = ansiVar(8 + c - 90);
+    else if (c >= 100 && c <= 107) state.bg = ansiVar(8 + c - 100);
     else if (c === 38 || c === 48) {
       const isFg = c === 38;
       const mode = codes[i + 1];
@@ -141,8 +154,12 @@ export function parseAnsi(input: string): AnsiSegment[] {
 
   const flush = () => {
     if (!buf) return;
-    const fg = state.inverse ? (state.bg ?? "var(--background)") : state.fg;
-    const bg = state.inverse ? (state.fg ?? "var(--foreground)") : state.bg;
+    // Inverse video with no explicit colours swaps the mirror's own ground. Literals, not
+    // var(--background)/var(--foreground): everything inside the <pre> uses one spelling
+    // (.adr/0002, rule 2), and these ARE those tokens' dark halves — the values are identical,
+    // only the spelling is now consistent with the muted glyphs and MIRROR_SPACE.
+    const fg = state.inverse ? (state.bg ?? MIRROR_BG) : state.fg;
+    const bg = state.inverse ? (state.fg ?? MIRROR_FG) : state.bg;
     segs.push({
       text: buf,
       fg,

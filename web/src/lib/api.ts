@@ -203,7 +203,10 @@ export async function fetchPane(
   const cacheKey = `${session ?? ""}\u0000${paneId}`;
 
   const cached = paneCache.get(cacheKey);
-  const headers: Record<string, string> = {};
+  // SEEN_HEADER is what tells the bridge this read came from our own page and may mark the pane
+  // seen. A cross-site no-cors GET can't set a custom header, so it can't clear your alerts by
+  // guessing pane ids (bridge/server.ts → marksPaneSeen).
+  const headers: Record<string, string> = { "x-collie-seen": "1" };
   if (cached) headers["if-none-match"] = cached.etag;
 
   const res = await fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
@@ -256,7 +259,12 @@ export function fetchHistory(
   if (opts.before) q.set("before", opts.before);
   const qs = q.toString();
   const path = `/api/pane/${encodeURIComponent(paneId)}/history${qs ? `?${qs}` : ""}`;
-  return req<PaneHistoryResponse>(withSession(path, session), { signal });
+  // Reading the transcript is looking at the pane — and history is a READ, so like fetchPane it
+  // carries the header that lets the bridge count it (bridge/server.ts → marksPaneSeen).
+  return req<PaneHistoryResponse>(withSession(path, session), {
+    signal,
+    headers: { "x-collie-seen": "1" },
+  });
 }
 
 export function sendReply(

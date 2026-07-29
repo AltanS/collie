@@ -32,8 +32,12 @@ export function NotifyPrefsControl() {
         {!prefs && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
       </div>
 
-      {prefs &&
-        ROWS.map((row) => (
+      {/* Rendered before `prefs` lands, not after. ROWS is static, so the card's SHAPE is known from
+          the first frame — only the switch values are pending. Gating the whole list on `prefs` grew
+          this card by ~180px a moment after paint and pushed the rest of the page down with it. The
+          switches stay disabled until the real values arrive, so nothing can be toggled from a
+          placeholder state. */}
+      {ROWS.map((row) => (
           <div
             key={row.key}
             className="flex items-center justify-between gap-4 border-t border-border/60 px-4 py-3"
@@ -43,13 +47,13 @@ export function NotifyPrefsControl() {
               <p className="text-xs text-muted-foreground">{row.hint}</p>
             </div>
             <Switch
-              checked={prefs[row.key]}
-              disabled={busy}
+              checked={prefs?.[row.key] ?? false}
+              disabled={busy || !prefs}
               onCheckedChange={(next) => void toggle(row.key, next)}
               aria-label={row.label}
             />
           </div>
-        ))}
+      ))}
     </Card>
   );
 }

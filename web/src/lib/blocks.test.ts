@@ -82,10 +82,10 @@ describe("splitLines — exact text preservation", () => {
 
   it("keeps a styled segment's style/flags on both sides when split across a newline", () => {
     const styled = seg("red1\nred2", {
-      fg: "#cd3131",
+      fg: "var(--ansi-1)",
       bold: true,
       muted: false,
-      style: { color: "#cd3131", fontWeight: 600 },
+      style: { color: "var(--ansi-1)", fontWeight: 600 },
     });
     const lines = splitLines([styled]);
     expect(lines).toHaveLength(2);
@@ -93,9 +93,9 @@ describe("splitLines — exact text preservation", () => {
     expect([a.text, b.text]).toEqual(["red1", "red2"]);
     // Both halves carry the original style metadata (cloned, not the same reference).
     for (const half of [a, b]) {
-      expect(half.fg).toBe("#cd3131");
+      expect(half.fg).toBe("var(--ansi-1)");
       expect(half.bold).toBe(true);
-      expect(half.style).toEqual({ color: "#cd3131", fontWeight: 600 });
+      expect(half.style).toEqual({ color: "var(--ansi-1)", fontWeight: 600 });
     }
     expect(joinLines(lines)).toBe("red1\nred2");
   });

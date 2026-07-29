@@ -9,6 +9,7 @@ import { ConnectionInfo } from "@/components/connection-info";
 import { Card } from "@/components/ui/card";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { SnoozeControl } from "@/components/snooze-control";
+import { ThemeControl } from "@/components/theme-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
@@ -59,6 +60,8 @@ export function SettingsRoute() {
         <Button
           variant="ghost"
           size="icon"
+          // size="icon" is 36px; the header's other controls are 44px since the tap-target pass.
+          className="size-11"
           onClick={() => navigate(homePath(session))}
           aria-label="Back"
         >
@@ -68,6 +71,10 @@ export function SettingsRoute() {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+        {/* First: it's the setting people come here to change, and below the notification stack it
+            sat off-screen on a phone, a scroll into a 1240px page. */}
+        <ThemeControl />
+
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">
             <div className="flex min-w-0 items-start gap-3">
@@ -79,16 +86,20 @@ export function SettingsRoute() {
                 </p>
               </div>
             </div>
-            {state ? (
-              <Switch
-                checked={on}
-                disabled={toggleDisabled}
-                onCheckedChange={toggle}
-                aria-label="Push notifications"
-              />
-            ) : (
-              <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-            )}
+            {/* Fixed slot the size of the Switch (h-6 w-11): the spinner is smaller, so without it
+                the row — and the whole page under it — resized when state landed. */}
+            <div className="flex h-6 w-11 shrink-0 items-center justify-center">
+              {state ? (
+                <Switch
+                  checked={on}
+                  disabled={toggleDisabled}
+                  onCheckedChange={toggle}
+                  aria-label="Push notifications"
+                />
+              ) : (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
           </div>
 
           {state && blocked && (
@@ -103,7 +114,12 @@ export function SettingsRoute() {
           )}
         </Card>
 
-        {state && state.availability !== "server-off" && (
+        {/* Mounted while push state is still UNKNOWN, and only removed once we positively learn the
+            bridge has no VAPID keys. Gating on `state` truthiness instead inserted ~400px into the
+            middle of the page one frame late, shoving everything below it down. These two are
+            bridge-wide settings — which transitions notify, and quiet hours — so they are meaningful
+            whatever this particular device's push status turns out to be. */}
+        {state?.availability !== "server-off" && (
           <>
             <NotifyPrefsControl />
             <SnoozeControl snoozedUntil={root?.snoozedUntil ?? null} />

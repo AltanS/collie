@@ -104,6 +104,10 @@ the unit name; the Herdr action runs from anywhere.
   `Tab`, `Escape`, `Enter`, `Backspace`. `PageUp`/`Home`/`End`/`Delete` are unsupported.
 - Pane output is rendered as **React text nodes** (never `innerHTML`); the ANSI parser only derives
   colors/weights. Keep it that way — it's the XSS boundary. Strict CSP + same-origin gate stay.
+- **Never use a `dark:` variant inside the mirror `<pre>`** — it tracks the root theme, which is
+  backwards in a surface that renders dark under every theme and inverts in light
+  ([ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md)). Fails silently;
+  `ansi-output.test.tsx` guards it.
 
 ## Security posture (don't regress)
 

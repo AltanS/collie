@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { ActivityLedger } from "./activity.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { loadConfig } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
@@ -49,6 +50,12 @@ await snooze.load();
 
 const notifyPrefs = new NotifyPrefsStore(cfg);
 await notifyPrefs.load();
+
+// When each pane last moved, and when you last looked at it — the two numbers the dashboard sorts
+// and triages by (see activity.ts). Process-global and keyed by session name, because pane ids are
+// session-scoped and collide across sessions.
+const activity = new ActivityLedger(cfg);
+await activity.load();
 
 // Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
 // inside record() so it can never break the user action it's auditing.
@@ -115,6 +122,15 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   poker.onPoke(() => engine.pokeNow());
   poker.onHealth((h) => engine.setCadence(h ? cfg.pollIdleMs : cfg.pollMs));
   engine.onUpdate((s) => poker.setAgentPanes(s.agents.map((a) => a.paneId)));
+
+  // Activity bookkeeping. A status change stamps `activeAt` (the only thing that can make a pane
+  // read as unseen); every successful poll reconciles the ledger against the panes that exist, which
+  // seeds first sightings as already-seen and reaps closed ones. Reconciling covers bare shells too,
+  // which the engine's agent-derived removal event never reports.
+  engine.onTransition((agent) => activity.noteActive(name, agent.paneId));
+  engine.onUpdate((s) =>
+    activity.reconcile(name, [...s.agents, ...s.shellPanes].map((p) => p.paneId)),
+  );
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
   // diffing snapshots). Each session gets its own coordinator + notification slot: the primary keeps
@@ -187,7 +203,7 @@ const sweepTimer = setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
-const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit });
+const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity });
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");
@@ -196,6 +212,10 @@ const shutdown = async () => {
   await server.stop();
   clearInterval(refreshTimer);
   registry.disposeAll();
+  // Writes are debounced, so the last few seconds of "you looked at this" live only in memory —
+  // persist them before exiting, or every restart quietly resurrects alerts you'd already cleared.
+  activity.stop();
+  await activity.flush();
   clearInterval(sweepTimer);
   clearTimeout(updateFirstCheck);
   clearInterval(updateTimer);

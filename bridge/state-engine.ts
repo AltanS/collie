@@ -1,3 +1,4 @@
+import { meaningfulTabLabel } from "./activity.ts";
 import type { HerdrClient } from "./herdr-client.ts";
 import {
   type AgentStatus,
@@ -193,6 +194,7 @@ export class StateEngine {
     try {
       const { workspaces, panes, tabs } = await this.fetchWire();
       const wsById = new Map(workspaces.map((w) => [w.workspace_id, w]));
+      const tabById = new Map(tabs.map((t) => [t.tab_id, t]));
 
       const toView = (
         p: (typeof panes)[number],
@@ -200,6 +202,9 @@ export class StateEngine {
         kind: "agent" | "shell",
       ): AgentView => {
         const ws = wsById.get(p.workspace_id);
+        // The tab's label, denormalised alongside workspaceLabel so no client has to join tabs[].
+        // Dropped when it's Herdr's positional default in a single-tab space — see meaningfulTabLabel.
+        const tabLabel = meaningfulTabLabel(tabById.get(p.tab_id)?.label, ws?.tab_count ?? 0);
         return {
           paneId: p.pane_id,
           workspaceId: p.workspace_id,
@@ -213,6 +218,7 @@ export class StateEngine {
           kind,
           // A user-set pane label (herdr pane.rename); omitted when unset so "absent stays absent".
           ...(typeof p.label === "string" && p.label.length > 0 ? { paneLabel: p.label } : {}),
+          ...(tabLabel ? { tabLabel } : {}),
           // How the agent named its session. BOTH kinds are kept: Claude and Codex report an `id`,
           // while pi reports a `path` (its herdr integration prefers `agent_session_path` whenever
           // the session manager has a file open). Keeping only `id` — as this did until journals
