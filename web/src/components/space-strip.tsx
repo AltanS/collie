@@ -2,7 +2,7 @@ import { ChevronLeft, Plus } from "lucide-react";
 
 import { Chip } from "@/components/ui/chip";
 import { SectionLabel } from "@/components/ui/section-label";
-import { blockedCount } from "@/lib/spaces";
+import { worstTriage } from "@/lib/triage";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
 interface SpaceStripProps {
@@ -55,7 +55,8 @@ export function SpaceStrip({
           label={w.label}
           active={selected === w.workspaceId}
           ring={w.focused}
-          alert={blockedCount(w.workspaceId, agents) > 0}
+          // Same dot language as the tab strip directly below it, and as the herd list.
+          status={worstTriage(agents.filter((a) => a.workspaceId === w.workspaceId))}
           onClick={() => onSelect(w.workspaceId)}
         />
       ))}
