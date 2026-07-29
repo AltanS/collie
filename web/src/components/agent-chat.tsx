@@ -4,6 +4,7 @@ import { useNavigate, useRevalidator } from "react-router";
 import { ArrowUpToLine, Loader2, ScrollText, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { isConnecting } from "@/lib/connection";
@@ -131,6 +132,9 @@ export function AgentChat({
   // threshold + a taller hit area (below) make the gesture easy to land with a thumb; tapping is the
   // reliable fallback. "Up" naturally reveals a bottom sheet without fighting the mirror's scroll.
   const swipe = useSwipeUp(() => setDrawer("switcher"), 24);
+  // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
+  // "hide the long tail" preference means the same thing in both places.
+  const dash = useDashPrefs();
 
   // Mirror freeze: at the bottom we follow live output; the moment you scroll up to read backscroll
   // we hold the text steady (no reflow / no re-pin) until you jump back to latest — so a long
@@ -639,7 +643,12 @@ export function AgentChat({
             (unless you're selecting text to copy, which the tap must not collapse). */}
         {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
             quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
-        <div className="min-h-0 min-w-0 flex-1" onClick={focusFromMirror}>
+        {/* border-t like the strips above it: every band in this stack draws its own TOP edge, so
+            whichever one ends up last still has a boundary under it. Without this the pane row ran
+            straight into terminal output — the chrome and the mirror read as one surface. Drawing it
+            here rather than as a border-b on PaneStrip covers the case where that strip is absent
+            (a tab holding a single pane), which is the common one. */}
+        <div className="min-h-0 min-w-0 flex-1 border-t border-border/40" onClick={focusFromMirror}>
           <ChatMessageList
             ref={listRef}
             dep={display}
@@ -771,6 +780,12 @@ export function AgentChat({
           shellPanes={shellPanes}
           currentPaneId={paneId}
           onSelect={switchTo}
+          recentOpen={dash.prefs.recentOpen}
+          onRecentOpenChange={dash.setRecentOpen}
+          // Shells fold on the same count rule Spaces uses: on a herd with dozens of bare shells
+          // they'd otherwise bury the agents you opened this sheet to reach.
+          shellsOpen={openForCount(dash.prefs.shellsOpen, shellPanes.length)}
+          onShellsOpenChange={dash.setShellsOpen}
           className="px-0 py-1"
         />
       </BottomSheet>

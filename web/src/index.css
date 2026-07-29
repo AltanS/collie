@@ -57,7 +57,14 @@
      headroom back; the alpha modifiers on small text were dropped as well, since no token value
      rescues a /70. */
   --muted-foreground: light-dark(oklch(0.48 0 0), oklch(0.708 0 0));
-  --accent: light-dark(oklch(0.97 0 0), oklch(0.269 0 0));
+  /* Light --accent must be a real step off --background, not stock shadcn's 0.97. Stock is right
+     only while background is pure white; 0.18.0 deliberately moved background to 0.97 (see above),
+     which silently made accent === background — so every "this is the current one" highlight
+     (`bg-accent` in the pane switcher and session switcher) and every `hover:bg-accent` rendered
+     as nothing at all in light mode. It sits a step BELOW --muted (0.94), not between it and
+     --background: the switcher needs three separable values — resting 0.97, hover (bg-muted/60)
+     ~0.94, active 0.92 — and 0.94 would have collided the last two. */
+  --accent: light-dark(oklch(0.92 0 0), oklch(0.269 0 0));
   --accent-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
   --destructive: light-dark(oklch(0.577 0.245 27.325), oklch(0.704 0.191 22.216));
   --destructive-foreground: light-dark(oklch(0.985 0 0), oklch(0.985 0 0));

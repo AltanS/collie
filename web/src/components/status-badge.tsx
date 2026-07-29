@@ -18,7 +18,39 @@ const CHIP: Record<AgentStatus, string> = {
   unknown: "border-status-unknown/30 bg-status-unknown/10 text-status-unknown",
 };
 
-export function StatusDot({ status, className }: { status: AgentStatus; className?: string }) {
+/**
+ * As a FILL, the status palette needs a different ramp than it does as text. Every --status-* value
+ * is tuned near the same lightness for text contrast, so drawn as solid discs the resting states
+ * (idle / unknown) carry exactly as much weight as blocked — eighteen idle dots would out-shout the
+ * one thing that needs you. The resting states are therefore hollow rings; the states that mean
+ * something is happening stay solid.
+ */
+const RESTING: ReadonlySet<AgentStatus> = new Set(["idle", "unknown"]);
+
+const RING: Record<AgentStatus, string> = {
+  blocked: "border-status-blocked",
+  working: "border-status-working",
+  done: "border-status-done",
+  idle: "border-status-idle/60",
+  unknown: "border-status-unknown/60",
+};
+
+export function StatusDot({
+  status,
+  surface = "bg-background",
+  className,
+}: {
+  status: AgentStatus;
+  /**
+   * The colour the dot sits ON. A hollow ring must be FILLED with its surface, not left
+   * transparent: over the avatar's corner a transparent interior showed orange logo through one
+   * half and page grey through the other, reading as a notch cut out of the icon rather than a
+   * badge. Pass the card's surface when the dot sits on a card.
+   */
+  surface?: string;
+  className?: string;
+}) {
+  const hollow = RESTING.has(status);
   return (
     <span className={cn("relative flex size-2.5 shrink-0", className)}>
       {status === "working" && (
@@ -29,7 +61,15 @@ export function StatusDot({ status, className }: { status: AgentStatus; classNam
           )}
         />
       )}
-      <span className={cn("relative inline-flex size-2.5 rounded-full", DOT[status])} />
+      {/* size-full, not a second size-2.5: the wrapper owns the size so `className` can change it
+          (the chips ask for size-2), and a hard-coded inner would overflow or get squashed by the
+          flex parent instead. The ping span above already works this way. */}
+      <span
+        className={cn(
+          "relative inline-flex size-full rounded-full",
+          hollow ? cn("border-[1.5px]", surface, RING[status]) : DOT[status],
+        )}
+      />
     </span>
   );
 }

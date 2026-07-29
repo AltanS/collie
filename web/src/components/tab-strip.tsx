@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { Chip } from "@/components/ui/chip";
 import { SectionLabel } from "@/components/ui/section-label";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
+import { worstTriage } from "@/lib/triage";
 import type { AgentView, TabView } from "@/lib/types";
 
 interface TabStripProps {
@@ -28,8 +29,9 @@ interface TabStripProps {
 
 // The selected space's tabs as a horizontal strip — the second header row under SpaceStrip, mirroring
 // it one level down. "All" shows every tab's panes; tapping a tab filters the space to it; the
-// trailing + creates a new tab (and opens its fresh shell). The desktop-focused tab gets a ring; a
-// tab holding a blocked agent gets an alert dot. A long-press on a tab chip opens its actions sheet
+// trailing + creates a new tab (and opens its fresh shell). The desktop-focused tab gets a ring;
+// each tab carries a status dot for the most urgent thing inside it. A long-press on a chip opens
+// its actions sheet
 // (rename / close) when the parent wires both onRenamed and onClosed (the "All" chip and the + never
 // take long-press).
 export function TabStrip({
@@ -65,7 +67,9 @@ export function TabStrip({
             label={t.label}
             active={selected === t.tabId}
             ring={t.focused}
-            alert={agents.some((a) => a.tabId === t.tabId && a.status === "blocked")}
+            // What's actually going on in there — blocked / ready / working / idle — instead of a
+            // dot that only ever appeared for blocked and left every other state unreadable.
+            status={worstTriage(agents.filter((a) => a.tabId === t.tabId))}
             onClick={() => onSelect(t.tabId)}
             // Long-press (and a tap on the already-active tab) opens the actions sheet — only when the
             // parent wired the actions; otherwise the chips stay plain tap-to-switch.
