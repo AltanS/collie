@@ -1,12 +1,7 @@
 // Helpers for the space/tab navigator: shape the flat snapshot (agents + shell panes + tabs) into
 // the per-space, per-tab tree the home space view renders.
-import {
-  STATUS_RANK,
-  type AgentStatus,
-  type AgentView,
-  type TabView,
-  type WorkspaceView,
-} from "./types";
+import { bucketOf, TRIAGE_ORDER, type TriageKey } from "./triage";
+import type { AgentView, TabView, WorkspaceView } from "./types";
 
 export interface TabGroup {
   tabId: string;
@@ -40,35 +35,31 @@ export function groupPanesByTab(
   return groups;
 }
 
-/** Agents needing attention (blocked) in a workspace — drives the space chip's alert dot. */
-export function blockedCount(workspaceId: string, agents: AgentView[]): number {
-  return agents.filter((a) => a.workspaceId === workspaceId && a.status === "blocked").length;
-}
-
 /**
- * The most-urgent agent status in a workspace (blocked > working > … > done), or null if the space
- * has no agents at all (only shells, or empty). Drives the status dot beside each space row.
+ * The most urgent bucket in each workspace, in ONE pass over the agents.
+ *
+ * Routes through {@link bucketOf}, the same classifier the herd list and the tab/space chips use —
+ * this replaces a pair of helpers that ranked by STATUS_RANK instead, so a space row and its chip
+ * could disagree about what a colour meant (a space holding one `working` agent and one unseen
+ * `done` one showed "working" on the dashboard and "ready" on the chip). One classifier, one answer.
+ *
+ * A missing entry means the space holds no agent at all, which is deliberately NOT the same as
+ * idle: an empty space has nothing to report, and a resting dot would claim otherwise.
+ *
+ * One pass rather than per-space filtering because the dashboard re-renders on every poll and used
+ * to derive this per space AND again per row — spaces x agents, three times over (45 x 59 on a real
+ * herd).
  */
-export function worstSpaceStatus(workspaceId: string, agents: AgentView[]): AgentStatus | null {
-  const inWs = agents.filter((a) => a.workspaceId === workspaceId);
-  if (inWs.length === 0) return null;
-  return inWs.reduce<AgentStatus>(
-    (worst, a) => (STATUS_RANK[a.status] < STATUS_RANK[worst] ? a.status : worst),
-    inWs[0]!.status,
-  );
-}
-
-/**
- * When you last used a space = the most recent `lastSeenAt` across its panes (agents AND shells).
- * 0 for a space you've never opened, or on a bridge that doesn't report the timestamps.
- */
-export function spaceLastSeen(workspaceId: string, panes: readonly AgentView[]): number {
-  let latest = 0;
-  for (const p of panes) {
-    if (p.workspaceId !== workspaceId) continue;
-    if ((p.lastSeenAt ?? 0) > latest) latest = p.lastSeenAt ?? 0;
+export function spaceTriageMap(agents: readonly AgentView[]): Map<string, TriageKey> {
+  const worst = new Map<string, TriageKey>();
+  for (const a of agents) {
+    const bucket = bucketOf(a);
+    const held = worst.get(a.workspaceId);
+    if (held === undefined || TRIAGE_ORDER.indexOf(bucket) < TRIAGE_ORDER.indexOf(held)) {
+      worst.set(a.workspaceId, bucket);
+    }
   }
-  return latest;
+  return worst;
 }
 
 /**

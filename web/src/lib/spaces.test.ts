@@ -1,12 +1,11 @@
 import {
-  blockedCount,
   filterSpaces,
   groupPanesByTab,
   sortSpacesByRecency,
-  spaceLastSeen,
   spaceLastSeenMap,
-  worstSpaceStatus,
+  spaceTriageMap,
 } from "./spaces";
+import { worstTriage } from "./triage";
 import type { AgentStatus, AgentView, TabView, WorkspaceView } from "./types";
 
 function agent(
@@ -67,46 +66,44 @@ describe("groupPanesByTab", () => {
   });
 });
 
-describe("blockedCount", () => {
-  it("counts only blocked agents within the given workspace", () => {
+describe("spaceTriageMap — one classifier for rows and chips", () => {
+  const mk = (id: string, ws: string, status: AgentStatus, extra: Partial<AgentView> = {}) =>
+    agent({ paneId: id, workspaceId: ws, tabId: `${ws}:t1`, status, ...extra });
+
+  it("keeps the most urgent bucket per workspace and omits spaces with no agent", () => {
+    const m = spaceTriageMap([
+      mk("w1:p1", "w1", "idle"),
+      mk("w1:p2", "w1", "blocked"),
+      mk("w2:p1", "w2", "working"),
+    ]);
+    expect(m.get("w1")).toBe("needs");
+    expect(m.get("w2")).toBe("working");
+    // Not the same as idle: an empty space has nothing to report.
+    expect(m.get("w3")).toBeUndefined();
+  });
+
+  it("ranks an unseen-done agent ABOVE a working one — the disagreement this replaced", () => {
+    // STATUS_RANK put working (1) ahead of done (4), so the old space row said "working" while the
+    // space chip, which already routed through bucketOf, said "ready". Same input, one answer now.
+    const m = spaceTriageMap([
+      mk("w1:p1", "w1", "working"),
+      mk("w1:p2", "w1", "done", { lastActiveAt: 2000, lastSeenAt: 1000 }),
+    ]);
+    expect(m.get("w1")).toBe("ready");
+  });
+
+  it("agrees with worstTriage, which is the point of sharing bucketOf", () => {
     const agents = [
-      agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", status: "blocked" }),
-      agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t1", status: "working" }),
-      agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", status: "blocked" }),
+      mk("w1:p1", "w1", "done", { lastActiveAt: 2000, lastSeenAt: 1000 }),
+      mk("w1:p2", "w1", "working"),
+      mk("w1:p3", "w1", "idle"),
     ];
-    expect(blockedCount("w1", agents)).toBe(1);
-    expect(blockedCount("w2", agents)).toBe(1);
-    expect(blockedCount("w3", agents)).toBe(0);
+    expect(spaceTriageMap(agents).get("w1")).toBe(worstTriage(agents));
   });
 
-  it("counts every blocked agent, not just presence", () => {
-    const agents = [
-      agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", status: "blocked" }),
-      agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t1", status: "blocked" }),
-      agent({ paneId: "w1:p3", workspaceId: "w1", tabId: "w1:t1", status: "working" }),
-    ];
-    expect(blockedCount("w1", agents)).toBe(2);
-  });
-});
-
-describe("worstSpaceStatus", () => {
-  const mk = (status: AgentStatus) =>
-    agent({ paneId: `w1:${status}`, workspaceId: "w1", tabId: "w1:t1", status });
-
-  it("returns null when the workspace has no agents", () => {
-    expect(worstSpaceStatus("w1", [])).toBeNull();
-    expect(worstSpaceStatus("w1", [agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1" })])).toBeNull();
-  });
-
-  it("returns the most-urgent status (blocked beats working beats idle/done)", () => {
-    expect(worstSpaceStatus("w1", [mk("idle"), mk("working"), mk("blocked")])).toBe("blocked");
-    expect(worstSpaceStatus("w1", [mk("done"), mk("working")])).toBe("working");
-    expect(worstSpaceStatus("w1", [mk("idle"), mk("done")])).toBe("idle");
-  });
-
-  it("ranks unknown between working and idle", () => {
-    expect(worstSpaceStatus("w1", [mk("idle"), mk("unknown")])).toBe("unknown");
-    expect(worstSpaceStatus("w1", [mk("working"), mk("unknown")])).toBe("working");
+  it("a done agent you have already seen is not 'ready'", () => {
+    const m = spaceTriageMap([mk("w1:p1", "w1", "done", { lastActiveAt: 1000, lastSeenAt: 2000 })]);
+    expect(m.get("w1")).toBe("recent");
   });
 });
 
@@ -118,38 +115,6 @@ const ws = (workspaceId: string, label: string, number: number): WorkspaceView =
   activeTabId: `${workspaceId}:t1`,
   tabCount: 1,
   paneCount: 1,
-});
-
-describe("spaceLastSeen", () => {
-  it("takes the most recent look across the space's panes", () => {
-    const panes = [
-      agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 100 }),
-      agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 900 }),
-    ];
-    expect(spaceLastSeen("w1", panes)).toBe(900);
-  });
-
-  it("ignores panes in other spaces", () => {
-    const panes = [
-      agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 100 }),
-      agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", lastSeenAt: 900 }),
-    ];
-    expect(spaceLastSeen("w1", panes)).toBe(100);
-  });
-
-  it("counts bare shells, not just agents", () => {
-    const panes = [
-      agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", kind: "shell", lastSeenAt: 700 }),
-    ];
-    expect(spaceLastSeen("w1", panes)).toBe(700);
-  });
-
-  it("is 0 for a space you've never opened, and on a bridge with no timestamps", () => {
-    expect(spaceLastSeen("w1", [])).toBe(0);
-    expect(
-      spaceLastSeen("w1", [agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1" })]),
-    ).toBe(0);
-  });
 });
 
 describe("sortSpacesByRecency", () => {
@@ -214,7 +179,8 @@ describe("spaceLastSeenMap", () => {
       agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", lastSeenAt: 400 }),
     ];
     const map = spaceLastSeenMap(panes);
-    for (const id of ["w1", "w2"]) expect(map.get(id)).toBe(spaceLastSeen(id, panes));
+    expect(map.get("w1")).toBe(900);
+    expect(map.get("w2")).toBe(400);
   });
 
   it("omits spaces with no panes, which callers read as 0", () => {

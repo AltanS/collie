@@ -6,10 +6,11 @@
 // Nothing is lost: the pane's own name (a herdr `pane.rename` label, or Claude's own `/rename`
 // session name) moves down one line, where it displaces the cwd.
 import { baseName, shortCwd } from "./format";
-import type { AgentView } from "./types";
+import { paneDisplayName, type AgentView } from "./types";
 
+/** A two-line row label. Only {@link paneTitleInTab} returns one — the herd list renders
+ *  {@link PaneParts} instead, so the project can give up width before the tab does. */
 export interface PaneTitle {
-  /** "moonward_os · fix-auth", or just "moonward_os" when the tab label says nothing. */
   primary: string;
   /** The pane's own name if it has one, else a shortened cwd. Null when there's neither. */
   secondary: string | null;
@@ -31,7 +32,8 @@ export interface PaneParts {
   secondary: string | null;
 }
 
-/** The separator between project and tab. Exported so tests and search-text builders agree. */
+/** The separator between project and tab, rendered between the two spans. Exported so the tests
+ *  assert against one definition rather than a repeated literal. */
 export const TITLE_SEP = " · ";
 
 /**
@@ -60,21 +62,6 @@ export function paneParts(pane: AgentView): PaneParts {
 }
 
 /**
- * Title and subtitle for a pane row.
- *
- * `tabLabel` is already filtered bridge-side (`meaningfulTabLabel`) — an unlabelled tab in a
- * single-tab space arrives absent rather than as Herdr's positional "1" — so the rule here is
- * simply "use it if it's there".
- *
- * Both fields are rendered as React text nodes by every caller, never markup: the same XSS boundary
- * the pane mirror keeps.
- */
-export function paneTitle(pane: AgentView): PaneTitle {
-  const { project, tab, secondary } = paneParts(pane);
-  return { primary: tab ? `${project}${TITLE_SEP}${tab}` : project, secondary };
-}
-
-/**
  * The same row, rendered where the space and tab are ALREADY established by the surrounding UI —
  * the space detail view, which groups panes under a per-tab heading. Repeating `project · tab` on
  * every card there would say nothing, and worse: two panes in one tab would become indistinguishable,
@@ -83,18 +70,7 @@ export function paneTitle(pane: AgentView): PaneTitle {
  * So in that scope the pane's own name leads, exactly as it always has, and the cwd sits beneath.
  */
 export function paneTitleInTab(pane: AgentView): PaneTitle {
-  const own = pane.paneLabel || pane.sessionName;
-  const primary = own || (pane.kind === "shell" ? "shell" : pane.agent);
-  const secondary = pane.cwd ? shortCwd(pane.cwd) : null;
-  return { primary, secondary };
-}
-
-/**
- * One flat string for the places that need a single searchable/announceable name — the command
- * palette's match text, action-sheet headings, aria labels. Carries the same parts the row shows
- * plus the pane's own name, so typing a project, a tab, or a session name all find the pane.
- */
-export function paneSearchText(pane: AgentView): string {
-  const { primary, secondary } = paneTitle(pane);
-  return [primary, secondary, pane.agent].filter(Boolean).join(" ");
+  // paneDisplayName IS this precedence (label -> session name -> agent/"shell"); it was reproduced
+  // here line for line, which is two copies of the rule pane-name.ts exists to keep in one place.
+  return { primary: paneDisplayName(pane), secondary: pane.cwd ? shortCwd(pane.cwd) : null };
 }

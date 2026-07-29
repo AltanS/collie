@@ -61,9 +61,12 @@ export function StatusDot({
           )}
         />
       )}
+      {/* size-full, not a second size-2.5: the wrapper owns the size so `className` can change it
+          (the chips ask for size-2), and a hard-coded inner would overflow or get squashed by the
+          flex parent instead. The ping span above already works this way. */}
       <span
         className={cn(
-          "relative inline-flex size-2.5 rounded-full",
+          "relative inline-flex size-full rounded-full",
           hollow ? cn("border-[1.5px]", surface, RING[status]) : DOT[status],
         )}
       />
