@@ -1,64 +1,129 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
-:root {
-  --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-
-  /* Agent lifecycle status palette — shared across themes. */
-  --status-blocked: oklch(0.66 0.21 24);
-  --status-working: oklch(0.78 0.15 80);
-  --status-done: oklch(0.7 0.16 152);
-  --status-idle: oklch(0.62 0.02 250);
-  --status-unknown: oklch(0.55 0.02 250);
+/* `dark:` must fire for BOTH an explicitly-pinned dark root and a system-dark root the user hasn't
+   pinned to light — otherwise the handful of literal `dark:` utilities silently stop working for
+   everyone on System (the default). Token-driven colors don't need this; these are the literals. */
+@custom-variant dark {
+  &:is(.dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:is(:root:not(.light) *) {
+      @slot;
+    }
+  }
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+/* ── Theme tokens ───────────────────────────────────────────────────────────────────────────────
+   Every themed value is a single `light-dark(<light>, <dark>)` declaration, resolved by the
+   element's computed `color-scheme`. That is why there is ONE token block here and not two: the
+   media-query-plus-override shape would have to restate the whole dark palette, and nothing in CSS
+   can share a declaration block across an `@media` boundary.
 
-  --status-blocked: oklch(0.7 0.2 24);
-  --status-working: oklch(0.82 0.15 82);
-  --status-done: oklch(0.74 0.16 152);
-  --status-idle: oklch(0.65 0.02 250);
-  --status-unknown: oklch(0.6 0.02 250);
+   `color-scheme` therefore does real work and is not decoration — it also makes the browser paint
+   native UI (scrollbars, form controls, the caret, the iOS keyboard, <select> menus) to match.
+
+     :root        → `light dark`, i.e. follow the OS. The default; no class on <html>.
+     :root.light  → pinned light,  set by useTheme / theme-init.js
+     :root.dark   → pinned dark,   ditto
+
+   Pinning is done with a class rather than a `color-scheme` media query so first paint can be fixed
+   by public/theme-init.js before the bundle loads. */
+:root {
+  color-scheme: light dark;
+
+  --radius: 0.65rem;
+  /* Light deviates from stock shadcn in two places, both measured rather than taste:
+     --background is a step off white (stock has background == card == popover == pure white, so the
+     entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
+     for headroom (see below). oklch(0.97) rasterizes to rgb(245,245,245), which is exactly the
+     terminal mirror's inverted background — so the mirror stops showing a seam against the page. */
+  --background: light-dark(oklch(0.97 0 0), oklch(0.145 0 0));
+  --foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
+  --card: light-dark(oklch(1 0 0), oklch(0.205 0 0));
+  --card-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
+  --popover: light-dark(oklch(1 0 0), oklch(0.205 0 0));
+  --popover-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
+  --primary: light-dark(oklch(0.205 0 0), oklch(0.922 0 0));
+  --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
+  --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
+  --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
+  /* Light --muted is a step BELOW --background so the header/composer chrome band still reads as a
+     distinct surface now that the page is no longer white. */
+  --muted: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
+  /* Light was oklch(0.556) — 4.74:1 on white, i.e. zero headroom, so every /70, /80 and opacity-60
+     derivative in the app fell under 3:1 while its dark counterpart passed. Darkened to buy that
+     headroom back; the alpha modifiers on small text were dropped as well, since no token value
+     rescues a /70. */
+  --muted-foreground: light-dark(oklch(0.48 0 0), oklch(0.708 0 0));
+  --accent: light-dark(oklch(0.97 0 0), oklch(0.269 0 0));
+  --accent-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
+  --destructive: light-dark(oklch(0.577 0.245 27.325), oklch(0.704 0.191 22.216));
+  --destructive-foreground: light-dark(oklch(0.985 0 0), oklch(0.985 0 0));
+  --border: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 12%));
+  --input: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 15%));
+  /* Light is darkened off stock shadcn (0.708 → 0.62): at 0.708 the focus ring measures 2.58:1 on
+     white, under the 3:1 WCAG 1.4.11 floor for a non-text indicator — and components draw it at
+     `ring-ring/50`, which halves that again. On an app whose buttons type into a live shell, a focus
+     ring you can't locate is a real problem. Still worth an on-device look: even at 0.62 the /50
+     variant is marginal. */
+  --ring: light-dark(oklch(0.62 0 0), oklch(0.556 0 0));
+
+  /* Agent lifecycle status palette — the app's primary at-a-glance signal, so both halves are
+     tuned against their own ground rather than one set being reused. The dark values glow on
+     near-black; the light values are picked to clear 4.5:1 on white (measured, not estimated —
+     blocked 5.4:1, working 4.8:1, done 4.6:1, idle 5.5:1, unknown 6.5:1).
+
+     These carry text AND fills (`text-status-working`, `bg-status-blocked` dots). Tuning for text
+     makes the dots darker; if that costs the dashboard its glance-ability outdoors, the fallback is
+     splitting fill and text into separate tokens.
+
+     The light values are measured against the WORST ground this text lands on, which took three
+     tries to get right. Tuned against plain white they were 5.4/4.8/4.6 and failed on the chip.
+     Tuned against the `bg-status-X/15` chip on a white card they were 4.90/4.58/4.46 and still
+     failed, because the chip is translucent and the card underneath varies: `needs you` sits on a
+     `bg-status-blocked/5` card (4.17) and the pane header's chip sits on `bg-muted`, rgb(235) not
+     rgb(255) (3.91). These are tuned against that rgb(235) case. When touching them, measure the
+     chip on the pane header, not the dot on the dashboard. */
+  --status-blocked: light-dark(oklch(0.46 0.2 25), oklch(0.7 0.2 24));
+  --status-working: light-dark(oklch(0.46 0.12 72), oklch(0.82 0.15 82));
+  --status-done: light-dark(oklch(0.45 0.14 152), oklch(0.74 0.16 152));
+  --status-idle: light-dark(oklch(0.45 0.02 250), oklch(0.65 0.02 250));
+  --status-unknown: light-dark(oklch(0.43 0.02 250), oklch(0.6 0.02 250));
+
+  /* ── Terminal palette ─────────────────────────────────────────────────────────────────────────
+     The 16 indexed ANSI slots, emitted by lib/ansi.ts as var(--ansi-N).
+
+     ONE set, not two, and it is the dark one — VS Code's Dark+ terminal palette. The mirror renders
+     in dark space under every theme and the light theme inverts it wholesale
+     (components/ansi-output.tsx, .adr/0002), so a light palette here would be applied and then
+     inverted into nonsense. These sit next to the truecolor an agent emits, which no palette can
+     re-theme, so they must share its assumptions: authored for a dark ground. */
+  --ansi-0: #000000;
+  --ansi-1: #cd3131;
+  --ansi-2: #0dbc79;
+  --ansi-3: #e5e510;
+  --ansi-4: #2472c8;
+  --ansi-5: #bc3fbc;
+  --ansi-6: #11a8cd;
+  --ansi-7: #e5e5e5;
+  --ansi-8: #666666;
+  --ansi-9: #f14c4c;
+  --ansi-10: #23d18b;
+  --ansi-11: #f5f543;
+  --ansi-12: #3b8eea;
+  --ansi-13: #d670d6;
+  --ansi-14: #29b8db;
+  --ansi-15: #ffffff;
+}
+
+/* Explicit pins. Class-based so theme-init.js can set them before first paint. */
+:root.light {
+  color-scheme: light;
+}
+:root.dark {
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -99,7 +164,10 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    /* Full-strength ring, not /50: halved, the focus indicator measures 1.77:1 in light and 1.87:1
+       in dark — both under the 3:1 floor for a non-text indicator, on an app whose buttons type
+       into a live shell. */
+    @apply border-border outline-ring;
   }
   html {
     /* Respect notches; keep the app glued to the viewport edges on mobile. */

@@ -1,12 +1,20 @@
 <!doctype html>
-<html lang="en" class="dark">
+<!-- No theme class here: `color-scheme: light dark` in index.css follows the OS, and
+     public/theme-init.js stamps `light`/`dark` before first paint only when the user has pinned
+     one. The cascade decides, not the markup. --><html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#0a0a0a" />
+    <!-- Blocking, and first: the pin class must be on <html> before anything paints. Same-origin,
+         so `script-src 'self'` already allows it. -->
+    <script src="/theme-init.js"></script>
+    <!-- Browser chrome follows the OS for System users. useTheme rewrites these at runtime for
+         someone who has pinned the opposite of their OS. -->
+    <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -24,6 +32,18 @@
          seamless. Sprite math matches .dog-gallop in index.css: dog-gallop.png is a 768×128 strip of
          six 128px frames, stepped with steps(6). -->
     <style>
+      /* index.css has not loaded at this point, so the splash declares `color-scheme` itself —
+         otherwise light-dark() below has nothing to resolve against and every value falls to its
+         light branch. These three rules mirror index.css exactly; keep them in step. */
+      :root {
+        color-scheme: light dark;
+      }
+      :root.light {
+        color-scheme: light;
+      }
+      :root.dark {
+        color-scheme: dark;
+      }
       .boot-splash {
         position: fixed;
         inset: 0;
@@ -32,8 +52,12 @@
         align-items: center;
         justify-content: center;
         gap: 0.75rem;
-        background: #0a0a0a;
-        color: #a1a1a1;
+        /* --background / --muted-foreground rasterized, because index.css has not loaded yet:
+           oklch(0.97)/oklch(0.48) light, oklch(0.145)/oklch(0.708) dark. The light pair used to be
+           #ffffff/#8a8a8a, which is neither token — the page stepped from white to rgb(245) on
+           hand-off to React, and the caption sat at 3.45:1. Keep in step with index.css. */
+        background: light-dark(#f5f5f5, #0a0a0a);
+        color: light-dark(#5d5d5d, #a1a1a1);
         font: 500 0.875rem/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       .boot-splash__dog {

@@ -63,14 +63,17 @@ export function AppHeader({
   const trouble = useConnectionTrouble(connecting);
   const lost = useConnectionLost(connecting);
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-zinc-800 pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
+    <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-muted pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
       {override ?? (
         <>
           <CollieHome onHome={onHome} trouble={trouble} lost={lost} wordmark={wordmark} />
           {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
               pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight. */}
           <div className="flex min-w-0 flex-1 items-center">{children}</div>
-          <div className="flex items-center gap-3">
+          {/* gap-1, not gap-3: the icon buttons now carry their own 12px of padding to reach 44px,
+              so a 12px gap on top of that reads as a gulf. 4px keeps the apparent spacing between
+              icons close to what it was. */}
+          <div className="flex items-center gap-1">
             {rightLead}
             {rightTrail}
           </div>
@@ -89,7 +92,12 @@ export function SettingsGear({ session }: { session?: string }) {
       type="button"
       onClick={() => navigate(settingsPath(session))}
       aria-label="Settings"
-      className="text-muted-foreground transition-colors hover:text-foreground"
+      // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
+      // keeps icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px
+      // against a 12px gap, so a neighbour steals 12px of this one's hit area) and drags the last
+      // one past the header's padding into document overflow. Costs horizontal room, which the
+      // breadcrumb absorbs — it already truncates by design.
+      className="grid size-11 place-items-center text-muted-foreground transition-colors hover:text-foreground"
     >
       <Settings className="size-5" />
     </button>

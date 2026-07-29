@@ -190,7 +190,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
       {/* The question's note. Three surfaces: the terminal-editing banner (everything locked), the
           attached-note card with edit/remove, or the add-note affordance — plus our own editor. */}
       {terminalEditing ? (
-        <div className="rounded-lg border border-dashed border-yellow-500/50 px-3 py-2 text-xs text-yellow-500">
+        <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
           Note is being edited in the terminal — controls resume when it closes.
           {preview.note.text ? <span className="text-muted-foreground"> ({preview.note.text})</span> : null}
         </div>

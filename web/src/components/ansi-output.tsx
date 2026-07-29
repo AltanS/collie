@@ -68,9 +68,33 @@ export interface AnsiOutputProps {
 // (no needless effect re-runs / parent count updates while find is closed).
 const NO_MATCHES: FindMatch[] = [];
 
+// The mirror is always authored in DARK space, and light mode inverts it. See
+// .adr/0002-invert-the-light-terminal-mirror.md — in short, three of the four harnesses emit
+// overwhelmingly truecolor (opencode 100%, pi 89%, claude 79%), and truecolor names an absolute
+// colour no palette can re-theme. Rendering it unchanged on white leaves most of an agent's output
+// under 2:1.
+//
+// The colours here are LITERAL dark-space values rather than theme tokens. That is a CONVENTION,
+// not a constraint: `color-scheme: dark` on this element DOES flip an inherited light-dark() token
+// (resolution is element-scoped, per spec), and these literals are byte-exact matches for
+// --background / --foreground / --muted-foreground's dark halves, so either spelling renders the
+// same pixels. Literals win because they sit beside the truecolor an agent emits — which nothing
+// can re-theme — and say at the point of use that the value is deliberately theme-independent.
+// What matters is that the mirror never mixes the two (ADR 0002, rule 2).
+//
+// `color-scheme: dark` still earns its place for native UI inside the pre (the x-overflow
+// scrollbar, selection), which the filter then maps to light along with everything else.
+//
+// Scoped to the <pre> deliberately: the interactive blocks (prompt/wizard/preview/multi-select) are
+// siblings, not children, so they keep normal app theming and never invert.
+const MIRROR_SPACE = "[color-scheme:dark] bg-[#0a0a0a] text-[#fafafa]";
+const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]";
+
 function preClass(wrap: boolean, className?: string): string {
   return cn(
     "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
+    MIRROR_SPACE,
+    MIRROR_INVERT,
     wrap
       ? "whitespace-pre-wrap break-words"
       : // Horizontal pan for wide TUI tables. `overflow-x-auto` forces `overflow-y` to compute to
@@ -161,12 +185,12 @@ export const AnsiOutput = memo(function AnsiOutput({
     currentRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
   }, [currentMatch, matches]);
 
-  // Muted = box-drawing / rule glyphs. Use muted-foreground (readable on dark) and drop ANSI dim
-  // opacity so table borders stay visible — var(--border) + dim made them nearly invisible on mobile.
+  // Muted = box-drawing / rule glyphs. Drop ANSI dim opacity so table borders stay visible —
+  // var(--border) + dim made them nearly invisible on mobile. #a1a1a1 is --muted-foreground's dark
+  // half, written literally to match MIRROR_SPACE above — everything inside the pre is dark-space,
+  // and the mirror keeps one spelling throughout (ADR 0002, rule 2).
   const styleFor = (s: AnsiSegment): CSSProperties =>
-    s.muted
-      ? { ...s.style, color: "var(--muted-foreground)", fontWeight: 400, opacity: 1 }
-      : s.style;
+    s.muted ? { ...s.style, color: "#a1a1a1", fontWeight: 400, opacity: 1 } : s.style;
 
   const prompt = promptBlock ? (
     <PromptSelectBlock
@@ -254,7 +278,21 @@ export const AnsiOutput = memo(function AnsiOutput({
                       data-find-match={isCurrent ? "current" : "other"}
                       className={cn(
                         "rounded-[2px]",
-                        isCurrent ? "bg-yellow-400 text-black" : "bg-yellow-400/30",
+                        // Asymmetric on purpose, and the asymmetry is the whole subtlety.
+                        //
+                        // The CURRENT match re-applies the mirror's filter to cancel it, because
+                        // otherwise yellow-400 comes out of invert+hue-rotate as a dark brown that
+                        // reads as a redaction bar. It can do that safely only because `text-black`
+                        // pins its text: black → inner invert → white → outer invert → black.
+                        //
+                        // A non-current match sets no text colour, so its text is INHERITED from
+                        // the segment — dark-space, i.e. light. Double-inverting sends it
+                        // light → dark → light and it lands light-on-light, erasing the very text
+                        // you searched for. So the others take the plain single inversion, which
+                        // renders them as a pale tan wash with the mapped text still on top.
+                        isCurrent
+                          ? cn(MIRROR_INVERT, "bg-yellow-400 text-black")
+                          : "bg-yellow-400/30",
                       )}
                     >
                       {p.text}

@@ -70,7 +70,7 @@ export function CommandPalette({ open, onClose, agent, onInsert, onSubmit }: Com
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={`Search ${all.length} commands…`}
-          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring"
         />
       </div>
 

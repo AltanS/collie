@@ -46,7 +46,7 @@ export function BuildStamp({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "text-center text-[11px] leading-relaxed text-muted-foreground/70",
+        "text-center text-[11px] leading-relaxed text-muted-foreground",
         className,
       )}
     >

@@ -1,5 +1,5 @@
 # Dependencies
-node_modules/
+node_modules
 .pnp
 .pnp.*
 
@@ -43,3 +43,6 @@ Thumbs.db
 # the fix commit and its CHANGELOG line are the durable record.
 .screenshot-bugs/
 docs/bugs/
+
+# Local tooling scratch (browser-automation captures)
+.playwright-mcp/

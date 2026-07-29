@@ -50,6 +50,21 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
   text and consume the Enter with both calls reporting success. Anything that needs delivery
   *confirmed* must read the pane back and look (`web/src/lib/reply-action.ts`).
 
+> **Herdr answers no `OSC 10` / `OSC 11` background query, and relays SGR verbatim** (live-probed
+> 2026-07-29 in a pane running a raw-mode `stty` probe: both queries returned nothing).
+>
+> Two things follow, and both matter to anything that renders pane output:
+> - **A harness that asks what background it is on gets no answer and falls back to dark.** Codex
+>   emits both queries at startup; with no reply its output is dark-authored (`#f6e2b7`, `#abdfa7` —
+>   L=0.774 and 0.642, light values that only make sense on a dark ground). Collie cannot answer
+>   either: it reads a rendered buffer downstream of the PTY, so the negotiation happens between the
+>   harness and herdr on a channel Collie does not own.
+> - **Herdr does not rewrite escape codes into its own theme.** `format:"ansi"` returns what the
+>   program wrote — `\x1b[38;5;1m` stays a palette index, never a resolved RGB. So herdr's
+>   `[theme]` setting governs how *herdr's own UI* paints a pane, not what a client receives, and the
+>   same palette-index colour can legitimately differ between the desktop TUI and Collie (which
+>   applies its own 16-slot table). See [`.adr/0002`](./.adr/0002-invert-the-light-terminal-mirror.md).
+
 ## `session.snapshot` — one RPC, the whole herd (new in 0.7.2)
 
 `session.snapshot` `{}` → `{"type":"session_snapshot","snapshot":{...}}`. One-shot like every RPC —
