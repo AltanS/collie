@@ -77,13 +77,19 @@ resolve_bun() {
 BUN="$(resolve_bun)"
 # Put it on PATH too, not just in $BUN: this script shells out to a bare `bun` (the Tailscale
 # ownership probe), and `bun run build` spawns children that expect to find it themselves.
-if [ -n "$BUN" ]; then
-  BUN_DIR="$(dirname "$BUN")"
-  case ":${PATH}:" in
-    *":${BUN_DIR}:"*) ;;
-    *) PATH="${BUN_DIR}:${PATH}"; export PATH ;;
-  esac
-fi
+#
+# ABSOLUTE paths only. `command -v` reports a shell function or alias as a bare word, and the plugin
+# .env is sourced above us — so a `bun()` defined there would resolve to `bun`, whose dirname is `.`,
+# and we'd prepend the CWD to the PATH used for every later `git` / `systemctl` / `tailscale`.
+case "$BUN" in
+  /*)
+    BUN_DIR="$(dirname "$BUN")"
+    case ":${PATH}:" in
+      *":${BUN_DIR}:"*) ;;
+      *) PATH="${BUN_DIR}:${PATH}"; export PATH ;;
+    esac
+    ;;
+esac
 WEB_DIST="${PLUGIN_ROOT}/web/dist/index.html"
 
 have_systemd() { command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; }
