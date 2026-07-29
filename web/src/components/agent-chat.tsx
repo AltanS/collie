@@ -734,7 +734,7 @@ export function AgentChat({
               vanish with the stripped input box). Sits directly above the composer, as it did in the
               TUI. Verbatim text — a React text node, so no XSS surface. */}
           {statusLine && (
-            <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground/80">
+            <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground">
               {statusLine}
             </div>
           )}
