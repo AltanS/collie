@@ -98,9 +98,16 @@ const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]"
 // `py-[0.35em]` is the tap target, and it is free: vertical padding on an INLINE box doesn't grow
 // the line box, so the mirror's height and the terminal grid are identical with or without it
 // (measured: same <pre> height either way) while the hit area goes from ~14px to ~22px on a phone.
-// It must stay em-relative and small. The pad is invisible, so if it ever reached the neighbouring
-// line's centre a tap on ordinary text would silently open a link; at 0.35em the box stays inside
-// the 1.25 line-height at every font size the A+/A− control offers. Don't convert it to a px value.
+// It must stay em-relative and small, and the reason is NOT that the padded box fits the line box —
+// it doesn't: ~14px of content plus 2x4.2px of padding is ~22px against a 15px line advance, so it
+// overlaps its neighbours by design. Two things make that safe, and both must hold:
+//   1. The pad never reaches the neighbouring line's CENTRE at any size the A+/A- control offers.
+//      A px value tuned for 12px text would, at the 9px floor — and a tap on ordinary output would
+//      silently open a link. This is why it stays em-relative.
+//   2. Where the overlap does cover the next line's text, that line's spans come later in DOM order
+//      and win inline hit-testing, so a tap on visible text goes to the text. Only empty space
+//      beside a link can bleed to the anchor.
+// Don't convert it to a px value, and don't "fix" it to fit the line box — that would undo (1).
 const LINK_CLASS =
   "underline decoration-1 underline-offset-2 break-all cursor-pointer py-[0.35em]";
 

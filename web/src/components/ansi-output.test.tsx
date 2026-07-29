@@ -108,7 +108,9 @@ describe("clickable links in the mirror", () => {
   // The tap-target pad must scale with the font-size control. jsdom has no layout, so this can only
   // guard the unit — but the unit is the whole point: a px pad tuned for 12px text reaches past the
   // neighbouring line's centre at 9px (the A− floor), and a tap on ordinary output opens a link.
-  // Measured in Chrome at 9/12/16px: the padded box stays inside the 1.25 line-height at all three.
+  // The padded box deliberately OVERLAPS its neighbours (~22px against a 15px line advance); what
+  // must hold is that it never reaches the neighbouring line's centre, which only an em value keeps
+  // true across the A+/A- range. See the LINK_CLASS comment for the full argument.
   it("sizes the link tap target in em, never px", () => {
     const a = mirror({ text: "https://herdr.dev\n" }).querySelector("a")!;
     expect(a.className).toContain("py-[0.35em]");
