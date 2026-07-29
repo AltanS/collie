@@ -6,6 +6,19 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.21.0] - 2026-07-29
+
+### Added
+- **URLs in the pane mirror are tappable** — `http(s)://` text becomes a link that opens in a new tab, keeping the agent's own colour and marked by a blue underline (7c1af48)
+- A find hit inside a URL still highlights; a URL that changes colour mid-way stays one link (7c1af48)
+- Trailing prose punctuation is trimmed, paren balance respected — `Fetch(https://x.dev/a)` links the URL, not the paren (7c1af48)
+
+### Changed
+- Link tap targets are `0.35em` taller than the text without moving the terminal grid — 14px is too small to hit on a phone (7c1af48)
+
+### Fixed
+- Nothing but `http(s)` can become a link — `javascript:`/`data:` are unmatchable, not filtered, and a stray control byte can't reach an href (7c1af48)
+
 ## [0.20.0] - 2026-07-29
 
 ### Added
