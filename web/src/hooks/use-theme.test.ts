@@ -1,9 +1,9 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
-import type { Theme, UseThemeReturn } from "./use-theme";
+import type { UseThemeReturn } from "./use-theme";
 
-// use-theme keeps its state at module scope (so the header button and the settings control agree,
-// and so the OS listener outlives the idle lock unmounting the router). Tests therefore re-import
+// use-theme keeps its state at module scope (so every reader of the preference agrees, and so the
+// OS listener outlives the idle lock unmounting the router). Tests therefore re-import
 // the module per case rather than resetting a hook instance.
 //
 // The shared matchMedia stub in test/setup.ts hands back a discard `addEventListener`, which can
@@ -160,19 +160,6 @@ describe("theme cycling and class teardown", () => {
     act(() => result.current.setTheme("light"));
     expect(classes()).toEqual(["light"]);
     expect(localStorage.getItem(STORAGE_KEY)).toBe("light");
-  });
-
-  it("cycles system → light → dark → system", async () => {
-    const { useTheme } = await bootstrap(null);
-    const { renderHook, act } = await import("@testing-library/react");
-    const { result } = renderHook(() => useTheme());
-
-    const seen: Theme[] = [result.current.theme];
-    for (let i = 0; i < 3; i++) {
-      act(() => result.current.cycleTheme());
-      seen.push(result.current.theme);
-    }
-    expect(seen).toEqual(["system", "light", "dark", "system"]);
   });
 
   it("tracks an OS flip while on system, and ignores it once pinned", async () => {
