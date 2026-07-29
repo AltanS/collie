@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useMemo, useRef } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { parseAnsi, type AnsiSegment } from "@/lib/ansi";
@@ -15,6 +15,7 @@ import {
 } from "@/lib/blocks";
 import { lineText } from "@/lib/harness/claude/markers";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
+import { findLinks } from "@/lib/links";
 import { PromptSelectBlock } from "@/components/prompt-select-block";
 import { WizardBlock } from "@/components/wizard-block";
 import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
@@ -89,6 +90,21 @@ const NO_MATCHES: FindMatch[] = [];
 const MIRROR_SPACE = "[color-scheme:dark] bg-[#0a0a0a] text-[#fafafa]";
 const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]";
 
+// An autolinked URL keeps the agent's own colour — recolouring it would lie about what the terminal
+// printed — and is marked by an underline in a literal dark-space blue instead. Dark-space and no
+// `dark:` variant, same rule as MIRROR_SPACE: the filter maps #7dd3fc to a darker blue under light
+// mode, so the underline reads as a link in both themes. `break-all` only bites in wrap mode (the
+// default no-wrap <pre> is `whitespace-pre`), where a long URL would otherwise blow out the column.
+//
+// `py-[0.35em]` is the tap target, and it is free: vertical padding on an INLINE box doesn't grow
+// the line box, so the mirror's height and the terminal grid are byte-identical with or without it
+// (measured: same <pre> height either way) while the hit area goes from ~14px to ~22px on a phone.
+// It must stay em-relative and small. The pad is invisible, so if it ever reached the neighbouring
+// line's centre a tap on ordinary text would silently open a link; at 0.35em the box stays inside
+// the 1.25 line-height at every font size the A+/A− control offers. Don't convert it to a px value.
+const LINK_CLASS =
+  "underline decoration-[#7dd3fc] decoration-1 underline-offset-2 break-all cursor-pointer py-[0.35em]";
+
 function preClass(wrap: boolean, className?: string): string {
   return cn(
     "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
@@ -121,9 +137,14 @@ function preClass(wrap: boolean, className?: string): string {
 // blocks → lines → segments so each segment maps back to that same coordinate space. (A find query
 // can't contain a newline, so no match straddles the inter-line separators.)
 //
+// Autolinked URLs (lib/links.ts) live in that SAME coordinate space and are applied over the raw
+// blocks too, as anchors wrapping the find-highlighted runs. Only `http(s)://` text becomes a link,
+// and the href is the matched text itself — no scheme can appear that wasn't printed by the agent.
+//
 // Performance: parseAnsi + block-building run once per unique `text` (and `agent`) value (useMemo),
-// and React.memo prevents re-renders when props are unchanged — critical for the polling cadence on
-// mobile. When not searching (`query` empty) the render skips splitSegment entirely.
+// as does the link scan; React.memo prevents re-renders when props are unchanged — critical for the
+// polling cadence on mobile. With no query and no links the render skips splitSegment entirely and
+// emits the segment's own string, exactly as the pre-find flat renderer did.
 export const AnsiOutput = memo(function AnsiOutput({
   text,
   className,
@@ -174,6 +195,10 @@ export const AnsiOutput = memo(function AnsiOutput({
     return findMatches(haystack, query);
   }, [haystack, query]);
 
+  // Autolinked URLs, in the SAME offset space as find matches — both are ranges over `haystack`, so
+  // one running offset serves both splits. Recomputed only when the mirror text changes.
+  const links = useMemo(() => findLinks(haystack), [haystack]);
+
   useEffect(() => {
     onMatchCount?.(matches.length);
   }, [matches, onMatchCount]);
@@ -217,41 +242,68 @@ export const AnsiOutput = memo(function AnsiOutput({
     />
   ) : null;
 
-  // Fast path — not searching. No global offsets, no splitSegment: one plain span per segment, with
-  // "\n" text nodes between lines (and between raw blocks). Identical DOM text to the pre-blocks render.
-  if (matches.length === 0) {
-    return (
-      <>
-        {rawBlocks.length > 0 && (
-          <pre className={preClass(wrap, className)} style={{ fontSize: `${fontSize}px` }}>
-            {rawBlocks.map((block, bi) => (
-              <Fragment key={bi}>
-                {bi > 0 ? "\n" : null}
-                {block.lines.map((line, li) => (
-                  <Fragment key={li}>
-                    {li > 0 ? "\n" : null}
-                    {line.segments.map((s, si) => (
-                      <span key={si} style={styleFor(s)}>
-                        {s.text}
-                      </span>
-                    ))}
-                  </Fragment>
-                ))}
-              </Fragment>
-            ))}
-          </pre>
-        )}
-        {prompt}
-      </>
-    );
-  }
-
-  // Highlight path. Thread a running global offset through raw blocks → lines → segments (advancing
-  // by 1 for each inter-line/inter-block "\n" separator) so splitSegment can tag each segment's
-  // slices with the global match index. `currentAssigned` refs only the first slice of the focused
-  // match (a match can span segments on a colour change) so scrollIntoView targets one stable node.
+  // Thread a running global offset through raw blocks → lines → segments (advancing by 1 for each
+  // inter-line/inter-block "\n" separator) so both splits below can map a segment's slices back to
+  // the haystack. With no query and no links this costs one addition per segment and allocates
+  // nothing beyond the spans — the polling path stays as cheap as the old flat render.
   let offset = 0;
   let currentAssigned = false;
+
+  // A run of plain text at global offset `start` → nodes, with find matches split out and
+  // highlighted. `currentAssigned` refs only the first slice of the focused match (a match can span
+  // segments on a colour change) so scrollIntoView targets one stable node.
+  const renderFind = (text: string, start: number): ReactNode => {
+    if (matches.length === 0) return text;
+    return splitSegment(text, start, matches).map((p, j) => {
+      if (p.matchIndex === null) return p.text;
+      const isCurrent = p.matchIndex === currentMatch;
+      const attach = isCurrent && !currentAssigned;
+      if (attach) currentAssigned = true;
+      return (
+        <span
+          key={j}
+          ref={attach ? currentRef : undefined}
+          data-find-match={isCurrent ? "current" : "other"}
+          className={cn(
+            "rounded-[2px]",
+            // Asymmetric on purpose, and the asymmetry is the whole subtlety.
+            //
+            // The CURRENT match re-applies the mirror's filter to cancel it, because otherwise
+            // yellow-400 comes out of invert+hue-rotate as a dark brown that reads as a redaction
+            // bar. It can do that safely only because `text-black` pins its text: black → inner
+            // invert → white → outer invert → black.
+            //
+            // A non-current match sets no text colour, so its text is INHERITED from the segment —
+            // dark-space, i.e. light. Double-inverting sends it light → dark → light and it lands
+            // light-on-light, erasing the very text you searched for. So the others take the plain
+            // single inversion, which renders them as a pale tan wash with the mapped text on top.
+            isCurrent ? cn(MIRROR_INVERT, "bg-yellow-400 text-black") : "bg-yellow-400/30",
+          )}
+        >
+          {p.text}
+        </span>
+      );
+    });
+  };
+
+  // A segment's text → nodes: autolinked URLs as anchors, wrapping find-highlighted runs. Two
+  // splits over one coordinate space, links outermost, so a find hit *inside* a URL still lights up.
+  // A URL that straddles a colour change yields one <a> per segment slice, each with the same href.
+  const renderSegment = (text: string, start: number): ReactNode => {
+    if (links.length === 0) return renderFind(text, start);
+    let at = start;
+    return splitSegment(text, start, links).map((p, i) => {
+      const pieceStart = at;
+      at += p.text.length;
+      if (p.matchIndex === null) return <Fragment key={i}>{renderFind(p.text, pieceStart)}</Fragment>;
+      return (
+        <a key={i} href={links[p.matchIndex]!.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+          {renderFind(p.text, pieceStart)}
+        </a>
+      );
+    });
+  };
+
   const renderBlock = (block: RawBlock, bi: number) => {
     if (bi > 0) offset += 1; // the "\n" separating this block from the previous
     return (
@@ -262,42 +314,9 @@ export const AnsiOutput = memo(function AnsiOutput({
           const segNodes = line.segments.map((s, si) => {
             const segStart = offset;
             offset += s.text.length;
-            const pieces = splitSegment(s.text, segStart, matches);
             return (
               <span key={si} style={styleFor(s)}>
-                {pieces.map((p, j) => {
-                  if (p.matchIndex === null) return p.text;
-                  const isCurrent = p.matchIndex === currentMatch;
-                  const attach = isCurrent && !currentAssigned;
-                  if (attach) currentAssigned = true;
-                  return (
-                    <span
-                      key={j}
-                      ref={attach ? currentRef : undefined}
-                      data-find-match={isCurrent ? "current" : "other"}
-                      className={cn(
-                        "rounded-[2px]",
-                        // Asymmetric on purpose, and the asymmetry is the whole subtlety.
-                        //
-                        // The CURRENT match re-applies the mirror's filter to cancel it, because
-                        // otherwise yellow-400 comes out of invert+hue-rotate as a dark brown that
-                        // reads as a redaction bar. It can do that safely only because `text-black`
-                        // pins its text: black → inner invert → white → outer invert → black.
-                        //
-                        // A non-current match sets no text colour, so its text is INHERITED from
-                        // the segment — dark-space, i.e. light. Double-inverting sends it
-                        // light → dark → light and it lands light-on-light, erasing the very text
-                        // you searched for. So the others take the plain single inversion, which
-                        // renders them as a pale tan wash with the mapped text still on top.
-                        isCurrent
-                          ? cn(MIRROR_INVERT, "bg-yellow-400 text-black")
-                          : "bg-yellow-400/30",
-                      )}
-                    >
-                      {p.text}
-                    </span>
-                  );
-                })}
+                {renderSegment(s.text, segStart)}
               </span>
             );
           });
