@@ -1,0 +1,10 @@
+# Supply-chain cooldown. A dependency version must have been on the registry for at least this long
+# before we will install it — the window in which a compromised release is typically caught and
+# unpublished. It applies to fresh resolutions (`bun add`, `bun update`, an unlocked install), not to
+# `--frozen-lockfile`, which installs exactly what the lockfile already pins.
+#
+# Bun does NOT read npm's `min-release-age` from .npmrc; this file is what actually enforces it here,
+# and `web/bunfig.toml` carries the same setting because web/ has its own lockfile and is installed
+# from its own directory. Keep the two in sync.
+[install]
+minimumReleaseAge = 604800 # 7 days, in seconds
