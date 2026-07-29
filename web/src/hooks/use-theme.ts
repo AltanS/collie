@@ -22,8 +22,11 @@ export type ResolvedTheme = "light" | "dark";
 const STORAGE_KEY = "collie:theme:v1";
 const DEFAULT: Theme = "system";
 
-/** Browser chrome — Android's URL bar and task-switcher card. Mirrors --background. */
-const META_COLOR: Record<ResolvedTheme, string> = { light: "#ffffff", dark: "#0a0a0a" };
+/** Browser chrome — Android's URL bar and task-switcher card. These are --background's two halves
+ *  rasterized: oklch(0.97) is rgb(245,245,245) and oklch(0.145) is rgb(10,10,10). Not #ffffff for
+ *  light — the page is a step off white on purpose (index.css), and a pure-white URL bar above it
+ *  shows the seam. Re-measure these if --background moves. */
+const META_COLOR: Record<ResolvedTheme, string> = { light: "#f5f5f5", dark: "#0a0a0a" };
 
 /** Read the pin. BARE string, not JSON — public/theme-init.js does the same strict compare before
  *  first paint, and JSON.stringify would write `"dark"` with the quotes and silently break it. */

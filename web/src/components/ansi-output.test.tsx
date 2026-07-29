@@ -20,10 +20,10 @@ describe("terminal mirror colour space", () => {
     expect(pre.className).toContain("dark:[filter:none]");
   });
 
-  // The bug this exists to prevent: `bg-background` looks like the tidy, idiomatic choice, but an
-  // inherited light-dark() token resolves against the ROOT's colour-scheme, not this element's — so
-  // on a light page it yields white, which the filter then inverts to black. A black mirror on a
-  // white app, and every test that only checks computed styles still passes.
+  // Guards the ONE-SPELLING half of ADR 0002 rule 2. `bg-background` would in fact work here — an
+  // inherited light-dark() token resolves against THIS element's colour-scheme (dark), not the
+  // root's — but the mirror deliberately keeps a single spelling so nobody has to know that to read
+  // it. Mixing the two is the regression this catches; a computed-style test would not.
   it("uses literal dark-space colours, never theme tokens", () => {
     const pre = mirror("hello");
     expect(pre.className).toContain("bg-[#0a0a0a]");

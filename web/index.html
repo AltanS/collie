@@ -13,7 +13,7 @@
     <script src="/theme-init.js"></script>
     <!-- Browser chrome follows the OS for System users. useTheme rewrites these at runtime for
          someone who has pinned the opposite of their OS. -->
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -52,9 +52,12 @@
         align-items: center;
         justify-content: center;
         gap: 0.75rem;
-        /* Matches --background / --muted-foreground so the hand-off to React is seamless. */
-        background: light-dark(#ffffff, #0a0a0a);
-        color: light-dark(#8a8a8a, #a1a1a1);
+        /* --background / --muted-foreground rasterized, because index.css has not loaded yet:
+           oklch(0.97)/oklch(0.48) light, oklch(0.145)/oklch(0.708) dark. The light pair used to be
+           #ffffff/#8a8a8a, which is neither token — the page stepped from white to rgb(245) on
+           hand-off to React, and the caption sat at 3.45:1. Keep in step with index.css. */
+        background: light-dark(#f5f5f5, #0a0a0a);
+        color: light-dark(#5d5d5d, #a1a1a1);
         font: 500 0.875rem/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       .boot-splash__dog {
