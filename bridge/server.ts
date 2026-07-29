@@ -16,7 +16,10 @@ import { herdTagFor, type SessionRegistry } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import type { UpdateMonitor } from "./update.ts";
 import type { StateEngine } from "./state-engine.ts";
-import { ClaudeTranscriptSource, TranscriptStore } from "./transcript.ts";
+import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
+import { TranscriptStore } from "./journal/store.ts";
+import type { JournalAdapter } from "./journal/types.ts";
+import { toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -106,12 +109,14 @@ export function startServer(opts: {
   audit: AuditLog;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit } = opts;
-  // One transcript store for the process: it caches parsed session logs across requests, and the
-  // cache is keyed by absolute path, so sharing it across herdr sessions is correct (two sessions
-  // can front panes whose agents write into the same ~/.claude/projects root).
-  const transcripts = cfg.transcript
-    ? new TranscriptStore(new ClaudeTranscriptSource(cfg.transcriptRoot))
-    : null;
+  // One journal registry + store for the process. The store's cache is keyed by absolute path, so
+  // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
+  // whose agents write into the same root. Which harnesses have journals at all is decided in
+  // journal/registry.ts, never here.
+  const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
+  const transcripts = cfg.transcript ? new TranscriptStore() : null;
+  /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
+  const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
   // Per-session background notifications live in each session's runtime (built by the factory in
   // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
   // snooze-clears across every live session's coordinator.
@@ -149,8 +154,12 @@ export function startServer(opts: {
             bridge,
             // Only report device state when the feature is on, so an off deployment sends nothing new.
             ...(device.enforced ? { device } : {}),
-            agents,
-            shellPanes,
+            // The one place a pane leaves the bridge: the session ref is stripped to a presence flag
+            // here, so an agent-reported filesystem path never reaches a browser (see toPaneWire).
+            // The flag is computed against the registry, so a harness Herdr detects but Collie has no
+            // journal for doesn't advertise a History button that can only ever come back empty.
+            agents: agents.map((p) => toPaneWire(p, hasJournal)),
+            shellPanes: shellPanes.map((p) => toPaneWire(p, hasJournal)),
             workspaces,
             tabs,
             sessions: registry.list(),
@@ -211,7 +220,7 @@ export function startServer(opts: {
 
         if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
         if (action === "history" && req.method === "GET")
-          return paneHistory(cfg, transcripts, rt.engine, paneId, url, req);
+          return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
         if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
@@ -444,14 +453,16 @@ export function historyParams(url: URL): { limit: number; before?: string } {
 }
 
 /**
- * GET /api/pane/:id/history — the conversation history a Claude pane's terminal cannot provide.
+ * GET /api/pane/:id/history — the conversation history the pane's terminal cannot provide.
  *
- * The session id is resolved HERE, from the live snapshot, keyed by pane id — the client never sends
+ * The session ref is resolved HERE, from the live snapshot, keyed by pane id — the client never sends
  * one. That is the whole safety story for a route that reads files: the only client-controlled inputs
- * are a pane id (a Map lookup) and an opaque cursor (an array lookup).
+ * are a pane id (a Map lookup) and an opaque cursor (an array lookup). Which harness knows how to
+ * read the log is the registry's decision, so this route stays agent-agnostic.
  */
 async function paneHistory(
   cfg: Config,
+  journals: Record<string, JournalAdapter> | null,
   transcripts: TranscriptStore | null,
   engine: StateEngine,
   paneId: string,
@@ -462,16 +473,20 @@ async function paneHistory(
   const unavailable = (reason: "disabled" | "no-session" | "no-log") =>
     json({ paneId, available: false, reason } satisfies PaneHistoryResponse, accept);
 
-  if (!cfg.transcript || transcripts === null) return unavailable("disabled");
+  if (!cfg.transcript || transcripts === null || journals === null) return unavailable("disabled");
 
   const { agents, shellPanes } = engine.current();
   const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
-  // No pane, or an agent that reported no id-kind session (a shell, or a harness that doesn't keep
-  // one): there is nothing to read, and that's an ordinary answer rather than an error.
-  if (!pane?.agentSessionId) return unavailable("no-session");
+  // No pane, or an agent that named no session (a shell, or a harness whose integration isn't
+  // installed): nothing to read, and that's an ordinary answer rather than an error.
+  if (!pane?.agentSession) return unavailable("no-session");
+  // An agent with no adapter has no journal. Same answer — the UI shouldn't distinguish "this
+  // harness isn't supported" from "this pane never started one"; both mean there's nothing to show.
+  const adapter = adapterFor(journals, pane.agent);
+  if (adapter === undefined) return unavailable("no-session");
 
   try {
-    const page = await transcripts.page(pane.agentSessionId, historyParams(url));
+    const page = await transcripts.page(adapter, pane.agentSession, historyParams(url));
     if (page === null) return unavailable("no-log");
     return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
   } catch (err) {
