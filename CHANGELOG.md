@@ -6,6 +6,24 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.23.0] - 2026-07-29
+
+Two dialog shapes that fell through to the raw mirror — a phone-width wall of terminal text with
+nothing to tap — now lift into buttons. Both were the same root mistake: a grammar asserting a
+layout instead of reading it.
+
+### Added
+- **A multiSelect question inside a multi-question wizard is now answerable** — checkbox steps under an N-question stepper were owned by no grammar at all (`wizard` correctly refuses them, because a wizard digit selects-and-advances while a checkbox digit only toggles). The multi-select grammar now carries the wizard's step chips, navigates between questions with the same Left/Right keys, and reads the advance row's **literal** label — `Next` on every step but the last, `Submit` on the last
+- Fixtures for the whole flow, captured from a real two-question dialog driven end to end in a sandbox pane
+
+### Fixed
+- **A question whose option label wrapped never lifted into buttons** — the preview grammar required the numbered rows to be on consecutive lines, but the ~30-column left gutter wraps any longer label onto continuation rows. Labels are now rejoined across their wrapped rows, with the label column telling a wrapped line from a new option, so a label ending "…and 3. Backfill later" can't mint a phantom third button
+- The preview grammar bails past 9 options, as the single-select grammar already did — a two-key digit is unsendable, so the button would render and then fail on tap
+
+### Changed
+- The multi-select "Submit" intent is now `advance`, and the stepper strip is one shared component — all three dialogs that show one (wizard, preview, multi-select) render it from the same place instead of three hand-rolled copies
+- The stepper says which question you are on out loud, and its chevrons carry a 44px hit area; the advance control's name lives on the attribute, since the same button is renamed "Next" → "Submit" under a user who may already have it focused
+
 ## [0.22.0] - 2026-07-29
 
 The "Switch pane" sheet, reworked for a herd that outgrew it, then put through three adversarial UX
