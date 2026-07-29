@@ -24,11 +24,16 @@ export interface AgentView {
    */
   sessionName?: string;
   /**
-   * The agent's own session id, when it reported one. Its presence is what tells the UI a transcript
-   * may exist for this pane, so the History affordance shows without a speculative fetch. Opaque
-   * here — the bridge re-derives it server-side and never accepts one from the client.
+   * True when the agent named a session, so a journal may exist for this pane — what the History
+   * affordance keys off, without a speculative fetch.
+   *
+   * A FLAG, not the session itself: the bridge keeps the reference server-side and re-derives it from
+   * the pane id on every history request, because for some harnesses (pi) that reference is an
+   * absolute filesystem path. It never accepts one from the client. "May exist" is the honest
+   * reading — an agent can name a session whose log isn't readable, which the history endpoint
+   * answers with `available:false, reason:"no-log"`.
    */
-  agentSessionId?: string;
+  hasSession?: boolean;
   /**
    * Upper bound on the lines a pane read can return (Herdr's scrollback depth + viewport). The only
    * reliable "is there more scrollback" signal — `PaneReadResponse.truncated` is always false even

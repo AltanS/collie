@@ -447,13 +447,13 @@ describe("AgentChat — shared header: stale-status dimming", () => {
 // lead to an empty screen.
 describe("AgentChat — history affordance", () => {
   it("is offered when the pane reports an agent session id", () => {
-    const agent = { ...fixtureAgents[0]!, agentSessionId: "d7e62e23-8576-4c63-98ba-ec1b02902c6b" };
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
     renderChat({ agent, agents: [agent] });
     expect(screen.getByRole("button", { name: /conversation history/i })).toBeInTheDocument();
   });
 
   it("is hidden when the pane has no agent session (a shell, or a harness without one)", () => {
-    renderChat(); // fixture agents carry no agentSessionId
+    renderChat(); // fixture agents carry no session
     expect(screen.queryByRole("button", { name: /conversation history/i })).not.toBeInTheDocument();
   });
 
@@ -462,7 +462,7 @@ describe("AgentChat — history affordance", () => {
   //
   // (The top-of-mirror affordance is covered separately below.)
   it("sits to the LEFT of the status pill", () => {
-    const agent = { ...fixtureAgents[0]!, agentSessionId: "d7e62e23-8576-4c63-98ba-ec1b02902c6b" };
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
     renderChat({ agent, agents: [agent] });
     const history = screen.getByRole("button", { name: /conversation history/i });
     const pill = screen.getByText("needs you"); // fixtureAgents[0] is blocked → "needs you"
@@ -476,13 +476,12 @@ describe("AgentChat — history affordance", () => {
 // working signal is `readableLines` (scrollback depth + viewport), and which button appears is
 // decided by what the pane can actually offer — the two are never simultaneously possible.
 describe("AgentChat — top-of-mirror history affordance", () => {
-  const SESSION_ID = "d7e62e23-8576-4c63-98ba-ec1b02902c6b";
   const showHistory = () => screen.queryByRole("button", { name: /show entire history/i });
   const loadOlder = () => screen.queryByRole("button", { name: /load older/i });
 
   it("an agent pane with a transcript offers the full history, not scrollback paging", () => {
     // A Claude pane: alt-screen, so readableLines is just its viewport — there IS no scrollback.
-    const agent = { ...fixtureAgents[0]!, agentSessionId: SESSION_ID, readableLines: 51 };
+    const agent = { ...fixtureAgents[0]!, hasSession: true, readableLines: 51 };
     renderChat({ agent, agents: [agent], requestedLines: 600 });
     expect(showHistory()).toBeInTheDocument();
     expect(loadOlder()).not.toBeInTheDocument();
@@ -517,7 +516,7 @@ describe("AgentChat — top-of-mirror history affordance", () => {
   });
 
   it("a transcript wins even when the pane also reports scrollback", () => {
-    const agent = { ...fixtureAgents[0]!, agentSessionId: SESSION_ID, readableLines: 6946 };
+    const agent = { ...fixtureAgents[0]!, hasSession: true, readableLines: 6946 };
     renderChat({ agent, agents: [agent], requestedLines: 600 });
     expect(showHistory()).toBeInTheDocument();
     expect(loadOlder()).not.toBeInTheDocument();

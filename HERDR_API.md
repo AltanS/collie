@@ -200,6 +200,21 @@ Two sibling structural ops reorder objects. Both live-verified 2026-07-20 on the
 
 `agent_status` ∈ `idle | working | blocked | done | unknown`. Panes without an agent omit/null `agent`.
 
+> **`agent_session` has TWO kinds, and it can outlive the agent that reported it** (live-verified
+> 2026-07-29 against claude, codex and pi panes). Each harness's herdr integration reports through
+> `pane.report_agent_session`, and what it reports differs:
+> - `kind:"id"` + a uuid — claude (`source:"herdr:claude"`) and codex (`source:"herdr:codex"`, from
+>   codex's `SessionStart` hook; verified on codex 0.145.0).
+> - `kind:"path"` + an **absolute path to the log file** — pi (`source:"herdr:pi"`). pi's integration
+>   prefers `agent_session_path` over an id whenever its session manager has a file open.
+>
+> Two consequences. A harness only reports at all once `herdr integration install <agent>` has been
+> run — pi's was missing on this host and the pane simply carried no session of its own. And Herdr
+> keeps reporting the LAST session announced for a pane, so relaunching a pane's agent as a different
+> harness leaves the previous one's ref behind: a pane running `pi` was observed still advertising a
+> `herdr:claude` id. The record's own `agent` field is what distinguishes the two — compare it against
+> the pane's `agent` before trusting the ref (`bridge/state-engine.ts`).
+
 > **Pane records now carry `scroll`** (new in 0.7.2, live-verified 2026-07-07): `pane.list`,
 > `pane.get`, `pane.current`, and `session.snapshot` panes all include
 > `scroll: {offset_from_bottom, max_offset_from_bottom, viewport_rows} | null` (all `uint64`;
