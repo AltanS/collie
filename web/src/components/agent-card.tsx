@@ -83,7 +83,11 @@ export function AgentCard({
       onClick={onClick}
       className={cn(
         "w-full text-left transition-transform active:scale-[0.99]",
-        flat && "rounded-lg transition-colors hover:bg-muted/50",
+        // No radius on a flat row. These sit in a `divide-y` list, and a rounded hover fill under a
+        // full-width straight hairline reads as a rendering fault — the corners pull away from a
+        // line that doesn't follow them. A radius here would need a real border to belong to; the
+        // rows that DO have one (blocked) keep theirs below.
+        flat && "transition-colors hover:bg-muted/50",
       )}
     >
       <Shell
