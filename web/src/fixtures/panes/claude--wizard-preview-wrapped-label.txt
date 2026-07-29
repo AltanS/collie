@@ -1,0 +1,40 @@
+[0m[38;2;153;153;153m  ⎿  · Which widget design should we use? → (notes only)[0m
+
+[0m[38;2;255;255;255m● [0mYou didn't select any of the three options, but left a note: "prefer thicker borders." Stopping here as requested — let me know if you'd like me to mock up a thick-bordered variant.
+
+[0m[38;2;153;153;153m✻ Cooked for 13s[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mAsk me the exact same AskUserQuestion again (same question, options, descriptions, previews). Do nothing else afterward.[0m[48;2;55;55;55m                                                                                                 [0m
+
+[0m[38;2;255;255;255m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which widget design should we use? → Minimal[0m
+
+[0m[38;2;255;255;255m● [0mYou selected Minimal this time, with a note: "prefer subtle shadows." Stopping here as requested.
+
+[0m[38;2;153;153;153m✻ Churned for 11s[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mNow use AskUserQuestion ONCE with TWO questions in the same tool call: Q1 "Which card layout should we use?" with options Grid, List (short descriptions, and each option MUST have a preview field with a small ASCII [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mmockup). Q2 "Should we add dark mode?" with options Yes, No (short descriptions, NO previews). Not multiSelect. Do nothing else afterward.[0m[48;2;55;55;55m                                                                               [0m
+
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m← [0m[38;2;0;0;0m[48;2;177;185;249m ☐ Card layout  [0m☐ Dark mode  ✔ Submit  →
+
+[0m[1m[38;2;255;255;255mWhich card layout should we use?[0m
+
+[0m[38;2;177;185;249m❯[0m[38;2;153;153;153m 1.[0m[1m[38;2;177;185;249m Grid of equal-width cards    [0m[0m[38;2;153;153;153m┌──────────────────────────────────────────┐[0m
+[0m[1m[38;2;177;185;249m     with a fixed gutter          [0m[0m[38;2;153;153;153m│ [0m+--------+  +--------+[0m[38;2;153;153;153m                   │[0m
+[0m[1m[38;2;177;185;249m     (Recommended)                [0m[0m[38;2;153;153;153m│ [0m| Card 1 |  | Card 2 |[0m[38;2;153;153;153m                   │[0m
+ [0m[38;2;153;153;153m 2.[0m List                         [0m[0m[38;2;153;153;153m│ [0m|  ....  |  |  ....  |[0m[38;2;153;153;153m                   │[0m
+                                  [0m[38;2;153;153;153m│ [0m+--------+  +--------+[0m[38;2;153;153;153m                   │[0m
+                                  [0m[38;2;153;153;153m│ [0m+--------+  +--------+[0m[38;2;153;153;153m                   │[0m
+                                  [0m[38;2;153;153;153m│ [0m| Card 3 |  | Card 4 |[0m[38;2;153;153;153m                   │[0m
+                                  [0m[38;2;153;153;153m│ [0m|  ....  |  |  ....  |[0m[38;2;153;153;153m                   │[0m
+                                  [0m[38;2;153;153;153m│ [0m+--------+  +--------+[0m[38;2;153;153;153m                   │[0m
+                                  [0m[38;2;153;153;153m└──────────────────────────────────────────┘[0m
+
+                                  [0m[38;2;177;185;249mNotes: [0m[3m[38;2;153;153;153mpress n to add notes[0m
+
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · n to add notes · Tab to switch questions · Esc to cancel[0m

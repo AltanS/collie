@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Loader2 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { WizardStepper } from "@/components/wizard-stepper";
 import type { WizardModel, WizardOption } from "@/lib/blocks";
 import { OptionButton, PromptPanel, QuestionHeading } from "@/components/option-button";
 import {
@@ -49,61 +49,23 @@ export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
   // review step are no-ops, so disable those arrows rather than send a keystroke that does nothing.
   // When no chip reads as current (an unknown theme's highlight), both stay enabled — the TUI still
   // clamps, and keeping nav available is the safer degradation.
-  const atFirstQuestion = !review && (wizard.steps[0]?.current ?? false);
   const busyIcon = <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />;
 
   return (
     <PromptPanel ariaLabel={review ? "Review your answers" : wizard.question}>
       {/* Stepper: one chip per question plus the fixed Submit step, flanked by the same back/next
           navigation the TUI drives with ←/→ (each tap sends exactly that one key). */}
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          aria-label="Previous step"
-          disabled={locked || atFirstQuestion}
-          onClick={() => press("back", WIZARD_BACK_KEYS)}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
-        >
-          {sending === "back" ? busyIcon : <ChevronLeft className="size-4" />}
-        </button>
-        <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-          {wizard.steps.map((step, i) => (
-            <li
-              key={i}
-              aria-current={step.current ? "step" : undefined}
-              className={cn(
-                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-tight",
-                step.current
-                  ? "border-primary/60 bg-primary/15 font-medium text-foreground"
-                  : "border-border/60 text-muted-foreground",
-              )}
-            >
-              {step.answered ? <Check className="size-3 shrink-0 text-primary" aria-label="Answered" /> : null}
-              <span className="truncate">{step.label}</span>
-            </li>
-          ))}
-          <li
-            aria-current={review ? "step" : undefined}
-            className={cn(
-              "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-tight",
-              review
-                ? "border-primary/60 bg-primary/15 font-medium text-foreground"
-                : "border-border/60 text-muted-foreground",
-            )}
-          >
-            <span>Submit</span>
-          </li>
-        </ol>
-        <button
-          type="button"
-          aria-label="Next step"
-          disabled={locked || review}
-          onClick={() => press("next", WIZARD_NEXT_KEYS)}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
-        >
-          {sending === "next" ? busyIcon : <ChevronRight className="size-4" />}
-        </button>
-      </div>
+      <WizardStepper
+        steps={wizard.steps}
+        locked={locked}
+        submitCurrent={review}
+        nextDisabled={review}
+        busyBack={sending === "back"}
+        busyNext={sending === "next"}
+        busyIcon={busyIcon}
+        onBack={() => press("back", WIZARD_BACK_KEYS)}
+        onNext={() => press("next", WIZARD_NEXT_KEYS)}
+      />
 
       {wizard.phase === "question" ? (
         <QuestionStep
