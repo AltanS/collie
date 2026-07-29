@@ -104,10 +104,11 @@ the unit name; the Herdr action runs from anywhere.
   `Tab`, `Escape`, `Enter`, `Backspace`. `PageUp`/`Home`/`End`/`Delete` are unsupported.
 - Pane output is rendered as **React text nodes** (never `innerHTML`); the ANSI parser only derives
   colors/weights. Keep it that way — it's the XSS boundary. Strict CSP + same-origin gate stay.
-- **Inside the mirror `<pre>`, author for a dark ground: literal colors, never theme tokens, never a
-  `dark:` variant.** The mirror renders in dark space under every theme and light mode inverts it —
-  [ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md). Both instincts fail *silently* here (a
-  token resolves against the root, then inverts to its opposite); `ansi-output.test.tsx` guards it.
+- **Inside the mirror `<pre>`, author for a dark ground: literal colors, never a `dark:` variant.**
+  The mirror renders in dark space under every theme and light mode inverts it —
+  [ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md). A `dark:` variant there tracks the
+  root theme and is backwards in inverted space; literals-not-tokens is a one-spelling convention,
+  not a platform limit (rule 2). `ansi-output.test.tsx` guards both.
 
 ## Security posture (don't regress)
 
