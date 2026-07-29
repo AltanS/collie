@@ -346,8 +346,14 @@ export class ClaudeTranscriptSource implements TranscriptSource {
       try {
         const st = await stat(candidate);
         if (st.mtimeMs <= best.mtimeMs || st.size < self.size) continue;
-        if (conversationRoot(await head(candidate)) !== self.root) continue;
-        best = { path: candidate, size: st.size, mtimeMs: st.mtimeMs };
+        // Containment AGAIN, before a byte of the candidate is read. The directory got here from a
+        // path `resolve` already validated, but a sibling INSIDE it can still be a symlink out of the
+        // root — and anything that writes into the projects tree can plant one. Following it would
+        // read a file the journal never owned, which is exactly what files.ts promises it can't.
+        const real = await containedRealpath(candidate, this.root);
+        if (real === null) continue;
+        if (conversationRoot(await head(real)) !== self.root) continue;
+        best = { path: real, size: st.size, mtimeMs: st.mtimeMs };
       } catch {
         continue; // unreadable sibling — ignore it rather than fail the whole read
       }
