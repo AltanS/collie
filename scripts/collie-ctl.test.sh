@@ -486,6 +486,66 @@ EOF
   esac
 }
 
+# `bootout` doesn't promise to wait for the job to finish tearing down, and the bridge drains
+# connections on SIGTERM — so `restart` (and therefore `update`) can reach `bootstrap` while the old
+# job is still going, which launchd answers with "Bootstrap failed: 5: Input/output error". Unretried
+# under set -e that leaves the bridge DOWN, which is the outage the whole launchd branch removes.
+# `sleep` is stubbed out, so this asserts the retry without paying for it.
+test_launchd_bootstrap_retries() {
+  setup_case launchd-bootstrap-retry
+  # A launchctl whose `bootstrap` fails until it has been called more than $1 times.
+  install_flaky_launchctl() {
+    cat > "${BIN_DIR}/launchctl" <<EOF
+#!/bin/sh
+echo "\$@" >> "$LAUNCHCTL_CALLS"
+[ "\$1" = bootstrap ] || exit 0
+n=\$(cat "${CASE_DIR}/bootstrap.count" 2>/dev/null || echo 0)
+n=\$((n + 1)); echo "\$n" > "${CASE_DIR}/bootstrap.count"
+[ "\$n" -gt $1 ] && exit 0
+echo "Bootstrap failed: 5: Input/output error" >&2
+exit 5
+EOF
+    chmod +x "${BIN_DIR}/launchctl"
+    rm -f "${CASE_DIR}/bootstrap.count" "$LAUNCHCTL_CALLS"
+  }
+
+  local harness="${CASE_DIR}/retry.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+ensure_build() { return 0; }
+have_systemd() { return 1; }
+have_launchd() { return 0; }
+BUN=/bin/true
+sleep() { :; }   # the backoff is the point; waiting for it is not
+cmd_serve() { return 0; }
+print_status_banner() { echo "BANNER"; }
+cmd_start
+EOF
+
+  # Transient: the window closes on the second try, and `start` reports success like any other.
+  install_flaky_launchctl 1
+  bash "$harness" > "${CASE_DIR}/retry.out" 2>&1 || fail "start gave up on a transient bootstrap failure"
+  assert_contains "$(cat "${CASE_DIR}/retry.out")" 'bridge started (launchd: herdr.collie)'
+  assert_eq "$(grep -c '^bootstrap ' "$LAUNCHCTL_CALLS")" 2
+
+  # Permanent: EIO is also how launchd reports "gui/<uid> doesn't exist" on a Mac with no console
+  # login. Three tries, then fail loudly — a `start` that silently left nothing running would be
+  # worse than the crash.
+  install_flaky_launchctl 99
+  if bash "$harness" > "${CASE_DIR}/retry-fail.out" 2>&1; then
+    fail "start reported success though bootstrap never succeeded"
+  fi
+  local out; out="$(cat "${CASE_DIR}/retry-fail.out")"
+  assert_contains "$out" 'error: launchctl bootstrap failed'
+  assert_contains "$out" 'no console login'
+  assert_eq "$(grep -c '^bootstrap ' "$LAUNCHCTL_CALLS")" 3
+}
+
 # A bun that reports only how it was found: its own path, and the PATH it inherited.
 install_fake_bun() {
   local target="$1" calls="$2"
@@ -582,6 +642,7 @@ test_adopts_preexisting_collie_mount
 test_serve_failure_does_not_abort_start
 test_launchd_agent_lifecycle
 test_launchd_status_line
+test_launchd_bootstrap_retries
 test_bun_resolution
 test_non_absolute_bun_never_reaches_path
 test_missing_bun_still_reports
