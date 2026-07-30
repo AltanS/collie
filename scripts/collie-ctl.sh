@@ -371,15 +371,34 @@ cmd_start() {
     echo "bridge started (systemd --user: ${UNIT})"
   elif have_launchd; then
     write_agent
-    stop_pidfile_process   # release the port if this install predates launchd support
+    # Release the port if this install predates launchd support. The old bridge drains async, so the
+    # new one can still lose a race for the port — it exits nonzero and KeepAlive brings it back
+    # after ThrottleInterval, so the migration self-heals; `start` may just warn once on the way.
+    stop_pidfile_process
     # Bootout first so `start` is idempotent: bootstrap on a loaded label errors, and quietly running a
     # second bridge is the failure this branch removes. `enable` undoes a previous `stop`.
     launchctl bootout "$(launchd_target)" 2>/dev/null || true
     launchctl enable "$(launchd_target)" 2>/dev/null || true
-    launchctl bootstrap "$(launchd_domain)" "$AGENT_FILE"
+    # `bootout` does not promise to wait for teardown, and the bridge drains connections before it
+    # exits — bootstrapping into that window fails with "Bootstrap failed: 5: Input/output error",
+    # and under set -e that ends `start` with the bridge DOWN: the outage this branch exists to
+    # remove, on the path (`restart`, and so `update`) an operator hits most. Retry across the
+    # window. A real refusal still surfaces — EIO is also what launchd returns when `gui/<uid>`
+    # doesn't exist at all, which is why the give-up message names that case.
+    local attempt
+    for attempt in 1 2 3; do
+      if launchctl bootstrap "$(launchd_domain)" "$AGENT_FILE"; then break; fi
+      if [ "$attempt" -eq 3 ]; then
+        echo "error: launchctl bootstrap failed — if this Mac has no console login, gui/$(id -u)" >&2
+        echo "       does not exist; log in once (the agent has RunAtLoad and comes up with it)." >&2
+        exit 1
+      fi
+      sleep 1
+    done
     echo "bridge started (launchd: ${AGENT_LABEL})"
   else
-    # Fallback: background process with a pidfile (e.g. macOS without lingering systemd).
+    # Fallback for a host with neither supervisor (macOS now takes the launchd branch above, so in
+    # practice: a Linux box with no user systemd instance, or a BSD): background process + pidfile.
     mkdir -p "$CONFIG_DIR"
     [ -n "$BUN" ] || { echo "error: bun not found" >&2; exit 1; }
     HERDR_SOCKET_PATH="$SOCKET" COLLIE_PORT="$PORT" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
