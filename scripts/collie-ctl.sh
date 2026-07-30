@@ -226,7 +226,14 @@ print_status_banner() {
     local out pid
     out="$(launchctl print "$(launchd_target)" 2>/dev/null || true)"
     if [ -z "$out" ]; then
-      svc="launchd (${AGENT_LABEL}) · not loaded"
+      # No agent — but this Mac may be on the unsupervised fallback (bootstrap refused, e.g. no
+      # console login), where a bridge really is running and only supervision is missing. Reporting
+      # a bare "not loaded" there would read as "nothing is up" while the phone is being served.
+      if [ -f "${CONFIG_DIR}/collie.pid" ]; then
+        svc="pid $(cat "${CONFIG_DIR}/collie.pid" 2>/dev/null) (unsupervised — launchd bootstrap refused)"
+      else
+        svc="launchd (${AGENT_LABEL}) · not loaded"
+      fi
     else
       pid="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1)"
       if [ -n "$pid" ]; then
@@ -236,7 +243,7 @@ print_status_banner() {
       fi
     fi
   elif [ -f "${CONFIG_DIR}/collie.pid" ]; then
-    svc="pid $(cat "${CONFIG_DIR}/collie.pid" 2>/dev/null) (no systemd)"
+    svc="pid $(cat "${CONFIG_DIR}/collie.pid" 2>/dev/null) (unsupervised)"
   else
     svc="not supervised"
   fi
@@ -363,6 +370,19 @@ cmd_exec_bridge() {
   exec "$BUN" run "${PLUGIN_ROOT}/bridge/index.ts"
 }
 
+# The unsupervised tier: a background bridge with a pidfile, no restart-on-crash, nothing at login.
+# Reached two ways — a host with neither supervisor (a Linux box with no user systemd instance, a
+# BSD), and a Mac whose launchd bootstrap refused (see cmd_start). Both want the identical process,
+# so it lives here rather than being written twice and drifting.
+start_unsupervised() {
+  mkdir -p "$CONFIG_DIR"
+  [ -n "$BUN" ] || { echo "error: bun not found" >&2; exit 1; }
+  HERDR_SOCKET_PATH="$SOCKET" COLLIE_PORT="$PORT" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
+    nohup "$BUN" run "${PLUGIN_ROOT}/bridge/index.ts" >>"${CONFIG_DIR}/collie.log" 2>&1 &
+  echo $! > "${CONFIG_DIR}/collie.pid"
+  echo "bridge started (pid $(cat "${CONFIG_DIR}/collie.pid"), unsupervised)"
+}
+
 cmd_start() {
   ensure_build || true
   if have_systemd; then
@@ -385,26 +405,28 @@ cmd_start() {
     # remove, on the path (`restart`, and so `update`) an operator hits most. Retry across the
     # window. A real refusal still surfaces — EIO is also what launchd returns when `gui/<uid>`
     # doesn't exist at all, which is why the give-up message names that case.
-    local attempt
+    local attempt supervised=1
     for attempt in 1 2 3; do
       if launchctl bootstrap "$(launchd_domain)" "$AGENT_FILE"; then break; fi
       if [ "$attempt" -eq 3 ]; then
-        echo "error: launchctl bootstrap failed — if this Mac has no console login, gui/$(id -u)" >&2
-        echo "       does not exist; log in once (the agent has RunAtLoad and comes up with it)." >&2
-        exit 1
+        # Out of retries. The likeliest cause is not a race at all: `gui/<uid>` exists only with a
+        # console session, so a Mac administered purely over SSH has no domain to bootstrap into and
+        # never will. Exiting here would leave that host with NO bridge — cmd_stop already killed the
+        # unsupervised one on the way in — and 0.20.x served it fine. So degrade to the unsupervised
+        # path instead of failing: no restart-on-crash and nothing at login, but a running bridge,
+        # and `start` after a console login upgrades it to the agent.
+        echo "warn: launchctl bootstrap failed after 3 attempts — falling back to an unsupervised" >&2
+        echo "      bridge. If this Mac has no console login, gui/$(id -u) does not exist; log in" >&2
+        echo "      once and re-run start to get login-start and restart-on-failure." >&2
+        start_unsupervised
+        supervised=0
+        break
       fi
       sleep 1
     done
-    echo "bridge started (launchd: ${AGENT_LABEL})"
+    [ "$supervised" = 0 ] || echo "bridge started (launchd: ${AGENT_LABEL})"
   else
-    # Fallback for a host with neither supervisor (macOS now takes the launchd branch above, so in
-    # practice: a Linux box with no user systemd instance, or a BSD): background process + pidfile.
-    mkdir -p "$CONFIG_DIR"
-    [ -n "$BUN" ] || { echo "error: bun not found" >&2; exit 1; }
-    HERDR_SOCKET_PATH="$SOCKET" COLLIE_PORT="$PORT" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
-      nohup "$BUN" run "${PLUGIN_ROOT}/bridge/index.ts" >>"${CONFIG_DIR}/collie.log" 2>&1 &
-    echo $! > "${CONFIG_DIR}/collie.pid"
-    echo "bridge started (pid $(cat "${CONFIG_DIR}/collie.pid"), no systemd)"
+    start_unsupervised
   fi
   # A front door that won't come up must not abort `start`. The bridge is already running on
   # loopback, and the banner is what the README's troubleshooting flow tells people to read — under
