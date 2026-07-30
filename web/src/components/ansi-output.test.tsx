@@ -47,6 +47,30 @@ describe("terminal mirror colour space", () => {
   });
 });
 
+// Wrap defaults ON (#53): the mirror is mostly agent prose and a phone shows far fewer columns than
+// the desktop width panes are spawned at. The no-wrap branch is still the right rendering for TUI
+// tables and box drawing, but it is now reachable ONLY through the View toggle — so it is exactly
+// the kind of code a later refactor can drop without any test noticing.
+describe("mirror line wrapping", () => {
+  function preFor(props: Partial<ComponentProps<typeof AnsiOutput>>) {
+    const { container } = render(<AnsiOutput text="a very long line" {...props} />);
+    return container.querySelector("pre")!;
+  }
+
+  it("wraps by default rather than making the block a horizontal panner", () => {
+    const cls = preFor({}).className;
+    expect(cls).toContain("whitespace-pre-wrap");
+    expect(cls).not.toContain("overflow-x-auto");
+  });
+
+  it("still pans, column-faithful, when wrap is turned off", () => {
+    const cls = preFor({ wrap: false }).className;
+    expect(cls).toContain("whitespace-pre");
+    expect(cls).toContain("overflow-x-auto");
+    expect(cls).not.toContain("whitespace-pre-wrap");
+  });
+});
+
 // URLs printed by an agent are plain characters — the mirror finds them and wraps those ranges in
 // anchors. The invariants worth guarding are the ones a refactor would silently break: the text is
 // still exactly what the terminal printed, and nothing but http(s) ever becomes an href.
