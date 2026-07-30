@@ -17,9 +17,12 @@ export interface HarnessAdapter {
   /** The adapter's OWN full block pipeline over the pane's styled lines — for Claude that is the
    *  raw-or-dialog result (dialog lift + chrome strip, else a single raw block). */
   buildBlocks(lines: StyledLine[]): Block[];
-  /** Re-surface the statusline this agent's chrome-stripping peeled off the mirror tail (null = no
-   *  box at the tail, so nothing to surface). */
-  extractStatusLine(lines: StyledLine[]): string | null;
+  /** Re-surface the statusline RUN this agent's chrome-stripping peeled off the mirror tail, one
+   *  entry per row, top to bottom. A statusline is an arbitrary user command's output and is
+   *  routinely several rows tall (model/cwd/branch on one, permission mode on another), so the
+   *  contract is a list — a single-row harness returns a one-element array. Empty = no box at the
+   *  tail (a menu is up, or a foreign/torn buffer), so nothing to surface. */
+  extractStatusLines(lines: StyledLine[]): string[];
   /** Re-surface a user draft stranded on the input box's prompt line (null = no box / empty / a
    *  known placeholder). */
   extractInputDraft(lines: StyledLine[]): string | null;

@@ -2,7 +2,7 @@
 // stepper header) against the fixture corpus in web/src/fixtures/panes/*.txt. Its detectors
 // (prompt-select, wizard, preview-select, chrome, markers) live alongside this file; this module
 // wires them into the two HarnessAdapter surfaces: the block pipeline (claudeBuildBlocks) and the
-// chrome re-surfacing probes (extractStatusLine / extractInputDraft, re-exported from ./chrome).
+// chrome re-surfacing probes (extractStatusLines / extractInputDraft, re-exported from ./chrome).
 //
 // Every OTHER agent (codex, opencode, pi, a bare shell, or an unknown/absent agent) has an unverified
 // TUI shape, so it has no adapter and keeps the plain raw terminal mirror — running Claude's matchers
@@ -14,7 +14,7 @@ import { detectPreviewSelectRegion } from "./preview-select";
 import { detectWizardRegion } from "./wizard";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
-import { stripChrome, extractStatusLine, extractInputDraft } from "./chrome";
+import { stripChrome, extractStatusLines, extractInputDraft } from "./chrome";
 
 /**
  * Claude's block pipeline: detect a tail dialog (preview / wizard / prompt-select), replacing it with
@@ -75,11 +75,11 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
   return [{ kind: "raw", lines: stripChrome(lines) }];
 }
 
-export { extractStatusLine, extractInputDraft };
+export { extractStatusLines, extractInputDraft };
 
 export const claudeAdapter: HarnessAdapter = {
   agent: "claude",
   buildBlocks: claudeBuildBlocks,
-  extractStatusLine,
+  extractStatusLines,
   extractInputDraft,
 };
