@@ -2,14 +2,14 @@ import { renderHook, act } from "@testing-library/react";
 import { useDisplayPrefs } from "./use-display-prefs";
 
 // Minimal localStorage stub — Vitest/jsdom includes a real one but this ensures it's clean per test.
-const STORAGE_KEY = "collie:display-prefs:v3";
+const STORAGE_KEY = "collie:display-prefs:v4";
 
 describe("useDisplayPrefs", () => {
   beforeEach(() => localStorage.clear());
 
   it("returns defaults when localStorage is empty", () => {
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 12, rawTerminal: false });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false });
   });
 
   it("persists wrap=true and reloads it on mount", () => {
@@ -75,12 +75,12 @@ describe("useDisplayPrefs", () => {
   it("falls back to defaults on malformed JSON", () => {
     localStorage.setItem(STORAGE_KEY, "not-json{{{");
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 12, rawTerminal: false });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false });
   });
 
   it("falls back to defaults when stored value is not an object", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(42));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 12, rawTerminal: false });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false });
   });
 });

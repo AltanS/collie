@@ -164,7 +164,7 @@ describe("AgentChat — raw-terminal escape hatch", () => {
 
   it("shows the plain mirror (no buttons, menu as raw text) when raw terminal is on", () => {
     localStorage.setItem(
-      "collie:display-prefs:v3",
+      "collie:display-prefs:v4",
       JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
     );
     renderChat({ text: MENU_TEXT });
@@ -184,7 +184,7 @@ describe("AgentChat — raw-terminal escape hatch", () => {
 
   it("raw terminal bypasses the wizard too — the dialog shows verbatim, keys-pad drivable", () => {
     localStorage.setItem(
-      "collie:display-prefs:v3",
+      "collie:display-prefs:v4",
       JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
     );
     renderChat({ text: WIZARD_TEXT });
