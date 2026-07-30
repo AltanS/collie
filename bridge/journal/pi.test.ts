@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, rm, symlink } from "node:fs/promises";
+import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { isPiSessionId, parsePiTranscript, PiTranscriptSource } from "./pi.ts";
@@ -154,7 +154,9 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
    *   base/sessions/--repo--/sneaky.jsonl → ../../outside.jsonl   a symlink out of the root
    */
   async function fixture() {
-    const base = `${tmpdir()}/collie-pi-${Math.floor(performance.now() * 1000)}`;
+    const created = `${tmpdir()}/collie-pi-${Math.floor(performance.now() * 1000)}`;
+    await mkdir(created, { recursive: true });
+    const base = await realpath(created);
     const root = `${base}/sessions`;
     const project = `${root}/--var-home-you-repo--`;
     await mkdir(project, { recursive: true });
