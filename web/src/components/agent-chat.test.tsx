@@ -345,10 +345,14 @@ describe("AgentChat — block-grammar scoping (Claude-only)", () => {
     expect(screen.getByText(/1\. Yes/)).toBeInTheDocument();
   });
 
-  it("re-surfaces the Claude input-box statusline as an app strip above the composer", () => {
+  it("re-surfaces EVERY row of the Claude input-box statusline as an app strip above the composer", () => {
     renderChat({ text: STATUS_TEXT }); // default claude agent
     const strip = screen.getByText("[Opus 4.8] ~/webapp · main");
     expect(strip.closest("pre")).toBeNull(); // the strip is app chrome, not <pre> mirror text
+    // Row 2 of the run: it used to be stripped off the mirror and rendered nowhere at all.
+    const second = screen.getByText("← for agents");
+    expect(second.closest("pre")).toBeNull();
+    expect(second.parentElement).toBe(strip.parentElement); // stacked in the one strip
     expect(screen.queryByText(/❯/)).toBeNull(); // the input box was stripped off the mirror
   });
 

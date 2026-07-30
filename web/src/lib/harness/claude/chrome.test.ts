@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
-import { extractInputDraft, extractStatusLine, stripChrome } from "./chrome";
+import { extractInputDraft, extractStatusLines, stripChrome } from "./chrome";
 import { lineText } from "./markers";
 
 // Anchored on this file's directory (see prompt-select.test.ts for why not `new URL(import.meta.url)`).
@@ -162,47 +162,73 @@ describe("stripChrome — conservative: leaves non-chrome untouched", () => {
   });
 });
 
-// extractStatusLine re-surfaces the one statusline stripChrome removes (the branch/model/ctx the
-// user configured) so the app can render it above the composer — positional (first non-blank line
-// below the input box's bottom border), never content-parsed.
-describe("extractStatusLine — recovers the stripped statusline", () => {
+// extractStatusLines re-surfaces the statusline RUN stripChrome removes (the branch/model/ctx/
+// permission mode the user configured) so the app can render it above the composer — positional
+// (every non-blank line below the input box's bottom border, above the background-agents footer),
+// never content-parsed. All rows, not just the first: rows 2+ used to be stripped and rendered
+// nowhere.
+describe("extractStatusLines — recovers the stripped statusline run", () => {
   it("working: returns the statusline including the branch (the field the field-report flagged)", () => {
-    const status = extractStatusLine(fixtureLines("claude--working.txt"));
-    expect(status).not.toBeNull();
-    expect(status).toContain("feature/block-renderer"); // the branch survives
-    expect(status).toContain("151.5k tokens");
-    expect(status).not.toContain("bypass permissions"); // the hint line below it is NOT returned
+    const rows = extractStatusLines(fixtureLines("claude--working.txt"));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toContain("feature/block-renderer"); // the branch survives
+    expect(rows[0]).toContain("151.5k tokens");
+    // The hint row below it is its own entry now — it used to be dropped on the floor.
+    expect(rows.join("\n")).toContain("bypass permissions");
   });
 
-  it("fresh-idle: returns the statusline, not the hint line under it", () => {
-    const status = extractStatusLine(fixtureLines("claude--fresh-idle.txt"));
-    expect(status).not.toBeNull();
-    expect(status).toContain("fixture-sandbox");
-    expect(status).not.toContain("← for agents");
+  it("fresh-idle: returns the statusline AND the hint row under it, in order", () => {
+    const rows = extractStatusLines(fixtureLines("claude--fresh-idle.txt"));
+    expect(rows.length).toBe(2);
+    expect(rows[0]).toContain("fixture-sandbox");
+    expect(rows[1]).toContain("← for agents");
   });
 
   it("done: returns the statusline of a completed turn", () => {
-    const status = extractStatusLine(fixtureLines("claude--done.txt"));
-    expect(status).not.toBeNull();
-    expect(status).toContain("tokens");
+    const rows = extractStatusLines(fixtureLines("claude--done.txt"));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toContain("tokens");
   });
 
-  it("footer variant: returns the statusline, not the hint or the background-agents footer below it", () => {
-    const status = extractStatusLine(fixtureLines("claude--draft-footer-empty.txt"));
-    expect(status).not.toBeNull();
-    expect(status).toContain("ctx:33%"); // the statusline itself
-    expect(status).not.toContain("bypass permissions"); // hint under it is NOT returned
-    expect(status).not.toContain("worker:scout"); // footer is NOT returned
+  it("footer variant: returns the statusline + hint, but NOT the background-agents footer", () => {
+    const rows = extractStatusLines(fixtureLines("claude--draft-footer-empty.txt"));
+    expect(rows[0]).toContain("ctx:33%"); // the statusline itself
+    expect(rows.join("\n")).toContain("bypass permissions"); // the hint row is part of the run
+    expect(rows.join("\n")).not.toContain("worker:scout"); // …the footer below the blank is not
+    expect(rows.join("\n")).not.toContain("● main");
   });
 
-  it("returns null when a menu is up (no input box at the tail)", () => {
-    expect(extractStatusLine(fixtureLines("claude--select-menu.txt"))).toBeNull();
-    expect(extractStatusLine(fixtureLines("claude--trust-prompt.txt"))).toBeNull();
-    expect(extractStatusLine(fixtureLines("claude--permission-bash.txt"))).toBeNull();
+  // The shape that motivated this (verified on a real host): a 3-row statusline under the box. The
+  // model, cwd, branch and permission mode all live on rows 2 and 3 — surfacing only row 1 made
+  // them invisible everywhere, since stripChrome (correctly) peels the whole run off the mirror.
+  it("a real 3-row statusline surfaces every row, in TUI order", () => {
+    const REAL_ROWS = [
+      "  CTX:20% CACHE:100% LIMITS 5h:22%/1h:20m 7d:26%/5d:03h",
+      "  [Opus·medium] ~/projects/workspace-sprqvntrs/argo-sprqvntrs on main*",
+      "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents",
+    ];
+    // U+00A0 after the marker, as Claude renders it — never a plain space.
+    const lines = boxWithStatusRows("❯\u00A0", REAL_ROWS);
+    expect(extractStatusLines(lines)).toEqual(REAL_ROWS.map((r) => r.trim()));
   });
 
-  it("returns null for a plain buffer with no input box", () => {
-    expect(extractStatusLine(splitLines(parseAnsi("just some output\nmore output")))).toBeNull();
+  it("a single-row statusline is a one-element array (no visual change for those panes)", () => {
+    const lines = boxWithStatusRows("❯\u00A0fix the flaky test", ["[Opus 4.8] · ctx:3% · main · 32k tokens"]);
+    expect(extractStatusLines(lines)).toEqual(["[Opus 4.8] · ctx:3% · main · 32k tokens"]);
+  });
+
+  it("returns [] for a box with no statusline under it at all", () => {
+    expect(extractStatusLines(boxBuffer("❯\u00A0draft"))).toEqual([]);
+  });
+
+  it("returns [] when a menu is up (no input box at the tail)", () => {
+    expect(extractStatusLines(fixtureLines("claude--select-menu.txt"))).toEqual([]);
+    expect(extractStatusLines(fixtureLines("claude--trust-prompt.txt"))).toEqual([]);
+    expect(extractStatusLines(fixtureLines("claude--permission-bash.txt"))).toEqual([]);
+  });
+
+  it("returns [] for a plain buffer with no input box", () => {
+    expect(extractStatusLines(splitLines(parseAnsi("just some output\nmore output")))).toEqual([]);
   });
 });
 
@@ -303,14 +329,14 @@ describe("the statusline run — as tall as a real statusline", () => {
   it.each([1, 2, 3, 4, 5, 6, 7, 8])("locates the box under %i statusline row(s)", (rows) => {
     const lines = boxWithStatusRows(`❯ ${DRAFT}`, statusRows(rows));
     expect(extractInputDraft(lines)).toBe(DRAFT);
-    expect(extractStatusLine(lines)).toBe("status row 0");
+    expect(extractStatusLines(lines)).toEqual(statusRows(rows)); // every row, however tall the run
     expect(stripChrome(lines)).not.toBe(lines);
   });
 
   it.each([9, 10])("falls back to the raw mirror at %i rows, the deliberate ceiling", (rows) => {
     const lines = boxWithStatusRows(`❯ ${DRAFT}`, statusRows(rows));
     expect(extractInputDraft(lines)).toBeNull();
-    expect(extractStatusLine(lines)).toBeNull();
+    expect(extractStatusLines(lines)).toEqual([]);
     expect(stripChrome(lines)).toBe(lines);
   });
 });
@@ -341,7 +367,7 @@ describe("dialogs are refused by the border and blank checks — not by the row 
 
   it.each(DIALOG_FIXTURES)("%s surfaces no box, so no chrome is stripped from it", (name) => {
     const lines = fixtureLines(name);
-    expect(extractStatusLine(lines)).toBeNull();
+    expect(extractStatusLines(lines)).toEqual([]);
     expect(extractInputDraft(lines)).toBeNull();
     expect(stripChrome(lines).length).toBe(keptAboveTail(lines));
   });
@@ -362,7 +388,7 @@ describe("the row bound only catches a run taller than any plausible statusline"
 
   it("refuses a complete box above an 8-row blank-free run", () => {
     const lines = boxWithBlankFreeRunBelow(outputRows(8));
-    expect(extractStatusLine(lines)).toBeNull();
+    expect(extractStatusLines(lines)).toEqual([]);
     expect(extractInputDraft(lines)).toBeNull();
     expect(stripChrome(lines)).toBe(lines);
   });
@@ -394,36 +420,39 @@ describe("scrollback echo — a known limitation, pinned on purpose", () => {
 });
 
 describe("real corpus — pinned so any change to the walk shows up as a diff", () => {
-  const PINNED: { fixture: string; statusLineFound: boolean; draft: string | null; stripped: number }[] = [
-    { fixture: "done", statusLineFound: true, draft: "cat hello.txt to verify", stripped: 28 },
-    { fixture: "draft-footer-empty", statusLineFound: true, draft: null, stripped: 9 },
-    { fixture: "draft-footer-single", statusLineFound: true, draft: "remember to update the changelo", stripped: 9 },
-    { fixture: "draft-footer-wrapped", statusLineFound: true, draft: "this stranded draft is long eno", stripped: 11 },
-    { fixture: "draft-wrapped", statusLineFound: true, draft: "this stranded draft is long eno", stripped: 10 },
-    { fixture: "fresh-idle", statusLineFound: true, draft: null, stripped: 47 },
-    { fixture: "permission-bash", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "permission-edit", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "plan-approval", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "plan-approval--numbered-body", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "rename-resolved", statusLineFound: true, draft: null, stripped: 6 },
-    { fixture: "select-menu", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "select-multi", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "select-multiselect-checked", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "select-multiselect-review", statusLineFound: false, draft: null, stripped: 5 },
-    { fixture: "select-multiselect-single", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "select-preview", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "select-preview-note-attached", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "select-preview-note-input", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "send-inflight", statusLineFound: true, draft: "/rename", stripped: 5 },
-    { fixture: "trust-prompt", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "wizard-preview-note-attached", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "wizard-preview-q1", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "wizard-q1", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "wizard-q1-revisit", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "wizard-q2", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "wizard-submit", statusLineFound: false, draft: null, stripped: 0 },
-    { fixture: "wizard-submit-unanswered", statusLineFound: false, draft: null, stripped: 3 },
-    { fixture: "working", statusLineFound: true, draft: null, stripped: 6 },
+  // `statusRows` is the HEIGHT of the re-surfaced statusline run, not a boolean: every real capture
+  // in this corpus is 2 rows (statusline + hint), and pinning the count is what would have caught the
+  // first-row-only truncation this table used to tolerate.
+  const PINNED: { fixture: string; statusRows: number; draft: string | null; stripped: number }[] = [
+    { fixture: "done", statusRows: 2, draft: "cat hello.txt to verify", stripped: 28 },
+    { fixture: "draft-footer-empty", statusRows: 2, draft: null, stripped: 9 },
+    { fixture: "draft-footer-single", statusRows: 2, draft: "remember to update the changelo", stripped: 9 },
+    { fixture: "draft-footer-wrapped", statusRows: 2, draft: "this stranded draft is long eno", stripped: 11 },
+    { fixture: "draft-wrapped", statusRows: 2, draft: "this stranded draft is long eno", stripped: 10 },
+    { fixture: "fresh-idle", statusRows: 2, draft: null, stripped: 47 },
+    { fixture: "permission-bash", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "permission-edit", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "plan-approval", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "plan-approval--numbered-body", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "rename-resolved", statusRows: 2, draft: null, stripped: 6 },
+    { fixture: "select-menu", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "select-multi", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "select-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "select-multiselect-review", statusRows: 0, draft: null, stripped: 5 },
+    { fixture: "select-multiselect-single", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "select-preview", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "select-preview-note-attached", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "select-preview-note-input", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "send-inflight", statusRows: 2, draft: "/rename", stripped: 5 },
+    { fixture: "trust-prompt", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "wizard-preview-note-attached", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "wizard-preview-q1", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "wizard-q1", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "wizard-q1-revisit", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "wizard-q2", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "wizard-submit", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "wizard-submit-unanswered", statusRows: 0, draft: null, stripped: 3 },
+    { fixture: "working", statusRows: 2, draft: null, stripped: 6 },
   ];
 
   it("pins every claude fixture on disk, so a new capture can't slip past this table", () => {
@@ -434,9 +463,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     expect(onDisk).toEqual(PINNED.map((p) => p.fixture).sort());
   });
 
-  it.each(PINNED)("$fixture classifies identically", ({ fixture, statusLineFound, draft, stripped }) => {
+  it.each(PINNED)("$fixture classifies identically", ({ fixture, statusRows, draft, stripped }) => {
     const lines = fixtureLines(`claude--${fixture}.txt`);
-    expect(extractStatusLine(lines) !== null).toBe(statusLineFound);
+    expect(extractStatusLines(lines).length).toBe(statusRows);
     if (draft === null) {
       expect(extractInputDraft(lines)).toBeNull();
     } else {

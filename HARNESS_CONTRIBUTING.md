@@ -12,7 +12,7 @@ Read first: [`ARCHITECTURE.md`](./ARCHITECTURE.md) (the interaction loop + secur
 ## Architecture in one paragraph
 
 An adapter is a [`HarnessAdapter`](./web/src/lib/harness/types.ts) —
-`{ agent, buildBlocks, extractStatusLine, extractInputDraft }` — registered by its Herdr `agent`
+`{ agent, buildBlocks, extractStatusLines, extractInputDraft }` — registered by its Herdr `agent`
 string in [`web/src/lib/harness/registry.ts`](./web/src/lib/harness/registry.ts). The registry is the
 single decision site for "which agents get grammars"; every agent absent from it keeps the universal
 raw terminal mirror. Claude is the reference adapter, under
@@ -50,7 +50,7 @@ An adapter earns capability incrementally. Ship a lower tier first; each is inde
 
 - **Tier 0 — raw mirror.** Every agent gets this for free: the colored terminal mirror + slash palette
   + special-keys pad. No adapter needed. It already works.
-- **Tier 1 — read-only lift.** Chrome/status/draft extraction (`extractStatusLine`,
+- **Tier 1 — read-only lift.** Chrome/status/draft extraction (`extractStatusLines`,
   `extractInputDraft`) plus **detection of a NEW, not-yet-wired block kind** — recognised and drawn,
   but with no keystroke recipe behind it, so taps send **no keystrokes**. Mergeable **from fixtures
   alone**: a mis-parse only costs cosmetics because there is no send path to fire into a terminal.
