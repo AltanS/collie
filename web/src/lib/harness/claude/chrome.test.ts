@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +26,36 @@ function wrappedBoxBuffer(promptLine: string, continuationLines: string[], above
   const rule = "─".repeat(40);
   const rows = [...(above ?? []), rule, promptLine, ...continuationLines, rule];
   return splitLines(parseAnsi(rows.join("\n")));
+}
+
+function boxWithStatusRows(promptLine: string, statusRows: string[]): StyledLine[] {
+  const rule = "─".repeat(40);
+  return splitLines(parseAnsi(["earlier output", rule, promptLine, rule, ...statusRows].join("\n")));
+}
+
+function boxWithBlankFreeRunBelow(output: string[]): StyledLine[] {
+  const rule = "─".repeat(40);
+  return splitLines(
+    parseAnsi([rule, "❯ do the earlier thing", rule, "old statusline", ...output].join("\n")),
+  );
+}
+
+function echoedSendAboveDialog(sent: string, dialogRows: number): StyledLine[] {
+  const rule = "─".repeat(40);
+  const dialog = Array.from({ length: dialogRows }, (_, k) => `  ${k + 1}. dialog row`);
+  return splitLines(
+    parseAnsi(["earlier output", rule, `❯ ${sent}`, rule, ...dialog, "", "Esc to cancel"].join("\n")),
+  );
+}
+
+function trailingBlankCount(lines: StyledLine[]): number {
+  let count = 0;
+  while (count < lines.length && lineText(lines[lines.length - 1 - count]!).trim().length === 0) count++;
+  return count;
+}
+
+function keptAboveTail(lines: StyledLine[]): number {
+  return lines.length - trailingBlankCount(lines);
 }
 
 // stripChrome peels the agent's own input-box + statusline + trailing blanks off the TAIL. It's
@@ -263,5 +293,155 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
   it("does not match a box whose draft exceeds the wrap bound (falls back to raw)", () => {
     const tooMany = Array.from({ length: 20 }, (_, i) => `  continuation ${i}`);
     expect(extractInputDraft(wrappedBoxBuffer("❯ opening line", tooMany))).toBeNull();
+  });
+});
+
+describe("the statusline run — as tall as a real statusline", () => {
+  const DRAFT = "my draft text here";
+  const statusRows = (n: number) => Array.from({ length: n }, (_, i) => `status row ${i}`);
+
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])("locates the box under %i statusline row(s)", (rows) => {
+    const lines = boxWithStatusRows(`❯ ${DRAFT}`, statusRows(rows));
+    expect(extractInputDraft(lines)).toBe(DRAFT);
+    expect(extractStatusLine(lines)).toBe("status row 0");
+    expect(stripChrome(lines)).not.toBe(lines);
+  });
+
+  it.each([9, 10])("falls back to the raw mirror at %i rows, the deliberate ceiling", (rows) => {
+    const lines = boxWithStatusRows(`❯ ${DRAFT}`, statusRows(rows));
+    expect(extractInputDraft(lines)).toBeNull();
+    expect(extractStatusLine(lines)).toBeNull();
+    expect(stripChrome(lines)).toBe(lines);
+  });
+});
+
+describe("dialogs are refused by the border and blank checks — not by the row bound", () => {
+  const DIALOG_FIXTURES = [
+    "claude--permission-bash.txt",
+    "claude--permission-edit.txt",
+    "claude--plan-approval--numbered-body.txt",
+    "claude--plan-approval.txt",
+    "claude--select-menu.txt",
+    "claude--select-multi.txt",
+    "claude--select-multiselect-checked.txt",
+    "claude--select-multiselect-review.txt",
+    "claude--select-multiselect-single.txt",
+    "claude--select-preview-note-attached.txt",
+    "claude--select-preview-note-input.txt",
+    "claude--select-preview.txt",
+    "claude--trust-prompt.txt",
+    "claude--wizard-preview-note-attached.txt",
+    "claude--wizard-preview-q1.txt",
+    "claude--wizard-q1-revisit.txt",
+    "claude--wizard-q1.txt",
+    "claude--wizard-q2.txt",
+    "claude--wizard-submit-unanswered.txt",
+    "claude--wizard-submit.txt",
+  ];
+
+  it.each(DIALOG_FIXTURES)("%s surfaces no box, so no chrome is stripped from it", (name) => {
+    const lines = fixtureLines(name);
+    expect(extractStatusLine(lines)).toBeNull();
+    expect(extractInputDraft(lines)).toBeNull();
+    expect(stripChrome(lines).length).toBe(keptAboveTail(lines));
+  });
+
+  it.each(DIALOG_FIXTURES)("%s ends its tail run with a blank within 2 rows", (name) => {
+    const texts = fixtureLines(name).map(lineText);
+    let end = texts.length;
+    while (end > 0 && texts[end - 1]!.trim().length === 0) end--;
+    let run = 0;
+    while (end - 1 - run >= 0 && texts[end - 1 - run]!.trim().length > 0) run++;
+    expect(run).toBeGreaterThan(0);
+    expect(run).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("the row bound only catches a run taller than any plausible statusline", () => {
+  const outputRows = (n: number) => Array.from({ length: n }, (_, i) => `tool output ${i}`);
+
+  it("refuses a complete box above an 8-row blank-free run", () => {
+    const lines = boxWithBlankFreeRunBelow(outputRows(8));
+    expect(extractStatusLine(lines)).toBeNull();
+    expect(extractInputDraft(lines)).toBeNull();
+    expect(stripChrome(lines)).toBe(lines);
+  });
+
+  it("known limitation: a complete box above a 7-row blank-free run reads as live", () => {
+    const lines = boxWithBlankFreeRunBelow(outputRows(7));
+    expect(extractInputDraft(lines)).toBe("do the earlier thing");
+    expect(lines.length - stripChrome(lines).length).toBe(11);
+  });
+});
+
+describe("scrollback echo — a known limitation, pinned on purpose", () => {
+  const SENT = "please run the database migration now";
+
+  it.each([3, 8])("reads an echo of our own send back as a draft at %i dialog rows", (rows) => {
+    expect(extractInputDraft(echoedSendAboveDialog(SENT, rows))).toBe(SENT);
+  });
+
+  it("stops reading the echo once the run passes the bound", () => {
+    expect(extractInputDraft(echoedSendAboveDialog(SENT, 9))).toBeNull();
+  });
+
+  it.each(["claude--select-menu.txt", "claude--select-multi.txt"])(
+    "%s: a real ❯ echo with transcript above it is not read as a draft",
+    (name) => {
+      expect(extractInputDraft(fixtureLines(name))).toBeNull();
+    },
+  );
+});
+
+describe("real corpus — pinned so any change to the walk shows up as a diff", () => {
+  const PINNED: { fixture: string; statusLineFound: boolean; draft: string | null; stripped: number }[] = [
+    { fixture: "done", statusLineFound: true, draft: "cat hello.txt to verify", stripped: 28 },
+    { fixture: "draft-footer-empty", statusLineFound: true, draft: null, stripped: 9 },
+    { fixture: "draft-footer-single", statusLineFound: true, draft: "remember to update the changelo", stripped: 9 },
+    { fixture: "draft-footer-wrapped", statusLineFound: true, draft: "this stranded draft is long eno", stripped: 11 },
+    { fixture: "draft-wrapped", statusLineFound: true, draft: "this stranded draft is long eno", stripped: 10 },
+    { fixture: "fresh-idle", statusLineFound: true, draft: null, stripped: 47 },
+    { fixture: "permission-bash", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "permission-edit", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "plan-approval", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "plan-approval--numbered-body", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "rename-resolved", statusLineFound: true, draft: null, stripped: 6 },
+    { fixture: "select-menu", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "select-multi", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "select-multiselect-checked", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "select-multiselect-review", statusLineFound: false, draft: null, stripped: 5 },
+    { fixture: "select-multiselect-single", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "select-preview", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "select-preview-note-attached", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "select-preview-note-input", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "send-inflight", statusLineFound: true, draft: "/rename", stripped: 5 },
+    { fixture: "trust-prompt", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "wizard-preview-note-attached", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "wizard-preview-q1", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "wizard-q1", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "wizard-q1-revisit", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "wizard-q2", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "wizard-submit", statusLineFound: false, draft: null, stripped: 0 },
+    { fixture: "wizard-submit-unanswered", statusLineFound: false, draft: null, stripped: 3 },
+    { fixture: "working", statusLineFound: true, draft: null, stripped: 6 },
+  ];
+
+  it("pins every claude fixture on disk, so a new capture can't slip past this table", () => {
+    const onDisk = readdirSync(PANES_DIR)
+      .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
+      .map((f) => f.replace("claude--", "").replace(".txt", ""))
+      .sort();
+    expect(onDisk).toEqual(PINNED.map((p) => p.fixture).sort());
+  });
+
+  it.each(PINNED)("$fixture classifies identically", ({ fixture, statusLineFound, draft, stripped }) => {
+    const lines = fixtureLines(`claude--${fixture}.txt`);
+    expect(extractStatusLine(lines) !== null).toBe(statusLineFound);
+    if (draft === null) {
+      expect(extractInputDraft(lines)).toBeNull();
+    } else {
+      expect(extractInputDraft(lines)).toContain(draft);
+    }
+    expect(lines.length - stripChrome(lines).length).toBe(stripped);
   });
 });
