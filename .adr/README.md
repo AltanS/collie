@@ -45,3 +45,4 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | [0001](./0001-one-managed-front-door.md) | Collie manages exactly one front door | Accepted |
 | [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted, not re-themed | Accepted |
 | [0003](./0003-one-shared-seen.md) | "Seen" is one shared fact, and only Collie's own reads count | Accepted |
+| [0004](./0004-the-statusline-run-is-bounded.md) | The statusline run is bounded, but the bound guards less than it looks | Accepted |

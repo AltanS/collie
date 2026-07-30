@@ -11,11 +11,11 @@
 import type { StyledLine } from "../../blocks";
 import { isBlank, isBoxBorder, lineText } from "./markers";
 
-// Lines allowed DIRECTLY under the input box's bottom border: the statusline plus a hint line or two
-// ("← for agents", "⏵⏵ bypass permissions on …"). More than this and we don't recognise the shape, so
-// we leave the buffer raw. The background-agents footer below these (see MAX_FOOTER_LINES) is peeled
-// separately — this bound stays tight because it's the run that must sit flush against the border.
-const MAX_STATUS_LINES = 3;
+// Rows allowed DIRECTLY under the input box's bottom border: the statusline plus its hint row(s)
+// ("← for agents", "⏵⏵ bypass permissions on …"). A statusline is an arbitrary user command's output,
+// so this run is as tall as the user made it. The ceiling only stops a borderless buffer matching
+// unboundedly — it guards less than it looks, and mirrors MAX_FOOTER_LINES: see ADR 0004.
+const MAX_STATUS_LINES = 8;
 
 // A newer Claude Code UI paints a "background agents" footer BELOW the statusline/hint, separated from
 // them by a blank line: a bold "● main" header and one row per background agent
@@ -140,7 +140,7 @@ interface InputBox {
  *     ❯ <draft>            (the prompt line)
  *     <continuation…>      (0..MAX_DRAFT_LINES wrapped-draft lines, no leading "❯")
  *     <bottom border>
- *     <statusline>         (0..MAX_STATUS_LINES lines, matched by position not content)
+ *     <statusline>         (statusline + hint rows together are 0..MAX_STATUS_LINES, by position)
  *     <hint line>
  *     <blank>              (optional — separates the background-agents footer, if present)
  *     <● main>             (0..MAX_FOOTER_LINES footer lines, matched by position not content)
