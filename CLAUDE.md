@@ -116,6 +116,11 @@ the unit name; the Herdr action runs from anywhere.
   backwards in a surface that renders dark under every theme and inverts in light
   ([ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md)). Fails silently;
   `ansi-output.test.tsx` guards it.
+- **The statusline-run bound in `chrome.ts` guards less than it looks** — a dialog below the box is
+  refused by the border/prompt checks and by the blank line Claude paints above its footer hint, never
+  by the row count. Size it up if a real statusline needs more rows; don't delete it, and don't credit
+  it with protection it doesn't provide
+  ([ADR 0004](./.adr/0004-the-statusline-run-is-bounded.md)). `chrome.test.ts` pins both halves.
 
 ## The journal (scrollback the mirror can't give you)
 
