@@ -13,6 +13,8 @@ import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/cha
 import { BottomSheet } from "@/components/ui/sheet";
 import { AppHeader } from "@/components/app-header";
 import { AnsiOutput } from "@/components/ansi-output";
+import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
+import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
@@ -158,18 +160,18 @@ export function AgentChat({
   const display = shown.text;
   const hasNew = !following && display !== text;
 
-  // The agent's own statusline (model · ctx% · cwd · branch · tokens) is stripped off the mirror by
-  // stripChrome so it doesn't duplicate the composer — but it carries real context (the branch, most
-  // notably), so we re-surface that one line as app chrome just above the composer, where it sat in
-  // the TUI. Routed through the SAME adapter (adapterFor) whose buildBlocks strips the chrome, so the
-  // two can't drift; null when there's no adapter for the agent, a menu is up, or no box at the tail,
-  // in which case the strip is hidden. A second parse of `display`, but memoised on it, so it only
-  // recomputes when the buffer content changes — off the render hot path.
-  const statusLine = useMemo(
+  // The agent's own statusline (model · ctx% · cwd · branch · tokens · permission mode) is stripped
+  // off the mirror by stripChrome so it doesn't duplicate the composer — but it carries real context
+  // (the branch, most notably), so we re-surface it as app chrome just above the composer, where it
+  // sat in the TUI. ALL its rows: a configured statusline is routinely 2–3 rows tall, and we used to
+  // surface only the first, silently losing the rest. Routed through the SAME adapter (adapterFor)
+  // whose buildBlocks strips the chrome, so the two can't drift; empty when there's no adapter for
+  // the agent, a menu is up, or no box at the tail, in which case the strip is hidden. A second parse
+  // of `display`, but memoised on it, so it only recomputes when the buffer content changes — off the
+  // render hot path.
+  const statusLines = useMemo(
     () =>
-      grammarsOn
-        ? adapterFor(agent?.agent)?.extractStatusLine(splitLines(parseAnsi(display))) ?? null
-        : null,
+      grammarsOn ? adapterFor(agent?.agent)?.extractStatusLines(splitLines(parseAnsi(display))) ?? [] : [],
     [display, agent?.agent, grammarsOn],
   );
 
@@ -741,12 +743,44 @@ export function AgentChat({
             </button>
           )}
 
-          {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx would otherwise
-              vanish with the stripped input box). Sits directly above the composer, as it did in the
-              TUI. Verbatim text — a React text node, so no XSS surface. */}
-          {statusLine && (
-            <div className="truncate border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground">
-              {statusLine}
+          {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
+              would otherwise vanish with the stripped input box). Sits directly above the composer,
+              as it did in the TUI. Verbatim text — React text nodes, so no XSS surface.
+
+              STACKED, one row per line, each truncated — deliberately, over the two alternatives:
+              joining the rows with a separator would put ~150 chars on a strip that fits ~55 at this
+              size on a phone, truncating away exactly the fields (branch, permission mode) this
+              exists to surface; wrapping makes the strip's height depend on the pane width and turns
+              a column-aligned statusline into ragged prose. Stacking also preserves the shape the
+              user themselves configured in the TUI, so it reads as the same thing they know.
+              Height is bounded upstream (MAX_STATUS_LINES caps the run stripChrome will claim), so
+              there is no second cap here; the mirror is a flex child that shrinks, never pushed off. */}
+          {statusLines.length > 0 && (
+            <div
+              className={cn(
+                "border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
+                // The strip carries the agent's OWN terminal colour, so it renders in the mirror's
+                // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
+                // chosen against a near-black background and is illegible re-themed onto app chrome.
+                // It also makes the strip read as the bottom of the pane it was cut from, which is
+                // where the TUI drew it.
+                MIRROR_SPACE,
+                MIRROR_INVERT,
+              )}
+            >
+              {statusLines.map((row, i) => (
+                // Index key: these rows are a positional snapshot of the pane tail, re-derived on
+                // every poll — there is no identity to preserve across renders.
+                <div key={i} className="truncate">
+                  {row.segments.map((s, si) => (
+                    // Text nodes only — colour and weight come from the ANSI parse, never markup.
+                    // Same XSS boundary as the mirror.
+                    <span key={si} style={styleFor(s)}>
+                      {s.text}
+                    </span>
+                  ))}
+                </div>
+              ))}
             </div>
           )}
 

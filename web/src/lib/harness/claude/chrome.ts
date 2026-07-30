@@ -61,30 +61,42 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
 }
 
 /**
- * The statusline the agent draws just under its input box — model, ctx%, cwd, branch, tokens,
- * whatever the user configured in their Claude Code statusline. We strip the box off the mirror
- * (stripChrome), so this re-surfaces that one line as app chrome above the composer instead of
- * losing it.
+ * The statusline RUN the agent draws just under its input box — model, ctx%, cwd, branch, tokens,
+ * permission mode, whatever the user configured, plus the TUI's own hint row(s). We strip the box
+ * off the mirror (stripChrome), so this re-surfaces those rows as app chrome above the composer
+ * instead of losing them.
  *
- * POSITIONAL only: the first non-blank line strictly below the box's bottom border. Hint lines after
- * it ("← for agents", "⏵⏵ bypass permissions") are ignored — only the first counts. Returns the
- * trimmed text, or `null` when there's no input box at the tail (a menu is up, or a non-Claude / torn
- * buffer). Never interprets the content — the caller renders it verbatim.
+ * ALL of them, not just the first: a statusline is an arbitrary user command's output and is
+ * routinely 2–3 rows (ctx/limits on one, model + cwd + branch on the next, permission mode on the
+ * third). Surfacing only the first row silently dropped everything after it — the very fields the
+ * mirror can no longer show.
+ *
+ * POSITIONAL only: every non-blank line strictly below the box's bottom border and above where the
+ * background-agents footer starts (locateInputBox draws that line, so the footer never leaks in
+ * here). Returns the rows STYLED, top to bottom, or `[]` when there's no input box at the tail (a
+ * menu is up, or a non-Claude / torn buffer). Never interprets the content — the caller renders it
+ * verbatim.
+ *
+ * Styled, not flattened, because a statusline is colour-carrying by design: the model, the context
+ * meter and the git branch are told apart by colour before they're read. Flattening to text here
+ * threw that away one call before the strip that renders it. The caller draws these in the mirror's
+ * dark space (see mirror-space.ts) — terminal colour only means what it means against a dark
+ * background.
  */
-export function extractStatusLine(lines: StyledLine[]): string | null {
+export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const texts = lines.map(lineText);
   let end = lines.length;
   while (end > 0 && isBlank(texts[end - 1]!)) end--;
-  if (end === 0) return null;
+  if (end === 0) return [];
 
   const box = locateInputBox(texts, end);
-  if (box === null) return null;
+  if (box === null) return [];
 
-  for (let j = box.bottomBorder + 1; j < end; j++) {
-    const t = texts[j]!.trim();
-    if (t.length > 0) return t;
+  const rows: StyledLine[] = [];
+  for (let j = box.bottomBorder + 1; j < box.statusEnd; j++) {
+    if (!isBlank(texts[j]!)) rows.push(lines[j]!);
   }
-  return null;
+  return rows;
 }
 
 /**
@@ -128,8 +140,13 @@ interface InputBox {
   top: number;
   /** Index of the "❯" prompt line, between the two borders — carries the draft (extractInputDraft). */
   prompt: number;
-  /** Index of the BOTTOM border — the statusline, if any, is the first non-blank line after it. */
+  /** Index of the BOTTOM border — the statusline run, if any, starts on the next line. */
   bottomBorder: number;
+  /** EXCLUSIVE end of the statusline run: one past its last row, i.e. where the blank separator +
+   *  background-agents footer begin (or the buffer's last non-blank line when there is no footer).
+   *  `bottomBorder + 1` when the box has no statusline at all. Only the walk down there knows where
+   *  the run stops, so it hands the bound out rather than letting extractStatusLines re-derive it. */
+  statusEnd: number;
 }
 
 /**
@@ -170,7 +187,9 @@ function locateInputBox(texts: string[], end: number): InputBox | null {
   }
 
   // (b) Up to MAX_STATUS_LINES status/hint lines directly above the bottom border: non-blank,
-  //     non-border text. Stop as soon as a border is reached.
+  //     non-border text. Stop as soon as a border is reached. `i` is now the last row of that run
+  //     (the footer, if any, has been peeled off above), so it fixes the run's exclusive end.
+  const statusEnd = i + 1;
   let status = 0;
   while (i >= 0 && !isBoxBorder(texts[i]!) && !isBlank(texts[i]!) && status < MAX_STATUS_LINES) {
     status++;
@@ -204,5 +223,5 @@ function locateInputBox(texts: string[], end: number): InputBox | null {
 
   // (e) top border
   if (i < 0 || !isBoxBorder(texts[i]!)) return null;
-  return { top: i, prompt, bottomBorder };
+  return { top: i, prompt, bottomBorder, statusEnd };
 }
