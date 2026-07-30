@@ -474,12 +474,18 @@ print_status_banner
 # Not loaded at all: \`launchctl print\` fails.
 launchctl() { [ "\$1" = print ] && return 1 || return 0; }
 print_status_banner
+
+# Not loaded, but a pidfile: the unsupervised fallback (bootstrap refused). A bridge IS serving, so
+# the banner must say so rather than reading as "nothing is up".
+printf '4242\n' > "${CONFIG_DIR}/collie.pid"
+print_status_banner
 EOF
   bash "$harness" > "${CASE_DIR}/status.out" 2>&1 || fail "print_status_banner failed on the launchd path"
   local out; out="$(cat "${CASE_DIR}/status.out")"
   assert_contains "$out" 'launchd (herdr.collie) · active (pid 4242)'
   assert_contains "$out" 'launchd (herdr.collie) · loaded, not running'
   assert_contains "$out" 'launchd (herdr.collie) · not loaded'
+  assert_contains "$out" 'pid 4242 (unsupervised — launchd bootstrap refused)'
   # The pid must appear exactly once on its line — not "active (pid 4242)4242".
   case "$out" in
     *'4242)4242'*) fail "banner printed the pid twice" ;;
@@ -533,16 +539,23 @@ EOF
   assert_contains "$(cat "${CASE_DIR}/retry.out")" 'bridge started (launchd: herdr.collie)'
   assert_eq "$(grep -c '^bootstrap ' "$LAUNCHCTL_CALLS")" 2
 
-  # Permanent: EIO is also how launchd reports "gui/<uid> doesn't exist" on a Mac with no console
-  # login. Three tries, then fail loudly — a `start` that silently left nothing running would be
-  # worse than the crash.
+  # Permanent: EIO is also how launchd reports "gui/<uid> doesn't exist", which is every Mac
+  # administered purely over SSH — no console session, so no domain to bootstrap into, ever. Those
+  # hosts ran fine on the unsupervised path before launchd support existed, and `cmd_stop` has
+  # already killed that bridge by the time we get here, so giving up would take a working host to NO
+  # bridge at all. It must degrade to unsupervised instead: warn, keep serving, stay recoverable.
   install_flaky_launchctl 99
-  if bash "$harness" > "${CASE_DIR}/retry-fail.out" 2>&1; then
-    fail "start reported success though bootstrap never succeeded"
-  fi
+  bash "$harness" > "${CASE_DIR}/retry-fail.out" 2>&1 ||
+    fail "a Mac that cannot bootstrap was left with no bridge at all"
   local out; out="$(cat "${CASE_DIR}/retry-fail.out")"
-  assert_contains "$out" 'error: launchctl bootstrap failed'
+  assert_contains "$out" 'warn: launchctl bootstrap failed after 3 attempts'
   assert_contains "$out" 'no console login'
+  assert_contains "$out" 'unsupervised'
+  # It must NOT claim the agent is running — the operator has to know supervision is absent.
+  case "$out" in
+    *"bridge started (launchd:"*) fail "reported a launchd start after bootstrap failed" ;;
+  esac
+  [ -f "${CONFIG_DIR}/collie.pid" ] || fail "the unsupervised fallback left no pidfile to stop later"
   assert_eq "$(grep -c '^bootstrap ' "$LAUNCHCTL_CALLS")" 3
 }
 
