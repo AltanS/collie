@@ -39,6 +39,16 @@ setup_case() {
 exit 1
 EOF
   chmod +x "${BIN_DIR}/systemctl"
+  # A fake `launchctl` shadowing the real one on the scratch PATH. Without this a macOS run of this
+  # suite would bootstrap a job into the developer's own gui/<uid> domain — pointed at a temp dir the
+  # suite then deletes, so it crash-loops after the test "passes". Records argv for assertions.
+  LAUNCHCTL_CALLS="${CASE_DIR}/launchctl.calls"
+  cat > "${BIN_DIR}/launchctl" <<EOF
+#!/bin/sh
+echo "\$@" >> "$LAUNCHCTL_CALLS"
+exit 0
+EOF
+  chmod +x "${BIN_DIR}/launchctl"
 }
 
 run_ctl() {
@@ -311,6 +321,7 @@ export PATH="$BIN_DIR:$BASE_PATH"
 source "$CTL"
 ensure_build() { return 0; }
 have_systemd() { return 1; }
+have_launchd() { return 1; }   # pin the unsupervised nohup fallback, which is what this asserts
 BUN=/bin/true
 cmd_serve() { echo "error: simulated serve failure" >&2; return 1; }
 print_status_banner() { echo "BANNER"; }
@@ -319,6 +330,160 @@ EOF
   bash "$harness" > "${CASE_DIR}/start.out" 2>&1 ||
     fail "a failing cmd_serve aborted cmd_start"
   assert_contains "$(cat "${CASE_DIR}/start.out")" 'BANNER'
+}
+
+# macOS parity: `start` installs and bootstraps a launchd agent instead of falling through to the
+# unsupervised nohup path, `stop` boots it out, and `uninstall` removes the plist.
+#
+# The load-bearing assertion is the negative one. launchd has no `EnvironmentFile=`, so the obvious
+# port bakes the sourced .env into the plist's EnvironmentVariables — but .env is mode 600 and may hold
+# COLLIE_VAPID_PRIVATE while the plist has to stay readable, so that would copy a Web Push signing key
+# into a readable file. The seeded secret must appear nowhere in the plist.
+#
+# `have_launchd` is stubbed rather than left to `uname`: CI runs ubuntu-latest, where it is false, and
+# a test that silently skips the branch it exists to cover is worse than no test.
+test_launchd_agent_lifecycle() {
+  setup_case launchd-agent
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_PORT=8787
+COLLIE_VAPID_PRIVATE=super-secret-signing-key
+EOF
+  local plist="${HOME_DIR}/Library/LaunchAgents/herdr.collie.plist"
+  local kill_calls="${CASE_DIR}/kill.calls"
+  printf '4242\n' > "${CONFIG_DIR}/collie.pid"
+
+  local harness="${CASE_DIR}/start-stop.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+ensure_build() { return 0; }
+have_systemd() { return 1; }
+have_launchd() { return 0; }
+BUN=/bin/true
+cmd_serve() { return 0; }
+print_status_banner() { echo "BANNER"; }
+kill() { printf '%s\n' "\$*" >> "$kill_calls"; }
+# Stand in for the process table: 4242 is still our bridge, 4243 is whatever recycled that pid.
+ps() {
+  case " \$* " in
+    *" 4242 "*) echo "/opt/homebrew/bin/bun run /x/bridge/index.ts" ;;
+    *" 4243 "*) echo "/Applications/Something.app/Contents/MacOS/Something" ;;
+  esac
+}
+cmd_start
+cmd_stop
+# A pid the OS has recycled to an unrelated process must NOT be signalled — but the stale record
+# still has to go, or it would be re-examined on every future start.
+printf '4243\n' > "${CONFIG_DIR}/collie.pid"
+stop_pidfile_process
+[ -e "${CONFIG_DIR}/collie.pid" ] && exit 81
+# Invalid pidfile contents are removed but must never reach the kill builtin.
+printf '%s\n' 'not-a-pid' > "${CONFIG_DIR}/collie.pid"
+stop_pidfile_process
+EOF
+  bash "$harness" > "${CASE_DIR}/launchd.out" 2>&1 ||
+    fail "cmd_start/cmd_stop failed on the launchd path"
+
+  [ -f "$plist" ] || fail "start did not write a LaunchAgent plist"
+  [ ! -e "${CONFIG_DIR}/collie.pid" ] || fail "launchd migration left the legacy pidfile behind"
+  # Exactly one signal, to the pid that was still the bridge. 4243 (recycled to something else) and
+  # the malformed record must not appear — a stale pidfile must not kill an unrelated process.
+  assert_eq "$(cat "$kill_calls")" '-- 4242'
+  local body; body="$(cat "$plist")"
+  assert_contains "$body" '<string>_exec-bridge</string>'
+  assert_contains "$body" '<key>RunAtLoad</key>'
+  assert_contains "$body" '<key>SuccessfulExit</key>'
+  assert_contains "$body" "<string>${CONFIG_DIR}</string>"
+  case "$body" in
+    *super-secret-signing-key*)
+      fail "the plist leaked a .env value — secrets must stay in the mode-600 .env" ;;
+  esac
+
+  # Structural validity, where the tooling exists. A plist launchd cannot parse means the agent
+  # silently never starts, and none of the substring assertions above would notice. `plutil` is
+  # macOS-only, so this no-ops on the ubuntu CI runner and covers every macOS dev machine.
+  if command -v plutil >/dev/null 2>&1; then
+    plutil -lint "$plist" >/dev/null || fail "the generated plist is not a valid property list"
+  fi
+
+  local calls; calls="$(cat "$LAUNCHCTL_CALLS")"
+  assert_contains "$calls" "bootstrap gui/$(id -u) ${plist}"
+  assert_contains "$calls" "bootout gui/$(id -u)/herdr.collie"
+  assert_contains "$calls" "disable gui/$(id -u)/herdr.collie"
+
+  # `start` must be idempotent: bootstrap on an already-loaded label errors, so it boots out first.
+  assert_eq "$(grep -c '^bootout ' <<<"$calls")" 2
+
+  # Truncate first: `start` already recorded an `enable`, so asserting on the whole log would pass
+  # whether or not `uninstall` clears the override itself.
+  : > "$LAUNCHCTL_CALLS"
+
+  local teardown="${CASE_DIR}/uninstall.sh"
+  cat > "$teardown" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+have_systemd() { return 1; }
+have_launchd() { return 0; }
+cmd_unserve() { return 0; }
+cmd_uninstall
+EOF
+  bash "$teardown" > "${CASE_DIR}/uninstall.out" 2>&1 || fail "cmd_uninstall failed on the launchd path"
+  [ ! -f "$plist" ] || fail "uninstall left the LaunchAgent plist behind"
+  # The `disable` cmd_stop wrote outlives the plist, so uninstall must clear it — otherwise a later
+  # reinstall inherits a disabled label whose `start` only recovers by re-enabling.
+  local teardown_calls; teardown_calls="$(cat "$LAUNCHCTL_CALLS")"
+  assert_contains "$teardown_calls" "enable gui/$(id -u)/herdr.collie"
+  assert_eq "$(grep -c '^enable ' <<<"$teardown_calls")" 1
+}
+
+# The banner's launchd line, which is what `status` actually shows an operator. Split out because the
+# lifecycle test stubs print_status_banner, so nothing there reads this — a first cut printed the pid
+# twice ("active (pid 123)123") and every lifecycle assertion still passed.
+test_launchd_status_line() {
+  setup_case launchd-status
+  local harness="${CASE_DIR}/status.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+have_systemd() { return 1; }
+have_launchd() { return 0; }
+bridge_ready() { return 0; }
+collie_version() { echo "test"; }
+bridge_url() { echo "https://host.example"; }
+
+# Loaded and running: launchd prints a pid line.
+launchctl() { [ "\$1" = print ] && printf '\tstate = running\n\tpid = 4242\n' || return 0; }
+print_status_banner
+
+# Loaded but not running: same output minus the pid.
+launchctl() { [ "\$1" = print ] && printf '\tstate = waiting\n' || return 0; }
+print_status_banner
+
+# Not loaded at all: \`launchctl print\` fails.
+launchctl() { [ "\$1" = print ] && return 1 || return 0; }
+print_status_banner
+EOF
+  bash "$harness" > "${CASE_DIR}/status.out" 2>&1 || fail "print_status_banner failed on the launchd path"
+  local out; out="$(cat "${CASE_DIR}/status.out")"
+  assert_contains "$out" 'launchd (herdr.collie) · active (pid 4242)'
+  assert_contains "$out" 'launchd (herdr.collie) · loaded, not running'
+  assert_contains "$out" 'launchd (herdr.collie) · not loaded'
+  # The pid must appear exactly once on its line — not "active (pid 4242)4242".
+  case "$out" in
+    *'4242)4242'*) fail "banner printed the pid twice" ;;
+  esac
 }
 
 # A bun that reports only how it was found: its own path, and the PATH it inherited.
@@ -415,6 +580,8 @@ test_missing_tailscale_cli
 test_state_delete_failures
 test_adopts_preexisting_collie_mount
 test_serve_failure_does_not_abort_start
+test_launchd_agent_lifecycle
+test_launchd_status_line
 test_bun_resolution
 test_non_absolute_bun_never_reaches_path
 test_missing_bun_still_reports
