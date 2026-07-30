@@ -137,8 +137,9 @@ On the **host** (the tailnet node your agents run on):
 | **git** | Clone, and the `update` command. |
 
 Soft dependencies: **Node.js** (the control script uses it to extract your MagicDNS name from
-`tailscale status --json`; without it the banner falls back to the loopback URL) and **`systemd
---user`** (supervises the service; falls back to a `nohup` process without it). You never install JS
+`tailscale status --json`; without it the banner falls back to the loopback URL) and a **service
+supervisor** — `systemd --user` on Linux, **launchd** on macOS (both ship with the OS); a host with
+neither falls back to an unsupervised `nohup` process. You never install JS
 deps by hand — the build runs `bun install` for you; the backend imports only Bun + `node:*`.
 [`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see [Web
 Push](#web-push-optional)).
@@ -207,9 +208,11 @@ The `✓` is a real probe — the script connected to the bridge's port and got 
 
 1. **`web/dist`** — the built UI. The bridge serves it from disk at request time, so later UI
    rebuilds go live without a restart.
-2. **A `systemd --user` service named `collie`** — unit file written to
-   `~/.config/systemd/user/collie.service`, enabled and started, auto-restarting on failure.
-   Inspect it with `systemctl --user status collie`. (No usable systemd? A `nohup` process with a
+2. **A supervised user service** — on Linux a `systemd --user` unit named `collie`, written to
+   `~/.config/systemd/user/collie.service`, enabled and started, auto-restarting on failure. Inspect
+   it with `systemctl --user status collie`. On macOS a launchd agent labelled `herdr.collie`, written
+   to `~/Library/LaunchAgents/herdr.collie.plist` and bootstrapped into `gui/$(id -u)`; inspect it
+   with `launchctl print gui/$(id -u)/herdr.collie`. (Neither supervisor? A `nohup` process with a
    pidfile in the config dir instead.)
 3. **A tailnet-only `tailscale serve` mapping** — the script ran `tailscale serve --bg 8787`:
    HTTPS on the host's MagicDNS name, `:443 → 127.0.0.1:8787`. Tailscale terminates TLS (managed
@@ -274,6 +277,12 @@ loginctl enable-linger $USER
 
 The unit is `enable`d, so with lingering it starts at boot with your user manager; the
 `tailscale serve` mapping is persistent (`--bg`) and comes back on its own.
+
+**On macOS there's nothing to enable.** `start` installs a launchd agent
+(`~/Library/LaunchAgents/herdr.collie.plist`) with `RunAtLoad`, so the bridge comes back when you log
+in and launchd restarts it if it exits abnormally. Inspect it with
+`launchctl print gui/$(id -u)/herdr.collie`. It's a *LaunchAgent*, not a daemon, so it starts at
+**login** rather than at boot — a Mac sitting at the login window is not serving Collie.
 
 ## Configure
 
@@ -396,7 +405,8 @@ Pause the bridge without removing anything (a later `start` brings it right back
 scripts/collie-ctl.sh stop      # or: herdr plugin action invoke stop --plugin herdr.collie
 ```
 
-To tear the service down completely — stop + disable it, remove the `systemd --user` unit, and remove
+To tear the service down completely — stop + disable it, remove the service definition (the
+`systemd --user` unit, or the launchd agent plist on macOS), and remove
 Collie's own `tailscale serve` mapping (port-scoped, so other tailnet mappings on the host survive) —
 use `uninstall`. It leaves your `.env` and the checkout untouched:
 
@@ -886,7 +896,9 @@ the proxy forward `Host` unchanged (Variant B, rule 4).
 **Collie is gone after a reboot.** A `systemd --user` unit only runs while you have a session — on a
 headless host enable lingering once (`loginctl enable-linger $USER`) and the `collie` unit (already
 `enable`d) starts at boot with your user manager. The `tailscale serve` mapping persists on its own
-(`--bg`), so lingering is usually the whole fix.
+(`--bg`), so lingering is usually the whole fix. On macOS the launchd agent starts at **login**, so
+check you're actually logged in (not sitting at the login window) and that the agent is loaded:
+`launchctl print gui/$(id -u)/herdr.collie`.
 
 **Phone shows a stale UI after a rebuild.** A PWA's service-worker cache is per-origin, so reaching
 Collie at two origins (a custom domain *and* the raw `host:8787`) gives you two installs, each
