@@ -61,9 +61,9 @@ const MAX_CANDIDATES = 12;
 /**
  * Rebuild the session ref Herdr would have reported for this log, per harness.
  *
- * This is the part worth probing: each adapter's resolve() is a different strategy (Claude scans flat
- * project dirs, Codex walks date partitions, pi takes the path straight), and each derives from a
- * differently-shaped filename.
+ * This is the part worth probing: Claude scans flat project dirs, Codex walks date partitions, and
+ * the Pi and OMP adapters resolve the reported path directly. Their differently-shaped filenames
+ * exercise both id- and path-based refs.
  */
 export function refFor(agent: string, path: string): AgentSessionRef | null {
   const file = path.slice(path.lastIndexOf("/") + 1).replace(/\.jsonl$/, "");

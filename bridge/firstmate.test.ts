@@ -110,19 +110,47 @@ describe("bearings normalization", () => {
 
   test("redacts absolute paths from every allowlisted display field", () => {
     const normalized = normalizeBearings(bearings({
-      in_flight: [{ id: "TRA-1", kind: "task", state: "working", doing: "Inspect /Users/alice/private/run.sh" }],
-      decisions_open: [{ id: "TRA-2", summary: "Choose path=/private/tmp/decision", owner: "(main)" }],
-      gates: [{ id: "TRA-3", title: "Waiting on C:\\Users\\alice\\gate", blocked_by: "TRA-2", reason: "read ~/secret", owner: "(main)" }],
-      landed: [{ id: "TRA-4", what: "Delivered /home/alice/output", owner: "(main)" }],
+      in_flight: [{ id: "TRA-1", kind: "task", state: "working", doing: "Inspect </Users/alice/.ssh/config> then https://docs.example/path and docs/setup.md" }],
+      decisions_open: [{ id: "TRA-2", summary: "Choose,/private/tmp/decision then inspect./Users/alice/dot", owner: "(main)" }],
+      gates: [{ id: "TRA-3", title: "Waiting,\\\\server\\share and-C:\\Users\\alice\\gate", blocked_by: "TRA-2", reason: "write >/private/tmp/result, read \"/Users/Alice Smith/secret\", and,~/secret", owner: "(main)" }],
+      landed: [{ id: "TRA-4", what: "artifact_/home/alice/output", owner: "(main)" }],
       prs: "checked /var/tmp/result",
-      candidate_prs: [{ num: "42", repo: "owner/repo", task: "TRA-1", url: "https://github.com/owner/repo/pull/42", review: "read /opt/review", mergeable: "MERGEABLE", checks: "passing" }],
+      candidate_prs: [{ num: "42", repo: "owner/repo", task: "TRA-1", url: "https://github.com/owner/repo/pull/42", review: "run&&/opt/review", mergeable: "MERGEABLE", checks: "passing" }],
     }), true);
+    expect(normalized!.inFlight[0]!.doing).toBe("Inspect <[path]");
+    expect(normalized!.gates[0]!.reason).toBe("write >[path]");
 
     const output = JSON.stringify(normalized);
     expect(output).toContain("[path]");
-    for (const leaked of ["/Users/alice", "/private/tmp", "C:\\Users\\alice", "~/secret", "/home/alice", "/var/tmp", "/opt/review"]) {
+    for (const leaked of ["/Users/alice", "/private/tmp", "\\\\server\\share", "C:\\Users\\alice", "/Users/Alice Smith", "Smith/secret", "~/secret", "/home/alice", "/var/tmp", "/opt/review"]) {
       expect(output).not.toContain(leaked);
     }
+
+    const unquotedSpaces = normalizeBearings(bearings({
+      in_flight: [{ id: "TRA-1", kind: "task", state: "working", doing: "Inspect /Users/alice/Secret Project/O'Brien/client-list.csv" }],
+      gates: [
+        { id: "TRA-3", title: "Gate", blocked_by: "TRA-2", reason: "Read C:\\Program Files\\Acme\\secret.txt", owner: "(main)" },
+        { id: "TRA-4", title: "Gate", blocked_by: "TRA-2", reason: "Read /Users/alice/reports/Q1,final/client.csv", owner: "(main)" },
+      ],
+    }), false);
+    expect(unquotedSpaces!.inFlight[0]!.doing).toBe("Inspect [path]");
+    expect(unquotedSpaces!.gates[0]!.reason).toBe("Read [path]");
+    expect(unquotedSpaces!.gates[1]!.reason).toBe("Read [path]");
+
+    const safeReferences = normalizeBearings(bearings({
+      in_flight: [{ id: "TRA-1", kind: "task", state: "working", doing: "See https://docs.example/path and docs/setup.md, ./scripts/test.sh, ../src/x" }],
+    }), false);
+    expect(safeReferences!.inFlight[0]!.doing).toBe(
+      "See https://docs.example/path and docs/setup.md, ./scripts/test.sh, ../src/x",
+    );
+  });
+
+  test("bounds malformed quoted path input before redaction", () => {
+    const malicious = `"/${"\\".repeat(10_000)}`;
+    const normalized = normalizeBearings(bearings({
+      in_flight: [{ id: "TRA-1", kind: "task", state: "working", doing: malicious }],
+    }), false);
+    expect(normalized!.inFlight[0]!.doing).toBe("\"[path]");
   });
 
   test("rejects the wrong schema or malformed required rows and caps row counts", () => {

@@ -68,12 +68,22 @@ function plainBoundedString(value: unknown, max = MAX_TEXT): string | null {
   return clean.slice(0, max);
 }
 
+function redactAbsolutePaths(value: string): string {
+  const quoted = value.replace(
+    /(["'`])(?:[A-Za-z]:[\\/]|~[\\/]|[\\/]{1,2})(?:\\.|(?!\\|\1).)*\1/g,
+    "$1[path]$1",
+  );
+  return quoted.replace(
+    /https?:\/\/[^\s)\]}>;,|&<"'`]+|(^|[^A-Za-z0-9.])(?:[A-Za-z]:[\\/]|~[\\/]|[\\/]{1,2}).*/gi,
+    (match, boundary: string | undefined) =>
+      /^https?:\/\//i.test(match) ? match : `${boundary ?? ""}[path]`,
+  );
+}
+
 function boundedString(value: unknown, max = MAX_TEXT): string | null {
-  const clean = plainBoundedString(value, Number.MAX_SAFE_INTEGER);
+  const clean = plainBoundedString(value, max);
   if (clean === null) return null;
-  return clean
-    .replace(/(^|[\s(\[{:;="'`])(?:[A-Za-z]:[\\/]|~[\\/]|[\\/]{1,2})[^\s)\]}>;,]*/g, "$1[path]")
-    .slice(0, max);
+  return redactAbsolutePaths(clean).slice(0, max);
 }
 
 function githubPullUrl(value: unknown): string | null {
