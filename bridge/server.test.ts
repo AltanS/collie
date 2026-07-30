@@ -9,6 +9,7 @@ import {
   deviceAuth,
   guard,
   historyParams,
+  firstmateSnapshotField,
   isHostAllowed,
   isReservedAuthPath,
   keysPane,
@@ -46,7 +47,12 @@ function cfg(overrides: Partial<Config> = {}): Config {
     notifyDelayMs: 30_000,
     readLines: 200,
     transcript: true,
-    journalRoots: { claude: "/tmp/claude-projects", codex: "/nope/codex", pi: "/nope/pi" },
+    journalRoots: {
+      claude: "/tmp/claude-projects",
+      codex: "/nope/codex",
+      omp: "/nope/omp",
+      pi: "/nope/pi",
+    },
     submitKeys: ["Enter"],
     trustedUser: "",
     deviceHeader: "",
@@ -59,12 +65,26 @@ function cfg(overrides: Partial<Config> = {}): Config {
     stateDir: "/tmp/state",
     multiSession: true,
     skipServe: false,
+    firstmateHome: "",
+    firstmateRefreshMs: 30_000,
+    firstmateIncludePrs: false,
+    firstmatePrRefreshMs: 120_000,
     ...overrides,
   };
 }
 
+describe("optional Firstmate snapshot field", () => {
+  test("is absent when unconfigured and additive when configured", () => {
+    expect(firstmateSnapshotField(undefined)).toEqual({});
+    expect(firstmateSnapshotField({ state: "loading" })).toEqual({
+      firstmate: { state: "loading" },
+    });
+  });
+});
+
 describe("checkAccess — same-origin / CSRF gate", () => {
   test("allows a request with no Origin header (same-origin GET)", () => {
+
     expect(checkAccess(req({ host: "collie.example.ts.net" }), cfg())).toEqual({ ok: true });
   });
 

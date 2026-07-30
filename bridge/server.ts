@@ -5,6 +5,7 @@ import type { ActivityLedger } from "./activity.ts";
 import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
+import type { FirstmateProvider } from "./firstmate.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import {
@@ -27,6 +28,7 @@ import type {
   BridgeConfig,
   CreateResponse,
   DeviceAuth,
+  FirstmateStatus,
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
@@ -141,8 +143,9 @@ export function startServer(opts: {
   updateMonitor: UpdateMonitor;
   audit: AuditLog;
   activity: ActivityLedger;
+  firstmate?: FirstmateProvider;
 }) {
-  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity } = opts;
+  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, firstmate } = opts;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
@@ -195,6 +198,7 @@ export function startServer(opts: {
             bridge,
             // Only report device state when the feature is on, so an off deployment sends nothing new.
             ...(device.enforced ? { device } : {}),
+            ...firstmateSnapshotField(firstmate?.status(registry)),
             // The one place a pane leaves the bridge: the session ref is stripped to a presence flag
             // here, so an agent-reported filesystem path never reaches a browser (see toPaneWire).
             // The flag is computed against the registry, so a harness Herdr detects but Collie has no
@@ -396,6 +400,12 @@ export function startServer(opts: {
   for (const w of startupWarnings(cfg)) console.warn(w);
 
   return server;
+}
+
+export function firstmateSnapshotField(
+  status: FirstmateStatus | undefined,
+): { firstmate?: FirstmateStatus } {
+  return status ? { firstmate: status } : {};
 }
 
 /**

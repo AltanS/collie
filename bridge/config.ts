@@ -1,5 +1,6 @@
+import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import type { DialMode } from "./dial.ts";
 import type { JournalRoots } from "./journal/registry.ts";
@@ -69,6 +70,23 @@ function envBool(name: string, fallback: boolean): boolean {
   if (["on", "1", "true", "yes"].includes(v)) return true;
   console.warn(`[config] ${name}="${raw}" is not a boolean — using default ${fallback}`);
   return fallback;
+}
+
+function trustedHome(name: string): string {
+  const raw = (process.env[name] ?? "").trim();
+  if (!raw) return "";
+  if (!isAbsolute(raw)) {
+    console.warn(`[config] ${name} must be an absolute path — disabling Firstmate`);
+    return "";
+  }
+  try {
+    const resolved = realpathSync(raw);
+    if (!statSync(resolved).isDirectory()) throw new Error("not a directory");
+    return resolved;
+  } catch {
+    console.warn(`[config] ${name} does not resolve to an existing directory — disabling Firstmate`);
+    return "";
+  }
 }
 
 export interface Config {
@@ -177,6 +195,14 @@ export interface Config {
    * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (README → Variant C).
    */
   skipServe: boolean;
+  /** Trusted, startup-resolved Firstmate home. Empty disables the optional dashboard. */
+  firstmateHome: string;
+  /** Local bearings refresh cadence. */
+  firstmateRefreshMs: number;
+  /** Whether live GitHub PR enrichment is enabled. */
+  firstmateIncludePrs: boolean;
+  /** Separate live PR refresh cadence. */
+  firstmatePrRefreshMs: number;
 }
 
 /**
@@ -223,6 +249,7 @@ export function loadConfig(): Config {
       codex:
         process.env.COLLIE_CODEX_ROOT ??
         join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "sessions"),
+      omp: process.env.COLLIE_OMP_ROOT ?? join(homedir(), ".omp", "agent", "sessions"),
       pi:
         process.env.COLLIE_PI_ROOT ??
         join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "sessions"),
@@ -239,5 +266,9 @@ export function loadConfig(): Config {
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true),
     skipServe: envBool("COLLIE_SKIP_SERVE", false),
+    firstmateHome: trustedHome("COLLIE_FIRSTMATE_HOME"),
+    firstmateRefreshMs: envInt("COLLIE_FIRSTMATE_REFRESH_MS", 30_000, { min: 1000 }),
+    firstmateIncludePrs: envBool("COLLIE_FIRSTMATE_INCLUDE_PRS", false),
+    firstmatePrRefreshMs: envInt("COLLIE_FIRSTMATE_PR_REFRESH_MS", 120_000, { min: 1000 }),
   };
 }

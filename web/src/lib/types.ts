@@ -157,10 +157,85 @@ export interface UpdateInfo {
   checkedAt: number | null;
 }
 
+export interface FirstmateEndpoint {
+  session: string;
+  paneId: string;
+}
+
+export interface FirstmateDecision {
+  id: string;
+  summary: string;
+  owner: string;
+  endpoint?: FirstmateEndpoint;
+}
+
+export interface FirstmateInFlight {
+  id: string;
+  kind: string;
+  state: string;
+  doing: string;
+  endpoint?: FirstmateEndpoint;
+}
+
+export interface FirstmateGate {
+  id: string;
+  title: string;
+  blockedBy: string;
+  reason: string;
+  owner: string;
+  endpoint?: FirstmateEndpoint;
+}
+
+export interface FirstmateLanded {
+  id: string;
+  what: string;
+  owner: string;
+}
+
+export type FirstmateChecks = "none" | "pending" | "passing" | "failing" | "unknown";
+
+export interface FirstmatePullRequest {
+  number: string;
+  repo: string;
+  task: string;
+  url: string;
+  review: string;
+  mergeable: string;
+  checks: FirstmateChecks;
+  endpoint?: FirstmateEndpoint;
+}
+
+export type FirstmateUnavailableReason =
+  | "not-executable"
+  | "timeout"
+  | "output-limit"
+  | "command-failed"
+  | "invalid-output";
+
+export type FirstmatePrState = "disabled" | "loading" | "ready" | "stale" | "unavailable";
+
+interface FirstmateData {
+  home: string;
+  generatedAt: string;
+  inFlight: FirstmateInFlight[];
+  decisions: FirstmateDecision[];
+  gates: FirstmateGate[];
+  landed: FirstmateLanded[];
+  prs: FirstmatePullRequest[];
+  prState: FirstmatePrState;
+  prSummary?: string;
+}
+
+export type FirstmateStatus =
+  | { state: "loading" }
+  | { state: "unavailable"; reason: FirstmateUnavailableReason }
+  | ({ state: "ready" | "stale" } & FirstmateData);
+
 export interface SnapshotResponse {
   bridge: BridgeStatus;
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
   device?: DeviceAuth;
+  firstmate?: FirstmateStatus;
   agents: AgentView[];
   shellPanes: AgentView[];
   workspaces: WorkspaceView[];

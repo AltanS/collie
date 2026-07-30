@@ -7,6 +7,7 @@ import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { loadConfig } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
 import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
+import { FirstmateProvider } from "./firstmate.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { Push } from "./push.ts";
@@ -203,13 +204,34 @@ const sweepTimer = setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
-const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity });
+const firstmate = cfg.firstmateHome
+  ? new FirstmateProvider({
+      home: cfg.firstmateHome,
+      refreshMs: cfg.firstmateRefreshMs,
+      includePrs: cfg.firstmateIncludePrs,
+      prRefreshMs: cfg.firstmatePrRefreshMs,
+    })
+  : undefined;
+firstmate?.start();
+
+const server = startServer({
+  cfg,
+  registry,
+  push,
+  snooze,
+  notifyPrefs,
+  updateMonitor,
+  audit,
+  activity,
+  firstmate,
+});
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");
   // Stop accepting new connections and let in-flight requests drain briefly (non-forced stop)
   // before we tear down the poll loops and exit.
   await server.stop();
+  firstmate?.stop();
   clearInterval(refreshTimer);
   registry.disposeAll();
   // Writes are debounced, so the last few seconds of "you looked at this" live only in memory —

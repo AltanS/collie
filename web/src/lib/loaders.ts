@@ -20,6 +20,7 @@ import type {
   AgentView,
   BridgeStatus,
   DeviceAuth,
+  FirstmateStatus,
   PaneHistoryResponse,
   PaneReadResponse,
   SessionSummary,
@@ -63,6 +64,7 @@ export interface HomeData {
   bridge: BridgeStatus | undefined;
   /** Per-device authorisation; undefined when the feature is off or not yet known. */
   device: DeviceAuth | undefined;
+  firstmate?: FirstmateStatus;
   agents: AgentView[];
   shellPanes: AgentView[];
   workspaces: WorkspaceView[];
@@ -143,6 +145,7 @@ function toHomeData(snap: SnapshotResponse, session: string | undefined, error: 
   return {
     bridge: snap.bridge,
     device: snap.device,
+    firstmate: snap.firstmate,
     agents: snap.agents,
     shellPanes: snap.shellPanes ?? [],
     workspaces: snap.workspaces ?? [],
@@ -167,6 +170,7 @@ function staleHome(session: string | undefined): HomeData {
     : {
         bridge: undefined,
         device: undefined,
+        firstmate: undefined,
         agents: [],
         shellPanes: [],
         workspaces: [],

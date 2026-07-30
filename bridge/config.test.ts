@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { defaultSocketPath, loadConfig } from "./config.ts";
@@ -16,6 +18,7 @@ const KEYS = [
   "COLLIE_TRANSCRIPT",
   "COLLIE_TRANSCRIPT_ROOT",
   "COLLIE_CODEX_ROOT",
+  "COLLIE_OMP_ROOT",
   "COLLIE_PI_ROOT",
   // Each harness's own home var participates in journal-root resolution, so the suite must own them
   // too — otherwise a developer with CODEX_HOME set gets different results than CI.
@@ -33,12 +36,17 @@ const KEYS = [
   "COLLIE_STATE_DIR",
   "COLLIE_MULTI_SESSION",
   "COLLIE_SKIP_SERVE",
+  "COLLIE_FIRSTMATE_HOME",
+  "COLLIE_FIRSTMATE_REFRESH_MS",
+  "COLLIE_FIRSTMATE_INCLUDE_PRS",
+  "COLLIE_FIRSTMATE_PR_REFRESH_MS",
   "HERDR_SOCKET_PATH",
   "HERDR_PLUGIN_STATE_DIR",
   "COLLIE_HERDR_DIAL",
 ];
 
 let saved: Record<string, string | undefined>;
+const tempDirs: string[] = [];
 
 beforeEach(() => {
   saved = {};
@@ -54,6 +62,7 @@ afterEach(() => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  while (tempDirs.length) rmSync(tempDirs.pop()!, { recursive: true, force: true });
 });
 
 describe("loadConfig", () => {
@@ -67,6 +76,7 @@ describe("loadConfig", () => {
     // Transcript history defaults ON — it's the only scrollback a Claude pane can ever have.
     expect(cfg.transcript).toBe(true);
     expect(cfg.journalRoots.claude).toEndWith("/.claude/projects");
+    expect(cfg.journalRoots.omp).toEndWith("/.omp/agent/sessions");
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
     expect(cfg.allowedOrigins).toEqual([]);
@@ -148,10 +158,13 @@ describe("loadConfig", () => {
     expect(cfg.journalRoots.pi).toBe("/srv/pi/sessions");
   });
 
-  test("an explicit COLLIE_* root beats the harness's home var", () => {
+  test("explicit COLLIE_* roots override harness defaults and home vars", () => {
     process.env.CODEX_HOME = "/srv/codex";
     process.env.COLLIE_CODEX_ROOT = "/elsewhere/rollouts";
-    expect(loadConfig().journalRoots.codex).toBe("/elsewhere/rollouts");
+    process.env.COLLIE_OMP_ROOT = "/srv/omp/sessions";
+    const cfg = loadConfig();
+    expect(cfg.journalRoots.codex).toBe("/elsewhere/rollouts");
+    expect(cfg.journalRoots.omp).toBe("/srv/omp/sessions");
   });
 
   test("reads the per-device auth header and allowlist", () => {
@@ -239,6 +252,35 @@ describe("loadConfig", () => {
     process.env.COLLIE_HERDR_DIAL = "carrier-pigeon";
     expect(loadConfig().dialMode).toBe("auto");
   });
+  test("keeps Firstmate omitted by default and resolves its independent refresh settings", () => {
+    expect(loadConfig()).toMatchObject({
+      firstmateHome: "",
+      firstmateRefreshMs: 30_000,
+      firstmateIncludePrs: false,
+      firstmatePrRefreshMs: 120_000,
+    });
+
+    const home = mkdtempSync(join(tmpdir(), "collie-firstmate-"));
+    tempDirs.push(home);
+    process.env.COLLIE_FIRSTMATE_HOME = home;
+    process.env.COLLIE_FIRSTMATE_REFRESH_MS = "45000";
+    process.env.COLLIE_FIRSTMATE_INCLUDE_PRS = "yes";
+    process.env.COLLIE_FIRSTMATE_PR_REFRESH_MS = "180000";
+    expect(loadConfig()).toMatchObject({
+      firstmateHome: realpathSync(home),
+      firstmateRefreshMs: 45_000,
+      firstmateIncludePrs: true,
+      firstmatePrRefreshMs: 180_000,
+    });
+  });
+
+  test("rejects a relative or missing Firstmate home at startup", () => {
+    process.env.COLLIE_FIRSTMATE_HOME = "relative/firstmate";
+    expect(loadConfig().firstmateHome).toBe("");
+    process.env.COLLIE_FIRSTMATE_HOME = join(tmpdir(), "collie-firstmate-does-not-exist");
+    expect(loadConfig().firstmateHome).toBe("");
+  });
+
 });
 
 // Pure — both platform branches are testable from any host (expectations use join() so the

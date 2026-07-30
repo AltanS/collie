@@ -4,6 +4,7 @@ import { useNavigate, useRouteLoaderData } from "react-router";
 import { AppHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
+import { FirstmateOverview } from "@/components/firstmate-overview";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
@@ -55,6 +56,11 @@ export function HomeRoute() {
         <ReadOnlyBanner device={data.device} />
 
         <main className="flex-1">
+          <FirstmateOverview
+            firstmate={data.firstmate}
+            sessions={data.sessions}
+            onOpen={(paneId, session) => navigate(panePath(paneId, session))}
+          />
           {/* One list, every section, in triage order. It used to be split in two so "Needs you"
               could be hoisted above the spaces overview; with Spaces last there is nothing to
               straddle. */}
