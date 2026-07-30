@@ -1,8 +1,8 @@
 import { Fragment, memo, useEffect, useMemo, useRef } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
-import { parseAnsi, type AnsiSegment } from "@/lib/ansi";
+import { parseAnsi } from "@/lib/ansi";
 import { buildBlocks } from "@/lib/harness";
 import {
   splitLines,
@@ -14,6 +14,7 @@ import {
   type WizardModel,
 } from "@/lib/blocks";
 import { lineText } from "@/lib/harness/claude/markers";
+import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";
 import { PromptSelectBlock } from "@/components/prompt-select-block";
@@ -72,27 +73,8 @@ export interface AnsiOutputProps {
 // (no needless effect re-runs / parent count updates while find is closed).
 const NO_MATCHES: FindMatch[] = [];
 
-// The mirror is always authored in DARK space, and light mode inverts it. See
-// .adr/0002-invert-the-light-terminal-mirror.md — in short, three of the four harnesses emit
-// overwhelmingly truecolor (opencode 100%, pi 89%, claude 79%), and truecolor names an absolute
-// colour no palette can re-theme. Rendering it unchanged on white leaves most of an agent's output
-// under 2:1.
-//
-// The colours here are LITERAL dark-space values rather than theme tokens. That is a CONVENTION,
-// not a constraint: `color-scheme: dark` on this element DOES flip an inherited light-dark() token
-// (resolution is element-scoped, per spec), and these literals are byte-exact matches for
-// --background / --foreground / --muted-foreground's dark halves, so either spelling renders the
-// same pixels. Literals win because they sit beside the truecolor an agent emits — which nothing
-// can re-theme — and say at the point of use that the value is deliberately theme-independent.
-// What matters is that the mirror never mixes the two (ADR 0002, rule 2).
-//
-// `color-scheme: dark` still earns its place for native UI inside the pre (the x-overflow
-// scrollbar, selection), which the filter then maps to light along with everything else.
-//
-// Scoped to the <pre> deliberately: the interactive blocks (prompt/wizard/preview/multi-select) are
-// siblings, not children, so they keep normal app theming and never invert.
-const MIRROR_SPACE = "[color-scheme:dark] bg-[#0a0a0a] text-[#fafafa]";
-const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]";
+// The mirror's dark colour space and its light-theme inversion live in mirror-space.ts — the
+// statusline strip renders the same terminal segments and the two must not drift.
 
 // An autolinked URL keeps the colour the agent printed — recolouring it would lie about the
 // terminal's own output — and is marked by an underline in `currentColor`, which is legible against
@@ -219,11 +201,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   }, [currentMatch, matches]);
 
   // Muted = box-drawing / rule glyphs. Drop ANSI dim opacity so table borders stay visible —
-  // var(--border) + dim made them nearly invisible on mobile. #a1a1a1 is --muted-foreground's dark
-  // half, written literally to match MIRROR_SPACE above — everything inside the pre is dark-space,
-  // and the mirror keeps one spelling throughout (ADR 0002, rule 2).
-  const styleFor = (s: AnsiSegment): CSSProperties =>
-    s.muted ? { ...s.style, color: "#a1a1a1", fontWeight: 400, opacity: 1 } : s.style;
+  // var(--border) + dim made them nearly invisible on mobile. See styleFor in mirror-space.ts.
 
   const prompt = promptBlock ? (
     <PromptSelectBlock
