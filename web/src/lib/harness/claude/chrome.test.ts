@@ -7,6 +7,12 @@ import { splitLines, type StyledLine } from "../../blocks";
 import { extractInputDraft, extractStatusLines, stripChrome } from "./chrome";
 import { lineText } from "./markers";
 
+/** The statusline run as plain text. extractStatusLines returns STYLED lines — a statusline tells
+ *  its fields apart by colour, so the strip needs the segments — but most assertions here are about
+ *  WHICH rows come back, not how they look, and read better against text. */
+const statusText = (lines: StyledLine[]): string[] =>
+  extractStatusLines(lines).map((l) => lineText(l).trim());
+
 // Anchored on this file's directory (see prompt-select.test.ts for why not `new URL(import.meta.url)`).
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
@@ -169,7 +175,7 @@ describe("stripChrome — conservative: leaves non-chrome untouched", () => {
 // nowhere.
 describe("extractStatusLines — recovers the stripped statusline run", () => {
   it("working: returns the statusline including the branch (the field the field-report flagged)", () => {
-    const rows = extractStatusLines(fixtureLines("claude--working.txt"));
+    const rows = statusText(fixtureLines("claude--working.txt"));
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0]).toContain("feature/block-renderer"); // the branch survives
     expect(rows[0]).toContain("151.5k tokens");
@@ -178,20 +184,20 @@ describe("extractStatusLines — recovers the stripped statusline run", () => {
   });
 
   it("fresh-idle: returns the statusline AND the hint row under it, in order", () => {
-    const rows = extractStatusLines(fixtureLines("claude--fresh-idle.txt"));
+    const rows = statusText(fixtureLines("claude--fresh-idle.txt"));
     expect(rows.length).toBe(2);
     expect(rows[0]).toContain("fixture-sandbox");
     expect(rows[1]).toContain("← for agents");
   });
 
   it("done: returns the statusline of a completed turn", () => {
-    const rows = extractStatusLines(fixtureLines("claude--done.txt"));
+    const rows = statusText(fixtureLines("claude--done.txt"));
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0]).toContain("tokens");
   });
 
   it("footer variant: returns the statusline + hint, but NOT the background-agents footer", () => {
-    const rows = extractStatusLines(fixtureLines("claude--draft-footer-empty.txt"));
+    const rows = statusText(fixtureLines("claude--draft-footer-empty.txt"));
     expect(rows[0]).toContain("ctx:33%"); // the statusline itself
     expect(rows.join("\n")).toContain("bypass permissions"); // the hint row is part of the run
     expect(rows.join("\n")).not.toContain("worker:scout"); // …the footer below the blank is not
@@ -209,12 +215,30 @@ describe("extractStatusLines — recovers the stripped statusline run", () => {
     ];
     // U+00A0 after the marker, as Claude renders it — never a plain space.
     const lines = boxWithStatusRows("❯\u00A0", REAL_ROWS);
-    expect(extractStatusLines(lines)).toEqual(REAL_ROWS.map((r) => r.trim()));
+    expect(statusText(lines)).toEqual(REAL_ROWS.map((r) => r.trim()));
+  });
+
+  // The rows come back STYLED, which is the whole reason the strip can show a statusline the way its
+  // author meant it: fields are told apart by colour before they are read. Flattening to text here
+  // (what this used to do) threw the colour away one call before the surface that renders it.
+  it("keeps each row's colour, not just its text", () => {
+    const ESC = "\x1b";
+    const lines = boxWithStatusRows("❯ ", [
+      `${ESC}[32mCTX:20%${ESC}[0m ${ESC}[33mmain*${ESC}[0m`,
+    ]);
+    const rows = extractStatusLines(lines);
+    expect(rows.length).toBe(1);
+    // Two differently-coloured runs, both carrying a colour — a flattened row would be one bare
+    // segment with no style at all.
+    const coloured = rows[0]!.segments.filter((s) => s.style.color !== undefined);
+    expect(coloured.length).toBeGreaterThanOrEqual(2);
+    expect(coloured[0]!.style.color).not.toBe(coloured[1]!.style.color);
+    expect(lineText(rows[0]!)).toContain("CTX:20%");
   });
 
   it("a single-row statusline is a one-element array (no visual change for those panes)", () => {
     const lines = boxWithStatusRows("❯\u00A0fix the flaky test", ["[Opus 4.8] · ctx:3% · main · 32k tokens"]);
-    expect(extractStatusLines(lines)).toEqual(["[Opus 4.8] · ctx:3% · main · 32k tokens"]);
+    expect(statusText(lines)).toEqual(["[Opus 4.8] · ctx:3% · main · 32k tokens"]);
   });
 
   it("returns [] for a box with no statusline under it at all", () => {
@@ -329,7 +353,7 @@ describe("the statusline run — as tall as a real statusline", () => {
   it.each([1, 2, 3, 4, 5, 6, 7, 8])("locates the box under %i statusline row(s)", (rows) => {
     const lines = boxWithStatusRows(`❯ ${DRAFT}`, statusRows(rows));
     expect(extractInputDraft(lines)).toBe(DRAFT);
-    expect(extractStatusLines(lines)).toEqual(statusRows(rows)); // every row, however tall the run
+    expect(statusText(lines)).toEqual(statusRows(rows)); // every row, however tall the run
     expect(stripChrome(lines)).not.toBe(lines);
   });
 

@@ -73,11 +73,17 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
  *
  * POSITIONAL only: every non-blank line strictly below the box's bottom border and above where the
  * background-agents footer starts (locateInputBox draws that line, so the footer never leaks in
- * here). Returns the rows trimmed, top to bottom, or `[]` when there's no input box at the tail (a
+ * here). Returns the rows STYLED, top to bottom, or `[]` when there's no input box at the tail (a
  * menu is up, or a non-Claude / torn buffer). Never interprets the content — the caller renders it
  * verbatim.
+ *
+ * Styled, not flattened, because a statusline is colour-carrying by design: the model, the context
+ * meter and the git branch are told apart by colour before they're read. Flattening to text here
+ * threw that away one call before the strip that renders it. The caller draws these in the mirror's
+ * dark space (see mirror-space.ts) — terminal colour only means what it means against a dark
+ * background.
  */
-export function extractStatusLines(lines: StyledLine[]): string[] {
+export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const texts = lines.map(lineText);
   let end = lines.length;
   while (end > 0 && isBlank(texts[end - 1]!)) end--;
@@ -86,10 +92,9 @@ export function extractStatusLines(lines: StyledLine[]): string[] {
   const box = locateInputBox(texts, end);
   if (box === null) return [];
 
-  const rows: string[] = [];
+  const rows: StyledLine[] = [];
   for (let j = box.bottomBorder + 1; j < box.statusEnd; j++) {
-    const t = texts[j]!.trim();
-    if (t.length > 0) rows.push(t);
+    if (!isBlank(texts[j]!)) rows.push(lines[j]!);
   }
   return rows;
 }
