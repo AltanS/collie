@@ -4,7 +4,10 @@ import { useCallback, useState } from "react";
 // Safe to call in SSR contexts (localStorage guarded throughout).
 
 export interface DisplayPrefs {
-  /** Whether the mirror wraps long lines (default: false — preserves column alignment like desktop Herdr; enable Wrap in View for prose). */
+  /** Whether the mirror wraps long lines (default: true). The mirror is mostly agent prose, and a
+   *  phone shows ~45-50 columns against panes herdr spawns at desktop width (190 in one reporter's
+   *  session), so panning was the common case, not the exception. Column-faithful no-wrap for TUI
+   *  tables stays one tap away in View. */
   wrap: boolean;
   /** Font size in px for the mirror pre (default: 12, range: 9–16). */
   fontSize: number;
@@ -17,10 +20,10 @@ export interface DisplayPrefs {
   rawTerminal: boolean;
 }
 
-const STORAGE_KEY = "collie:display-prefs:v3";
+const STORAGE_KEY = "collie:display-prefs:v4";
 const FONT_MIN = 9;
 const FONT_MAX = 16;
-const DEFAULTS: DisplayPrefs = { wrap: false, fontSize: 12, rawTerminal: false };
+const DEFAULTS: DisplayPrefs = { wrap: true, fontSize: 12, rawTerminal: false };
 
 function clampFont(n: number): number {
   return Math.max(FONT_MIN, Math.min(FONT_MAX, Math.round(n)));
