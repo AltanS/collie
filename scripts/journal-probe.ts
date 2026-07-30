@@ -65,10 +65,10 @@ const MAX_CANDIDATES = 12;
  * project dirs, Codex walks date partitions, pi takes the path straight), and each derives from a
  * differently-shaped filename.
  */
-function refFor(agent: string, path: string): AgentSessionRef | null {
+export function refFor(agent: string, path: string): AgentSessionRef | null {
   const file = path.slice(path.lastIndexOf("/") + 1).replace(/\.jsonl$/, "");
   const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(file)?.[0];
-  if (agent === "pi") return { kind: "path", value: path };
+  if (agent === "pi" || agent === "omp") return { kind: "path", value: path };
   return uuid ? { kind: "id", value: uuid } : null;
 }
 
@@ -135,17 +135,19 @@ async function probe(adapter: JournalAdapter, root: string): Promise<"ok" | "emp
   return "fail";
 }
 
-const cfg = loadConfig();
-const registry = buildJournalRegistry(cfg.journalRoots);
-// Keyed lookup rather than a cast: JournalRoots is a closed shape on purpose (adding a harness
-// should be a type error here until its root is wired), so widen it explicitly.
-const roots = new Map<string, string>(Object.entries(cfg.journalRoots));
+async function main(): Promise<number> {
+  const cfg = loadConfig();
+  const registry = buildJournalRegistry(cfg.journalRoots);
+  const roots = new Map<string, string>(Object.entries(cfg.journalRoots));
 
-console.log("journal adapters — probing real logs\n");
-const results = await Promise.all(
-  Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? "")),
-);
-const failed = results.filter((r) => r === "fail").length;
-const ok = results.filter((r) => r === "ok").length;
-console.log(`\n${ok} ok, ${results.length - ok - failed} with no logs, ${failed} failed`);
-process.exit(failed > 0 ? 1 : 0);
+  console.log("journal adapters — probing real logs\n");
+  const results = await Promise.all(
+    Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? "")),
+  );
+  const failed = results.filter((result) => result === "fail").length;
+  const ok = results.filter((result) => result === "ok").length;
+  console.log(`\n${ok} ok, ${results.length - ok - failed} with no logs, ${failed} failed`);
+  return failed;
+}
+
+if (import.meta.main) process.exit(await main());

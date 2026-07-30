@@ -14,20 +14,33 @@ interface OmpRow {
   timestamp?: unknown;
   display?: unknown;
   content?: unknown;
+  message?: unknown;
+}
+
+function ompRow(value: unknown): OmpRow | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  return {
+    type: "type" in value ? value.type : undefined,
+    id: "id" in value ? value.id : undefined,
+    timestamp: "timestamp" in value ? value.timestamp : undefined,
+    display: "display" in value ? value.display : undefined,
+    content: "content" in value ? value.content : undefined,
+    message: "message" in value ? value.message : undefined,
+  };
 }
 
 /** Parse OMP v3 JSONL into oldest-first turns. PURE — no fs, no clock. */
 export function parseOmpTranscript(text: string): TranscriptEntry[] {
   const lines = text.split("\n");
   const rows: Array<OmpRow | null> = [];
-  const ids = new Set<string>();
+  const idCounts = new Map<string, number>();
 
   for (const line of lines) {
     try {
       const value = JSON.parse(line) as unknown;
-      const row = value !== null && typeof value === "object" ? (value as OmpRow) : null;
+      const row = ompRow(value);
       rows.push(row);
-      if (row && typeof row.id === "string") ids.add(row.id);
+      if (row && typeof row.id === "string") idCounts.set(row.id, (idCounts.get(row.id) ?? 0) + 1);
     } catch {
       // A live append or tail window can leave a partial line. Keep it unchanged so the shared
       // parser applies its normal malformed-row handling.
@@ -42,19 +55,35 @@ export function parseOmpTranscript(text: string): TranscriptEntry[] {
 
   const normalized = lines.map((line, index) => {
     const row = rows[index];
+    if (row?.type === "message") {
+      const message = row.message;
+      if (
+        message === null ||
+        typeof message !== "object" ||
+        Array.isArray(message) ||
+        !("role" in message)
+      ) return "";
+      const role = message.role;
+      if (role !== "user" && role !== "assistant" && role !== "toolResult") return "";
+    }
+
     if (
       row?.type !== "custom_message" ||
       row.display !== true ||
       typeof row.content !== "string" ||
-      row.content.trim() === ""
+      row.content.trim() === "" ||
+      typeof row.id !== "string" ||
+      row.id.length === 0 ||
+      row.id.length > 100 ||
+      idCounts.get(row.id) !== 1
     ) {
       return line;
     }
 
     let placeholder = `__collie_omp_note__${index}`;
-    while (ids.has(placeholder)) placeholder += "_";
-    ids.add(placeholder);
-    notes.set(placeholder, typeof row.id === "string" ? row.id : `omp-note-${index}`);
+    while (idCounts.has(placeholder)) placeholder += "_";
+    idCounts.set(placeholder, 1);
+    notes.set(placeholder, row.id);
     return JSON.stringify({
       type: "message",
       id: placeholder,

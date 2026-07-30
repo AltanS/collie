@@ -157,7 +157,7 @@ function buildSections(
         endpoint={pr.endpoint}
         sessions={sessions}
         onOpen={onOpen}
-        external={{ href: pr.url, label: `Open PR #${pr.number} on GitHub` }}
+        external={{ href: pr.url, label: `Open PR #${pr.number} in ${pr.repo} on GitHub` }}
       />
     ),
   }));
@@ -300,14 +300,24 @@ export function FirstmateOverview({ firstmate, sessions, onOpen }: FirstmateOver
 
   const stale = firstmate.state === "stale";
   const sections = buildSections(firstmate, sessions, onOpen).filter(
-    (s) => s.rows.length > 0 || s.note || s.summary,
+    (section) => section.rows.length > 0 || section.note || section.summary || section.tag,
   );
   const empty = sections.length === 0;
+  const prStatus =
+    firstmate.prState === "disabled"
+      ? null
+      : firstmate.prState === "loading"
+        ? "Checking pull requests"
+        : firstmate.prState === "unavailable"
+          ? "Pull request check unavailable"
+          : firstmate.prState === "stale"
+            ? `Pull request data stale${firstmate.prSummary ? `: ${firstmate.prSummary}` : ""}`
+            : `Pull request check complete${firstmate.prSummary ? `: ${firstmate.prSummary}` : ""}`;
 
   return (
     <section className="flex flex-col gap-5 px-3 pt-4">
       <div className="flex items-center justify-between gap-2 px-1">
-        <SectionLabel className="min-w-0 truncate">Firstmate · {firstmate.home}</SectionLabel>
+        <SectionLabel>Firstmate</SectionLabel>
         <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
           {stale && (
             <span
@@ -320,6 +330,11 @@ export function FirstmateOverview({ firstmate, sessions, onOpen }: FirstmateOver
           <span className="tabular-nums">{timeAgo(Date.parse(firstmate.generatedAt))}</span>
         </div>
       </div>
+      {prStatus && (
+        <span className="sr-only" role="status" aria-live="polite">
+          {prStatus}
+        </span>
+      )}
 
       {empty ? (
         <p className="flex items-center gap-2 px-1 text-sm font-medium">
@@ -336,7 +351,9 @@ export function FirstmateOverview({ firstmate, sessions, onOpen }: FirstmateOver
               {...(s.accent ? { accent: s.accent } : {})}
               {...(s.tag ? { trailing: s.tag } : {})}
             />
-            {s.summary && <p className="px-1 text-xs text-muted-foreground">{s.summary}</p>}
+            {s.summary && (
+              <p className="min-w-0 break-words px-1 text-xs text-muted-foreground">{s.summary}</p>
+            )}
             {(s.rows.length > 0 || s.note) && (
               <div
                 className={cn(

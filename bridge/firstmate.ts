@@ -27,7 +27,6 @@ interface EndpointCandidate {
 }
 
 interface BearingsData {
-  home: string;
   generatedAt: string;
   inFlight: FirstmateInFlight[];
   decisions: FirstmateDecision[];
@@ -63,10 +62,18 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function boundedString(value: unknown, max = MAX_TEXT): string | null {
+function plainBoundedString(value: unknown, max = MAX_TEXT): string | null {
   if (typeof value !== "string") return null;
   const clean = value.replace(/\s+/g, " ").trim();
   return clean.slice(0, max);
+}
+
+function boundedString(value: unknown, max = MAX_TEXT): string | null {
+  const clean = plainBoundedString(value, Number.MAX_SAFE_INTEGER);
+  if (clean === null) return null;
+  return clean
+    .replace(/(^|[\s(\[{:;="'`])(?:[A-Za-z]:[\\/]|~[\\/]|[\\/]{1,2})[^\s)\]}>;,]*/g, "$1[path]")
+    .slice(0, max);
 }
 
 function githubPullUrl(value: unknown): string | null {
@@ -106,8 +113,8 @@ function normalizeList<T>(value: unknown, normalize: (row: Record<string, unknow
 export function normalizeBearings(value: unknown, includePrs: boolean): BearingsData | null {
   const root = record(value);
   if (!root || root.schema !== "fm-bearings.v1") return null;
-  const home = boundedString(root.home, 120);
-  const generatedAt = boundedString(root.generated, 64);
+  const home = plainBoundedString(root.home, 120);
+  const generatedAt = plainBoundedString(root.generated, 64);
   if (
     !home ||
     !generatedAt ||
@@ -185,7 +192,7 @@ export function normalizeBearings(value: unknown, includePrs: boolean): Bearings
     prs = normalized;
   }
 
-  return { home, generatedAt, inFlight, decisions, gates, landed, prs, prSummary, endpoints };
+  return { generatedAt, inFlight, decisions, gates, landed, prs, prSummary, endpoints };
 }
 
 interface ProcessRunnerLimits {
@@ -377,7 +384,6 @@ export class FirstmateProvider {
         : (this.prSucceeded ? "ready" : "loading");
     return {
       state,
-      home: this.base.home,
       generatedAt: this.base.generatedAt,
       inFlight: this.base.inFlight.map(attach),
       decisions: this.base.decisions.map(attach),

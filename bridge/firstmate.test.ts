@@ -108,6 +108,23 @@ describe("bearings normalization", () => {
     expect(JSON.stringify(normalized)).not.toContain("artifact");
   });
 
+  test("redacts absolute paths from every allowlisted display field", () => {
+    const normalized = normalizeBearings(bearings({
+      in_flight: [{ id: "TRA-1", kind: "task", state: "working", doing: "Inspect /Users/alice/private/run.sh" }],
+      decisions_open: [{ id: "TRA-2", summary: "Choose path=/private/tmp/decision", owner: "(main)" }],
+      gates: [{ id: "TRA-3", title: "Waiting on C:\\Users\\alice\\gate", blocked_by: "TRA-2", reason: "read ~/secret", owner: "(main)" }],
+      landed: [{ id: "TRA-4", what: "Delivered /home/alice/output", owner: "(main)" }],
+      prs: "checked /var/tmp/result",
+      candidate_prs: [{ num: "42", repo: "owner/repo", task: "TRA-1", url: "https://github.com/owner/repo/pull/42", review: "read /opt/review", mergeable: "MERGEABLE", checks: "passing" }],
+    }), true);
+
+    const output = JSON.stringify(normalized);
+    expect(output).toContain("[path]");
+    for (const leaked of ["/Users/alice", "/private/tmp", "C:\\Users\\alice", "~/secret", "/home/alice", "/var/tmp", "/opt/review"]) {
+      expect(output).not.toContain(leaked);
+    }
+  });
+
   test("rejects the wrong schema or malformed required rows and caps row counts", () => {
     expect(normalizeBearings(bearings({ schema: "fm-bearings.v2" }), false)).toBeNull();
     expect(normalizeBearings(bearings({ home: "/LEAK_SENTINEL/home" }), false)).toBeNull();
@@ -176,6 +193,7 @@ describe("FirstmateProvider", () => {
     release(bearings());
     await first;
     expect(subject.status()).toMatchObject({ state: "ready", prState: "disabled" });
+    expect(subject.status()).not.toHaveProperty("home");
     await subject.refreshBase();
     expect(subject.status().state).toBe("stale");
     await subject.refreshBase();

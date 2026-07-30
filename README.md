@@ -300,6 +300,24 @@ The bridge reads `.env` only at startup — after any edit, `scripts/collie-ctl.
 `COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains; read by the control script when it runs
 `tailscale serve`).
 
+### OMP history and Firstmate
+
+OMP panes get conversation history automatically from `~/.omp/agent/sessions`. Set
+`COLLIE_OMP_ROOT` only when OMP stores sessions elsewhere.
+
+The semantic Firstmate dashboard is opt-in:
+
+```bash
+COLLIE_FIRSTMATE_HOME=/home/you/workspace/firstmate
+COLLIE_FIRSTMATE_INCLUDE_PRS=off
+```
+
+`COLLIE_FIRSTMATE_HOME` must be an existing absolute directory containing the executable
+`bin/fm-bearings-snapshot.sh`. Collie runs that fixed read-only snapshot command, keeps task text,
+decisions, gates, delivery state and verified live Herdr endpoints, and withholds Firstmate paths and
+actions from the browser. Set `COLLIE_FIRSTMATE_INCLUDE_PRS=on` to add bounded live GitHub PR/check
+enrichment. Restart Collie after changing either setting.
+
 **Custom domain or reverse proxy?** See
 [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) for the full reverse-proxy
 front-door setup. The one rule to know here: Collie is same-origin only. A plain `tailscale serve` on

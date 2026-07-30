@@ -91,6 +91,11 @@ describe("parseOmpTranscript", () => {
       JSON.stringify({ type: "model_change", id: "model", model: "provider/model" }),
       JSON.stringify({ type: "service_tier_change", id: "service", serviceTier: "priority" }),
       JSON.stringify({ type: "custom_message", id: "wrong-content", display: true, content: { text: "no" } }),
+      notice("", "empty id"),
+      notice("x".repeat(101), "long id"),
+      JSON.stringify({ type: "custom_message", content: "missing id", display: true, timestamp }),
+      notice("duplicate", "first duplicate"),
+      notice("duplicate", "second duplicate"),
     ];
 
     expect(parseOmpTranscript(rows.join("\n"))).toEqual([
@@ -100,6 +105,19 @@ describe("parseOmpTranscript", () => {
         role: "note",
         parts: [{ kind: "text", text: "shown" }],
       },
+    ]);
+  });
+
+  test("drops injected developer, system, and unknown message roles", () => {
+    const rows = [
+      message("developer", { role: "developer", content: [{ type: "text", text: "internal policy" }] }),
+      message("system", { role: "system", content: [{ type: "text", text: "hidden system prompt" }] }),
+      message("unknown", { role: "custom", content: [{ type: "text", text: "unknown role" }] }),
+      speech("user", "user", "operator text"),
+    ];
+
+    expect(parseOmpTranscript(rows.join("\n")).map(({ uuid, role }) => [uuid, role])).toEqual([
+      ["user", "user"],
     ]);
   });
 

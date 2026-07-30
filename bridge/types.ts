@@ -216,7 +216,6 @@ export type FirstmateUnavailableReason =
   | "invalid-output";
 
 interface FirstmateData {
-  home: string;
   generatedAt: string;
   inFlight: FirstmateInFlight[];
   decisions: FirstmateDecision[];

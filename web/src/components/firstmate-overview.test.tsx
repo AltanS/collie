@@ -27,7 +27,6 @@ type ReadyFirstmate = Extract<FirstmateStatus, { state: "ready" | "stale" }>;
 function ready(over: Partial<Omit<ReadyFirstmate, "state">> = {}, state: "ready" | "stale" = "ready"): FirstmateStatus {
   return {
     state,
-    home: "click-web-terminal",
     generatedAt: new Date().toISOString(),
     decisions: [],
     inFlight: [],
@@ -154,15 +153,27 @@ describe("FirstmateOverview — populated sections", () => {
 
   it("renders the PR's bridge-verified GitHub URL as a real external link", () => {
     render(<FirstmateOverview firstmate={populated()} sessions={sessions} onOpen={vi.fn()} />);
-    const link = screen.getByRole("link", { name: /open pr #42 on github/i });
+    const link = screen.getByRole("link", { name: /open pr #42 in click-web-terminal on github/i });
     expect(link).toHaveAttribute("href", "https://github.com/org/repo/pull/42");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
   });
 
+  it("distinguishes equal PR numbers from different repositories", () => {
+    const data = populated();
+    if (data.state !== "ready" && data.state !== "stale") throw new Error("expected ready data");
+    data.prs = [
+      { ...data.prs[0]!, repo: "owner/a", url: "https://github.com/owner/a/pull/42" },
+      { ...data.prs[0]!, repo: "owner/b", url: "https://github.com/owner/b/pull/42" },
+    ];
+    render(<FirstmateOverview firstmate={data} sessions={sessions} onOpen={vi.fn()} />);
+    expect(screen.getByRole("link", { name: /open pr #42 in owner\/a on github/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open pr #42 in owner\/b on github/i })).toBeInTheDocument();
+  });
+
   it("tags a stale feed as stale, visibly, without hiding its data", () => {
     render(<FirstmateOverview firstmate={populated("stale")} sessions={sessions} onOpen={vi.fn()} />);
-    expect(screen.getByRole("status")).toHaveTextContent(/stale/i);
+    expect(screen.getAllByRole("status").some((status) => status.textContent === "stale")).toBe(true);
     expect(screen.getByText("Pick a migration strategy")).toBeInTheDocument();
   });
 });
@@ -192,6 +203,7 @@ describe("FirstmateOverview — PR enrichment state (independent of the base fee
     expect(screen.getByText(/checking prs/i)).toBeInTheDocument();
     expect(screen.queryByText(/no open prs/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Nothing to report")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Checking pull requests");
   });
 
   it("shows a fixed line, never subprocess detail, while enrichment is unavailable", () => {
@@ -205,6 +217,7 @@ describe("FirstmateOverview — PR enrichment state (independent of the base fee
     expect(screen.getByText("PRs")).toBeInTheDocument();
     expect(screen.getByText(/couldn.t check prs/i)).toBeInTheDocument();
     expect(screen.queryByText("Nothing to report")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Pull request check unavailable");
   });
 
   it("shows the bridge's PR check summary even when there are currently zero open PRs", () => {
@@ -218,6 +231,8 @@ describe("FirstmateOverview — PR enrichment state (independent of the base fee
     expect(screen.getByText("PRs")).toBeInTheDocument();
     expect(screen.getByText("checked 1 repo, 0 open")).toBeInTheDocument();
     expect(screen.queryByText("Nothing to report")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Pull request check complete: checked 1 repo, 0 open");
+    expect(screen.getByText("checked 1 repo, 0 open")).toHaveClass("break-words");
   });
 
   it("tags stale PR enrichment independently of the base feed's own (fresh) state", () => {
@@ -241,9 +256,23 @@ describe("FirstmateOverview — PR enrichment state (independent of the base fee
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Pull request data stale");
     expect(screen.getByText("PRs")).toBeInTheDocument();
     expect(screen.getByText("stale")).toBeInTheDocument();
     expect(screen.getByText("#7 · click-web-terminal")).toBeInTheDocument();
+  });
+
+  it("keeps a stale warning visible when the last good PR cache was empty", () => {
+    render(
+      <FirstmateOverview
+        firstmate={ready({ prState: "stale", prs: [] })}
+        sessions={sessions}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("PRs")).toBeInTheDocument();
+    expect(screen.getByText("stale")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Pull request data stale");
+    expect(screen.queryByText("Nothing to report")).not.toBeInTheDocument();
   });
 });

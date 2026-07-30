@@ -49,7 +49,6 @@ function homeData(over: Partial<HomeData> = {}): HomeData {
 function readyFirstmate(state: "ready" | "stale" = "ready"): FirstmateStatus {
   return {
     state,
-    home: "click-web-terminal",
     generatedAt: new Date().toISOString(),
     decisions: [
       {
@@ -123,7 +122,6 @@ describe("HomeRoute — Firstmate composition", () => {
         agents: [agent("w1:p1")],
         firstmate: {
           state: "ready",
-          home: "click-web-terminal",
           generatedAt: new Date().toISOString(),
           decisions: [],
           inFlight: [],

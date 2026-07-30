@@ -215,7 +215,6 @@ export type FirstmateUnavailableReason =
 export type FirstmatePrState = "disabled" | "loading" | "ready" | "stale" | "unavailable";
 
 interface FirstmateData {
-  home: string;
   generatedAt: string;
   inFlight: FirstmateInFlight[];
   decisions: FirstmateDecision[];
