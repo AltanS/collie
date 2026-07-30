@@ -352,7 +352,11 @@ describe("AgentChat — block-grammar scoping (Claude-only)", () => {
     // Row 2 of the run: it used to be stripped off the mirror and rendered nowhere at all.
     const second = screen.getByText("← for agents");
     expect(second.closest("pre")).toBeNull();
-    expect(second.parentElement).toBe(strip.parentElement); // stacked in the one strip
+    // Stacked in the one strip. Compared at the ROW level: each row renders one <span> per ANSI
+    // segment (colour is carried through now), so the text node's own parent is a span, not the row.
+    const row = (el: HTMLElement) => el.closest("div.truncate");
+    expect(row(second)).not.toBe(row(strip));
+    expect(row(second)?.parentElement).toBe(row(strip)?.parentElement);
     expect(screen.queryByText(/❯/)).toBeNull(); // the input box was stripped off the mirror
   });
 

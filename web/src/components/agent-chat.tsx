@@ -13,6 +13,8 @@ import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/cha
 import { BottomSheet } from "@/components/ui/sheet";
 import { AppHeader } from "@/components/app-header";
 import { AnsiOutput } from "@/components/ansi-output";
+import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
+import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
@@ -754,12 +756,29 @@ export function AgentChat({
               Height is bounded upstream (MAX_STATUS_LINES caps the run stripChrome will claim), so
               there is no second cap here; the mirror is a flex child that shrinks, never pushed off. */}
           {statusLines.length > 0 && (
-            <div className="border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight text-muted-foreground">
+            <div
+              className={cn(
+                "border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
+                // The strip carries the agent's OWN terminal colour, so it renders in the mirror's
+                // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
+                // chosen against a near-black background and is illegible re-themed onto app chrome.
+                // It also makes the strip read as the bottom of the pane it was cut from, which is
+                // where the TUI drew it.
+                MIRROR_SPACE,
+                MIRROR_INVERT,
+              )}
+            >
               {statusLines.map((row, i) => (
                 // Index key: these rows are a positional snapshot of the pane tail, re-derived on
                 // every poll — there is no identity to preserve across renders.
                 <div key={i} className="truncate">
-                  {row}
+                  {row.segments.map((s, si) => (
+                    // Text nodes only — colour and weight come from the ANSI parse, never markup.
+                    // Same XSS boundary as the mirror.
+                    <span key={si} style={styleFor(s)}>
+                      {s.text}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>

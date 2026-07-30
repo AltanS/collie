@@ -20,9 +20,11 @@ export interface HarnessAdapter {
   /** Re-surface the statusline RUN this agent's chrome-stripping peeled off the mirror tail, one
    *  entry per row, top to bottom. A statusline is an arbitrary user command's output and is
    *  routinely several rows tall (model/cwd/branch on one, permission mode on another), so the
-   *  contract is a list — a single-row harness returns a one-element array. Empty = no box at the
-   *  tail (a menu is up, or a foreign/torn buffer), so nothing to surface. */
-  extractStatusLines(lines: StyledLine[]): string[];
+   *  contract is a list — a single-row harness returns a one-element array. Rows stay STYLED: a
+   *  statusline separates its fields by colour, so flattening them to text loses what makes it
+   *  readable at a glance. Empty = no box at the tail (a menu is up, or a foreign/torn buffer), so
+   *  nothing to surface. */
+  extractStatusLines(lines: StyledLine[]): StyledLine[];
   /** Re-surface a user draft stranded on the input box's prompt line (null = no box / empty / a
    *  known placeholder). */
   extractInputDraft(lines: StyledLine[]): string | null;
