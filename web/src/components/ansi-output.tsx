@@ -36,7 +36,10 @@ type MultiBlock = Extract<Block, { kind: "multi-select" }>;
 export interface AnsiOutputProps {
   text: string;
   className?: string;
-  /** false = no wrap; the block scrolls horizontally, preserving column alignment. Default false — enable Wrap in View for prose. */
+  /** true = wrap; the block breaks at the viewport width instead of scrolling horizontally. Default
+   *  true — the mirror is mostly agent prose, and a phone shows far fewer columns than the desktop
+   *  width panes are spawned at, so panning was the common case. Disable Wrap in View for
+   *  column-faithful TUI tables. */
   wrap?: boolean;
   /** Monospace font size in px. Default 11. */
   fontSize?: number;
@@ -154,7 +157,7 @@ function preClass(wrap: boolean, className?: string): string {
 export const AnsiOutput = memo(function AnsiOutput({
   text,
   className,
-  wrap = false,
+  wrap = true,
   fontSize = 11,
   query = "",
   currentMatch = -1,
