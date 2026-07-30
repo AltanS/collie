@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # Control script for Collie (the Herdr web bridge service). Invoked by the plugin's actions and usable directly.
-# The bridge runs as a systemd --user service (NOT a Herdr plugin pane — see ARCHITECTURE.md §3), so it
-# survives Herdr restarts and is supervised independently.
+# The bridge runs as a supervised user service — `systemd --user` on Linux, a launchd LaunchAgent on
+# macOS (NOT a Herdr plugin pane — see ARCHITECTURE.md §3), so it survives Herdr restarts, starts at
+# login and restarts on failure. Hosts with neither fall back to an unsupervised nohup + pidfile.
 set -euo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT="collie"
 UNIT_FILE="${HOME}/.config/systemd/user/${UNIT}.service"
 PLUGIN_ID="herdr.collie"
+# macOS: launchd's stand-in for the systemd unit. Label is the plugin id, so `launchctl print` names
+# the job as `herdr plugin list` names the plugin.
+AGENT_LABEL="$PLUGIN_ID"
+AGENT_FILE="${HOME}/Library/LaunchAgents/${AGENT_LABEL}.plist"
 
 # Resolve the plugin config dir (where .env lives) the SAME way no matter how we're launched.
 # Herdr injects HERDR_PLUGIN_CONFIG_DIR when it runs our actions, but a direct `collie-ctl.sh` call
@@ -93,6 +98,39 @@ esac
 WEB_DIST="${PLUGIN_ROOT}/web/dist/index.html"
 
 have_systemd() { command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; }
+
+# launchd does systemd's job here. Gate on Darwin too: the `gui/<uid>` domain is Darwin-only.
+have_launchd() { [ "$(uname -s)" = "Darwin" ] && command -v launchctl >/dev/null 2>&1; }
+launchd_domain() { echo "gui/$(id -u)"; }
+launchd_target() { echo "gui/$(id -u)/${AGENT_LABEL}"; }
+
+# Stop a bridge started by the unsupervised fallback and drop its pidfile. Also the migration path for
+# macOS installs predating launchd support, whose bridge still owns the port when the updated script
+# first bootstraps an agent.
+stop_pidfile_process() {
+  local pid_file="${CONFIG_DIR}/collie.pid" pid
+  [ -f "$pid_file" ] || return 0
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  case "$pid" in
+    ''|*[!0-9]*) ;;
+    *)
+      if [ "$pid" -gt 1 ] 2>/dev/null; then
+        # The pidfile outlives its process (SIGKILL, a panic, a reboot) and pids get recycled, so
+        # confirm it is still ours — this also runs on `start`, where a wrong guess kills a bystander.
+        case "$(ps -p "$pid" -o command= 2>/dev/null)" in
+          *bridge/index.ts*) kill -- "$pid" 2>/dev/null || true ;;
+        esac
+      fi
+      ;;
+  esac
+  rm -f "$pid_file"
+}
+
+# Escape a value for XML character data — a checkout path containing `&` or `<` would otherwise emit a
+# plist launchd can't parse. `&` first, or it re-escapes the ampersands the later rules introduce.
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
 
 # Build the Vite/React PWA into web/dist. The bridge serves that directory; without it the API
 # still runs but the UI 503s. Safe to call repeatedly (no-op if already built, unless forced).
@@ -183,6 +221,20 @@ print_status_banner() {
   local svc
   if have_systemd; then
     svc="systemd --user (${UNIT}) · $(systemctl --user is-active "$UNIT" 2>/dev/null || echo unknown)"
+  elif have_launchd; then
+    # `launchctl print` fails when the label isn't loaded; a loaded-but-stopped job has no pid line.
+    local out pid
+    out="$(launchctl print "$(launchd_target)" 2>/dev/null || true)"
+    if [ -z "$out" ]; then
+      svc="launchd (${AGENT_LABEL}) · not loaded"
+    else
+      pid="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1)"
+      if [ -n "$pid" ]; then
+        svc="launchd (${AGENT_LABEL}) · active (pid ${pid})"
+      else
+        svc="launchd (${AGENT_LABEL}) · loaded, not running"
+      fi
+    fi
   elif [ -f "${CONFIG_DIR}/collie.pid" ]; then
     svc="pid $(cat "${CONFIG_DIR}/collie.pid" 2>/dev/null) (no systemd)"
   else
@@ -241,12 +293,91 @@ EOF
   systemctl --user daemon-reload
 }
 
+# The launchd counterpart to write_unit(), kept parallel so both describe one service:
+#   WantedBy=default.target -> RunAtLoad          Restart=on-failure -> KeepAlive/SuccessfulExit
+#   RestartSec=5            -> ThrottleInterval   WorkingDirectory   -> WorkingDirectory
+# No analogue: StartLimitIntervalSec (launchd has no start limit), NoNewPrivileges / PrivateTmp — the
+# agent is less confined than the unit. No ProcessType either: Background throttles CPU and I/O, and
+# the bridge answers a phone.
+#
+# Paths only, never config values — .env is mode 600 and may hold COLLIE_VAPID_PRIVATE, so
+# `_exec-bridge` sources it at launch rather than baking it into a readable plist.
+# HERDR_PLUGIN_CONFIG_DIR is passed because resolve_config_dir() must not shell out to `herdr` at
+# login, before the server is up.
+write_agent() {
+  [ -n "$BUN" ] || { echo "error: bun not found" >&2; exit 1; }
+  mkdir -p "$(dirname "$AGENT_FILE")" "$CONFIG_DIR"
+  local x_root x_ctl x_cfg x_log
+  x_root="$(xml_escape "$PLUGIN_ROOT")"
+  x_ctl="$(xml_escape "${PLUGIN_ROOT}/scripts/collie-ctl.sh")"
+  x_cfg="$(xml_escape "$CONFIG_DIR")"
+  x_log="$(xml_escape "${CONFIG_DIR}/collie.log")"
+  cat > "$AGENT_FILE" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${AGENT_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>${x_ctl}</string>
+        <string>_exec-bridge</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${x_root}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HERDR_PLUGIN_CONFIG_DIR</key>
+        <string>${x_cfg}</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>StandardOutPath</key>
+    <string>${x_log}</string>
+    <key>StandardErrorPath</key>
+    <string>${x_log}</string>
+</dict>
+</plist>
+EOF
+  # launchd refuses to bootstrap a world-writable plist, whatever the umask left behind.
+  chmod 644 "$AGENT_FILE"
+}
+
+# The process launchd supervises. `exec` is load-bearing: launchd watches the pid it spawned, so the
+# bridge must replace this shell — otherwise KeepAlive guards a wrapper and a crashed bridge looks
+# alive. .env is already sourced above; these exports mirror the unit's Environment= lines.
+cmd_exec_bridge() {
+  [ -n "$BUN" ] || { echo "error: bun not found on PATH" >&2; exit 1; }
+  export COLLIE_PORT="$PORT"
+  export HERDR_SOCKET_PATH="$SOCKET"
+  export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+  exec "$BUN" run "${PLUGIN_ROOT}/bridge/index.ts"
+}
+
 cmd_start() {
   ensure_build || true
   if have_systemd; then
     write_unit
     systemctl --user enable --now "$UNIT"
     echo "bridge started (systemd --user: ${UNIT})"
+  elif have_launchd; then
+    write_agent
+    stop_pidfile_process   # release the port if this install predates launchd support
+    # Bootout first so `start` is idempotent: bootstrap on a loaded label errors, and quietly running a
+    # second bridge is the failure this branch removes. `enable` undoes a previous `stop`.
+    launchctl bootout "$(launchd_target)" 2>/dev/null || true
+    launchctl enable "$(launchd_target)" 2>/dev/null || true
+    launchctl bootstrap "$(launchd_domain)" "$AGENT_FILE"
+    echo "bridge started (launchd: ${AGENT_LABEL})"
   else
     # Fallback: background process with a pidfile (e.g. macOS without lingering systemd).
     mkdir -p "$CONFIG_DIR"
@@ -266,17 +397,22 @@ cmd_start() {
 cmd_stop() {
   if have_systemd; then
     systemctl --user disable --now "$UNIT" 2>/dev/null || true
-  elif [ -f "${CONFIG_DIR}/collie.pid" ]; then
-    kill "$(cat "${CONFIG_DIR}/collie.pid")" 2>/dev/null || true
-    rm -f "${CONFIG_DIR}/collie.pid"
+  elif have_launchd; then
+    # bootout stops it now; `disable` is what makes that survive a login, since RunAtLoad would
+    # otherwise bring it back. Together they are systemd's `disable --now`.
+    launchctl disable "$(launchd_target)" 2>/dev/null || true
+    launchctl bootout "$(launchd_target)" 2>/dev/null || true
+    stop_pidfile_process
+  else
+    stop_pidfile_process
   fi
   echo "bridge stopped"
 }
 
 cmd_restart() { cmd_stop; cmd_start; }
 
-# Tear the service down completely (the inverse of `start`): stop + disable it, remove the
-# systemd --user unit, remove Collie's tailscale serve mapping, and drop the pidfile. Deliberately leaves your
+# Tear the service down completely (the inverse of `start`): stop + disable it, remove the service
+# definition, remove Collie's tailscale serve mapping, and drop the pidfile. Deliberately leaves your
 # config (${CONFIG_DIR}/.env) and the on-disk checkout in place — `uninstall` removes only what
 # `start` created. To remove the plugin registration too, run `herdr plugin uninstall herdr.collie`
 # (or, for a linked clone, just delete the checkout).
@@ -287,9 +423,15 @@ cmd_uninstall() {
     rm -f "$UNIT_FILE"
     systemctl --user daemon-reload 2>/dev/null || true
     systemctl --user reset-failed "$UNIT" 2>/dev/null || true
+  elif have_launchd; then
+    # Plist first: while it is on disk an enabled label is one login from loading again.
+    rm -f "$AGENT_FILE"
+    # cmd_stop's `disable` is a record in launchd's per-user database and outlives the plist, so clear
+    # it or a reinstall inherits a disabled label. `enable` resets that state; it can't delete the row.
+    launchctl enable "$(launchd_target)" 2>/dev/null || true
   fi
   rm -f "${CONFIG_DIR}/collie.pid"
-  echo "✓ uninstalled: service stopped & disabled, systemd unit removed, Collie's tailscale serve mapping removed"
+  echo "✓ uninstalled: service stopped & disabled, service definition removed, Collie's tailscale serve mapping removed"
   echo "  kept: ${CONFIG_DIR}/.env and the checkout — delete those to remove every trace"
 }
 
@@ -632,6 +774,7 @@ case "${1:-}" in
   uninstall) cmd_uninstall ;;
   update)  cmd_update ;;
   _apply-update) cmd_apply_update ;;  # internal: second half of `update`, run post-pull
+  _exec-bridge) cmd_exec_bridge ;;    # internal: the process the launchd agent supervises
   build)   cmd_build ;;
   serve)   cmd_serve; echo "open: $(bridge_url)" ;;
   unserve) cmd_unserve ;;
