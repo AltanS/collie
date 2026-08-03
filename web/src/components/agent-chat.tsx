@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useRevalidator } from "react-router";
-import { ArrowUpToLine, Loader2, ScrollText, TerminalSquare } from "lucide-react";
+import { ArrowUpToLine, Loader2, ScrollText, Search, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
@@ -521,10 +521,15 @@ export function AgentChat({
             />
           ) : undefined
         }
-        // Right cluster, in reading order: History, then the agent status pill. The pill is the
-        // rightmost item on every pane screen (it's the thing you glance at), so History sits to its
-        // LEFT rather than trailing it. Both ride in `rightLead` because AppHeader renders
+        // Right cluster, in reading order: Find, History, then the agent status pill. The pill is the
+        // rightmost item on every pane screen (it's the thing you glance at), so the buttons sit to
+        // its LEFT rather than trailing it. All ride in `rightLead` because AppHeader renders
         // `rightLead` before `rightTrail` — the order here IS the on-screen order.
+        //
+        // Find lives HERE, not in the composer, because the find bar it opens takes over this very
+        // header row (see `override` above) — trigger and surface in the same place. It sat in the
+        // composer's old View row, which put the button at the bottom of the screen and its UI at the
+        // top. Offered only when there's buffered output to search; opening it freezes the tail.
         //
         // History opens the agent's own transcript, the only real conversation history a Claude pane
         // has: its terminal runs on the alternate screen, so the mirror below can never show more
@@ -536,6 +541,16 @@ export function AgentChat({
         rightLead={
           agent ? (
             <>
+              {display && (
+                <button
+                  type="button"
+                  onClick={openFind}
+                  aria-label="Find in output"
+                  className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                >
+                  <Search className="size-4" />
+                </button>
+              )}
               {agent.hasSession && (
                 <button
                   type="button"
@@ -801,9 +816,6 @@ export function AgentChat({
             stepFontSize={stepFontSize}
             setRawTerminal={setRawTerminal}
             onSent={onSent}
-            // Find-in-output lives in the composer's View row now (the header was the wrong home for it).
-            // Enabled only when there's buffered output to search; opening it freezes the tail (openFind).
-            onOpenFind={display ? openFind : undefined}
           />
         </div>
       </div>
