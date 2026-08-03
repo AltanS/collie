@@ -13,6 +13,19 @@ All notable changes to Collie are recorded here. The format follows
 - `update` now works in a `herdr plugin install` checkout — it is detached and shallow, so `git pull --ff-only` could never run there (#63) (aeeddcd)
 - `update` no longer re-links a Herdr-managed checkout, which would re-register it as local and block `herdr plugin install` (aeeddcd)
 
+### Upgrading — `herdr plugin install` users must reinstall once
+
+The fix ships *inside* the checkout it repairs, so `invoke update` still can't run on an install made
+before 0.23.1. Take the fix with one reinstall (config and serve state live outside the checkout and
+survive), after which `invoke update` works normally:
+
+```bash
+herdr plugin install AltanS/collie --yes
+herdr plugin action invoke restart --plugin herdr.collie
+```
+
+Installs from a `git clone` + `herdr plugin link` were never affected — use `invoke update` as usual.
+
 ## [0.23.0] - 2026-08-03
 
 ### Added
