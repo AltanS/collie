@@ -476,13 +476,53 @@ cmd_uninstall() {
   echo "  kept: ${CONFIG_DIR}/.env and the checkout — delete those to remove every trace"
 }
 
+# True when the checkout has no branch — which is exactly how `herdr plugin install` leaves it.
+# Herdr's installer is `git init` + `git fetch --depth 1 origin HEAD` + `git checkout --detach
+# FETCH_HEAD`, so a turnkey install is detached AND shallow with no remote-tracking refs, while a
+# `git clone` + `herdr plugin link` dev checkout sits on a branch. ONE predicate decides both how we
+# advance the checkout and whether we re-link (below); two detections would eventually disagree.
+is_managed_checkout() {
+  ! git -C "$PLUGIN_ROOT" symbolic-ref -q HEAD >/dev/null 2>&1
+}
+
+# Advance the checkout to the newest upstream commit, in whichever shape it was installed.
+# `git pull --ff-only` alone was the bug in #63: with no branch there is nothing to pull into, so
+# every turnkey install failed with "You are not currently on a branch" and could never self-update.
+update_checkout() {
+  if ! git -C "$PLUGIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "error: ${PLUGIN_ROOT} is not a git checkout — refresh it with:" >&2
+    echo "       herdr plugin install AltanS/collie --yes" >&2
+    return 1
+  fi
+  if ! is_managed_checkout; then
+    echo "updating Collie (git pull --ff-only)…"
+    git -C "$PLUGIN_ROOT" pull --ff-only
+    return
+  fi
+  # Detached: re-detach onto the default branch tip the same way Herdr got us here. `--depth 1` only
+  # when we are ALREADY shallow, so an update never truncates the history of a full clone someone
+  # happens to have detached. `--force` because cmd_build runs `bun install`, which can rewrite the
+  # TRACKED lockfiles: a plain checkout would then refuse on the dirty tree and re-break the very
+  # update path this fixes. Discarding local edits here matches Herdr's own refresh semantics — its
+  # reinstall replaces the managed checkout wholesale.
+  echo "updating Collie (Herdr-managed checkout: fetch + detach onto origin HEAD)…"
+  if [ "$(git -C "$PLUGIN_ROOT" rev-parse --is-shallow-repository)" = true ]; then
+    git -C "$PLUGIN_ROOT" fetch --depth 1 origin HEAD
+  else
+    git -C "$PLUGIN_ROOT" fetch origin HEAD
+  fi
+  # -q: without it checkout warns "you are leaving 1 commit behind" on every single update — true,
+  # alarming, and useless here, since the commit we leave is the release we just replaced.
+  git -C "$PLUGIN_ROOT" checkout -q --detach --force FETCH_HEAD
+  echo "→ now at $(git -C "$PLUGIN_ROOT" log -1 --format='%h %s')"
+}
+
 # Update to the latest release. Collie is a link-mode Herdr plugin, so the checkout on disk IS the
-# plugin (Herdr has no `plugin update`) — this is the turnkey refresh: pull, rebuild the UI, restart
-# the backend. The pull can rewrite THIS script, and bash reads scripts by byte offset, so we re-exec
-# the freshly-pulled copy (via the internal `_apply-update` step) to run build + restart.
+# plugin (Herdr has no `plugin update`) — this is the turnkey refresh: advance the checkout, rebuild
+# the UI, restart the backend. That can rewrite THIS script, and bash reads scripts by byte offset,
+# so we re-exec the fresh copy (via the internal `_apply-update` step) to run build + restart.
 cmd_update() {
-  echo "updating Collie (git pull --ff-only)…"
-  git -C "$PLUGIN_ROOT" pull --ff-only
+  update_checkout
   exec bash "${PLUGIN_ROOT}/scripts/collie-ctl.sh" _apply-update
 }
 
@@ -491,8 +531,19 @@ cmd_update() {
 # `herdr plugin list` shows the old version, until a re-link. Re-link here so `update` self-heals it.
 # Best-effort: never fails the update (Herdr may be down, or this may be a non-link install) — it just
 # prints how to do it by hand.
+#
+# NEVER re-link a Herdr-MANAGED checkout: `plugin link` re-registers the plugin with
+# `source.kind = local`, after which Herdr REFUSES `plugin install` ("already linked from a local
+# path") — taking away the reinstall that is the operator's only other way to refresh. The cache this
+# heals is an old-Herdr artifact anyway; Herdr ≥0.8.0 re-reads the manifest from disk on every
+# registry refresh, so a managed install learns new actions without us. The price on older Herdr:
+# never rename an action or move this script — those users invoke the cached definition.
 refresh_registry() {
   command -v herdr >/dev/null || return 0
+  if is_managed_checkout; then
+    echo "note: Herdr-managed install — registry left alone (re-linking would block \`herdr plugin install\`)"
+    return 0
+  fi
   if herdr plugin link "$PLUGIN_ROOT" >/dev/null 2>&1; then
     echo "herdr registry refreshed (re-linked) — new actions are invokable now"
   else
