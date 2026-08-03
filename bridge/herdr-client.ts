@@ -111,7 +111,11 @@ export interface PaneRead {
   revision: number;
 }
 
-type ReadSource = "visible" | "recent" | "recent-unwrapped";
+// Wire names are snake_case: `recent-unwrapped` is REJECTED by the server (`unknown variant`,
+// live-probed 2026-08-03, herdr 0.7.5). Nothing called it before that probe, so the kebab spelling
+// this type carried since day one was never caught. `detection` also exists (listed by the server's
+// own error message); semantics unverified, so it stays out of the union until something needs it.
+type ReadSource = "visible" | "recent" | "recent_unwrapped";
 type ReadFormat = "text" | "ansi";
 
 let idCounter = 0;
