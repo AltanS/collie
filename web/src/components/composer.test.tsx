@@ -988,3 +988,111 @@ describe("Composer — display prefs behind the gear", () => {
     expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
   });
 });
+
+describe("Composer — a composed key queue is guarded on the way out", () => {
+  /** Open Keys and stage one chord, so the queue is genuinely dirty. */
+  async function stageAKey(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    await user.click(screen.getByRole("button", { name: "Ctrl" }));
+    await user.click(screen.getByRole("button", { name: "Tab" }));
+    expect(screen.getByRole("button", { name: "Remove Ctrl Tab" })).toBeInTheDocument();
+  }
+
+  it("the dock's X needs a second tap while keys are staged", async () => {
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    await stageAKey(user);
+
+    await user.click(screen.getByRole("button", { name: "Close Keys" }));
+    // Still open — the composed sequence is not thrown away on one tap.
+    expect(screen.getByRole("button", { name: "Remove Ctrl Tab" })).toBeInTheDocument();
+    expect(screen.getByTestId("status")).toHaveTextContent(/discard 1 queued key/i);
+
+    await user.click(screen.getByRole("button", { name: "Close Keys" }));
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+  });
+
+  // The ✕ is not the only exit — the Keys toggle and the other drawer buttons unmount the tray just
+  // as effectively, which is why the guard lives on the drawer transition rather than the button.
+  // The Controls row's "Keys" toggle and the tray's own "Keys" segmented tab share an accessible
+  // name; only the toggle carries aria-expanded, which is what ties it to the dock.
+  const controlsToggle = (name: string) =>
+    screen
+      .getAllByRole("button", { name })
+      .find((b) => b.hasAttribute("aria-expanded")) as HTMLElement;
+
+  it.each([
+    ["the Keys toggle", () => controlsToggle("Keys")],
+    ["the Quick toggle", () => controlsToggle("Quick")],
+    ["the Display gear", () => screen.getByRole("button", { name: "Display settings" })],
+  ])("%s also needs a second tap while keys are staged", async (_label, getButton) => {
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    await stageAKey(user);
+
+    await user.click(getButton());
+    expect(screen.getByRole("button", { name: "Remove Ctrl Tab" })).toBeInTheDocument();
+
+    await user.click(getButton());
+    expect(screen.queryByRole("button", { name: "Remove Ctrl Tab" })).not.toBeInTheDocument();
+  });
+
+  // Over-guarding trains you to double-tap through the confirm reflexively, which kills its value
+  // where it matters. One tap of setup is not work worth protecting.
+  it("an armed modifier with NO staged keys closes on the first tap", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    await user.click(screen.getByRole("button", { name: "Ctrl" })); // armed, but nothing staged
+    await user.click(screen.getByRole("button", { name: "Close Keys" }));
+
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+  });
+
+  it("a clean Keys dock closes on the first tap", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    await user.click(screen.getByRole("button", { name: "Close Keys" }));
+
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+  });
+
+  // The count must not outlive the tray: a stale value would arm a phantom confirm on a later,
+  // perfectly clean close.
+  it("does not arm a phantom confirm on a later clean open", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    await stageAKey(user);
+
+    await user.click(screen.getByRole("button", { name: "Close Keys" })); // arm
+    await user.click(screen.getByRole("button", { name: "Close Keys" })); // discard
+
+    await user.click(screen.getByRole("button", { name: "Keys" })); // reopen, empty
+    await user.click(screen.getByRole("button", { name: "Close Keys" }));
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Composer — quick replies follow the pane kind", () => {
+  it("an agent pane gets the agent set", async () => {
+    const user = userEvent.setup();
+    renderComposer({ agent: "claude", isShell: false });
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+
+    expect(screen.getByRole("button", { name: "continue" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "commit and push" })).toBeInTheDocument();
+  });
+
+  it("a shell pane gets y/n, not the agent phrases", async () => {
+    const user = userEvent.setup();
+    renderComposer({ agent: "shell", isShell: true });
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+
+    expect(screen.getByRole("button", { name: "y" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "n" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "commit and push" })).not.toBeInTheDocument();
+  });
+});
