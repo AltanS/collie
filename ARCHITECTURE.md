@@ -64,6 +64,13 @@ watching the TUI. A long-lived network daemon must be supervised independently.
   it and build lazily on first `start`. Concretely that's `[[actions]]` + `[[build]]` and nothing
   else: `[[panes]]` is what this section argues against, and `[[events]]` would duplicate the
   bridge's own `events.subscribe` stream (§5).
+- **The checkout on disk *is* the plugin — in one of two shapes.** `herdr plugin install` does not
+  clone: it `git init`s, `git fetch --depth 1 origin HEAD`s and `git checkout --detach FETCH_HEAD`s
+  into `~/.config/herdr/plugins/github/<hashed-id>`, so a turnkey install is **detached and shallow**
+  with no remote-tracking refs, while a linked clone sits on a branch. The `update` action carries
+  both ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)) because Herdr has no
+  `plugin update` of its own — its refresh is a reinstall, which replaces the checkout but does not
+  restart the service.
 - **Socket-path discovery:** a non-Herdr-launched daemon won't get `$HERDR_SOCKET_PATH` injected, so
   it resolves the path from a well-known location (`~/.config/herdr/herdr.sock` default, or the
   bridge's own config) and re-resolves on reconnect in case it moves.

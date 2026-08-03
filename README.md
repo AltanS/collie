@@ -151,7 +151,7 @@ Push](#web-push-optional)).
 
 On the host, not your phone. Two ways in.
 
-**From GitHub (turnkey)** — Herdr clones and builds for you:
+**From GitHub (turnkey)** — Herdr fetches and builds for you:
 
 ```bash
 herdr plugin install AltanS/collie
@@ -166,8 +166,12 @@ herdr plugin link "$(pwd)"
 herdr plugin action invoke start --plugin herdr.collie
 ```
 
-They differ only in *when* the UI builds: a GitHub install builds at install time (the manifest's
-`[[build]]` step); a linked clone builds on first `start`. Either way, `start` does four things:
+They differ in *when* the UI builds — a GitHub install builds at install time (the manifest's
+`[[build]]` step), a linked clone on first `start` — and in **what lands on disk**, which matters when
+you go to [update](#update-to-a-new-release): `herdr plugin install` doesn't clone, it fetches one
+commit and detaches onto it, so the checkout has no branch. Both shapes update fine from 0.23.1 on;
+**installed earlier than that, see the note in [Update](#update-to-a-new-release)**. Either way,
+`start` does four things:
 
 1. **builds** `web/dist` if it's missing (typechecked, staged, swapped in atomically),
 2. **starts the bridge** as the `systemd --user` service `collie` (`nohup` fallback without systemd),
@@ -420,8 +424,7 @@ removes the plugin registration itself.
 
 ### Update to a new release
 
-Collie is link-mode — the checkout *is* the plugin, and there's no `herdr plugin update`. One command
-does the lot:
+The checkout *is* the plugin, and Herdr has no `plugin update` of its own. One command does the lot:
 
 ```bash
 scripts/collie-ctl.sh update    # or: herdr plugin action invoke update --plugin herdr.collie
@@ -430,25 +433,36 @@ scripts/collie-ctl.sh update    # or: herdr plugin action invoke update --plugin
 It advances the checkout, rebuilds the UI and restarts the bridge (re-execing itself, so it's safe
 even when the update rewrites the script). Confirm via the footer build stamp.
 
-How it advances depends on how you installed, because `herdr plugin install` does **not** clone — it
-`git fetch --depth 1` + `checkout --detach`es, leaving a detached, shallow checkout:
+#### If that fails with *"You are not currently on a branch"*
 
-- **Linked clone** — `git pull --ff-only` on your branch, then **re-links the plugin** so Herdr picks
+You installed from GitHub before **0.23.1**, when `update` assumed every checkout was a clone
+([#63](https://github.com/AltanS/collie/issues/63)). `herdr plugin install` doesn't clone — it fetches
+one commit and detaches onto it — so `git pull` had nothing to pull into, and no version installed
+that way could ever self-update. The fix ships *inside* the checkout it repairs, so take it with one
+reinstall; `update` works normally from then on:
+
+```bash
+herdr plugin install AltanS/collie --yes          # replaces the checkout, rebuilds the UI
+herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
+herdr plugin action invoke version --plugin herdr.collie   # expect 0.23.1 or newer
+```
+
+Your `.env` and `tailscale serve` state live in the plugin config dir, outside the checkout, so they
+survive. Pinned to a version with `--ref`? Keep refreshing with `herdr plugin install --ref …` —
+`update` always goes to the latest.
+
+#### What `update` actually does to the checkout
+
+Two install paths, two on-disk shapes, one command across both — the reasoning, and what it costs, is
+[ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md):
+
+- **Linked clone** (on a branch) — `git pull --ff-only`, then **re-links the plugin** so Herdr picks
   up any new actions and the new version.
-- **`herdr plugin install`** — fetches the default-branch tip and re-detaches onto it (`--force`, so a
-  lockfile the build rewrote can't wedge the next update). It deliberately does **not** re-link:
-  linking would re-register the plugin as a local path, and Herdr then refuses
-  `herdr plugin install` — the reinstall you'd need if this checkout ever breaks.
-
-> **Installed before 0.23.1?** `update` couldn't run in a `herdr plugin install` checkout at all
-> ([#63](https://github.com/AltanS/collie/issues/63)) — it died with *"You are not currently on a
-> branch"*. Get the fix in with one reinstall, then `update` works from there on:
-> ```bash
-> herdr plugin install AltanS/collie --yes
-> herdr plugin action invoke restart --plugin herdr.collie
-> ```
-> Your `.env` and serve state live outside the checkout, so they survive. If you pinned a version
-> with `--ref`, keep using `herdr plugin install --ref …` — `update` always goes to the latest.
+- **`herdr plugin install`** (detached, shallow) — fetches the default-branch tip and re-detaches onto
+  it. `--depth 1` only if it's already shallow, so a full history is never truncated; `--force` so a
+  lockfile the build rewrote can't wedge the *next* update. It deliberately does **not** re-link:
+  linking re-registers the plugin as a local path, after which Herdr refuses `herdr plugin install` —
+  the reinstall above, which is your recovery path if this checkout ever breaks again.
 
 By hand: frontend (`web/`) → `collie-ctl.sh build` (live, no restart — served from disk); backend
 (`bridge/`) → `systemctl --user restart collie`. Run `scripts/install-hooks.sh` once to enable the
@@ -884,6 +898,13 @@ talks to the server — while `herdr plugin --help` still works (it never opens 
 Herdr first (`herdr server &`, or just launch the Herdr TUI — it boots the server), confirm
 `ls ~/.config/herdr/herdr.sock` now exists, then retry the install. `herdr plugin list` is a quick
 probe: if it throws the same error, the server is down.
+
+**`update` fails with `You are not currently on a branch`.** A GitHub install made before **0.23.1**
+([#63](https://github.com/AltanS/collie/issues/63)). `herdr plugin install` fetches one commit and
+detaches onto it rather than cloning, so the old `update` — which ran `git pull` — had no branch to
+pull into, and no install of that vintage could refresh itself. The fix ships inside the checkout it
+repairs, so it takes one reinstall to land:
+[Update to a new release](#update-to-a-new-release) has the three commands.
 
 **`start` prints `note: tailscale serve failed`.** The bridge itself is fine (still up on
 `127.0.0.1`) — only the tailnet ingress didn't come up, and the script prints tailscale's own error

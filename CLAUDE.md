@@ -65,6 +65,12 @@ the unit name; the Herdr action runs from anywhere.
 
 ## Build / run (operational facts that are easy to forget)
 
+- **There are two checkout shapes, and `update` handles both.** `herdr plugin install` does not clone
+  — it leaves a **detached, shallow** checkout, so `git pull` cannot run there; a linked clone sits on
+  a branch. One predicate (`git symbolic-ref -q HEAD`) picks the strategy, and the same predicate
+  stops `update` re-linking a managed checkout — a re-link re-registers the plugin as local and Herdr
+  then refuses `herdr plugin install`, the operator's only other way to refresh
+  ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)).
 - **Frontend changes** (`web/`): rebuild with `bun run build` (root) or `cd web && bun run build`.
   The bridge serves `web/dist` **from disk at request time**, so on the deployment host
   a rebuild is **immediately live — no restart**.
