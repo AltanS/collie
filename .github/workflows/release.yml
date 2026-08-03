@@ -34,7 +34,7 @@ jobs:
             fi
             echo "## Update"
             echo
-            echo "Update the plugin — pulls, rebuilds, restarts, and re-links (runs from any directory):"
+            echo "Update the plugin — advances the checkout, rebuilds, restarts (runs from any directory):"
             echo
             echo '```'
             echo "herdr plugin action invoke update --plugin herdr.collie"
