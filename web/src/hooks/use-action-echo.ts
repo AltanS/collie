@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { buzz } from "@/lib/haptics";
+
 // Local, synchronous press feedback for fire-and-forget controls.
 //
 // The problem this exists to solve: a nav-tray key press used to be SILENT on success (the mirror
@@ -80,6 +82,9 @@ export function useActionEcho(doneMs: number = ECHO_DONE_MS): ActionEcho {
         timers.current.delete(id);
       }
       set(id, "pending");
+      // On the PRESS, not the ✓: feedback has to be simultaneous with the tap to read as caused by
+      // it, and buzzing again on acknowledgement is just noise.
+      buzz();
 
       let ok = false;
       try {

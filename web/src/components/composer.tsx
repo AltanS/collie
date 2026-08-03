@@ -150,9 +150,37 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // below).
   const [handledKey, setHandledKey] = useState<string | null>(null);
   const [previewLatched, setPreviewLatched] = useState(false);
-  // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent).
+  // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent / Display).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
-  const closeDrawer = () => setDrawer(null);
+  // Keys staged in the (unmounted-on-close) NavTray, pushed up so leaving the Keys dock can guard a
+  // composed sequence. See requestDrawer.
+  const [queuedKeys, setQueuedKeys] = useState(0);
+  // Two-tap guard for discarding that sequence. Separate from sendConfirm so an armed "Really send?"
+  // and an armed discard can't clobber each other.
+  const discardConfirm = usePendingConfirm();
+
+  // The SINGLE choke point for every drawer transition. Closing the Keys dock destroys the composed
+  // queue (NavTray unmounts, useKeyQueue resets) — deliberate, because a queue that survived into a
+  // later open would let Send fire yesterday's chord sequence into today's TUI state, and this
+  // surface's whole safety story is "you review exactly what is about to go on the wire". So the fix
+  // for a mis-tap is a confirm, not persistence.
+  //
+  // Routed through here rather than guarding the dock's ✕ alone: the Keys toggle and the Quick /
+  // Agent / Display buttons all unmount the tray just as effectively. An armed-but-EMPTY queue (a
+  // lone `once` modifier, no chips) does not arm the confirm — one tap of setup isn't work worth
+  // protecting, and over-guarding just trains you to double-tap through it reflexively.
+  function requestDrawer(next: ComposerDrawer) {
+    if (drawer === "keys" && next !== "keys" && queuedKeys > 0 && !discardConfirm.confirm("discard")) {
+      setStatus(
+        `Tap again to discard ${queuedKeys} queued key${queuedKeys === 1 ? "" : "s"}`,
+        "info",
+      );
+      return;
+    }
+    discardConfirm.reset();
+    setDrawer(next);
+  }
+  const closeDrawer = () => requestDrawer(null);
   // Two-tap guard for destructive commands (rm -rf, force-push, …): the first tap arms a "Really
   // send?" state on the Send button (auto-disarms after 3 s), the second actually sends. Same shared
   // confirm the command palette uses for /clear.
@@ -511,7 +539,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             BottomSheet below (it's a palette, not a pad). */}
         {drawer === "keys" && (
           <ComposerDock title="Keys" onClose={closeDrawer}>
-            <NavTray onSend={pressKeys} disabled={locked} />
+            <NavTray onSend={pressKeys} onQueueChange={setQueuedKeys} disabled={locked} />
           </ComposerDock>
         )}
         {drawer === "quick" && (
@@ -519,6 +547,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <QuickActionsContent
               onSend={(t) => send(t, false)}
               onClose={closeDrawer}
+              agent={agent}
+              isShell={isShell}
               disabled={locked || sending}
             />
           </ComposerDock>
@@ -549,7 +579,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className="h-8 flex-1 gap-1.5 text-muted-foreground"
             disabled={locked}
             aria-expanded={drawer === "keys"}
-            onClick={() => setDrawer(drawer === "keys" ? null : "keys")}
+            onClick={() => requestDrawer(drawer === "keys" ? null : "keys")}
           >
             <Keyboard className="size-4" />
             Keys
@@ -560,7 +590,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className="h-8 flex-1 gap-1.5 text-muted-foreground"
             disabled={locked}
             aria-expanded={drawer === "quick"}
-            onClick={() => setDrawer(drawer === "quick" ? null : "quick")}
+            onClick={() => requestDrawer(drawer === "quick" ? null : "quick")}
           >
             <Zap className="size-4" />
             Quick
@@ -571,7 +601,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               size="sm"
               className="h-8 flex-1 gap-1.5 text-muted-foreground"
               disabled={locked}
-              onClick={() => setDrawer("cmd")}
+              onClick={() => requestDrawer("cmd")}
             >
               <Slash className="size-4" />
               Agent
@@ -585,7 +615,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className="size-8 shrink-0 text-muted-foreground"
             aria-label="Display settings"
             aria-expanded={drawer === "display"}
-            onClick={() => setDrawer(drawer === "display" ? null : "display")}
+            onClick={() => requestDrawer(drawer === "display" ? null : "display")}
           >
             <Settings2 className="size-4" />
           </Button>

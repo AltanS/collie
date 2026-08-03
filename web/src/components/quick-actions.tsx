@@ -5,17 +5,15 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ECHO_DONE_MS, useActionEcho } from "@/hooks/use-action-echo";
 import type { EchoPhase } from "@/hooks/use-action-echo";
-
-// Common one-tap replies, grouped. Each sends its text and submits, then closes the dock.
-// Numbered options live in the keyboard quick-key row, not here; the textual set is deduped to
-// distinct intents (no yes/ok/approve/go-ahead pile-up, no "stop" that just duplicates Esc).
-const CONFIRM = ["yes", "no"];
-const COMMON = ["continue", "commit and push", "retry", "skip"];
+import { quickRepliesFor } from "@/lib/quick-replies";
 
 interface QuickActionsContentProps {
   /** Resolves true once the reply is verified sent — drives the ✓ and the deferred close. */
   onSend: (text: string) => Promise<boolean>;
   onClose: () => void;
+  /** The pane's agent + kind — pick the reply set (lib/quick-replies). A shell gets y/n, not "skip". */
+  agent: string | undefined | null;
+  isShell: boolean;
   disabled?: boolean;
 }
 
@@ -30,7 +28,7 @@ function Group({
   onFire,
 }: {
   title: string;
-  items: string[];
+  items: readonly string[];
   cols: string;
   disabled?: boolean;
   /** Some reply in the dock is in flight — the untapped siblings dim and lock out. */
@@ -79,7 +77,14 @@ function Group({
 // nothing. Now the tapped button owns its own feedback (spinner → ✓, siblings dimmed) and the dock
 // closes after the ✓, once you've seen where your tap went. A FAILED send leaves the dock open with
 // every button live again, so you can retry without reopening it.
-export function QuickActionsContent({ onSend, onClose, disabled }: QuickActionsContentProps) {
+export function QuickActionsContent({
+  onSend,
+  onClose,
+  agent,
+  isShell,
+  disabled,
+}: QuickActionsContentProps) {
+  const groups = quickRepliesFor(agent, isShell);
   const echo = useActionEcho();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,24 +108,18 @@ export function QuickActionsContent({ onSend, onClose, disabled }: QuickActionsC
 
   return (
     <div className="space-y-4 border-t border-border/60 bg-muted/30 px-3 py-2.5">
-      <Group
-        title="confirm"
-        items={CONFIRM}
-        cols="grid-cols-2"
-        disabled={disabled}
-        busy={echo.pending}
-        phaseOf={echo.phaseOf}
-        onFire={fire}
-      />
-      <Group
-        title="common"
-        items={COMMON}
-        cols="grid-cols-2"
-        disabled={disabled}
-        busy={echo.pending}
-        phaseOf={echo.phaseOf}
-        onFire={fire}
-      />
+      {groups.map((g) => (
+        <Group
+          key={g.title}
+          title={g.title}
+          items={g.items}
+          cols="grid-cols-2"
+          disabled={disabled}
+          busy={echo.pending}
+          phaseOf={echo.phaseOf}
+          onFire={fire}
+        />
+      ))}
     </div>
   );
 }

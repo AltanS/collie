@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Lock } from "lucide-react";
 
@@ -8,6 +8,7 @@ import type { Modifier } from "@/lib/key-queue";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useKeyQueue } from "@/hooks/use-key-queue";
 import { useActionEcho } from "@/hooks/use-action-echo";
+import { useHoldRepeat } from "@/hooks/use-hold-repeat";
 import { KeyQueueStrip } from "@/components/key-queue-strip";
 
 // The inline navigation tray: the keys you need to drive an interactive agent prompt (selection
@@ -33,6 +34,9 @@ import { KeyQueueStrip } from "@/components/key-queue-strip";
 interface NavTrayProps {
   /** Resolves true when the bridge accepted the keys — drives the ✓ echo on the pressed button. */
   onSend: (keys: string[]) => Promise<boolean>;
+  /** How many keys are staged, reported up so the Composer can guard closing the dock on a composed
+   *  sequence. Reports 0 on unmount. Must be referentially stable (a setState fn is ideal). */
+  onQueueChange?: (staged: number) => void;
   disabled?: boolean;
 }
 
@@ -60,13 +64,36 @@ const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 // Ctrl-expand persist across the toggle so a composed sequence survives switching to the digit pad.
 type Tab = "keys" | "digits";
 
-export function NavTray({ onSend, disabled }: NavTrayProps) {
+export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
   const [tab, setTab] = useState<Tab>("keys");
   const [ctrlOpen, setCtrlOpen] = useState(false);
   const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take } =
     useKeyQueue();
   const { pending, confirm, reset } = usePendingConfirm(); // danger ctrl two-tap (immediate path only)
   const echo = useActionEcho();
+  // Hold-to-repeat, WHITELISTED to the arrows (see navBtn's `repeat` flag). Deliberately a whitelist
+  // rather than a blacklist: Enter/Esc/Space/digits/Ctrl-presets structurally must not repeat, and
+  // the danger presets' two-tap guard lives on a different code path (pressCtrl) that a future
+  // refactor could route around — so repeat capability is opt-in per button, not opt-out.
+  // Disabled while composing: a hold must never stage fifteen identical chips into a queue whose
+  // entire value is that you can review it before it goes on the wire.
+  const repeat = useHoldRepeat(
+    (key, n) => onSend(Array<string>(n).fill(key)),
+    !disabled && !composing,
+  );
+
+  // Report the staged count up. The tray unmounts when the dock closes (which is what discards the
+  // queue), so the Composer can't read this state itself — it has to be pushed. The second effect
+  // reports 0 on unmount so a stale count can't outlive the tray and arm a phantom confirm.
+  useEffect(() => {
+    onQueueChange?.(queue.length);
+  }, [queue.length, onQueueChange]);
+  useEffect(
+    () => () => {
+      onQueueChange?.(0);
+    },
+    [onQueueChange],
+  );
 
   // Route a key press through the queue: fire immediately when idle, stage when composing. Only the
   // immediate path echoes — a staged press is already visible as a chip.
@@ -99,20 +126,37 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
   // A key button, echoing its own press. `pending` fills it the instant you tap (no network wait);
   // `done` swaps a ✓ in for the label for ECHO_DONE_MS. Keyed by the wire string, so the same key
   // pressed twice in a row restarts its own cycle rather than inheriting a stale ✓.
-  const navBtn = (content: ReactNode, keys: string[], aria?: string) => {
+  //
+  // `repeatable` opts a button into hold-to-repeat. While held, the button shows a live "×N" count
+  // instead of running the per-press echo — echo.run per repeat tick would restart the ✓ timer ~11
+  // times a second and strobe, the same reason sibling dimming is banned on this pad.
+  const navBtn = (content: ReactNode, keys: string[], aria?: string, repeatable = false) => {
     const id = keys.join(" ");
     const phase = echo.phaseOf(id);
+    const held = repeatable && repeat.holding === keys[0];
+    const bind = repeatable ? repeat.bind(keys[0], () => fire(keys, id)) : undefined;
     return (
       <Button
         type="button"
-        variant={phase === "idle" ? "outline" : "default"}
+        variant={held || phase !== "idle" ? "default" : "outline"}
         size="sm"
         disabled={disabled}
-        onClick={() => fire(keys, id)}
+        {...(bind ?? { onClick: () => fire(keys, id) })}
         aria-label={aria}
-        className="h-10 px-0 text-sm font-medium"
+        // touch-action/select-none: without them a held button on iOS starts a text selection and
+        // Android may treat the hold as a scroll gesture, both of which cancel the pointer stream.
+        className="h-10 touch-manipulation select-none px-0 text-sm font-medium"
       >
-        {phase === "done" ? <Check className="mx-auto size-4" /> : content}
+        {held ? (
+          <span className="mx-auto flex items-center gap-1">
+            {content}
+            {repeat.count > 1 && <span className="font-mono text-xs tabular-nums">×{repeat.count}</span>}
+          </span>
+        ) : phase === "done" ? (
+          <Check className="mx-auto size-4" />
+        ) : (
+          content
+        )}
       </Button>
     );
   };
@@ -184,12 +228,12 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
           <div className="grid grid-cols-4 gap-1.5">
             {navBtn("Esc", ["Escape"])}
             <div aria-hidden />
-            {navBtn(<ArrowUp className="mx-auto size-4" />, ["Up"], "Up")}
+            {navBtn(<ArrowUp className="size-4" />, ["Up"], "Up", true)}
             {navBtn("⏎ Enter", ["Enter"])}
             {navBtn("Tab", ["Tab"])}
-            {navBtn(<ArrowLeft className="mx-auto size-4" />, ["Left"], "Left")}
-            {navBtn(<ArrowDown className="mx-auto size-4" />, ["Down"], "Down")}
-            {navBtn(<ArrowRight className="mx-auto size-4" />, ["Right"], "Right")}
+            {navBtn(<ArrowLeft className="size-4" />, ["Left"], "Left", true)}
+            {navBtn(<ArrowDown className="size-4" />, ["Down"], "Down", true)}
+            {navBtn(<ArrowRight className="size-4" />, ["Right"], "Right", true)}
           </div>
 
           {/* Space — full-width, spacebar-style, on its own row */}

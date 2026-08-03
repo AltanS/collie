@@ -403,3 +403,167 @@ describe("NavTray", () => {
     expect(screen.getByRole("button", { name: /Remove Ctrl/ })).toBeInTheDocument();
   });
 });
+
+// ── Hold-to-repeat. Highest-risk feature in the tray: a lost pointerup is a phone holding ↓ inside
+//    a real terminal, and two concurrent send_keys calls have UNGUARANTEED ordering (one-shot RPC),
+//    so the pump must keep exactly one in flight and batch the rest. ───────────────────────────────
+
+describe("NavTray — hold to repeat", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const HOLD_DELAY = 350;
+  const REPEAT = 90;
+
+  /** Total keys delivered across every call, and the per-call arrays. */
+  function delivered(onSend: ReturnType<typeof vi.fn>) {
+    const calls = onSend.mock.calls.map((c) => c[0] as string[]);
+    return { calls, total: calls.reduce((n, a) => n + a.length, 0) };
+  }
+
+  it("a short tap sends exactly one key — the tap path is untouched", async () => {
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+    const down = screen.getByRole("button", { name: "Down" });
+
+    fireEvent.pointerDown(down);
+    await vi.advanceTimersByTimeAsync(HOLD_DELAY - 100); // released before repeat engages
+    fireEvent.pointerUp(down);
+    fireEvent.click(down);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(delivered(onSend).total).toBe(1);
+    expect(onSend).toHaveBeenCalledWith(["Down"]);
+  });
+
+  it("a hold repeats, and the release's synthesized click does NOT add an extra key", async () => {
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+    const down = screen.getByRole("button", { name: /Down/ });
+
+    fireEvent.pointerDown(down);
+    await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 4);
+    const held = delivered(onSend).total;
+    expect(held).toBeGreaterThan(1);
+
+    fireEvent.pointerUp(down);
+    fireEvent.click(down); // the click that always follows a release
+    await vi.advanceTimersByTimeAsync(50);
+
+    // The pump may flush a trailing batch, but the click itself must contribute nothing.
+    const after = delivered(onSend);
+    expect(after.calls.every((a) => a.every((k) => k === "Down"))).toBe(true);
+    expect(after.total).toBeGreaterThanOrEqual(held);
+  });
+
+  it("keeps ONE send in flight and batches the rest — ordering depends on it", async () => {
+    let inFlight = 0;
+    let maxConcurrent = 0;
+    const onSend = vi.fn(async () => {
+      inFlight++;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      await new Promise((r) => setTimeout(r, 300)); // a slow tailnet
+      inFlight--;
+      return true;
+    });
+    render(<NavTray onSend={onSend} />);
+    const down = screen.getByRole("button", { name: /Down/ });
+
+    fireEvent.pointerDown(down);
+    await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 10);
+    fireEvent.pointerUp(down);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(maxConcurrent).toBe(1);
+    // A slow link produces BIGGER batches, not more calls — that's what the array API is for.
+    expect(delivered(onSend).calls.some((a) => a.length > 1)).toBe(true);
+  });
+
+  it("stops on release — no keys keep arriving after the hold ends", async () => {
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+    const down = screen.getByRole("button", { name: /Down/ });
+
+    fireEvent.pointerDown(down);
+    await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 3);
+    fireEvent.pointerUp(down);
+    await vi.advanceTimersByTimeAsync(50);
+    const settled = delivered(onSend).total;
+
+    await vi.advanceTimersByTimeAsync(2000); // long past any ticker
+    expect(delivered(onSend).total).toBe(settled);
+  });
+
+  it("a LOST pointerup can't run away — the dead-man ceiling releases the hold", async () => {
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+    const down = screen.getByRole("button", { name: /Down/ });
+
+    fireEvent.pointerDown(down); // ...and no pointerup ever arrives
+    await vi.advanceTimersByTimeAsync(10_000);
+    const settled = delivered(onSend).total;
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(delivered(onSend).total).toBe(settled); // capped, not still hammering
+  });
+
+  it("pointercancel releases the hold (thumb dragged off / gesture stolen)", async () => {
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+    const down = screen.getByRole("button", { name: /Down/ });
+
+    fireEvent.pointerDown(down);
+    await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 2);
+    fireEvent.pointerCancel(down);
+    await vi.advanceTimersByTimeAsync(50);
+    const settled = delivered(onSend).total;
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(delivered(onSend).total).toBe(settled);
+  });
+
+  it("only arrows repeat — Enter, Esc and Space are whitelisted OUT", async () => {
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+
+    for (const name of [/Enter/, "Esc", "Space"]) {
+      const btn = screen.getByRole("button", { name: name as string | RegExp });
+      fireEvent.pointerDown(btn);
+      await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 5);
+      fireEvent.pointerUp(btn);
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    // No pointer binding at all on these — nothing was sent without a click.
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("a hold while COMPOSING stages one chip, not fifteen", async () => {
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl" })); // arm → compose mode
+    const down = screen.getByRole("button", { name: /Down/ });
+    fireEvent.pointerDown(down);
+    await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 8);
+    fireEvent.pointerUp(down);
+    fireEvent.click(down);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(onSend).not.toHaveBeenCalled(); // staged, not fired
+    expect(screen.getAllByRole("button", { name: /^Remove / })).toHaveLength(1);
+  });
+
+  it("a refused key stops the hold instead of hammering the pane", async () => {
+    const onSend = vi.fn(async () => false); // bridge says no
+    render(<NavTray onSend={onSend} />);
+    const down = screen.getByRole("button", { name: /Down/ });
+
+    fireEvent.pointerDown(down);
+    await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 20);
+    const settled = onSend.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(onSend.mock.calls.length).toBe(settled);
+    expect(settled).toBeLessThan(5); // stopped early, nowhere near 20 ticks
+  });
+});
