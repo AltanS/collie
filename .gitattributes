@@ -1,0 +1,6 @@
+# TypeScript sources are text, always. multi-select-action.ts uses a NUL as a map-key separator, and
+# a single such byte makes git classify the whole file as binary — which silently hid every change to
+# the race guard from `git show` and from PR review. The byte is now a source escape, but this keeps
+# any future one from costing reviewability.
+*.ts diff
+*.tsx diff

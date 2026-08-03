@@ -103,6 +103,16 @@ const ESCAPE_ROW = /^❯?\s*Chat about this$/;
 /** The chosen-row marker a revisited answered question shows: "1. Grid ✔". */
 const CHOSEN_SUFFIX = /\s*✔\s*$/;
 
+// An option row's prefix — indentation, the optional ❯ pointer, the number, the dot and the space
+// after it. Its LENGTH is the column the label starts at, which is the anchor a wrapped continuation
+// row hangs under. Matched on the UNtrimmed left slice (parseOptionRow trims, losing the column).
+const OPTION_LABEL_START = /^\s*(?:❯\s*)?\d+\.\s+/;
+
+/** Leading-space count — how far into the gutter a row's text starts. */
+function indentOf(text: string): number {
+  return text.length - text.trimStart().length;
+}
+
 // Bounded windows, same philosophy as the sibling grammars: the Notes line sits within a few lines
 // of the footer (rule + escape row between); options+preview sit within a screenful above it.
 const NOTES_SCAN_LIMIT = 8;
@@ -151,24 +161,85 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   const noteCol = texts[notesIdx]!.indexOf("Notes:");
   const note = parseNote(texts[notesIdx]!.slice(noteCol + "Notes:".length), editing);
 
-  // 3. Option rows: numbered rows 1..k in CONSECUTIVE lines (the left column never wraps its
-  //    30-col labels), matched on the text LEFT of the preview column.
+  // 3. Option rows: numbered rows 1..k, matched on the text LEFT of the preview column. Unlike the
+  //    full-width grammars, this variant's left column is only ~30 wide, so a longer label WRAPS
+  //    onto unnumbered continuation rows beneath it — the numbered rows are therefore NOT
+  //    necessarily adjacent. What must hold is that the option list is CONTIGUOUS once those
+  //    continuation rows are counted: from the first numbered row down, every line is either the
+  //    next numbered row or a continuation of the label above it, until the left column goes blank
+  //    (the preview pane continuing alone below a short list).
   const from = Math.max(0, notesIdx - OPTION_SCAN_WINDOW);
+
+  // The LABEL COLUMN — where an option's text begins, past its "❯ 1. " prefix — is what separates a
+  // new option from more of the one above it. A wrapped line hangs UNDER its label, so anything
+  // starting at or right of that column is label text, and anything left of it is a fresh option.
+  // Without this the grammar has no way to tell the two apart, and both directions bite:
+  //   - a label ending "…and 3. Backfill later" would wrap to a row parsing as a phantom option 3;
+  //   - in a layout where `Notes:` and the preview pane DON'T share a column, preview content would
+  //     sit in the left slice and get folded into the last option's label as box-drawing garbage.
+  let labelCol = -1;
+  for (let i = from; i < notesIdx; i++) {
+    const left = texts[i]!.slice(0, noteCol);
+    const m = OPTION_LABEL_START.exec(left);
+    // Must be a REAL option row, not merely something shaped like a number and a dot: a bare "12."
+    // with no label matches the prefix but carries no option, and would shift the very column that
+    // decides what counts as a new option.
+    if (m && parseOptionRow(left)) {
+      labelCol = m[0]!.length;
+      break;
+    }
+  }
+  if (labelCol < 0) return null;
+
   const rows: { index: number; n: number; label: string; pointed: boolean }[] = [];
   for (let i = from; i < notesIdx; i++) {
     const left = texts[i]!.slice(0, noteCol);
+    if (indentOf(left) >= labelCol) continue; // a number inside a wrapped label, not an option
     const parsed = parseOptionRow(left);
     if (parsed) rows.push({ index: i, pointed: /^\s*❯/.test(left), ...parsed });
   }
   if (rows.length < 2) return null;
-  if (rows.some((r, k) => r.n !== k + 1 || r.index !== rows[0]!.index + k)) return null;
+  if (rows.some((r, k) => r.n !== k + 1)) return null;
+  // Past 9 the digit is two keys ("10"), which Herdr's send_keys rejects — so the button would render
+  // and then fail on tap. Bail to the raw mirror + keys pad instead, as prompt-select does.
+  if (rows.length > 9) return null;
   const firstOpt = rows[0]!.index;
-  const lastOpt = rows[rows.length - 1]!.index;
 
-  // Below the last row and above the Notes line only preview continuation (blank left column) may
+  // Walk the list, folding each wrapped row into its option's label. `lastOpt` ends up on the last
+  // line still owned by the list (a continuation row when the FINAL label wraps) — which is what
+  // the core signature must span, so a wrapped tail can't fall out of the dialog's identity.
+  //
+  // `chosen` is tracked per PIECE rather than read off the joined label: a revisited question paints
+  // its ✔ at the end of the row it marks, which for a wrapped label is the numbered row — the middle
+  // of the joined string, where an end-anchored test would miss it and leave the tick in the text.
+  const labels = rows.map((r) => r.label.replace(CHOSEN_SUFFIX, ""));
+  const chosen = rows.map((r) => CHOSEN_SUFFIX.test(r.label));
+  let cursor = 0;
+  let lastOpt = firstOpt;
+  let scan = firstOpt;
+  for (; scan < notesIdx; scan++) {
+    const left = texts[scan]!.slice(0, noteCol);
+    if (isBlank(left)) break;
+    if (cursor + 1 < rows.length && rows[cursor + 1]!.index === scan) {
+      cursor++;
+    } else if (scan !== firstOpt) {
+      // Right of the label column this isn't label text — it's a layout we don't know. Fold only
+      // what hangs under the label; bail on anything else rather than put it on a button.
+      if (indentOf(left) > labelCol) return null;
+      const piece = left.trim();
+      if (CHOSEN_SUFFIX.test(piece)) chosen[cursor] = true;
+      labels[cursor] += ` ${piece.replace(CHOSEN_SUFFIX, "")}`;
+    }
+    lastOpt = scan;
+  }
+  // Every numbered row must have been reached before the left column went blank — a stray "N." row
+  // below the gap is a different layout, not a wrapped label.
+  if (cursor !== rows.length - 1) return null;
+
+  // Below the list and above the Notes line only preview continuation (blank left column) may
   // appear — a non-blank left cell there is a layout we don't know.
-  for (let i = lastOpt + 1; i < notesIdx; i++) {
-    if (!isBlank(texts[i]!.slice(0, noteCol))) return null;
+  for (; scan < notesIdx; scan++) {
+    if (!isBlank(texts[scan]!.slice(0, noteCol))) return null;
   }
 
   // 4. The preview pane: the right column of the region's lines, verbatim (borders included).
@@ -213,11 +284,11 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
     }
   }
 
-  const options: PreviewOption[] = rows.map((r) => ({
-    label: r.label.replace(CHOSEN_SUFFIX, ""),
+  const options: PreviewOption[] = rows.map((r, k) => ({
+    label: labels[k]!.trim(),
     n: r.n,
     pointed: r.pointed,
-    chosen: CHOSEN_SUFFIX.test(r.label),
+    chosen: chosen[k]!,
   }));
 
   return {

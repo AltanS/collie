@@ -234,3 +234,128 @@ describe("wizard bails on a multiSelect step inside a multi-question wizard (v1 
     expect(detectMultiSelect(lines)).toBeNull();
   });
 });
+
+// A multiSelect question can also be ONE STEP of a multi-question wizard. That shape differs from the
+// standalone dialog in two ways the grammar has to know about: the stepper carries N question chips
+// instead of one, and the navigable row reads "Next" until the last question, where it reads
+// "Submit". Fixtures are sandbox captures of a real two-question dialog driven end to end.
+describe("detectMultiSelect — a checkbox question inside a wizard", () => {
+  const checkbox = (name: string) => {
+    const m = detectMultiSelect(fixtureLines(name));
+    expect(m).not.toBeNull();
+    if (m!.phase !== "checkbox") throw new Error("expected checkbox phase");
+    return m!;
+  };
+
+  it("lifts a non-final step, with the wizard's chips and a Next advance row", () => {
+    const m = checkbox("claude--wizard-multiselect-q1.txt");
+    expect(m.steps).toEqual([
+      { label: "Toppings", answered: false, current: true },
+      { label: "Crust", answered: false, current: false },
+    ]);
+    expect(m.advanceLabel).toBe("Next");
+    expect(m.question).toBe("Which toppings would you like on your pizza?");
+    expect(m.options.map((o) => o.n)).toEqual([1, 2, 3, 4]);
+    expect(m.options.map((o) => o.label)).toEqual([
+      "Pepperoni",
+      "Mushrooms",
+      "Bell peppers",
+      "Extra cheese",
+    ]);
+    expect(m.options.every((o) => !o.checked)).toBe(true);
+    // The free-text "Type something" row stays with the composer; "Chat about this" is the escape.
+    expect(m.escape?.label).toMatch(/chat about this/i);
+    expect(m.options[0]!.description).toMatch(/crisp at the edges/);
+  });
+
+  it("reads the ticked boxes, and the chip answered once ANY box is ticked", () => {
+    const m = checkbox("claude--wizard-multiselect-checked.txt");
+    expect(m.options.map((o) => o.checked)).toEqual([true, false, true, false]);
+    // "Answered" means touched, not complete — two of four boxes is enough to flip ☐ → ☒.
+    expect(m.steps![0]).toEqual({ label: "Toppings", answered: true, current: true });
+  });
+
+  it("recognises the pointer sitting on the advance row", () => {
+    // This is the state the closed-loop macro walks to and verifies before it ever presses Enter.
+    const m = checkbox("claude--wizard-multiselect-pointer-next.txt");
+    expect(m.pointer).toBe("advance");
+  });
+
+  it("reads Submit on the LAST step, not Next", () => {
+    const m = checkbox("claude--wizard-multiselect-final.txt");
+    expect(m.advanceLabel).toBe("Submit");
+    expect(m.steps).toEqual([
+      { label: "Size", answered: true, current: false },
+      { label: "Extras", answered: false, current: true },
+    ]);
+    expect(m.question).toBe("Which extras should we add on the side?");
+  });
+
+  it("leaves the standalone single-question dialog with no steps", () => {
+    // The generalisation must not turn every multiSelect into a wizard: with one question there is
+    // nowhere to navigate, so the block renders no stepper.
+    const m = checkbox("claude--select-multiselect-single.txt");
+    expect(m.steps).toBeNull();
+    expect(m.advanceLabel).toBe("Submit");
+  });
+
+  it("does not claim the wizard's own review screen", () => {
+    // A multi-question dialog reviews ONCE at the end, and that screen belongs to the wizard grammar.
+    // Two grammars claiming one screen is how a tap comes to mean two different things.
+    const lines = fixtureLines("claude--wizard-submit.txt");
+    expect(detectMultiSelect(lines)).toBeNull();
+    expect(detectWizard(lines)).not.toBeNull();
+  });
+});
+
+// Pane text is model-authored and untrusted, so the advance row is located by POSITION — last
+// non-blank line above the rule that separates the menu from the escape row — never by scanning for
+// the first line that happens to read "Submit"/"Next". These three cases are what text-matching cost.
+describe("detectMultiSelect — the advance row is a place, not a word", () => {
+  function pane(rows: string[], advance: string | null): string {
+    return [
+      "←  ☐ Toppings  ✔ Submit  →",
+      "",
+      "Which toppings would you like?",
+      "",
+      ...rows,
+      ...(advance === null ? [] : [`     ${advance}`]),
+      "─".repeat(60),
+      // The escape continues the menu's 1..m numbering — trailingMenuRows requires the run.
+      `  ${rows.filter((r) => /^\s*❯?\s*\d+\./.test(r)).length + 1}. Chat about this`,
+      "",
+      "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    ].join("\n");
+  }
+  const model = (s: string) => detectMultiSelect(splitLines(parseAnsi(s)));
+
+  it("a description reading 'Next' does not rename the button", () => {
+    // Otherwise the control advertises an action it does not perform: it would say "Next" while the
+    // tap walks onto the real Submit and ends the whole dialog.
+    const m = model(pane(["❯ 1. [ ] Garlic knots", "  Next", "  2. [ ] Caesar salad"], "Submit"));
+    expect(m).not.toBeNull();
+    if (m!.phase !== "checkbox") throw new Error("expected checkbox phase");
+    expect(m!.advanceLabel).toBe("Submit");
+    // …and the decoy stays visible as the description it actually is.
+    expect(m!.options[0]!.description).toBe("Next");
+  });
+
+  it("bails when there is no advance row, however much the text looks like one", () => {
+    // The fail-closed guard exists for the garbled render. A description satisfying it would leave
+    // the macro spraying Down keys into a live pane, hunting a row that isn't there.
+    expect(model(pane(["❯ 1. [ ] Garlic knots", "  Submit", "  2. [ ] Caesar salad"], null))).toBeNull();
+  });
+
+  it("a decoy '❯ Submit' line does not forge the pointer", () => {
+    // pointerAt returns on the FIRST ❯ it sees. If a decoy above the real pointer could claim
+    // "advance", the macro would press Enter on whatever row the terminal's ❯ is really on — and on
+    // "Chat about this" that aborts the entire tool call.
+    const m = model(pane(["  1. [ ] Garlic knots", "  ❯ Submit", "❯ 2. [ ] Caesar salad"], "Submit"));
+    expect(m).not.toBeNull();
+    if (m!.phase !== "checkbox") throw new Error("expected checkbox phase");
+    // A decoy still shadows the real ❯ (pointerAt takes the first one), so this reads "other" rather
+    // than "option" — which is fine: every non-"advance" pointer costs the macro a Down, never an
+    // Enter. What must never happen is "advance".
+    expect(m!.pointer).not.toBe("advance");
+  });
+});

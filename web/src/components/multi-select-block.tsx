@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import type { MultiSelectModel } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
 import { KeyBadge, optionSurface, PromptPanel, QuestionHeading } from "@/components/option-button";
+import { WizardStepper } from "@/components/wizard-stepper";
+import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/claude/wizard";
 
 export interface MultiSelectBlockProps {
   /** The detected multi-select dialog (checkbox screen or review screen). */
@@ -66,6 +68,17 @@ function CheckboxPhase({
 }) {
   return (
     <PromptPanel ariaLabel={multi.question}>
+      {multi.steps && (
+        <WizardStepper
+          steps={multi.steps}
+          locked={locked}
+          busyBack={sending === "nav-back"}
+          busyNext={sending === "nav-next"}
+          busyIcon={spinnerSm}
+          onBack={() => onPress("nav-back", { kind: "nav", keys: WIZARD_BACK_KEYS })}
+          onNext={() => onPress("nav-next", { kind: "nav", keys: WIZARD_NEXT_KEYS })}
+        />
+      )}
       <QuestionHeading>{multi.question}</QuestionHeading>
       <div className="flex flex-col gap-1">
         {multi.options.map((option) => {
@@ -111,15 +124,20 @@ function CheckboxPhase({
         })}
       </div>
 
-      {/* Submit advances to the review screen — the handler drives the closed-loop macro. */}
+      {/* The advance row — "Submit" on the last question, "Next" before it. The handler drives the
+          closed-loop macro that walks the pointer onto it and verifies before pressing Enter. */}
       <button
         type="button"
         disabled={locked}
-        onClick={() => onPress("submit", { kind: "submit" })}
+        // The name is on the ATTRIBUTE, not just the text: this same button element is renamed
+        // "Next" → "Submit" underneath a user who may already have it focused, and a plain
+        // child-text swap on a focused control is not reliably re-announced.
+        aria-label={multi.advanceLabel}
+        onClick={() => onPress("advance", { kind: "advance" })}
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary/60 bg-primary/15 px-3 py-2 text-sm font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
       >
-        {sending === "submit" ? spinnerSm : null}
-        Submit
+        {sending === "advance" ? spinnerSm : null}
+        {multi.advanceLabel}
       </button>
 
       {/* "Chat about this" ABORTS the tool — de-emphasised, apart from the answers (like the wizard). */}
