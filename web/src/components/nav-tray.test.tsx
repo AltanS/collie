@@ -347,4 +347,59 @@ describe("NavTray", () => {
     await user.click(send);
     expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+d"]);
   });
+
+  // ── Press echo: the tray used to be silent on success, and the mirror it deferred to can be ~2s
+  //    behind, so a key press looked like it went nowhere. ────────────────────────────────────────
+
+  it("an immediate press echoes on its own button until the send resolves", async () => {
+    const user = userEvent.setup();
+    let release = () => {};
+    const onSend = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = () => resolve(true);
+        }),
+    );
+    render(<NavTray onSend={onSend} />);
+
+    const enter = screen.getByRole("button", { name: /Enter/ });
+    expect(enter).toHaveClass("border"); // outline variant at rest
+    await user.click(enter);
+
+    // Filled the instant it's tapped — synchronous, no network wait. That IS the fix.
+    expect(screen.getByRole("button", { name: /Enter/ })).toHaveClass("bg-primary");
+
+    release();
+    // Settles back to the resting outline once the ✓ window elapses.
+    await vi.waitFor(
+      () => expect(screen.getByRole("button", { name: /Enter/ })).not.toHaveClass("bg-primary"),
+      { timeout: 3000 },
+    );
+  });
+
+  it("a REFUSED send leaves no ✓ — the button drops straight back to rest", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn(async () => false);
+    render(<NavTray onSend={onSend} />);
+
+    await user.click(screen.getByRole("button", { name: "Esc" }));
+
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "Esc" })).not.toHaveClass("bg-primary"),
+    );
+  });
+
+  it("a STAGED press does not echo — the queue chip is already the receipt", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn(async () => true);
+    render(<NavTray onSend={onSend} />);
+
+    await user.click(screen.getByRole("button", { name: "Ctrl" })); // arm → compose mode
+    await user.click(screen.getByRole("button", { name: "Tab" }));
+
+    expect(onSend).not.toHaveBeenCalled();
+    // Tab stays at rest (outline); the chip in the strip carries the feedback instead.
+    expect(screen.getByRole("button", { name: "Tab" })).not.toHaveClass("bg-primary");
+    expect(screen.getByRole("button", { name: /Remove Ctrl/ })).toBeInTheDocument();
+  });
 });

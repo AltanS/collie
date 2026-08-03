@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { AArrowDown, AArrowUp, Check, ImagePlus, Keyboard, Loader2, Search, Send, Slash, Terminal, WrapText, X, Zap } from "lucide-react";
+import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, X, Zap } from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -11,6 +11,7 @@ import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
+import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
@@ -58,9 +59,6 @@ interface ComposerProps {
   setRawTerminal: (raw: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
-  /** Open find-in-output (freezes the tail in AgentChat). Undefined when there's no buffered output
-   * to search — the View-row Find button hides in that case. */
-  onOpenFind?: () => void;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -69,7 +67,14 @@ interface ComposerProps {
 // two-tap guard). Its state (draft, sending, upload, pending preview, its own Keys/Quick/Agent
 // sheets) is entirely local; it reaches AgentChat only through `onSent` (to re-follow the tail) and
 // exposes `focusInput` so the mirror tap can bring up the keyboard.
-type ComposerDrawer = "quick" | "cmd" | "keys" | null;
+//
+// "display" joined the drawer union when the permanent icon-only View row was retired: wrap / raw
+// terminal / font size are settings you touch once, so they cost a whole row of a phone viewport for
+// nothing, and the raw-terminal toggle in particular was an unlabelled `>_` glyph nobody could
+// decode. They now live behind the ⚙ on the single Controls row, as labelled rows in the same
+// in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
+// them). Find moved the other way — to the header, where its find bar already takes over the row.
+type ComposerDrawer = "quick" | "cmd" | "keys" | "display" | null;
 
 // Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text.
 const TUI_SETTLE_MS = 350;
@@ -79,6 +84,9 @@ const TUI_SETTLE_MS = 350;
 // stranded draft. Wide enough to cover a slow tailnet round-trip; the parent's cross-poll
 // stabilisation (useStableTerminalDraft) closes the other half of the same window.
 const SENT_ECHO_GRACE_MS = 5_000;
+
+// Burst window for post-keypress revalidation (see scheduleKeyRevalidate).
+const KEY_REVALIDATE_MS = 300;
 
 // Shared in-flow dock chrome for Keys/Quick — an IN-FLOW panel (never an overlay), so the terminal
 // mirror's flex-1 box shrinks and its tail stays visible while the dock is open (a covering sheet
@@ -115,7 +123,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent, onOpenFind },
+  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -275,9 +283,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setTimeout(focusInputImmediately, 0);
   }
 
-  async function send(value: string, isDraft: boolean) {
+  // Resolves true only on a VERIFIED send (the text was seen in the pane's input box before the
+  // submit key went out). The quick-reply grid consumes the verdict to drive its own ✓ and to decide
+  // whether to close its dock, so every early return below has to answer honestly.
+  async function send(value: string, isDraft: boolean): Promise<boolean> {
     const t = value.trim();
-    if (!t || locked || sending) return;
+    if (!t || locked || sending) return false;
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
     // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
     // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
@@ -286,7 +297,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // sending is consent, and the conditions moved.
     if (dialogPresent) {
       setStatus("A dialog is waiting — answer it first, then send.", "error");
-      return;
+      return false;
     }
     setSending(true);
     try {
@@ -309,7 +320,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         );
         if (!clearRes.ok) {
           setStatus(clearRes.error ?? "Couldn't clear the terminal input", "error");
-          return;
+          return false;
         }
         scheduleKeyRevalidate();
         await new Promise((resolve) => setTimeout(resolve, TUI_SETTLE_MS));
@@ -343,6 +354,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
         lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
         onSent(); // you just acted — snap the mirror back to the live tail to see the result
+        return true;
       } else {
         // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
         // probably holding focus). "error" with textDelivered = the text is in the pane but the
@@ -350,9 +362,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // double-sending, and on a stall their message is still here to re-send once the dialog is
         // answered.
         setStatus(res.error, "error");
+        return false;
       }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e), "error");
+      return false;
     } finally {
       setSending(false);
     }
@@ -372,26 +386,47 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
   const confirmingSend = sendConfirm.pending === "send";
 
-  // Coalesce revalidations from a burst of key presses into one trailing-edge refetch (~300ms).
-  // Single presses still feel instant; arrow-key spam no longer triggers a refetch per key.
+  // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
+  // burst refetches immediately, and only presses that arrive inside the window collapse into one
+  // trailing refetch. It used to be trailing-only, which meant a lone press — the common case — sat
+  // out the full window before its fetch even *started*, and if that fetch then beat the TUI's
+  // repaint you waited a whole 1.5s poll to see anything. Arrow-key spam still coalesces exactly as
+  // before: presses 2..n only ever schedule the one trailing refetch.
   function scheduleKeyRevalidate() {
-    if (keyRevalidateTimer.current) clearTimeout(keyRevalidateTimer.current);
+    if (keyRevalidateTimer.current === null) {
+      revalidator.revalidate(); // leading edge
+      // Cooldown only — it fires nothing itself; a press landing before it expires replaces it with
+      // the trailing refetch below.
+      keyRevalidateTimer.current = setTimeout(() => {
+        keyRevalidateTimer.current = null;
+      }, KEY_REVALIDATE_MS);
+      return;
+    }
+    clearTimeout(keyRevalidateTimer.current);
     keyRevalidateTimer.current = setTimeout(() => {
       keyRevalidateTimer.current = null;
-      revalidator.revalidate();
-    }, 300);
+      revalidator.revalidate(); // trailing edge — one refetch for the whole burst
+    }, KEY_REVALIDATE_MS);
   }
 
-  // Raw key send (nav tray). Silent on success — the mirror is the source of truth; only show errors.
-  function pressKeys(k: string[]) {
-    if (locked) return;
-    api
-      .sendKeys(paneId, k, session)
-      .then((res) => {
-        if (!res.ok) setStatus(res.error ?? "Key send failed", "error");
-        else scheduleKeyRevalidate();
-      })
-      .catch((e) => setStatus(e instanceof Error ? e.message : String(e), "error"));
+  // Raw key send (nav tray). Resolves the bridge's verdict so the pressed button can echo it — the
+  // mirror is still the source of truth for what the key DID, but it can be ~2s behind, and this
+  // path used to be silent on success, so a press looked like it went nowhere. Errors still go to
+  // the status channel; the echo just falls back to idle.
+  async function pressKeys(k: string[]): Promise<boolean> {
+    if (locked) return false;
+    try {
+      const res = await api.sendKeys(paneId, k, session);
+      if (!res.ok) {
+        setStatus(res.error ?? "Key send failed", "error");
+        return false;
+      }
+      scheduleKeyRevalidate();
+      return true;
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e), "error");
+      return false;
+    }
   }
 
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
@@ -468,85 +503,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             below (always visible, not gated behind the keyboard-open quick keys); structural commands
             (New tab/space, Kill) and Stop (Esc, in the Keys dock) live elsewhere. */}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickImage} />
-        {/* Display prefs (wrap + font size) on their own compact, right-aligned row. Kept off the
-            Keys/Quick/Agent action row below — three extra buttons there overflowed a narrow phone
-            and broke the layout. */}
-        <div className="mb-2 flex items-center gap-1">
-          <SectionLabel>View</SectionLabel>
-          <div className="ml-auto flex items-center gap-1">
-            {/* Find in output — search the already-fetched pane buffer without leaving the pane.
-                Lives here (not the header) so search sits with the other view controls; only shown
-                when AgentChat passes a handler (i.e. there's buffered output to search). */}
-            {onOpenFind && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground"
-                onClick={onOpenFind}
-                aria-label="Find in output"
-                title="Find in output"
-              >
-                <Search className="size-3.5" />
-              </Button>
-            )}
-            {/* Raw-terminal escape hatch: turns off the block renderer (native prompt buttons, chrome
-                strip, status strip) so a mis-parsed dialog can always be driven by hand with the keys
-                pad. Highlighted when active so it's obvious the plain mirror is showing. */}
-            <Button
-              variant={prefs.rawTerminal ? "secondary" : "ghost"}
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              onClick={() => setRawTerminal(!prefs.rawTerminal)}
-              aria-label={
-                prefs.rawTerminal
-                  ? "Raw terminal on — tap for the enhanced view"
-                  : "Raw terminal off — tap to show the plain terminal"
-              }
-              aria-pressed={prefs.rawTerminal}
-              title="Toggle raw terminal (disable native prompt buttons)"
-            >
-              <Terminal className="size-3.5" />
-            </Button>
-            <Button
-              variant={prefs.wrap ? "secondary" : "ghost"}
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              onClick={() => setWrap(!prefs.wrap)}
-              aria-label={prefs.wrap ? "Wrap on — tap to disable" : "Wrap off — tap to enable"}
-              aria-pressed={prefs.wrap}
-              title="Toggle line wrap"
-            >
-              <WrapText className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              disabled={prefs.fontSize <= 9}
-              onClick={() => stepFontSize(-1)}
-              aria-label="Decrease font size"
-              title="Smaller text"
-            >
-              <AArrowDown className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              disabled={prefs.fontSize >= 16}
-              onClick={() => stepFontSize(1)}
-              aria-label="Increase font size"
-              title="Larger text"
-            >
-              <AArrowUp className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-        {/* Keys / Quick dock — a single in-flow site ABOVE the Controls row (so the toggle you tapped
-            stays put and the panel grows over the mirror, not the input). Whichever of the mutually
-            exclusive drawers is active renders here via the shared ComposerDock chrome. Keys mounts
-            the NavTray (unmounts on close, so tab/queue reset each open); Quick mounts the two
-            one-tap reply grids. Agent stays a covering BottomSheet below (it's a palette, not a pad). */}
+        {/* Keys / Quick / Display dock — a single in-flow site ABOVE the Controls row (so the toggle
+            you tapped stays put and the panel grows over the mirror, not the input). Whichever of the
+            mutually exclusive drawers is active renders here via the shared ComposerDock chrome. Keys
+            mounts the NavTray (unmounts on close, so tab/queue reset each open); Quick mounts the two
+            one-tap reply grids; Display mounts the labelled mirror prefs. Agent stays a covering
+            BottomSheet below (it's a palette, not a pad). */}
         {drawer === "keys" && (
           <ComposerDock title="Keys" onClose={closeDrawer}>
             <NavTray onSend={pressKeys} disabled={locked} />
@@ -561,7 +523,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </ComposerDock>
         )}
-        {/* Action row: Keys · Quick · Agent (Agent only when the pane's agent has commands). */}
+        {drawer === "display" && (
+          <ComposerDock title="Display" onClose={closeDrawer}>
+            <DisplayPrefsContent
+              prefs={prefs}
+              setWrap={setWrap}
+              stepFontSize={stepFontSize}
+              setRawTerminal={setRawTerminal}
+            />
+          </ComposerDock>
+        )}
+        {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
+            commands). Display prefs used to sit on a second, permanent icon-only "View" row above
+            this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
+            and NOT flex-1 — it's a settings affordance, not a peer of the three action toggles, and
+            keeping it narrow leaves the labelled buttons their width on a 390px phone. */}
         <div className="mb-2 flex items-center gap-2">
           <SectionLabel>Controls</SectionLabel>
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
@@ -601,6 +577,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               Agent
             </Button>
           )}
+          {/* Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view state, so a
+              read-only device or a gone pane can still make its mirror readable. */}
+          <Button
+            variant={drawer === "display" ? "secondary" : "ghost"}
+            size="icon"
+            className="size-8 shrink-0 text-muted-foreground"
+            aria-label="Display settings"
+            aria-expanded={drawer === "display"}
+            onClick={() => setDrawer(drawer === "display" ? null : "display")}
+          >
+            <Settings2 className="size-4" />
+          </Button>
         </div>
         {/* Terminal-draft preview: a read-only view of a stranded "❯"-line draft (a message queued
             then recalled on the HOST, which stripChrome hides from the mirror). It appears only after
