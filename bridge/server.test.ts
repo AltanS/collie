@@ -46,7 +46,12 @@ function cfg(overrides: Partial<Config> = {}): Config {
     notifyDelayMs: 30_000,
     readLines: 200,
     transcript: true,
-    journalRoots: { claude: "/tmp/claude-projects", codex: "/nope/codex", pi: "/nope/pi" },
+    journalRoots: {
+      claude: "/tmp/claude-projects",
+      codex: "/nope/codex",
+      pi: "/nope/pi",
+      opencode: "/nope/opencode",
+    },
     submitKeys: ["Enter"],
     trustedUser: "",
     deviceHeader: "",

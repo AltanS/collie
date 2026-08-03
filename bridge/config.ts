@@ -226,6 +226,10 @@ export function loadConfig(): Config {
       pi:
         process.env.COLLIE_PI_ROOT ??
         join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "sessions"),
+      // OpenCode keeps one SQLite database at the top of its XDG data dir, not per-session files.
+      opencode:
+        process.env.COLLIE_OPENCODE_ROOT ??
+        join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "opencode"),
     },
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",

@@ -12,6 +12,7 @@
 // paste into an issue. A harness you don't have installed reports `no logs found`, which is not a
 // failure: exit code is non-zero only when a log EXISTS and the adapter couldn't resolve or parse it.
 
+import { Database } from "bun:sqlite";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -72,6 +73,49 @@ function refFor(agent: string, path: string): AgentSessionRef | null {
   return uuid ? { kind: "id", value: uuid } : null;
 }
 
+/**
+ * Candidate session refs for one harness, newest first.
+ *
+ * Two shapes of storage, so two strategies: the file-backed harnesses (claude/codex/pi) name their
+ * sessions in `.jsonl` FILENAMES, while OpenCode has no per-session file at all — its sessions are
+ * rows in `<root>/opencode.db`, which no amount of directory walking will find. Both branches stay
+ * read-only and content-free, as this script's header promises: the sqlite branch selects ids only.
+ */
+async function candidateRefs(agent: string, root: string): Promise<{ refs: AgentSessionRef[]; total: number }> {
+  if (agent === "opencode") {
+    let db: Database;
+    try {
+      db = new Database(join(root, "opencode.db"), { readonly: true });
+    } catch {
+      return { refs: [], total: 0 };
+    }
+    try {
+      // Root sessions only — a `parent_id` row is a subagent session, which herdr never reports.
+      const rows = db
+        .query<{ id: string }, [number]>(
+          "select id from session where parent_id is null order by time_updated desc limit ?",
+        )
+        .all(MAX_CANDIDATES);
+      const refs: AgentSessionRef[] = rows.map((r) => ({ kind: "id", value: r.id }));
+      return { refs, total: refs.length };
+    } catch {
+      return { refs: [], total: 0 };
+    } finally {
+      db.close();
+    }
+  }
+
+  const logs = await logsNewestFirst(root);
+  const refs: AgentSessionRef[] = [];
+  for (const log of logs.slice(0, MAX_CANDIDATES)) {
+    // Claude keeps subagent logs under `subagents/` with no uuid in the name — not a session, so not
+    // something Herdr would ever name. Skip rather than fail.
+    const ref = refFor(agent, log);
+    if (ref !== null) refs.push(ref);
+  }
+  return { refs, total: logs.length };
+}
+
 function summarise(entries: TranscriptEntry[]): string {
   const roles = new Map<string, number>();
   let parts = 0;
@@ -88,23 +132,16 @@ function summarise(entries: TranscriptEntry[]): string {
 }
 
 async function probe(adapter: JournalAdapter, root: string): Promise<"ok" | "empty" | "fail"> {
-  const label = adapter.agent.padEnd(7);
-  const candidates = await logsNewestFirst(root);
-  if (candidates.length === 0) {
+  const label = adapter.agent.padEnd(8);
+  const { refs, total } = await candidateRefs(adapter.agent, root);
+  if (refs.length === 0) {
     console.log(`${label} — no logs found under ${root} (harness not installed here?)`);
     return "empty";
   }
 
   let tried = 0;
   let lastProblem = "no candidate produced turns";
-  for (const log of candidates.slice(0, MAX_CANDIDATES)) {
-    const ref = refFor(adapter.agent, log);
-    if (ref === null) {
-      // Claude keeps subagent logs under `subagents/` with no uuid in the name — not a session, so
-      // not something Herdr would ever name. Skip rather than fail.
-      lastProblem = `no session ref derivable from ${log}`;
-      continue;
-    }
+  for (const ref of refs) {
     tried++;
 
     const resolved = await adapter.source.resolve(ref);
@@ -126,7 +163,7 @@ async function probe(adapter: JournalAdapter, root: string): Promise<"ok" | "emp
       `${label} ✓ ${summarise(entries)}${complete ? "" : " [tail-clipped]"}` +
         `${dupes > 0 ? ` ⚠ ${dupes} duplicate cursors` : ""}`,
     );
-    console.log(`${" ".repeat(9)}${resolved}  (candidate ${tried} of ${candidates.length})`);
+    console.log(`${" ".repeat(10)}${resolved}  (candidate ${tried} of ${total})`);
     return "ok";
   }
 
