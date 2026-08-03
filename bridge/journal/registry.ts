@@ -12,6 +12,7 @@
 
 import { claudeJournal } from "./claude.ts";
 import { codexJournal } from "./codex.ts";
+import { opencodeJournal } from "./opencode.ts";
 import { piJournal } from "./pi.ts";
 import type { JournalAdapter } from "./types.ts";
 
@@ -23,6 +24,8 @@ export interface JournalRoots {
   codex: string;
   /** pi's `$PI_CODING_AGENT_DIR/sessions`. */
   pi: string;
+  /** OpenCode's data dir — the SQLite `opencode.db` lives at its top level. */
+  opencode: string;
 }
 
 /**
@@ -32,7 +35,12 @@ export interface JournalRoots {
  * never drift from the adapter it points at — the same guarantee the frontend registry gives.
  */
 export function buildJournalRegistry(roots: JournalRoots): Record<string, JournalAdapter> {
-  const adapters = [claudeJournal(roots.claude), codexJournal(roots.codex), piJournal(roots.pi)];
+  const adapters = [
+    claudeJournal(roots.claude),
+    codexJournal(roots.codex),
+    piJournal(roots.pi),
+    opencodeJournal(roots.opencode),
+  ];
   return Object.fromEntries(adapters.map((a) => [a.agent, a]));
 }
 
