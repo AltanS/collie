@@ -31,7 +31,15 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
 | `pane.send_keys` | `{pane_id, keys}` | (ack) |
 | `agent.send` | `{target, text}` | (ack) — writes **literal** text, no Enter |
 
-- `pane.read` `source` ∈ `visible | recent | recent-unwrapped`; `format` ∈ `text | ansi`.
+- `pane.read` `source` ∈ `visible | recent | recent_unwrapped | detection` — **snake_case on the
+  wire**: `recent-unwrapped` gets `invalid_request: unknown variant` (live-probed 2026-08-03,
+  herdr 0.7.5; the variant list above is quoted from that error). `detection`'s semantics are
+  unverified. `format` ∈ `text | ansi`.
+  - **`recent_unwrapped` is a no-op for Claude panes** (byte-identical to `recent` across working
+    and idle panes, live-probed 2026-08-03): Claude Code runs on the alt screen, so the read is the
+    visible grid, and its renderer hard-wraps prose at the pane width — there are no soft-wrapped
+    rows for the unwrap to merge. It only differs on scrollback-accumulating panes (shells: one
+    probe measured 199 → 188 lines with logical lines up to 222 cols re-joined).
   **`format: "text"` returns clean plain text (no ANSI escapes)** → safe to render, no XSS surface.
 - `agent.send` writes literal text only; to submit a reply, follow with an Enter keypress
   (`pane.send_keys {keys: ["Enter"]}`) — submit-key name needs live confirmation per agent.
