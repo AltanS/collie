@@ -21,8 +21,8 @@ export interface DisplayPrefs {
 }
 
 const STORAGE_KEY = "collie:display-prefs:v4";
-const FONT_MIN = 9;
-const FONT_MAX = 16;
+export const FONT_MIN = 9;
+export const FONT_MAX = 16;
 const DEFAULTS: DisplayPrefs = { wrap: true, fontSize: 12, rawTerminal: false };
 
 function clampFont(n: number): number {
