@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Check,
-  ChevronLeft,
   ChevronRight,
   Loader2,
   Pencil,
@@ -9,6 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { WizardStepper } from "@/components/wizard-stepper";
 import { cn } from "@/lib/utils";
 import type { PreviewOption, PreviewSelectModel } from "@/lib/blocks";
 import {
@@ -75,7 +75,6 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
   }
 
   const wizard = preview.steps !== null;
-  const atFirstQuestion = wizard && (preview.steps![0]?.current ?? false);
   const pointedLabel = preview.options.find((o) => o.pointed)?.label;
   const busyIcon = (
     <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />
@@ -87,48 +86,15 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           a preview question is just one step of the same dialog. Single-question dialogs keep
           their question/chip line in the raw mirror above, so neither renders here. */}
       {wizard && (
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            aria-label="Previous step"
-            disabled={locked || atFirstQuestion}
-            onClick={() => press("nav-back", { kind: "nav", keys: WIZARD_BACK_KEYS })}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
-          >
-            {sending === "nav-back" ? busyIcon : <ChevronLeft className="size-4" />}
-          </button>
-          <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-            {preview.steps!.map((step, i) => (
-              <li
-                key={i}
-                aria-current={step.current ? "step" : undefined}
-                className={cn(
-                  "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-tight",
-                  step.current
-                    ? "border-primary/60 bg-primary/15 font-medium text-foreground"
-                    : "border-border/60 text-muted-foreground",
-                )}
-              >
-                {step.answered ? (
-                  <Check className="size-3 shrink-0 text-primary" aria-label="Answered" />
-                ) : null}
-                <span className="truncate">{step.label}</span>
-              </li>
-            ))}
-            <li className="flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[11px] leading-tight text-muted-foreground">
-              <span>Submit</span>
-            </li>
-          </ol>
-          <button
-            type="button"
-            aria-label="Next step"
-            disabled={locked}
-            onClick={() => press("nav-next", { kind: "nav", keys: WIZARD_NEXT_KEYS })}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
-          >
-            {sending === "nav-next" ? busyIcon : <ChevronRight className="size-4" />}
-          </button>
-        </div>
+        <WizardStepper
+          steps={preview.steps!}
+          locked={locked}
+          busyBack={sending === "nav-back"}
+          busyNext={sending === "nav-next"}
+          busyIcon={busyIcon}
+          onBack={() => press("nav-back", { kind: "nav", keys: WIZARD_BACK_KEYS })}
+          onNext={() => press("nav-next", { kind: "nav", keys: WIZARD_NEXT_KEYS })}
+        />
       )}
       {wizard && <QuestionHeading>{preview.question}</QuestionHeading>}
       {!wizard && <OptionGroupCaption>Choose an option</OptionGroupCaption>}
