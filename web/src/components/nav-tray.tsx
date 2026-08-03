@@ -1,12 +1,13 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Lock } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { Modifier } from "@/lib/key-queue";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useKeyQueue } from "@/hooks/use-key-queue";
+import { useActionEcho } from "@/hooks/use-action-echo";
 import { KeyQueueStrip } from "@/components/key-queue-strip";
 
 // The inline navigation tray: the keys you need to drive an interactive agent prompt (selection
@@ -21,9 +22,17 @@ import { KeyQueueStrip } from "@/components/key-queue-strip";
 // only exist as part of a chord. Each modifier is a CHECKBOX that cycles off → once → locked → off:
 // tap once for a one-shot (composed into the next staged key, then released), tap again to LOCK it
 // armed across presses and Sends, tap a third time to clear. Any subset combines — `ctrl+shift+p`.
+//
+// An immediate press ECHOES on its own button (useActionEcho): accent fill the instant you tap, a ✓
+// once the bridge accepts it. Before this the path was silent on success and the mirror — up to ~2s
+// behind — was the only acknowledgement, so pressing Enter felt like nothing happened. A STAGED press
+// needs no echo: the chip appearing in the strip is already the receipt. Deliberately no sibling
+// dimming here (unlike the quick replies): this is a keypad you drum on, and dimming eight keys per
+// arrow press would strobe.
 
 interface NavTrayProps {
-  onSend: (keys: string[]) => void;
+  /** Resolves true when the bridge accepted the keys — drives the ✓ echo on the pressed button. */
+  onSend: (keys: string[]) => Promise<boolean>;
   disabled?: boolean;
 }
 
@@ -57,12 +66,14 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
   const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take } =
     useKeyQueue();
   const { pending, confirm, reset } = usePendingConfirm(); // danger ctrl two-tap (immediate path only)
+  const echo = useActionEcho();
 
-  // Route a key press through the queue: fire immediately when idle, stage when composing.
-  function fire(keys: string[]) {
+  // Route a key press through the queue: fire immediately when idle, stage when composing. Only the
+  // immediate path echoes — a staged press is already visible as a chip.
+  function fire(keys: string[], id: string) {
     if (disabled) return;
     const r = press(keys);
-    if (r.mode === "fire") onSend(r.keys);
+    if (r.mode === "fire") void echo.run(id, () => onSend(r.keys));
   }
 
   // Ctrl presets. When composing, a tap just stages the chord (the Send review IS the confirm — no
@@ -71,30 +82,40 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
   function pressCtrl(item: CtrlDef) {
     if (disabled) return;
     if (!composing && item.danger && !confirm(item.label)) return; // first tap arms the confirm
-    fire(item.keys);
+    fire(item.keys, item.label);
   }
 
-  // Send the whole queue as one ordered call, then reset any stray confirm.
+  // Send the whole queue as one ordered call, then reset any stray confirm. No echo on the strip's
+  // Send, deliberately: `take()` empties the queue synchronously, so the chips vanishing IS the
+  // receipt (and the strip itself unmounts unless a locked modifier holds it open) — a spinner there
+  // would have nothing left to render on.
   function sendQueue() {
     if (disabled) return;
     const keys = take();
     reset();
-    if (keys.length > 0) onSend(keys);
+    if (keys.length > 0) void onSend(keys);
   }
 
-  const navBtn = (content: ReactNode, keys: string[], aria?: string) => (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={disabled}
-      onClick={() => fire(keys)}
-      aria-label={aria}
-      className="h-10 px-0 text-sm font-medium"
-    >
-      {content}
-    </Button>
-  );
+  // A key button, echoing its own press. `pending` fills it the instant you tap (no network wait);
+  // `done` swaps a ✓ in for the label for ECHO_DONE_MS. Keyed by the wire string, so the same key
+  // pressed twice in a row restarts its own cycle rather than inheriting a stale ✓.
+  const navBtn = (content: ReactNode, keys: string[], aria?: string) => {
+    const id = keys.join(" ");
+    const phase = echo.phaseOf(id);
+    return (
+      <Button
+        type="button"
+        variant={phase === "idle" ? "outline" : "default"}
+        size="sm"
+        disabled={disabled}
+        onClick={() => fire(keys, id)}
+        aria-label={aria}
+        className="h-10 px-0 text-sm font-medium"
+      >
+        {phase === "done" ? <Check className="mx-auto size-4" /> : content}
+      </Button>
+    );
+  };
 
   // A modifier button reads its own three-state mode from `mods`: outline when off, filled (default)
   // when armed — once OR locked — with a small Lock glyph beside the label to distinguish locked from
@@ -174,13 +195,13 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
           {/* Space — full-width, spacebar-style, on its own row */}
           <Button
             type="button"
-            variant="outline"
+            variant={echo.phaseOf("Space") === "idle" ? "outline" : "default"}
             size="sm"
             disabled={disabled}
-            onClick={() => fire(["Space"])}
+            onClick={() => fire(["Space"], "Space")}
             className="h-10 w-full text-sm font-medium"
           >
-            Space
+            {echo.phaseOf("Space") === "done" ? <Check className="size-4" /> : "Space"}
           </Button>
 
           {/* Modifiers (checkboxes that cycle off → once → locked → off): arm any subset and the
@@ -209,17 +230,29 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
               <div className="mt-1 grid grid-cols-3 gap-1.5">
                 {CONTROL.map((item) => {
                   const isPending = pending === item.label;
+                  const phase = echo.phaseOf(item.label);
+                  // The armed two-tap confirm outranks the echo — it's the thing you must read.
+                  const variant = isPending ? "destructive" : phase === "idle" ? "outline" : "default";
                   return (
                     <Button
                       key={item.label}
                       type="button"
-                      variant={isPending ? "destructive" : "outline"}
+                      variant={variant}
                       size="sm"
                       disabled={disabled}
                       onClick={() => pressCtrl(item)}
-                      className={cn("h-10 text-sm font-medium", item.danger && !isPending && "text-destructive")}
+                      className={cn(
+                        "h-10 text-sm font-medium",
+                        item.danger && !isPending && phase === "idle" && "text-destructive",
+                      )}
                     >
-                      {isPending ? "Confirm?" : item.label}
+                      {isPending ? (
+                        "Confirm?"
+                      ) : phase === "done" ? (
+                        <Check className="size-4" />
+                      ) : (
+                        item.label
+                      )}
                     </Button>
                   );
                 })}
@@ -232,19 +265,22 @@ export function NavTray({ onSend, disabled }: NavTrayProps) {
            fire() path as everything else, so an armed modifier / a queue built on the Keys tab still
            applies here. */
         <div className="grid grid-cols-3 gap-1.5">
-          {DIGITS.map((d) => (
-            <Button
-              key={d}
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled}
-              onClick={() => fire([d])}
-              className="h-12 font-mono text-lg"
-            >
-              {d}
-            </Button>
-          ))}
+          {DIGITS.map((d) => {
+            const phase = echo.phaseOf(d);
+            return (
+              <Button
+                key={d}
+                type="button"
+                variant={phase === "idle" ? "outline" : "default"}
+                size="sm"
+                disabled={disabled}
+                onClick={() => fire([d], d)}
+                className="h-12 font-mono text-lg"
+              >
+                {phase === "done" ? <Check className="size-5" /> : d}
+              </Button>
+            );
+          })}
         </div>
       )}
     </div>

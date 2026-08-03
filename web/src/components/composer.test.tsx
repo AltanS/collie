@@ -880,7 +880,7 @@ describe("Composer — quick dock (in-flow, matches the keys dock)", () => {
     expect(screen.queryByRole("button", { name: "yes" })).not.toBeInTheDocument();
   });
 
-  it("a quick-action tap sends its text through the reply path and closes the dock", async () => {
+  it("a quick-action tap sends its text through the reply path, then closes the dock", async () => {
     const user = userEvent.setup();
     let replyText: string | null = null;
     server.use(replyHandler((typed) => (replyText = typed)));
@@ -891,7 +891,100 @@ describe("Composer — quick dock (in-flow, matches the keys dock)", () => {
 
     await waitFor(() => expect(replyText).toBe("continue"));
     expect(props.onSent).toHaveBeenCalled();
-    // fire() closes the dock after sending.
-    expect(screen.queryByRole("button", { name: "continue" })).not.toBeInTheDocument();
+    // The dock deliberately OUTLIVES the send — the ✓ has to land somewhere the user is still
+    // looking — and closes itself once the echo has been seen.
+    await waitFor(
+      () => expect(screen.queryByRole("button", { name: "continue" })).not.toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+  });
+
+  it("a quick reply echoes on its OWN button and locks its siblings while in flight", async () => {
+    const user = userEvent.setup();
+    // Hold the TYPE half of the guarded send open, so the in-flight state is observable rather than
+    // a race against a handler that resolves instantly.
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string; submit?: boolean };
+        if (!body.submit) await gate;
+        recordReply(body);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+    await user.click(screen.getByRole("button", { name: "continue" }));
+
+    // The tapped reply is busy; an untapped sibling is locked out so a second send can't race it.
+    await waitFor(() => expect(screen.getByRole("button", { name: "continue" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "skip" })).toBeDisabled();
+
+    release();
+    // Once it settles the dock closes itself — proof the flight actually resolved.
+    await waitFor(
+      () => expect(screen.queryByRole("button", { name: "continue" })).not.toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+  });
+
+  it("a failed quick reply keeps the dock open and re-enables the grid", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () =>
+        HttpResponse.json({ ok: false, error: "nope" }, { status: 500 }),
+      ),
+    );
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+    await user.click(screen.getByRole("button", { name: "continue" }));
+
+    // No ✓, no close — the reply never landed, so the dock stays put for a retry.
+    await waitFor(() => expect(screen.getByRole("button", { name: "continue" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "skip" })).toBeEnabled();
+  });
+});
+
+describe("Composer — display prefs behind the gear", () => {
+  it("the View row is gone; wrap/raw/font live behind the Display gear as labelled controls", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    // Nothing display-related is on the permanent rows any more.
+    expect(screen.queryByRole("button", { name: "Decrease font size" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+
+    // Named controls, not bare glyphs — the whole point of the move.
+    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Decrease font size" })).toBeInTheDocument();
+  });
+
+  it("the Display dock shares the single drawer slot with Keys", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    expect(screen.queryByRole("switch", { name: "Wrap lines" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+  });
+
+  it("display prefs stay reachable on a read-only device", async () => {
+    const user = userEvent.setup();
+    renderComposer({ readOnly: true });
+
+    // Keys/Quick are write affordances and lock; the gear is local view state and must not.
+    expect(screen.getByRole("button", { name: "Keys" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
   });
 });
