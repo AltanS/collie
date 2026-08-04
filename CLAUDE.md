@@ -30,10 +30,16 @@ newest `## [x.y.z]` heading in `CHANGELOG.md`.
 **Before committing any functional change** (anything under `bridge/`, `web/src/`, `scripts/`, or the
 manifest) you MUST:
 
-1. **Bump** the version in all three files to the same number:
-   - **PATCH** (`0.2.0 → 0.2.1`): bug fix / internal refactor, no behavior change.
-   - **MINOR** (`0.2.0 → 0.3.0`): new backward-compatible capability.
-   - **MAJOR** (`0.2.0 → 1.0.0`): breaking change to config, API, or behavior.
+1. **Bump** the version in all three files to the same number. The axis is **what the operator has
+   to do**, not how visible the change is:
+   - **PATCH** (`0.2.0 → 0.2.1`): the code now does what it was always meant to do — bug fixes and
+     internal refactors. A fix may well change what you see; that alone never promotes it. When the
+     correction is big enough that someone should read the notes, say so loudly in the CHANGELOG
+     entry rather than inflating the bump.
+   - **MINOR** (`0.2.0 → 0.3.0`): something is there that wasn't — a new capability, setting,
+     surface, or action. Existing setups keep working untouched.
+   - **MAJOR** (`0.2.0 → 1.0.0`): the operator must change something — a config key renamed or
+     removed, a contract broken, a workflow that used to work and now doesn't.
 2. **Add a `CHANGELOG.md` entry** under a new `## [x.y.z] - YYYY-MM-DD` heading (Added / Changed /
    Fixed). Use the real date. **Style: super crisp and short** — one line per change, no prose
    paragraphs, and cite the feature's short commit hash at the end of the line (`… (abc1234)`).
