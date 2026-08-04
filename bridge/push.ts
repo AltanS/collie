@@ -16,15 +16,25 @@ export type PushSubscription = { endpoint: string; keys: { p256dh: string; auth:
 //     match [A-Za-z0-9_-] and be ≤32 chars ("collie-herd" is valid).
 //   • `TTL` (seconds) bounds how long the service holds an undelivered message: 6h is long enough to
 //     reach a briefly-offline phone but short enough that a day-old "needs you" doesn't resurface.
-const SEND_OPTIONS = { TTL: 21_600, topic: "collie-herd" } as const;
+//   • `urgency: "high"` is load-bearing on Android, and its absence was a silent alert-eater:
+//     web-push defaults to `normal` (RFC 8030), FCM maps that to normal priority, and Android is then
+//     free to hold the message until the next Doze maintenance window — or to defer it by the PWA's
+//     App Standby bucket, which DEEPENS the less you open the app. That degrades into a vicious
+//     circle rather than a clean break: fewer alerts → fewer opens → deeper bucket → fewer alerts.
+//     Live-diagnosed by sending one endpoint the same payload at both urgencies minutes apart: normal
+//     never arrived, high arrived at once. Retractions ride this too, deliberately — a deferred
+//     `clear` leaves a handled alert on your lock screen, the exact thing the coordinator exists to
+//     prevent. It costs battery (high urgency punches through power-saving), which is the right trade
+//     for "an agent is waiting on you" and NOT for the update notice below.
+const SEND_OPTIONS = { TTL: 21_600, topic: "collie-herd", urgency: "high" } as const;
 // Update-available pushes ride their OWN collapse topic (and a longer TTL). The `topic` — NOT the
 // client-side `tag` — is the push service's collapse key: sharing "collie-herd" would make an offline
 // device's queued herd summary and an update push silently overwrite each other. 3-day TTL, since an
 // update stays relevant far longer than a transient "needs you".
 const UPDATE_SEND_OPTIONS = { TTL: 259_200, topic: "collie-update" } as const;
 
-/** web-push delivery options (collapse topic + TTL), derived per message from its `type`. */
-export type SendOptions = { TTL: number; topic: string };
+/** web-push delivery options (collapse topic + TTL + urgency), derived per message from its `type`. */
+export type SendOptions = { TTL: number; topic: string; urgency?: "very-low" | "low" | "normal" | "high" };
 
 /** Delivers one payload to one subscription with the given options. Injectable so the prune/log
  *  logic is testable. */

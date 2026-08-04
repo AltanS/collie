@@ -130,7 +130,7 @@ describe("Push — per-message collapse topic (update must not share the herd sl
   // herd summary and an update push silently overwrite each other. Capture the options + payload the
   // sender receives to pin the seam the update feature must never regress.
   function capturing() {
-    const sends: { payload: string; options: { topic: string; TTL: number } }[] = [];
+    const sends: { payload: string; options: { topic: string; TTL: number; urgency?: string } }[] = [];
     const sender: PushSender = (_s, payload, options) => {
       sends.push({ payload, options });
       return Promise.resolve();
@@ -138,7 +138,7 @@ describe("Push — per-message collapse topic (update must not share the herd sl
     return { sender, sends };
   }
 
-  test("an update push rides its OWN topic + longer TTL, and carries the settings target", async () => {
+  test("an update push rides its OWN topic + longer TTL at default urgency, and carries the settings target", async () => {
     const cfg = await tempCfg();
     const { sender, sends } = capturing();
     const push = new Push(cfg, sender);
@@ -146,6 +146,8 @@ describe("Push — per-message collapse topic (update must not share the herd sl
 
     await push.send({ type: "update", tag: "collie:update", title: "t", body: "b", target: "settings" });
 
+    // No `urgency` — an update notice is NOT worth punching through Android's power-saving the way a
+    // waiting agent is. The absence is the decision; `toEqual` pins it.
     expect(sends[0]!.options).toEqual({ topic: "collie-update", TTL: 259_200 });
     expect(JSON.parse(sends[0]!.payload).data.target).toBe("settings");
   });
@@ -158,7 +160,9 @@ describe("Push — per-message collapse topic (update must not share the herd sl
 
     await push.send({ title: "claude needs you", body: "…", tag: "collie:herd", paneId: "w1:p1" });
 
-    expect(sends[0]!.options).toEqual({ topic: "collie-herd", TTL: 21_600 });
+    // `urgency: "high"` is not cosmetic: at web-push's default (`normal`) FCM lets Android defer the
+    // message by Doze / App Standby bucket, which silently ate alerts entirely. See push.ts.
+    expect(sends[0]!.options).toEqual({ topic: "collie-herd", TTL: 21_600, urgency: "high" });
     expect("target" in JSON.parse(sends[0]!.payload).data).toBe(false);
   });
 
@@ -170,5 +174,8 @@ describe("Push — per-message collapse topic (update must not share the herd sl
 
     await push.send({ type: "clear", tag: "collie:herd" });
     expect(sends[0]!.options.topic).toBe("collie-herd");
+    // A deferred retraction is as bad as a deferred alert — it strands handled work on the lock
+    // screen — so a clear is high-urgency too.
+    expect(sends[0]!.options.urgency).toBe("high");
   });
 });
