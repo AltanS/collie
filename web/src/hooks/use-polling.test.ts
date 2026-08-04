@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 
 import { SUPERSEDE_MS, intervalFor, usePolling } from "./use-polling";
-import { resetIdleLock, setLocked } from "@/lib/idle";
+import { isCatchingUp, resetIdleLock, setLocked } from "@/lib/idle";
 import type { HomeData } from "@/lib/loaders";
 import type { AgentView } from "@/lib/types";
 
@@ -177,6 +177,30 @@ describe("usePolling — superseding a wedged revalidation", () => {
       act(() => setLocked(false));
       rerender();
       expect(rr.revalidate).toHaveBeenCalled(); // no waiting out an interval
+    } finally {
+      resetIdleLock();
+    }
+  });
+
+  // The cover outlives the lock by exactly one refetch: releasing enters the catch-up beat, and only
+  // the revalidator coming to rest ends it. Without this the cover would drop straight back onto the
+  // frozen screen it just warned about.
+  it("holds the catch-up beat from release until the revalidation settles", () => {
+    rr.state = "idle";
+    setLocked(true);
+    try {
+      const { rerender } = renderHook(() => usePolling(hotData()));
+      act(() => setLocked(false));
+      rerender();
+      expect(isCatchingUp()).toBe(true);
+
+      rr.state = "loading"; // the refetch is in flight — still covered
+      rerender();
+      expect(isCatchingUp()).toBe(true);
+
+      rr.state = "idle"; // settled — the cover can go
+      rerender();
+      expect(isCatchingUp()).toBe(false);
     } finally {
       resetIdleLock();
     }

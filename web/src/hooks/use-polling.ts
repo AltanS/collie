@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useRevalidator } from "react-router";
 
-import { isLocked, useLocked } from "@/lib/idle";
+import { beginCatchUp, endCatchUp, isLocked, useLocked } from "@/lib/idle";
 import type { HomeData } from "@/lib/loaders";
 
 // Adaptive polling, the React Router way: a timer that calls `revalidator.revalidate()`, which
@@ -73,8 +73,17 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null): 
   useEffect(() => {
     const released = wasLocked.current && !locked;
     wasLocked.current = locked;
-    if (released && ref.current.state === "idle") ref.current.revalidate();
+    if (!released) return;
+    beginCatchUp(); // holds the cover through the refetch — see the settle effect below
+    if (ref.current.state === "idle") ref.current.revalidate();
   }, [locked]);
+
+  // End the catch-up beat when the revalidator comes to rest. Keyed on the state itself, so it can't
+  // fire on the loading edge: at release the state is still "idle" for one render, but `beginCatchUp`
+  // has already run by the time this effect's dependency changes to "loading" and back.
+  useEffect(() => {
+    if (revalidator.state === "idle") endCatchUp();
+  }, [revalidator.state]);
 
   useEffect(() => {
     const tick = () => {
