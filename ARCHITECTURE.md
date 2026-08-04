@@ -262,11 +262,10 @@ so they don't get re-discovered from scratch or acted on by accident.
 - **`herdr terminal session observe` / `control` (new in 0.7.2).** A CLI subcommand pair that streams
   a pane as NDJSON live ANSI frames — `observe` is read-only; `control` additionally accepts stdin
   commands (`terminal.input`, `terminal.resize`, `terminal.scroll`, `terminal.release`) with
-  one-controller-at-a-time semantics (`--takeover` to steal control). A bridge process could spawn
-  either as a child and get a true live pane mirror, or even a full interactive terminal, instead of
-  polled snapshots. **But raw ANSI frames need a real terminal emulator to render** (cursor movement,
-  screen clears, scroll regions — well beyond the current SGR-color-only parser, see
-  [`HERDR_API.md`](./HERDR_API.md)), and rendering that faithfully in the browser would breach §6's
-  "pane output is React text nodes only" XSS boundary. Adopt this deliberately, with a real
-  terminal-emulator library and a re-examined threat model — or not at all. This is the designated
-  parking spot for that idea; don't half-do it.
+  one-controller-at-a-time semantics (`--takeover` to steal control). Consuming either would mean
+  running a terminal emulator, and **Collie doesn't** — the emulation already happened one process
+  upstream, so `pane.read` hands us a rendered grid rather than a byte stream. Latency is a transport
+  question and cursor position is an upstream ask; `control` would resize the *shared* PTY and fight
+  the desktop. The full argument, the costs the proposal hides, and the narrow shape that would be
+  admissible if this is ever revisited:
+  [ADR 0008](./.adr/0008-collie-does-not-run-a-terminal-emulator.md).
