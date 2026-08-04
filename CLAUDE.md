@@ -104,8 +104,12 @@ the unit name; the Herdr action runs from anywhere.
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls
   followed by `revalidator.revalidate()`. There is **no TanStack Query** — don't reintroduce it.
 - Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId` and
-  `/pane/:paneId/history`. The idle-lock in `App.tsx` unmounts the
-  `RouterProvider` to pause polling; the router instance is module-scoped so it keeps its location.
+  `/pane/:paneId/history`. The router instance is module-scoped so it keeps its location.
+- **The idle lock pauses; it does not gate.** It only appears when Collie is left *open, visible and
+  untouched* — a hidden page never locks, and returning to the foreground auto-resumes. It covers a
+  still-mounted router (unmounting it ate in-progress composer drafts) and pauses polling through
+  `lib/idle.ts`. Don't restore it as a security control or re-describe it as one
+  ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).

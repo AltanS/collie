@@ -90,7 +90,8 @@ Four sharp edges:
   [ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
 - **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it.
   No password, no session — an unlocked or stolen phone (or anyone else on your tailnet) is an open
-  shell. The idle-lock is UX, not auth. Every write action (replies, keys, uploads, pane/tab
+  shell. The idle-lock pauses an unattended screen and gates nothing — it is not auth, and never was
+  ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)). Every write action (replies, keys, uploads, pane/tab
   create/close) is appended to `<state-dir>/audit.log`, so there is at least a trail — but a trail
   is not a gate.
 - **One bridge fronts _every_ session.** With `COLLIE_MULTI_SESSION` on (the default), the bridge
