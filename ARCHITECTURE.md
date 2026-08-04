@@ -224,10 +224,6 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   the public origin no longer matches the forwarded `Host` — list that exact origin in
   `COLLIE_ALLOWED_ORIGINS` (the only sanctioned way to widen the gate; never bind off-loopback to
   "fix" it).
-- **Idle timeout.** Tailscale identity proves the *device*, not *who's holding it*. The PWA stays
-  "signed in" with no session, so a stolen unlocked phone would be a root shell. The idle-lock
-  unmounts the router — pausing all polling — until tapped.
-
 Also shipped, as defence in depth:
 
 - **Audit log** — every write-level action appends a JSONL line (timestamp, method, truncated params)
@@ -240,7 +236,9 @@ Considered, not built:
 
 - **Tailscale ACL scoping** to your specific devices (`src: tag:my-phone → dst: this:bridge`).
   Promote this to mandatory the moment the tailnet has any device you don't fully control.
-- **A short PIN** gating reconnection — friction against a grabbed phone, on top of the idle lock.
+- **A short PIN** gating reconnection — friction against a grabbed phone. This, not the idle lock, is
+  where that friction would have to live: the lock is a pause on an unattended screen and deliberately
+  gates nothing ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
 
 Full passthrough (no command allow-list) is acceptable for a personal tool — an allow-list would
 defeat the purpose. **Never use `tailscale funnel`** (public exposure).

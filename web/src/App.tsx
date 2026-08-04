@@ -5,17 +5,25 @@ import { BusyBar } from "@/components/busy-bar";
 import { IdleLock } from "@/components/idle-lock";
 import { useIdleLock } from "@/hooks/use-idle-lock";
 
-// The idle lock gates the whole app: while locked we render the lock screen instead of the router,
-// which unmounts the route tree and so pauses all polling. The router instance lives at module
-// scope (see router.tsx), so unlocking restores the same location and re-runs loaders for fresh data.
+// The idle lock COVERS the app rather than replacing it. It used to render instead of the router,
+// which unmounted the whole route tree — and with it every piece of local component state, including
+// an in-progress reply draft (composer.tsx keeps its draft, upload and sheets entirely local). Coming
+// back from a pause silently ate what you'd typed. Now the router stays mounted and polling is what
+// pauses (use-polling's tick reads lib/idle), so resuming restores the exact screen, draft and scroll.
+//
+// `inert` on a display:contents wrapper takes the covered app out of focus and the a11y tree without
+// generating a box, so it can't change layout — the cover already blocks pointers, this closes the
+// keyboard path behind it.
 export function App() {
   const { locked, unlock } = useIdleLock();
-  if (locked) return <IdleLock onUnlock={unlock} />;
   // BusyBar overlays every route (fixed, top of viewport) — a mutation anywhere shows the strip.
   return (
     <>
-      <BusyBar />
-      <RouterProvider router={router} />
+      <div style={{ display: "contents" }} inert={locked}>
+        <BusyBar />
+        <RouterProvider router={router} />
+      </div>
+      {locked && <IdleLock onUnlock={unlock} />}
     </>
   );
 }

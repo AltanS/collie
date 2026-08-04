@@ -1,11 +1,11 @@
 import { renderHook, act } from "@testing-library/react";
 
 import { useIdleLock } from "./use-idle-lock";
+import { resetIdleLock } from "@/lib/idle";
 
-// The 30-min idle lock is timestamp-based (measured from the last REAL interaction) so that
-// backgrounding/foregrounding a tab — which throttles timers and used to reset the countdown — no
-// longer keeps the app unlocked forever. These lock in: activity re-arms, a visibility flip does
-// NOT, and returning to a foregrounded tab past the deadline locks immediately.
+// The lock exists for exactly one situation: Collie left OPEN, VISIBLE and untouched past the
+// deadline. These pin the two rules that produce that, both of which reverse earlier behaviour —
+// a hidden page never locks, and returning to the foreground auto-resumes instead of locking.
 const IDLE = 1000;
 
 function setVisibility(state: "visible" | "hidden") {
@@ -16,14 +16,16 @@ function setVisibility(state: "visible" | "hidden") {
 describe("useIdleLock", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    resetIdleLock();
     setVisibility("visible");
   });
   afterEach(() => {
     vi.useRealTimers();
+    resetIdleLock();
     setVisibility("visible");
   });
 
-  it("locks after idleMs of no interaction", () => {
+  it("locks after idleMs of no interaction while visible", () => {
     const { result } = renderHook(() => useIdleLock(IDLE));
     expect(result.current.locked).toBe(false);
     act(() => vi.advanceTimersByTime(IDLE));
@@ -37,29 +39,47 @@ describe("useIdleLock", () => {
     // Past the ORIGINAL deadline — but activity re-armed it, so still unlocked.
     act(() => vi.advanceTimersByTime(300));
     expect(result.current.locked).toBe(false);
-    // Locks idleMs after the last activity.
     act(() => vi.advanceTimersByTime(IDLE));
     expect(result.current.locked).toBe(true);
   });
 
-  it("does NOT re-arm on a visibility flip", () => {
+  it("never locks a hidden page, however long it stays hidden", () => {
     const { result } = renderHook(() => useIdleLock(IDLE));
-    act(() => vi.advanceTimersByTime(IDLE - 100));
     act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(IDLE * 10));
+    expect(result.current.locked).toBe(false);
+  });
+
+  it("returning to the foreground restarts the countdown instead of locking", () => {
+    const { result } = renderHook(() => useIdleLock(IDLE));
+    act(() => setVisibility("hidden"));
+    // A long time away — the old behaviour locked the instant this became visible.
+    act(() => vi.setSystemTime(Date.now() + IDLE * 5));
     act(() => setVisibility("visible"));
-    // Visibility isn't activity, so the original deadline still stands and fires.
-    act(() => vi.advanceTimersByTime(100));
+    expect(result.current.locked).toBe(false);
+    // And the fresh deadline runs from the return, not from the last pre-background interaction.
+    act(() => vi.advanceTimersByTime(IDLE - 1));
+    expect(result.current.locked).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
     expect(result.current.locked).toBe(true);
   });
 
-  it("locks immediately on returning to the foreground past the deadline", () => {
+  it("auto-resumes when a locked page becomes visible again", () => {
     const { result } = renderHook(() => useIdleLock(IDLE));
+    act(() => vi.advanceTimersByTime(IDLE)); // locks while visible
+    expect(result.current.locked).toBe(true);
     act(() => setVisibility("hidden"));
-    // Simulate a throttled background: the wall clock jumps past the deadline WITHOUT the timer
-    // firing (setSystemTime advances Date but not the fake timer queue).
-    act(() => vi.setSystemTime(Date.now() + IDLE + 500));
-    expect(result.current.locked).toBe(false); // no timer fired while backgrounded
     act(() => setVisibility("visible"));
+    expect(result.current.locked).toBe(false);
+  });
+
+  it("stays locked while visible until resumed — the one case the lock is for", () => {
+    const { result } = renderHook(() => useIdleLock(IDLE));
+    act(() => vi.advanceTimersByTime(IDLE));
+    expect(result.current.locked).toBe(true);
+    // No visibility round trip, no unlock() — a tap on the page must not silently dismiss it.
+    act(() => document.dispatchEvent(new Event("pointerdown")));
+    act(() => vi.advanceTimersByTime(IDLE));
     expect(result.current.locked).toBe(true);
   });
 

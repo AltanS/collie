@@ -1,6 +1,7 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 
 import { SUPERSEDE_MS, intervalFor, usePolling } from "./use-polling";
+import { resetIdleLock, setLocked } from "@/lib/idle";
 import type { HomeData } from "@/lib/loaders";
 import type { AgentView } from "@/lib/types";
 
@@ -150,6 +151,35 @@ describe("usePolling — superseding a wedged revalidation", () => {
     renderHook(() => usePolling(hotData()));
     vi.advanceTimersByTime(1_500); // one HOT tick
     expect(rr.revalidate).toHaveBeenCalled();
+  });
+
+  // The idle lock pauses polling rather than unmounting the route tree, so the tick is the only thing
+  // holding the socket off while the cover is up — and releasing it must refetch AT ONCE, since no
+  // loader re-runs on its own with the tree still mounted.
+  it("does not tick while idle-locked", () => {
+    rr.state = "idle";
+    setLocked(true);
+    try {
+      renderHook(() => usePolling(hotData()));
+      vi.advanceTimersByTime(1_500 * 5); // several HOT intervals behind the cover
+      expect(rr.revalidate).not.toHaveBeenCalled();
+    } finally {
+      resetIdleLock();
+    }
+  });
+
+  it("revalidates immediately when the lock is released", () => {
+    rr.state = "idle";
+    setLocked(true);
+    try {
+      const { rerender } = renderHook(() => usePolling(hotData()));
+      expect(rr.revalidate).not.toHaveBeenCalled();
+      act(() => setLocked(false));
+      rerender();
+      expect(rr.revalidate).toHaveBeenCalled(); // no waiting out an interval
+    } finally {
+      resetIdleLock();
+    }
   });
 
   // Regression: some phones report navigator.onLine === false even when the network is fine (it stuck
