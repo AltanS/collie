@@ -15,6 +15,15 @@ beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));
 // anchor as an escalated outage. Fake-timer escalation suites re-pin AFTER vi.useFakeTimers() so the
 // anchor equals the frozen clock exactly.
 beforeEach(() => __resetConnectionHealth());
+// Persisted state (composer drafts, prefs) must not leak between cases — a draft saved by one test
+// would be restored into the next test's freshly-mounted composer.
+beforeEach(() => {
+  try {
+    localStorage.clear();
+  } catch {
+    // ignore
+  }
+});
 afterEach(() => {
   cleanup();
   server.resetHandlers();

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ComponentProps } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -1163,5 +1163,104 @@ describe("Composer — quick replies follow the pane kind", () => {
     expect(screen.getByRole("button", { name: "y" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "n" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "commit and push" })).not.toBeInTheDocument();
+  });
+});
+
+// The draft is the message you are in the middle of writing — and the whole reason you leave a pane
+// mid-reply is to go read another tab. The composer unmounts when you do (DetailRoute keys AgentChat
+// by paneId), so without persistence the message is simply gone. These pin the round trip, the
+// per-pane isolation (pane A's text must never appear in pane B), and the clear-on-send.
+describe("Composer — draft persistence", () => {
+  function draftProps(
+    overrides: Partial<ComponentProps<typeof Composer>> = {},
+  ): ComponentProps<typeof Composer> {
+    return {
+      paneId: "w1:p1",
+      agent: "claude",
+      isShell: false,
+      gone: false,
+      readOnly: false,
+      dialogPresent: false,
+      text: "pane output",
+      terminalDraft: null,
+      rawTerminalDraft: null,
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      setWrap: vi.fn(),
+      stepFontSize: vi.fn(),
+      setRawTerminal: vi.fn(),
+      onSent: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  /** Mounts the composer under a harness that can swap `paneId` IN PLACE (no remount) — the harder
+   *  of the two realities the component has to survive. */
+  function renderSwitchable(initialPane: string) {
+    let swap: ((id: string) => void) | null = null;
+    function Harness() {
+      const [paneId, setPaneId] = useState(initialPane);
+      swap = setPaneId;
+      return <Composer {...draftProps({ paneId })} />;
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    const view = render(<RouterProvider router={router} />);
+    return { view, swap: (id: string) => act(() => swap?.(id)) };
+  }
+
+  function mount(paneId = "w1:p1") {
+    const router = createMemoryRouter([
+      { path: "/", element: <Composer {...draftProps({ paneId })} /> },
+    ]);
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("restores the draft after a remount", async () => {
+    const user = userEvent.setup();
+    const first = mount();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "half a thought");
+    first.unmount();
+
+    mount();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("half a thought");
+  });
+
+  it("keeps drafts per pane — pane A's text never shows in pane B", async () => {
+    const user = userEvent.setup();
+    const { swap } = renderSwitchable("w1:p1");
+    const box = () => screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box(), "for pane A");
+    swap("w1:p2");
+    expect(box()).toHaveValue(""); // no bleed
+    await user.type(box(), "for pane B");
+
+    swap("w1:p1");
+    expect(box()).toHaveValue("for pane A");
+    swap("w1:p2");
+    expect(box()).toHaveValue("for pane B");
+  });
+
+  it("forgets the draft once the user empties the box", async () => {
+    const user = userEvent.setup();
+    const first = mount();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "never mind");
+    await user.clear(box);
+    first.unmount();
+
+    mount();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+  });
+
+  it("clears the stored draft on a verified send", async () => {
+    const user = userEvent.setup();
+    const first = mount();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "looks good");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue(""));
+    first.unmount();
+
+    mount();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
   });
 });
