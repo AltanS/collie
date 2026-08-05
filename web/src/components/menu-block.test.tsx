@@ -39,6 +39,20 @@ describe("MenuBlock", () => {
     expect(screen.getByRole("button", { name: /right — adjust/i })).toBeInTheDocument();
   });
 
+  // The arrows are unreadable on their own — the cluster has to say WHAT it adjusts, both visibly and
+  // in the accessible names, and that text is the row's live value.
+  it("labels the ←/→ cluster with the value it adjusts", () => {
+    renderMenu();
+    expect(
+      screen.getByRole("button", { name: "Left — adjust (◐ Medium effort)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Right — adjust (◐ Medium effort)" }),
+    ).toBeInTheDocument();
+    // …and visibly, between them.
+    expect(screen.getAllByText("◐ Medium effort").length).toBeGreaterThan(0);
+  });
+
   // The region stays visible because the grammar parsed the FOOTER, not the body: the options and
   // their descriptions exist only as terminal text, and the buttons are meaningless without them.
   it("keeps the terminal region readable above the controls", () => {

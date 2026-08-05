@@ -32,7 +32,9 @@ export function menusSameIdentity(a: MenuModel, b: MenuModel): boolean {
   return (
     a.title === b.title &&
     a.nav.upDown === b.nav.upDown &&
-    a.nav.leftRight === b.nav.leftRight &&
+    // Only the VERB: `leftRight.label` is the live value the arrows adjust ("◐ Medium effort"), so a
+    // Left/Right tap changes it by design — comparing it would make every second arrow tap fail.
+    a.nav.leftRight?.verb === b.nav.leftRight?.verb &&
     a.actions.length === b.actions.length &&
     a.actions.every(
       (x, i) =>

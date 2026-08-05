@@ -107,26 +107,32 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
       {/* Arrow cluster — only the directions the screen itself advertised (a `❯` row for Up/Down, an
           "←/→ to <verb>" row for Left/Right). Each is one keystroke; they move a highlight and commit
           nothing, so they take the weaker identity guard. */}
-      {(menu.nav.upDown || menu.nav.leftRight) && (
+      {(menu.nav.upDown || menu.nav.leftRight !== undefined) && (
         <div className="flex items-center gap-1.5">
           {menu.nav.upDown && navButton("up", "Move up", MENU_UP_KEYS, <ArrowUp className="size-4" />)}
           {menu.nav.upDown &&
             navButton("down", "Move down", MENU_DOWN_KEYS, <ArrowDown className="size-4" />)}
-          {menu.nav.leftRight && (
-            <>
+          {/* The ←/→ pair sits AROUND the value it adjusts ("←  ◐ Medium effort  →"): the arrows are
+              meaningless without it, and the row is re-derived every poll, so the label tracks the
+              live value. Rendered in app space, not mirror space — no `dark:` question arises. */}
+          {menu.nav.leftRight !== undefined && (
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {navButton(
                 "left",
-                `Left — ${menu.nav.leftRight}`,
+                `Left — ${menu.nav.leftRight.verb} (${menu.nav.leftRight.label})`,
                 MENU_LEFT_KEYS,
                 <ArrowLeft className="size-4" />,
               )}
+              <span className="min-w-0 flex-1 truncate text-center font-mono text-[11px] text-muted-foreground">
+                {menu.nav.leftRight.label}
+              </span>
               {navButton(
                 "right",
-                `Right — ${menu.nav.leftRight}`,
+                `Right — ${menu.nav.leftRight.verb} (${menu.nav.leftRight.label})`,
                 MENU_RIGHT_KEYS,
                 <ArrowRight className="size-4" />,
               )}
-            </>
+            </div>
           )}
         </div>
       )}
