@@ -137,6 +137,12 @@ the unit name; the Herdr action runs from anywhere.
   backwards in a surface that renders dark under every theme and inverts in light
   ([ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md)). Fails silently;
   `ansi-output.test.tsx` guards it.
+- **A generically-detected menu emits only the keys the screen printed** — the footer's
+  `<key> to <verb>` hints plus the arrows it advertised. Never synthesise a digit from a numbered row:
+  in the `/model` picker a digit confirms *and* persists the user's default. The generic grammar
+  (`harness/claude/menu.ts`) runs LAST, after every specific detector declines, and an unrecognised
+  modal refuses composer typing via the adapter's `composerReady` pre-flight
+  ([ADR 0009](./.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md)).
 - **A composed key queue never outlives its dock** — closing Keys discards it (guarded by a two-tap
   confirm on the drawer transition, not the ✕). Don't lift or persist it: a queue surviving into a
   later open would let Send fire a stale sequence into a pane that has moved on

@@ -55,10 +55,15 @@ export interface PromptModel {
 // keystroke into a terminal — so we err wide.
 const SIGNATURE_LOOKBACK = 40;
 
-/** The dialog's region signature: lines [firstOption − LOOKBACK … footer], joined. Pure of `lines`
- *  offset, so the frozen model and a fresh re-derivation of the SAME dialog produce equal strings. */
-function regionSignature(texts: string[], firstOpt: number, footer: number): string {
-  return texts.slice(Math.max(0, firstOpt - SIGNATURE_LOOKBACK), footer + 1).join("\n");
+/**
+ * A dialog's region signature: the lines [`from` … `footer`], joined. Pure of the `lines` array's
+ * own offset, so the frozen model and a fresh re-derivation of the SAME dialog produce equal
+ * strings — which is what the race guards compare. Shared with the generic menu grammar (menu.ts),
+ * which anchors `from` at its region's rule instead of a lookback window; the lookback is the
+ * CALLER's policy, not the signature's.
+ */
+export function regionSignature(texts: string[], from: number, footer: number): string {
+  return texts.slice(Math.max(0, from), footer + 1).join("\n");
 }
 
 // A numbered menu row: an optional "❯ " pointer (the currently-highlighted option), then "N." then
@@ -224,7 +229,7 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   }
   if (options.length === 0) return null;
 
-  const signature = regionSignature(texts, firstOpt, fi);
+  const signature = regionSignature(texts, firstOpt - SIGNATURE_LOOKBACK, fi);
   return { model: { question, options, family, signature }, startLine: firstOpt };
 }
 

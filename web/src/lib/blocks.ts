@@ -22,6 +22,7 @@ import type { PromptModel } from "./harness/claude/prompt-select";
 import type { WizardModel } from "./harness/claude/wizard";
 import type { PreviewSelectModel } from "./harness/claude/preview-select";
 import type { MultiSelectModel } from "./harness/claude/multi-select";
+import type { MenuModel } from "./harness/claude/menu";
 
 // Re-export the prompt-select + wizard + preview + multi-select models so consumers (the block
 // components, the race guards) have one import site for the AST's typed payloads. These are
@@ -36,6 +37,7 @@ export type {
   MultiSelectEscape,
   MultiPointer,
 } from "./harness/claude/multi-select";
+export type { MenuModel, MenuAction, MenuNav } from "./harness/claude/menu";
 
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
 export interface StyledLine {
@@ -94,6 +96,19 @@ export interface MultiSelectBlock {
 }
 
 /**
+ * A GENERIC modal menu (the `/model` picker and its kin) claimed by the last-resort footer grammar —
+ * a screen no specific dialog grammar owns, driven by the keys it printed in its own footer. Unlike
+ * the dialog blocks above, its region text IS rendered: the grammar understands the footer, not the
+ * body, so the body has to stay readable for the buttons under it to mean anything. `lines` is that
+ * region — still not part of the find haystack (find runs over raw blocks only).
+ */
+export interface MenuBlock {
+  kind: "menu";
+  menu: MenuModel;
+  lines: StyledLine[];
+}
+
+/**
  * A semantic block. A discriminated union on `kind`; new members are added purely additively, so a
  * `switch (block.kind)` in the renderer stays exhaustive.
  */
@@ -102,7 +117,8 @@ export type Block =
   | PromptSelectBlock
   | WizardBlock
   | PreviewSelectBlock
-  | MultiSelectBlock;
+  | MultiSelectBlock
+  | MenuBlock;
 
 /**
  * Split parsed segments into visual lines at "\n" boundaries. The newline characters become the

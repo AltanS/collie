@@ -1,0 +1,31 @@
+[38;5;239m[48;5;237m❯[39m [38;5;231m/model[39m
+[38;5;246m[49m  ⎿  [39mSet model to [1mHaiku 4.5[0m and saved as your default for new sessions
+
+[38;5;239m[48;5;237m❯[39m [38;5;231m/model[39m
+[38;5;246m[49m  ⎿  [39mSet model to [1mOpus 5 (1M context) (default)[0m and saved as your default for new sessions
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;5;153m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+[39m   [1m[38;5;153mSelect model[0m
+   [38;5;246mSwitch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.[39m
+
+     [38;5;246m1. [38;5;114mDefault (recommended)[39m [38;5;114m✔[39m  [38;5;246mOpus 5 with 1M context · Best for everyday, complex tasks[39m
+     [38;5;246m2. [39mOpus (1M context)        [38;5;246mOpus 5 with 1M context · Best for everyday, complex tasks[39m
+   [38;5;153m❯[39m [38;5;246m3. [38;5;153mFable[39m                    [38;5;174mFable 5[38;5;246m · Most capable for your hardest and longest-running tasks[39m
+     [38;5;246m4. [39mSonnet                   [38;5;174mSonnet 5[38;5;246m · Efficient for routine tasks[39m
+     [38;5;246m5. [39mHaiku                    [38;5;246mHaiku 4.5 · Fastest for quick answers[39m
+
+   [38;5;174m◐[38;5;246m Medium effort [38;5;239m←/→ to adjust[39m
+
+   [38;5;246mEnter to set as default · s to use this session only · Esc to cancel[39m
