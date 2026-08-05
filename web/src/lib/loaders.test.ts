@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
-import { fixtureAgents, fixtureSnapshot } from "@/test/handlers";
+import { fixtureAgents, fixtureSnapshot, paneTextWithDraft } from "@/test/handlers";
 
 // loaders.ts keeps a module-level "last good" cache, so each test re-imports the module fresh
 // (via vi.resetModules) to start from an empty cache and stay independent of run order.
@@ -118,7 +118,7 @@ describe("paneLoader", () => {
     expect(data.error).toBe(false);
     expect(data.authError).toBe(false);
     expect(data.paneId).toBe("w1:p1");
-    expect(data.text).toBe("hello from the pane");
+    expect(data.text).toBe(paneTextWithDraft());
   });
 
   it.each([401, 403] as const)("marks a %i response as an auth error", async (status) => {
@@ -138,7 +138,7 @@ describe("paneLoader", () => {
 
     expect(stale.error).toBe(true);
     expect(stale.authError).toBe(false);
-    expect(stale.text).toBe("hello from the pane");
+    expect(stale.text).toBe(paneTextWithDraft());
     expect(stale.paneId).toBe("w1:p1");
   });
 
@@ -164,7 +164,7 @@ describe("paneLoader", () => {
 
     expect(stale.error).toBe(true);
     expect(stale.authError).toBe(false);
-    expect(stale.text).toBe("hello from the pane");
+    expect(stale.text).toBe(paneTextWithDraft());
     expect(stale.paneId).toBe("w1:p1");
   });
 
@@ -391,7 +391,7 @@ describe("loaders — offline navigation fast path", () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(data.error).toBe(true);
-    expect(data.text).toBe("hello from the pane"); // the stale mirror
+    expect(data.text).toBe(paneTextWithDraft()); // the stale mirror
   });
 
   it("polling within a pane during an outage keeps fetching (same url ⇒ revalidation)", async () => {

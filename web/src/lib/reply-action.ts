@@ -26,6 +26,12 @@ import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harnes
 export type ReplyOutcome =
   /** Text was verified in the input box and the submit key went through. */
   | { status: "sent" }
+  /**
+   * The PRE-FLIGHT refused: the adapter could not see an input box on screen, so NOTHING was typed
+   * and no key was sent. Distinct from `stalled`, which is reported only after the text has already
+   * gone into the pane. The caller keeps the draft and may offer a deliberate override (`force`).
+   */
+  | { status: "blocked"; error: string }
   /** Text never reached the input box — NO submit key was sent. The caller MUST keep the draft. */
   | { status: "stalled"; error: string }
   /** Transport/RPC failure. `textDelivered` = text is in the pane but unsubmitted; don't resend. */
@@ -66,6 +72,13 @@ export interface GuardedReplyArgs {
   requestedLines?: number;
   /** Test seam for the poll pacing. */
   sleep?: Sleep;
+  /**
+   * Skip the PRE-FLIGHT and type anyway — the user's deliberate second tap after a `blocked`
+   * outcome (a mis-detected screen, an adapter that can't see a box it really has). It skips ONLY
+   * the pre-flight: the type-then-verify guard below still runs, so the submit key is never fired
+   * blind even under an override.
+   */
+  force?: boolean;
 }
 
 export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOutcome> {
@@ -76,6 +89,30 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // sudo prompt) would never show the text, so the submit key would be withheld forever. Non-Claude
   // harnesses gain this safety exactly when they gain an adapter.
   if (!adapter) return oneShot(args);
+
+  // PRE-FLIGHT. The verify-after guard below is enough to keep Enter from answering a dialog, but it
+  // is not enough to keep the MESSAGE out of one: it types first and checks second, so a modal that
+  // owns the keyboard (Claude's `/model` picker — no input box at the tail at all) receives the
+  // user's text before anything notices. One read up front is the difference between "nothing
+  // happened" and "your reply is now sitting in a picker".
+  //
+  // Adapter-scoped and fail-OPEN in both weak directions: an adapter without `composerReady` keeps
+  // today's behaviour, and a read that throws falls through to the guard rather than blocking a send
+  // on a transient network blip. Only a definite `false` refuses.
+  if (adapter.composerReady && !args.force) {
+    try {
+      const probe = await fetchPane(args.paneId, args.requestedLines, args.session);
+      if (!adapter.composerReady(splitLines(parseAnsi(probe.text)))) {
+        return {
+          status: "blocked",
+          error:
+            "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.",
+        };
+      }
+    } catch {
+      // Transient read failure: fall through. The type-then-verify guard still protects the submit key.
+    }
+  }
 
   let typed;
   try {
@@ -110,7 +147,8 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // surfaces it in the meantime.
   return {
     status: "stalled",
-    error: "Message didn't reach the input box — a dialog may be waiting. Nothing was submitted.",
+    error:
+      "Message didn't reach the input box — a dialog may be waiting, and if you were answering it by key that key likely landed. Nothing was submitted.",
   };
 }
 

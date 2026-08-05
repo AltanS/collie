@@ -259,6 +259,75 @@ describe("Composer — send", () => {
   });
 });
 
+// .adr/0009: a modal that owns the keyboard has no input box, so the reply path's PRE-FLIGHT refuses
+// before typing anything. The composer's job is to keep the draft, say why, and offer one deliberate
+// override — which still runs the type-then-verify guard behind it.
+describe("Composer — blocked pre-flight override", () => {
+  // A pane with no input box at all: the /model picker's shape.
+  const PICKER = [
+    "▔".repeat(60),
+    "   Select model",
+    "   ❯ 1. Default",
+    "     2. Opus",
+    "",
+    "   Enter to set as default · s to use this session only · Esc to cancel",
+  ].join("\n");
+
+  function servePicker(calls: string[]) {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ paneId: "w1:p1", text: PICKER, truncated: false, revision: 1 }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string; submit?: boolean };
+        calls.push(body.submit ? "submit" : "type");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+  }
+
+  it("keeps the draft, explains, and types nothing on the first tap", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    servePicker(calls);
+    const props = renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "use fable please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/input box isn't on screen/i),
+    );
+    expect(screen.getByTestId("status")).toHaveTextContent(/tap send again to type anyway/i);
+    expect(calls).toEqual([]); // nothing was typed into the picker
+    expect(box).toHaveValue("use fable please"); // the message survives
+    expect(props.onSent).not.toHaveBeenCalled();
+    // The button names what the override actually does — type, not send.
+    expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument();
+  });
+
+  it("the second tap types anyway, but STILL withholds the submit key", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    servePicker(calls);
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "use fable please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("button", { name: /type anyway/i });
+
+    await user.click(screen.getByRole("button", { name: /type anyway/i }));
+
+    // The text goes in (the user overruled the pre-flight) — but the pane never echoes it onto an
+    // input line, so the verify step never passes and Enter is never fired. THE #34 invariant.
+    await waitFor(() => expect(calls).toContain("type"));
+    expect(calls).not.toContain("submit");
+    expect(box).toHaveValue("use fable please");
+  });
+});
+
 describe("Composer — destructive-input confirm", () => {
   it("holds a destructive command for a second tap, then sends", async () => {
     const user = userEvent.setup();
