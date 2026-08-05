@@ -15,6 +15,11 @@
 //      `pane.send_keys` key (HERDR_API.md §"send_keys key grammar"): a single literal char, a bare
 //      special key, or a `+`-joined modifier chord. Multi-char digit runs ("10") and the paging/edit
 //      keys (PageUp/Home/End/Delete) are rejected — Herdr answers those with `invalid_key`.
+//   4. THE GENERIC MODAL CONTRACT — for any fixture that lifts a `menu` block: every action key came
+//      out of the shared whitelist (menu-hints.ts) and none is a digit (.adr/0009), the model carries
+//      a non-empty signature that MOVES when the region's text does (it is the whole race guard), and
+//      the adapter's `composerReady` — if it has one — says false while the modal has the keyboard.
+//      Neutral output must lift no menu at all. An adapter with no menu fixtures registers a todo.
 //
 // Pure + offline: it drives the adapter over the byte-faithful fixture corpus (web/src/fixtures/
 // panes/*.txt) through the same parseAnsi → splitLines pipeline the renderer uses. It never touches
@@ -39,7 +44,8 @@ import {
   MENU_LEFT_KEYS,
   MENU_RIGHT_KEYS,
   MENU_UP_KEYS,
-} from "./claude/menu";
+  menuKeyFor,
+} from "./menu-hints";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
 // rewrites into a root-relative asset path) so fixtures resolve regardless of the run cwd. This file
@@ -62,6 +68,18 @@ function textLine(text: string): StyledLine {
 // dialog's footer no longer the last non-blank line, and every tail-anchored detector bails.
 function trailingOutput(): StyledLine[] {
   return [textLine("● Wrote the file"), textLine("  ⎿  done")];
+}
+
+/** The index of the last non-blank line — where every tail-anchored grammar's footer sits. */
+function lastNonBlank(lines: StyledLine[]): number {
+  let i = lines.length - 1;
+  while (i >= 0 && lines[i]!.segments.map((s) => s.text).join("").trim() === "") i--;
+  return i < 0 ? lines.length : i;
+}
+
+/** The signatures of every menu block in a build — the race guard's freshness token, in order. */
+function menuSignatures(blocks: Block[]): string[] {
+  return blocks.flatMap((b) => (b.kind === "menu" ? [b.menu.signature] : []));
 }
 
 /** Every non-raw block — i.e. an interactive dialog the adapter lifted out of the raw mirror.
@@ -244,6 +262,71 @@ export function describeAdapterConformance(
         it(`${name}: does NOT lift once ordinary output scrolls below it`, () => {
           const scrolled = [...loadLines(name), ...trailingOutput()];
           expect(interactiveBlocks(adapter.buildBlocks(scrolled))).toEqual([]);
+        });
+      }
+    });
+
+    // The GENERIC MODAL contract (harness/menu-model.ts + menu-hints.ts). Every adapter that ships
+    // menu fixtures gets these for free; an adapter with none of them registers the todo and stays
+    // honest about it. What is pinned here is what a menu block PROMISES the renderer and the race
+    // guard — not how any one harness finds it.
+    describe("menu blocks (the generic modal contract)", () => {
+      const menuFixtures = ownFixtures.filter((name) =>
+        adapter.buildBlocks(loadLines(name)).some((b) => b.kind === "menu"),
+      );
+      if (menuFixtures.length === 0) it.todo("adapter lifts no menu blocks from its own fixtures");
+
+      for (const name of menuFixtures) {
+        // .adr/0009 at the CI edge: a synthesised digit is a VALID Herdr key, so the key-grammar leg
+        // above would happily pass one. Round-tripping through the shared whitelist is what makes an
+        // invented key impossible — `menuKeyFor` is the only sanctioned source of a menu action key.
+        it(`${name}: every action key came from the shared whitelist, and none is a digit`, () => {
+          for (const block of adapter.buildBlocks(loadLines(name))) {
+            if (block.kind !== "menu") continue;
+            for (const key of block.menu.actions.flatMap((a) => a.keys)) {
+              expect(/^\d+$/.test(key), `${name} synthesised the digit key ${key} (.adr/0009)`).toBe(
+                false,
+              );
+              expect(menuKeyFor(key), `${name} emits off-whitelist menu key ${key}`).toBe(key);
+            }
+          }
+        });
+
+        // The signature IS the race guard (Herdr's `revision` is a stub). An empty or constant one
+        // would disable it silently, so both halves are checked: present, and text-sensitive.
+        it(`${name}: the menu carries a non-empty, text-sensitive signature`, () => {
+          const lines = loadLines(name);
+          for (const block of adapter.buildBlocks(lines)) {
+            if (block.kind !== "menu") continue;
+            expect(block.menu.signature.length, `${name} signs its menu with ""`).toBeGreaterThan(0);
+            expect(block.menu.title.length, `${name} lifts an untitled menu`).toBeGreaterThan(0);
+          }
+          // Perturb the region's text (a row inserted just ABOVE the footer, so the footer stays the
+          // last non-blank line and the menu still lifts): the signature must move with it.
+          const perturbed = [...lines];
+          perturbed.splice(lastNonBlank(lines), 0, textLine("  ○ Something else entirely"));
+          const after = menuSignatures(adapter.buildBlocks(perturbed));
+          expect(after.length, `${name}: the perturbed capture stopped lifting a menu`).toBe(
+            menuSignatures(adapter.buildBlocks(lines)).length,
+          );
+          expect(after).not.toEqual(menuSignatures(adapter.buildBlocks(lines)));
+        });
+
+        // A menu HAS the keyboard. If the adapter can tell whether its composer is on screen, it must
+        // say no here — otherwise the reply pre-flight (lib/reply-action.ts) would type the user's
+        // message into the modal, which is the exact `/model` bug the grammar exists to end.
+        it(`${name}: composerReady is false while the modal is up`, () => {
+          if (!adapter.composerReady) return; // "no idea" is allowed; a wrong "yes" is not
+          expect(adapter.composerReady(loadLines(name))).toBe(false);
+        });
+      }
+
+      // Neutral output is never a modal — a menu lifted from a log would put live keystroke buttons
+      // under ordinary text. (Implied by the fail-closed leg; asserted directly so the menu contract
+      // reads whole in one place.)
+      for (const name of neutralFixtures) {
+        it(`${name} (neutral): lifts no menu block`, () => {
+          expect(adapter.buildBlocks(loadLines(name)).some((b) => b.kind === "menu")).toBe(false);
         });
       }
     });
