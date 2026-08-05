@@ -38,7 +38,7 @@ import {
   WIZARD_CANCEL_KEYS,
   WIZARD_NEXT_KEYS,
   WIZARD_SUBMIT_KEYS,
-} from "./claude/wizard";
+} from "./wizard-model";
 import {
   MENU_DOWN_KEYS,
   MENU_LEFT_KEYS,

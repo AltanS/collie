@@ -1,7 +1,10 @@
 // Semantic Block AST — the intermediate representation between the ANSI parse and the React
-// renderer. `raw` mirrors terminal output verbatim; `prompt-select` lifts a Claude single-choice
-// dialog into a typed payload the renderer draws as buttons. The discriminated union is shaped so
-// further grammars (tool calls, …) are added as new `kind`s without disturbing these.
+// renderer. `raw` mirrors terminal output verbatim; every other kind lifts a dialog into a typed
+// payload the renderer draws as buttons. Those payloads are harness-NEUTRAL contracts, each in its
+// own harness/*-model.ts (re-exported below): what ANY adapter promises when it emits that kind, so
+// the renderers and the race guard are written against the model, never against a harness's
+// internals. The discriminated union is shaped so further grammars (tool calls, …) are added as new
+// `kind`s without disturbing these.
 //
 // The pipeline is: parseAnsi(text) → AnsiSegment[] → splitLines(segments) → StyledLine[] →
 // buildBlocks(lines, ctx) → Block[]. splitLines (and the pure helpers below) live here; the
@@ -18,28 +21,27 @@
 // (find covers the raw mirror only).
 
 import type { AnsiSegment } from "./ansi";
-import type { PromptModel } from "./harness/claude/prompt-select";
-import type { WizardModel } from "./harness/claude/wizard";
-import type { PreviewSelectModel } from "./harness/claude/preview-select";
-import type { MultiSelectModel } from "./harness/claude/multi-select";
+import type { PromptModel } from "./harness/prompt-model";
+import type { WizardModel } from "./harness/wizard-model";
+import type { PreviewSelectModel } from "./harness/preview-model";
+import type { MultiSelectModel } from "./harness/multi-select-model";
 import type { MenuModel } from "./harness/menu-model";
 
-// Re-export the prompt-select + wizard + preview + multi-select models so consumers (the block
-// components, the race guards) have one import site for the AST's typed payloads. These are
-// TYPE-ONLY re-exports (erased under verbatimModuleSyntax), so they add no runtime edge into
-// harness/ — the value dependency stays one-way (harness → blocks).
-export type { PromptModel, PromptOption, PromptFamily } from "./harness/claude/prompt-select";
-export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./harness/claude/wizard";
-export type { PreviewSelectModel, PreviewOption, PreviewNote } from "./harness/claude/preview-select";
+// Re-export every dialog model so consumers (the block components, the race guards) have one import
+// site for the AST's typed payloads. All five are harness-NEUTRAL contracts (harness/*-model.ts):
+// the payload an adapter promises when it emits that block kind, not a Claude internal — the
+// dependency points at the shared modules, never at claude/. These are TYPE-ONLY re-exports (erased
+// under verbatimModuleSyntax), so they add no runtime edge into harness/ either — the value
+// dependency stays one-way (harness → blocks).
+export type { PromptModel, PromptOption, PromptFamily } from "./harness/prompt-model";
+export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./harness/wizard-model";
+export type { PreviewSelectModel, PreviewOption, PreviewNote } from "./harness/preview-model";
 export type {
   MultiSelectModel,
   MultiSelectOption,
   MultiSelectEscape,
   MultiPointer,
-} from "./harness/claude/multi-select";
-// The menu model is harness-NEUTRAL (see harness/menu-model.ts): the generic modal contract any
-// adapter can implement, not a Claude grammar. It is re-exported here with the rest for one import
-// site, but the dependency points at the shared module, never at claude/.
+} from "./harness/multi-select-model";
 export type { MenuModel, MenuAction, MenuNav, MenuLeftRight } from "./harness/menu-model";
 
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
@@ -164,13 +166,20 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
   return lines;
 }
 
-// The two generic StyledLine probes trimTrailingBlank needs. Kept LOCAL (harness/claude/markers has
-// an identical pair for the grammars) so this core module imports nothing from harness/ — that is
-// what keeps the harness → blocks edge one-way and cycle-free.
-function lineText(line: StyledLine): string {
+// The two generic StyledLine probes. They live HERE, in the core AST module that imports nothing
+// from harness/, because they are properties of a StyledLine and of no grammar: the renderer
+// (components/ansi-output.tsx) and every harness adapter need them, and a second copy in a
+// harness-specific module would make a neutral consumer import a harness. harness/claude/markers
+// re-exports them so the Claude grammars keep their one import site.
+
+/** The visible text of a line: its segments' text concatenated (the "\n" separator lives between
+ *  lines, so a single line's text never contains one). */
+export function lineText(line: StyledLine): string {
   return line.segments.map((s) => s.text).join("");
 }
-function isBlank(text: string): boolean {
+
+/** True when a line is empty or only whitespace. */
+export function isBlank(text: string): boolean {
   return text.trim().length === 0;
 }
 

@@ -9,7 +9,7 @@ import {
   WIZARD_CANCEL_KEYS,
   WIZARD_NEXT_KEYS,
   WIZARD_SUBMIT_KEYS,
-} from "@/lib/harness/claude/wizard";
+} from "@/lib/harness/wizard-model";
 
 export interface WizardBlockProps {
   /** The detected wizard step (question or Submit review) with its stepper state. */
