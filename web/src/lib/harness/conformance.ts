@@ -1,7 +1,7 @@
 // The HarnessAdapter CONFORMANCE suite — the CI gate every adapter must clear before its dialog
 // buttons are allowed to go hot. It is a single `describe`-registering function, parameterised on
 // the adapter under test plus three fixture cohorts, so a future adapter (codex/pi/opencode) gets
-// the exact same three invariants for free by calling it from its own `*.test.ts`:
+// the exact same invariants for free by calling it from its own `*.test.ts`:
 //
 //   1. CONSERVATIVE DETECTION (fail-closed) — the adapter must return ONLY raw blocks on every
 //      FOREIGN adapter's fixtures and on NEUTRAL (plain shell / log) output. A detector that lifts
@@ -20,6 +20,13 @@
 //      a non-empty signature that MOVES when the region's text does (it is the whole race guard), and
 //      the adapter's `composerReady` — if it has one — says false while the modal has the keyboard.
 //      Neutral output must lift no menu at all. An adapter with no menu fixtures registers a todo.
+//   5. THE DIALOG-MODEL CONTRACT — for EVERY block kind the adapter up-levels (the generalisation of
+//      4's signature leg): the model's signature and its bound region text are non-empty, the
+//      signature MOVES when a row the dialog was derived from changes, and the kind's comparators
+//      (harness/dialog-contract.ts) agree — the same screen re-derived is the same dialog, a
+//      perturbed one fails the COMMITTING comparison. That is precisely what the race guard
+//      (lib/dialog-guard.ts) leans on to refuse a tap on a stale render; an adapter that emits a
+//      constant signature would disable it silently. A kind the adapter never emits registers a todo.
 //
 // Pure + offline: it drives the adapter over the byte-faithful fixture corpus (web/src/fixtures/
 // panes/*.txt) through the same parseAnsi → splitLines pipeline the renderer uses. It never touches
@@ -33,6 +40,13 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../ansi";
 import { splitLines, type Block, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
+import {
+  DIALOG_CONTRACT,
+  dialogModelOf,
+  type DialogComparators,
+  type DialogKind,
+  type DialogModels,
+} from "./dialog-contract";
 import {
   WIZARD_BACK_KEYS,
   WIZARD_CANCEL_KEYS,
@@ -80,6 +94,94 @@ function lastNonBlank(lines: StyledLine[]): number {
 /** The signatures of every menu block in a build — the race guard's freshness token, in order. */
 function menuSignatures(blocks: Block[]): string[] {
   return blocks.flatMap((b) => (b.kind === "menu" ? [b.menu.signature] : []));
+}
+
+/** Every interactive block kind, in the order the contract table declares them. A kind added to
+ *  `DialogModels` without a fixture that lifts it registers a todo below, never a silent pass. */
+const DIALOG_KINDS = Object.keys(DIALOG_CONTRACT) as DialogKind[];
+
+/** The models of `kind` the adapter lifts from `name`, in order (usually 0 or 1 — a grammar claims at
+ *  most one tail dialog). Re-parses the fixture on every call, which is the point: the race guard
+ *  re-derives from scratch on every tap, so the invariants must hold on a fresh derivation. */
+function modelsOf<K extends DialogKind>(
+  adapter: HarnessAdapter,
+  name: string,
+  kind: K,
+): DialogModels[K][] {
+  return modelsIn(adapter.buildBlocks(loadLines(name)), kind);
+}
+
+function modelsIn<K extends DialogKind>(blocks: Block[], kind: K): DialogModels[K][] {
+  return blocks.flatMap((b) => {
+    const model = dialogModelOf(b, kind);
+    return model === null ? [] : [model];
+  });
+}
+
+/** Append a marker to line `i`, keeping every existing segment (and its styling — the wizard's
+ *  current chip is marked ONLY by a background colour, so a re-synthesised plain line would change
+ *  more than the text). */
+function perturbLine(lines: StyledLine[], i: number): StyledLine[] {
+  const copy = [...lines];
+  copy[i] = { segments: [...lines[i]!.segments, { text: " zqx", style: {}, muted: false }] };
+  return copy;
+}
+
+// How far ABOVE the lifted region a perturbation may reach. Every grammar folds a bounded run of
+// lines above its first option into the signature (the dialog's SUBJECT — the diff, command, or
+// prompt it is about, which is what tells two same-shaped dialogs apart), and for the preview variant
+// that subject is the ONLY thing the core signature takes in full: its option rows contribute their
+// left column, and the preview pane / notes line are normalised out by design. So a probe confined to
+// the region would find nothing to move there, and would be testing the normalisation rather than the
+// guard. Sized past every grammar's own lookback.
+const PERTURB_LOOKBACK = 60;
+
+/**
+ * Perturb ONE row the model was derived from and return the re-derived model, or null when no row
+ * works. Rows are tried region-first, then upward into the subject lines above it, until one both
+ * keeps the dialog liftable and moves its signature.
+ *
+ * The invariant is that SOME visible text the user is looking at reaches the signature — not that
+ * every row does: a signature that ignored the pointer column would be right to (the choreography
+ * moves it), while one that ignored everything would silently disable the race guard.
+ *
+ * The footer (the last non-blank line) is never perturbed: every grammar is tail-anchored on it, so
+ * touching it tests detection, not the signature.
+ */
+function perturbRegion<K extends DialogKind>(
+  adapter: HarnessAdapter,
+  name: string,
+  kind: K,
+): DialogModels[K] | null {
+  const lines = loadLines(name);
+  const blocks = adapter.buildBlocks(lines);
+  const count = modelsIn(blocks, kind).length;
+  const region = blocks.find((b) => dialogModelOf(b, kind) !== null)!;
+  const start = lines.length - region.lines.length; // the region is the buffer's tail slice
+  const footer = lastNonBlank(lines);
+  const signature = DIALOG_CONTRACT[kind].signature;
+  const before = signature(modelsIn(blocks, kind).at(-1)!);
+
+  const candidates = [
+    ...range(start, lines.length), // the region itself, top-down
+    ...range(Math.max(0, start - PERTURB_LOOKBACK), start).reverse(), // then upward into the subject
+  ];
+  for (const i of candidates) {
+    if (i === footer) continue;
+    if (lineIsBlank(lines[i]!)) continue;
+    const after = modelsIn(adapter.buildBlocks(perturbLine(lines, i)), kind);
+    if (after.length !== count) continue; // this row is load-bearing for detection — try another
+    if (signature(after.at(-1)!) !== before) return after.at(-1)!;
+  }
+  return null;
+}
+
+function range(from: number, to: number): number[] {
+  return Array.from({ length: Math.max(0, to - from) }, (_, i) => from + i);
+}
+
+function lineIsBlank(line: StyledLine): boolean {
+  return line.segments.map((s) => s.text).join("").trim().length === 0;
 }
 
 /** Every non-raw block — i.e. an interactive dialog the adapter lifted out of the raw mirror.
@@ -328,6 +430,66 @@ export function describeAdapterConformance(
         it(`${name} (neutral): lifts no menu block`, () => {
           expect(adapter.buildBlocks(loadLines(name)).some((b) => b.kind === "menu")).toBe(false);
         });
+      }
+    });
+
+    // THE DIALOG-MODEL contract (harness/*-model.ts + dialog-contract.ts), checked for EVERY block
+    // kind the adapter up-levels — the generalisation of the menu-signature invariant above. What is
+    // pinned is what the race guard (lib/dialog-guard.ts) assumes of ANY adapter's model:
+    //   * the signature is non-empty (an empty/constant one silently disables the guard, because
+    //     Herdr's `revision` is a stub and this is the whole freshness check), and the bound region
+    //     text is non-empty too (the bridge has to find it in its own fresh read);
+    //   * the signature is TEXT-SENSITIVE: perturb a row of the region and it moves;
+    //   * the comparators agree with that: the same screen re-derived is the same dialog, and a
+    //     perturbed screen FAILS the committing comparison — which is exactly what stops a tap on a
+    //     stale render from firing at the screen that replaced it.
+    // A kind the adapter never emits registers a todo rather than passing vacuously.
+    describe("dialog models (signature + identity contract)", () => {
+      for (const kind of DIALOG_KINDS) {
+        const kindFixtures = ownFixtures.filter((name) => modelsOf(adapter, name, kind).length > 0);
+        if (kindFixtures.length === 0) {
+          it.todo(`adapter lifts no ${kind} blocks from its own fixtures`);
+          continue;
+        }
+        // `kind` is the UNION here, so TS would intersect the five models into an impossible
+        // parameter type. The comparators are only ever handed models this same table produced for
+        // this same kind (`modelsOf(..., kind)`), so erasing to `object` is safe and keeps the loop
+        // one generic pass instead of five hand-written copies.
+        const contract = DIALOG_CONTRACT[kind] as unknown as DialogComparators<object>;
+
+        for (const name of kindFixtures) {
+          it(`${name}: the ${kind} model signs itself (signature + bound region non-empty)`, () => {
+            for (const model of modelsOf(adapter, name, kind)) {
+              expect(contract.signature(model).length, `${name} signs its ${kind} with ""`).toBeGreaterThan(0);
+              expect(contract.region(model).length, `${name} binds its ${kind} to ""`).toBeGreaterThan(0);
+            }
+          });
+
+          it(`${name}: re-deriving the same screen is the same ${kind}`, () => {
+            // Two independent derivations of the same bytes (a fresh parse each time — what the guard
+            // does on every tap). Both the identity and the committing comparison must hold, or a
+            // guard would reject taps on a screen that never moved.
+            const a = modelsOf(adapter, name, kind).at(-1)!;
+            const b = modelsOf(adapter, name, kind).at(-1)!;
+            expect(contract.identity(a, b), `${name}: ${kind} identity is unstable`).toBe(true);
+            expect(contract.commits(a, b), `${name}: ${kind} equality is unstable`).toBe(true);
+          });
+
+          it(`${name}: a perturbed region moves the signature and fails the committing check`, () => {
+            const before = modelsOf(adapter, name, kind).at(-1)!;
+            const probe = perturbRegion(adapter, name, kind);
+            expect(
+              probe,
+              `${name}: no row of the ${kind} region changes its signature — the race guard is blind ` +
+                `to a screen that changed under the user`,
+            ).not.toBeNull();
+            expect(contract.signature(probe!)).not.toBe(contract.signature(before));
+            expect(
+              contract.commits(before, probe!),
+              `${name}: a ${kind} whose region text changed still passes the committing comparison`,
+            ).toBe(false);
+          });
+        }
       }
     });
 

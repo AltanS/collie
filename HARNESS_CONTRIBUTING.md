@@ -101,9 +101,36 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    [ADR 0009](./.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md) records why (in `/model`
    a digit confirms *and* rewrites the user's default).
 3. A non-empty `signature` over the region that **changes when the region's text does** — Herdr's
-   `revision` is a stub, so it is the entire race guard ([`lib/menu-action.ts`](./web/src/lib/menu-action.ts)).
+   `revision` is a stub, so it is the entire race guard (the generic one — see the next section).
 4. Menu detection runs **last**, after every specific grammar you have, and must decline a screen with
    a live input box; your `composerReady` must answer `false` while the modal is up.
+
+## Every dialog model is a contract, and the race guard is generic
+
+Menus were the first grammar written this way; **all five now are**. Each block kind's payload lives
+in its own harness-neutral module — [`prompt-model.ts`](./web/src/lib/harness/prompt-model.ts),
+[`wizard-model.ts`](./web/src/lib/harness/wizard-model.ts),
+[`preview-model.ts`](./web/src/lib/harness/preview-model.ts),
+[`multi-select-model.ts`](./web/src/lib/harness/multi-select-model.ts),
+[`menu-model.ts`](./web/src/lib/harness/menu-model.ts) — alongside the **identity comparators** that
+say when two derivations are the same dialog. Those comparators are part of the contract, not an
+implementation detail: their per-kind nuances (a menu ARROW ignores the `←/→` label it is about to
+change; the multi-select Submit walk ignores the pointer it moves but *not* a checkbox flipped by a
+second device; the preview note flow ignores the note it is editing) are what keeps a guarded tap
+from being either unsafe or unusable. [`dialog-contract.ts`](./web/src/lib/harness/dialog-contract.ts)
+is the table that wires kind → `{commits, identity, signature, region}`.
+
+The consequence for you: **you write no race guard.** One generic guard
+([`lib/dialog-guard.ts`](./web/src/lib/dialog-guard.ts)) re-derives the fresh pane through
+`adapterFor(agent).buildBlocks` — your pipeline, not anyone's detector — and compares through the
+kind's contract before a key goes out. Emit a block kind and its guard, its renderer and its
+conformance invariants come with it; there is nothing per-harness left to implement, and nothing in
+`lib/` may import a `detect*` function again.
+
+What that costs you is one promise per model, pinned by `describeAdapterConformance`: a **non-empty
+signature that moves when a row the dialog was derived from changes** (Herdr's `revision` is a stub —
+this is the entire freshness check), and a non-empty region text that is literally on screen (the
+bridge binds the write to it).
 
 ## The two gates
 
@@ -111,9 +138,11 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
   [`web/src/lib/harness/conformance.ts`](./web/src/lib/harness/conformance.ts) exports
   `describeAdapterConformance(adapter, { ownFixtures, foreignFixtures, neutralFixtures })`. Call it
   from your adapter's `*.test.ts` (see
-  [`conformance.test.ts`](./web/src/lib/harness/conformance.test.ts)). It asserts four invariants:
-  conservative detection (raw-only on foreign + neutral buffers), tail-anchoring (a dialog lifts only
-  at the tail), the menu contract above (for any fixture that lifts one), and key-grammar validity (every emittable keystroke passes `isValidHerdrKey` — the
+  [`conformance.test.ts`](./web/src/lib/harness/conformance.test.ts)). It asserts: conservative
+  detection (raw-only on foreign + neutral buffers), tail-anchoring (a dialog lifts only
+  at the tail), the menu contract above (for any fixture that lifts one), the dialog-model contract
+  (for every kind you up-level: signature non-empty, text-sensitive, and its comparators agreeing —
+  a perturbed screen must fail the committing comparison), and key-grammar validity (every emittable keystroke passes `isValidHerdrKey` — the
   verified `pane.send_keys` grammar: single-digit only, `ctrl+c` not `C-c`, no
   `PageUp`/`Home`/`End`/`Delete`).
 - **Safety gate — the capability fence.** The live enforcement is
