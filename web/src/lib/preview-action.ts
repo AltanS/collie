@@ -1,5 +1,5 @@
-// The preview-variant race guards — prompt-action's philosophy applied to the preview
-// AskUserQuestion dialog, whose choreography is MULTI-step (grammar/NOTES_NOTES.md):
+// The preview-variant action recipes — the generic race guard (lib/dialog-guard.ts) plus the extra
+// verified steps this dialog's MULTI-step choreography needs (grammar/NOTES_NOTES.md):
 //
 //   - Selecting an option is digit → verify pointer → Enter. A `[digit, Enter]` pair in ONE
 //     send_keys call picks the WRONG row (the TUI processes both keys in one input chunk and the
@@ -10,22 +10,24 @@
 //     the dialog — so every step that types is gated on a verified pane state, and Enter is never
 //     part of the recipe.
 //
-// Every flow starts with the same guard as submitPromptOption/submitWizardKeys: a FRESH pane read,
-// the unconditional revision check, and a full model re-derivation compared against what the user
-// tapped (Herdr 0.7.x's revision is a stub — the re-derivation is the load-bearing check). The
-// mid-flight verification polls then re-derive from fresh reads again; a dialog that drifts
-// structurally at any point aborts with "changed" BEFORE anything irreversible is sent.
+// Every flow starts with the same guard as its siblings (lib/dialog-guard.ts): a FRESH pane read, the
+// unconditional revision check, and a re-derivation THROUGH THE PANE'S ADAPTER compared against what
+// the user tapped (Herdr 0.7.x's revision is a stub — the re-derivation is the load-bearing check).
+// The mid-flight verification polls re-derive the same way; a dialog that drifts structurally at any
+// point aborts with "changed" BEFORE anything irreversible is sent. The two comparators the polls use
+// (`previewsEqual` for the entry, `previewCoreEqual` for the mid-flight identity) are the neutral
+// contract in harness/preview-model.ts, wired to this kind by harness/dialog-contract.ts.
 
 import { sendKeys, sendReply } from "./api";
 import { type PreviewOption, type PreviewSelectModel } from "./blocks";
-import { detectPreviewSelect } from "./harness/claude/preview-select";
-import {
-  entryGuard,
-  pollUntil,
-  sanitizeTypedText,
-  type ActionResult,
-  type Sleep,
-} from "./harness/guard";
+import { guardDialog, pollDialog, type DialogTarget } from "./dialog-guard";
+import { previewCoreEqual, previewStructureEqual } from "./harness/preview-model";
+import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
+
+/** This module's slice of the generic guard: the preview dialog the tap is aimed at. */
+function target(args: GuardArgs): DialogTarget<"preview-select"> & { sleep?: Sleep } {
+  return { ...args, kind: "preview-select", model: args.preview };
+}
 
 /** Longest note Collie will type (the editor enforces it). The TUI itself windows the display at
  *  ~60 columns, so long notes can't be read back faithfully anyway — keep them phone-sized. */
@@ -35,56 +37,9 @@ export const NOTE_MAX_LENGTH = 300;
 // Collie itself attached is always fully cleared; ctrl+u/ctrl+a are NOT supported by the input.
 const CLEAR_SWEEP = NOTE_MAX_LENGTH + 20;
 
-/**
- * Whether two detected preview dialogs are the same dialog in the same visible state: identity (the
- * pointer/note-independent core signature — see below), question, stepper chips, options (labels,
- * pointer, chosen marks), note state+text, and the preview pane. The strictest of the three equality
- * checks — everything the user can see participates AND the region signature must byte-match, because
- * every visible change (even a terminal-side pointer move) re-routes what our keystrokes would do.
- */
-export function previewsEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
-  return (
-    structureEqual(a, b) && // core signature + question/chips/labels + note state
-    a.options.every((o, i) => o.pointed === b.options[i]!.pointed) &&
-    a.preview.length === b.preview.length &&
-    a.preview.every((l, i) => l === b.preview[i])
-  );
-}
-
-/** The dialog's identity, independent of transient state: the region CORE SIGNATURE (the subject
- *  above the options + the option labels/layout, pointer normalised) plus question, stepper chips,
- *  and option labels/chosen marks — but NOT the pointer (our own digit legitimately moves it), NOT
- *  the preview pane (it follows the pointer), and NOT the note (the note flow legitimately transitions
- *  it). The mid-flight polls key on this: same dialog (same signature), awaited state. The signature
- *  is the load-bearing check — a same-SHAPED successor (identical question+labels, different subject)
- *  has a different signature, so it can never pass as the dialog the user tapped. */
-function coreEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
-  if (a.coreSignature !== b.coreSignature) return false;
-  if (a.question !== b.question) return false;
-  if ((a.steps === null) !== (b.steps === null)) return false;
-  if (
-    a.steps !== null &&
-    b.steps !== null &&
-    (a.steps.length !== b.steps.length ||
-      !a.steps.every(
-        (s, i) =>
-          s.label === b.steps![i]!.label &&
-          s.answered === b.steps![i]!.answered &&
-          s.current === b.steps![i]!.current,
-      ))
-  ) {
-    return false;
-  }
-  return (
-    a.options.length === b.options.length &&
-    a.options.every((o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen)
-  );
-}
-
-/** Core identity plus the note's visible state — everything except the pointer/preview. */
-function structureEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
-  return coreEqual(a, b) && a.note.state === b.note.state && a.note.text === b.note.text;
-}
+/** The preview identity comparators, part of the neutral contract (harness/preview-model.ts).
+ *  Re-exported under the original name so existing call sites and tests keep one import site. */
+export { previewsEqual } from "./harness/preview-model";
 
 interface GuardArgs {
   paneId: string;
@@ -94,6 +49,8 @@ interface GuardArgs {
   preview: PreviewSelectModel;
   /** The session the pane lives in (undefined = primary) — scopes every read + keystroke below. */
   session?: string;
+  /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
+  agent?: string;
   /** Test seam for the verification polls' pacing. */
   sleep?: Sleep;
 }
@@ -106,13 +63,7 @@ interface GuardArgs {
 export async function submitPreviewOption(
   args: GuardArgs & { option: PreviewOption },
 ): Promise<ActionResult> {
-  const guarded = await entryGuard(
-    args,
-    args.preview,
-    detectPreviewSelect,
-    previewsEqual,
-    (model) => model.regionSignature,
-  );
+  const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
   try {
@@ -129,14 +80,11 @@ export async function submitPreviewOption(
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
   }
 
-  const pointed = await pollUntil(
-    args,
-    args.preview,
-    detectPreviewSelect,
+  const pointed = await pollDialog(
+    target(args),
     (m) =>
-      structureEqual(m, args.preview) && // same dialog, note untouched (an opened input eats keys)
+      previewStructureEqual(m, args.preview) && // same dialog, note untouched (an open input eats keys)
       (m.options.find((o) => o.n === args.option.n)?.pointed ?? false),
-    coreEqual,
   );
   if (pointed !== "ok") return { status: "changed" };
 
@@ -165,17 +113,12 @@ export async function submitPreviewNote(
   args: GuardArgs & { text: string },
 ): Promise<ActionResult> {
   if (args.preview.note.state === "editing") return { status: "changed" };
-  const guarded = await entryGuard(
-    args,
-    args.preview,
-    detectPreviewSelect,
-    previewsEqual,
-    (model) => model.regionSignature,
-  );
+  const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
   const text = sanitizeTypedText(args.text, NOTE_MAX_LENGTH);
-  const editing = (m: PreviewSelectModel) => coreEqual(m, args.preview) && m.note.state === "editing";
+  const editing = (m: PreviewSelectModel) =>
+    previewCoreEqual(m, args.preview) && m.note.state === "editing";
 
   try {
     // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
@@ -188,7 +131,7 @@ export async function submitPreviewNote(
 
   // The input must be FOCUSED before anything else is sent — early keys are misrouted (verified).
   // On timeout we stop dead: a blind Escape could cancel the whole dialog if `n` never landed.
-  if ((await pollUntil(args, args.preview, detectPreviewSelect, editing, coreEqual)) !== "ok") {
+  if ((await pollDialog(target(args), editing)) !== "ok") {
     return { status: "error", error: "Note input didn't open — check the pane" };
   }
 
@@ -204,13 +147,7 @@ export async function submitPreviewNote(
       );
       if (!clear.ok) return { status: "error", error: clear.error };
       if (
-        (await pollUntil(
-          args,
-          args.preview,
-          detectPreviewSelect,
-          (m) => editing(m) && m.note.text === "",
-          coreEqual,
-        )) !== "ok"
+        (await pollDialog(target(args), (m) => editing(m) && m.note.text === "")) !== "ok"
       ) {
         return { status: "error", error: "Couldn't clear the existing note — check the pane" };
       }
@@ -220,12 +157,9 @@ export async function submitPreviewNote(
       if (!typed.ok) return { status: "error", error: typed.error };
       // Wait for the text to render. The input windows long text around the trailing cursor, so
       // the visible value is the TAIL of what we typed (the whole of it when it fits).
-      const landed = await pollUntil(
-        args,
-        args.preview,
-        detectPreviewSelect,
+      const landed = await pollDialog(
+        target(args),
         (m) => editing(m) && m.note.text.length > 0 && text.endsWith(m.note.text),
-        coreEqual,
       );
       if (landed !== "ok") {
         return { status: "error", error: "Note text didn't arrive — check the pane" };
@@ -239,12 +173,9 @@ export async function submitPreviewNote(
     for (let attempt = 0; attempt < 2; attempt++) {
       const blur = await sendKeys(args.paneId, ["Escape"], args.session);
       if (!blur.ok) return { status: "error", error: blur.error };
-      const blurred = await pollUntil(
-        args,
-        args.preview,
-        detectPreviewSelect,
-        (m) => coreEqual(m, args.preview) && m.note.state !== "editing",
-        coreEqual,
+      const blurred = await pollDialog(
+        target(args),
+        (m) => previewCoreEqual(m, args.preview) && m.note.state !== "editing",
       );
       if (blurred === "ok") return { status: "sent" };
       if (blurred === "drifted") return { status: "changed" }; // no second Escape at a successor
@@ -263,13 +194,7 @@ export async function submitPreviewNote(
 export async function submitPreviewKeys(
   args: GuardArgs & { keys: string[] },
 ): Promise<ActionResult> {
-  const guarded = await entryGuard(
-    args,
-    args.preview,
-    detectPreviewSelect,
-    previewsEqual,
-    (model) => model.regionSignature,
-  );
+  const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
   try {
     // Bind only this first write. It changes the dialog, so later steps must not reuse this region.

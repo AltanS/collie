@@ -9,8 +9,8 @@
 // lib/dialog-guard.ts) are written against these types alone.
 //
 // Claude's reference detector is harness/claude/multi-select.ts. Imports nothing but its sibling
-// model, so `lib/blocks.ts` can re-export it without a cycle. The identity comparators live in
-// dialog-contract.ts.
+// model, so `lib/blocks.ts` can re-export it without a cycle. The identity comparators at the bottom
+// are part of the same contract (harness/dialog-contract.ts wires kind → comparator).
 
 import type { WizardStepChip } from "./wizard-model";
 
@@ -91,3 +91,76 @@ export type MultiSelectModel =
        */
       regionSignature: string;
     };
+
+/** Are these the same wizard step? The `signature` normalises `☒/☑ → ☐` across the WHOLE chip line
+ *  (it has to: the current question's chip flips on the first tick), which also erases which step you
+ *  are on. Two questions of one wizard sharing a question text and option labels would otherwise be
+ *  byte-identical to the guard, and a tap meant for the first would land on the second. Compared
+ *  explicitly here, exactly as the preview comparator does. */
+function sameSteps(a: MultiSelectModel, b: MultiSelectModel): boolean {
+  if (a.phase !== "checkbox" || b.phase !== "checkbox") return true;
+  if (a.steps === null || b.steps === null) return a.steps === b.steps;
+  if (a.steps.length !== b.steps.length) return false;
+  return a.steps.every(
+    (s, i) =>
+      s.label === b.steps![i]!.label &&
+      s.answered === b.steps![i]!.answered &&
+      s.current === b.steps![i]!.current,
+  );
+}
+
+/**
+ * Whether two derivations are the same on-screen state — the entry-guard comparison. The
+ * pointer/checkbox-independent core signature is decisive (a re-rendered dialog / different subject
+ * changes it); question + options (labels AND `checked`) re-introduce the checkbox state the
+ * signature normalises out, so the FULL visible state participates. The pointer is deliberately NOT
+ * compared — it is transient (the Submit macro moves it) and the signature already strips it.
+ *
+ * Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
+ * adapter produced the block through exactly these functions.
+ */
+export function multiSelectEquals(a: MultiSelectModel, b: MultiSelectModel): boolean {
+  if (a.phase !== b.phase) return false;
+  if (a.signature !== b.signature) return false;
+  if (a.phase === "checkbox" && b.phase === "checkbox") {
+    return (
+      sameSteps(a, b) &&
+      a.advanceLabel === b.advanceLabel &&
+      a.question === b.question &&
+      a.options.length === b.options.length &&
+      a.options.every(
+        (o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked,
+      )
+    );
+  }
+  if (a.phase === "review" && b.phase === "review") return a.incomplete === b.incomplete;
+  return false;
+}
+
+/**
+ * The dialog's identity for the mid-flight polls (the Submit walk) — independent of the transient `❯`
+ * pointer, but NOT of the checkbox state. The core signature (pointer/checkbox-normalised) plus
+ * question + option labels AND `checked`: a same-shaped successor (different subject) breaks the
+ * signature; the macro's own Down/Up moves only shift the pointer (normalised out of both), so the
+ * walk stays on the same dialog — but a box that flipped underfoot IS drift. The Submit walk never
+ * toggles a box (it sends only Down/Up/Enter), so folding `checked` in costs nothing on the happy path
+ * yet aborts the instant an external actor (a second device) flips a box mid-walk, rather than walking
+ * on to Submit and shipping a set the user never saw. Only genuine drift (or the dialog vanishing)
+ * resolves to "drifted".
+ */
+export function multiSelectIdentity(a: MultiSelectModel, b: MultiSelectModel): boolean {
+  if (a.phase !== b.phase) return false;
+  if (a.signature !== b.signature) return false;
+  if (a.phase === "checkbox" && b.phase === "checkbox") {
+    return (
+      sameSteps(a, b) &&
+      a.advanceLabel === b.advanceLabel &&
+      a.question === b.question &&
+      a.options.length === b.options.length &&
+      a.options.every(
+        (o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked,
+      )
+    );
+  }
+  return true; // review: the signature is the whole identity
+}

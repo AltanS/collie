@@ -75,3 +75,49 @@ export const WIZARD_CANCEL_KEYS = ["2"];
  *  preview and multi-select steps, whose wizard nav is the same two keys. */
 export const WIZARD_BACK_KEYS = ["Left"];
 export const WIZARD_NEXT_KEYS = ["Right"];
+
+/**
+ * Whether two derivations are the same step of the same dialog. Field-by-field over the
+ * discriminated union: the stepper chips (labels + answered + current), then the phase payload —
+ * question text + option labels/chosen for a question step, answers + incompleteness for the
+ * review. Keys/descriptions are derived from the same rows, so they can't differ independently.
+ *
+ * Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
+ * adapter produced the block through exactly this function.
+ */
+export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
+  if (a.phase !== b.phase) return false;
+  // The region signature is decisive (a re-rendered wizard changes it); the field checks below stay
+  // as a fast-path and to keep intent explicit. `revision` is a stub, so this is the real guard.
+  if (a.signature !== b.signature) return false;
+  if (
+    a.steps.length !== b.steps.length ||
+    !a.steps.every(
+      (s, i) =>
+        s.label === b.steps[i]!.label &&
+        s.answered === b.steps[i]!.answered &&
+        s.current === b.steps[i]!.current,
+    )
+  ) {
+    return false;
+  }
+  if (a.phase === "question" && b.phase === "question") {
+    return (
+      a.question === b.question &&
+      a.options.length === b.options.length &&
+      a.options.every(
+        (o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen,
+      )
+    );
+  }
+  if (a.phase === "review" && b.phase === "review") {
+    return (
+      a.incomplete === b.incomplete &&
+      a.answers.length === b.answers.length &&
+      a.answers.every(
+        (qa, i) => qa.question === b.answers[i]!.question && qa.answer === b.answers[i]!.answer,
+      )
+    );
+  }
+  return false;
+}

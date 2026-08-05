@@ -1,47 +1,21 @@
-// The prompt-select race guard, factored out of AgentChat so it's directly testable (and reused by
-// the component's integration test). Tapping a menu button can type into a REAL terminal, and the
-// pane may have moved on between render and tap — so before sending we re-fetch the pane and confirm
-// nothing changed underfoot:
+// The prompt-select tap: one guarded keystroke plan.
 //
-//   1. A FRESH pane read for the same window.
-//   2. The fresh read's `revision` must equal the one the menu was detected against — checked
-//      UNCONDITIONALLY. A 304 Not Modified only proves the buffer is unchanged since the ETag
-//      cache's LAST background poll, NOT since the (possibly frozen) snapshot the user tapped on —
-//      the cache advances with every poll while a frozen mirror stands still. The cached 304 body
-//      carries its own `revision`, so the comparison works on both paths.
-//   3. The fresh buffer must additionally still re-derive to the same {question, options}
-//      (family + labels) — on EVERY path, 304 included, because Herdr 0.7.x's revision field is
-//      empirically a stub (always 0) and the re-derivation is the only load-bearing check today.
+// A thin wrapper over the generic race guard (lib/dialog-guard.ts) — a fresh pane read, the
+// unconditional revision check, and a re-derivation through the pane's own ADAPTER compared against
+// what the user tapped (`promptsEqual`, the contract comparator in harness/prompt-model.ts). Only
+// then do the option's keys go out, bound to the verified region. A failed guard discards the tap and
+// reports "changed" so the caller can surface a "menu changed" notice.
 //
-// Only then do we send the option's keys through the existing sendKeys write path. A failed guard
-// discards the tap and reports "changed" so the caller can surface a "menu changed" notice.
+// It exists as its own module for the call site's sake: AgentChat dispatches per block kind, and the
+// name says which. The choreography itself is no longer per-kind.
 
-import { sendKeys } from "./api";
 import { type PromptModel, type PromptOption } from "./blocks";
-import { detectPromptSelect } from "./harness/claude/prompt-select";
-import { entryGuard, type ActionResult } from "./harness/guard";
+import { sendGuardedKeys } from "./dialog-guard";
+import type { ActionResult } from "./harness/guard";
 
-/**
- * Whether two detected dialogs are the SAME on-screen prompt — not merely the same shape. `signature`
- * (the dialog's region text, incl. the subject above the options) is the decisive check: two edits to
- * the same file yield an identical family/question/labels but a different signature, so a stale tap on
- * one can't approve the other. The family/question/label checks stay as a cheap fast-path and to keep
- * the intent explicit. (`revision` is a stub, so this content comparison is the real freshness guard.)
- */
-export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
-  return (
-    a.family === b.family &&
-    a.question === b.question &&
-    a.signature === b.signature &&
-    a.options.length === b.options.length &&
-    a.options.every((o, i) => o.label === b.options[i]!.label && sameKeys(o.keys, b.options[i]!.keys))
-  );
-}
-
-/** Exact keystroke-plan equality — a label can map to a different digit across hidden-row layouts. */
-export function sameKeys(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((k, i) => k === b[i]);
-}
+/** The prompt-select identity comparator, part of the neutral contract (harness/prompt-model.ts).
+ *  Re-exported under its original name so existing call sites and tests keep one import site. */
+export { promptsEqual, sameKeys } from "./harness/prompt-model";
 
 /** The guarded-action result union, canonical in `harness/guard.ts`; re-exported under the original
  *  name so existing imports (wizard-action, AgentChat, tests) keep working. */
@@ -60,24 +34,8 @@ export async function submitPromptOption(args: {
   option: PromptOption;
   /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
   session?: string;
+  /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
+  agent?: string;
 }): Promise<PromptActionResult> {
-  const { paneId, prompt, option, session } = args;
-
-  const guarded = await entryGuard(
-    args,
-    prompt,
-    detectPromptSelect,
-    promptsEqual,
-    (model) => model.signature,
-  );
-  if (!guarded.ok) return guarded.result;
-
-  try {
-    const res = await sendKeys(paneId, option.keys, session, guarded.region);
-    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
-    if (!res.ok) return { status: "error", error: res.error };
-    return { status: "sent" };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
+  return sendGuardedKeys({ ...args, kind: "prompt-select", model: args.prompt }, args.option.keys);
 }

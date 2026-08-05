@@ -42,7 +42,7 @@ function menuAt(at = 1) {
   return detectMenu(splitLines(parseAnsi(pickerBuffer(at))))!;
 }
 
-const base = { paneId: "w1:p1", requestedLines: 200, detectedRevision: 0 };
+const base = { paneId: "w1:p1", requestedLines: 200, detectedRevision: 0, agent: "claude" };
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -1,5 +1,6 @@
-// The multi-select race guards — prompt-action's philosophy applied to the checkbox AskUserQuestion
-// dialog, whose Submit is a CLOSED-LOOP choreography (never a blind Enter):
+// The multi-select action recipes — the generic race guard (lib/dialog-guard.ts) plus the extra
+// verified steps this dialog needs, because its Submit is a CLOSED-LOOP choreography (never a blind
+// Enter):
 //
 //   - A digit TOGGLES its option on/off (pointer-independent, deterministic). "Chat about this"
 //     aborts the tool. The review screen's 1/2 submit/cancel. Each of these is one guarded keystroke.
@@ -9,16 +10,23 @@
 //     on "Submit" → only then Enter. The pointer is re-derived from a fresh read at every step, so a
 //     checkbox flip / dialog change mid-macro aborts BEFORE any Enter.
 //
-// Every flow starts with the same entry guard as the sibling actions: a FRESH pane read, the
-// unconditional revision check, and a full model re-derivation compared against what the user tapped
-// (Herdr 0.7.x's revision is a stub — the re-derivation is the load-bearing check). The mid-flight
-// verification polls re-derive from fresh reads again, keyed on a pointer/checked-independent identity
-// so the macro's own Down/Up moves don't read as drift.
+// Every flow starts with the same entry guard as the sibling actions (lib/dialog-guard.ts): a FRESH
+// pane read, the unconditional revision check, and a re-derivation THROUGH THE PANE'S ADAPTER compared
+// against what the user tapped (Herdr 0.7.x's revision is a stub — the re-derivation is the
+// load-bearing check). The mid-flight reads re-derive the same way, keyed on the
+// pointer-independent-but-not-checkbox-independent `multiSelectIdentity` so the macro's own Down/Up
+// moves don't read as drift while a box flipped by another device does. Both comparators are the
+// neutral contract in harness/multi-select-model.ts, wired to this kind by harness/dialog-contract.ts.
 
-import { sendKeys } from "./api";
 import { type MultiSelectModel } from "./blocks";
-import { detectMultiSelect } from "./harness/claude/multi-select";
-import { defaultSleep, entryGuard, readModel, type ActionResult, type Sleep } from "./harness/guard";
+import {
+  guardDialog,
+  readDialog,
+  sendBoundKeys,
+  type DialogTarget,
+} from "./dialog-guard";
+import { multiSelectIdentity } from "./harness/multi-select-model";
+import { defaultSleep, type ActionResult, type Sleep } from "./harness/guard";
 
 /** One tap's intent, resolved to keystrokes by {@link submitMultiSelectIntent}. Shared with the
  *  MultiSelectBlock renderer (its `onAction` emits exactly these). */
@@ -31,75 +39,10 @@ export type MultiSelectIntent =
   | { kind: "confirm" } //           review: submit the answers (digit 1)
   | { kind: "cancel" }; //           review: back to the checkboxes (digit 2)
 
-/**
- * Whether two detected dialogs are the same on-screen state — the entry-guard `equals`. The
- * pointer/checkbox-independent core signature is decisive (a re-rendered dialog / different subject
- * changes it); question + options (labels AND `checked`) re-introduce the checkbox state the
- * signature normalises out, so the FULL visible state participates. The pointer is deliberately NOT
- * compared — it is transient (the Submit macro moves it) and the signature already strips it.
- */
-/** Are these the same wizard step? The `signature` normalises `☒/☑ → ☐` across the WHOLE chip line
- *  (it has to: the current question's chip flips on the first tick), which also erases which step you
- *  are on. Two questions of one wizard sharing a question text and option labels would otherwise be
- *  byte-identical to the guard, and a tap meant for the first would land on the second. Compared
- *  explicitly here, exactly as preview-action does. */
-function sameSteps(a: MultiSelectModel, b: MultiSelectModel): boolean {
-  if (a.phase !== "checkbox" || b.phase !== "checkbox") return true;
-  if (a.steps === null || b.steps === null) return a.steps === b.steps;
-  if (a.steps.length !== b.steps.length) return false;
-  return a.steps.every(
-    (s, i) =>
-      s.label === b.steps![i]!.label &&
-      s.answered === b.steps![i]!.answered &&
-      s.current === b.steps![i]!.current,
-  );
-}
-
-export function multiSelectEquals(a: MultiSelectModel, b: MultiSelectModel): boolean {
-  if (a.phase !== b.phase) return false;
-  if (a.signature !== b.signature) return false;
-  if (a.phase === "checkbox" && b.phase === "checkbox") {
-    return (
-      sameSteps(a, b) &&
-      a.advanceLabel === b.advanceLabel &&
-      a.question === b.question &&
-      a.options.length === b.options.length &&
-      a.options.every(
-        (o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked,
-      )
-    );
-  }
-  if (a.phase === "review" && b.phase === "review") return a.incomplete === b.incomplete;
-  return false;
-}
-
-/**
- * The dialog's identity for the mid-flight polls (pollUntil / the Submit walk) — independent of the
- * transient `❯` pointer, but NOT of the checkbox state. The core signature (pointer/checkbox-normalised)
- * plus question + option labels AND `checked`: a same-shaped successor (different subject) breaks the
- * signature; the macro's own Down/Up moves only shift the pointer (normalised out of both), so the
- * walk stays on the same dialog — but a box that flipped underfoot IS drift. The Submit walk never
- * toggles a box (it sends only Down/Up/Enter), so folding `checked` in costs nothing on the happy path
- * yet aborts the instant an external actor (a second device) flips a box mid-walk, rather than walking
- * on to Submit and shipping a set the user never saw. Only genuine drift (or the dialog vanishing)
- * resolves to "drifted".
- */
-export function multiSelectIdentity(a: MultiSelectModel, b: MultiSelectModel): boolean {
-  if (a.phase !== b.phase) return false;
-  if (a.signature !== b.signature) return false;
-  if (a.phase === "checkbox" && b.phase === "checkbox") {
-    return (
-      sameSteps(a, b) &&
-      a.advanceLabel === b.advanceLabel &&
-      a.question === b.question &&
-      a.options.length === b.options.length &&
-      a.options.every(
-        (o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked,
-      )
-    );
-  }
-  return true; // review: the signature is the whole identity
-}
+/** The multi-select identity comparators, part of the neutral contract
+ *  (harness/multi-select-model.ts). Re-exported under their original names so existing call sites and
+ *  tests keep one import site. */
+export { multiSelectEquals, multiSelectIdentity } from "./harness/multi-select-model";
 
 interface GuardArgs {
   paneId: string;
@@ -109,11 +52,16 @@ interface GuardArgs {
   multi: MultiSelectModel;
   /** The session the pane lives in (undefined = primary) — scopes every read + keystroke below. */
   session?: string;
+  /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
+  agent?: string;
   /** Test seam for the verification polls' pacing. */
   sleep?: Sleep;
 }
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** This module's slice of the generic guard: the multi-select dialog the tap is aimed at. */
+function target(args: GuardArgs): DialogTarget<"multi-select"> {
+  return { ...args, kind: "multi-select", model: args.multi };
+}
 
 // Per-pane serialization of multi-select actions WITHIN this browser context. The Submit macro is a
 // multi-step, ~1-2s choreography (walk the pointer, re-reading each step); the single-keystroke
@@ -184,22 +132,9 @@ async function dispatchIntent(
 
 /** Entry guard, then send exactly `keys` (one keystroke against the dialog). */
 async function guardedKey(args: GuardArgs, keys: string[]): Promise<ActionResult> {
-  const guarded = await entryGuard(
-    args,
-    args.multi,
-    detectMultiSelect,
-    multiSelectEquals,
-    (model) => model.regionSignature,
-  );
+  const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
-  try {
-    const res = await sendKeys(args.paneId, keys, args.session, guarded.region);
-    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
-    if (!res.ok) return { status: "error", error: res.error };
-    return { status: "sent" };
-  } catch (e) {
-    return { status: "error", error: errMsg(e) };
-  }
+  return sendBoundKeys(args, keys, guarded.region);
 }
 
 // The pointer settles fast after a nav key — a pointer move is a cheap redraw, unlike the note-focus
@@ -220,13 +155,7 @@ const NAV_SETTLE_MS = 250;
  */
 async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox") return { status: "changed" };
-  const guarded = await entryGuard(
-    args,
-    args.multi,
-    detectMultiSelect,
-    multiSelectEquals,
-    (model) => model.regionSignature,
-  );
+  const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
   const sleep = args.sleep ?? defaultSleep;
@@ -240,13 +169,14 @@ async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
   const sendMacroStep = async (keys: string[]) => {
     const expected = expectedPrompt;
     expectedPrompt = undefined;
-    return send(args, keys, expected);
+    const res = await sendBoundKeys(args, keys, expected);
+    return res.status === "sent" ? null : res;
   };
 
   for (let step = 0; step < maxSteps; step++) {
     let fresh;
     try {
-      fresh = await readModel(args.paneId, args.requestedLines, args.session, detectMultiSelect);
+      fresh = await readDialog(target(args));
     } catch {
       await sleep(NAV_SETTLE_MS); // transient read failure — re-read within the bounded walk
       continue;
@@ -272,23 +202,4 @@ async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
   }
   // Never landed on the advance row within the bounded walk — refresh rather than blind-send.
   return { status: "changed" };
-}
-
-/** Send `keys`, returning a terminal ActionResult on failure (error / not-ok) or null on success. */
-async function send(
-  args: GuardArgs,
-  keys: string[],
-  expectedPrompt?: string,
-): Promise<ActionResult | null> {
-  try {
-    const res =
-      expectedPrompt === undefined
-        ? await sendKeys(args.paneId, keys, args.session)
-        : await sendKeys(args.paneId, keys, args.session, expectedPrompt);
-    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
-    if (!res.ok) return { status: "error", error: res.error };
-    return null;
-  } catch (e) {
-    return { status: "error", error: errMsg(e) };
-  }
 }

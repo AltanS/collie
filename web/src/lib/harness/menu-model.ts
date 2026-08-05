@@ -5,9 +5,10 @@
 // footer. Any adapter can produce one; the renderer (components/menu-block.tsx) and the race guard
 // (lib/menu-action.ts) are written against these types alone, never against a harness's internals.
 //
-// Types only — no detection, no keys, no harness conventions. The shared derivation helpers live in
-// menu-hints.ts; Claude's reference detector is harness/claude/menu.ts; the ban on synthesised digits
-// is .adr/0009. This module imports nothing, so `lib/blocks.ts` can re-export it without a cycle.
+// Types + the pure identity comparators — no detection, no keys, no harness conventions. The shared
+// derivation helpers live in menu-hints.ts; Claude's reference detector is harness/claude/menu.ts;
+// the ban on synthesised digits is .adr/0009. This module imports nothing, so `lib/blocks.ts` can
+// re-export it without a cycle.
 
 /** One footer-named action, up-levelled into a tappable button. */
 export interface MenuAction {
@@ -53,4 +54,34 @@ export interface MenuModel {
    * it MUST be non-empty and MUST change when the region's text changes.
    */
   signature: string;
+}
+
+/** Whether two derivations are the SAME on-screen menu — the decisive check for a COMMITTING key.
+ *  `signature` (the region's text, highlight included) is what makes it decisive; the title/action
+ *  comparison stays as a cheap fast-path and to keep the intent explicit.
+ *
+ *  Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
+ *  adapter produced the block through exactly these two functions. */
+export function menusEqual(a: MenuModel, b: MenuModel): boolean {
+  return a.signature === b.signature && menusSameIdentity(a, b);
+}
+
+/** Whether two derivations are the same menu SCREEN, ignoring which row is highlighted. The weaker
+ *  comparison the non-committal arrow keys use — a moved highlight is the expected outcome of the
+ *  previous arrow tap, not evidence the screen changed underneath us. */
+export function menusSameIdentity(a: MenuModel, b: MenuModel): boolean {
+  return (
+    a.title === b.title &&
+    a.nav.upDown === b.nav.upDown &&
+    // Only the VERB: `leftRight.label` is the live value the arrows adjust ("◐ Medium effort"), so a
+    // Left/Right tap changes it by design — comparing it would make every second arrow tap fail.
+    a.nav.leftRight?.verb === b.nav.leftRight?.verb &&
+    a.actions.length === b.actions.length &&
+    a.actions.every(
+      (x, i) =>
+        x.label === b.actions[i]!.label &&
+        x.keys.length === b.actions[i]!.keys.length &&
+        x.keys.every((k, j) => k === b.actions[i]!.keys[j]),
+    )
+  );
 }
