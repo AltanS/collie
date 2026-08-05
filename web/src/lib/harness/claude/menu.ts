@@ -35,12 +35,24 @@ export interface MenuAction {
   cancel?: boolean;
 }
 
+/** What an `←/→ to <verb>` row advertises: the verb, and the value the arrows act on. */
+export interface MenuLeftRight {
+  /** The verb the row named — "adjust" in "◐ Medium effort ←/→ to adjust". */
+  verb: string;
+  /**
+   * The row's leading text, trimmed — "◐ Medium effort". This is the CURRENT VALUE of whatever the
+   * arrows adjust, so it changes every time one is pressed; detection re-runs each poll, so the UI
+   * label tracks it. Never compare it for menu identity (lib/menu-action.ts).
+   */
+  label: string;
+}
+
 /** The arrow affordances the region advertises (absent = the screen showed no sign of them). */
 export interface MenuNav {
   /** A `❯`-highlighted row exists, so Up/Down move the selection. */
   upDown: boolean;
-  /** The verb from an `←/→ to <verb>` row ("adjust"), when the region carries one. */
-  leftRight?: string;
+  /** The `←/→ to <verb>` row's verb + current value, when the region carries one. */
+  leftRight?: MenuLeftRight;
 }
 
 /** A recognised generic menu: its title, the keys it named, and its freshness signature. */
@@ -74,7 +86,8 @@ const SEGMENT_SPLIT = /\s+·\s+/;
 const HINT = /^(.+?)\s+to\s+(.+)$/i;
 
 // An "←/→ to <verb>" row inside the region (the `/model` picker's "◐ Medium effort ←/→ to adjust").
-const ARROW_ROW = /←\/→\s+to\s+(.+)$/;
+// Group 1 is everything left of the arrows — the value being adjusted; group 2 is the verb.
+const ARROW_ROW = /^(.*?)\s*←\/→\s+to\s+(.+)$/;
 
 // The pointer glyph marking the currently-highlighted row — its presence is what makes Up/Down
 // meaningful (without a highlight there is nothing to move).
@@ -198,7 +211,7 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
     if (t.includes(POINTER)) nav.upDown = true;
     if (nav.leftRight === undefined) {
       const arrow = ARROW_ROW.exec(t);
-      if (arrow) nav.leftRight = arrow[1]!.trim();
+      if (arrow) nav.leftRight = { verb: arrow[2]!.trim(), label: arrow[1]!.trim() };
     }
   }
 

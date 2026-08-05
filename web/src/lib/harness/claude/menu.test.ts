@@ -86,8 +86,12 @@ describe("detectMenuRegion — the /model picker", () => {
       { label: "Use this session only", keys: ["s"] },
       { label: "Cancel", keys: ["Escape"], cancel: true },
     ]);
-    // The `❯` row makes Up/Down meaningful; the "◐ Medium effort ←/→ to adjust" row names Left/Right.
-    expect(model!.nav).toEqual({ upDown: true, leftRight: "adjust" });
+    // The `❯` row makes Up/Down meaningful; the "◐ Medium effort ←/→ to adjust" row names Left/Right
+    // AND carries the value they act on, which is what the arrow cluster labels itself with.
+    expect(model!.nav).toEqual({
+      upDown: true,
+      leftRight: { verb: "adjust", label: "◐ Medium effort" },
+    });
   });
 
   it("emits no digit key at all", () => {
