@@ -22,6 +22,7 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Changed
 
+- **Modal menus are a documented harness contract** — the model and its footer/key grammar are harness-neutral, so a future codex/pi/opencode adapter implements them from types plus a conformance leg, not from Claude's internals (0c9dace)
 - **A generically-detected menu never synthesises a digit** — in the `/model` picker a digit confirms *and* saves your default for new sessions; [ADR 0009](.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md) records why (5392ac7)
 
 ## [0.23.3] - 2026-08-04
