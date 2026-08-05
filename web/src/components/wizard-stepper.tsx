@@ -1,7 +1,7 @@
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { WizardStepChip } from "@/lib/harness/claude/wizard";
+import type { WizardStepChip } from "@/lib/blocks";
 import { cn } from "@/lib/utils";
 
 // The chip pill, identical for a question and for the trailing Submit — the only difference is which

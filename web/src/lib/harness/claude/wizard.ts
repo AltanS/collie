@@ -18,65 +18,23 @@
 import type { StyledLine } from "../../blocks";
 import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
 import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
+import {
+  WIZARD_BACK_KEYS,
+  WIZARD_CANCEL_KEYS,
+  WIZARD_NEXT_KEYS,
+  WIZARD_SUBMIT_KEYS,
+  type WizardAnswer,
+  type WizardModel,
+  type WizardOption,
+  type WizardStepChip,
+} from "../wizard-model";
 
-/** One question chip in the stepper header (the Submit chip is implicit — see `WizardModel`). */
-export interface WizardStepChip {
-  /** The chip's visible label, e.g. "Focus area" (a React text node downstream). */
-  label: string;
-  /** From the glyph: `☒`/`☑` answered, `☐` not yet. */
-  answered: boolean;
-  /** This chip carries the background-highlight (the step currently on screen). At most one chip
-   *  is current; on the review step NONE is (the highlight sits on the Submit chip). */
-  current: boolean;
-}
-
-/** One selectable option of the CURRENT question. */
-export interface WizardOption {
-  label: string;
-  /** Secondary descriptive line(s), joined with spaces. Absent when none. */
-  description?: string;
-  /** Keys to send: the option's digit ALONE — a wizard digit instant-selects and advances
-   *  (verified; unlike the single-question select's digit-THEN-Enter). */
-  keys: string[];
-  /** The TUI's trailing ` ✔` on a revisited, already-answered question's chosen row. */
-  chosen: boolean;
-  /** "Chat about this" — ABORTS the whole wizard (the tool call resolves "declined"). Rendered as
-   *  a de-emphasised escape row, never as a normal answer. */
-  escape: boolean;
-}
-
-/** One answered pair echoed by the Submit review step. */
-export interface WizardAnswer {
-  question: string;
-  answer: string;
-}
-
-/**
- * The detected wizard, a union on `phase`:
- *  - `question`: a question step is on screen — its text + options (answered by ONE digit each).
- *  - `review`: the Submit step — the echoed answers; submit = key `1`, cancel = key `2`
- *    (constants, so the model doesn't carry them).
- * Both carry the stepper chips (per-question answered/current state).
- */
-// A byte-signature of the wizard's on-screen region (stepper header → tail): the full dialog state.
-// The race guard compares it so a wizard that re-rendered between render and tap can't pass as the
-// one the user saw. Herdr's `revision` is a stub, so this content signature is the load-bearing
-// freshness check (mirrors prompt-select's `signature`).
-export type WizardModel =
-  | {
-      phase: "question";
-      steps: WizardStepChip[];
-      question: string;
-      options: WizardOption[];
-      signature: string;
-    }
-  | {
-      phase: "review";
-      steps: WizardStepChip[];
-      answers: WizardAnswer[];
-      incomplete: boolean;
-      signature: string;
-    };
+// The MODEL this grammar produces — and the four control-key constants its renderer sends — are a
+// harness-NEUTRAL contract (harness/wizard-model.ts): what any adapter promises when it emits a
+// `wizard` block. Re-exported here so this file stays the one import site for everything about the
+// Claude wizard grammar.
+export type { WizardAnswer, WizardModel, WizardOption, WizardStepChip };
+export { WIZARD_BACK_KEYS, WIZARD_CANCEL_KEYS, WIZARD_NEXT_KEYS, WIZARD_SUBMIT_KEYS };
 
 /** Detection result for buildBlocks: the model plus the stepper header's line index — the wizard
  *  region is [`startLine` … tail], which the renderer replaces with the native wizard. */
@@ -84,13 +42,6 @@ export interface WizardRegion {
   model: WizardModel;
   startLine: number;
 }
-
-/** Keys for the review step's two fixed controls (digit fires instantly there too — verified). */
-export const WIZARD_SUBMIT_KEYS = ["1"];
-export const WIZARD_CANCEL_KEYS = ["2"];
-/** Keys for step navigation (Left/Right clamp at the ends — no wraparound). */
-export const WIZARD_BACK_KEYS = ["Left"];
-export const WIZARD_NEXT_KEYS = ["Right"];
 
 // ---------------------------------------------------------------------------------------------
 // Stepper header parsing

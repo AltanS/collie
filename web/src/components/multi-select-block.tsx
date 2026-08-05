@@ -6,7 +6,7 @@ import type { MultiSelectModel } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
 import { KeyBadge, optionSurface, PromptPanel, QuestionHeading } from "@/components/option-button";
 import { WizardStepper } from "@/components/wizard-stepper";
-import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/claude/wizard";
+import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/wizard-model";
 
 export interface MultiSelectBlockProps {
   /** The detected multi-select dialog (checkbox screen or review screen). */

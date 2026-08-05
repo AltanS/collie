@@ -4,18 +4,13 @@
 // *between* glyphs, so a regex over the raw buffer would miss (e.g. the `❯` pointer and the `1.` are
 // separate styled segments). Pure functions, no I/O, no React.
 
-import type { StyledLine } from "../../blocks";
+import { isBlank, lineText } from "../../blocks";
+import type { PromptFamily } from "../prompt-model";
 
-/** The visible text of a line: its segments' text concatenated (the "\n" separator lives between
- *  lines, so a single line's text never contains one). */
-export function lineText(line: StyledLine): string {
-  return line.segments.map((s) => s.text).join("");
-}
-
-/** True when a line is empty or only whitespace. */
-export function isBlank(text: string): boolean {
-  return text.trim().length === 0;
-}
+// `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
+// neutral core (lib/blocks.ts) where the renderer can reach them without importing a harness. They
+// are re-exported here so the Claude grammars keep their single import site.
+export { isBlank, lineText };
 
 // A whole line that is nothing but horizontal-rule glyphs: Unicode box-drawing (U+2500–U+257F, which
 // includes the dashed forms ╌ ╍ ┄ ┅ …), the block eighths used as rules (U+2581–U+2594, e.g. ▁ ▔),
@@ -55,8 +50,10 @@ export function isMultiStepHeader(text: string): boolean {
   return m !== null && m.length >= 2;
 }
 
-/** The single-choice dialog families Claude Code renders, discriminated by their footer hint bar. */
-export type PromptFamily = "select" | "permission" | "trust" | "plan";
+// The dialog families are part of the NEUTRAL prompt-select contract (harness/prompt-model.ts) —
+// each family pins a keystroke recipe the renderer and the guard rely on. Re-exported here because
+// `classifyFooter`, the Claude-specific act of reading a footer, is what produces one.
+export type { PromptFamily };
 
 /**
  * Classify a candidate footer line — the hint bar at the very bottom of a Claude dialog — into a

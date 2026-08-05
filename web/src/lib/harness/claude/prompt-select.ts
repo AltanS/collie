@@ -14,39 +14,13 @@ import {
   isHorizontalRule,
   isMultiStepHeader,
   lineText,
-  type PromptFamily,
 } from "./markers";
+import type { PromptFamily, PromptModel, PromptOption } from "../prompt-model";
 
-export type { PromptFamily };
-
-/** One selectable option, up-levelled into a tappable button. */
-export interface PromptOption {
-  /** The visible option label (rendered as a React text node — the XSS boundary is unchanged). */
-  label: string;
-  /** Secondary descriptive line(s) the dialog supplies, joined with spaces. Absent when none. */
-  description?: string;
-  /**
-   * The keys to send (in order) to choose this option, per the dialog family's verified recipe:
-   * `select` needs the digit THEN `Enter` ("Enter to select"); `permission`/`trust`/`plan` confirm
-   * on the digit ALONE (a trailing Enter there would leak into whatever renders next).
-   */
-  keys: string[];
-}
-
-/** A recognised single-choice dialog: the question, its selectable options, and the family. */
-export interface PromptModel {
-  question: string;
-  options: PromptOption[];
-  family: PromptFamily;
-  /**
-   * A byte-signature of the dialog's on-screen region — a bounded run of lines from ABOVE the first
-   * option (capturing the subject: the diff/command/context the dialog is about) through the footer.
-   * The race guard compares this so a same-SHAPED successor dialog (identical question + labels but a
-   * different subject — e.g. a second edit to the same file) can't pass as the one the user saw.
-   * Herdr's `revision` is a stub, so this content signature is the load-bearing freshness check.
-   */
-  signature: string;
-}
+// The MODEL this grammar produces is a harness-NEUTRAL contract (harness/prompt-model.ts) — what any
+// adapter promises when it emits a `prompt-select` block. Re-exported here so this file stays the one
+// import site for everything about the Claude prompt-select grammar.
+export type { PromptFamily, PromptModel, PromptOption };
 
 // Lines above the first option to fold into the signature — enough to capture a dialog's subject
 // (the diff/command shown above the question), which is what distinguishes two same-shaped prompts.

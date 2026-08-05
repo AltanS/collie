@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { buildBlocks } from "@/lib/harness";
 import {
+  lineText,
   splitLines,
   type Block,
   type MenuModel,
@@ -14,7 +15,6 @@ import {
   type PromptOption,
   type WizardModel,
 } from "@/lib/blocks";
-import { lineText } from "@/lib/harness/claude/markers";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";

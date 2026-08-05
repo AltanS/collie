@@ -19,7 +19,7 @@ import {
   QuestionHeading,
 } from "@/components/option-button";
 import { NOTE_MAX_LENGTH } from "@/lib/preview-action";
-import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/claude/wizard";
+import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/wizard-model";
 
 /** One tap's intent, resolved to keystrokes by the injected handler (preview-action.ts). */
 export type PreviewBlockAction =
