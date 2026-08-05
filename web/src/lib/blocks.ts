@@ -22,7 +22,7 @@ import type { PromptModel } from "./harness/claude/prompt-select";
 import type { WizardModel } from "./harness/claude/wizard";
 import type { PreviewSelectModel } from "./harness/claude/preview-select";
 import type { MultiSelectModel } from "./harness/claude/multi-select";
-import type { MenuModel } from "./harness/claude/menu";
+import type { MenuModel } from "./harness/menu-model";
 
 // Re-export the prompt-select + wizard + preview + multi-select models so consumers (the block
 // components, the race guards) have one import site for the AST's typed payloads. These are
@@ -37,7 +37,10 @@ export type {
   MultiSelectEscape,
   MultiPointer,
 } from "./harness/claude/multi-select";
-export type { MenuModel, MenuAction, MenuNav } from "./harness/claude/menu";
+// The menu model is harness-NEUTRAL (see harness/menu-model.ts): the generic modal contract any
+// adapter can implement, not a Claude grammar. It is re-exported here with the rest for one import
+// site, but the dependency points at the shared module, never at claude/.
+export type { MenuModel, MenuAction, MenuNav, MenuLeftRight } from "./harness/menu-model";
 
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
 export interface StyledLine {

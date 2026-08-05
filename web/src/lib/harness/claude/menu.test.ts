@@ -5,11 +5,13 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { claudeBuildBlocks } from "./index";
-import { detectMenu, detectMenuRegion, menuKeyFor, parseKeyHintFooter } from "./menu";
+import { detectMenu, detectMenuRegion } from "./menu";
 
-// The generic menu grammar, driven by the byte-faithful `/model` picker captures. The invariants that
-// matter are all NEGATIVE ones — this is the LAST-RESORT detector, so what it declines to claim is
-// more load-bearing than what it claims (see .adr/0009).
+// Claude's menu DETECTOR — its own conventions only (tail anchoring, the rule-bounded region, the
+// input-box gate). The harness-agnostic footer/key grammar it builds on is pinned next door in
+// harness/menu-hints.test.ts. The invariants that matter are all NEGATIVE ones — this is the
+// LAST-RESORT detector, so what it declines to claim is more load-bearing than what it claims
+// (see .adr/0009).
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 function load(name: string): StyledLine[] {
@@ -20,61 +22,6 @@ function lines(text: string): StyledLine[] {
 }
 
 const BOX_RULE = "─".repeat(40); // clears the 20-glyph border threshold in markers.ts
-
-describe("menuKeyFor", () => {
-  it("maps the footer's key vocabulary onto Herdr keys", () => {
-    expect(menuKeyFor("Enter")).toBe("Enter");
-    expect(menuKeyFor("enter")).toBe("Enter");
-    expect(menuKeyFor("Esc")).toBe("Escape");
-    expect(menuKeyFor("Escape")).toBe("Escape");
-    expect(menuKeyFor("Tab")).toBe("Tab");
-    expect(menuKeyFor("shift+tab")).toBe("shift+tab");
-    expect(menuKeyFor("s")).toBe("s");
-    expect(menuKeyFor("↑")).toBe("Up");
-    expect(menuKeyFor("↓")).toBe("Down");
-    expect(menuKeyFor("←")).toBe("Left");
-    expect(menuKeyFor("→")).toBe("Right");
-    expect(menuKeyFor("ctrl+g")).toBe("ctrl+g");
-  });
-
-  // .adr/0009: a digit in the /model picker confirms AND persists the default. It is a valid Herdr
-  // key, so nothing downstream would reject it — the ban has to be here.
-  it("NEVER maps a digit, however the footer spells it", () => {
-    for (const token of ["1", "2", "9", "10", "0"]) {
-      expect(menuKeyFor(token), token).toBeNull();
-    }
-  });
-
-  it("declines prose, unsupported keys, and uppercase letters", () => {
-    for (const token of ["Set model", "PageUp", "Home", "Delete", "S", "", "ctrl+shift+p"]) {
-      expect(menuKeyFor(token), token).toBeNull();
-    }
-  });
-});
-
-describe("parseKeyHintFooter", () => {
-  it("splits on the spaced middle dot and keeps the verb as the label", () => {
-    expect(
-      parseKeyHintFooter("Enter to set as default · s to use this session only · Esc to cancel"),
-    ).toEqual([
-      { label: "Set as default", keys: ["Enter"] },
-      { label: "Use this session only", keys: ["s"] },
-      { label: "Cancel", keys: ["Escape"], cancel: true },
-    ]);
-  });
-
-  it("skips a segment whose key isn't sendable, keeping the rest", () => {
-    expect(parseKeyHintFooter("PageUp to scroll · Esc to cancel")).toEqual([
-      { label: "Cancel", keys: ["Escape"], cancel: true },
-    ]);
-  });
-
-  it("returns nothing for a single segment or a segment-less line", () => {
-    expect(parseKeyHintFooter("Esc to cancel")).toEqual([]);
-    expect(parseKeyHintFooter("some ordinary output")).toEqual([]);
-    expect(parseKeyHintFooter("model · branch · 42% ctx")).toEqual([]);
-  });
-});
 
 describe("detectMenuRegion — the /model picker", () => {
   it("lifts the picker with its footer keys, title and nav", () => {

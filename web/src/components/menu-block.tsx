@@ -9,7 +9,7 @@ import {
   MENU_LEFT_KEYS,
   MENU_RIGHT_KEYS,
   MENU_UP_KEYS,
-} from "@/lib/harness/claude/menu";
+} from "@/lib/harness/menu-hints";
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
 
