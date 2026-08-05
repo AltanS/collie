@@ -6,21 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
-## [0.24.1] - 2026-08-05
-
-### Fixed
-
-- **A half-written reply survives leaving the pane** — drafts are kept per pane (48h, localStorage, so an OS-killed PWA doesn't lose one) instead of dying with the composer when you step over to another tab (9d41411)
-
 ## [0.24.0] - 2026-08-05
 
 ### Added
 
 - **Buttons for Claude's `/model` picker, and any modal like it** — a last-resort grammar reads the footer's `<key> to <verb>` hints and renders them, with the arrows the screen advertised, over the mirrored region (5392ac7)
+- **The ←/→ pair says what it adjusts** — the picker's live value ("◐ Medium effort") sits between the arrows and in their accessible names (d872490)
 - **A send is refused before it types when the agent's input box isn't on screen** — the draft is kept, and a second Send is a deliberate "Type anyway?" that still never fires the submit key blind (c4ffe45)
 
 ### Fixed
 
+- **A half-written reply survives leaving the pane** — drafts are kept per pane (48h, localStorage, so an OS-killed PWA doesn't lose one) instead of dying with the composer when you step over to another tab (9d41411)
 - **A reply is no longer typed into a full-screen picker** — that was the `/model` bug: no grammar claimed the screen, so the message went into it and came back as "stalled" (c4ffe45, 5392ac7)
 - **The stalled message says a key answer probably landed** — the part that made the original report confusing (c4ffe45)
 
