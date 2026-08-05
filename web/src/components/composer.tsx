@@ -16,6 +16,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
+import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { sendGuardedReply } from "@/lib/reply-action";
@@ -130,7 +131,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Every write affordance is off when the pane is gone OR this device is read-only.
   const locked = gone || readOnly;
 
-  const [input, setInput] = useState("");
+  // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
+  // pane view is keyed by paneId, so without this, stepping over to another tab mid-reply ate the
+  // message. Lazy initialiser so the restore happens on the mount, before first paint.
+  const [input, setInput] = useState(() => loadDraft(session, paneId) ?? "");
+  // Mirror of `input` for the write-through path: updateInput needs the previous value to apply a
+  // functional update AND to persist the result, without either reading stale state or doing the
+  // save inside a (double-invoked) state updater.
+  const inputValueRef = useRef(input);
+  // Which pane the current `input` belongs to. DetailRoute keys AgentChat by paneId, so in the app a
+  // pane→pane navigation remounts this component and the lazy initialiser above does the work — but
+  // the component must not depend on that: if it is ever rendered with a changed paneId/session in
+  // place, the effect below saves the outgoing pane's draft and loads the incoming one, so pane A's
+  // text can never surface in pane B.
+  const draftPaneRef = useRef({ session, paneId });
+
+  /** Set the draft AND persist it. Every write to `input` goes through here — an empty value removes
+   *  the stored key, so the deliberate-clear paths (verified send, user emptying the box) need no
+   *  special case. */
+  function updateInput(next: string | ((prev: string) => string)) {
+    const value = typeof next === "function" ? next(inputValueRef.current) : next;
+    inputValueRef.current = value;
+    setInput(value);
+    saveDraft(session, paneId, value);
+  }
+
+  useEffect(() => {
+    const prev = draftPaneRef.current;
+    if (prev.paneId === paneId && prev.session === session) return;
+    saveDraft(prev.session, prev.paneId, inputValueRef.current);
+    draftPaneRef.current = { session, paneId };
+    const restored = loadDraft(session, paneId) ?? "";
+    inputValueRef.current = restored;
+    setInput(restored);
+  }, [session, paneId]);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
@@ -297,7 +331,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function takeOverDraft() {
     if (effectiveRaw === null) return;
     const draft = effectiveRaw;
-    setInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
+    updateInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
     setHandledKey(normalizeDraft(draft));
     setPreviewLatched(false);
     focusInputEnd();
@@ -363,7 +397,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // key. A "stalled" outcome means nothing was submitted and the draft must survive (#34).
       const res = await sendGuardedReply({ paneId, text: t, agent, session, force });
       if (res.status === "sent") {
-        if (isDraft) setInput(""); // phone-owned input — clear it once the reply is on its way
+        // Phone-owned input — cleared once the reply is on its way. Via updateInput, so the stored
+        // draft goes with it (an empty value removes the key).
+        if (isDraft) updateInput("");
         // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
         // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
         lastSentRef.current = { text: t, at: Date.now() };
@@ -482,7 +518,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
-    setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
+    updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
   }
 
@@ -495,7 +531,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.uploadImage(paneId, file, session);
       if (res.ok) {
         const path = res.path;
-        setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
+        updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
         setStatus("Image added — path in message", "success");
       } else {
@@ -671,7 +707,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <ChatInput
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => updateInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
