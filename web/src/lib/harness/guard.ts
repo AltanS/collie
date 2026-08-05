@@ -1,10 +1,12 @@
-// Model-GENERIC race-guard machinery, factored out of the three harness action files
-// (prompt-action, wizard-action, preview-action). Every one of them tapped a menu/wizard/dialog
-// button that types into a REAL terminal, and the pane may have moved on between render and tap —
-// so before sending they all re-fetch the pane, confirm the revision, and re-derive the model to
-// compare against what the user tapped. That skeleton (fresh read → parse → detect → unconditional
-// revision check → structural-equality check) is identical across all three; only the model type
-// M, its detector, and its equality function differ. Those become the generic parameters here.
+// Model-GENERIC race-guard machinery: the skeleton every dialog tap runs (fresh read → parse →
+// re-derive → unconditional revision check → structural-equality check), parameterised on the model
+// type M, its detector, and its equality function.
+//
+// Nothing here knows a harness OR a block kind — it is deliberately one layer below that. The layer
+// that binds the three parameters is lib/dialog-guard.ts: it supplies the detector (the pane's own
+// adapter, via the registry) and the comparator (the kind's contract, via harness/dialog-contract),
+// and it is the only caller the action modules see. Keeping the mechanism here and the wiring there
+// is what lets this file stay free of both the registry and the models.
 
 import { fetchPane } from "../api";
 import { parseAnsi } from "../ansi";

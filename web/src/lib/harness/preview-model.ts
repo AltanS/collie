@@ -10,7 +10,8 @@
 //
 // Claude's reference detector is harness/claude/preview-select.ts; the verified ground truth is
 // grammar/NOTES_NOTES.md. Imports nothing but its sibling model, so `lib/blocks.ts` can re-export it
-// without a cycle. The identity comparators live in dialog-contract.ts.
+// without a cycle. The identity comparators at the bottom are part of the same contract: the race
+// guard compares any adapter's dialog through them (harness/dialog-contract.ts wires kind → comparator).
 
 import type { WizardStepChip } from "./wizard-model";
 
@@ -72,4 +73,58 @@ export interface PreviewSelectModel {
    * freshness check — it MUST be non-empty and MUST change when the region's text changes.
    */
   coreSignature: string;
+}
+
+/**
+ * Whether two derivations are the same dialog in the same VISIBLE state: identity (the pointer/note-
+ * independent core signature — see `previewCoreEqual`), question, stepper chips, options (labels,
+ * pointer, chosen marks), note state+text, and the preview pane. The strictest comparator of the
+ * family — everything the user can see participates AND the core signature must byte-match, because
+ * every visible change (even a terminal-side pointer move) re-routes what our keystrokes would do.
+ *
+ * Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
+ * adapter produced the block through exactly these functions.
+ */
+export function previewsEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
+  return (
+    previewStructureEqual(a, b) && // core signature + question/chips/labels + note state
+    a.options.every((o, i) => o.pointed === b.options[i]!.pointed) &&
+    a.preview.length === b.preview.length &&
+    a.preview.every((l, i) => l === b.preview[i])
+  );
+}
+
+/** The dialog's identity, independent of transient state: the CORE SIGNATURE (the subject above the
+ *  options + the option labels/layout, pointer normalised) plus question, stepper chips, and option
+ *  labels/chosen marks — but NOT the pointer (our own digit legitimately moves it), NOT the preview
+ *  pane (it follows the pointer), and NOT the note (the note flow legitimately transitions it). The
+ *  mid-flight polls key on this: same dialog (same signature), awaited state. The signature is the
+ *  load-bearing check — a same-SHAPED successor (identical question+labels, different subject) has a
+ *  different signature, so it can never pass as the dialog the user tapped. */
+export function previewCoreEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
+  if (a.coreSignature !== b.coreSignature) return false;
+  if (a.question !== b.question) return false;
+  if ((a.steps === null) !== (b.steps === null)) return false;
+  if (
+    a.steps !== null &&
+    b.steps !== null &&
+    (a.steps.length !== b.steps.length ||
+      !a.steps.every(
+        (s, i) =>
+          s.label === b.steps![i]!.label &&
+          s.answered === b.steps![i]!.answered &&
+          s.current === b.steps![i]!.current,
+      ))
+  ) {
+    return false;
+  }
+  return (
+    a.options.length === b.options.length &&
+    a.options.every((o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen)
+  );
+}
+
+/** Core identity plus the note's visible state — everything except the pointer/preview. */
+export function previewStructureEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
+  return previewCoreEqual(a, b) && a.note.state === b.note.state && a.note.text === b.note.text;
 }

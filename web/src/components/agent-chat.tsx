@@ -329,6 +329,7 @@ export function AgentChat({
         session,
         requestedLines,
         detectedRevision: shown.revision,
+        agent: agent?.agent,
         prompt,
         option,
       });
@@ -344,7 +345,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -363,6 +364,7 @@ export function AgentChat({
         session,
         requestedLines,
         detectedRevision: shown.revision,
+        agent: agent?.agent,
         wizard,
         keys,
       });
@@ -378,7 +380,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -397,6 +399,7 @@ export function AgentChat({
         session,
         requestedLines,
         detectedRevision: shown.revision,
+        agent: agent?.agent,
         preview,
       };
       const result =
@@ -421,7 +424,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -440,6 +443,7 @@ export function AgentChat({
         session,
         requestedLines,
         detectedRevision: shown.revision,
+        agent: agent?.agent,
         multi,
         intent: action,
       });
@@ -455,7 +459,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -473,6 +477,7 @@ export function AgentChat({
         session,
         requestedLines,
         detectedRevision: shown.revision,
+        agent: agent?.agent,
         menu,
         keys: action.keys,
         nav: action.nav,
@@ -489,7 +494,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
+    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android

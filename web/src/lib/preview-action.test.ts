@@ -83,7 +83,15 @@ function paneWith(text: string, revision = 5) {
 }
 
 const noSleep = async () => {};
-const base = { paneId: "w1:p1", requestedLines: 600, detectedRevision: 5, sleep: noSleep };
+const base = {
+  paneId: "w1:p1",
+  requestedLines: 600,
+  detectedRevision: 5,
+  // The guard re-derives through the pane's ADAPTER (lib/dialog-guard.ts), so every call names the
+  // agent whose grammar produced the fixture — an agent with no adapter fails the guard closed.
+  agent: "claude",
+  sleep: noSleep,
+};
 
 beforeEach(() => {
   mockFetchPane.mockReset();
