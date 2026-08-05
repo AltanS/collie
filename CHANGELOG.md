@@ -17,7 +17,7 @@ All notable changes to Collie are recorded here. The format follows
 ### Fixed
 
 - **A half-written reply survives leaving the pane** — drafts are kept per pane (48h, localStorage, so an OS-killed PWA doesn't lose one) instead of dying with the composer when you step over to another tab (9d41411)
-- **A reply is no longer typed into a full-screen picker** — that was the `/model` bug: no grammar claimed the screen, so the message went into it and came back as "stalled" (c4ffe45, 5392ac7)
+- **A reply is no longer typed into a full-screen picker** — the original `/model` bug: no grammar claimed the screen, so the message fed the picker and came back "stalled" (c4ffe45, 5392ac7)
 - **The stalled message says a key answer probably landed** — the part that made the original report confusing (c4ffe45)
 
 ### Changed
@@ -25,7 +25,7 @@ All notable changes to Collie are recorded here. The format follows
 - **Modal menus are a documented harness contract** — the model and its footer/key grammar are harness-neutral, so a future codex/pi/opencode adapter implements them from types plus a conformance leg, not from Claude's internals (0c9dace)
 - **A generically-detected menu never synthesises a digit** — in the `/model` picker a digit confirms *and* saves your default for new sessions; [ADR 0009](.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md) records why (5392ac7)
 - **Every dialog model is a harness contract, not a Claude internal** — the prompt-select, wizard, preview and multi-select payloads join menus in harness-neutral modules, so the AST and the renderers no longer point at one agent's grammar (3b5cf7c)
-- **One race guard for every dialog, run through the pane's own adapter** — the five action modules re-derived with Claude's detectors, so a non-Claude pane was verified against a foreign parser; an adapter that emits a block kind now gets the guard for free, and a pane with no adapter fails it closed (79ebc0c)
+- **One race guard for every dialog, run through the pane's own adapter** — no more re-deriving through Claude's detectors; an adapter that emits a block kind gets the guard for free, and no adapter fails closed (79ebc0c)
 - **The conformance suite pins the signature + identity contract for every block kind** — not just menus: a constant signature, or a comparator that passes a screen that changed, now fails CI (b78aa0f)
 
 ## [0.23.3] - 2026-08-04
