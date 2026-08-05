@@ -135,6 +135,25 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   return draft;
 }
 
+/**
+ * Whether the agent's own free-text input box is on screen at the tail — i.e. whether typing a reply
+ * would land in the composer input at all. FALSE means a modal (a menu, a dialog, a full-screen
+ * picker) owns the keyboard, so `pane.send_text` would be typed INTO it.
+ *
+ * Two callers, both of which need exactly this and must not re-derive it:
+ *  - the generic menu grammar (menu.ts), whose last-resort footer match would otherwise claim an
+ *    ordinary prompt screen that happens to end in a `·`-separated hint row;
+ *  - the reply path's pre-flight (lib/reply-action.ts via the adapter's `composerReady`), which
+ *    refuses to type at all when the box isn't there.
+ */
+export function hasInputBox(lines: StyledLine[]): boolean {
+  const texts = lines.map(lineText);
+  let end = lines.length;
+  while (end > 0 && isBlank(texts[end - 1]!)) end--;
+  if (end === 0) return false;
+  return locateInputBox(texts, end) !== null;
+}
+
 interface InputBox {
   /** Index of the TOP border — the exclusive bound of everything ABOVE the box (stripChrome uses it). */
   top: number;

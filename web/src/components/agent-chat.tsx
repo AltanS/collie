@@ -31,13 +31,16 @@ import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
+import { submitMenuKeys } from "@/lib/menu-action";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
+import type { MenuBlockAction } from "@/components/menu-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
 import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
 import type {
+  MenuModel,
   MultiSelectModel,
   PreviewSelectModel,
   PromptModel,
@@ -455,6 +458,40 @@ export function AgentChat({
     [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
   );
 
+  // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
+  // shape as the handlers above; the arrow taps pass `nav`, which swaps the guard's signature check
+  // for an identity-only one (moving the highlight is the tap's own effect — see lib/menu-action.ts).
+  // gate: claude-only (menu blocks only ever exist for a Claude pane).
+  const handleMenuAction = useCallback(
+    async (action: MenuBlockAction, menu: MenuModel) => {
+      if (readOnly) {
+        setStatus("Read-only — device not authorised", "error");
+        return;
+      }
+      const result = await submitMenuKeys({
+        paneId,
+        session,
+        requestedLines,
+        detectedRevision: shown.revision,
+        menu,
+        keys: action.keys,
+        nav: action.nav,
+      });
+      if (result.status === "sent") {
+        setStatus("Sent", "success");
+        setFollowing(true);
+        revalidator.revalidate();
+        listRef.current?.scrollToBottom();
+      } else if (result.status === "changed") {
+        setStatus("The screen changed — refreshing", "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || "Send failed", "error");
+      }
+    },
+    [readOnly, paneId, session, requestedLines, shown.revision, revalidator],
+  );
+
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
   // keyboard and cover the output. You read the pane first, then tap the input to type. (Explicit
   // actions inside the composer still focus it; the mirror tap focuses it via composerRef.)
@@ -727,6 +764,7 @@ export function AgentChat({
                   onWizardAction={handleWizardAction}
                   onPreviewAction={handlePreviewAction}
                   onMultiSelectAction={handleMultiSelectAction}
+                  onMenuAction={handleMenuAction}
                   promptDisabled={readOnly || gone}
                 />
               </>

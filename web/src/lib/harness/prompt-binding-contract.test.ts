@@ -8,6 +8,7 @@ import { detectMultiSelect } from "./claude/multi-select";
 import { detectPreviewSelect } from "./claude/preview-select";
 import { detectPromptSelect } from "./claude/prompt-select";
 import { detectWizard } from "./claude/wizard";
+import { detectMenu } from "./claude/menu";
 
 // The client half of the prompt-binding contract. See the sibling test in
 // bridge/prompt-binding.test.ts for the full reasoning; in short:
@@ -47,12 +48,16 @@ function detectRegion(lines: StyledLine[]): { detector: string; region: string }
   if (preview) return { detector: "preview-select", region: preview.regionSignature };
   const multi = detectMultiSelect(lines);
   if (multi) return { detector: "multi-select", region: multi.regionSignature };
+  // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all four declined.
+  const menu = detectMenu(lines);
+  if (menu) return { detector: "menu", region: menu.signature };
   return null;
 }
 
 describe("client/bridge binding contract", () => {
   it("covers every dialog detector", () => {
     expect([...new Set(REGIONS.map((r) => r.detector))].sort()).toEqual([
+      "menu",
       "multi-select",
       "preview-select",
       "prompt-select",

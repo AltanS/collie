@@ -171,6 +171,7 @@ describe("client/bridge binding contract", () => {
   test("the committed expectations cover every dialog detector", () => {
     expect(REGIONS.length).toBeGreaterThan(0);
     expect([...new Set(REGIONS.map((r) => r.detector))].sort()).toEqual([
+      "menu",
       "multi-select",
       "preview-select",
       "prompt-select",

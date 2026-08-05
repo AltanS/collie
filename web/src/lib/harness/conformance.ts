@@ -34,6 +34,12 @@ import {
   WIZARD_NEXT_KEYS,
   WIZARD_SUBMIT_KEYS,
 } from "./claude/wizard";
+import {
+  MENU_DOWN_KEYS,
+  MENU_LEFT_KEYS,
+  MENU_RIGHT_KEYS,
+  MENU_UP_KEYS,
+} from "./claude/menu";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
 // rewrites into a root-relative asset path) so fixtures resolve regardless of the run cwd. This file
@@ -162,6 +168,17 @@ function emittableKeys(block: Block): string[] | null {
             "Enter",
           ]
         : ["1", "2"];
+    case "menu":
+      // The generic grammar emits ONLY the keys the screen's own footer named, plus the arrows it
+      // advertised. Walking `actions` here is what pins .adr/0009's ban in CI: a digit can only
+      // appear in this list if the detector synthesised one, and this suite would still pass it as a
+      // valid Herdr key — so the menu-grammar tests assert the absence directly, and this leg keeps
+      // the plans sendable.
+      return [
+        ...block.menu.actions.flatMap((a) => a.keys),
+        ...(block.menu.nav.upDown ? [...MENU_UP_KEYS, ...MENU_DOWN_KEYS] : []),
+        ...(block.menu.nav.leftRight !== undefined ? [...MENU_LEFT_KEYS, ...MENU_RIGHT_KEYS] : []),
+      ];
     default: {
       // `block` is `never` here today — every kind is cased above. The cast names the offending kind
       // at runtime once a FUTURE Block kind is added to the union without a case here: a keyless one

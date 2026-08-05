@@ -7,6 +7,7 @@ import { buildBlocks } from "@/lib/harness";
 import {
   splitLines,
   type Block,
+  type MenuModel,
   type MultiSelectModel,
   type PreviewSelectModel,
   type PromptModel,
@@ -21,6 +22,7 @@ import { PromptSelectBlock } from "@/components/prompt-select-block";
 import { WizardBlock } from "@/components/wizard-block";
 import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
 import { MultiSelectBlock } from "@/components/multi-select-block";
+import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
 
 /** A raw block, narrowed off the Block union (the highlight/offset paths only touch these). */
@@ -33,6 +35,8 @@ type WizBlock = Extract<Block, { kind: "wizard" }>;
 type PrevBlock = Extract<Block, { kind: "preview-select" }>;
 /** The (at most one) multi-select block — tail, mutually exclusive with the other dialog blocks. */
 type MultiBlock = Extract<Block, { kind: "multi-select" }>;
+/** The (at most one) generic-menu block — tail, and only ever lifted when all four above declined. */
+type GenericMenuBlock = Extract<Block, { kind: "menu" }>;
 
 export interface AnsiOutputProps {
   text: string;
@@ -65,7 +69,10 @@ export interface AnsiOutputProps {
   /** Injected handler for a multi-select tap (toggle / submit / escape / confirm / cancel — the
    *  race-guarded choreography lives in lib/multi-select-action.ts). Same presentational contract. */
   onMultiSelectAction?: (action: MultiSelectIntent, multi: MultiSelectModel) => void | Promise<void>;
-  /** Disable the prompt-select/wizard/preview/multi-select buttons (read-only device / gone pane). */
+  /** Injected handler for a generic-menu tap (a footer-named key, or an arrow — the race-guarded
+   *  send lives in lib/menu-action.ts). Same presentational contract as onPromptAction. */
+  onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
+  /** Disable the prompt-select/wizard/preview/multi-select/menu buttons (read-only / gone pane). */
   promptDisabled?: boolean;
 }
 
@@ -149,6 +156,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   onWizardAction,
   onPreviewAction,
   onMultiSelectAction,
+  onMenuAction,
   promptDisabled,
 }: AnsiOutputProps) {
   const segments = useMemo(() => parseAnsi(text), [text]);
@@ -172,6 +180,10 @@ export const AnsiOutput = memo(function AnsiOutput({
   );
   const multiBlock = useMemo(
     () => blocks.find((b): b is MultiBlock => b.kind === "multi-select") ?? null,
+    [blocks],
+  );
+  const menuBlock = useMemo(
+    () => blocks.find((b): b is GenericMenuBlock => b.kind === "menu") ?? null,
     [blocks],
   );
 
@@ -226,6 +238,13 @@ export const AnsiOutput = memo(function AnsiOutput({
       multi={multiBlock.multi}
       disabled={promptDisabled || !onMultiSelectAction}
       onAction={(action) => onMultiSelectAction?.(action, multiBlock.multi)}
+    />
+  ) : menuBlock ? (
+    <MenuBlock
+      menu={menuBlock.menu}
+      lines={menuBlock.lines}
+      disabled={promptDisabled || !onMenuAction}
+      onAction={(action) => onMenuAction?.(action, menuBlock.menu)}
     />
   ) : null;
 
