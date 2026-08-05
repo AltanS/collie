@@ -6,6 +6,22 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.24.0] - 2026-08-05
+
+### Added
+
+- **Buttons for Claude's `/model` picker, and any modal like it** — a last-resort grammar reads the footer's `<key> to <verb>` hints and renders them, with the arrows the screen advertised, over the mirrored region (5392ac7)
+- **A send is refused before it types when the agent's input box isn't on screen** — the draft is kept, and a second Send is a deliberate "Type anyway?" that still never fires the submit key blind (c4ffe45)
+
+### Fixed
+
+- **A reply is no longer typed into a full-screen picker** — that was the `/model` bug: no grammar claimed the screen, so the message went into it and came back as "stalled" (c4ffe45, 5392ac7)
+- **The stalled message says a key answer probably landed** — the part that made the original report confusing (c4ffe45)
+
+### Changed
+
+- **A generically-detected menu never synthesises a digit** — in the `/model` picker a digit confirms *and* saves your default for new sessions; [ADR 0009](.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md) records why (5392ac7)
+
 ## [0.23.3] - 2026-08-04
 
 ### Fixed
