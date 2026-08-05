@@ -28,4 +28,14 @@ export interface HarnessAdapter {
   /** Re-surface a user draft stranded on the input box's prompt line (null = no box / empty / a
    *  known placeholder). */
   extractInputDraft(lines: StyledLine[]): string | null;
+  /**
+   * Whether this agent's free-text input box is on screen right now — i.e. whether typing a reply
+   * would reach the composer at all, rather than a modal that has the keyboard.
+   *
+   * OPTIONAL, and its absence means "no idea": the reply path's pre-flight (lib/reply-action.ts)
+   * only refuses to type when an adapter answers a definite `false`. An adapter that can't tell
+   * omits it and keeps today's type-then-verify behaviour, which is still safe — the submit key is
+   * withheld either way; the pre-flight just avoids depositing the text in a menu first.
+   */
+  composerReady?(lines: StyledLine[]): boolean;
 }

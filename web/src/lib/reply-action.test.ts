@@ -79,7 +79,10 @@ describe("sendGuardedReply", () => {
     ]);
   });
 
-  it("#34: never sends the submit key when a dialog swallowed the text", async () => {
+  // The PRE-FLIGHT (.adr/0009). The verify-after guard below already kept Enter from answering a
+  // dialog; this keeps the MESSAGE from being deposited in one, which is what the `/model` picker
+  // exposed — no input box at all, so the text went into the picker before anything noticed.
+  it("blocks before typing when the adapter can't see an input box", async () => {
     const calls = harness(() => paneWithDialog);
 
     const out = await sendGuardedReply({
@@ -89,10 +92,39 @@ describe("sendGuardedReply", () => {
       ...instant,
     });
 
+    expect(out.status).toBe("blocked");
+    expect(out).toMatchObject({ error: expect.stringMatching(/input box isn't on screen/i) });
+    // Nothing was typed AT ALL — not even the unsubmitted send_text.
+    expect(calls).toEqual([]);
+  });
+
+  it("#34: force skips the pre-flight but still never sends the submit key blind", async () => {
+    const calls = harness(() => paneWithDialog);
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do not approve anything",
+      agent: "claude",
+      force: true,
+      ...instant,
+    });
+
     expect(out.status).toBe("stalled");
     // THE regression assertion. The old path sent Enter here, which approved the highlighted "Yes".
     expect(calls.some((c) => c.submit)).toBe(false);
     expect(calls).toEqual([{ text: "please do not approve anything", submit: false }]);
+  });
+
+  it("the stalled message warns that a key answer probably landed", async () => {
+    harness(() => paneWithDialog);
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do not approve anything",
+      agent: "claude",
+      force: true,
+      ...instant,
+    });
+    expect(out).toMatchObject({ error: expect.stringMatching(/that key likely landed/i) });
   });
 
   it("#34: does not mistake somebody else's stranded draft for our text", async () => {

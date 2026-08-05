@@ -131,9 +131,14 @@ export function recordReply(body: { text?: string; submit?: boolean }): void {
 }
 // 40 box glyphs clears the 20-glyph border threshold in isBoxBorder (harness/claude/markers.ts).
 const BOX_RULE = "─".repeat(40);
-/** `base` output with the current draft rendered inside a Claude-shaped input box below it. */
+/**
+ * `base` output with the current draft rendered inside a Claude-shaped input box below it. The box is
+ * ALWAYS drawn, empty draft included — that is what a real idle Claude pane looks like, and the reply
+ * path's pre-flight (`composerReady`) now reads it: a fake pane that only grew a box once text had
+ * been typed would report "no input box" and refuse every send before it started.
+ */
 export function paneTextWithDraft(base = "hello from the pane"): string {
-  return typedDraft ? `${base}\n${BOX_RULE}\n❯ ${typedDraft}\n${BOX_RULE}` : base;
+  return `${base}\n${BOX_RULE}\n❯ ${typedDraft}\n${BOX_RULE}`;
 }
 
 // Default happy-path handlers; individual tests can override via server.use(...).

@@ -185,6 +185,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // send?" state on the Send button (auto-disarms after 3 s), the second actually sends. Same shared
   // confirm the command palette uses for /clear.
   const sendConfirm = usePendingConfirm();
+  // Two-tap override for a `blocked` pre-flight ("the input box isn't on screen"). Separate from
+  // sendConfirm so a destructive-command confirm and an override can't clobber each other, and given
+  // a longer window than the 3s default: unlike "Really send?", this one asks you to read a sentence
+  // explaining WHY nothing was typed before deciding to overrule it.
+  const forceConfirm = usePendingConfirm(10_000);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -314,7 +319,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Resolves true only on a VERIFIED send (the text was seen in the pane's input box before the
   // submit key went out). The quick-reply grid consumes the verdict to drive its own ✓ and to decide
   // whether to close its dock, so every early return below has to answer honestly.
-  async function send(value: string, isDraft: boolean): Promise<boolean> {
+  async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
     const t = value.trim();
     if (!t || locked || sending) return false;
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
@@ -356,7 +361,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
       // Guarded: types the text, verifies it reached the input box, and only THEN sends the submit
       // key. A "stalled" outcome means nothing was submitted and the draft must survive (#34).
-      const res = await sendGuardedReply({ paneId, text: t, agent, session });
+      const res = await sendGuardedReply({ paneId, text: t, agent, session, force });
       if (res.status === "sent") {
         if (isDraft) setInput(""); // phone-owned input — clear it once the reply is on its way
         // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
@@ -381,8 +386,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         setLastSent(preview);
         if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
         lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
+        forceConfirm.reset(); // a clean send disarms any leftover override
         onSent(); // you just acted — snap the mirror back to the live tail to see the result
         return true;
+      } else if (res.status === "blocked") {
+        // The pre-flight refused: NOTHING was typed. That is usually right (a menu owns the keyboard),
+        // but the adapter can only report what it can see, so the user gets a deliberate override —
+        // the same two-tap shape as the destructive-send confirm. The second tap skips the pre-flight
+        // ONLY; the type-then-verify guard still runs, so Enter is never fired blind either way.
+        forceConfirm.confirm("force");
+        setStatus(`${res.error} Tap Send again to type anyway.`, "error");
+        return false;
       } else {
         // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
         // probably holding focus). "error" with textDelivered = the text is in the pane but the
@@ -404,6 +418,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // "Really send?" state instead of sending; the confirming second tap goes through. Non-destructive
   // input sends immediately (and any stray armed state is cleared).
   function onSendClick() {
+    // An armed override takes precedence: this tap IS the deliberate "type anyway", so it skips the
+    // destructive re-confirm (already answered on the tap that got blocked) and the pre-flight.
+    if (forceConfirm.pending === "force") {
+      forceConfirm.reset();
+      send(input, true, true);
+      return;
+    }
     const reason = isDestructiveInput(input);
     if (reason && !sendConfirm.confirm("send")) {
       setStatus(`Destructive: ${reason} — tap Send again to confirm`, "info");
@@ -413,6 +434,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     send(input, true);
   }
   const confirmingSend = sendConfirm.pending === "send";
+  const forcingSend = forceConfirm.pending === "force";
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -669,7 +691,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={locked}
             rows={1}
           />
-          {confirmingSend ? (
+          {forcingSend ? (
+            // The pre-flight refused and the user is being offered the override. Labelled for what it
+            // actually does — TYPE the text into whatever is on screen — not "send", because the
+            // submit key is still conditional on the verify step behind it.
+            <Button
+              variant="destructive"
+              className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
+              onClick={onSendClick}
+              disabled={locked || !input.trim() || sending}
+              aria-label="Type anyway?"
+            >
+              Type anyway?
+            </Button>
+          ) : confirmingSend ? (
             <Button
               variant="destructive"
               className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
