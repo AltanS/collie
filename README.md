@@ -35,8 +35,6 @@ serving a Vite + React + shadcn PWA.
 
 ## Demo
 
-https://github.com/user-attachments/assets/6334eab2-d503-4cfe-b770-80c4517e9482
-
 A run through the herd from a phone: the dashboard floats the agent that **needs you** to the top,
 you drill into a space's tabs and panes (long-press a pane pill or a tab chip to rename or close it —
 and a Claude pane shows the name you gave it with `/rename`), answer an `AskUserQuestion` prompt with
