@@ -3,6 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-07-27
 - **Shipped in:** 0.16.0
+- **Amended in scope by:** [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) — with
+  pack federation, "exactly one managed front door" is **per pack**, held by the lead; peers manage
+  none. Nothing below is retracted: the criterion, the funnel prohibition and the ownership rule all
+  stand as written and apply to the lead's door.
 - **Trail:** [PR #26](https://github.com/AltanS/collie/pull/26) (declined,
   [reasoning](https://github.com/AltanS/collie/pull/26#issuecomment-5085567630)) ·
   [PR #36](https://github.com/AltanS/collie/pull/36) (what we kept from it)

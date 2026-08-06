@@ -156,6 +156,9 @@ the unit name; the Herdr action runs from anywhere.
   by the row count. Size it up if a real statusline needs more rows; don't delete it, and don't credit
   it with protection it doesn't provide
   ([ADR 0004](./.adr/0004-the-statusline-run-is-bounded.md)). `chrome.test.ts` pins both halves.
+- **The Herdr socket is never dialled across a machine boundary, and no Herdr vocabulary crosses a
+  pack link** — the lead consumes a peer's Collie API, never its Herdr socket
+  ([ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)).
 
 ## The journal (scrollback the mirror can't give you)
 
@@ -179,3 +182,7 @@ the mapping in `tailscale-managed-handler`, and only ever tears down a mapping m
 Every other tunnel (NetBird, ZeroTier, Cloudflare Tunnel) is `COLLIE_SKIP_SERVE=1` + README Variant
 E: the operator owns the ingress, Collie publishes nothing. **Don't add a second managed front
 door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
+
+**The pack link (lead↔peer, `/pack/v1/*`) is specified in [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md)**
+— two factors gate it (pinned mutual TLS + pack secret), and a peer publishes no front door
+([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
