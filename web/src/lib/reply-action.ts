@@ -46,7 +46,17 @@ const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
  *  other gap on screen is whitespace the operator really typed, so `sent` must carry it too. */
 const FOLD_SEAM = " ";
 
-const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+/** `Intl.Segmenter` is the newest platform API anything in this bundle depends on (Firefox 125,
+ *  Safari 14.1), and this module is in the main chunk — composer.tsx imports it eagerly, so a
+ *  module-scope `new Intl.Segmenter` on an engine without it throws at evaluation and white-screens
+ *  the whole PWA at boot. Feature-detect instead: an unsupported engine must lose grapheme
+ *  precision, never the app. The `null` branches below fall back to per-code-point counting, which
+ *  is exactly what this check did before clusters were understood at all — a match that stops mid
+ *  cluster slips through there, as it always did. */
+const GRAPHEMES =
+  typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
 
 /** A cluster nobody can see: whitespace, or formatting controls that render as nothing at all
  *  (LRM/RLM, zero-width space, soft hyphen). A cluster that merely CONTAINS one still counts — the
@@ -63,6 +73,11 @@ const UNREADABLE = /^[\s\p{Default_Ignorable_Code_Point}]+$/u;
  *  the single flag "🇯🇵" — one character, and a floor half as high as it should be. */
 function visibleLength(s: string): number {
   let n = 0;
+  if (GRAPHEMES === null) {
+    // Code points, not code units — a lone surrogate half is never a character on any engine.
+    for (const ch of s) if (!UNREADABLE.test(ch)) n += 1;
+    return n;
+  }
   for (const segment of GRAPHEMES.segment(s)) if (!UNREADABLE.test(segment.segment)) n += 1;
   return n;
 }
@@ -72,6 +87,14 @@ function visibleLength(s: string): number {
  *  substring of "👨‍👩‍👧‍👦", but it is a DIFFERENT character and must not verify as that one. */
 function characterBoundaries(s: string): Set<number> {
   const bounds = new Set<number>([s.length]);
+  if (GRAPHEMES === null) {
+    let i = 0;
+    for (const ch of s) {
+      bounds.add(i);
+      i += ch.length;
+    }
+    return bounds;
+  }
   for (const segment of GRAPHEMES.segment(s)) bounds.add(segment.index);
   return bounds;
 }

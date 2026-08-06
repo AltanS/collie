@@ -157,6 +157,28 @@ describe("draftCarriesSend", () => {
     expect(draftCarriesSend("run a.*b now", "run a.*b now")).toBe(true);
     expect(draftCarriesSend("run axxb now", "run a.*b now")).toBe(false);
   });
+
+  it("still verifies a wrapped draft on an engine without Intl.Segmenter", async () => {
+    // This module is in the main chunk, so a module-scope `new Intl.Segmenter` would throw at
+    // evaluation on Firefox < 125 / Safari < 14.1 and white-screen the app at boot. Import it with
+    // the constructor gone: it must load, and the guard must keep working at per-code-point
+    // precision — the degradation is grapheme accuracy, never the app.
+    const segmenter = Object.getOwnPropertyDescriptor(Intl, "Segmenter")!;
+    // @ts-expect-error — Intl.Segmenter is not optional in the lib types; that is the point.
+    delete Intl.Segmenter;
+    vi.resetModules();
+    try {
+      const legacy = await import("./reply-action");
+      const sent = "これちなみに電池寿命的にはどうなんだろね。";
+      expect(legacy.draftCarriesSend(sent, "これちなみに電池寿命的にはどうなん だろね。")).toBe(
+        true,
+      );
+      expect(legacy.draftCarriesSend(sent, "別の誰かの下書きです、これは。")).toBe(false);
+    } finally {
+      Object.defineProperty(Intl, "Segmenter", segmenter);
+      vi.resetModules();
+    }
+  });
 });
 
 describe("sendGuardedReply", () => {
