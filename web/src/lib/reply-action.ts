@@ -40,24 +40,102 @@ export type ReplyOutcome =
 /** Minimum visible characters that must match before we believe the input box holds OUR text. */
 export const MIN_MATCH_CHARS = 8;
 
-/** extractInputDraft space-joins a wrapped draft, so compare on collapsed whitespace. */
-function collapse(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
+const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
+
+/** The exact gap extractInputDraft's fold inserts at a wrap seam: one plain space, always. Any
+ *  other gap on screen is whitespace the operator really typed, so `sent` must carry it too. */
+const FOLD_SEAM = " ";
+
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** A cluster nobody can see: whitespace, or formatting controls that render as nothing at all
+ *  (LRM/RLM, zero-width space, soft hyphen). A cluster that merely CONTAINS one still counts — the
+ *  ZWJ inside a family emoji is joining visible characters, not standing in for them. */
+const UNREADABLE = /^[\s\p{Default_Ignorable_Code_Point}]+$/u;
+
+/** Visible characters. The floor below is a claim about how much of the message is legible on
+ *  screen, so it must count what a reader counts — one emoji is one character, not the 11 UTF-16
+ *  code units a ZWJ family sequence happens to occupy, and an invisible control is not a character
+ *  at all however many of them are threaded through the text.
+ *
+ *  Segmenting the string AS GIVEN matters: stripping its spaces first can fuse the neighbours into
+ *  one cluster. "🇯 🇵" is two characters, but strip the space and the regional indicators pair into
+ *  the single flag "🇯🇵" — one character, and a floor half as high as it should be. */
+function visibleLength(s: string): number {
+  let n = 0;
+  for (const segment of GRAPHEMES.segment(s)) if (!UNREADABLE.test(segment.segment)) n += 1;
+  return n;
+}
+
+/** Every offset in `s` where one visible character ends and the next begins, plus both ends. A match
+ *  that starts or stops anywhere else has sliced a character in half — "👩‍👧‍👦" is a code-unit
+ *  substring of "👨‍👩‍👧‍👦", but it is a DIFFERENT character and must not verify as that one. */
+function characterBoundaries(s: string): Set<number> {
+  const bounds = new Set<number>([s.length]);
+  for (const segment of GRAPHEMES.segment(s)) bounds.add(segment.index);
+  return bounds;
 }
 
 /**
  * Whether the input box's visible draft is evidence that `sent` landed there. The box WINDOWS a long
- * draft and folds its wrapped lines with spaces, so exact equality is too strict — requiring the
- * visible draft to be a contiguous slice of what we typed is the strongest claim that survives
- * windowing. The length floor stops a short unrelated remnant ("y", "n", a placeholder) from passing
- * as a match; for a send shorter than the floor, the whole thing must be there.
+ * draft (only its tail is on screen) and FOLDS its wrapped lines together with a space, so exact
+ * equality is too strict — the strongest claim that survives both is that the draft's visible
+ * characters appear contiguously in what we typed.
+ *
+ * The fold is the subtle part. extractInputDraft joins the box's visual lines with a space, which
+ * restores a REAL space only when the box happened to wrap at a word boundary; wrapping mid-run (CJK
+ * has no spaces to break at) fabricates a space the sent text never had. The joined string cannot
+ * say which kind each of its spaces is, and one string can hold both — "これは pull request です"
+ * wrapped mid-CJK has a genuine space AND a fabricated one. So the ambiguity is per-SEAM, not
+ * per-string, and no language test can resolve it.
+ *
+ * Hence: split the draft on whitespace and require its non-space runs to appear in `sent` in order,
+ * with only whitespace between them. Every visible character still has to be there, contiguously and
+ * in order — only the WIDTH of a gap the fold could have produced is treated as unknowable, which is
+ * exactly what the fold destroyed. A draft that dropped or altered a non-space character still fails.
+ *
+ * Only a gap spelled exactly like the fold's own seam (one plain space) may collapse to nothing, and
+ * only that gap is loosened at all. Any other gap — a run of spaces, a tab, an ideographic space —
+ * is whitespace the terminal actually rendered, so `sent` must carry that same whitespace verbatim.
+ * Without the distinction the guard would accept a screen holding "危険　実行" for a send of
+ * "危険実行", or "delete　file" for "delete file": different messages, both authorised.
+ *
+ * The match must also land on visible-character boundaries, because a code-unit substring can cut a
+ * character in half — "👩‍👧‍👦" sits inside "👨‍👩‍👧‍👦" without being it.
+ *
+ * The length floor stops a short unrelated remnant ("y", "n", a placeholder) from passing as a
+ * match; for a send shorter than the floor, the whole thing must be there. It counts non-space
+ * characters, since spaces are the part we just agreed not to trust.
  */
 export function draftCarriesSend(sent: string, draft: string | null): boolean {
   if (draft === null) return false;
-  const s = collapse(sent);
-  const d = collapse(draft);
-  if (d.length === 0) return false;
-  return s.includes(d) && d.length >= Math.min(s.length, MIN_MATCH_CHARS);
+  // Odd indices are the gaps, even indices the runs — the gaps decide how strict each seam is.
+  const parts = draft.trim().split(/(\s+)/);
+  const runs = parts.filter((_part, i) => i % 2 === 0);
+  const gaps = parts.filter((_part, i) => i % 2 === 1);
+  if (runs.length === 0 || runs[0]!.length === 0) return false;
+
+  const visible = runs.reduce((n, run) => n + visibleLength(run), 0);
+  if (visible < Math.min(visibleLength(sent), MIN_MATCH_CHARS)) return false;
+
+  // Runs are whitespace-free by construction, so the joined pattern can never nest quantifiers.
+  const escape = (s: string) => s.replace(REGEXP_META, "\\$&");
+  let pattern = escape(runs[0]!);
+  for (let i = 1; i < runs.length; i++) {
+    const gap = gaps[i - 1]!;
+    pattern += (gap === FOLD_SEAM ? "\\s*" : escape(gap)) + escape(runs[i]!);
+  }
+
+  // Every occurrence gets its own boundary check, not just the first: an earlier hit that happens to
+  // stop mid-character must not mask a later, properly aligned one. Rewinding to one past the hit's
+  // start (rather than to its end) keeps overlapping occurrences reachable.
+  const scan = new RegExp(pattern, "g");
+  const bounds = characterBoundaries(sent);
+  for (let hit = scan.exec(sent); hit !== null; hit = scan.exec(sent)) {
+    if (bounds.has(hit.index) && bounds.has(hit.index + hit[0].length)) return true;
+    scan.lastIndex = hit.index + 1;
+  }
+  return false;
 }
 
 export interface GuardedReplyArgs {
