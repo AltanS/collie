@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.24.1] - 2026-08-06
+
+### Fixed
+
+- **Long/multi-line replies to Claude panes stalled unrecoverably** — the send guard now reads Claude's `[Pasted text #N +M lines]` placeholder as send evidence when consistent with the sent message (ADR 0010) (e9f1a33)
+- **Stranded-draft preview withdraws "Take over" when the line holds only Claude's paste placeholder** (e9f1a33)
+
 ## [0.24.0] - 2026-08-05
 
 ### Added
