@@ -38,4 +38,26 @@ export interface HarnessAdapter {
    * withheld either way; the pre-flight just avoids depositing the text in a menu first.
    */
   composerReady?(lines: StyledLine[]): boolean;
+  /**
+   * SUPPLEMENTAL evidence that `sent` reached the input box, for the case the reply guard's own
+   * literal-substring match structurally cannot see: a harness that swallows what was typed and paints
+   * a TOKEN of its own instead (Claude's `[Pasted text #N +M lines]`), so the box never holds our
+   * words at all and the send stalls forever while every retry re-collapses.
+   *
+   * OPTIONAL, and consulted ONLY after the generic match has already failed (lib/reply-action.ts) —
+   * it can widen what counts as evidence, never narrow it. The contract is strict-or-false: return
+   * true only when the token on screen is CONSISTENT with this exact send, because a `true` here fires
+   * the submit key. An adapter that can't tell omits it and keeps today's stall.
+   */
+  draftCarriesSend?(sent: string, draft: string): boolean;
+  /**
+   * Whether the draft on the input line is the harness's OWN opaque token rather than the user's text
+   * — the same placeholder as above, sitting stranded. The stranded-draft preview keeps showing it
+   * (it is honestly what the screen says) but stands its "Take over" affordance down: copying
+   * `[Pasted text #1 +3 lines]` into the phone composer would make that string the message.
+   *
+   * OPTIONAL; absence means "it's all real text", which is what every harness without a paste
+   * heuristic gets, and is the pre-existing behaviour.
+   */
+  draftIsOpaque?(draft: string): boolean;
 }

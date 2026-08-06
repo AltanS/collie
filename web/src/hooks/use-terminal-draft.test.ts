@@ -124,6 +124,21 @@ describe("isSelfEcho — match-last-sent comparison (mitigation A)", () => {
     expect(isSelfEcho("cat hello.txt to verify", "/rename")).toBe(false);
   });
 
+  // The echo a text comparison structurally cannot see: a harness that collapses a long send into its
+  // own token puts something on the "❯" line sharing no characters with what we sent, so without the
+  // adapter's supplemental check the preview flashes `[Pasted text …]` as a "stranded draft" during
+  // the send's grace window (.adr/0010). Threaded in as a capability — this module stays neutral.
+  it("treats a harness placeholder as our echo when the adapter vouches for it", () => {
+    const carries = (sent: string, draft: string) =>
+      draft.includes("[Pasted text") && sent.includes("\n");
+    const sent = "first line\nsecond line\nthird line";
+    expect(isSelfEcho("[Pasted text #3 +2 lines]", sent, carries)).toBe(true);
+    // Without the capability (a harness with no adapter) nothing changes — it is not our echo.
+    expect(isSelfEcho("[Pasted text #3 +2 lines]", sent)).toBe(false);
+    // And a capability that declines is still a decline.
+    expect(isSelfEcho("[Pasted text #3 +2 lines]", "ship it", carries)).toBe(false);
+  });
+
   it("does not false-match on a tiny shared prefix", () => {
     // Below the min-head guard, a coincidental leading char must not read as our echo.
     expect(isSelfEcho("go", "goodbye everyone, this is a long message")).toBe(false);

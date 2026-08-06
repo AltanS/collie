@@ -1,7 +1,9 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { parseAnsi } from "../ansi";
+import { splitLines } from "../blocks";
 import { claudeAdapter } from "./claude";
 import { describeAdapterConformance, isValidHerdrKey } from "./conformance";
 
@@ -25,6 +27,9 @@ const NEUTRAL = [
   "claude--send-inflight.txt",
   "claude--rename-resolved.txt",
   "claude--draft-wrapped.txt",
+  // A long send that Claude collapsed into `[Pasted text #3 +3 lines]`: still an input box holding a
+  // draft, never a dialog. Pinned below (.adr/0010) — the token must not read as a modal.
+  "claude--draft-paste-placeholder.txt",
   // Input boxes with the background-agents footer below them — still composer chrome (stripped), not a
   // dialog, so they must stay raw / lift no interactive block.
   "claude--draft-footer-empty.txt",
@@ -47,6 +52,31 @@ describeAdapterConformance(claudeAdapter, {
   ownFixtures,
   foreignFixtures: [], // no second adapter yet — the suite tolerates an empty foreign cohort
   neutralFixtures,
+});
+
+// The paste-placeholder screen (.adr/0010). The fail-closed cohort above already pins "no dialog is
+// lifted from it"; what this adds is the POSITIVE half the reply guard depends on — the token screen
+// is an ordinary input box with a draft in it, so the pre-flight lets a send through and the draft the
+// guard polls is the token. If any of this drifted, a long send would go back to being un-sendable.
+describe("claude--draft-paste-placeholder.txt — a collapsed long send is composer chrome", () => {
+  const lines = splitLines(
+    parseAnsi(readFileSync(join(PANES_DIR, "claude--draft-paste-placeholder.txt"), "utf8")),
+  );
+
+  it("reads the placeholder off the ❯ line as the draft", () => {
+    expect(claudeAdapter.extractInputDraft(lines)).toBe("[Pasted text #3 +3 lines]");
+  });
+
+  it("is composer-ready (the pre-flight must not mistake the token for a modal)", () => {
+    expect(claudeAdapter.composerReady!(lines)).toBe(true);
+  });
+
+  it("lifts no interactive block, and the draft it shows is send evidence for a matching send", () => {
+    expect(claudeAdapter.buildBlocks(lines).every((b) => b.kind === "raw")).toBe(true);
+    const draft = claudeAdapter.extractInputDraft(lines)!;
+    expect(claudeAdapter.draftCarriesSend!("one\ntwo\nthree\nfour", draft)).toBe(true);
+    expect(claudeAdapter.draftIsOpaque!(draft)).toBe(true);
+  });
 });
 
 // A focused unit test of the grammar validator itself — the load-bearing helper the suite leans on.

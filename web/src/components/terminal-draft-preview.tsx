@@ -6,8 +6,11 @@ interface TerminalDraftPreviewProps {
   /** The live host/terminal draft text — the caller feeds it the RAW per-poll line, so host typing
    * streams in here. Display-only: this component never writes back into the composer. */
   text: string;
-  /** Deliberate takeover — copy the current draft into the phone-owned composer and hide the preview. */
-  onTakeOver: () => void;
+  /** Deliberate takeover — copy the current draft into the phone-owned composer and hide the preview.
+   * `null` withdraws the affordance: the line holds the harness's OWN opaque token rather than the
+   * user's words (Claude collapses a long paste into `[Pasted text #N +M lines]`), and copying that
+   * into the composer would make the literal string the message. The preview still shows it. */
+  onTakeOver: (() => void) | null;
 }
 
 // A read-only preview of a draft stranded on the terminal's "❯" line (a message queued then recalled
@@ -19,7 +22,8 @@ interface TerminalDraftPreviewProps {
 // honest state — a draft really is stranded on the host's line — so it persists until the user takes it
 // over, sends a message (which sweeps the host line), or the host line clears on its own. Same
 // zinc/text-xs chip chrome as the composer's "You sent:" strip; the draft body clamps to a few readable
-// lines.
+// lines. Take over is withdrawn (not disabled-looking, just absent) when the line is only the harness's
+// own paste placeholder — see `onTakeOver`.
 export function TerminalDraftPreview({ text, onTakeOver }: TerminalDraftPreviewProps) {
   return (
     <div className="mb-2 flex items-start gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
@@ -30,14 +34,16 @@ export function TerminalDraftPreview({ text, onTakeOver }: TerminalDraftPreviewP
           {text}
         </div>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-6 shrink-0 self-center px-2 text-xs font-medium"
-        onClick={onTakeOver}
-      >
-        Take over
-      </Button>
+      {onTakeOver !== null && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 shrink-0 self-center px-2 text-xs font-medium"
+          onClick={onTakeOver}
+        >
+          Take over
+        </Button>
+      )}
     </div>
   );
 }

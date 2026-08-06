@@ -136,6 +136,14 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
       continue; // transient read failure — the bounded loop is the timeout
     }
     if (draftCarriesSend(args.text, draft)) return submitOnly(args);
+    // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
+    // paint a token of its own instead (Claude collapses anything past its paste threshold into
+    // `[Pasted text #N +M lines]`), so the box never holds our words and the match above structurally
+    // cannot succeed — the send stalls forever while every retry re-collapses. The adapter is the only
+    // thing that knows its harness's token and whether this one is consistent with THIS send
+    // (.adr/0010). It can only widen the evidence, never narrow it, so a harness without the
+    // capability is untouched.
+    if (draft !== null && adapter.draftCarriesSend?.(args.text, draft)) return submitOnly(args);
   }
 
   // The text never showed up on the input line. The likeliest cause is a dialog holding focus and

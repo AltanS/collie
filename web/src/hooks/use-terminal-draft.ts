@@ -65,12 +65,25 @@ export function normalizeDraft(s: string): string {
  * exactly after whitespace-normalisation, or when the mirror's copy is a truncated head of what we
  * sent (a long reply gets an "…" ellipsis on the input line) — guarded by a minimum length so a stray
  * short prefix can't false-match an unrelated draft.
+ *
+ * `carriesSend` is the SAME supplemental evidence the reply guard consults (the pane adapter's
+ * `draftCarriesSend`), threaded in by the caller rather than imported: this module is harness-neutral
+ * and must stay that way — the composer already knows the pane's agent, so it resolves the adapter and
+ * passes the capability down. It covers the echo the text comparison above cannot see at all: a
+ * harness that collapses a long send into its own token (Claude's `[Pasted text #N +M lines]`) puts
+ * something on the "❯" line that shares no characters with what we sent, so without this the preview
+ * flashes the placeholder as a "stranded draft" during the send's grace window.
  */
-export function isSelfEcho(draft: string, sent: string): boolean {
+export function isSelfEcho(
+  draft: string,
+  sent: string,
+  carriesSend?: (sent: string, draft: string) => boolean,
+): boolean {
   const d = normalizeDraft(draft);
   const s = normalizeDraft(sent);
   if (d === s) return true;
   const [shorter, longer] = d.length <= s.length ? [d, s] : [s, d];
   const head = shorter.replace(/[….]+$/, "").trimEnd();
-  return head.length >= 8 && longer.startsWith(head);
+  if (head.length >= 8 && longer.startsWith(head)) return true;
+  return carriesSend?.(sent, draft) ?? false;
 }
