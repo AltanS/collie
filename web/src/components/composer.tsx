@@ -19,6 +19,7 @@ import { isDestructiveInput } from "@/lib/destructive";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
+import { adapterFor } from "@/lib/harness";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 
@@ -237,6 +238,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // spam) coalesces into a single pane refetch instead of one per press.
   const keyRevalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The pane's harness adapter, resolved HERE (this is where the agent is known) so the neutral
+  // draft helpers below stay harness-free: they take the capability, never the grammar. Undefined for
+  // any agent without an adapter, which is exactly the "no idea" case those helpers already handle.
+  const adapter = adapterFor(agent ?? undefined);
+
   // Guard against a false stranded-draft: if the detected draft is what we JUST sent, it's our own
   // reply still echoing on the "❯" line before the bridge's pending Enter — suppress both the preview
   // AND the destructive clear-prefix on the next Send. Applied to the raw and the stabilised value
@@ -248,7 +254,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       draft !== null &&
       lastSentRef.current !== null &&
       Date.now() - lastSentRef.current.at < SENT_ECHO_GRACE_MS &&
-      isSelfEcho(draft, lastSentRef.current.text)
+      isSelfEcho(draft, lastSentRef.current.text, adapter?.draftCarriesSend)
     ) {
       return null;
     }
@@ -686,7 +692,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             takes over, sends, or the host line clears. Same zinc/text-xs chrome as the "You sent:"
             strip above. */}
         {showPreview && effectiveRaw !== null && (
-          <TerminalDraftPreview text={effectiveRaw} onTakeOver={takeOverDraft} />
+          <TerminalDraftPreview
+            text={effectiveRaw}
+            // No Take over when the line is only the harness's own opaque token (Claude's
+            // `[Pasted text #N +M lines]`): pulling that into the composer would send the literal
+            // string. The preview keeps showing it — the screen really does say that.
+            onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
+          />
         )}
         <div className="flex items-end gap-2">
           {/* Attach image — messenger-style, left of the input, always available (previously buried

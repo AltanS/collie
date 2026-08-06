@@ -141,6 +141,43 @@ describe("sendGuardedReply", () => {
     expect(calls.some((c) => c.submit)).toBe(false);
   });
 
+  // A send long enough to trip Claude's paste heuristic never appears in the box as itself — the box
+  // holds `[Pasted text #N +M lines]`, so the generic matcher can never see our words and the send
+  // stalled forever, un-sendable, with every retry re-collapsing (.adr/0010). The adapter's
+  // supplemental evidence is what closes that.
+  it("submits when the box holds a paste placeholder consistent with a long multi-line send", async () => {
+    const calls = harness(() => paneWithDraft("[Pasted text #3 +3 lines]"));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "first line\nsecond line\nthird line\nfourth line",
+      agent: "claude",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "first line\nsecond line\nthird line\nfourth line", submit: false },
+      { text: "", submit: true },
+    ]);
+  });
+
+  it("stalls on a placeholder inconsistent with what we sent — no submit key", async () => {
+    // `#N` is a session counter we cannot predict, so somebody else's leftover token looks exactly
+    // like ours; the line count is the only thing tying it to THIS send. 9 lines were never typed.
+    const calls = harness(() => paneWithDraft("[Pasted text #7 +9 lines]"));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "first line\nsecond line\nthird line\nfourth line",
+      agent: "claude",
+      ...instant,
+    });
+
+    expect(out.status).toBe("stalled");
+    expect(calls.some((c) => c.submit)).toBe(false);
+  });
+
   it("keeps the legacy one-shot send for a harness with no adapter", async () => {
     // No grammar → the input box is unreadable, so there is nothing to verify against. Guessing
     // would strand a no-echo input (a shell's sudo prompt) with the submit key withheld forever.

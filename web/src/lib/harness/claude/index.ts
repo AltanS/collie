@@ -16,6 +16,7 @@ import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectMenuRegion } from "./menu";
 import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox } from "./chrome";
+import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
 /**
  * Claude's block pipeline: detect a tail dialog (preview / wizard / prompt-select), replacing it with
@@ -100,4 +101,10 @@ export const claudeAdapter: HarnessAdapter = {
   // The reply path's pre-flight: Claude's input box is exactly what `hasInputBox` finds, and its
   // absence is exactly the condition under which typing lands in a modal instead (#34's shape).
   composerReady: hasInputBox,
+  // Long sends never appear in the box as themselves — Claude collapses them into `[Pasted text #N
+  // +M lines]` — so the reply guard's literal match can't verify them and the send stalls. These two
+  // read that token: as send evidence when it's consistent with what we typed (.adr/0010), and as
+  // "this isn't the user's text" for the stranded-draft preview's Take over.
+  draftCarriesSend: pasteCarriesSend,
+  draftIsOpaque: isPastePlaceholderOnly,
 };

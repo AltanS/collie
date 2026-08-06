@@ -126,6 +126,10 @@ the unit name; the Herdr action runs from anywhere.
   a **string**. Only `events.subscribe` streams.
 - `pane.send_keys` grammar is **`+`-joined, not tmux**: `ctrl+c` (NOT `C-c`), `shift+tab`, `Up`,
   `Tab`, `Escape`, `Enter`, `Backspace`. `PageUp`/`Home`/`End`/`Delete` are unsupported.
+- **A long send to Claude is verified via its paste placeholder** — anything past Claude's paste
+  threshold collapses in the input box to `[Pasted text #N +M lines]`; the guard accepts that token as
+  send evidence only when it is consistent with the message just typed. Don't try to dodge the
+  threshold by chunking sends ([ADR 0010](./.adr/0010-long-sends-are-verified-via-the-paste-placeholder.md)).
 - Pane output is rendered as **React text nodes** (never `innerHTML`); the ANSI parser only derives
   colors/weights. Keep it that way — it's the XSS boundary. Strict CSP + same-origin gate stay.
 - **Collie runs no terminal emulator** — `pane.read` returns Herdr's already-rendered grid, so the
