@@ -39,13 +39,17 @@ https://github.com/user-attachments/assets/6334eab2-d503-4cfe-b770-80c4517e9482
 
 A run through the herd from a phone: the dashboard floats the agent that **needs you** to the top,
 you drill into a space's tabs and panes (long-press a pane pill or a tab chip to rename or close it —
-and a Claude pane shows the name you gave it with `/rename`), switch between herds, and pick up a push
-notification the moment an agent is waiting on input.
+and a Claude pane shows the name you gave it with `/rename`), answer an `AskUserQuestion` prompt with
+a tap, switch between herds, and pick up a push notification the moment an agent is waiting on input.
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard — Needs you, Spaces, Idle · done" width="250"><br><sub><b>Dashboard</b> — agents needing you float to the top</sub></td>
+    <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard — Needs you, Recent, Spaces" width="250"><br><sub><b>Dashboard</b> — agents needing you float to the top</sub></td>
+    <td align="center" width="50%"><img src="assets/ask-question.png" alt="A Claude AskUserQuestion prompt up-leveled into tappable buttons" width="250"><br><sub><b>Ask</b> — Claude's own questions become tappable buttons</sub></td>
+  </tr>
+  <tr>
     <td align="center" width="50%"><img src="assets/space-detail.png" alt="A space's tabs and panes" width="250"><br><sub><b>Space</b> — its tabs and panes, deep-linkable</sub></td>
+    <td align="center" width="50%"><img src="assets/keys.png" alt="The special-keys pad — arrows, Esc, Tab, Ctrl, Alt, Shift" width="250"><br><sub><b>Keys</b> — the special-keys pad, no chords to remember</sub></td>
   </tr>
   <tr>
     <td align="center" width="50%"><img src="assets/session-switcher.png" alt="Session switcher" width="250"><br><sub><b>Session switcher</b> — one bridge, every herd</sub></td>
