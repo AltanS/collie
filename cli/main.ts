@@ -7,10 +7,13 @@ import {
   cmdStart,
   cmdStatus,
   cmdStop,
+  cmdUninstall,
   cmdUrl,
   type LifecycleDeps,
 } from "./lifecycle.ts";
+import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realExec, realFiles, waitReady } from "./sys.ts";
+import { bridgeUrl } from "./tailnet.ts";
 
 // The `collie` binary: argv in, exit code out. This module owns ONLY the dispatch — every verb's
 // behaviour lives in its own module under `cli/`, taking the resolved context as an argument.
@@ -50,7 +53,7 @@ function notYetPorted(name: string, summary: string, internal = false): Command 
  */
 export function lifecycleDeps(io: Io): LifecycleDeps {
   const ctx = loadContext(io.err);
-  return {
+  const deps: LifecycleDeps = {
     ctx,
     io,
     exec: realExec(ctx.env, ctx.home),
@@ -59,13 +62,11 @@ export function lifecycleDeps(io: Io): LifecycleDeps {
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     uid: () => process.getuid?.() ?? 0,
     platform: process.platform,
-    // `serve` lands in M3/03. Until then it is the not-yet-ported verb and fails — and `start`
-    // surviving that failure is itself ported behaviour, so this wiring is exercised, not stubbed.
-    serve: async () => {
-      const serve = findCommand("serve");
-      return serve === undefined ? EXIT.FAIL : await serve.run([], io);
-    },
+    // The front door, over the same resolved context. `start` calls this and tolerates its failure;
+    // `collie serve` is the same function plus the `open:` line.
+    serve: () => Promise.resolve(cmdServe(deps)),
   };
+  return deps;
 }
 
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
@@ -84,7 +85,11 @@ export const COMMANDS: readonly Command[] = [
   lifecycleCommand("start", "start the bridge service (and publish the front door)", cmdStart),
   lifecycleCommand("stop", "stop the bridge service", cmdStop),
   lifecycleCommand("restart", "stop then start", cmdRestart),
-  notYetPorted("uninstall", "remove the service, the front door and its ownership record"),
+  lifecycleCommand(
+    "uninstall",
+    "remove the service, the front door and its ownership record",
+    cmdUninstall,
+  ),
   notYetPorted("update", "advance the checkout, rebuild, restart"),
   notYetPorted("_apply-update", "internal: the second half of `update`, run post-pull", true),
   lifecycleCommand(
@@ -94,8 +99,15 @@ export const COMMANDS: readonly Command[] = [
     true,
   ),
   notYetPorted("build", "typecheck both sides and build the PWA (staged, atomic swap)"),
-  notYetPorted("serve", "publish the single managed `tailscale serve` front door"),
-  notYetPorted("unserve", "tear down the front door we published"),
+  // Invoked directly, `serve` also prints where to point a phone (scripts/collie-ctl.sh:871) —
+  // `start` does not, because its banner already carries the URL.
+  lifecycleCommand("serve", "publish the single managed `tailscale serve` front door", (deps) => {
+    const code = cmdServe(deps);
+    if (code !== EXIT.OK) return code;
+    deps.io.out(`open: ${bridgeUrl(deps.exec, deps.ctx.serveMode, deps.ctx.port)}`);
+    return EXIT.OK;
+  }),
+  lifecycleCommand("unserve", "tear down the front door we published", cmdUnserve),
   lifecycleCommand("status", "is it running, and on what URLs", cmdStatus),
   lifecycleCommand("url", "print the bridge URL", cmdUrl),
   {

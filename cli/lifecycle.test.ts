@@ -1,12 +1,25 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CliContext } from "./context.ts";
-import { EXIT, type Io } from "./io.ts";
+import {
+  BINARY,
+  capture,
+  CONFIG,
+  context,
+  type FakeExec,
+  fakeExec,
+  type FakeFiles,
+  fakeFiles,
+  HOME,
+  ROOT,
+  type Scripted,
+} from "./fakes.ts";
+import { EXIT } from "./io.ts";
 import {
   cmdLogs,
   cmdStart,
   cmdStatus,
   cmdStop,
+  cmdUninstall,
   cmdUrl,
   isOurBridge,
   type LifecycleDeps,
@@ -15,105 +28,11 @@ import {
   stopPidfileProcess,
   supervisionTier,
 } from "./lifecycle.ts";
-import type { Exec, ExecResult, Files } from "./sys.ts";
 
-// The lifecycle, driven end to end against fakes for the two seams. The shell could only reach this
-// coverage by `source`-ing itself and redefining functions in a heredoc; here `start` on all three
-// supervision tiers, the launchd retry, the pidfile guard and the banner are ordinary unit tests.
-
-const ROOT = "/opt/collie";
-const BINARY = "/opt/collie/bin/collie";
-const CONFIG = "/cfg";
-const HOME = "/home/pat";
-
-interface FakeExec extends Exec {
-  /** `<tool> <args…>` for every call, in order. */
-  calls: string[];
-  killed: number[];
-  spawned: { command: string[]; env: Record<string, string>; logPath: string }[];
-}
-
-interface Scripted {
-  /** Tools that are not installed. */
-  absent?: string[];
-  /** Per-call answers, by `<tool> <args…>` prefix match; the first matching entry wins. */
-  answers?: [prefix: string, answer: Partial<ExecResult> | ((n: number) => Partial<ExecResult>)][];
-  /** The process table, for `ps -p <pid> -o command=`. */
-  ps?: Record<number, string>;
-  /** pid handed back by a detached spawn. */
-  spawnPid?: number | null;
-}
-
-function fakeExec(scripted: Scripted = {}): FakeExec {
-  const calls: string[] = [];
-  const killed: number[] = [];
-  const spawned: { command: string[]; env: Record<string, string>; logPath: string }[] = [];
-  const absent = new Set(scripted.absent ?? []);
-  const seen = new Map<string, number>();
-  const answer = (tool: string, args: readonly string[]): ExecResult => {
-    const line = [tool, ...args].join(" ");
-    calls.push(line);
-    if (absent.has(tool)) return { code: 127, stdout: "", stderr: "", found: false };
-    for (const [prefix, a] of scripted.answers ?? []) {
-      if (!line.startsWith(prefix)) continue;
-      const n = (seen.get(prefix) ?? 0) + 1;
-      seen.set(prefix, n);
-      const resolved = typeof a === "function" ? a(n) : a;
-      return { code: 0, stdout: "", stderr: "", found: true, ...resolved };
-    }
-    return { code: 0, stdout: "", stderr: "", found: true };
-  };
-  return {
-    calls,
-    killed,
-    spawned,
-    which: (tool) => (absent.has(tool) ? null : `/fake/${tool}`),
-    capture: answer,
-    inherit: answer,
-    spawnDetached(command, opts) {
-      spawned.push({ command: [...command], env: opts.env, logPath: opts.logPath });
-      return scripted.spawnPid === undefined ? 4242 : scripted.spawnPid;
-    },
-    processCommand: (pid) => scripted.ps?.[pid] ?? null,
-    kill: (pid) => void killed.push(pid),
-  };
-}
-
-interface FakeFiles extends Files {
-  entries: Map<string, { text: string; mode?: number }>;
-}
-
-function fakeFiles(seed: Record<string, string> = {}): FakeFiles {
-  const entries = new Map<string, { text: string; mode?: number }>();
-  for (const [p, text] of Object.entries(seed)) entries.set(p, { text });
-  return {
-    entries,
-    exists: (p) => entries.has(p),
-    read: (p) => entries.get(p)?.text ?? null,
-    write: (p, text, mode) => void entries.set(p, { text, mode }),
-    mkdirp: () => {},
-    remove: (p) => void entries.delete(p),
-  };
-}
-
-function capture(): Io & { stdout: string[]; stderr: string[] } {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-  return { stdout, stderr, out: (l) => stdout.push(l), err: (l) => stderr.push(l) };
-}
-
-function context(env: Record<string, string | undefined> = {}): CliContext {
-  return {
-    root: ROOT,
-    configDir: CONFIG,
-    home: HOME,
-    env,
-    port: 8787,
-    serveMode: "https",
-    socket: "/home/pat/.config/herdr/herdr.sock",
-    handlerFile: `${CONFIG}/tailscale-managed-handler`,
-  };
-}
+// The lifecycle, driven end to end against fakes for the two seams (cli/fakes.ts). The shell could
+// only reach this coverage by `source`-ing itself and redefining functions in a heredoc; here
+// `start` on all three supervision tiers, the launchd retry, the pidfile guard, `uninstall` and the
+// banner are ordinary unit tests.
 
 interface Harness {
   deps: LifecycleDeps;
@@ -483,5 +402,75 @@ describe("logs", () => {
     const empty = harness({ answers: NO_SYSTEMD });
     cmdLogs(empty.deps, []);
     expect(empty.io.stdout).toEqual(["(no log)"]);
+  });
+});
+
+describe("uninstall", () => {
+  const RECORD = `${CONFIG}/tailscale-managed-handler`;
+  const UNIT_FILE = `${HOME}/.config/systemd/user/collie.service`;
+  const PLIST = `${HOME}/Library/LaunchAgents/herdr.collie.plist`;
+  const OWNED = '{"TCP":{"443":{"HTTPS":true}},"Web":{"host.example:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8787"}}}}}';
+
+  test("on systemd: stops, unpublishes, removes the unit, and keeps .env and the checkout", () => {
+    const h = harness({
+      answers: [["tailscale serve status --json", { stdout: OWNED }]],
+      files: {
+        [UNIT_FILE]: "[Unit]\n",
+        [`${CONFIG}/collie.pid`]: "999\n",
+        [`${CONFIG}/.env`]: "COLLIE_PORT=8787\n",
+        [RECORD]: "https:443|host.example:443|http://127.0.0.1:8787\n",
+      },
+    });
+    expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("systemctl --user disable --now collie");
+    expect(h.exec.calls).toContain("systemctl --user daemon-reload");
+    expect(h.exec.calls).toContain("systemctl --user reset-failed collie");
+    expect(h.exec.calls).toContain("tailscale serve --https=443 --set-path=/ off");
+    expect(h.files.exists(UNIT_FILE)).toBe(false);
+    expect(h.files.exists(`${CONFIG}/collie.pid`)).toBe(false);
+    expect(h.files.exists(RECORD)).toBe(false);
+    // `uninstall` removes only what `start` created.
+    expect(h.files.exists(`${CONFIG}/.env`)).toBe(true);
+    expect(h.io.stdout.join("\n")).toContain("✓ uninstalled:");
+    expect(h.io.stdout.join("\n")).toContain(`kept: ${CONFIG}/.env and the checkout`);
+  });
+
+  test("on launchd: the plist goes, then `enable` clears the disable record a reinstall would inherit", () => {
+    const h = harness({
+      answers: NO_SYSTEMD,
+      platform: "darwin",
+      files: { [PLIST]: "<plist/>" },
+    });
+    expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+    expect(h.files.exists(PLIST)).toBe(false);
+    // `stop`'s disable outlives the plist; `enable` resets it. Order matters: plist first.
+    const disable = h.exec.calls.indexOf("launchctl disable gui/501/herdr.collie");
+    const enable = h.exec.calls.indexOf("launchctl enable gui/501/herdr.collie");
+    expect(disable).toBeGreaterThanOrEqual(0);
+    expect(enable).toBeGreaterThan(disable);
+  });
+
+  test("a refused unserve aborts it — a clean report over a live front door would be a lie", () => {
+    const h = harness({
+      // The recorded root was replaced out from under us: teardown refuses and keeps the record.
+      answers: [
+        [
+          "tailscale serve status --json",
+          {
+            stdout:
+              '{"TCP":{"443":{"HTTPS":true}},"Web":{"host.example:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:7000"}}}}}',
+          },
+        ],
+      ],
+      files: {
+        [UNIT_FILE]: "[Unit]\n",
+        [RECORD]: "https:443|host.example:443|http://127.0.0.1:8787\n",
+      },
+    });
+    expect(cmdUninstall(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("refusing to remove");
+    expect(h.files.exists(RECORD)).toBe(true);
+    expect(h.files.exists(UNIT_FILE)).toBe(true);
+    expect(h.io.stdout.join("\n")).not.toContain("✓ uninstalled");
   });
 });
