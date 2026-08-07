@@ -82,9 +82,12 @@ the unit name; the Herdr action runs from anywhere.
   a rebuild is **immediately live — no restart**.
 - **Backend changes** (`bridge/*.ts`): Bun does **not** hot-reload the service — you must
   `systemctl --user restart collie`. Forgetting this is the #1 "my change didn't take" trap.
-- `bun run build` (root) and `collie-ctl.sh build` **typecheck both sides first** (root tsc + web
-  tsc), then build web to `dist-staging` and swap it in atomically — a failed build never empties a
-  live `web/dist`. Bare `cd web && bun run build` still skips typechecking; don't ship from it.
+- `bun run build` (root) is now **one definition**: it runs `collie build`, which gates on
+  `scripts/check-version.sh`, installs both trees, **typechecks both sides** (root tsc + web tsc),
+  compiles `bin/collie`, builds web to `dist-staging`, and swaps both artifacts in **last** — a
+  failed build never empties a live `web/dist` and never replaces the running binary. The binary is
+  always renamed into place, never written through (the running service keeps its old inode until
+  it restarts). Bare `cd web && bun run build` skips all of that; don't ship from it.
 - **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
   browser); backend `bun run test` at the root — Bun's own runner over every pure-logic module in
   `bridge/` (access checks, state engine, config, journal adapters, notifications, uploads, …) plus

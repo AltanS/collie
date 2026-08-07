@@ -12,6 +12,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${ROOT}/bin/collie"
 TMP_ROOT="$(mktemp -d)"
+# The real PATH, for the two sections that need genuine `git` / `mkdir` / `bash` alongside the fakes
+# (`build` and `update` drive real throwaway git repos and a real filesystem). Everything before them
+# runs on a scratch PATH only; the fake directory always comes FIRST, so a fake never loses to a real
+# tool of the same name — in particular the fake `bun`, which is what keeps a real build off this host.
+BASE_PATH="$PATH"
 
 cleanup() { rm -rf "$TMP_ROOT"; }
 trap cleanup EXIT
@@ -146,18 +151,21 @@ for verb in start stop restart uninstall update build serve unserve status url v
   assert_contains "$(cat "${TMP_ROOT}/out")" "$verb"
 done
 
-# A verb the shell still owns is an operational failure (1), not a usage error (2) — it is a real
-# verb, it just is not here yet.
+# Every verb is now in the binary, so there is no "not ported yet" exit left to assert. What takes
+# its place: a real verb that cannot do its job reports an OPERATIONAL failure (1), never a usage
+# error (2). `build` on a tree with no version gate is the cheapest such case — and it proves the
+# gate is still `scripts/check-version.sh` read from the checkout, not a second copy compiled in.
 set +e
-env -i "$BIN" build >/dev/null 2>"${TMP_ROOT}/err"
+env -i PATH="$BIN_DIR" COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" "$BIN" build >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
 assert_eq "$rc" "1"
-assert_contains "$(cat "${TMP_ROOT}/err")" "scripts/collie-ctl.sh build"
+assert_contains "$(cat "${TMP_ROOT}/err")" "the version gate failed"
 
 # ── Config dir ───────────────────────────────────────────────────────────────
 # A legacy ~/.config/collie/.env that is no longer the resolved dir must say so, or config silently
 # stops applying (scripts/collie-ctl.sh:35-39).
+: > "$CALLS"   # the exit-code probes above ran with a PATH, so they could reach the fake `herdr`
 mkdir -p "${HOME_DIR}/.config/collie"
 printf 'COLLIE_PORT=9999\n' > "${HOME_DIR}/.config/collie/.env"
 run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" PATH="$BIN_DIR" "$BIN" version \
@@ -621,6 +629,281 @@ case "$STDOUT" in
   *"✓ uninstalled"*) fail "an aborted uninstall reported success" ;;
 esac
 
+# ── build ────────────────────────────────────────────────────────────────────
+# The five ordered steps, and the invariant they exist for: a build that fails leaves the previously
+# served `web/dist` byte-identical, because the swap is a same-filesystem rename performed LAST.
+#
+# SAFETY: `bun` here is a FAKE on a scratch PATH, and the checkout is a throwaway tree under $TMP_ROOT
+# addressed with COLLIE_PLUGIN_ROOT. Nothing in this section may build, typecheck or install anything
+# in the real checkout — this is the deployment host, and its `web/dist` is served from disk at
+# request time.
+
+B_ROOT="${TMP_ROOT}/build-checkout"
+B_BIN="${TMP_ROOT}/build-bin"
+B_CONFIG="${TMP_ROOT}/build-config"
+B_CALLS="${TMP_ROOT}/build-calls"
+B_FAIL="${TMP_ROOT}/build-fail"          # present → the fake `bun run build` fails
+B_GATE_FAIL="${TMP_ROOT}/build-gate-fail" # present → the fake version gate fails
+mkdir -p "${B_ROOT}/web/dist/assets" "${B_ROOT}/scripts" "${B_ROOT}/bin" "$B_BIN" "$B_CONFIG"
+printf 'id = "herdr.collie"\nversion = "9.9.9"\n' > "${B_ROOT}/herdr-plugin.toml"
+printf 'LIVE BUNDLE\n' > "${B_ROOT}/web/dist/index.html"
+printf 'LIVE ASSET\n' > "${B_ROOT}/web/dist/assets/app.js"
+printf 'OLD BINARY\n' > "${B_ROOT}/bin/collie"
+
+# The version gate is NOT reimplemented in the CLI — it is still `scripts/check-version.sh`, invoked
+# from the checkout. So the fake checkout carries a fake one, and this proves the CLI runs whatever
+# script is there rather than a second copy of the rule.
+cat > "${B_ROOT}/scripts/check-version.sh" <<EOF
+#!/bin/sh
+echo "gate" >> "$B_CALLS"
+[ -f "$B_GATE_FAIL" ] && exit 1
+echo "✓ version 9.9.9 consistent across manifest, package.json, web/package.json, CHANGELOG"
+exit 0
+EOF
+chmod +x "${B_ROOT}/scripts/check-version.sh"
+
+# The fake Bun: records every invocation WITH ITS WORKING DIRECTORY (the cwd is the difference
+# between installing the root tree and installing web/), and produces the artifacts the real one
+# would, so the swap has something to swap.
+cat > "${B_BIN}/bun" <<EOF
+#!/bin/sh
+echo "\${PWD}\\\$ bun \$*" >> "$B_CALLS"
+case "\$1 \$2" in
+  "build --compile")
+    for a in "\$@"; do
+      [ "\$prev" = --outfile ] && printf 'NEW BINARY\n' > "\$a" && chmod +x "\$a"
+      prev="\$a"
+    done
+    exit 0 ;;
+  "run build")
+    [ -f "$B_FAIL" ] && { echo "vite: build failed" >&2; exit 1; }
+    mkdir -p dist-staging/assets
+    printf 'NEW BUNDLE\n' > dist-staging/index.html
+    printf 'NEW ASSET\n' > dist-staging/assets/app.js
+    exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "${B_BIN}/bun"
+
+bld() {
+  : > "$B_CALLS"
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$B_CONFIG" PATH="${B_BIN}:${BASE_PATH}" \
+    COLLIE_PLUGIN_ROOT="$B_ROOT" "$@"
+}
+
+# The happy path: five steps, in order, each in the right tree.
+bld "$BIN" build || fail "\`collie build\` failed: ${STDERR}"
+assert_eq "$(cat "$B_CALLS")" "$(cat <<EOF
+gate
+${B_ROOT}\$ bun install
+${B_ROOT}/web\$ bun install
+${B_ROOT}\$ bun run typecheck
+${B_ROOT}/web\$ bun run typecheck
+${B_ROOT}\$ bun build --compile --target=bun ./cli/main.ts --outfile ${B_ROOT}/bin/collie.new
+${B_ROOT}/web\$ bun run build -- --outDir dist-staging --emptyOutDir
+EOF
+)"
+# Both artifacts were swapped in, and the staging paths are gone.
+assert_eq "$(cat "${B_ROOT}/web/dist/index.html")" "NEW BUNDLE"
+assert_eq "$(cat "${B_ROOT}/bin/collie")" "NEW BINARY"
+[ ! -e "${B_ROOT}/web/dist-staging" ] || fail "build left the staging directory behind"
+[ ! -e "${B_ROOT}/bin/collie.new" ] || fail "build left the staged binary behind"
+
+# The binary is REPLACED BY RENAME, never written in place: a Bun single-file executable carries its
+# payload inside the file and the supervised daemon may be executing it, so the old inode has to
+# survive the swap. An open file descriptor still reading the old bytes is the proof.
+printf 'INODE UNDER TEST\n' > "${B_ROOT}/bin/collie"
+exec 9< "${B_ROOT}/bin/collie"
+bld "$BIN" build || fail "second \`collie build\` failed: ${STDERR}"
+assert_eq "$(cat <&9)" "INODE UNDER TEST"
+exec 9<&-
+assert_eq "$(cat "${B_ROOT}/bin/collie")" "NEW BINARY"
+
+# A failed web build changes NOTHING: same served bundle, same binary, no staging leftovers.
+printf 'LIVE BUNDLE\n' > "${B_ROOT}/web/dist/index.html"
+printf 'LIVE ASSET\n' > "${B_ROOT}/web/dist/assets/app.js"
+printf 'OLD BINARY\n' > "${B_ROOT}/bin/collie"
+: > "$B_FAIL"
+if bld "$BIN" build; then fail "a failed web build reported success"; fi
+assert_contains "$STDERR" "building the web UI failed"
+assert_eq "$(cat "${B_ROOT}/web/dist/index.html")" "LIVE BUNDLE"
+assert_eq "$(cat "${B_ROOT}/web/dist/assets/app.js")" "LIVE ASSET"
+assert_eq "$(cat "${B_ROOT}/bin/collie")" "OLD BINARY"
+[ ! -e "${B_ROOT}/bin/collie.new" ] || fail "a failed build left a half-compiled binary in place"
+rm -f "$B_FAIL"
+
+# The version gate is a gate: it fails, and nothing after it runs.
+: > "$B_GATE_FAIL"
+if bld "$BIN" build; then fail "build ran with an inconsistent version"; fi
+assert_eq "$(cat "$B_CALLS")" "gate"
+assert_eq "$(cat "${B_ROOT}/web/dist/index.html")" "LIVE BUNDLE"
+# … and SKIP_VERSION_CHECK=1 is the documented escape hatch, spelled exactly as it always was.
+bld SKIP_VERSION_CHECK=1 SKIP_TYPECHECK=1 "$BIN" build || fail "the escape hatches stopped working"
+case "$(cat "$B_CALLS")" in
+  *gate*) fail "SKIP_VERSION_CHECK=1 still ran the version gate" ;;
+  *typecheck*) fail "SKIP_TYPECHECK=1 still typechecked" ;;
+esac
+rm -f "$B_GATE_FAIL"
+
+# ── update ───────────────────────────────────────────────────────────────────
+# Both checkout shapes, against REAL throwaway git repos — carried from
+# scripts/collie-ctl.test.sh:698-780. ADR 0006: `herdr plugin install` leaves a detached, shallow
+# checkout with no branch, while a linked clone sits on one, and ONE predicate
+# (`git symbolic-ref -q HEAD`) picks the strategy AND gates the re-link.
+#
+# SAFETY: every repo here is created under $TMP_ROOT and thrown away; `bun` is still the fake, so the
+# post-pull half never builds anything real. `update` MUTATES A CHECKOUT — it may only ever see one
+# of these.
+
+U_DIR="${TMP_ROOT}/update"
+U_BIN="${TMP_ROOT}/update-bin"
+U_CALLS="${TMP_ROOT}/update-calls"
+U_HERDR="${TMP_ROOT}/update-herdr-calls"
+ORIGIN="${U_DIR}/origin"
+mkdir -p "$U_DIR" "$U_BIN"
+
+git_q() { git -c init.defaultBranch=main -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+
+# An upstream with two commits: the release the checkout is on, and the one it must advance to.
+mkdir -p "$ORIGIN"
+git_q -C "$ORIGIN" init -q
+printf 'v1\n' > "${ORIGIN}/VERSION"
+printf 'lock-v1\n' > "${ORIGIN}/bun.lock"
+printf 'id = "herdr.collie"\nversion = "9.9.9"\n' > "${ORIGIN}/herdr-plugin.toml"
+# Enough of a Collie tree for the post-pull half to run against: the version gate the CLI invokes
+# from the checkout (never a copy compiled into the binary), and the `web/` tree it builds in.
+mkdir -p "${ORIGIN}/scripts" "${ORIGIN}/web"
+printf '#!/bin/sh\necho "✓ version 9.9.9 consistent across manifest, package.json, web/package.json, CHANGELOG"\n' \
+  > "${ORIGIN}/scripts/check-version.sh"
+chmod +x "${ORIGIN}/scripts/check-version.sh"
+printf '{"name":"web","version":"9.9.9"}\n' > "${ORIGIN}/web/package.json"
+git_q -C "$ORIGIN" add -A
+git_q -C "$ORIGIN" commit -q -m "first"
+advance_origin() {
+  printf 'v2\n' > "${ORIGIN}/VERSION"
+  git_q -C "$ORIGIN" add -A
+  git_q -C "$ORIGIN" commit -q -m "second"
+}
+
+# The fake Bun for this section records the `_apply-update` handoff — the ONE thing `update` does
+# after advancing the checkout — and otherwise behaves like the build fake.
+cat > "${U_BIN}/bun" <<EOF
+#!/bin/sh
+echo "\${PWD}\\\$ bun \$*" >> "$U_CALLS"
+case "\$1 \$2" in
+  "build --compile")
+    for a in "\$@"; do
+      [ "\$prev" = --outfile ] && printf 'NEW BINARY\n' > "\$a" && chmod +x "\$a"
+      prev="\$a"
+    done
+    exit 0 ;;
+  "run build")
+    mkdir -p dist-staging
+    printf 'NEW BUNDLE\n' > dist-staging/index.html
+    exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "${U_BIN}/bun"
+cat > "${U_BIN}/herdr" <<EOF
+#!/bin/sh
+echo "\$*" >> "$U_HERDR"
+exit 0
+EOF
+cat > "${U_BIN}/systemctl" <<EOF
+#!/bin/sh
+echo "systemctl \$*" >> "$U_CALLS"
+[ "\$2" = "is-active" ] && echo active
+exit 0
+EOF
+cat > "${U_BIN}/tailscale" <<EOF
+#!/bin/sh
+echo "tailscale \$*" >> "$U_CALLS"
+[ "\$1" = "status" ] && echo '{"Self":{"DNSName":"host.example."}}'
+exit 0
+EOF
+chmod +x "${U_BIN}/herdr" "${U_BIN}/systemctl" "${U_BIN}/tailscale"
+
+upd() {
+  local root="$1"; shift
+  : > "$U_CALLS"
+  run_stripped HOME="${TMP_ROOT}/update-home" HERDR_PLUGIN_CONFIG_DIR="${TMP_ROOT}/update-config" \
+    PATH="${U_BIN}:${BASE_PATH}" COLLIE_PORT="$PORT" COLLIE_PLUGIN_ROOT="$root" "$@"
+}
+
+# Shape 1 — the Herdr-managed checkout, created verbatim the way herdr's plugin_install does.
+MANAGED="${U_DIR}/managed"
+mkdir -p "$MANAGED"
+git_q -C "$MANAGED" init -q
+git_q -C "$MANAGED" remote add origin "$ORIGIN"
+git_q -C "$MANAGED" fetch -q --depth 1 origin HEAD
+git_q -C "$MANAGED" checkout -q --detach FETCH_HEAD
+advance_origin
+# `bun install` can rewrite the TRACKED lockfile; a plain checkout would refuse on the dirty tree and
+# re-break update permanently, which is why the detach is `--force`.
+printf 'rewritten-by-bun-install\n' > "${MANAGED}/bun.lock"
+
+upd "$MANAGED" "$BIN" update || fail "\`collie update\` failed on a managed checkout: ${STDERR}"
+assert_contains "$STDOUT" "Herdr-managed checkout"
+assert_contains "$STDOUT" "→ now at"
+assert_eq "$(git -C "$MANAGED" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HEAD)"
+assert_eq "$(cat "${MANAGED}/VERSION")" "v2"
+assert_eq "$(cat "${MANAGED}/bun.lock")" "lock-v1"          # --force discarded the build's rewrite
+assert_eq "$(git -C "$MANAGED" rev-parse --is-shallow-repository)" "true"
+git -C "$MANAGED" symbolic-ref -q HEAD >/dev/null 2>&1 &&
+  fail "the managed checkout should still be detached"
+# The post-pull half runs the code that was just fetched, not the code that started the update.
+assert_contains "$(cat "$U_CALLS")" "${MANAGED}\$ bun ${MANAGED}/cli/main.ts _apply-update"
+# Idempotent: a second update with nothing new upstream is a no-op, not an error.
+upd "$MANAGED" "$BIN" update || fail "a second \`collie update\` failed"
+
+# Shape 2 — a dev clone linked with `herdr plugin link`. On a branch, so it fast-forwards, keeps its
+# branch, and keeps its FULL history (no --depth truncation).
+CLONE="${U_DIR}/clone"
+git_q clone -q "$ORIGIN" "$CLONE"
+git_q -C "$ORIGIN" commit -q --allow-empty -m "third"
+upd "$CLONE" "$BIN" update || fail "\`collie update\` failed on a linked clone: ${STDERR}"
+assert_contains "$STDOUT" "git pull --ff-only"
+assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HEAD)"
+assert_eq "$(git -C "$CLONE" symbolic-ref --short HEAD)" "main"
+assert_eq "$(git -C "$CLONE" rev-list --count HEAD)" "3"
+assert_eq "$(git -C "$CLONE" rev-parse --is-shallow-repository)" "false"
+
+# Shape 3 — not a git checkout at all (a copied tree). It must name the reinstall command rather than
+# emit a raw git error about a missing origin, and it must not reach the rebuild.
+PLAIN="${U_DIR}/plain"
+mkdir -p "$PLAIN"
+printf 'id = "herdr.collie"\nversion = "9.9.9"\n' > "${PLAIN}/herdr-plugin.toml"
+if upd "$PLAIN" "$BIN" update; then fail "update on a non-git tree reported success"; fi
+assert_contains "$STDERR" "herdr plugin install AltanS/collie --yes"
+case "$(cat "$U_CALLS")" in
+  *_apply-update*) fail "a checkout that could not advance still tried to rebuild" ;;
+esac
+
+# ── _apply-update ────────────────────────────────────────────────────────────
+# The second half, run from the freshly fetched code: build → restart → refresh the registry.
+: > "$U_HERDR"
+upd "$MANAGED" "$BIN" _apply-update || fail "\`collie _apply-update\` failed: ${STDERR}"
+assert_contains "$STDOUT" "✓ update complete"
+assert_contains "$(cat "$U_CALLS")" "systemctl --user enable --now collie"
+# The rebuilt artifacts are in place: the binary the restarted unit will execute, and the bundle the
+# bridge serves from disk.
+assert_eq "$(cat "${MANAGED}/bin/collie")" "NEW BINARY"
+assert_eq "$(cat "${MANAGED}/web/dist/index.html")" "NEW BUNDLE"
+# NEVER re-link a managed checkout: `plugin link` re-registers it as source.kind=local, after which
+# Herdr REFUSES `plugin install` — the operator's only other way to refresh (ADR 0006).
+assert_contains "$STDOUT" "registry left alone"
+[ ! -s "$U_HERDR" ] || fail "re-linked a Herdr-managed checkout (would block \`herdr plugin install\`)"
+
+# The linked clone is the shape where the re-link is safe, and still useful.
+: > "$U_HERDR"
+upd "$CLONE" "$BIN" _apply-update || fail "\`collie _apply-update\` failed on a linked clone: ${STDERR}"
+assert_contains "$STDOUT" "herdr registry refreshed (re-linked)"
+assert_contains "$(cat "$U_HERDR")" "plugin link ${CLONE}"
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
+echo "✓ collie CLI build: five ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
+echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull re-exec, the managed re-link refusal"

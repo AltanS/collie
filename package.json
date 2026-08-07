@@ -8,7 +8,7 @@
   "scripts": {
     "start": "bun run bridge/index.ts",
     "dev": "bun --watch bridge/index.ts",
-    "build": "bun run typecheck && cd web && bun install && bun run typecheck && bun run build",
+    "build": "bun run cli/main.ts build",
     "build:web": "cd web && bun run build",
     "build:cli": "bun build --compile --target=bun ./cli/main.ts --outfile bin/collie",
     "web:dev": "cd web && bun run dev",
