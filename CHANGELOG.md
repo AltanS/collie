@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.26.0] - 2026-08-07
+
+### Added
+
+- Native Windows lifecycle through Task Scheduler, PowerShell, and an immutable launcher; Windows ingress remains operator-managed (9ad5773)
+
 ## [0.25.0] - 2026-08-07
 
 ### Added
