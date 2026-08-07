@@ -170,10 +170,18 @@ describe("start, on systemd", () => {
     expect(h.io.stdout.join("\n")).toContain("✓ Collie is running");
   });
 
-  test("warns, but does not fail, when the UI was never built", async () => {
+  test("builds the UI lazily on first run, and a failed build only warns", async () => {
+    // scripts/collie-ctl.sh:169-174 — Herdr runs `[[build]]` on `plugin install` and never on
+    // `plugin link`, so `start` is where an unbuilt checkout gets its UI. It warns rather than
+    // fails: the API runs and the UI 503s, which is legible where a refused `start` is not.
     const h = harness();
     expect(await cmdStart(h.deps)).toBe(EXIT.OK);
-    expect(h.io.stderr.join("\n")).toContain("web/dist is not built");
+    expect(h.io.stdout.join("\n")).toContain("building web UI (first run)");
+
+    const broken = harness({ answers: [[`${ROOT}/web$ bun run build --`, { code: 1 }]] });
+    expect(await cmdStart(broken.deps)).toBe(EXIT.OK);
+    expect(broken.io.stderr.join("\n")).toContain("the UI will 503");
+    expect(broken.io.stdout.join("\n")).toContain("bridge started");
   });
 });
 

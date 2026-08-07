@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import {
   type Command,
@@ -124,22 +125,35 @@ describe("exit codes", () => {
     }
   });
 
-  test("a verb still owned by the shell exits 1 and says where it lives", async () => {
-    const io = capture();
-    expect(await run(["build"], io)).toBe(EXIT.FAIL);
-    expect(io.stdout).toEqual([]);
-    expect(io.stderr.join("\n")).toContain("scripts/collie-ctl.sh build");
-  });
-
-  // NOTHING in this file may dispatch a lifecycle verb: `run(["start"])` here would write a unit
-  // into the developer's own ~/.config and `enable --now` it. Those verbs are covered in
-  // cli/lifecycle.test.ts against fakes, and end to end in scripts/collie-cli.test.sh against a
-  // scratch PATH and a throwaway $HOME. This pins which verbs are which.
-  test("the ported lifecycle verbs no longer delegate to the shell", () => {
-    const delegating = ["uninstall", "update", "_apply-update", "build", "serve", "unserve", "push-test"];
-    const ported = ["start", "stop", "restart", "_exec-bridge", "status", "url", "version", "logs"];
-    for (const name of [...delegating, ...ported]) expect(findCommand(name)).toBeDefined();
-    expect([...delegating, ...ported, "help"].length).toBe(COMMANDS.length);
+  // NOTHING in this file may dispatch a verb that touches the world. Dispatching `start` here would
+  // write a unit into the developer's own ~/.config and `enable --now` it; dispatching `build` did
+  // exactly this once during M3/04 and rebuilt the DEPLOYMENT HOST's live bundle from a dirty tree.
+  // Those verbs are covered in their own suites against fakes, and end to end in
+  // scripts/collie-cli.test.sh against a scratch PATH and a throwaway $HOME.
+  //
+  // `version` and `help` are the only verbs this file may run: they read, they never write.
+  test("every verb is dispatchable, and only the two read-only ones may be run here", () => {
+    const worldTouching = [
+      "start",
+      "stop",
+      "restart",
+      "uninstall",
+      "update",
+      "_apply-update",
+      "_exec-bridge",
+      "build",
+      "serve",
+      "unserve",
+      "status",
+      "logs",
+      "push-test",
+      "url",
+    ];
+    const readOnly = ["version", "help"];
+    for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();
+    expect([...worldTouching, ...readOnly].length).toBe(COMMANDS.length);
+    const source = readFileSync(new URL("./main.test.ts", import.meta.url), "utf8");
+    for (const name of worldTouching) expect(source).not.toContain(`run(["${name}"]`);
   });
 
   test("a verb that throws becomes an operational failure, not a stack trace", async () => {

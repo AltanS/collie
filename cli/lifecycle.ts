@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { cmdUnserve, type ServeDeps } from "./serve.ts";
@@ -232,7 +233,9 @@ async function startLaunchd(deps: LifecycleDeps): Promise<number> {
 // ── Verbs ────────────────────────────────────────────────────────────────────
 
 export async function cmdStart(deps: LifecycleDeps): Promise<number> {
-  warnIfUnbuilt(deps);
+  // The lazy first build. It warns rather than fails: a host whose UI won't build still gets its
+  // API, and the 503 is legible where a refused `start` is not.
+  ensureBuild(deps);
   const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
   const started =
     tier === "systemd"
@@ -445,18 +448,6 @@ export async function statusBanner(deps: LifecycleDeps): Promise<string[]> {
 
 async function printStatusBanner(deps: LifecycleDeps): Promise<void> {
   for (const line of await statusBanner(deps)) deps.io.out(line);
-}
-
-/**
- * The lazy first build lives in `build` (M3/04). Until then — and on any host where the UI was
- * never built — say so and carry on: the API runs, the UI 503s, which is what the shell's
- * `ensure_build` degraded to as well (scripts/collie-ctl.sh:169-174).
- */
-function warnIfUnbuilt(deps: LifecycleDeps): void {
-  if (deps.files.exists(join(deps.ctx.root, "web", "dist", "index.html"))) return;
-  deps.io.err(
-    "warn: web/dist is not built — the API will run but the UI will 503 until you build it",
-  );
 }
 
 function stringEnv(env: Record<string, string | undefined>): Record<string, string> {

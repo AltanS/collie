@@ -1,3 +1,4 @@
+import { cmdBuild } from "./build.ts";
 import { collieVersion, loadContext } from "./context.ts";
 import { EXIT, type Io, realIo } from "./io.ts";
 import {
@@ -11,9 +12,11 @@ import {
   cmdUrl,
   type LifecycleDeps,
 } from "./lifecycle.ts";
+import { cmdPushTest } from "./push.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realExec, realFiles, waitReady } from "./sys.ts";
 import { bridgeUrl } from "./tailnet.ts";
+import { cmdApplyUpdate, cmdUpdate, type UpdateDeps } from "./update.ts";
 
 // The `collie` binary: argv in, exit code out. This module owns ONLY the dispatch — every verb's
 // behaviour lives in its own module under `cli/`, taking the resolved context as an argument.
@@ -26,24 +29,6 @@ export interface Command {
   /** Internal verbs are dispatchable but stay out of the usage line, as in the shell. */
   readonly internal?: boolean;
   run(args: readonly string[], io: Io): number | Promise<number>;
-}
-
-/**
- * A verb the shell still owns. The binary is being filled in one spec at a time, and a verb that
- * silently did nothing would be worse than one that says where the behaviour still lives.
- */
-function notYetPorted(name: string, summary: string, internal = false): Command {
-  return {
-    name,
-    summary,
-    internal,
-    run(_args, io) {
-      io.err(
-        `error: \`collie ${name}\` is not in the binary yet — run \`scripts/collie-ctl.sh ${name}\` for now.`,
-      );
-      return EXIT.FAIL;
-    },
-  };
 }
 
 /**
@@ -69,6 +54,15 @@ export function lifecycleDeps(io: Io): LifecycleDeps {
   return deps;
 }
 
+/**
+ * `update`'s dependencies: the lifecycle set plus `restart`, injected so the update tests can drive
+ * the whole post-pull half without a service manager anywhere near them.
+ */
+function updateDeps(io: Io): UpdateDeps {
+  const deps = lifecycleDeps(io);
+  return { ...deps, restart: () => cmdRestart(deps) };
+}
+
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
 function lifecycleCommand(
   name: string,
@@ -90,15 +84,28 @@ export const COMMANDS: readonly Command[] = [
     "remove the service, the front door and its ownership record",
     cmdUninstall,
   ),
-  notYetPorted("update", "advance the checkout, rebuild, restart"),
-  notYetPorted("_apply-update", "internal: the second half of `update`, run post-pull", true),
+  {
+    name: "update",
+    summary: "advance the checkout, rebuild, restart",
+    run: (_args, io) => cmdUpdate(updateDeps(io)),
+  },
+  {
+    name: "_apply-update",
+    summary: "internal: the second half of `update`, run post-pull",
+    internal: true,
+    run: (_args, io) => cmdApplyUpdate(updateDeps(io)),
+  },
   lifecycleCommand(
     "_exec-bridge",
     "internal: the process the supervisor watches",
     cmdExecBridge,
     true,
   ),
-  notYetPorted("build", "typecheck both sides and build the PWA (staged, atomic swap)"),
+  lifecycleCommand(
+    "build",
+    "typecheck both sides, compile the binary and build the PWA (staged, atomic swap)",
+    cmdBuild,
+  ),
   // Invoked directly, `serve` also prints where to point a phone (scripts/collie-ctl.sh:871) —
   // `start` does not, because its banner already carries the URL.
   lifecycleCommand("serve", "publish the single managed `tailscale serve` front door", (deps) => {
@@ -119,7 +126,14 @@ export const COMMANDS: readonly Command[] = [
       return EXIT.OK;
     },
   },
-  notYetPorted("push-test", "send a one-off Web Push to every subscribed device"),
+  {
+    name: "push-test",
+    summary: "send a one-off Web Push to every subscribed device",
+    run: (args, io) => {
+      const ctx = loadContext(io.err);
+      return cmdPushTest({ ctx, io, files: realFiles }, args);
+    },
+  },
   lifecycleCommand("logs", "tail the service log (default 50 lines)", (deps, args) =>
     cmdLogs(deps, args),
   ),

@@ -16,7 +16,11 @@ export const HOME = "/home/pat";
 export const HANDLER_FILE = `${CONFIG}/tailscale-managed-handler`;
 
 export interface FakeExec extends Exec {
-  /** `<tool> <args…>` for every call, in order. */
+  /**
+   * `<tool> <args…>` for every call, in order. A {@link Exec.runIn} call is recorded with its
+   * working directory prefixed — `<cwd>$ <tool> <args…>` — because for the build steps the cwd IS
+   * the difference between installing the root tree and installing `web/`.
+   */
   calls: string[];
   killed: number[];
   spawned: { command: string[]; env: Record<string, string>; logPath: string }[];
@@ -39,8 +43,8 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
   const spawned: { command: string[]; env: Record<string, string>; logPath: string }[] = [];
   const absent = new Set(scripted.absent ?? []);
   const seen = new Map<string, number>();
-  const answer = (tool: string, args: readonly string[]): ExecResult => {
-    const line = [tool, ...args].join(" ");
+  const answer = (tool: string, args: readonly string[], cwd?: string): ExecResult => {
+    const line = (cwd === undefined ? "" : `${cwd}$ `) + [tool, ...args].join(" ");
     calls.push(line);
     if (absent.has(tool)) return { code: 127, stdout: "", stderr: "", found: false };
     for (const [prefix, a] of scripted.answers ?? []) {
@@ -57,8 +61,9 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
     killed,
     spawned,
     which: (tool) => (absent.has(tool) ? null : `/fake/${tool}`),
-    capture: answer,
-    inherit: answer,
+    capture: (tool, args) => answer(tool, args),
+    inherit: (tool, args) => answer(tool, args),
+    runIn: (tool, args, cwd) => answer(tool, args, cwd),
     spawnDetached(command, opts) {
       spawned.push({ command: [...command], env: opts.env, logPath: opts.logPath });
       return scripted.spawnPid === undefined ? 4242 : scripted.spawnPid;
@@ -72,22 +77,42 @@ export interface FakeFiles extends Files {
   entries: Map<string, { text: string; mode?: number }>;
   /** Paths `remove` refuses to delete — the `rm -f` failures teardown must survive. */
   undeletable: Set<string>;
+  /** Destructive filesystem operations in order: `rm -rf <p>` / `mv <from> <to>`. Ordering is the assertion `build` lives or dies by. */
+  ops: string[];
 }
 
 export function fakeFiles(seed: Record<string, string> = {}): FakeFiles {
   const entries = new Map<string, { text: string; mode?: number }>();
   for (const [p, text] of Object.entries(seed)) entries.set(p, { text });
   const undeletable = new Set<string>();
+  const ops: string[] = [];
+  // Paths are a flat set, so a "directory" is whatever entries sit under it — enough to model the
+  // staging swap, whose whole content is `web/dist/**`.
+  const under = (p: string): string[] =>
+    [...entries.keys()].filter((k) => k === p || k.startsWith(`${p}/`));
   return {
     entries,
     undeletable,
-    exists: (p) => entries.has(p),
+    ops,
+    exists: (p) => under(p).length > 0,
     read: (p) => entries.get(p)?.text ?? null,
     write: (p, text, mode) => void entries.set(p, { text, mode }),
     mkdirp: () => {},
     remove: (p) => {
       if (undeletable.has(p)) return;
       entries.delete(p);
+    },
+    removeTree: (p) => {
+      ops.push(`rm -rf ${p}`);
+      for (const k of under(p)) if (!undeletable.has(k)) entries.delete(k);
+    },
+    rename: (from, to) => {
+      ops.push(`mv ${from} ${to}`);
+      for (const k of under(from)) {
+        const value = entries.get(k)!;
+        entries.delete(k);
+        entries.set(to + k.slice(from.length), value);
+      }
     },
   };
 }

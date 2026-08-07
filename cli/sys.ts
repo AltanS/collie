@@ -1,5 +1,13 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import { connect } from "node:net";
 
@@ -32,6 +40,12 @@ export interface Exec {
   /** Run `tool` with our own stdio — for `journalctl`, whose output IS the result. */
   inherit(tool: string, args: readonly string[]): ExecResult;
   /**
+   * Run `tool` in `cwd` with our own stdio — the build steps, whose output IS the operator's
+   * progress report and whose working directory is load-bearing (the shell's `( cd … && bun … )`:
+   * the root and `web/` trees are installed, typechecked and built separately).
+   */
+  runIn(tool: string, args: readonly string[], cwd: string): ExecResult;
+  /**
    * Start the unsupervised bridge: detached, both streams appended to `logPath`, and unref'd so
    * this process can exit while it keeps running. Returns its pid, or null if it never started.
    */
@@ -53,6 +67,14 @@ export interface Files {
   mkdirp(p: string, mode?: number): void;
   /** Remove a file. Missing is success — this is `rm -f`. */
   remove(p: string): void;
+  /** Remove a tree. Missing is success — this is `rm -rf`. */
+  removeTree(p: string): void;
+  /**
+   * Move `from` onto `to`, replacing it. Both sides are inside the checkout, so this is a
+   * same-filesystem `rename(2)`: near-atomic, and it gives the destination a NEW inode — which is
+   * how `build` can replace `bin/collie` while a supervised process is executing the old one.
+   */
+  rename(from: string, to: string): void;
 }
 
 export function realExec(env: Record<string, string | undefined>, home: string): Exec {
@@ -74,6 +96,17 @@ export function realExec(env: Record<string, string | undefined>, home: string):
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
       const r = Bun.spawnSync([bin, ...args], {
+        env: env as Record<string, string>,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      return { code: r.exitCode, stdout: "", stderr: "", found: true };
+    },
+    runIn(tool, args, cwd) {
+      const bin = resolve(tool);
+      if (bin === null) return NOT_FOUND;
+      const r = Bun.spawnSync([bin, ...args], {
+        cwd,
         env: env as Record<string, string>,
         stdout: "inherit",
         stderr: "inherit",
@@ -138,6 +171,12 @@ export const realFiles: Files = {
   },
   remove(p) {
     rmSync(p, { force: true });
+  },
+  removeTree(p) {
+    rmSync(p, { force: true, recursive: true });
+  },
+  rename(from, to) {
+    renameSync(from, to);
   },
 };
 
