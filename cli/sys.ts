@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -62,6 +63,12 @@ export interface Files {
   exists(p: string): boolean;
   /** File contents, or null when missing/unreadable. */
   read(p: string): string | null;
+  /**
+   * Entry names directly under `p`, or `[]` when it is not a readable directory. The only directory
+   * listing any verb does: `join` clears the herd notification slots of the sessions this machine
+   * runs, and those are discovered from the herdr config root exactly as the bridge discovers them.
+   */
+  list(p: string): string[];
   /** Write `text`, creating the parent directory. `mode` is applied to the file. */
   write(p: string, text: string, mode?: number): void;
   mkdirp(p: string, mode?: number): void;
@@ -160,6 +167,13 @@ export const realFiles: Files = {
       return readFileSync(p, "utf8");
     } catch {
       return null;
+    }
+  },
+  list(p) {
+    try {
+      return readdirSync(p);
+    } catch {
+      return [];
     }
   },
   write(p, text, mode) {

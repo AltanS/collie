@@ -445,11 +445,11 @@ export function dropMembersBehind(data: TrustStoreData): PackChange<{ dropped: s
  * machine and it may come back"; removal means the operator said otherwise, and keeping the pinned
  * fingerprint of a machine you have disowned is a pin waiting to be honoured by mistake.
  */
-export function removeMember(data: TrustStoreData, memberId: string): PackChange<null> | null {
+export function removeMember(data: TrustStoreData, memberId: string): PackChange<{ member: string }> | null {
   if (!data.peers.some((p) => p.memberId === memberId)) return null;
   return {
     next: { ...data, peers: data.peers.filter((p) => p.memberId !== memberId) },
-    result: null,
+    result: { member: memberId },
     audit: { action: "pack.remove", detail: { member: memberId } },
   };
 }
@@ -462,14 +462,236 @@ export function removeMember(data: TrustStoreData, memberId: string): PackChange
  * lead's `pack remove` and this are independent, and a lost disk on one end is handled from the
  * other.
  */
-export function leavePack(data: TrustStoreData): PackChange<null> | null {
+export function leavePack(data: TrustStoreData): PackChange<{ pack: string | null }> | null {
   if (data.pack === null && data.lead === null && data.peers.length === 0 && data.invites.length === 0) {
     return null;
   }
   return {
     next: { ...data, pack: null, lead: null, peers: [], invites: [] },
-    result: null,
+    result: { pack: data.pack?.packId ?? null },
     audit: { action: "pack.leave", detail: { pack: data.pack?.packId, lead: data.lead?.memberId } },
+  };
+}
+
+// ── Distribution, promotion and roaming ──────────────────────────────────────
+//
+// Everything below is driven by an OPERATOR VERB on one machine and lands on another over the pack
+// link (`bridge/pack/router.ts`'s `secret` / `lead` / `leave` routes). They are transitions like the
+// ones above and hold to the same rule: no clock, no entropy, no disk — the caller supplies `now`.
+
+/**
+ * One roster row as it travels between members during a promotion (§14).
+ *
+ * Every field is public by construction: a member id (§4: no routing information), the SHA-256 of a
+ * certificate — a hash of a public document — and an address hint. Nothing secret rides this shape,
+ * which is why a roster may be handed over an admitted link without becoming a second way to leak the
+ * pack secret.
+ */
+export interface RosterEntry {
+  readonly memberId: string;
+  readonly fingerprint: string;
+  readonly address: string;
+}
+
+/** Project a pinned member down to the row that travels. Deliberately drops status and generation. */
+export function rosterEntryOf(member: TrustedMember): RosterEntry {
+  return { memberId: member.memberId, fingerprint: member.fingerprint, address: member.address };
+}
+
+export function parseRosterEntry(value: unknown): RosterEntry | null {
+  if (value === null || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const fingerprint = typeof v.fingerprint === "string" ? normalizeFingerprint(v.fingerprint) : null;
+  if (!isMemberId(v.memberId) || fingerprint === null) return null;
+  if (typeof v.address !== "string" || v.address.length === 0) return null;
+  return { memberId: v.memberId, fingerprint, address: v.address };
+}
+
+export function parseRoster(value: unknown): RosterEntry[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: RosterEntry[] = [];
+  for (const row of value) {
+    const entry = parseRosterEntry(row);
+    if (entry === null) return null;
+    out.push(entry);
+  }
+  return out;
+}
+
+/** Lift a roster row into a pinned member of this collie's own roster, at the current generation. */
+function memberFrom(entry: RosterEntry, role: "lead" | "peer", generation: number, now: number): TrustedMember {
+  return {
+    memberId: entry.memberId,
+    fingerprint: entry.fingerprint,
+    address: entry.address,
+    role,
+    status: "enrolled",
+    enrolledAt: now,
+    secretGeneration: generation,
+  };
+}
+
+/** Is this collie leading? The roster's own answer, in the shape `deriveMode` reads it (mode.ts). */
+export function isLeading(data: TrustStoreData): boolean {
+  return data.lead === null && data.peers.length > 0;
+}
+
+/**
+ * Peer side: adopt a rotated secret handed over by the lead (§8.4).
+ *
+ * Returns `null` — "nothing to do" — for a generation that is not ahead of the one already held, so a
+ * redelivery is a no-op rather than a second write. **There is no grace window**: the previous secret
+ * is replaced, not remembered, so the instant this lands the lead must already be presenting the new
+ * one. That ordering is the distributing verb's job (`collie pack rotate` rotates locally FIRST and
+ * dials with the superseded secret it still holds in memory), and it is why this function does not
+ * try to keep both.
+ */
+export function adoptSecret(
+  data: TrustStoreData,
+  handover: { secret: string; generation: number },
+  now: number,
+): PackChange<{ secretGeneration: number }> | null {
+  if (data.pack === null || data.lead === null) return null;
+  if (handover.secret === "" || handover.generation <= data.pack.secretGeneration) return null;
+  return {
+    next: {
+      ...data,
+      pack: { ...data.pack, secret: handover.secret, secretGeneration: handover.generation, rotatedAt: now },
+      lead: { ...data.lead, secretGeneration: handover.generation },
+    },
+    result: { secretGeneration: handover.generation },
+    audit: { action: "pack.secret.adopted", detail: { generation: handover.generation, from: data.lead.memberId } },
+  };
+}
+
+/**
+ * Peer side: `lead` is the pack's lead from now on (§14) — re-pin it and dial it there instead.
+ *
+ * **A role change, not a re-enrollment**: the pack identity, the pack secret and this collie's own
+ * member id are untouched, which is exactly what §14 promises and what makes promotion survivable
+ * without a fresh token for every member. `peers` is emptied for the reason `acceptEnrollment` empties
+ * it — a peer has no peers, and a store holding both resolves to the conflict mode.
+ */
+export function adoptLead(data: TrustStoreData, lead: RosterEntry, now: number): PackChange<{ lead: string }> | null {
+  if (data.pack === null) return null;
+  if (lead.memberId === data.self.memberId) return null;
+  const already =
+    data.lead !== null &&
+    data.lead.memberId === lead.memberId &&
+    data.lead.fingerprint === lead.fingerprint &&
+    data.lead.address === lead.address &&
+    data.lead.status === "enrolled";
+  if (already) return null;
+  return {
+    next: {
+      ...data,
+      lead: memberFrom(lead, "lead", data.pack.secretGeneration, now),
+      peers: [],
+    },
+    // A meaningful result, not `null`: `commitPackChange` collapses "no change" and "changed, with
+    // nothing to report" into the same `null` at the call site, and the verbs branch on it.
+    result: { lead: lead.memberId },
+    audit: {
+      action: "pack.lead.changed",
+      detail: { lead: lead.memberId, fingerprint: lead.fingerprint, address: lead.address, from: data.lead?.memberId },
+    },
+  };
+}
+
+/**
+ * Old lead side: step down for `newLead` and hand back the roster (§14).
+ *
+ * The roster travels because the new lead has to pin every remaining member and has no other way to
+ * learn their fingerprints — and because §14 reuses existing pins rather than re-enrolling anybody.
+ * The new lead is removed from the list it is handed: it is the recipient, not a member of its own
+ * roster.
+ *
+ * Refuses (`null`) unless this collie really is the lead. A peer that is asked to demote has nothing
+ * to hand over, and answering as though it did would let one peer's promotion rewrite another's.
+ */
+export function demoteSelf(
+  data: TrustStoreData,
+  newLead: RosterEntry,
+  now: number,
+): PackChange<{ roster: RosterEntry[] }> | null {
+  if (data.pack === null || !isLeading(data)) return null;
+  if (newLead.memberId === data.self.memberId) return null;
+  const roster = data.peers
+    .filter((p) => p.status === "enrolled" && p.memberId !== newLead.memberId)
+    .map(rosterEntryOf);
+  return {
+    next: {
+      ...data,
+      lead: memberFrom(newLead, "lead", data.pack.secretGeneration, now),
+      peers: [],
+    },
+    result: { roster },
+    audit: { action: "pack.demote", detail: { lead: newLead.memberId, handed: roster.map((r) => r.memberId) } },
+  };
+}
+
+/**
+ * New lead side: take the crown (§14).
+ *
+ * `roster` is assembled by the verb, not derived here, because the two paths differ in exactly that
+ * argument: a clean handover passes the demoted lead plus everyone it handed over, and `--force`
+ * passes an empty list — the pack the operator can still reach is the pack they get, and every member
+ * missing from it must `collie join` the new lead with a fresh token. Making the list an argument is
+ * what keeps `--force` from being a second implementation of promotion.
+ */
+export function promoteSelf(
+  data: TrustStoreData,
+  roster: readonly RosterEntry[],
+  now: number,
+): PackChange<{ peers: string[] }> | null {
+  if (data.pack === null) return null;
+  const generation = data.pack.secretGeneration;
+  const adopted = roster.filter((r) => r.memberId !== data.self.memberId);
+  return {
+    next: {
+      ...data,
+      lead: null,
+      peers: adopted.map((r) => memberFrom(r, "peer", generation, now)),
+      invites: [],
+    },
+    result: { peers: adopted.map((r) => r.memberId) },
+    audit: {
+      action: "pack.promote",
+      detail: { pack: data.pack.packId, peers: adopted.map((r) => r.memberId), demoted: data.lead?.memberId },
+    },
+  };
+}
+
+/**
+ * `collie reconnect`: a member moved and is reachable somewhere else now.
+ *
+ * **The pin is untouched.** §4 is explicit that an address is a hint and the member id is the stable
+ * thing; a laptop that changed networks has not changed certificate, so re-pinning here would turn
+ * DHCP into a trust decision. Returns `null` when the address is already right — nothing to write.
+ */
+export function updateMemberAddress(
+  data: TrustStoreData,
+  memberId: string,
+  address: string,
+): PackChange<{ from: string }> | null {
+  if (address === "") return null;
+  if (data.lead !== null && data.lead.memberId === memberId) {
+    if (data.lead.address === address) return null;
+    return {
+      next: { ...data, lead: { ...data.lead, address } },
+      result: { from: data.lead.address },
+      audit: { action: "pack.address", detail: { member: memberId, from: data.lead.address, to: address } },
+    };
+  }
+  const peer = data.peers.find((p) => p.memberId === memberId);
+  if (peer === undefined || peer.address === address) return null;
+  return {
+    next: {
+      ...data,
+      peers: data.peers.map((p) => (p.memberId === memberId ? { ...p, address } : p)),
+    },
+    result: { from: peer.address },
+    audit: { action: "pack.address", detail: { member: memberId, from: peer.address, to: address } },
   };
 }
 

@@ -15,14 +15,20 @@ import {
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
 import {
+  adoptLead,
+  adoptSecret,
   commitPackChange,
   consumeInvite,
+  demoteSelf,
   enrollPeer,
+  isLeading,
   parseEnrollRequest,
+  parseRosterEntry,
+  removeMember,
   PACK_PROTOCOL_VERSION,
 } from "./enrollment.ts";
 import { randomToken, type RandomSource } from "./identity.ts";
-import type { TrustStore } from "./trust-store.ts";
+import type { TrustedMember, TrustStore } from "./trust-store.ts";
 import type { SnapshotResponse } from "../types.ts";
 
 // The `/pack/v1/*` surface. This module exists **so that `bridge/server.ts` contains no pack route
@@ -47,6 +53,24 @@ export const PACK_PREFIX = "/pack/v1/";
 export const PACK_ENROLL_PATH = "/pack/v1/enroll";
 export const PACK_HELLO_PATH = "/pack/v1/hello";
 export const PACK_SNAPSHOT_PATH = "/pack/v1/snapshot";
+
+// ── The membership routes (M4/07) ────────────────────────────────────────────
+// Three routes that exist because three operator verbs are otherwise undeliverable: §8.4's rotation
+// "distributes to every reachable peer", §14's promotion "reachable peers are updated by the
+// promotion itself", and §8.4's `collie leave` "revokes on both sides where reachable". Each is the
+// receiving half of a verb in `cli/pack.ts`; none is reachable by a browser, and all three sit behind
+// the same two factors as everything else on the prefix.
+//
+// They are NOT in §5's proxy table and never will be: that table is "the routes the phone already
+// calls, re-exposed". These carry no pane data, take no `?session=`, and are addressed to the collie
+// rather than to anything it fronts.
+
+/** `POST` — the lead hands a peer the rotated pack secret (§8.4). */
+export const PACK_SECRET_PATH = "/pack/v1/secret";
+/** `POST` — "this member is the pack's lead now" (§14). Answered by the old lead and by every peer. */
+export const PACK_LEAD_PATH = "/pack/v1/lead";
+/** `POST` — the caller removes ITSELF from this collie's roster (§8.4, `collie leave`). */
+export const PACK_LEAVE_PATH = "/pack/v1/leave";
 
 /**
  * This collie's own snapshot body, for the one merged route (§9.2). `undefined` ⇒ the `?session=`
@@ -136,6 +160,26 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       });
     }
 
+    if (pathname === PACK_SECRET_PATH && req.method === "POST") {
+      return secret(req, verdict.member, verdict.self);
+    }
+    if (pathname === PACK_LEAD_PATH && req.method === "POST") {
+      return newLead(req, verdict.member, verdict.self);
+    }
+    if (pathname === PACK_LEAVE_PATH && req.method === "POST") {
+      // The caller drops ITSELF, and can drop nothing else — the member id is the admitted one, never
+      // a body field. Removal is idempotent: a second `leave` from a member already gone answers 200
+      // rather than 404, because the operator's question ("am I still listed there?") is answered the
+      // same way either time and a 404 would read as a broken link.
+      await commitPackChange(deps.store, deps.audit, (data) =>
+        data === null ? null : removeMember(data, verdict.member.memberId),
+      );
+      return new Response(JSON.stringify({ removed: verdict.member.memberId }), {
+        status: 200,
+        headers: packResponseHeaders(verdict.self),
+      });
+    }
+
     if (pathname === PACK_SNAPSHOT_PATH && req.method === "GET" && deps.snapshot !== undefined) {
       // The only merged route (§9.2), and the peer's half of it: it answers with its OWN view,
       // never a merged one — a pack link never forwards a `host=`, because a peer has no peers (§4).
@@ -193,6 +237,106 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       headers: packResponseHeaders(verdict.self),
     });
   };
+
+  /** A JSON body, or `null` when it will not parse. Every membership route answers `null` with a 400. */
+  async function readJson(req: Request): Promise<unknown> {
+    try {
+      return await req.json();
+    } catch {
+      return null;
+    }
+  }
+
+  /** A 400 on an admitted link. Free to say why — the caller already passed both factors (§8.5). */
+  function badRequest(self: string, reason: string): Response {
+    return new Response(JSON.stringify({ error: reason }), {
+      status: 400,
+      headers: packResponseHeaders(self),
+    });
+  }
+
+  /**
+   * `POST /pack/v1/secret` — the peer side of rotation (§8.4).
+   *
+   * **Only this collie's own lead may rotate it.** A pack secret is pack-wide, so without that check
+   * any admitted member could hand every other member a value of its own choosing and lock the lead
+   * out of its own pack — a compromised peer escalating to pack-wide denial (§8.5 is explicit that a
+   * compromised peer must not reach past its own machine).
+   *
+   * The request is authenticated by the OUTGOING secret and carries the incoming one; there is no
+   * window in which both are accepted (§8.4), so the lead dials with the superseded value it still
+   * holds in memory and the peer's very next request already needs the new one.
+   */
+  async function secret(req: Request, from: TrustedMember, self: string): Promise<Response> {
+    const body = (await readJson(req)) as Record<string, unknown> | null;
+    const value = typeof body?.secret === "string" ? body.secret : null;
+    const generation = typeof body?.generation === "number" ? body.generation : null;
+    if (value === null || value === "" || generation === null || !Number.isSafeInteger(generation)) {
+      return badRequest(self, "a secret handover needs `secret` and `generation`");
+    }
+    const data = await deps.store.load();
+    if (data === null || data.lead === null || data.lead.memberId !== from.memberId) {
+      // Not our lead. Audited as a refused factor: the member is pinned and holds the secret, so this
+      // is a member exceeding its role rather than a stranger, and that distinction belongs in the log.
+      return refuse(PACK_SECRET_PATH, "not-a-pack-member");
+    }
+    const applied = await commitPackChange(deps.store, deps.audit, (current) =>
+      current === null ? null : adoptSecret(current, { secret: value, generation }, now()),
+    );
+    // A redelivery applies nothing and is still a success: the lead's question is "does this member
+    // hold generation N?", and it does.
+    return new Response(
+      JSON.stringify({ generation: applied?.secretGeneration ?? generation, applied: applied !== null }),
+      { status: 200, headers: packResponseHeaders(self) },
+    );
+  }
+
+  /**
+   * `POST /pack/v1/lead` — "the member calling you is the pack's lead now" (§14).
+   *
+   * One route, two roles, because it is one fact arriving at two kinds of recipient:
+   *   • **the old lead** demotes itself and answers with its roster, which is the only way the new
+   *     lead can pin members it has never spoken to;
+   *   • **a peer** re-pins and starts dialling the new address, keeping its member id and the pack
+   *     secret — §14's role change rather than a re-enrollment.
+   *
+   * **A member may only claim leadership for itself.** The claimed id must be the admitted one, so
+   * nobody can nominate a third party, and the fingerprint travels in the body only so a peer that has
+   * never pinned this member can pin it now.
+   */
+  async function newLead(req: Request, from: TrustedMember, self: string): Promise<Response> {
+    const body = (await readJson(req)) as Record<string, unknown> | null;
+    const claim = parseRosterEntry(body?.lead);
+    if (claim === null) return badRequest(self, "a leadership claim needs `lead`");
+    if (claim.memberId !== from.memberId) {
+      return badRequest(self, "a member may only claim leadership for itself");
+    }
+    const data = await deps.store.load();
+    if (data === null) return refuse(PACK_LEAD_PATH, "not-a-pack-member");
+
+    if (isLeading(data)) {
+      const handover = await commitPackChange(deps.store, deps.audit, (current) =>
+        current === null ? null : demoteSelf(current, claim, now()),
+      );
+      if (handover === null) return badRequest(self, "not the lead of this pack");
+      // The front door is NOT torn down here: publishing and unpublishing `tailscale serve` is
+      // `collie serve`/`unserve`'s business (ADR 0001's ownership record lives beside the CLI, not in
+      // the bridge), and no process may shell out to a tailnet on another operator's say-so. The new
+      // lead prints the exact command the demoted machine's operator must run.
+      return new Response(JSON.stringify({ demoted: self, roster: handover.roster }), {
+        status: 200,
+        headers: packResponseHeaders(self),
+      });
+    }
+
+    const changed = await commitPackChange(deps.store, deps.audit, (current) =>
+      current === null ? null : adoptLead(current, claim, now()),
+    );
+    return new Response(JSON.stringify({ lead: claim.memberId, applied: changed !== null, roster: [] }), {
+      status: 200,
+      headers: packResponseHeaders(self),
+    });
+  }
 
   /**
    * `POST /pack/v1/enroll` — the lead side of §8.2.

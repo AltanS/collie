@@ -35,6 +35,11 @@ const SHELL_VERBS = [
   "logs",
 ];
 
+// The pack verbs (M4/07). They have no shell ancestor — `collie-ctl.sh` never knew about federation
+// — so they are listed separately: the assertion above is "the port kept every verb the shell had",
+// and this one is "the binary grew exactly these".
+const PACK_VERBS = ["join", "leave", "pack", "promote", "reconnect"];
+
 function capture(): Io & { stdout: string[]; stderr: string[] } {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -43,7 +48,7 @@ function capture(): Io & { stdout: string[]; stderr: string[] } {
 
 describe("the verb table", () => {
   test("covers every verb the shell dispatches, plus help", () => {
-    expect(COMMANDS.map((c) => c.name)).toEqual([...SHELL_VERBS, "help"]);
+    expect(COMMANDS.map((c) => c.name)).toEqual([...SHELL_VERBS, ...PACK_VERBS, "help"]);
   });
 
   test("hides exactly the shell's internal verbs from the usage line", () => {
@@ -148,6 +153,10 @@ describe("exit codes", () => {
       "logs",
       "push-test",
       "url",
+      // Every pack verb writes the trust store, dials another machine, or restarts the service —
+      // and `pack` with no subcommand would still resolve a real context and a real audit path. All
+      // of them are covered in cli/pack.test.ts against fakes.
+      ...PACK_VERBS,
     ];
     const readOnly = ["version", "help"];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();

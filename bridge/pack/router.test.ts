@@ -3,12 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import type { SnapshotResponse } from "../types.ts";
 import { mintInvite, type EnrollResponse } from "./enrollment.ts";
-import { counterRandom, fp, leadStore, member, PACK, T0 } from "./fixtures.ts";
+import { counterRandom, fp, leadStore, member, PACK, peerStore, T0 } from "./fixtures.ts";
 import {
   createPackRouter,
   PACK_ENROLL_PATH,
   PACK_HELLO_PATH,
+  PACK_LEAD_PATH,
+  PACK_LEAVE_PATH,
   PACK_PREFIX,
+  PACK_SECRET_PATH,
   PACK_SNAPSHOT_PATH,
   type SnapshotSource,
 } from "./router.ts";
@@ -507,5 +510,143 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
   test("a build with no dispatch wired 404s the whole half of the table", async () => {
     const { handler } = peerRouter();
     expect((await call(handler, `${PACK_PREFIX}pane/w1:p1`, { headers: authed }))!.status).toBe(404);
+  });
+});
+
+// ── The membership routes (M4/07) ────────────────────────────────────────────
+// The receiving halves of `collie pack rotate`, `collie promote` and `collie leave`. Each one is
+// behind the same two factors as everything else on the prefix, and each has a role check on top —
+// because "an admitted member" and "the member allowed to do THIS" are different questions.
+
+const post = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { ...authed, "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+describe("POST /pack/v1/secret — the peer side of rotation (§8.4)", () => {
+  const asLead = (h: ReturnType<typeof harness>) =>
+    createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk"), now: () => T0 });
+
+  test("this collie's own lead hands it the new secret and generation", async () => {
+    const h = harness(peerStore());
+    const res = (await call(asLead(h), PACK_SECRET_PATH, post({ secret: "new-secret-value-xxxxxxxxxxxx", generation: 2 })))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ generation: 2, applied: true });
+    expect(h.data().pack!.secret).toBe("new-secret-value-xxxxxxxxxxxx");
+    expect(h.data().pack!.secretGeneration).toBe(2);
+  });
+
+  test("a redelivery answers 200 and applies nothing — the lead's question is still answered", async () => {
+    const h = harness(peerStore());
+    const res = (await call(asLead(h), PACK_SECRET_PATH, post({ secret: "whatever-value-yyyyyyyyyyyy", generation: 1 })))!;
+    expect(await res.json()).toEqual({ generation: 1, applied: false });
+    expect(h.data().pack!.secret).toBe(PACK.secret);
+  });
+
+  test("a MEMBER THAT IS NOT THE LEAD cannot rotate the pack — a peer must not lock out its lead", async () => {
+    // `desk` leads `nas` and `laptop`; `nas` is admitted, and still refused here.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
+    const res = (await call(handler, PACK_SECRET_PATH, post({ secret: "hostile-value-zzzzzzzzzzzzz", generation: 99 })))!;
+    expect(res.status).toBe(401);
+    expect(h.data().pack!.secret).toBe(PACK.secret);
+    expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+  });
+
+  test("an unadmitted caller cannot reach it at all", async () => {
+    const h = harness(peerStore());
+    const handler = createPackRouter({ store: h.store, audit: h.audit });
+    const res = (await call(handler, PACK_SECRET_PATH, post({ secret: "x".repeat(20), generation: 2 })))!;
+    expect(res.status).toBe(401);
+    expect(h.data().pack!.secret).toBe(PACK.secret);
+  });
+
+  test("a body missing either field is a 400, not a half-applied rotation", async () => {
+    const h = harness(peerStore());
+    for (const body of [{ generation: 2 }, { secret: "x".repeat(20) }, { secret: "", generation: 2 }]) {
+      const res = (await call(asLead(h), PACK_SECRET_PATH, post(body)))!;
+      expect(res.status).toBe(400);
+    }
+    expect(h.data().pack!.secretGeneration).toBe(1);
+  });
+});
+
+describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
+  const claim = { memberId: "nas", fingerprint: fp("nas"), address: "nas.example:8787" };
+
+  test("the old lead demotes itself and answers with its roster", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), now: () => T0 });
+    const res = (await call(handler, PACK_LEAD_PATH, post({ lead: claim })))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      demoted: "desk",
+      roster: [{ memberId: "laptop", fingerprint: fp("laptop"), address: "laptop.example:8787" }],
+    });
+    expect(h.data().lead).toMatchObject({ memberId: "nas", role: "lead" });
+    expect(h.data().peers).toEqual([]);
+    // A role change, not a re-enrollment: the pack identity and secret are untouched.
+    expect(h.data().pack).toEqual(PACK);
+  });
+
+  test("a peer re-pins the new lead and answers with an empty roster — it has no peers", async () => {
+    const h = harness(peerStore());
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk"), now: () => T0 });
+    // The current lead ("desk") is the one that relays a promotion it already accepted.
+    const relayed = { memberId: "desk", fingerprint: fp("desk"), address: "desk.moved:8787" };
+    const res = (await call(handler, PACK_LEAD_PATH, post({ lead: relayed })))!;
+    expect(await res.json()).toEqual({ lead: "desk", applied: true, roster: [] });
+    expect(h.data().lead!.address).toBe("desk.moved:8787");
+  });
+
+  test("a member may only claim leadership FOR ITSELF — nobody nominates a third party", async () => {
+    const h = harness(peerStore());
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk") });
+    const res = (await call(handler, PACK_LEAD_PATH, post({ lead: { ...claim, memberId: "nas" } })))!;
+    expect(res.status).toBe(400);
+    expect(h.data().lead!.memberId).toBe("desk");
+  });
+
+  test("an unadmitted caller cannot move the crown", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit });
+    const res = (await call(handler, PACK_LEAD_PATH, post({ lead: claim })))!;
+    expect(res.status).toBe(401);
+    expect(h.data().lead).toBeNull();
+  });
+
+  test("a malformed claim is a 400 on an admitted link — it may say why", async () => {
+    const h = harness(peerStore());
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk") });
+    const res = (await call(handler, PACK_LEAD_PATH, post({ lead: { memberId: "desk" } })))!;
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "a leadership claim needs `lead`" });
+  });
+});
+
+describe("POST /pack/v1/leave — the caller drops ITSELF (§8.4)", () => {
+  test("an admitted member removes its own roster entry and nothing else", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
+    const res = (await call(handler, PACK_LEAVE_PATH, post({ member: "laptop" })))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ removed: "nas" });
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["laptop"]);
+  });
+
+  test("leaving twice is 200 both times — the operator's question has the same answer", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
+    expect((await call(handler, PACK_LEAVE_PATH, post({})))!.status).toBe(200);
+    // Still pinned in this test's fingerprint source, so it is still admitted — and still 200.
+    expect((await call(handler, PACK_LEAVE_PATH, post({})))!.status).toBe(401);
+  });
+
+  test("an unadmitted caller removes nobody", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit });
+    expect((await call(handler, PACK_LEAVE_PATH, post({})))!.status).toBe(401);
+    expect(h.data().peers).toHaveLength(1);
   });
 });

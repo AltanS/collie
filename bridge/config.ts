@@ -210,11 +210,24 @@ export function defaultSocketPath(
   return join(home, ".config", "herdr", "herdr.sock");
 }
 
+/**
+ * Where runtime state lives: uploads, `audit.log`, `push-subscriptions.json`, `snooze.json` — and the
+ * pack trust store. Herdr's injected dir wins, then the explicit override, then the user state dir.
+ *
+ * Pure and exported because the CLI resolves the same directory from its own `.env`-merged
+ * environment (`cli/context.ts`): the pack verbs write the trust store the bridge reads, so the two
+ * must land on the same path or an enrollment would be invisible to the running service. It names no
+ * key `loadConfig` did not already name — the solo baseline's env-key list is unchanged by it.
+ */
+export function resolveStateDir(
+  env: Record<string, string | undefined> = process.env,
+  home: string = homedir(),
+): string {
+  return env.HERDR_PLUGIN_STATE_DIR ?? env.COLLIE_STATE_DIR ?? join(home, ".local", "state", "collie");
+}
+
 export function loadConfig(): Config {
-  const stateDir =
-    process.env.HERDR_PLUGIN_STATE_DIR ??
-    process.env.COLLIE_STATE_DIR ??
-    join(homedir(), ".local", "state", "collie");
+  const stateDir = resolveStateDir();
 
   const submitKeys = envList("COLLIE_SUBMIT_KEYS");
 

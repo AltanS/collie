@@ -163,6 +163,20 @@ absolute local path (`bridge/server.ts:1090`); nothing serves it back over HTTP 
 pane route family `bridge/server.ts:93` has no read action for uploads). If one is ever added, it is a
 proxied byte-for-byte read like the mirror, and it reads from the **owning peer's** disk.
 
+**The membership routes are a separate, smaller table.** They are not re-exposed phone routes and
+never will be — they carry no pane data, take no `?session=`, and are addressed to the collie rather
+than to anything it fronts. They exist because three operator verbs are otherwise undeliverable:
+
+| Method | Path | Sent by | Meaning |
+|---|---|---|---|
+| `POST` | `/pack/v1/enroll` | a joining machine | The exchange of §8.2. Admitted by the **token**, not by the two factors — the joining peer holds neither yet. |
+| `POST` | `/pack/v1/secret` | the lead | Hands a peer the rotated pack secret (§8.4). Refused unless the caller is *this collie's own lead*: the secret is pack-wide, so any other admitted member accepting one could lock the lead out of its own pack. Authenticated by the **outgoing** secret and carrying the incoming one — there is no instant in which both are accepted. |
+| `POST` | `/pack/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the pack secret. A member may only claim leadership **for itself**. |
+| `POST` | `/pack/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
+
+Everything except `enroll` sits behind the same two factors as the rest of the prefix, and each
+carries a role check on top: *admitted* and *allowed to do this* are different questions.
+
 **Reserved paths.** `/pack/v1/` must never collide with `/auth`, `/auth/*` (reserved for a fronting
 proxy, `bridge/server.ts:1347`, matched `:383`) or `/cdn-cgi/`. It is also **denylisted in the service
 worker's route table** (`web/src/lib/sw-routes.ts`) — a browser never issues a pack request, so a
@@ -301,6 +315,10 @@ operation.
 - **There is no grace window and no rollback secret.** The old secret stops being accepted the moment
   rotation completes on a member. A rotation whose whole point is to invalidate a leaked value cannot
   keep honouring it for a stated period.
+- **Order follows from that.** The rotation lands on the lead **first**, so the lead never hands out a
+  value it does not itself hold; distribution then dials each peer with the *superseded* secret, which
+  is the one that peer still checks. Between the two steps the lead's ordinary poll of an undelivered
+  peer fails — one interval of `stale` (§10.2), which is the price of not keeping a leaked value alive.
 - **A peer offline during rotation is dropped to `unenrolled`.** The lead marks it so; the peer, next
   time it is dialled, fails both factors and stays quiet. Recovery is deliberate and explicit: the
   operator runs `collie join` on that peer again with a **fresh token**.
@@ -568,6 +586,13 @@ Transparent failover is a non-goal.**
   against the new lead, fresh token) — the same rule rotation uses (§8.4), for the same reason.
 - **The phone re-points manually.** The front-door URL is bound to a node; nothing rewrites a
   bookmark. This is stated as an operator step, not hidden.
+- **The old lead's front door is torn down by the old lead.** Collie tears down only a mapping its own
+  ownership record matches ([ADR 0001](./.adr/0001-one-managed-front-door.md)), and that record lives
+  beside the CLI on that machine — no process publishes or unpublishes a tunnel on another operator's
+  say-so. `promote` prints the exact command (`collie unserve`) to run there; it cannot run it.
+- **Nothing else follows the crown.** Push subscriptions, the audit log, outstanding notification tags
+  and activity ledgers are host-local by rule (§2) and stay on the old lead. The phone re-subscribes
+  against the new one. `promote` enumerates this in its own output.
 
 ---
 

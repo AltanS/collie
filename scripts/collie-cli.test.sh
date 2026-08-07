@@ -147,7 +147,8 @@ env -i "$BIN" --help >"${TMP_ROOT}/out" 2>&1
 rc=$?
 set -e
 assert_eq "$rc" "0"
-for verb in start stop restart uninstall update build serve unserve status url version push-test logs; do
+for verb in start stop restart uninstall update build serve unserve status url version push-test logs \
+           join leave pack promote reconnect; do
   assert_contains "$(cat "${TMP_ROOT}/out")" "$verb"
 done
 
@@ -902,8 +903,63 @@ upd "$CLONE" "$BIN" _apply-update || fail "\`collie _apply-update\` failed on a 
 assert_contains "$STDOUT" "herdr registry refreshed (re-linked)"
 assert_contains "$(cat "$U_HERDR")" "plugin link ${CLONE}"
 
+# ── The pack verbs ───────────────────────────────────────────────────────────
+# Under `env -i`, and READ-ONLY: nothing here may enroll, dial, restart or write a trust store. The
+# behaviour of every verb is covered in cli/pack.test.ts against fakes; what only this file can prove
+# is that they survive Herdr's empty environment like every other verb — a pack verb that needed a
+# login shell would fail exactly where `update` once did.
+PACK_STATE="${TMP_ROOT}/pack-state"
+mkdir -p "$PACK_STATE"
+# `CALLS` is re-used as a plain string by the sections above, so the fake tools log is named by its
+# path here — the same one baked into the fakes at the top of this file.
+PACK_CALLS="${TMP_ROOT}/calls"
+: > "$PACK_CALLS"
+
+# A machine that never enrolled: `pack status` says solo and — the zero-tax contract at its sharpest —
+# writes NOTHING. No trust store, no key, no directory materialised by asking a question.
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  PATH="$BIN_DIR" "$BIN" pack status \
+  || fail "\`collie pack status\` failed on a solo machine: ${STDERR}"
+assert_contains "$STDOUT" "mode: solo"
+[ -z "$(ls -A "$PACK_STATE")" ] || fail "\`pack status\` wrote into the state dir on a solo machine"
+
+# `pack` with no subcommand, and with a wrong one, are usage errors that name the real subcommands.
+set +e
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  PATH="$BIN_DIR" "$BIN" pack nonsense >/dev/null 2>"${TMP_ROOT}/err"
+rc=$?
+set -e
+assert_eq "$rc" "2"
+assert_contains "$(cat "${TMP_ROOT}/err")" "unknown pack subcommand \`nonsense\`"
+for sub in invite status rotate remove; do
+  assert_contains "$(cat "${TMP_ROOT}/err")" "$sub"
+done
+
+# `join` without its two arguments is a usage error — and must not dial, enroll or write on the way.
+set +e
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  PATH="$BIN_DIR" "$BIN" join >/dev/null 2>"${TMP_ROOT}/err"
+rc=$?
+set -e
+assert_eq "$rc" "2"
+assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie join"
+[ -z "$(ls -A "$PACK_STATE")" ] || fail "a usage-failed \`join\` still wrote into the state dir"
+
+# `leave` on a machine that is in no pack is a STATE error (3), not a usage error and not a success.
+set +e
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  PATH="$BIN_DIR" "$BIN" leave >/dev/null 2>"${TMP_ROOT}/err"
+rc=$?
+set -e
+assert_eq "$rc" "3"
+assert_contains "$(cat "${TMP_ROOT}/err")" "not in a pack"
+
+# No pack verb above shelled out to anything — no systemctl, no tailscale, no herdr.
+assert_eq "$(cat "$PACK_CALLS")" ""
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
 echo "✓ collie CLI build: five ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
 echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull re-exec, the managed re-link refusal"
+echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
