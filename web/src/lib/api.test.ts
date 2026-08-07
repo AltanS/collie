@@ -1,8 +1,9 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
-import { fixtureSnapshot } from "@/test/handlers";
-import { __resetConnectionHealth, lastHealthyAt } from "./connection-health";
+import { fixturePackSnapshot, fixtureSnapshot } from "@/test/handlers";
+import { __resetConnectionHealth, isLostLatched, lastHealthyAt } from "./connection-health";
+import { isConnecting } from "./connection";
 import {
   checkForUpdates,
   createTab,
@@ -361,6 +362,22 @@ describe("api client — connection-health stamping", () => {
     __resetConnectionHealth(1);
     await fetchPane("w1:p1"); // default handler → 200 body
     expect(lastHealthyAt()).toBeGreaterThan(1);
+  });
+
+  // ── TIER 2 IS PAYLOAD, NOT TRANSPORT ───────────────────────────────────────
+  // A peer being down is a FACT the lead reports inside a 200, so the poll that carried it was live
+  // in every sense tier 1 cares about. If it suppressed the stamp instead, one quiet machine in a
+  // pack would escalate the whole phone to "not connected", pause polling, and take the dashboard
+  // offline — the exact conflation lib/host-health.ts exists to prevent.
+  it("stamps a live moment even when the snapshot reports unreachable peers", async () => {
+    server.use(http.get("/api/snapshot", () => HttpResponse.json(fixturePackSnapshot)));
+    __resetConnectionHealth(1);
+    const snap = await fetchSnapshot();
+    expect(snap.servers?.some((s) => !s.reachable)).toBe(true); // the fixture's `attic` is down
+    expect(lastHealthyAt()).toBeGreaterThan(1);
+    // …and nothing about a peer outage may reach the global escalation or the poll-truth predicate.
+    expect(isLostLatched()).toBe(false);
+    expect(isConnecting({ bridge: snap.bridge, error: false, stalled: false })).toBe(false);
   });
 
   it("does NOT stamp when a poll fails (the throw precedes the stamp)", async () => {

@@ -1,6 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
+
+import { PackProvider } from "./pack-provider";
 
 import type { AgentView, ServerSummary } from "@/lib/types";
 import { ServerSwitcher } from "./server-switcher";
@@ -207,5 +209,37 @@ describe("ServerSwitcher — counts come from the merged rows, not the roster", 
     renderSwitcher([lead, peer, down], undefined, [agentOn("attic", "w1:p1", "blocked")]);
     await userEvent.click(trigger()!);
     expect(within(row(/attic/i)).getByText("1 needs you")).toBeInTheDocument();
+  });
+});
+
+// The switcher's rows read the same tier-2 derivation as every chip (M5/03), so "unreachable" means
+// presented-stale, and the age it prints is measured on the LEAD's clock — the only clock
+// `lastSeenAt` is comparable to.
+describe("ServerSwitcher — staleness on the rows", () => {
+  const quiet: ServerSummary[] = [
+    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+    { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 98_000 },
+  ];
+
+  function renderAt(ts: number) {
+    render(
+      <MemoryRouter>
+        <PackProvider servers={quiet} ts={ts} pollMs={1500}>
+          <ServerSwitcher servers={quiet} scope={{ host: "workshop" }} />
+        </PackProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("does not call a member unreachable while it is inside the tolerance", async () => {
+    renderAt(100_000);
+    await userEvent.click(screen.getByRole("button", { name: /switch host/i }));
+    expect(screen.queryByText(/unreachable/i)).not.toBeInTheDocument();
+  });
+
+  it("labels it once past the tolerance, with the lead-clock age", async () => {
+    renderAt(700_000); // 602s ≈ 10m since the lead last heard from it
+    await userEvent.click(screen.getByRole("button", { name: /switch host/i }));
+    expect(screen.getByText(/unreachable · last seen 10m/i)).toBeInTheDocument();
   });
 });

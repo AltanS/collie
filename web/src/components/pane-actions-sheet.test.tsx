@@ -4,7 +4,8 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
-import type { AgentView } from "@/lib/types";
+import type { AgentView, ServerSummary } from "@/lib/types";
+import { PackProvider } from "./pack-provider";
 import { PaneActionsSheet } from "./pane-actions-sheet";
 
 // The long-press pane actions sheet: an action-list first view (Rename / Close pane), with rename
@@ -26,8 +27,11 @@ const agent: AgentView = {
   focused: false,
 };
 
-function renderSheet(overrides: Partial<React.ComponentProps<typeof PaneActionsSheet>> = {}) {
-  const props: React.ComponentProps<typeof PaneActionsSheet> = {
+/** The sheet's props, so a case that needs its own wrapper can render it itself. */
+function renderProps(
+  overrides: Partial<React.ComponentProps<typeof PaneActionsSheet>> = {},
+): React.ComponentProps<typeof PaneActionsSheet> {
+  return {
     open: true,
     onClose: vi.fn(),
     pane: agent,
@@ -35,6 +39,10 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof PaneActionsS
     onClosed: vi.fn(),
     ...overrides,
   };
+}
+
+function renderSheet(overrides: Partial<React.ComponentProps<typeof PaneActionsSheet>> = {}) {
+  const props = renderProps(overrides);
   render(<PaneActionsSheet {...props} />);
   return props;
 }
@@ -183,5 +191,37 @@ describe("PaneActionsSheet — read-only", () => {
     expect(screen.queryByPlaceholderText("name this pane")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+  });
+});
+
+// Close and rename are §10.3 writes to one specific machine — the pane's own. On a pack member the
+// lead can't reach they are refused BEFORE anything is attempted: there is no queue and no retry, and
+// a half-known "did the close land?" on a real terminal is the worst outcome to hand somebody.
+describe("PaneActionsSheet — a pane on an unreachable machine", () => {
+  const roster: ServerSummary[] = [
+    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
+    { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
+  ];
+  const pack = ({ children }: { children: React.ReactNode }) => (
+    <PackProvider servers={roster} ts={20_000} pollMs={1500}>
+      {children}
+    </PackProvider>
+  );
+
+  it("replaces both actions with the machine's name and its last-seen age", () => {
+    render(<PaneActionsSheet {...renderProps({ pane: { ...agent, host: "workshop" } })} />, {
+      wrapper: pack,
+    });
+    expect(screen.getByText(/workshop is unreachable/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /rename/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /close pane/i })).not.toBeInTheDocument();
+  });
+
+  it("leaves a pane on a reachable member of the same pack exactly as it was", () => {
+    render(<PaneActionsSheet {...renderProps({ pane: { ...agent, host: "bluefin" } })} />, {
+      wrapper: pack,
+    });
+    expect(screen.getByRole("button", { name: /rename/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /close pane/i })).toBeInTheDocument();
   });
 });

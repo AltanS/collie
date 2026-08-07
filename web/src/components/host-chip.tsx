@@ -1,14 +1,18 @@
 import { Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { hostName, serverFor } from "@/lib/hosts";
-import { usePack } from "@/components/pack-provider";
+import { hostName } from "@/lib/hosts";
+import type { HostState } from "@/lib/host-health";
+import { useHostHealth, usePack } from "@/components/pack-provider";
 
 interface HostChipProps {
   /** The machine this row/sheet/send is about. Undefined = nothing to say (and nothing renders). */
   host: string | undefined;
-  /** Override the roster's reachability (the switcher renders its own rows). */
-  reachable?: boolean;
+  /**
+   * Override the derived tier-2 state, for a surface that has already resolved it (the server
+   * switcher renders its own rows and would otherwise derive the same fact twice).
+   */
+  state?: HostState;
   /** Extra emphasis for the write surfaces — a touch larger, with the "on" preposition. */
   variant?: "tag" | "target";
   className?: string;
@@ -29,15 +33,20 @@ interface HostChipProps {
 // server glyph rather than the switcher's layers, and it is a plain text node — a host name comes
 // from the operator's `join` label and is rendered as text, never markup, like every other
 // user-supplied string that reaches this UI.
-export function HostChip({ host, reachable, variant = "tag", className }: HostChipProps) {
+export function HostChip({ host, state, variant = "tag", className }: HostChipProps) {
   const { servers, multi } = usePack();
-  // No pack, or nothing to name: the whole dimension is invisible.
+  const health = useHostHealth(host);
+  // No pack, or nothing to name: the whole dimension is invisible. (Hooks run first — the hide rule
+  // is a render decision, not a reason to call a hook conditionally.)
   if (!multi || host === undefined) return null;
 
   const name = hostName(servers, host) ?? host;
-  // An unlisted host (a member that departed while you were looking at it) is not assumed healthy —
-  // it renders as itself, unreachable, rather than being dropped or quietly relabelled.
-  const live = reachable ?? serverFor(servers, host)?.reachable ?? false;
+  // TIER 2, and only tier 2: this chip degrades when the LEAD can't reach this member. It says
+  // nothing about whether the phone can reach the lead — that is the header pill, the banner and the
+  // dog, all reading one shared clock, and duplicating their answer here is how two surfaces start
+  // disagreeing about the same outage. An unlisted host (a member that departed while you were
+  // looking at it) resolves to `unknown` rather than being dropped or quietly assumed healthy.
+  const live = (state ?? health?.state ?? "unknown") === "live";
   const target = variant === "target";
 
   return (

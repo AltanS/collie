@@ -34,6 +34,7 @@ const homeData = (snap: Partial<SnapshotResponse>, scope: HomeData["scope"] = {}
   tabs: snap.tabs ?? fixtureTabs,
   sessions: snap.sessions ?? [],
   servers: snap.servers ?? [],
+  ts: snap.ts ?? 0,
   scope,
   snoozedUntil: null,
   update: undefined,
@@ -49,7 +50,7 @@ function renderHome(data: HomeData) {
         path: "/",
         loader: () => data,
         element: (
-          <PackProvider servers={data.servers}>
+          <PackProvider servers={data.servers} ts={data.ts} pollMs={1500}>
             <HomeRoute />
           </PackProvider>
         ),
@@ -142,5 +143,41 @@ describe("the dashboard across machines", () => {
     const leadRow = screen.getAllByRole("button", { name: /webapp/i })[0]!;
     await userEvent.click(leadRow);
     await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap1"));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIER 2 on the dashboard (M5/03). The milestone's counsel constraint: the agent you opened the app
+// to unblock is exactly the one on the machine that just went quiet. It stays where it is.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The same pack, with the machine holding the blocked peer agent gone quiet. */
+const packedWithQuietPeer = () =>
+  homeData({
+    agents: fixturePackAgents,
+    shellPanes: fixturePackShellPanes,
+    sessions: fixturePackSessions,
+    servers: fixtureServers.map((s) =>
+      s.id === "workshop" ? { ...s, reachable: false, lastSeenAt: 1_000 } : s,
+    ),
+    ts: 60_000, // the lead's clock, well past the 3 × 1500ms tolerance
+  });
+
+describe("a machine going quiet does not hide what is on it", () => {
+  it("keeps the unreachable host's blocked agent in NEEDS YOU, labelled — never dropped or demoted", async () => {
+    renderHome(packedWithQuietPeer());
+    await settled();
+    // `triage()` sorts on status and age and knows nothing about hosts — verified here as behaviour
+    // rather than rebuilt: the peer's blocked row is present, and still carries its host label.
+    expect(screen.getAllByRole("button", { name: /moonward/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/Host: workshop \(unreachable\)/i).length).toBeGreaterThan(0);
+  });
+
+  it("raises no app-wide connection chrome — the lead answered, so the phone is not offline", async () => {
+    renderHome(packedWithQuietPeer());
+    await settled();
+    // Tier 1's copy, none of which belongs to a peer outage.
+    expect(screen.queryByText(/not connected/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reconnecting/i)).not.toBeInTheDocument();
   });
 });

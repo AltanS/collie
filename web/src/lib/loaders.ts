@@ -78,6 +78,14 @@ export interface HomeData {
    * ask "more than one?" (lib/hosts.ts `isMultiHost`), never "was the key present?".
    */
   servers: ServerSummary[];
+  /**
+   * The snapshot's own timestamp — the LEAD's clock when it assembled this body. Carried because it
+   * is the only sound thing to measure `ServerSummary.lastSeenAt` against, which the lead also stamps
+   * (lib/host-health.ts; PACK_PROTOCOL.md §10.2). Measuring a peer's freshness with the phone's clock
+   * would measure the skew between two machines instead. `0` on the empty stale shape below, where
+   * there are no servers to date anyway.
+   */
+  ts: number;
   /** The scope this snapshot was fetched for (host + session) — so children don't re-derive it. */
   scope: Scope;
   /** Active notification snooze deadline (epoch ms), or null when not snoozed. */
@@ -159,6 +167,7 @@ function toHomeData(snap: SnapshotResponse, scope: Scope, error: boolean): HomeD
     tabs: snap.tabs ?? [],
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
+    ts: snap.ts ?? 0,
     scope,
     snoozedUntil: snap.notifications?.snoozedUntil ?? null,
     update: snap.update,
@@ -184,6 +193,7 @@ function staleHome(scope: Scope): HomeData {
         tabs: [],
         sessions: [],
         servers: [],
+        ts: 0,
         scope,
         snoozedUntil: null,
         update: undefined,

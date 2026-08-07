@@ -55,6 +55,7 @@ function makeData(agents: AgentView[], shellPanes: AgentView[] = []): HomeData {
     tabs: [],
     sessions: [],
     servers: [],
+    ts: 0,
     scope: {},
     snoozedUntil: null,
     update: undefined,

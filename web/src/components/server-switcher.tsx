@@ -6,7 +6,8 @@ import { Check, Crown, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/components/ui/sheet";
 import { homePath } from "@/lib/nav";
-import { timeAgoShort } from "@/lib/format";
+import { hostHealth } from "@/lib/host-health";
+import { usePack } from "@/components/pack-provider";
 import { countsFor, hostCounts } from "@/lib/hosts";
 import type { Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary } from "@/lib/types";
@@ -43,6 +44,11 @@ export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherPr
   const current = scope.host;
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  // TIER-2 health, already derived once at the data root against the LEAD's clock (the only clock
+  // `lastSeenAt` is comparable to — lib/host-health.ts). Mounted outside a provider (this component's
+  // own unit tests), the fallback re-derives with no clock at all, which skips §10.2's tolerance and
+  // presents the lead's plain boolean — the same answer this sheet gave before the threshold existed.
+  const { health } = usePack();
 
   const reachableCount = servers.filter((s) => s.reachable).length;
   const onPeer = current !== undefined;
@@ -84,11 +90,12 @@ export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherPr
             {servers.map((s) => {
               const active = isActive(s);
               const c = countsFor(counts, s.id);
+              const h = health.get(s.id) ?? hostHealth(s, { at: 0, pollMs: 0 });
               return (
                 <li key={s.id}>
                   <button
                     type="button"
-                    disabled={!s.reachable}
+                    disabled={!h.writable}
                     onClick={() => select(s)}
                     aria-current={active ? "true" : undefined}
                     className={cn(
@@ -96,7 +103,7 @@ export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherPr
                       active
                         ? "bg-accent text-accent-foreground"
                         : "hover:bg-muted/60 active:bg-muted",
-                      !s.reachable && "cursor-not-allowed opacity-60 hover:bg-transparent",
+                      !h.writable && "cursor-not-allowed opacity-60 hover:bg-transparent",
                     )}
                   >
                     <Server className="size-4 shrink-0 text-muted-foreground" />
@@ -112,25 +119,26 @@ export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherPr
                         {/* Listed, never hidden (PACK_PROTOCOL.md §10.2): a member that is down or
                             speaking another protocol keeps its row, its counts and an honest reason.
                             A vanished machine reads as "I have no agents there", which is a lie. */}
-                        {s.protocol === "incompatible" ? (
+                        {h.incompatible ? (
                           <span className="text-[11px] font-medium text-status-blocked">
                             incompatible
                           </span>
                         ) : (
-                          !s.reachable && (
+                          h.state !== "live" && (
                             <span className="text-[11px] text-muted-foreground">
-                              {/* Freshness is the LEAD's receipt time, and 0 means it has never
-                                  answered at all — which "0s ago" would misreport as just-now. */}
-                              {s.lastSeenAt > 0
-                                ? `unreachable · last seen ${timeAgoShort(s.lastSeenAt)}`
-                                : "unreachable · never seen"}
+                              {/* Presented-stale, not merely "the last poll missed" (§10.2): below the
+                                  tolerance a dropped sweep is invisible here, so a healthy member
+                                  can't flash "unreachable" between two good polls. The age is the
+                                  LEAD's receipt time measured on the LEAD's clock, and 0 means it has
+                                  never answered at all — which "0s ago" would misreport as just-now. */}
+                              {`unreachable · ${h.lastSeenLabel}`}
                             </span>
                           )
                         )}
                       </div>
                       {/* The peer's refusal reason, verbatim — never paraphrased, because the
                           operator's next move is to read it and go fix a version somewhere. */}
-                      {s.protocol === "incompatible" && s.protocolDetail && (
+                      {h.incompatible && h.protocolDetail && (
                         <p className="mt-0.5 break-words font-mono text-[10px] leading-tight text-muted-foreground">
                           {s.protocolDetail}
                         </p>

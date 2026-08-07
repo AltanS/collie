@@ -153,3 +153,37 @@ describe("write surfaces name the machine", () => {
     expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
   });
 });
+
+// The §10.2 presented-stale threshold, seen from the chip (M5/03). The tolerance is what stops a
+// single dropped sweep flapping every label in the herd list between two good polls.
+describe("HostChip — presented-stale, not merely 'the last poll missed'", () => {
+  const quiet: ServerSummary[] = [
+    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+    { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 98_000 },
+  ];
+  const at = (ts: number) =>
+    ({ children }: { children: React.ReactNode }) => (
+      <PackProvider servers={quiet} ts={ts} pollMs={1500}>
+        {children}
+      </PackProvider>
+    );
+
+  it("stays plain while inside the tolerance — one missed sweep is invisible", () => {
+    // 2s since the lead last heard from it, against a 4.5s (3 × 1500ms) tolerance.
+    render(<HostChip host="workshop" />, { wrapper: at(100_000) });
+    expect(screen.getByLabelText("Host: workshop")).toBeInTheDocument();
+  });
+
+  it("says unreachable once past it", () => {
+    render(<HostChip host="workshop" />, { wrapper: at(110_000) });
+    expect(screen.getByLabelText(/workshop \(unreachable\)/i)).toBeInTheDocument();
+  });
+
+  it("never degrades the LEAD — whether the phone can reach it is the other tier's answer", () => {
+    // Even with a `ts` far past any tolerance, the lead's chip is plain: a lead we couldn't reach
+    // would produce no snapshot at all, and duplicating tier 1's answer here is how two surfaces
+    // start disagreeing about one outage.
+    render(<HostChip host="bluefin" />, { wrapper: at(10_000_000) });
+    expect(screen.getByLabelText("Host: bluefin")).toBeInTheDocument();
+  });
+});
