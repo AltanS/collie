@@ -33,6 +33,35 @@ const SEND_OPTIONS = { TTL: 21_600, topic: "collie-herd", urgency: "high" } as c
 // update stays relevant far longer than a transient "needs you".
 const UPDATE_SEND_OPTIONS = { TTL: 259_200, topic: "collie-update" } as const;
 
+// How many consecutive same-origin-witnessed failures retire a subscription (see broadcast()).
+// Broadcasts are event-driven — several in an active hour — so five clears a stale device within a
+// day of normal use while still absorbing a run of transients that slipped past the origin guard.
+const EVICT_AFTER = 5;
+
+/** The push service an endpoint belongs to, used to tell "this device is dead" from "this service
+ *  is rejecting us". Falls back to the raw endpoint if it won't parse — an unparseable endpoint is
+ *  then its own origin, which can never witness a sibling's success, so it is never evicted. */
+function pushServiceOrigin(endpoint: string): string {
+  try {
+    return new URL(endpoint).origin;
+  } catch {
+    return endpoint;
+  }
+}
+
+/** What actually went wrong, for the log. `web-push` throws a WebPushError whose `message` is the
+ *  constant "Received unexpected response code" — useless on its own — while the status and the
+ *  service's own reason (Apple's `{"reason":"BadDeviceToken"}`, FCM's text) sit unread on the error.
+ *  Surfacing them is what makes a transient 5xx distinguishable from a permanent rejection. */
+function describeSendError(err: unknown): string {
+  const e = err as { statusCode?: number; body?: unknown };
+  const message = err instanceof Error ? err.message : String(err);
+  const status = typeof e.statusCode === "number" ? ` status=${e.statusCode}` : "";
+  const raw = typeof e.body === "string" ? e.body.replace(/\s+/g, " ").trim() : "";
+  const body = raw ? ` body=${raw.length > 200 ? `${raw.slice(0, 200)}…` : raw}` : "";
+  return `${message}${status}${body}`;
+}
+
 /** web-push delivery options (collapse topic + TTL + urgency), derived per message from its `type`. */
 export type SendOptions = { TTL: number; topic: string; urgency?: "very-low" | "low" | "normal" | "high" };
 
@@ -75,6 +104,11 @@ export class Push {
   private readonly file: string;
   private readonly sender: PushSender;
   private _enabled = false;
+  // Consecutive delivery failures per endpoint, for the eviction pass in broadcast(). Deliberately
+  // in-memory and NOT part of the persisted subscription shape: a restart forgives, which is the
+  // right bias for a counter whose whole job is spotting a *sustained* pattern — broadcasts vastly
+  // outnumber restarts, so a genuinely dead device re-earns its eviction within EVICT_AFTER rounds.
+  private failures = new Map<string, number>();
   // Saves are funnelled through this chain so concurrent writes never interleave (last enqueued
   // wins deterministically); a failed write is swallowed here so it can't poison later saves.
   private saveChain: Promise<void> = Promise.resolve();
@@ -116,6 +150,9 @@ export class Push {
   async addSubscription(sub: PushSubscription): Promise<void> {
     if (!this.enabled) return;
     this.subs.set(sub.endpoint, sub);
+    // A re-subscribe is fresh evidence even when the endpoint string is unchanged — the device just
+    // told us it wants pushes, so it doesn't inherit the failure history of its predecessor.
+    this.failures.delete(sub.endpoint);
     await this.save();
   }
 
@@ -139,26 +176,66 @@ export class Push {
   private async broadcast(payload: string, options: SendOptions): Promise<void> {
     if (!this.enabled) return;
     const dead: string[] = [];
-    await Promise.all(
+    // One entry per subscription attempted this round, so the eviction pass below can ask which
+    // push services proved themselves healthy before it holds a failure against any one device.
+    const results = await Promise.all(
       [...this.subs.values()].map(async (sub) => {
         try {
           await this.sender(sub, payload, options);
+          return { sub, err: null };
         } catch (err) {
-          // 404/410 mean the subscription is gone — prune it. Anything else (network, 5xx) is a
-          // real failure worth a log line rather than vanishing silently.
-          const code = (err as { statusCode?: number }).statusCode;
-          if (code === 404 || code === 410) {
-            dead.push(sub.endpoint);
-          } else {
-            console.warn(
-              `[push] send failed for ${sub.endpoint}: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
+          return { sub, err };
         }
       }),
     );
+
+    // A push service that delivered to SOMEBODY this round has a working VAPID/JWT/network path,
+    // so a sibling's failure on that same origin is about that subscription and nothing else.
+    const healthy = new Set(
+      results.filter((r) => r.err === null).map((r) => pushServiceOrigin(r.sub.endpoint)),
+    );
+
+    for (const { sub, err } of results) {
+      if (err === null) {
+        // Consecutive means consecutive: one delivery wipes the slate.
+        this.failures.delete(sub.endpoint);
+        continue;
+      }
+      // 404/410 are the only statuses RFC 8030 blesses as "this subscription is gone". Everything
+      // else — 400, 401, 403, 429, 5xx — is either transient or about the SENDER (a VAPID key slip
+      // makes a whole push service reject perfectly live devices), so it must never prune on sight.
+      const code = (err as { statusCode?: number }).statusCode;
+      if (code === 404 || code === 410) {
+        console.log(`[push] pruning gone subscription (${code}): ${sub.endpoint}`);
+        dead.push(sub.endpoint);
+        continue;
+      }
+      console.warn(`[push] send failed for ${sub.endpoint}: ${describeSendError(err)}`);
+
+      // Some failures are permanent without ever being 404/410 (Apple answers a dead token with
+      // 400 BadDeviceToken), and retried forever they accumulate into the log spam of issue #68.
+      // Counting only same-origin-witnessed failures is what keeps this from becoming a 403-storm
+      // foot-gun: during a global rejection nothing on that origin succeeds, so nothing is counted.
+      // The single-subscription operator therefore never evicts — deliberately. Eviction exists to
+      // garbage-collect stale duplicates, which needs a healthy sibling to prove the token is at
+      // fault; dropping someone's only subscription would trade a loud log for silent no-push.
+      if (!healthy.has(pushServiceOrigin(sub.endpoint))) continue;
+      // Overlapping broadcasts aren't serialised, so two in-flight rounds can each land a count on
+      // the same endpoint. EVICT_AFTER is slack enough to absorb that; a mutex isn't worth it.
+      const n = (this.failures.get(sub.endpoint) ?? 0) + 1;
+      this.failures.set(sub.endpoint, n);
+      if (n < EVICT_AFTER) continue;
+      console.warn(
+        `[push] evicting subscription after ${n} consecutive failures (last: ${describeSendError(err)}): ${sub.endpoint}`,
+      );
+      dead.push(sub.endpoint);
+    }
+
     if (dead.length) {
-      for (const e of dead) this.subs.delete(e);
+      for (const e of dead) {
+        this.subs.delete(e);
+        this.failures.delete(e);
+      }
       await this.save();
     }
   }
