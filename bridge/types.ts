@@ -268,12 +268,25 @@ export interface CreatedPane {
  */
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
+/**
+ * Which role this collie plays in a pack (PACK_PROTOCOL.md §3). `solo` is a lead with zero peers —
+ * today's Collie, exactly — and is the only mode that needs no configuration whatsoever.
+ */
+export type PackMode = "solo" | "lead" | "peer";
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
+  /**
+   * This collie's pack mode, so `pack status` and the UI can render it without probing behaviour.
+   * **Omitted when the mode is `solo`** — absent means "no pack", which is precisely true, and keeps
+   * a solo `/api/config` body byte-identical to today's (the `servers` reasoning, PACK_PROTOCOL.md
+   * §11). Read it as `mode ?? "solo"`.
+   */
+  mode?: PackMode;
 }
 
 /** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  bridgeConfigBody,
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
@@ -901,5 +902,40 @@ describe("marksPaneSeen — CSRF guard on marking a pane seen", () => {
   test("any header value counts — presence is the proof, not the contents", () => {
     expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "" }), undefined)).toBe(true);
     expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "anything" }), undefined)).toBe(true);
+  });
+});
+
+// GET /api/config is where a client learns the pack mode without probing behaviour (M4/01). The
+// handler lives inside Bun.serve, which bun test cannot stand up (CLAUDE.md), so the body it emits
+// is asserted through the pure builder the handler calls.
+describe("bridgeConfigBody — /api/config reports the pack mode", () => {
+  const base = { push: true, vapidPublicKey: "BKey", build: "abc123" } as const;
+
+  test("a solo instance emits today's exact body — no `mode` key at all", () => {
+    const body = bridgeConfigBody({ ...base, mode: "solo" });
+    expect(body).toEqual({ push: true, vapidPublicKey: "BKey", build: "abc123" });
+    expect(Object.keys(body)).toEqual(["push", "vapidPublicKey", "build"]);
+    expect("mode" in body).toBe(false);
+    // Byte level, because the point is the serialized response, not the object.
+    expect(JSON.stringify(body)).toBe('{"push":true,"vapidPublicKey":"BKey","build":"abc123"}');
+  });
+
+  test("a lead and a peer say so", () => {
+    expect(bridgeConfigBody({ ...base, mode: "lead" }).mode).toBe("lead");
+    expect(bridgeConfigBody({ ...base, mode: "peer" }).mode).toBe("peer");
+  });
+
+  test("the mode is appended, never reordering the fields a solo client already parses", () => {
+    expect(Object.keys(bridgeConfigBody({ ...base, mode: "peer" }))).toEqual([
+      "push",
+      "vapidPublicKey",
+      "build",
+      "mode",
+    ]);
+  });
+
+  test("push disabled still round-trips its key untouched", () => {
+    const body = bridgeConfigBody({ push: false, vapidPublicKey: "", build: "unknown", mode: "solo" });
+    expect(body).toEqual({ push: false, vapidPublicKey: "", build: "unknown" });
   });
 });

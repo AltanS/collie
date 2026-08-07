@@ -254,11 +254,23 @@ export interface CreatedPane {
 /** Result of creating a new tab/space — on success `pane` is the fresh shell to navigate into. */
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
+/**
+ * Which role the bridge plays in a pack (PACK_PROTOCOL.md §3). Mirrors PackMode in bridge/types.ts.
+ * `solo` is a lead with zero peers — today's Collie, exactly.
+ */
+export type PackMode = "solo" | "lead" | "peer";
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
+  /**
+   * The bridge's pack mode. **Absent means `solo`** — a solo bridge emits no such key, so its
+   * `/api/config` body stays byte-identical to the pre-federation one. Always read it as
+   * `mode ?? "solo"`; never infer the mode from behaviour.
+   */
+  mode?: PackMode;
 }
 
 /**

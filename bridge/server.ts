@@ -21,6 +21,8 @@ import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
+import { modeForWire } from "./pack/mode.ts";
+import type { PackRuntime } from "./pack/config.ts";
 import { toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
@@ -135,6 +137,29 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
   return action !== undefined && action !== "history";
 }
 
+/**
+ * The `/api/config` body. Pure, and exported for that reason: the handler lives inside `Bun.serve`,
+ * which `bun test` cannot stand up (CLAUDE.md), so the shape is asserted here instead.
+ *
+ * `mode` is present only when this collie is in a pack — see {@link modeForWire}. A solo instance's
+ * body is byte-identical to the pre-federation one, which is the whole zero-tax point; a client
+ * reads the mode as `mode ?? "solo"`.
+ */
+export function bridgeConfigBody(opts: {
+  push: boolean;
+  vapidPublicKey: string;
+  build: string;
+  mode: PackRuntime["mode"];
+}): BridgeConfig {
+  const mode = modeForWire(opts.mode);
+  return {
+    push: opts.push,
+    vapidPublicKey: opts.vapidPublicKey,
+    build: opts.build,
+    ...(mode !== undefined ? { mode } : {}),
+  } satisfies BridgeConfig;
+}
+
 export function startServer(opts: {
   cfg: Config;
   registry: SessionRegistry;
@@ -144,8 +169,10 @@ export function startServer(opts: {
   updateMonitor: UpdateMonitor;
   audit: AuditLog;
   activity: ActivityLedger;
+  /** Resolved once at startup in index.ts, before anything is wired. Solo is `SOLO_RUNTIME`. */
+  pack: PackRuntime;
 }) {
-  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity } = opts;
+  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, pack } = opts;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
@@ -297,11 +324,15 @@ export function startServer(opts: {
         // red-state probe runs. Noted in #32.
         const denied = guard(req, cfg, "read");
         if (denied) return denied;
-        return json({
-          push: push.enabled,
-          vapidPublicKey: push.publicKey,
-          build: await buildId(),
-        } satisfies BridgeConfig, req.headers.get("accept-encoding"));
+        return json(
+          bridgeConfigBody({
+            push: push.enabled,
+            vapidPublicKey: push.publicKey,
+            build: await buildId(),
+            mode: pack.mode,
+          }),
+          req.headers.get("accept-encoding"),
+        );
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {
         // Read-level: registering for push isn't terminal-driving, so a read-only device may still
