@@ -6,6 +6,26 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.1] - 2026-08-07
+
+> **`1.0.0-alpha.x` is the v1 integration line, not a shipping release.** `0.24.2` remains the
+> released line for operators; nothing here changes a running deployment's behaviour.
+
+### Added
+
+- **Pack federation protocol contract** — `PACK_PROTOCOL.md` (wire contract, trust model, solo
+  zero-tax §11) plus ADRs 0011–0013 (9bd9301)
+- **Solo zero-tax characterization baseline** — `bridge/solo-baseline.test.ts` + committed goldens
+  pin today's snapshot bytes, ETag, routes, config/env keys, `<stateDir>` file set, notification tags
+  and audit lines before any federation code exists (407aada)
+- **Client half of the baseline** — `web/src/lib/solo-baseline.test.ts` pins the mirrored wire types (407aada)
+  and that a solo client emits no host param
+
+### Fixed
+
+- **`PACK_PROTOCOL.md` §11's files-written row omitted `update-state.json`** — the baseline found it;
+  the row now lists the real set
+
 ## [0.24.2] - 2026-08-06
 
 ### Fixed
