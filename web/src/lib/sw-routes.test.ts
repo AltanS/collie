@@ -46,6 +46,40 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/pane/w1:p1?s=demo")).toBe(false);
   });
 
+  // The host param travels inside a proxy's return-to payload the moment a peer's deep link is the
+  // thing you were bounced away from — same anchoring argument as above, one dimension out.
+  it("still passes through when the return-to payload encodes a host param", () => {
+    expect(isNetworkOnlyNavigation("/auth?rd=%2Fpane%2Fw1%3Fh%3Dbox2")).toBe(true);
+    expect(isNetworkOnlyNavigation("/auth?rd=%2Fpane%2Fw1%3Ap1%3Fh%3Dbox2%26s%3Ddemo")).toBe(true);
+    expect(isNetworkOnlyNavigation("/api/snapshot?host=box2")).toBe(true);
+    // …and a peer's own deep link is still Collie's to answer offline.
+    expect(isNetworkOnlyNavigation("/pane/w1%3Ap1?h=box2")).toBe(false);
+    expect(isNetworkOnlyNavigation("/?h=box2&s=demo")).toBe(false);
+  });
+
+  // PACK_PROTOCOL.md §5: a browser never issues a pack request, so a browser must never be able to
+  // cache one. Answering any of these from the precached app shell would hand a collie-to-collie
+  // caller an HTML page.
+  it("never answers the pack surface from the precache", () => {
+    for (const path of [
+      "/pack/v1/snapshot",
+      "/pack/v1/snapshot?session=demo",
+      "/pack/v1/pane/w1:p1",
+      "/pack/v1/enroll",
+      "/pack/v1/hello",
+      "/pack/v1",
+      "/pack/v1?x=1",
+    ]) {
+      expect(isNetworkOnlyNavigation(path)).toBe(true);
+    }
+  });
+
+  it("does not claim routes that merely start with the pack prefix", () => {
+    expect(isNetworkOnlyNavigation("/pack")).toBe(false);
+    expect(isNetworkOnlyNavigation("/packages")).toBe(false);
+    expect(isNetworkOnlyNavigation("/pack/v10/snapshot")).toBe(false);
+  });
+
   it("still owns every Collie route, so deep links keep resolving offline", () => {
     for (const path of [
       "/",
@@ -70,11 +104,12 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation(PROXY_AUTH_PATH)).toBe(true);
   });
 
-  it("keeps the denylist the SW installs to exactly these two rules", () => {
+  it("keeps the denylist the SW installs to exactly these rules", () => {
     expect(NAVIGATION_NETWORK_ONLY.map(String)).toEqual([
       String(/^\/api\//),
       String(/^\/auth(?:[/?]|$)/),
       String(/^\/cdn-cgi\//),
+      String(/^\/pack\/v1(?:[/?]|$)/),
     ]);
   });
 });

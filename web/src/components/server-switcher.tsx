@@ -26,15 +26,27 @@ interface ServerSwitcherProps {
 }
 
 // The machine switcher. Structurally the SessionSwitcher's twin — same hidden-when-single predicate,
-// same portalled sheet, same disabled-and-guarded unreachable rows — and deliberately not its visual
-// twin: two lookalike pills, one changing machines and one changing sessions on a machine, is a
-// mis-tap into the wrong terminal (milestone constraint). This one is bordered and leads with a
-// server glyph; the session pill is a filled muted capsule with layers.
+// same portalled sheet — and deliberately not its visual twin: two lookalike pills, one changing
+// machines and one changing sessions on a machine, is a mis-tap into the wrong terminal (milestone
+// constraint). This one is bordered and leads with a server glyph; the session pill is a filled muted
+// capsule with layers.
 //
 // ── WHAT SELECTING A HOST DOES, AND WHAT IT DOESN'T ──────────────────────────
 // It navigates HOME in that host (`?h=`), exactly as the session switcher does. It never tries to
 // map the pane you are looking at onto the other machine: `w1:p1` there is a different terminal, and
 // carrying the id across would be the single mistake this whole milestone exists to prevent.
+//
+// ── EVERY ROW NAVIGATES, INCLUDING AN UNREACHABLE ONE (M5/04) ────────────────
+// These rows were disabled while their member was unreachable, and that was the wrong gate. §10.2's
+// rule is that a down machine's last-good state NEVER VANISHES — it is still merged into the
+// snapshot, still counted right here on the row ("1 needs you"), and still openable from triage,
+// which is where a notification tap for that very agent lands. Blocking the SWITCHER alone made this
+// the one surface that hid state the rest of the app shows, and it blocked LOOKING, which is not the
+// dangerous verb. Writing is, and writing is gated where it happens: the composer is disabled behind
+// `lib/host-health`'s `writable`, every write handler refuses first, and the HostStaleBanner says so
+// before you reach either. A member that has never answered lands on an honest "nothing cached for
+// this machine yet" rather than a spinner. So the row goes where it says it goes, and stays visually
+// degraded to say what you will find there.
 //
 // ── AND WHAT IT IS NOT ───────────────────────────────────────────────────────
 // Not pack administration. It lists members and lets you go to one; join / leave / promote / rotate
@@ -63,7 +75,6 @@ export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherPr
 
   function select(s: ServerSummary): void {
     setOpen(false);
-    if (!s.reachable) return; // unreachable rows are disabled; guard the handler anyway
     // The lead carries no `?h=` — absent means the lead, so selecting it restores today's bare URL.
     const target = s.isLead ? undefined : s.id;
     if (target === current) return;
@@ -95,7 +106,6 @@ export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherPr
                 <li key={s.id}>
                   <button
                     type="button"
-                    disabled={!h.writable}
                     onClick={() => select(s)}
                     aria-current={active ? "true" : undefined}
                     className={cn(
@@ -103,7 +113,9 @@ export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherPr
                       active
                         ? "bg-accent text-accent-foreground"
                         : "hover:bg-muted/60 active:bg-muted",
-                      !h.writable && "cursor-not-allowed opacity-60 hover:bg-transparent",
+                      // Dimmed, not disabled: what you will find there is last-known and read-only,
+                      // and the row says both — but it still goes there (see the note above).
+                      !h.writable && "opacity-60",
                     )}
                   >
                     <Server className="size-4 shrink-0 text-muted-foreground" />
