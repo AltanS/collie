@@ -38,6 +38,11 @@ Nothing here restates what lives elsewhere; the point is the *reasoning*, once.
 A superseded ADR is never deleted or edited into agreement with the present. Mark it
 `Superseded by NNNN` and write the new one — the wrong turn is the useful part.
 
+A decision that is still correct but whose **scope** later changes is *amended*, not superseded: the
+new ADR says what it amends, the old one gains an `Amended in scope by NNNN` pointer at the top, and
+**nothing in its body is rewritten**. If you find yourself editing the argument rather than adding
+the pointer, it was a supersede.
+
 ## Index
 
 | # | Decision | Status |
@@ -52,3 +57,6 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Collie does not run a terminal emulator | Accepted |
 | [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu is driven by the keys it names, never by digits | Accepted |
 | [0010](./0010-long-sends-are-verified-via-the-paste-placeholder.md) | Long sends are verified via the paste placeholder, not by chunking them | Accepted |
+| [0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) | The pack protocol is the mux-driver seam, and peers are full collies | Accepted |
+| [0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) | Every machine runs a collie; the pack has a lead | Accepted |
+| [0013](./0013-a-peer-listens-without-becoming-a-front-door.md) | A peer listens without becoming a front door (amends 0001) | Accepted |
