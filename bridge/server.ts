@@ -14,7 +14,7 @@ import {
   type PromptBindingResult,
 } from "./prompt-binding.ts";
 import type { Push, PushSubscription } from "./push.ts";
-import { herdTagFor, type SessionRegistry } from "./sessions.ts";
+import { herdTagFor, type SessionRegistry, type SessionRuntime } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import type { UpdateMonitor } from "./update.ts";
 import type { StateEngine } from "./state-engine.ts";
@@ -23,7 +23,9 @@ import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import { modeForWire } from "./pack/mode.ts";
 import type { PackRuntime } from "./pack/config.ts";
-import type { PackHandler } from "./pack/router.ts";
+import type { PackLead } from "./pack/lead.ts";
+import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
+import type { PackHandler, SnapshotSource } from "./pack/router.ts";
 import { toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
@@ -97,6 +99,13 @@ const SECURITY_HEADERS: Record<string, string> = {
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history))?$/;
+
+/**
+ * The host selector every request takes when this collie has no trust store — i.e. the only one a
+ * solo instance ever sees. Named rather than parsed so that on solo the `?host=` grammar is never
+ * applied to a URL at all: not a lookup, not a regex, not a branch a client can steer (§11).
+ */
+const LOCAL_HOST: HostSelector = { kind: "local" };
 // Turns per history page. "Show entire history" means the WHOLE conversation, so the client asks for
 // everything and this ceiling is a safety net against a pathological log, not the normal path — a
 // 1400-turn session is ~1.4 MB raw / ~400 KB gzipped, which a tailnet link serves fine. The default
@@ -177,11 +186,23 @@ export function startServer(opts: {
    * every solo instance, and the paths it owns are declared in `bridge/pack/router.ts` rather than
    * here — deliberately, so this file names no pack route and `solo-baseline.test.ts` can prove by
    * grep that solo registers nothing (PACK_PROTOCOL.md §11, "`/pack/v1/*`: not routed at all").
+   *
+   * A **factory**, not a handler, for one reason: a peer's `/pack/v1/snapshot` must answer the exact
+   * body its own `/api/snapshot` would, and the only way to guarantee that is to hand the pack router
+   * the very closure this file serves browsers from. Two assemblies that "agree" would be two
+   * assemblies that drift.
    */
-  packHandler?: PackHandler;
+  packRouter?: (snapshot: SnapshotSource) => PackHandler;
+  /**
+   * The lead runtime, supplied **only** when this collie leads a pack with at least one enrolled
+   * member. Its presence is exactly the condition under which `servers` goes on the wire and every
+   * session and pane gains a `host` (PACK_PROTOCOL.md §9.2, §11) — undefined here means the snapshot
+   * body that leaves this file is the object literal it has always been.
+   */
+  packLead?: PackLead;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, pack } = opts;
-  const packHandler = opts.packHandler;
+  const packLead = opts.packLead;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
@@ -190,6 +211,53 @@ export function startServer(opts: {
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
+
+  /**
+   * This collie's own snapshot body — the whole of what `/api/snapshot` answered before packs
+   * existed, and (with `device` omitted) exactly what a peer serves its lead on `/pack/v1/snapshot`.
+   *
+   * `undefined` means the session name is unknown, which every caller turns into the same 404 it
+   * always did. Nothing federated happens in here: the host tag and the `servers` array are added
+   * afterwards, by the lead and only by a lead, so a solo instance's bytes are untouched (§11).
+   */
+  const localSnapshot = (
+    sessionName: string | undefined,
+    device: DeviceAuth | null,
+  ): SnapshotResponse | undefined => {
+    const rt = registry.get(sessionName);
+    if (!rt) return undefined;
+    const { agents, shellPanes, workspaces, tabs, bridge } = rt.engine.current();
+    // Attach each pane's activity timestamps. Done here rather than in the state engine so the
+    // engine stays a pure Herdr-poller with no knowledge of the ledger — and so the two numbers
+    // are read at serialise time, i.e. as fresh as the request.
+    const withActivity = (p: AgentView): AgentView => {
+      const a = activity.get(rt.name, p.paneId);
+      return a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+    };
+    return {
+      bridge,
+      // Only report device state when the feature is on, so an off deployment sends nothing new.
+      ...(device !== null ? { device } : {}),
+      // The one place a pane leaves the bridge: the session ref is stripped to a presence flag
+      // here, so an agent-reported filesystem path never reaches a browser (see toPaneWire).
+      // The flag is computed against the registry, so a harness Herdr detects but Collie has no
+      // journal for doesn't advertise a History button that can only ever come back empty.
+      // withActivity runs FIRST: it returns an AgentView, which is what toPaneWire consumes,
+      // and the two timestamps then ride through its rest-spread onto the wire shape.
+      agents: agents.map((p) => toPaneWire(withActivity(p), hasJournal)),
+      shellPanes: shellPanes.map((p) => toPaneWire(withActivity(p), hasJournal)),
+      workspaces,
+      tabs,
+      sessions: registry.list(),
+      notifications: { snoozedUntil: snooze.until() },
+      update: updateMonitor.status(),
+      ts: Date.now(),
+    } satisfies SnapshotResponse;
+  };
+
+  // A peer answers its lead with its OWN view and never a merged one — a pack link never forwards a
+  // `host=` because a peer has no peers (§4). Hence `localSnapshot`, not the merged body below.
+  const packHandler = opts.packRouter?.((session) => localSnapshot(session, null));
   // Per-session background notifications live in each session's runtime (built by the factory in
   // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
   // snooze-clears across every live session's coordinator.
@@ -222,43 +290,59 @@ export function startServer(opts: {
       const unknownSession = () =>
         jsonError(`unknown session: ${sessionName ?? ""}`, 404, req.headers.get("accept-encoding"));
 
+      // The host dimension of the `(host, session, paneId)` address (§4), read exactly where the
+      // session name is and by the same rule: a client-supplied value that is ONLY ever a registry
+      // key. Parsed only when this collie has a trust store — the same predicate the pack surface
+      // mounts on — so a solo instance never applies the grammar to a URL and `?h=` stays a
+      // parameter that provably does not exist there (§11).
+      const host = packHandler ? selectHostFrom(url) : LOCAL_HOST;
+
+      /**
+       * The `(host, session)` target of a session-scoped route, or the Response refusing it.
+       *
+       * An unknown host is a 404, mirroring `unknownSession()` exactly (§4) — and so is an
+       * ill-formed one, which is the shape a probe takes (a path, a URL, an IP). A *known* peer is
+       * refused with a 501 until M4/05 lands the proxy: the load-bearing part is that it is never
+       * silently served from the LEAD's registry, because pane ids collide across machines and
+       * `?h=laptop` + `w1:p1` must never type into the desk's `w1:p1`.
+       */
+      const target = (): SessionRuntime | Response => {
+        if (host.kind !== "local") {
+          const resolved = packLead?.resolve(host, sessionName);
+          if (resolved === undefined) {
+            return jsonError(
+              `unknown host: ${host.kind === "member" ? host.id : host.raw}`,
+              404,
+              req.headers.get("accept-encoding"),
+            );
+          }
+          if (resolved.kind === "peer") {
+            return jsonError(
+              `host ${resolved.link.memberId} is a pack member; per-pane proxying is not implemented in this build`,
+              501,
+              req.headers.get("accept-encoding"),
+            );
+          }
+          return resolved.runtime;
+        }
+        return registry.get(sessionName) ?? unknownSession();
+      };
+
       // ── Live state (polled by the client) ────────────────────────────────
       if (pathname === "/api/snapshot") {
         const gate = checkAccess(req, cfg);
         if (!gate.ok) return text(gate.reason, 403);
-        const rt = registry.get(sessionName);
-        if (!rt) return unknownSession();
-        const { agents, shellPanes, workspaces, tabs, bridge } = rt.engine.current();
         const device = deviceAuth(req, cfg);
-        // Attach each pane's activity timestamps. Done here rather than in the state engine so the
-        // engine stays a pure Herdr-poller with no knowledge of the ledger — and so the two numbers
-        // are read at serialise time, i.e. as fresh as the request.
-        const withActivity = (p: AgentView): AgentView => {
-          const a = activity.get(rt.name, p.paneId);
-          return a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
-        };
+        const body = localSnapshot(sessionName, device.enforced ? device : null);
+        if (!body) return unknownSession();
+        // The ONE place the lead re-serialises (§9.2). With no pack this is the identity function's
+        // absence: `body` goes out as assembled, same keys, same order, same bytes, same ETag.
+        // The merged body's ETag is then the lead's own assertion about its own merged view — a
+        // peer's ETag is never recomputed here, because no peer body is re-hashed on this path.
         // Tag every snapshot poll with the on-disk build id so an open client notices a live rebuild
         // between polls — the no-service-worker self-update path (web/src/lib/self-update.ts).
         return withBuildHeader(
-          json({
-            bridge,
-            // Only report device state when the feature is on, so an off deployment sends nothing new.
-            ...(device.enforced ? { device } : {}),
-            // The one place a pane leaves the bridge: the session ref is stripped to a presence flag
-            // here, so an agent-reported filesystem path never reaches a browser (see toPaneWire).
-            // The flag is computed against the registry, so a harness Herdr detects but Collie has no
-            // journal for doesn't advertise a History button that can only ever come back empty.
-            // withActivity runs FIRST: it returns an AgentView, which is what toPaneWire consumes,
-            // and the two timestamps then ride through its rest-spread onto the wire shape.
-            agents: agents.map((p) => toPaneWire(withActivity(p), hasJournal)),
-            shellPanes: shellPanes.map((p) => toPaneWire(withActivity(p), hasJournal)),
-            workspaces,
-            tabs,
-            sessions: registry.list(),
-            notifications: { snoozedUntil: snooze.until() },
-            update: updateMonitor.status(),
-            ts: Date.now(),
-          } satisfies SnapshotResponse, req.headers.get("accept-encoding")),
+          json(packLead ? packLead.merge(body) : body, req.headers.get("accept-encoding")),
           await buildId(),
         );
       }
@@ -267,15 +351,15 @@ export function startServer(opts: {
       if (pathname === "/api/tab" && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
-        const rt = registry.get(sessionName);
-        if (!rt) return unknownSession();
+        const rt = target();
+        if (rt instanceof Response) return rt;
         return createTab(rt.herdr, rt.engine, req, audit, deviceAuth(req, cfg).device, rt.name);
       }
       if (pathname === "/api/workspace" && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
-        const rt = registry.get(sessionName);
-        if (!rt) return unknownSession();
+        const rt = target();
+        if (rt instanceof Response) return rt;
         return createWorkspace(rt.herdr, req, audit, deviceAuth(req, cfg).device, rt.name);
       }
 
@@ -284,8 +368,8 @@ export function startServer(opts: {
       if (tabMatch && req.method === "POST") {
         const denied = guard(req, cfg, "write");
         if (denied) return denied;
-        const rt = registry.get(sessionName);
-        if (!rt) return unknownSession();
+        const rt = target();
+        if (rt instanceof Response) return rt;
         const tabId = decodeURIComponent(tabMatch[1]!);
         const action = tabMatch[2];
         const device = deviceAuth(req, cfg).device;
@@ -304,8 +388,8 @@ export function startServer(opts: {
         const isRead = !action || action === "history";
         const denied = guard(req, cfg, isRead ? "read" : "write");
         if (denied) return denied;
-        const rt = registry.get(sessionName);
-        if (!rt) return unknownSession();
+        const rt = target();
+        if (rt instanceof Response) return rt;
         const { herdr, name: session } = rt;
         // You are in this pane: reading it, replying, sending keys, browsing its history. That is
         // the whole definition of "seen" (.adr/0003), and this is the one place every such request

@@ -22,9 +22,15 @@ import {
   withBuildHeader,
   type ReplySender,
 } from "./server.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
+import { PackLead } from "./pack/lead.ts";
+import { PackRegistry } from "./pack/registry.ts";
+import type { SnapshotResponse } from "./types.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -937,5 +943,108 @@ describe("bridgeConfigBody — /api/config reports the pack mode", () => {
   test("push disabled still round-trips its key untouched", () => {
     const body = bridgeConfigBody({ push: false, vapidPublicKey: "", build: "unknown", mode: "solo" });
     expect(body).toEqual({ push: false, vapidPublicKey: "", build: "unknown" });
+  });
+});
+
+// ── The merged snapshot route (M4/04) ────────────────────────────────────────
+// `/api/snapshot` is `packLead ? packLead.merge(body) : body`, inside Bun.serve — which bun test
+// cannot stand up (CLAUDE.md). So the two halves are asserted where they actually live: the
+// composition through the real PackLead, and the routing invariants by reading the source that
+// registers them. PACK_PROTOCOL.md §9.2, §10.2.
+
+const snapshotSource = (): SnapshotResponse => ({
+  bridge: "connected",
+  agents: [
+    {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "collie",
+      workspaceNumber: 1,
+      tabId: "w1:t1",
+      agent: "claude",
+      status: "blocked",
+      cwd: "/home/you",
+      focused: false,
+      kind: "agent",
+    },
+  ],
+  shellPanes: [],
+  workspaces: [],
+  tabs: [],
+  sessions: [{ name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 1 }],
+  ts: 1_754_000_000_000,
+});
+
+function leadOverDeadPeer(): PackLead {
+  const registry = new PackRegistry({
+    sessions: { get: () => undefined },
+    self: "desk",
+    members: () => [
+      {
+        memberId: "laptop",
+        fingerprint: "a".repeat(64),
+        address: "laptop.example:8787",
+        role: "peer",
+        status: "enrolled",
+        enrolledAt: 0,
+        secretGeneration: 1,
+      },
+    ],
+  });
+  return new PackLead({
+    registry,
+    // Every dial fails, exactly as `PeerClient` reports a peer that is off: a value, not a throw.
+    snapshot: async () => ({ ok: false, state: "unreachable", reason: "connection refused", receivedAt: 1 }),
+    self: { id: "desk", name: "the herd" },
+  });
+}
+
+describe("the merged snapshot — an unreachable peer degrades its entry, never the response", () => {
+  test("a dead peer yields a body (which the route 200s), not a throw and not a 5xx", async () => {
+    const lead = leadOverDeadPeer();
+    await lead.sweep();
+    // The route has no try/catch around this call and needs none — that is the contract.
+    const merged = lead.merge(snapshotSource());
+    expect(merged.bridge).toBe("connected");
+    expect(merged.servers).toEqual([
+      { id: "desk", name: "the herd", isLead: true, reachable: true, protocol: "ok", lastSeenAt: expect.any(Number) },
+      { id: "laptop", name: "laptop", isLead: false, reachable: false, protocol: "unknown", lastSeenAt: 0 },
+    ]);
+    // The lead's own herd is untouched by its peer being down.
+    expect(merged.agents.map((p) => p.paneId)).toEqual(["w1:p1"]);
+    expect(JSON.parse(JSON.stringify(merged))).toBeTruthy();
+  });
+
+  test("with no lead runtime the body is passed through by identity — solo's zero tax at the seam", () => {
+    const body = snapshotSource();
+    // Character-for-character the route's own expression, with the route's own optional dep.
+    const route = (packLead: PackLead | undefined, b: SnapshotResponse) => (packLead ? packLead.merge(b) : b);
+    const out = route(undefined, body);
+    expect(out).toBe(body);
+    expect(JSON.stringify(out)).not.toMatch(/"servers"|"host"/);
+  });
+});
+
+describe("the host gate — `?host=` selects among enrolled members and nothing else", () => {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+
+  test("the selector is parsed only when a pack surface is mounted", () => {
+    // The same trust-store-existence predicate the pack router mounts on: a solo instance never
+    // applies the `?host=` grammar to a URL at all (§11).
+    expect(src).toContain("const host = packHandler ? selectHostFrom(url) : LOCAL_HOST;");
+  });
+
+  test("every session-scoped route resolves through the gate, never past it", () => {
+    // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
+    // pane ids collide across machines, so a fall-through here is a cross-host write.
+    expect([...src.matchAll(/const rt = target\(\);/g)]).toHaveLength(4);
+    // Exactly two unguarded `registry.get(sessionName)` calls remain, and both are the sanctioned
+    // ones: assembling THIS collie's own body, and the gate's own `local` branch. A third would be
+    // a route reaching past the gate.
+    expect([...src.matchAll(/registry\.get\(sessionName\)/g)]).toHaveLength(2);
+    // A peer is refused with a legible status until M4/05 lands the proxy; an unknown or ill-formed
+    // host is a 404, mirroring unknownSession() (§4).
+    expect(src).toMatch(/`unknown host: \$\{host\.kind === "member" \? host\.id : host\.raw\}`/);
+    expect(src).toContain("per-pane proxying is not implemented in this build");
   });
 });

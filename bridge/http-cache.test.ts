@@ -44,6 +44,62 @@ describe("notModified", () => {
   });
 });
 
+// The host dimension in a merged snapshot's cache key (PACK_PROTOCOL.md §4, §9.2): a pane id is only
+// unique per machine, so the same pane id on two different hosts must never collapse into one ETag —
+// or a phone that just 304'd against "desk" could be served stale/wrong content when it's really
+// asking about "laptop". Pure computeEtag/body-bytes test — no server.ts, no Bun.serve.
+describe("computeEtag — the host dimension", () => {
+  const pane = (host: string) => ({
+    paneId: "w1:p1",
+    workspaceId: "w1",
+    workspaceLabel: "w1",
+    workspaceNumber: 1,
+    tabId: "w1:t1",
+    agent: "claude",
+    status: "idle",
+    cwd: "/home/you/demo",
+    focused: false,
+    kind: "agent",
+    host,
+  });
+
+  test("two snapshot-shaped bodies identical except a pane's host differ in etag", () => {
+    const bodyDesk = JSON.stringify({ agents: [pane("desk")], shellPanes: [], ts: 0 });
+    const bodyLaptop = JSON.stringify({ agents: [pane("laptop")], shellPanes: [], ts: 0 });
+    expect(computeEtag(bodyDesk)).not.toBe(computeEtag(bodyLaptop));
+  });
+
+  test("the same pane id + session on two hosts, merged into one body, is two distinct entries", () => {
+    // What a lead would actually emit: both panes present at once, keyed apart only by host.
+    const merged = {
+      agents: [
+        { ...pane("desk"), sessionName: undefined },
+        { ...pane("laptop"), sessionName: undefined },
+      ],
+      shellPanes: [],
+      ts: 0,
+    };
+    // Same pane id on both entries — proves the collapse risk is real if host were ignored.
+    expect(merged.agents[0]!.paneId).toBe(merged.agents[1]!.paneId);
+
+    const serialized = JSON.stringify(merged);
+    // A body that collapsed the two hosts would serialize identically to one with only one entry
+    // repeated; assert the two entries actually carry distinct host values in the emitted bytes.
+    const parsed = JSON.parse(serialized) as { agents: Array<{ paneId: string; host: string }> };
+    expect(parsed.agents).toHaveLength(2);
+    expect(new Set(parsed.agents.map((a) => a.host)).size).toBe(2);
+
+    // And the resulting etag differs from a body that (incorrectly) omitted host from one entry —
+    // i.e. host bytes are actually inside what gets hashed, not merely present in the JS object.
+    const collapsedLikeBody = JSON.stringify({
+      agents: [pane("desk"), { ...pane("desk"), host: "desk" }],
+      shellPanes: [],
+      ts: 0,
+    });
+    expect(computeEtag(serialized)).not.toBe(computeEtag(collapsedLikeBody));
+  });
+});
+
 describe("gzipJsonResponse", () => {
   test("returns plain JSON when Accept-Encoding does not include gzip", async () => {
     const data = { ok: true, value: "x".repeat(300) };

@@ -10,6 +10,9 @@ import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { resolvePackRuntime } from "./pack/config.ts";
+import { PackLead } from "./pack/lead.ts";
+import { packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
+import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
 import { enrollmentOf, TrustStore } from "./pack/trust-store.ts";
 import { Push } from "./push.ts";
@@ -222,6 +225,48 @@ const sweepTimer = setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
+// ── The lead runtime ─────────────────────────────────────────────────────────
+// Built only in `lead` mode — which `deriveMode` defines as "≥1 enrolled peer and no lead of my
+// own". So the condition under which `servers` goes on the wire is exactly "a pack with peers
+// exists": an instance that has a trust store but has enrolled nobody keeps emitting a solo body,
+// and a peer builds none at all (it has no peers to sweep, and a pack link never forwards a
+// `host=` — PACK_PROTOCOL.md §4, §9.2, §11).
+const packLead = (() => {
+  if (pack.mode !== "lead") return undefined;
+  const data = trustStore.current();
+  if (data === null) return undefined;
+  const packRegistry = new PackRegistry({
+    sessions: registry,
+    self: data.self.memberId,
+    // Read through the store on every call, never snapshotted: `join`, `leave` and a rotation all
+    // change the roster under a running bridge, and a captured array would keep dialling a member
+    // the operator has revoked.
+    members: () => trustStore.current()?.peers ?? [],
+  });
+  const client = new PeerClient({
+    self: data.self.memberId,
+    // Read at call time so a rotation is picked up without a restart (§8.3, §8.4).
+    secret: () => trustStore.current()?.pack?.secret ?? null,
+    // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
+    // (§10.1). The clamp lives in packTimeoutBudget; nothing here is allowed to widen it.
+    timeoutMs: packTimeoutBudget(cfg.pollMs),
+    // The platform fetch. Pinned mutual TLS is M4/08's to wire in here and nowhere else.
+    fetch: (url, init) => fetch(url, init),
+  });
+  return new PackLead({
+    registry: packRegistry,
+    snapshot: (link) => client.snapshot(link),
+    self: { id: data.self.memberId, name: data.pack?.name ?? data.self.memberId },
+  });
+})();
+
+// THE SWEEP RIDES THE EXISTING POLL — there is no second timer (§10.1, §11). The primary session's
+// engine is the lead's clock: it is created eagerly, never disposed, and already ticks at
+// COLLIE_POLL_MS (relaxing to the idle cadence with the herd), so the pack inherits the exact
+// cadence and idle relaxation the herd link has. `onTick` rather than `onUpdate` so a local Herdr
+// outage cannot freeze a healthy peer's freshness.
+if (packLead) registry.get()?.engine.onTick(() => void packLead.sweep());
+
 const server = startServer({
   cfg,
   registry,
@@ -232,10 +277,16 @@ const server = startServer({
   audit,
   activity,
   pack,
+  packLead,
   // Registered on the EXISTENCE of a trust store, not on the mode: a lead answering its very first
   // `collie join` still has zero peers and is therefore still `solo` by mode. An instance that never
-  // enrolled has no store, gets no handler, and so registers no pack route at all (§11).
-  packHandler: trustStore.current() === null ? undefined : createPackRouter({ store: trustStore, audit }),
+  // enrolled has no store, gets no handler, and so registers no pack route at all (§11). The
+  // snapshot source is handed back by server.ts so a peer answers its lead with the same body its
+  // own `/api/snapshot` would.
+  packRouter:
+    trustStore.current() === null
+      ? undefined
+      : (snapshot) => createPackRouter({ store: trustStore, audit, snapshot }),
 });
 
 const shutdown = async () => {

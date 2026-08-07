@@ -501,6 +501,67 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
   });
 });
 
+// onTick backs the pack's peer sweep (PACK_PROTOCOL.md §10.1: "the peer sweep is a part of the
+// existing poll, not a second timer"). Unlike onUpdate it must fire on BOTH outcomes — a lead whose
+// own Herdr socket is down must still sweep its peers, so a local outage can never mask a peer's.
+describe("StateEngine — onTick", () => {
+  test("fires after a successful poll", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    let calls = 0;
+    engine.onTick(() => calls++);
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    await poll();
+    expect(calls).toBe(1);
+  });
+
+  test("fires after a FAILED poll too — a down local Herdr must not stall the peer sweep", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    let calls = 0;
+    engine.onTick(() => calls++);
+    herdr.sessionSnapshot = () => Promise.reject(new Error("down"));
+    herdr.listWorkspaces = () => Promise.reject(new Error("down"));
+    await poll();
+    expect(calls).toBe(1);
+  });
+
+  test("the unsubscribe function returned by onTick stops further calls", async () => {
+    const { engine, poll } = makeEngine();
+    let calls = 0;
+    const unsubscribe = engine.onTick(() => calls++);
+    await poll();
+    expect(calls).toBe(1);
+    unsubscribe();
+    await poll();
+    expect(calls).toBe(1); // unchanged — the listener no longer fires
+  });
+
+  test("a listener that throws does not break the poll loop: polling continues and other listeners still fire", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    let otherCalls = 0;
+    engine.onTick(() => {
+      throw new Error("boom");
+    });
+    engine.onTick(() => otherCalls++);
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    await poll();
+    expect(otherCalls).toBe(1);
+    // The poll loop itself is unharmed: a second poll still completes and updates the snapshot.
+    await poll();
+    expect(otherCalls).toBe(2);
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["w1:p1"]);
+  });
+
+  test("zero listeners is a no-op — a solo instance registers none, and polling behaves exactly as before", async () => {
+    const { herdr, engine, poll, transitions } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "working", "claude")];
+    await poll();
+    herdr.panes = [pane("w1:p1", "w1", "blocked", "claude")];
+    await poll();
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "working", to: "blocked" }]);
+    expect(engine.current().bridge).toBe("connected");
+  });
+});
+
 // The two capability fields the pane detail view gates on. Both come straight off Herdr's pane
 // record, and both must stay ABSENT rather than defaulting when the server doesn't report them —
 // an older Herdr should read as "unknown", not as "zero scrollback" or "no transcript".
