@@ -495,6 +495,43 @@ describe("loaders — offline navigation fast path", () => {
     expect(data.text).toBe(paneTextWithDraft()); // the stale mirror
   });
 
+  // The notification-tap flow, end to end: the service worker builds the URL from the push payload
+  // (lib/push-decision), the router resolves it, and the loader scopes its read — and its offline
+  // fallback — to THAT machine. The tap is the one entry point that arrives with no router history
+  // behind it, so it is also the one most able to land on the wrong host's pane id.
+  it("a peer notification's deep link loads that host's pane, stale-but-present, offline", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, ({ request }) => {
+        const host = new URL(request.url).searchParams.get("host");
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: host ? `on ${host}` : "on the lead",
+          truncated: false,
+          revision: 3,
+        });
+      }),
+    );
+    const { rootLoader, paneLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+    const { notificationPath } = await import("./push-decision");
+
+    const path = notificationPath({ paneId: "w1:p1", host: "badger" });
+    expect(path).toBe("/pane/w1%3Ap1?h=badger");
+    const tap = () => new Request(new URL(path, "http://localhost").href);
+
+    await paneLoader({ params: { paneId: "w1:p1" }, request: tap() }); // the tap, online
+    await rootLoader({ request: new Request("http://localhost/") }); // leave ⇒ a return is a nav
+
+    latchLost();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: tap() });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(data.error).toBe(true);
+    expect(data.scope).toEqual({ host: "badger", session: undefined });
+    expect(data.text).toBe("on badger"); // that machine's last-good mirror, never the lead's
+  });
+
   it("polling within a pane during an outage keeps fetching (same url ⇒ revalidation)", async () => {
     const { paneLoader } = await import("./loaders");
     const { latchLost } = await import("./connection-health");

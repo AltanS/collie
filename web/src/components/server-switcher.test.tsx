@@ -143,13 +143,25 @@ describe("ServerSwitcher — selecting a machine", () => {
     expect(row(/bluefin/i)).not.toHaveAttribute("aria-current");
   });
 
-  it("an unreachable machine is disabled and does not navigate", async () => {
+  // M5/04: looking is not the dangerous verb. An unreachable member's last-good herd is merged,
+  // counted on this very row and reachable from triage — where a notification tap for one of its
+  // agents lands — so the switcher must not be the one surface that hides it. The write ban lives on
+  // the composer and every write handler, behind the same `writable` flag; the destination announces
+  // it with the HostStaleBanner before you can reach either.
+  it("an unreachable machine still navigates — you may look at its last-known state", async () => {
     const router = renderSwitcher([lead, peer, down], undefined);
     await userEvent.click(trigger()!);
     const el = row(/attic/i);
-    expect(el).toBeDisabled();
+    expect(el).not.toBeDisabled();
     await userEvent.click(el);
-    expect(location(router)).toBe("/");
+    expect(location(router)).toBe("/?h=attic");
+  });
+
+  it("an incompatible machine navigates too — its screen explains itself", async () => {
+    const router = renderSwitcher([lead, peer, skewed], undefined);
+    await userEvent.click(trigger()!);
+    await userEvent.click(row(/garage/i));
+    expect(location(router)).toBe("/?h=garage");
   });
 });
 

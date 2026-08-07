@@ -3,7 +3,7 @@ import { precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
-import { decidePush, type PushPayload } from "./lib/push-decision";
+import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
 import { NAVIGATION_NETWORK_ONLY } from "./lib/sw-routes";
 
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
@@ -77,7 +77,12 @@ async function handlePush(event: PushEvent): Promise<void> {
   // support it (and it needs a tag).
   const options: NotificationOptions & { renotify?: boolean } = {
     body: decision.body,
-    data: { paneId: decision.paneId, session: decision.session, target: decision.target },
+    data: {
+      paneId: decision.paneId,
+      session: decision.session,
+      host: decision.host,
+      target: decision.target,
+    } satisfies NotifData,
     icon: ICON,
     badge: ICON,
     tag: decision.tag,
@@ -86,39 +91,20 @@ async function handlePush(event: PushEvent): Promise<void> {
   await self.registration.showNotification(decision.title, options);
 }
 
-interface NotifData {
-  paneId?: string;
-  /** Registry name of the pane's session (undefined = primary) — the deep-link scopes to it. */
-  session?: string;
-  /** Non-pane tap destination (e.g. "settings"); absent = the default agent deep-link. */
-  target?: string;
-}
-
-// Session query builder, inlined so the SW bundle stays dependency-free (it imports only
-// push-decision). The browser URL uses `?s=`. Primary → no param.
-function sessionSearchParam(session?: string): string {
-  return session ? `?s=${encodeURIComponent(session)}` : "";
-}
-
 // Tap a notification: an update push routes to Settings; everything else deep-links to the agent's
-// pane (never act on it blind — the reply lives in-app). An old cached SW that predates `target`
-// simply ignores it and takes the pane path, opening "/" for a pushed update — acceptable.
+// pane on the machine and in the session it lives in (never act on it blind — the reply lives
+// in-app; a cross-host blind action would be strictly worse than a same-host one). An old cached SW
+// that predates `target` simply ignores it and takes the pane path, opening "/" for a pushed update
+// — acceptable, and the same degradation `host` gets.
+//
+// The URL itself is built by lib/push-decision's notificationPath, on top of lib/scope's
+// `scopeSearch`: the query this file used to hand-inline is now the app's own, so the string
+// compared in openPath below is byte-identical to the one the router produces for that scope.
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
   const data = (event.notification.data as NotifData | null) ?? {};
-  if (data.target === "settings") {
-    event.waitUntil(openPath("/settings"));
-    return;
-  }
-  event.waitUntil(openPane(data.paneId, data.session));
+  event.waitUntil(openPath(notificationPath(data)));
 });
-
-// Deep-link to the agent's pane — the body-tap path. The session rides along as `?s=` so it lands in
-// the right herd (omitted for primary). Delegates the focus/navigate/open to openPath.
-async function openPane(paneId: string | undefined, session?: string): Promise<void> {
-  const base = paneId && paneId !== "test" ? `/pane/${encodeURIComponent(paneId)}` : "/";
-  await openPath(`${base}${sessionSearchParam(session)}`);
-}
 
 // Focus an existing Collie tab (navigating it to `path`) or open a new one. `path` is origin-relative.
 async function openPath(path: string): Promise<void> {
