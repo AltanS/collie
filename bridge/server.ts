@@ -6,6 +6,7 @@ import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
+import { pluginRoot } from "./root.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
@@ -56,8 +57,10 @@ const IMAGE_EXT: Record<string, string> = {
 };
 
 // The built PWA lives in web/dist (Vite output). If it's missing, the bridge still runs the API
-// — only the static UI 503s with a hint to build.
-const WEB_DIR = join(import.meta.dir, "..", "web", "dist");
+// — only the static UI 503s with a hint to build. Anchored on the resolved checkout root, NOT on
+// this module's directory: under `bun build --compile` that is the embedded `/$bunfs` root and the
+// served directory would vanish (see bridge/root.ts).
+const WEB_DIR = join(pluginRoot(), "web", "dist");
 
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
