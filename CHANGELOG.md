@@ -6,6 +6,21 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.2] - 2026-08-07
+
+> v1 integration line. M3 complete: the `collie` CLI fully absorbs `collie-ctl.sh`.
+
+### Added
+
+- **`collie` CLI skeleton** — compiled binary (`bun run build:cli`), verb table, env-stripped context/tool resolution; compile-safe root anchoring replaces `import.meta.dir` (66baccc)
+- **Native lifecycle verbs** — start/stop/restart/status/url/logs, `_exec-bridge` as the unit's ExecStart, COLLIE_SUPERVISOR test seam (c3b819d)
+- **Native front door + uninstall** — serve/unserve with the managed-handler ownership record (ADR 0001), uninstall (13399b9)
+- **Native build/update/push-test** — dual atomic swap (binary + dist), ADR 0006 two-shape update re-execing the fetched source, in-process push-test (0a898d1)
+
+### Changed
+
+- Root `bun run build` now runs the version gate; `collie-ctl.sh` remains intact as fallback (shim-vs-delete deferred to M6) (0a898d1)
+
 ## [1.0.0-alpha.1] - 2026-08-07
 
 > **`1.0.0-alpha.x` is the v1 integration line, not a shipping release.** `0.24.2` remains the
