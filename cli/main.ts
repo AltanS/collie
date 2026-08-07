@@ -12,6 +12,17 @@ import {
   cmdUrl,
   type LifecycleDeps,
 } from "./lifecycle.ts";
+import {
+  cmdJoin,
+  cmdLeave,
+  cmdPack,
+  cmdPromote,
+  cmdReconnect,
+  packAudit,
+  packDeps,
+  PACK_SUBCOMMANDS,
+  type PackDeps,
+} from "./pack.ts";
 import { cmdPushTest } from "./push.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realExec, realFiles, waitReady } from "./sys.ts";
@@ -61,6 +72,30 @@ export function lifecycleDeps(io: Io): LifecycleDeps {
 function updateDeps(io: Io): UpdateDeps {
   const deps = lifecycleDeps(io);
   return { ...deps, restart: () => cmdRestart(deps) };
+}
+
+/**
+ * A pack verb's dependencies: the lifecycle set's seams, plus the trust store, the transport, the
+ * clock and the audit log (`cli/pack.ts`'s `packDeps`).
+ *
+ * `restart`, `serve` and `unserve` are passed as the real lifecycle verbs because a membership change
+ * is not complete until the running bridge has it: the trust store is read once per process, and mode,
+ * push gate and roster are resolved at construction.
+ */
+async function packVerbDeps(io: Io): Promise<PackDeps> {
+  const deps = lifecycleDeps(io);
+  return packDeps(
+    {
+      ctx: deps.ctx,
+      io,
+      exec: deps.exec,
+      files: deps.files,
+      restart: () => cmdRestart(deps),
+      serve: () => Promise.resolve(cmdServe(deps)),
+      unserve: () => cmdUnserve(deps),
+    },
+    await packAudit(deps.ctx),
+  );
 }
 
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
@@ -137,6 +172,34 @@ export const COMMANDS: readonly Command[] = [
   lifecycleCommand("logs", "tail the service log (default 50 lines)", (deps, args) =>
     cmdLogs(deps, args),
   ),
+  // ── The pack (M4/07) ───────────────────────────────────────────────────────
+  // The only way a machine enters or leaves a pack. Every one of them resolves its seams through
+  // `packVerbDeps`, so the dispatcher stays a table and `cli/pack.ts` owns the behaviour.
+  {
+    name: "join",
+    summary: "join a pack: `join <lead-address> <token|-|@file>` (run on the joining machine)",
+    run: async (args, io) => cmdJoin(await packVerbDeps(io), args),
+  },
+  {
+    name: "leave",
+    summary: "leave the pack — drops the pack secret and every pin on this machine",
+    run: async (_args, io) => cmdLeave(await packVerbDeps(io)),
+  },
+  {
+    name: "pack",
+    summary: `pack administration: ${PACK_SUBCOMMANDS.join(", ")}`,
+    run: async (args, io) => cmdPack(await packVerbDeps(io), args),
+  },
+  {
+    name: "promote",
+    summary: "make THIS machine the lead (run on the peer taking over; --force if the lead is gone)",
+    run: async (args, io) => cmdPromote(await packVerbDeps(io), args),
+  },
+  {
+    name: "reconnect",
+    summary: "a member moved: re-point at its new address without re-enrolling anything",
+    run: async (args, io) => cmdReconnect(await packVerbDeps(io), args),
+  },
   {
     name: "help",
     summary: "print this help",

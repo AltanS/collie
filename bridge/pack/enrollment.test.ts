@@ -3,7 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import {
   acceptEnrollment,
+  adoptLead,
+  adoptSecret,
   commitPackChange,
+  demoteSelf,
+  isLeading,
+  parseRoster,
+  promoteSelf,
+  rosterEntryOf,
+  updateMemberAddress,
   consumeInvite,
   createTrustStore,
   dropMembersBehind,
@@ -339,7 +347,9 @@ describe("commitPackChange — write first, audit second", () => {
   test("a successful change is persisted and audited", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     const store = new TrustStore("/unused", h.io);
-    expect(await commitPackChange(store, h.audit, (d) => removeMember(d!, "nas"))).toBeNull();
+    // The result distinguishes "changed" from "no-op": `commitPackChange` answers `null` for the
+    // latter, so a transition whose result was also `null` would be indistinguishable to a verb.
+    expect(await commitPackChange(store, h.audit, (d) => removeMember(d!, "nas"))).toEqual({ member: "nas" });
     expect(store.current()!.peers).toEqual([]);
     await Bun.sleep(5);
     expect(h.lines.map((l) => l.action)).toEqual(["pack.remove"]);
@@ -376,5 +386,139 @@ describe("commitPackChange — write first, audit second", () => {
     expect(h.lines.map((l) => l.action)).toEqual(["pack.rotate", "pack.unenroll", "pack.leave"]);
     // Audit lines must never carry credential material.
     expect(JSON.stringify(h.lines)).not.toContain(PACK.secret);
+  });
+});
+
+// ── Distribution, promotion and roaming (M4/07) ──────────────────────────────
+// The transitions the operator verbs in `cli/pack.ts` commit. Same rule as everything above: pure in,
+// pure out, so what the verb suite exercises is ordering and wording rather than state.
+
+describe("adoptSecret", () => {
+  const handover = { secret: "rotated-secret-bbbbbbbbbbbbbbbbbbbb", generation: 2 };
+
+  test("takes the lead's rotated secret and moves this member's generation with it", () => {
+    const change = adoptSecret(peerStore(), handover, T0 + 5)!;
+    expect(change.next.pack!.secret).toBe(handover.secret);
+    expect(change.next.pack!.secretGeneration).toBe(2);
+    expect(change.next.lead!.secretGeneration).toBe(2);
+    expect(change.audit.action).toBe("pack.secret.adopted");
+    // The secret itself never reaches the log.
+    expect(JSON.stringify(change.audit)).not.toContain(handover.secret);
+  });
+
+  test("keeps NO grace window — the previous secret is replaced, not remembered", () => {
+    const change = adoptSecret(peerStore(), handover, T0)!;
+    expect(JSON.stringify(change.next)).not.toContain(PACK.secret);
+  });
+
+  test("a redelivery of the generation already held is a no-op, not a second write", () => {
+    expect(adoptSecret(peerStore(), { secret: "x".repeat(20), generation: 1 }, T0)).toBeNull();
+    expect(adoptSecret(peerStore(), { secret: "x".repeat(20), generation: 0 }, T0)).toBeNull();
+  });
+
+  test("a lead has no lead to be rotated by, and an empty secret is refused", () => {
+    expect(adoptSecret(leadStore({ peers: [member({ memberId: "nas" })] }), handover, T0)).toBeNull();
+    expect(adoptSecret(peerStore(), { secret: "", generation: 9 }, T0)).toBeNull();
+  });
+});
+
+describe("adoptLead / demoteSelf / promoteSelf", () => {
+  // `peerStore()` is "laptop", enrolled by "desk"; the pack is promoting "nas".
+  const claim = { memberId: "nas", fingerprint: fp("nas"), address: "nas.example:8787" };
+
+  test("a peer re-pins the new lead and keeps its id, its pack and its secret — a role change", () => {
+    const before = peerStore();
+    const change = adoptLead(before, claim, T0 + 9)!;
+    expect(change.next.lead).toMatchObject({ memberId: "nas", fingerprint: fp("nas"), role: "lead" });
+    expect(change.next.self.memberId).toBe(before.self.memberId);
+    expect(change.next.pack).toEqual(before.pack);
+    expect(change.next.peers).toEqual([]);
+  });
+
+  test("adopting the lead already pinned at that address changes nothing", () => {
+    expect(adoptLead(peerStore(), { memberId: "desk", fingerprint: fp("desk"), address: "desk.example:8787" }, T0)).toBeNull();
+  });
+
+  test("a collie never adopts ITSELF as lead", () => {
+    expect(adoptLead(peerStore(), { ...claim, memberId: "laptop" }, T0)).toBeNull();
+  });
+
+  test("the old lead steps down and hands over every enrolled peer except the new lead", () => {
+    const store = leadStore({
+      peers: [member({ memberId: "laptop" }), member({ memberId: "nas" }), member({ memberId: "old", status: "unenrolled" })],
+    });
+    const change = demoteSelf(store, claim, T0 + 1)!;
+    expect(change.result.roster.map((r) => r.memberId)).toEqual(["laptop"]);
+    expect(change.next.lead).toMatchObject({ memberId: "nas", role: "lead" });
+    expect(change.next.peers).toEqual([]);
+    // A roster row carries a public hash and a hint — never key material or the secret.
+    expect(JSON.stringify(change.result.roster)).not.toContain(PACK.secret);
+  });
+
+  test("a peer asked to demote refuses — it has no roster to hand over", () => {
+    expect(demoteSelf(peerStore(), claim, T0)).toBeNull();
+    expect(demoteSelf(leadStore(), claim, T0)).toBeNull();
+  });
+
+  test("promoteSelf takes the roster it is GIVEN, so --force is the same code with an empty list", () => {
+    const store = peerStore();
+    const full = promoteSelf(store, [rosterEntryOf(member({ memberId: "desk", role: "lead" })), { memberId: "nas", fingerprint: fp("nas"), address: "nas:1" }], T0)!;
+    expect(full.next.lead).toBeNull();
+    expect(full.next.peers.map((p) => p.memberId)).toEqual(["desk", "nas"]);
+    expect(full.next.peers.every((p) => p.role === "peer" && p.secretGeneration === PACK.secretGeneration)).toBe(true);
+    expect(full.next.pack).toEqual(store.pack);
+
+    const forced = promoteSelf(store, [], T0)!;
+    expect(forced.next.lead).toBeNull();
+    expect(forced.next.peers).toEqual([]);
+  });
+
+  test("promotion never puts this collie in its own roster", () => {
+    const change = promoteSelf(peerStore(), [{ memberId: "laptop", fingerprint: fp("laptop"), address: "x:1" }], T0)!;
+    expect(change.next.peers).toEqual([]);
+  });
+});
+
+describe("updateMemberAddress", () => {
+  test("moves the lead and leaves the pin alone — DHCP is not a trust decision", () => {
+    const change = updateMemberAddress(peerStore(), "desk", "desk.other:8787")!;
+    expect(change.next.lead!.address).toBe("desk.other:8787");
+    expect(change.next.lead!.fingerprint).toBe(fp("desk"));
+    expect(change.result.from).toBe("desk.example:8787");
+  });
+
+  test("moves a peer on the lead's roster", () => {
+    const store = leadStore({ peers: [member({ memberId: "nas" })] });
+    expect(updateMemberAddress(store, "nas", "nas.other:1")!.next.peers[0]!.address).toBe("nas.other:1");
+  });
+
+  test("an unknown member, an unchanged address and an empty address all write nothing", () => {
+    expect(updateMemberAddress(peerStore(), "ghost", "somewhere:1")).toBeNull();
+    expect(updateMemberAddress(peerStore(), "desk", "desk.example:8787")).toBeNull();
+    expect(updateMemberAddress(peerStore(), "desk", "")).toBeNull();
+  });
+});
+
+describe("parseRoster", () => {
+  test("accepts a well-formed roster and normalises the fingerprint spelling", () => {
+    const upper = fp("nas").toUpperCase().replace(/(..)(?=.)/g, "$1:");
+    expect(parseRoster([{ memberId: "nas", fingerprint: upper, address: "nas:1" }])).toEqual([
+      { memberId: "nas", fingerprint: fp("nas"), address: "nas:1" },
+    ]);
+  });
+
+  test("one bad row rejects the whole roster — a partial roster is an unpinned member", () => {
+    expect(parseRoster([{ memberId: "nas", fingerprint: fp("nas"), address: "nas:1" }, { memberId: "!" }])).toBeNull();
+    expect(parseRoster("nope")).toBeNull();
+    expect(parseRoster([{ memberId: "nas", fingerprint: "short", address: "a" }])).toBeNull();
+    expect(parseRoster([{ memberId: "nas", fingerprint: fp("nas"), address: "" }])).toBeNull();
+  });
+});
+
+describe("isLeading", () => {
+  test("is the roster's own answer, in the shape deriveMode reads", () => {
+    expect(isLeading(leadStore({ peers: [member({ memberId: "nas" })] }))).toBe(true);
+    expect(isLeading(leadStore())).toBe(false);
+    expect(isLeading(peerStore())).toBe(false);
   });
 });

@@ -14,6 +14,7 @@ export const BINARY = "/opt/collie/bin/collie";
 export const CONFIG = "/cfg";
 export const HOME = "/home/pat";
 export const HANDLER_FILE = `${CONFIG}/tailscale-managed-handler`;
+export const STATE = "/state";
 
 export interface FakeExec extends Exec {
   /**
@@ -96,6 +97,13 @@ export function fakeFiles(seed: Record<string, string> = {}): FakeFiles {
     ops,
     exists: (p) => under(p).length > 0,
     read: (p) => entries.get(p)?.text ?? null,
+    list: (p) => [
+      ...new Set(
+        [...entries.keys()]
+          .filter((k) => k.startsWith(`${p}/`))
+          .map((k) => k.slice(p.length + 1).split("/")[0]!),
+      ),
+    ],
     write: (p, text, mode) => void entries.set(p, { text, mode }),
     mkdirp: () => {},
     remove: (p) => {
@@ -136,6 +144,7 @@ export function context(
     serveMode: "https",
     socket: "/home/pat/.config/herdr/herdr.sock",
     handlerFile: HANDLER_FILE,
+    stateDir: STATE,
     ...over,
   };
 }

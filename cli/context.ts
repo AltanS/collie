@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_PORT, defaultSocketPath } from "../bridge/config.ts";
+import { DEFAULT_PORT, defaultSocketPath, resolveStateDir } from "../bridge/config.ts";
 import { pluginRoot } from "../bridge/root.ts";
 import { findTool } from "./tools.ts";
 
@@ -28,6 +28,11 @@ export interface CliContext {
   socket: string;
   /** The single managed `tailscale serve` mapping's ownership record. */
   handlerFile: string;
+  /**
+   * Runtime state — the same directory the bridge resolves (`bridge/config.ts`'s `resolveStateDir`),
+   * so the pack trust store a verb writes is the one the running service reads.
+   */
+  stateDir: string;
 }
 
 export type ServeMode = "https" | "http";
@@ -225,6 +230,7 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
     home,
     env,
     handlerFile: join(configDir, "tailscale-managed-handler"),
+    stateDir: resolveStateDir(env, home),
     ...deriveSettings(env, home),
   };
 }
