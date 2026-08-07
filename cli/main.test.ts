@@ -161,8 +161,11 @@ describe("exit codes", () => {
     const readOnly = ["version", "help"];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();
     expect([...worldTouching, ...readOnly].length).toBe(COMMANDS.length);
+    // The grep stops at the verb's closing quote, NOT at the `"]` that used to follow it: a verb
+    // dispatched WITH arguments — a comma where the bracket was — slipped straight through the
+    // narrower form. (Which is also why this comment cannot spell one out; it would match itself.)
     const source = readFileSync(new URL("./main.test.ts", import.meta.url), "utf8");
-    for (const name of worldTouching) expect(source).not.toContain(`run(["${name}"]`);
+    for (const name of worldTouching) expect(source).not.toContain(`run(["${name}"`);
   });
 
   test("a verb that throws becomes an operational failure, not a stack trace", async () => {

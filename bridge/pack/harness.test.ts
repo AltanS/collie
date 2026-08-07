@@ -206,6 +206,7 @@ interface Captured {
 function depsFor(instance: Instance, captured: Captured): PackDeps {
   const ctx: CliContext = {
     root: join(import.meta.dir, "..", ".."),
+    instance: null,
     configDir: join(instance.home, "config"),
     home: instance.home,
     env: { COLLIE_POLL_MS: "300" },
@@ -356,13 +357,18 @@ describe("invite → join, end to end", () => {
     expect(peerData?.lead?.certPem).toContain("BEGIN CERTIFICATE");
     expect(leadData?.peers[0]?.certPem).toContain("BEGIN CERTIFICATE");
 
-    // ── A FINDING THIS HARNESS EXISTS TO PRODUCE ─────────────────────────────
+    // ── A FINDING THIS HARNESS PRODUCED, AND WHAT SHIPPED FOR IT ─────────────
     // `join` restarts the PEER (it is the machine changing mode), and `pack invite` restarted the
     // LEAD so it could answer the invite — but nothing restarts the lead AFTER the enrollment lands.
     // The lead's `PackLead` is built at startup from the roster as it was then, which for a first
     // enrollment is empty, so the running lead writes the new peer to disk and goes on merging
-    // nothing until something else restarts it. Reproduced here rather than papered over: the
-    // explicit restart below is the workaround, and the gap is reported against M5.
+    // nothing until something else restarts it.
+    //
+    // v1 does not re-wire a live process (PACK_PROTOCOL §8.2's note says why); what it does is refuse
+    // to be silent — the bridge logs it, `collie pack status` reports "enrolled but INACTIVE", and
+    // `collie join` names the lead's restart as the last step. The restart itself is still the
+    // operator's, so it is still the harness's: this line IS that restart, not a workaround for a
+    // missing one.
     await lead.restart();
   }, 60_000);
 
@@ -616,10 +622,11 @@ describe("promotion", () => {
     // and nothing about the address changes. The stored address is a hint either way (§4), so
     // `collie reconnect` is the verb for it, and running it is cheaper and more honest than teaching
     // the harness to rewrite a roster behind the code's back.
-    // The demoted machine is not restarted BY the promotion — §14 leaves it running, and the verb
-    // only prints the `collie unserve` its operator must run there. So its process is still the lead
-    // it booted as, with an unpinned listener, until something restarts it. Second finding of the
-    // same shape as the post-enrollment one above; reported against M5 rather than papered over.
+    // The demoted machine is not restarted BY the promotion — §14 leaves it running, and it keeps
+    // the lead-mode listener it booted with (pinning nothing) until something restarts it. Same shape
+    // as the post-enrollment finding above, and the same answer: `promote` now prints `collie restart`
+    // then `collie unserve` for that machine, its own `pack status` reports a peer on disk and a lead
+    // in memory, and the restart stays the operator's — so, here, the harness's.
     await lead.restart();
     const oldLead = lead.store()!.self.memberId;
     const backToPeer = await verb(peer, (d) => cmdReconnect(d, [oldLead, `https://127.0.0.1:${lead.port}`]));

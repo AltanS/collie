@@ -8,16 +8,18 @@ import type { Exec, Files } from "./sys.ts";
 import { bridgeUrl } from "./tailnet.ts";
 import {
   AGENT_FILE_MODE,
-  AGENT_LABEL,
   agentFilePath,
+  agentLabel,
   bridgeCommand,
   bridgeEnvironment,
   collieBinary,
   launchAgentPlist,
+  logFileName,
+  pidFileName,
   serviceSpec,
   systemdUnit,
-  UNIT_NAME,
   unitFilePath,
+  unitName,
 } from "./unit.ts";
 
 // `start`, `stop`, `restart`, `status`, `url`, `logs`, `_exec-bridge` — ported from
@@ -76,10 +78,16 @@ export function supervisionTier(
 }
 
 const launchdDomain = (uid: number): string => `gui/${uid}`;
-const launchdTarget = (uid: number): string => `gui/${uid}/${AGENT_LABEL}`;
+const launchdTarget = (uid: number, instance: string | null): string =>
+  `gui/${uid}/${agentLabel(instance)}`;
 
-export const pidFilePath = (configDir: string): string => join(configDir, "collie.pid");
-export const logFilePath = (configDir: string): string => join(configDir, "collie.log");
+// Both are per-instance, and both default to today's names. Two instances may legitimately share one
+// config dir (the knob invents no dirs), so an unsuffixed `collie.pid` shared between them would have
+// each `start` reading the other's pid.
+export const pidFilePath = (configDir: string, instance: string | null = null): string =>
+  join(configDir, pidFileName(instance));
+export const logFilePath = (configDir: string, instance: string | null = null): string =>
+  join(configDir, logFileName(instance));
 
 // ── The pidfile guard ────────────────────────────────────────────────────────
 
@@ -91,9 +99,21 @@ export const logFilePath = (configDir: string): string => join(configDir, "colli
  * The shell matched `bridge/index.ts`, the tail of its `ExecStart`. That string does not appear in
  * the compiled binary's command line, so the predicate moves in lockstep with `ExecStart`: the
  * program we launch, plus the role argument that distinguishes the daemon from a CLI invocation.
+ *
+ * And, since two instances can run out of ONE checkout, plus the instance marker `bridgeCommand`
+ * puts there. It is checked in both directions: a suffixed instance demands its own `--instance
+ * <name>`, and the unsuffixed one demands the absence of any marker — otherwise the stable Collie's
+ * `start` would look at v1's pidfile entry, recognise the shared binary path, and kill it.
  */
-export function isOurBridge(commandLine: string, binary: string): boolean {
-  return commandLine.includes(binary) && commandLine.includes("_exec-bridge");
+export function isOurBridge(
+  commandLine: string,
+  binary: string,
+  instance: string | null = null,
+): boolean {
+  if (!commandLine.includes(binary) || !commandLine.includes("_exec-bridge")) return false;
+  return instance === null
+    ? !/--instance(\s|=)/.test(commandLine)
+    : new RegExp(`--instance(\\s+|=)${instance}(\\s|$)`).test(commandLine);
 }
 
 /**
@@ -103,7 +123,7 @@ export function isOurBridge(commandLine: string, binary: string): boolean {
  * re-examined on every future `start`.
  */
 export function stopPidfileProcess(deps: LifecycleDeps): void {
-  const pidFile = pidFilePath(deps.ctx.configDir);
+  const pidFile = pidFilePath(deps.ctx.configDir, deps.ctx.instance);
   const raw = deps.files.read(pidFile);
   if (raw === null) return;
   const text = raw.trim();
@@ -111,7 +131,7 @@ export function stopPidfileProcess(deps: LifecycleDeps): void {
     const pid = Number(text);
     if (pid > 1) {
       const command = deps.exec.processCommand(pid);
-      if (command !== null && isOurBridge(command, collieBinary(deps.ctx.root))) {
+      if (command !== null && isOurBridge(command, collieBinary(deps.ctx.root), deps.ctx.instance)) {
         deps.exec.kill(pid);
       }
     }
@@ -137,7 +157,7 @@ export function writeUnit(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
   const spec = serviceSpec(deps.ctx);
   deps.files.mkdirp(deps.ctx.configDir);
-  deps.files.write(unitFilePath(deps.ctx.home), systemdUnit(spec));
+  deps.files.write(unitFilePath(deps.ctx.home, deps.ctx.instance), systemdUnit(spec));
   deps.exec.capture("systemctl", ["--user", "daemon-reload"]);
   return true;
 }
@@ -146,7 +166,11 @@ export function writeAgent(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
   const spec = serviceSpec(deps.ctx);
   deps.files.mkdirp(deps.ctx.configDir);
-  deps.files.write(agentFilePath(deps.ctx.home), launchAgentPlist(spec), AGENT_FILE_MODE);
+  deps.files.write(
+    agentFilePath(deps.ctx.home, deps.ctx.instance),
+    launchAgentPlist(spec),
+    AGENT_FILE_MODE,
+  );
   return true;
 }
 
@@ -165,33 +189,34 @@ export function startUnsupervised(deps: LifecycleDeps): number {
   const pid = deps.exec.spawnDetached(bridgeCommand(spec), {
     cwd: deps.ctx.root,
     env: { ...stringEnv(deps.ctx.env), ...bridgeEnvironment(spec) },
-    logPath: logFilePath(deps.ctx.configDir),
+    logPath: logFilePath(deps.ctx.configDir, deps.ctx.instance),
   });
   if (pid === null) {
     deps.io.err("error: could not start the bridge");
     return EXIT.FAIL;
   }
-  deps.files.write(pidFilePath(deps.ctx.configDir), `${pid}\n`);
+  deps.files.write(pidFilePath(deps.ctx.configDir, deps.ctx.instance), `${pid}\n`);
   deps.io.out(`bridge started (pid ${pid}, unsupervised)`);
   return EXIT.OK;
 }
 
 function startSystemd(deps: LifecycleDeps): number {
   if (!writeUnit(deps)) return EXIT.FAIL;
-  const r = deps.exec.capture("systemctl", ["--user", "enable", "--now", UNIT_NAME]);
+  const unit = unitName(deps.ctx.instance);
+  const r = deps.exec.capture("systemctl", ["--user", "enable", "--now", unit]);
   if (!r.found || r.code !== 0) {
     if (r.stderr.trim() !== "") deps.io.err(r.stderr.trimEnd());
-    deps.io.err(`error: systemctl --user enable --now ${UNIT_NAME} failed`);
+    deps.io.err(`error: systemctl --user enable --now ${unit} failed`);
     return EXIT.FAIL;
   }
-  deps.io.out(`bridge started (systemd --user: ${UNIT_NAME})`);
+  deps.io.out(`bridge started (systemd --user: ${unit})`);
   return EXIT.OK;
 }
 
 async function startLaunchd(deps: LifecycleDeps): Promise<number> {
   if (!writeAgent(deps)) return EXIT.FAIL;
   const uid = deps.uid();
-  const target = launchdTarget(uid);
+  const target = launchdTarget(uid, deps.ctx.instance);
   // Release the port if this install predates launchd support. The old bridge drains async, so the
   // new one can still lose a race for the port — it exits nonzero and KeepAlive brings it back
   // after ThrottleInterval, so the migration self-heals; `start` may just warn once on the way.
@@ -205,11 +230,11 @@ async function startLaunchd(deps: LifecycleDeps): Promise<number> {
   // exits — bootstrapping into that window fails with "Bootstrap failed: 5: Input/output error",
   // which would end `start` with the bridge DOWN: the outage this branch exists to remove, on the
   // path (`restart`, and so `update`) an operator hits most. Retry across the window.
-  const plist = agentFilePath(deps.ctx.home);
+  const plist = agentFilePath(deps.ctx.home, deps.ctx.instance);
   for (let attempt = 1; attempt <= 3; attempt++) {
     const r = deps.exec.capture("launchctl", ["bootstrap", launchdDomain(uid), plist]);
     if (r.found && r.code === 0) {
-      deps.io.out(`bridge started (launchd: ${AGENT_LABEL})`);
+      deps.io.out(`bridge started (launchd: ${agentLabel(deps.ctx.instance)})`);
       return EXIT.OK;
     }
     if (attempt === 3) {
@@ -260,11 +285,11 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
 export function cmdStop(deps: LifecycleDeps): number {
   const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
   if (tier === "systemd") {
-    deps.exec.capture("systemctl", ["--user", "disable", "--now", UNIT_NAME]);
+    deps.exec.capture("systemctl", ["--user", "disable", "--now", unitName(deps.ctx.instance)]);
   } else if (tier === "launchd") {
     // bootout stops it now; `disable` is what makes that survive a login, since RunAtLoad would
     // otherwise bring it back. Together they are systemd's `disable --now`.
-    const target = launchdTarget(deps.uid());
+    const target = launchdTarget(deps.uid(), deps.ctx.instance);
     deps.exec.capture("launchctl", ["disable", target]);
     deps.exec.capture("launchctl", ["bootout", target]);
     stopPidfileProcess(deps);
@@ -294,17 +319,17 @@ export function cmdUninstall(deps: LifecycleDeps): number {
 
   const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
   if (tier === "systemd") {
-    deps.files.remove(unitFilePath(deps.ctx.home));
+    deps.files.remove(unitFilePath(deps.ctx.home, deps.ctx.instance));
     deps.exec.capture("systemctl", ["--user", "daemon-reload"]);
-    deps.exec.capture("systemctl", ["--user", "reset-failed", UNIT_NAME]);
+    deps.exec.capture("systemctl", ["--user", "reset-failed", unitName(deps.ctx.instance)]);
   } else if (tier === "launchd") {
     // Plist first: while it is on disk an enabled label is one login from loading again.
-    deps.files.remove(agentFilePath(deps.ctx.home));
+    deps.files.remove(agentFilePath(deps.ctx.home, deps.ctx.instance));
     // `stop`'s `disable` is a record in launchd's per-user database and outlives the plist, so clear
     // it or a reinstall inherits a disabled label. `enable` resets that state; it can't delete the row.
-    deps.exec.capture("launchctl", ["enable", launchdTarget(deps.uid())]);
+    deps.exec.capture("launchctl", ["enable", launchdTarget(deps.uid(), deps.ctx.instance)]);
   }
-  deps.files.remove(pidFilePath(deps.ctx.configDir));
+  deps.files.remove(pidFilePath(deps.ctx.configDir, deps.ctx.instance));
   deps.io.out(
     "✓ uninstalled: service stopped & disabled, service definition removed, Collie's tailscale serve mapping removed",
   );
@@ -349,7 +374,7 @@ export function cmdLogs(deps: LifecycleDeps, args: readonly string[]): number {
     const r = deps.exec.inherit("journalctl", [
       "--user",
       "-u",
-      UNIT_NAME,
+      unitName(deps.ctx.instance),
       "-n",
       String(lines),
       "--no-pager",
@@ -362,7 +387,7 @@ export function cmdLogs(deps: LifecycleDeps, args: readonly string[]): number {
   }
   // The shell shelled out to `tail`; reading the file is the same answer with one fewer tool on
   // the runtime path.
-  const text = deps.files.read(logFilePath(deps.ctx.configDir));
+  const text = deps.files.read(logFilePath(deps.ctx.configDir, deps.ctx.instance));
   if (text === null) {
     deps.io.out("(no log)");
     return EXIT.OK;
@@ -394,26 +419,28 @@ export async function cmdExecBridge(deps: LifecycleDeps): Promise<number> {
 export function serviceDescription(deps: LifecycleDeps): string {
   const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
   if (tier === "systemd") {
-    const r = deps.exec.capture("systemctl", ["--user", "is-active", UNIT_NAME]);
+    const unit = unitName(deps.ctx.instance);
+    const r = deps.exec.capture("systemctl", ["--user", "is-active", unit]);
     const state = r.found && r.stdout.trim() !== "" ? r.stdout.trim() : "unknown";
-    return `systemd --user (${UNIT_NAME}) · ${state}`;
+    return `systemd --user (${unit}) · ${state}`;
   }
-  const pid = deps.files.read(pidFilePath(deps.ctx.configDir))?.trim();
+  const pid = deps.files.read(pidFilePath(deps.ctx.configDir, deps.ctx.instance))?.trim();
   if (tier === "launchd") {
     // `launchctl print` fails when the label isn't loaded; a loaded-but-stopped job has no pid line.
-    const r = deps.exec.capture("launchctl", ["print", launchdTarget(deps.uid())]);
+    const label = agentLabel(deps.ctx.instance);
+    const r = deps.exec.capture("launchctl", ["print", launchdTarget(deps.uid(), deps.ctx.instance)]);
     const out = r.found && r.code === 0 ? r.stdout : "";
     if (out.trim() === "") {
       // No agent — but this Mac may be on the unsupervised fallback (bootstrap refused, e.g. no
       // console login), where a bridge really is running and only supervision is missing. Reporting
       // a bare "not loaded" there would read as "nothing is up" while the phone is being served.
       if (pid !== undefined) return `pid ${pid} (unsupervised — launchd bootstrap refused)`;
-      return `launchd (${AGENT_LABEL}) · not loaded`;
+      return `launchd (${label}) · not loaded`;
     }
     const running = /^[ \t]*pid = (\d+)/m.exec(out)?.[1];
     return running !== undefined
-      ? `launchd (${AGENT_LABEL}) · active (pid ${running})`
-      : `launchd (${AGENT_LABEL}) · loaded, not running`;
+      ? `launchd (${label}) · active (pid ${running})`
+      : `launchd (${label}) · loaded, not running`;
   }
   return pid !== undefined ? `pid ${pid} (unsupervised)` : "not supervised";
 }
@@ -430,6 +457,9 @@ export async function statusBanner(deps: LifecycleDeps): Promise<string[]> {
       ? `  ✓ Collie is running  ·  v${version}`
       : `  ⚠ Collie isn't answering on :${deps.ctx.port} yet (v${version}) — check 'collie logs'`,
   );
+  // Only a suffixed instance says so — a solo host's banner is unchanged, and on a host running two
+  // this is the line that says WHICH Collie answered (the unit name on the next line agrees).
+  if (deps.ctx.instance !== null) lines.push(`    instance  ${deps.ctx.instance}`);
   lines.push(`    service   ${serviceDescription(deps)}`);
   lines.push(`    local     http://127.0.0.1:${deps.ctx.port}`);
   if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {

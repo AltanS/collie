@@ -1,4 +1,5 @@
 import type { CliContext } from "./context.ts";
+import { instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
 import type { Exec, ExecResult, Files } from "./sys.ts";
 
@@ -135,15 +136,20 @@ export function context(
   env: Record<string, string | undefined> = {},
   over: Partial<CliContext> = {},
 ): CliContext {
+  // The default fixture is the solo instance, so every existing verb suite keeps asserting the
+  // unsuffixed names. `{ instance: "v1" }` through `over` also moves the ownership record, exactly as
+  // `loadContext` does — a fixture where it did not would be asserting a collision that cannot happen.
+  const instance = over.instance ?? null;
   return {
     root: ROOT,
+    instance,
     configDir: CONFIG,
     home: HOME,
     env,
     port: 8787,
     serveMode: "https",
     socket: "/home/pat/.config/herdr/herdr.sock",
-    handlerFile: HANDLER_FILE,
+    handlerFile: `${CONFIG}/tailscale-managed-handler${instanceSuffix(instance)}`,
     stateDir: STATE,
     ...over,
   };

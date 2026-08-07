@@ -675,3 +675,72 @@ describe("POST /pack/v1/leave — the caller drops ITSELF (§8.4)", () => {
     expect(h.data().peers).toHaveLength(1);
   });
 });
+
+// ── The change this process persisted but did not wire ───────────────────────
+// A membership change arriving over the wire lands in the store of a RUNNING bridge that read its
+// roster at boot and does not re-read it. Nothing re-wires in place (bridge/pack/staleness.ts says
+// why); what the router owes is a notification, so the process can say so in its own journal.
+
+describe("onMembershipChange", () => {
+  const claim = { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" };
+
+  test("the FIRST enrollment fires it — the lead persisted a peer it is not serving", async () => {
+    const minted = mintInvite(leadStore({ peers: [] }), { now: T0, label: "laptop", random: counterRandom("r") });
+    const h = harness(minted.next);
+    let fired = 0;
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0 + 1,
+      onMembershipChange: () => void fired++,
+    });
+    const res = (await call(handler, PACK_ENROLL_PATH, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-pack-protocol": "1" },
+      body: JSON.stringify({
+        protocol: 1,
+        token: minted.result.token,
+        fingerprint: fp("laptop"),
+        certPem: material("laptop").certPem,
+        address: "laptop.ts.net:8787",
+        label: "laptop",
+      }),
+    }))!;
+    expect(res.status).toBe(200);
+    expect(fired).toBe(1);
+  });
+
+  test("a REFUSED enrollment does not — nothing changed, so nothing is stale", async () => {
+    const h = harness(leadStore({ peers: [] }));
+    let fired = 0;
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      onMembershipChange: () => void fired++,
+    });
+    const res = (await call(handler, PACK_ENROLL_PATH, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-pack-protocol": "1" },
+      body: JSON.stringify({ protocol: 1, token: "nope", fingerprint: fp("laptop") }),
+    }))!;
+    expect(res.status).toBe(401);
+    expect(fired).toBe(0);
+  });
+
+  test("a demotion fires it — the process is still a lead in every way but the store", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    let fired = 0;
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      onMembershipChange: () => void fired++,
+    });
+    const res = (await call(handler, PACK_LEAD_PATH, signedPost("nas", PACK_LEAD_PATH, { lead: claim }, T0)))!;
+    expect(res.status).toBe(200);
+    expect(fired).toBe(1);
+    // …and the router itself did NOT act on it: no restart, no re-wire, no front-door change.
+    expect(h.data().lead!.memberId).toBe("nas");
+  });
+});

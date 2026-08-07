@@ -354,6 +354,31 @@ There is no discovery, no enumeration, and no overlay-network integration — ev
 > Everything *after* the exchange is two-factor (§8.1, §8.6). The exchange itself is one factor, on
 > purpose, and it is the operator's ten-minute window that bounds it (§8.5).
 
+> **Note, added 2026-08-07 — the lead must be restarted after an enrollment, and is told to be.**
+>
+> The enrollment lands in the **running** lead's trust store, through the lead's own
+> `/pack/v1/enroll`. That store is read **once per process**, at boot: the mode, the roster the lead
+> sweeps and the pinned `ca` a peer's listener enforces are all built from that one read. So a lead
+> that answers its first `collie join` persists the peer and goes on merging nothing until it
+> restarts. `collie pack invite` restarts the lead so it can *answer* the invite; the enrollment
+> arrives afterwards, and no restart follows it.
+>
+> **v1 does not re-wire in place, and this is the decision, not an omission.** Re-reading the store
+> into a live process would mean a second startup path running concurrently with the first — and
+> `server.reload({tls})` does not swap a pinned `ca` at all (M4/08's transport investigation), so a
+> peer's own listener could not be re-pinned without dropping the port. What v1 does instead is
+> refuse to be silent about it:
+>
+> - the bridge records the roster it wired at boot in `<stateDir>/pack-runtime.json`
+>   (`bridge/pack/staleness.ts`), and **logs** when a membership change lands under it;
+> - `collie pack status` compares that marker to the store and prints **"enrolled but INACTIVE"**,
+>   naming the members that are enrolled and not being served, and the `collie restart` that fixes it;
+> - `collie join` ends by naming the same restart, **on the lead** — the joining machine restarts
+>   itself, and it is the only party in a position to tell the operator about the other side.
+>
+> The marker is written only by an instance that **has** a trust store, so §11's zero-tax contract is
+> untouched: solo still writes nothing.
+
 ### 8.3 Secrets never touch argv
 
 `ps -eo args` and `/proc/<pid>/cmdline` (mode 444) are world-readable — this is not theoretical; it is
@@ -723,6 +748,24 @@ Transparent failover is a non-goal.**
 - **Nothing else follows the crown.** Push subscriptions, the audit log, outstanding notification tags
   and activity ledgers are host-local by rule (§2) and stay on the old lead. The phone re-subscribes
   against the new one. `promote` enumerates this in its own output.
+
+> **Note, added 2026-08-07 — the demoted machine needs a restart, and `promote` says so first.**
+>
+> The old lead adopts its demotion **on disk**, in the request it answers. Its *process* does not
+> change: it keeps the lead-mode listener it bound at boot — which, under §8.1's amendment, **pins
+> nothing** — and its front door, until something restarts it. So `promote` now prints
+> `collie restart`, **then** `collie unserve`, for that machine, in that order: `restart` runs `start`,
+> which publishes, so tearing the front door down first would race the thing that re-publishes it (the
+> same ordering `collie join` uses). Locally, the demoted machine says it too — in its own log, and in
+> `collie pack status`, which reports it as a `peer` on disk and a `lead` in memory (§8.2's note).
+>
+> **The demoted bridge does not restart itself.** Exiting so a supervisor restarts it would work under
+> systemd (`Restart=on-failure`) and launchd (`KeepAlive`/`SuccessfulExit=false`) — and would take the
+> machine's Collie off the air entirely on the **unsupervised** tier, which nothing restarts and which
+> is reached exactly where an operator is least present (a Mac whose `gui/<uid>` bootstrap refused).
+> The bridge is launched identically on all three tiers and cannot tell which one it is under;
+> supervision is the CLI's knowledge. A demotion is not a licence to end a process that may not come
+> back, so the honest v1 answer is the operator's restart, named in three places.
 
 ---
 

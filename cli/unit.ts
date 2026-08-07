@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import type { CliContext } from "./context.ts";
-import { PLUGIN_ID } from "./context.ts";
+import { instanceSuffix, PLUGIN_ID } from "./context.ts";
 
 // The service definition, as a pure function of where things are. The shell wrote these with a
 // heredoc straight into `~/.config/systemd/user` and `~/Library/LaunchAgents`, so the only way to
@@ -19,9 +19,28 @@ import { PLUGIN_ID } from "./context.ts";
 export const UNIT_NAME = "collie";
 export const AGENT_LABEL = PLUGIN_ID;
 
+// Every name below is a function of the instance suffix, and every one of them returns the constant
+// above when there is none — a host that never sets `COLLIE_INSTANCE` sees the same unit, the same
+// label and the same filenames it saw before the knob existed.
+
+/** The systemd `--user` unit name for this instance: `collie`, or `collie-v1`. */
+export const unitName = (instance: string | null): string => `${UNIT_NAME}${instanceSuffix(instance)}`;
+
+/** The launchd label for this instance: `herdr.collie`, or `herdr.collie-v1`. */
+export const agentLabel = (instance: string | null): string =>
+  `${AGENT_LABEL}${instanceSuffix(instance)}`;
+
+/** The pidfile's basename — the unsupervised tier's record of its own bridge. */
+export const pidFileName = (instance: string | null): string => `collie${instanceSuffix(instance)}.pid`;
+
+/** The log basename, written by the unsupervised tier and read back by `collie logs`. */
+export const logFileName = (instance: string | null): string => `collie${instanceSuffix(instance)}.log`;
+
 export interface ServiceSpec {
   /** The Collie checkout. */
   root: string;
+  /** The instance suffix, or `null`. Names the unit, the label, the log and the argv marker. */
+  instance: string | null;
   /** The supervised program: `<root>/bin/collie`. */
   binary: string;
   configDir: string;
@@ -37,6 +56,7 @@ export function collieBinary(root: string): string {
 export function serviceSpec(ctx: CliContext): ServiceSpec {
   return {
     root: ctx.root,
+    instance: ctx.instance,
     binary: collieBinary(ctx.root),
     configDir: ctx.configDir,
     socket: ctx.socket,
@@ -44,12 +64,12 @@ export function serviceSpec(ctx: CliContext): ServiceSpec {
   };
 }
 
-export function unitFilePath(home: string): string {
-  return join(home, ".config", "systemd", "user", `${UNIT_NAME}.service`);
+export function unitFilePath(home: string, instance: string | null = null): string {
+  return join(home, ".config", "systemd", "user", `${unitName(instance)}.service`);
 }
 
-export function agentFilePath(home: string): string {
-  return join(home, "Library", "LaunchAgents", `${AGENT_LABEL}.plist`);
+export function agentFilePath(home: string, instance: string | null = null): string {
+  return join(home, "Library", "LaunchAgents", `${agentLabel(instance)}.plist`);
 }
 
 /**
@@ -58,7 +78,13 @@ export function agentFilePath(home: string): string {
  * drift and the liveness guard would silently degrade to killing nothing.
  */
 export function bridgeCommand(spec: ServiceSpec): string[] {
-  return [spec.binary, "_exec-bridge"];
+  const argv = [spec.binary, "_exec-bridge"];
+  // A suffixed instance carries `--instance <name>`, and that is the ONLY reason the flag exists:
+  // two instances out of one checkout share a binary path, so without it the pidfile predicate
+  // ({@link isOurBridge}) could not tell one bridge from the other and `start` on the second could
+  // kill the first. `_exec-bridge` ignores the argument — the instance travels in the environment.
+  if (spec.instance !== null) argv.push("--instance", spec.instance);
+  return argv;
 }
 
 /**
@@ -73,18 +99,23 @@ export function bridgeCommand(spec: ServiceSpec): string[] {
  * from disk.
  */
 export function bridgeEnvironment(spec: ServiceSpec): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     HERDR_SOCKET_PATH: spec.socket,
     COLLIE_PORT: String(spec.port),
     HERDR_PLUGIN_CONFIG_DIR: spec.configDir,
     COLLIE_PLUGIN_ROOT: spec.root,
   };
+  // Only when there is one: an unsuffixed instance's unit and plist are unchanged by this knob's
+  // existence. It is passed so the supervised process resolves the same context the CLI did —
+  // notably `collie logs` and the pidfile, which are named after the instance.
+  if (spec.instance !== null) env.COLLIE_INSTANCE = spec.instance;
+  return env;
 }
 
 export function systemdUnit(spec: ServiceSpec): string {
   const env = bridgeEnvironment(spec);
   return `[Unit]
-Description=Collie
+Description=Collie${spec.instance === null ? "" : ` (instance ${spec.instance})`}
 After=default.target
 # Never give up restarting — a phone-only operator can't run 'systemctl reset-failed'.
 StartLimitIntervalSec=0
@@ -136,7 +167,7 @@ export function launchAgentPlist(spec: ServiceSpec): string {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${xmlEscape(AGENT_LABEL)}</string>
+    <string>${xmlEscape(agentLabel(spec.instance))}</string>
     <key>ProgramArguments</key>
     <array>
 ${args}
@@ -157,9 +188,9 @@ ${envEntries}
     <key>ThrottleInterval</key>
     <integer>5</integer>
     <key>StandardOutPath</key>
-    <string>${xmlEscape(join(spec.configDir, "collie.log"))}</string>
+    <string>${xmlEscape(join(spec.configDir, logFileName(spec.instance)))}</string>
     <key>StandardErrorPath</key>
-    <string>${xmlEscape(join(spec.configDir, "collie.log"))}</string>
+    <string>${xmlEscape(join(spec.configDir, logFileName(spec.instance)))}</string>
 </dict>
 </plist>
 `;

@@ -40,6 +40,7 @@ import {
 // apart. Everything below the enrollment POST goes through `PeerClient`, which composes the prefix
 // itself — hence one path constant here and route NAMES ("secret", "lead", "leave") at the call sites.
 import { PACK_ENROLL_PATH } from "../bridge/pack/router.ts";
+import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/staleness.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
 import type { CliContext } from "./context.ts";
@@ -449,6 +450,13 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   deps.io.out(`  pinned    ${parsed.leadFingerprint.slice(0, 16)}… (its certificate, not its name)`);
   deps.io.out("  This machine now publishes no front door and sends no notifications of its own —");
   deps.io.out("  the phone talks to the lead, which speaks for the whole pack.");
+  deps.io.out("");
+  // The lead persisted this enrollment through its OWN running bridge, which read its roster at boot
+  // and does not re-read it (§8.2's note). This side restarts itself two lines below; the lead cannot
+  // be restarted from here, so the operator is told — it is the one remaining step of the join.
+  deps.io.out(`  ONE STEP LEFT, on the lead (${parsed.leadMemberId}): \`collie restart\` there.`);
+  deps.io.out("  Its roster now has this machine on disk, but its running process read that roster at");
+  deps.io.out("  boot — until it restarts, this machine's sessions do not appear on the phone.");
 
   // Clear BEFORE the restart: after it the herd push path is muted (peer mode), and a muted sink
   // drops a `clear` exactly as it drops an alert — so anything already on the phone would be stuck.
@@ -561,6 +569,7 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   deps.io.out(`self   ${data.self.memberId}  ${data.self.fingerprint.slice(0, 16)}…`);
   deps.io.out(`secret generation ${data.pack.secretGeneration}, rotated ${new Date(data.pack.rotatedAt).toISOString()}`);
   if (conflict !== null) deps.io.out(`⚠ ${conflict}`);
+  reportDrift(deps, data);
 
   const members = data.lead === null ? data.peers : [data.lead, ...data.peers];
   if (members.length === 0) {
@@ -609,6 +618,37 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     }
   }
   return EXIT.OK;
+}
+
+/**
+ * The one thing `pack status` knows that the store alone does not: **whether the running bridge is
+ * serving this roster**.
+ *
+ * A membership change can land on a bridge nobody restarted — the first `join` writes into the LEAD's
+ * store through the lead's own enrollment endpoint, and a promotion demotes the old lead the same way
+ * — and the trust store is read once per process, at boot, on purpose (§8.3, §3). The bridge leaves
+ * the roster it wired in `pack-runtime.json`; this compares the two and names the restart.
+ *
+ * Silent when there is no marker: no bridge has booted since this store existed, so there is no
+ * running process for the store to be ahead of, and a `pack status` run before the first `start`
+ * must not invent a warning.
+ */
+function reportDrift(deps: PackDeps, data: TrustStoreData): void {
+  const marker = parseMarker(deps.files.read(packRuntimePath(deps.ctx.stateDir)));
+  const drift = rosterDrift(marker, data);
+  if (drift === null || marker === null) return;
+  deps.io.out("");
+  deps.io.out("⚠ enrolled but INACTIVE — the bridge running here still holds the roster it read at boot.");
+  if (drift.gained.length > 0) deps.io.out(`    not yet active:  ${drift.gained.join(", ")}`);
+  if (drift.lost.length > 0) deps.io.out(`    still wired for: ${drift.lost.join(", ")} (no longer members)`);
+  if (drift.modeChanged !== null) {
+    deps.io.out(
+      `    this machine is a ${drift.modeChanged} on disk and a ${marker.mode} in memory — its listener` +
+        ` and its front door are still the ${marker.mode}'s.`,
+    );
+  }
+  deps.io.out("  Run `collie restart` HERE to activate it. Nothing is lost meanwhile: the store is correct,");
+  deps.io.out("  it is the process that is behind, and every membership verb restarts on its own machine.");
 }
 
 /** `hello` against every member, concurrently — one budget for the sweep, not N (§10.1). */
@@ -826,8 +866,11 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
   deps.io.out("");
   deps.io.out("  1. Re-point your phone — the front-door URL is bound to a node, and nothing rewrites a");
   deps.io.out(`     bookmark. This machine: ${mine}`);
-  deps.io.out(`  2. On "${data.lead.memberId}", tear its front door down: \`collie unserve\` (only that`);
-  deps.io.out("     machine can — Collie tears down only a mapping its own ownership record matches).");
+  deps.io.out(`  2. On "${data.lead.memberId}": \`collie restart\`, then \`collie unserve\` — in that order.`);
+  deps.io.out("     It adopted the demotion on disk when it answered, but its PROCESS is still the lead it");
+  deps.io.out("     booted as: lead-mode listener, pinning nothing, until the restart. And only that machine");
+  deps.io.out("     can drop the front door (Collie removes only a mapping its own record matches); `restart`");
+  deps.io.out("     re-publishes on the way up, which is why `unserve` comes after it.");
   if (stranded.length > 0) {
     deps.io.out(`  3. Unreachable during promotion: ${stranded.join(", ")} — each must \`collie join\` this`);
     deps.io.out("     machine with a fresh token. The same rule rotation uses, for the same reason.");

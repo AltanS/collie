@@ -138,6 +138,17 @@ export interface PackRouterDeps {
    * pinning. A peer whose pin could not be built passes `false` and is down rather than single-factor.
    */
   readonly transportPinned?: boolean;
+  /**
+   * Called after a membership change this handler wrote — an enrollment, a demotion, an adopted lead.
+   *
+   * The trust store is read once per process (bridge/index.ts), so a change arriving over the wire is
+   * persisted and NOT wired: the lead that just enrolled its first peer is still merging nothing, and
+   * the lead that just demoted itself is still listening as a lead. Re-wiring in place is refused —
+   * mode, pinned `ca` and sweep are startup-shaped, and `server.reload({tls})` does not swap a pinned
+   * `ca` at all — so what this hook buys is the process SAYING so (bridge/pack/staleness.ts). It is a
+   * notification, never a control: it takes nothing and it is not awaited.
+   */
+  readonly onMembershipChange?: () => void;
   readonly now?: () => number;
   readonly random?: RandomSource;
 }
@@ -200,6 +211,7 @@ function verifySigned(
  */
 export function createPackRouter(deps: PackRouterDeps): PackHandler {
   const transportPinned = deps.transportPinned ?? false;
+  const membershipChanged = (): void => deps.onMembershipChange?.();
   const now = deps.now ?? Date.now;
   const random = deps.random ?? randomToken;
 
@@ -425,6 +437,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
         current === null ? null : demoteSelf(current, claim, now()),
       );
       if (handover === null) return badRequest(self, "not the lead of this pack");
+      // Demoted on disk, still a lead in memory: this process keeps its lead-mode listener — and
+      // pins nothing — until it restarts (§14's note). Nothing here restarts it: the supervision
+      // tier is the CLI's knowledge, not the bridge's, and an unsupervised bridge that exited to be
+      // restarted would simply be gone. So it says so, loudly, in its own journal.
+      membershipChanged();
       // The front door is NOT torn down here: publishing and unpublishing `tailscale serve` is
       // `collie serve`/`unserve`'s business (ADR 0001's ownership record lives beside the CLI, not in
       // the bridge), and no process may shell out to a tailnet on another operator's say-so. The new
@@ -438,6 +455,7 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     const changed = await commitPackChange(deps.store, deps.audit, (current) =>
       current === null ? null : adoptLead(current, claim, now()),
     );
+    if (changed !== null) membershipChanged();
     return new Response(JSON.stringify({ lead: claim.memberId, applied: changed !== null, roster: [] }), {
       status: 200,
       headers: packResponseHeaders(self),
@@ -503,6 +521,9 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     );
     if (response === null) return refuse(PACK_ENROLL_PATH, "not-a-pack-member");
 
+    // The peer is in the roster on disk; this process still holds the one it booted with (§8.2's
+    // note). The joiner is told to restart the lead too — this is the lead's own record of it.
+    membershipChanged();
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: packResponseHeaders(response.leadMemberId),

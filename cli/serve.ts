@@ -1,4 +1,5 @@
 import type { CliContext, ServeMode } from "./context.ts";
+import { instanceSuffix } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 import { tailnetName } from "./tailnet.ts";
@@ -353,7 +354,9 @@ export function cmdServe(deps: ServeDeps): number {
   return EXIT.FAIL;
 }
 
-export const serveOutPath = (ctx: CliContext): string => `${ctx.configDir}/serve.out`;
+/** Per-instance, like every other file the CLI drops in the config dir — two instances may share one. */
+export const serveOutPath = (ctx: CliContext): string =>
+  `${ctx.configDir}/serve${instanceSuffix(ctx.instance)}.out`;
 
 /** The publish-side gate. True means "go ahead"; it prints its own refusal otherwise. */
 function ensureRootAvailable(

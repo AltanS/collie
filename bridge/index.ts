@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { ActivityLedger } from "./activity.ts";
@@ -16,6 +16,7 @@ import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
+import { formatMarker, markerFor, packRuntimePath, rosterDrift } from "./pack/staleness.ts";
 import { enrollmentOf, TrustStore } from "./pack/trust-store.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
@@ -56,7 +57,8 @@ const cfg = loadConfig();
 // (§11) holding at its startup seam — and `trustStore.load()` returning `null` is the same `null` a
 // solo instance will hand `resolvePackRuntime` forever after.
 const trustStore = new TrustStore(cfg.stateDir);
-const enrollment = enrollmentOf(await trustStore.load());
+const bootTrust = await trustStore.load();
+const enrollment = enrollmentOf(bootTrust);
 const pack = resolvePackRuntime(enrollment);
 if (pack.conflict) console.warn(`[pack] ${pack.conflict}`);
 if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
@@ -64,6 +66,43 @@ if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
 // Ensure the state dir exists with private (0700) perms before push/snooze/uploads write into it —
 // it holds push subscription endpoints and uploaded images, so keep it owner-only.
 await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
+
+// The roster THIS PROCESS wired, left on disk for `collie pack status` to compare the store against
+// (bridge/pack/staleness.ts). A membership change can arrive over the wire — the first enrollment
+// lands in a running lead, a promotion demotes a running lead — and no re-read follows, by design.
+//
+// Gated on a trust store EXISTING: a solo instance writes no file here, which is §11's zero-tax
+// contract. Best effort throughout — a marker is a diagnostic, and one that failed to write must
+// never be a reason a bridge does not come up.
+const bootMarker = markerFor(bootTrust, Date.now(), process.pid);
+if (bootTrust !== null) {
+  try {
+    await writeFile(packRuntimePath(cfg.stateDir), formatMarker(bootMarker), { mode: 0o600 });
+  } catch (err) {
+    console.warn(`[pack] could not record the boot roster: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+/**
+ * A membership change landed on THIS running process, from the wire. Say so, once per change, with
+ * the verb that fixes it — the store is already correct, and this process is not.
+ */
+function packStoreChanged(): void {
+  const drift = rosterDrift(bootMarker, trustStore.current());
+  if (drift === null) return;
+  console.warn(
+    "[pack] the trust store changed under this running process — it still holds the roster it read " +
+      "at boot. Run `collie restart` on THIS machine to activate the change.",
+  );
+  if (drift.gained.length > 0) console.warn(`[pack]   enrolled but not yet active: ${drift.gained.join(", ")}`);
+  if (drift.lost.length > 0) console.warn(`[pack]   no longer members: ${drift.lost.join(", ")}`);
+  if (drift.modeChanged !== null) {
+    console.warn(
+      `[pack]   this machine is now a ${drift.modeChanged}, but the process is still running as a ` +
+        `${bootMarker.mode} — its listener and its front door are the ${bootMarker.mode}'s until it restarts.`,
+    );
+  }
+}
 
 // ── Process-global services, shared across every session ─────────────────────
 const push = new Push(cfg);
@@ -353,7 +392,14 @@ const server = startServer({
   packRouter:
     trustStore.current() === null
       ? undefined
-      : (surface) => createPackRouter({ store: trustStore, audit, transportPinned, ...surface }),
+      : (surface) =>
+          createPackRouter({
+            store: trustStore,
+            audit,
+            transportPinned,
+            onMembershipChange: packStoreChanged,
+            ...surface,
+          }),
   // Peer only, and only when the pin could actually be built. See `transportPinned` above.
   tls: listenerTls ?? undefined,
 });

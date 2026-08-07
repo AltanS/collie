@@ -17,6 +17,12 @@ export const PLUGIN_ID = "herdr.collie";
 export interface CliContext {
   /** The Collie checkout. */
   root: string;
+  /**
+   * The instance suffix from `COLLIE_INSTANCE`, or `null` for the one-and-only instance a host has
+   * always had. `null` is not a default that behaves like `""` — it is the ONLY value that produces
+   * today's names (`collie.service`, `tailscale-managed-handler`, `collie.pid`), byte for byte.
+   */
+  instance: string | null;
   /** Where `.env` and the ownership record live. */
   configDir: string;
   /** Resolved home dir — `$HOME` when set, the passwd entry otherwise (there may be no env). */
@@ -191,6 +197,51 @@ export function deriveSettings(
   };
 }
 
+// ── The instance suffix ──────────────────────────────────────────────────────
+// Two Collies on one host — a stable one and a next-major one being shaken out beside it — need two
+// of everything the CLI names: a unit, a launchd label, a pidfile, a log, an ownership record. One
+// knob supplies the suffix for all of them, and NOTHING else: ports, config dirs and state dirs stay
+// explicitly configured, because a knob that also invented those would be inventing where a second
+// service writes.
+
+/** The accepted shape of `COLLIE_INSTANCE`: it becomes a unit name, a filename and a launchd label. */
+export const INSTANCE_PATTERN = /^[a-z0-9-]{1,16}$/;
+
+/** `""` for the unsuffixed instance, `-v1` for `COLLIE_INSTANCE=v1`. The one place the join is written. */
+export const instanceSuffix = (instance: string | null): string =>
+  instance === null ? "" : `-${instance}`;
+
+/**
+ * `COLLIE_INSTANCE` → the suffix, or `null`.
+ *
+ * **Throws rather than defaulting**, on two conditions, because both would land as a second service
+ * quietly colliding with the first:
+ *
+ *  - a suffix that is not `[a-z0-9-]{1,16}` — it goes into a systemd unit name, a launchd label and a
+ *    filename, and none of those forgive a space, a slash or a dot;
+ *  - a suffix with **no explicit `COLLIE_PORT`**. The port default (8787) is a property of the host,
+ *    not of an instance, so two instances taking it would fight for the same listener and the second
+ *    would restart-loop. Naming a second instance is exactly the moment to have decided its port.
+ */
+export function resolveInstance(env: Record<string, string | undefined>): string | null {
+  const raw = env.COLLIE_INSTANCE?.trim();
+  if (raw === undefined || raw === "") return null;
+  if (!INSTANCE_PATTERN.test(raw)) {
+    throw new Error(
+      `COLLIE_INSTANCE="${raw}" is not a usable instance name — 1-16 characters of [a-z0-9-]. ` +
+        "It becomes a unit name, a launchd label and a filename.",
+    );
+  }
+  const port = env.COLLIE_PORT?.trim();
+  if (port === undefined || !/^\d+$/.test(port)) {
+    throw new Error(
+      `COLLIE_INSTANCE="${raw}" needs an explicit COLLIE_PORT — the default port belongs to the ` +
+        "host's first instance, and two instances sharing it would fight over the listener.",
+    );
+  }
+  return raw;
+}
+
 // ── Assembly ─────────────────────────────────────────────────────────────────
 
 /** The home dir, with no environment to read it from: `$HOME`, else the passwd entry. */
@@ -224,12 +275,20 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
   const dotenv = readIfPresent(join(configDir, ".env"));
   if (dotenv !== null) Object.assign(env, parseEnvFile(dotenv));
 
+  // Resolved from the MERGED env, so a `.env` may name the instance — the second instance's config
+  // dir is its own, and putting `COLLIE_INSTANCE`/`COLLIE_PORT` there is how it stays set for every
+  // caller (a Herdr action, a login shell, a systemd unit) rather than only the one that exported it.
+  const instance = resolveInstance(env);
+
   return {
     root,
+    instance,
     configDir,
     home,
     env,
-    handlerFile: join(configDir, "tailscale-managed-handler"),
+    // Suffixed, so a second instance can never tear down the first's `tailscale serve` mapping —
+    // even if the operator points both at one config dir (ADR 0001: we touch only what we recorded).
+    handlerFile: join(configDir, `tailscale-managed-handler${instanceSuffix(instance)}`),
     stateDir: resolveStateDir(env, home),
     ...deriveSettings(env, home),
   };
