@@ -473,7 +473,7 @@ federation code exists to break it.
 | Push payload | unchanged — no `host` field, mirroring how `session` is stamped only for non-primary | `bridge/push.ts:124-131` |
 | Poll cadence | unchanged — **no second timer, no peer sweep**, same idle relaxation | `bridge/event-poker.ts`, `bridge/config.ts:212-213` |
 | Audit line bytes | unchanged — `host` is omitted, not null, exactly as `session`/`device` are today | `bridge/audit.ts:55-61` |
-| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`. **No key, no certificate, no trust store, no roster.** | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100` |
+| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147` |
 | Ports opened | exactly one, loopback, as today | `bridge/config.ts:210-211` |
 
 **Why `servers` is optional-and-absent rather than always-present.** An always-present field — even a
@@ -482,6 +482,25 @@ solo snapshot ETag, exactly once. That is a real cost (one forced refetch for ev
 release) paid for a uniformity nothing needs, and it contradicts *byte-for-byte*. `update?` is the
 precedent that fits: absent means "no pack", which is precisely true. **Solo mints nothing and emits
 nothing.**
+
+**Where the gate lives.** `bridge/solo-baseline.test.ts` (+ goldens under
+`bridge/fixtures/solo-baseline/`) and `web/src/lib/solo-baseline.test.ts`. Both were landed in
+1.0.0-alpha.1, *before* any federation code existed — written afterwards they would only re-record
+whatever the new code does. They pin the table above in two layers: an exhaustive
+`Record<keyof T, true>` per wire type (so adding `servers?:`/`host?:` fails `bun run typecheck` at the
+line it was added, and `satisfies SnapshotResponse` in `server.ts` closes the loop), plus a
+byte-compared golden body and its ETag. **A failure there is not a stale golden** — it is a solo
+instance's behaviour moving. Regenerating is a deliberate act
+(`COLLIE_REGEN_SOLO_BASELINE=1 bun test bridge/solo-baseline.test.ts`) and **must** be called out in
+the PR description with the reason and the row it renegotiates.
+
+**What the unit baseline cannot reach.** Collie deliberately unit-tests only pure/injectable modules —
+anything needing `Bun.serve` is out of `bun test`'s reach (CLAUDE.md). So four claims above are pinned
+only *indirectly* (route literals, config defaults and payload shapes read out of the source) and need
+the M4 integration harness to be asserted for real: **status codes** unchanged per route, **the actual
+bound port count**, **the absence of a second timer / peer sweep at runtime**, and the **live push
+payload** for a primary-session alert. Those four are the integration harness's charter; everything
+else in the table is covered by the unit baseline today.
 
 ---
 
