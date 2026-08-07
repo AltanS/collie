@@ -63,7 +63,7 @@ describe("AppHeader — the one shared header shell", () => {
         <AppHeader
           bridge="connected"
           error={false}
-          rightTrail={<SettingsGear session="collie-demo" />}
+          rightTrail={<SettingsGear scope={{ session: "collie-demo" }} />}
         />
         <LocationProbe />
       </MemoryRouter>,

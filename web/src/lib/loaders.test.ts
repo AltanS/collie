@@ -231,7 +231,7 @@ describe("loaders — session scoping", () => {
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader({ request: new Request("http://localhost/?s=collie-demo") });
     expect(captured).toBe("collie-demo");
-    expect(data.session).toBe("collie-demo");
+    expect(data.scope).toEqual({ host: undefined, session: "collie-demo" });
     expect(data.sessions).toHaveLength(2);
   });
 
@@ -246,7 +246,7 @@ describe("loaders — session scoping", () => {
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader({ request: new Request("http://localhost/") });
     expect(captured).toBeNull();
-    expect(data.session).toBeUndefined();
+    expect(data.scope).toEqual({ host: undefined, session: undefined });
   });
 
   it("paneLoader threads the session through to the pane read", async () => {
@@ -263,7 +263,7 @@ describe("loaders — session scoping", () => {
       request: new Request("http://localhost/?s=collie-demo"),
     });
     expect(captured).toBe("collie-demo");
-    expect(data.session).toBe("collie-demo");
+    expect(data.scope).toEqual({ host: undefined, session: "collie-demo" });
   });
 
   it("keeps a per-session stale cache — a failed refresh in one session shows no other's herd", async () => {
@@ -274,16 +274,97 @@ describe("loaders — session scoping", () => {
     const stale = await rootLoader({ request: new Request("http://localhost/?s=collie-demo") });
 
     expect(stale.error).toBe(true);
-    expect(stale.session).toBe("collie-demo");
+    expect(stale.scope).toEqual({ host: undefined, session: "collie-demo" });
     expect(stale.agents).toEqual([]); // NOT the primary session's cached herd
     expect(stale.bridge).toBeUndefined();
   });
 
-  it("tracks requested scrollback per (session, pane) so ids can't collide across sessions", async () => {
+  it("tracks requested scrollback per (host, session, pane) so ids can't collide", async () => {
     const { getRequestedLines, growRequestedLines } = await import("./loaders");
-    growRequestedLines("w1:p1", "collie-demo");
-    expect(getRequestedLines("w1:p1", "collie-demo")).toBe(1000);
-    expect(getRequestedLines("w1:p1")).toBe(600); // the primary session's same id is untouched
+    growRequestedLines("w1:p1", { session: "collie-demo" });
+    expect(getRequestedLines("w1:p1", { session: "collie-demo" })).toBe(1000);
+    expect(getRequestedLines("w1:p1")).toBe(600); // the lead's primary session, same id, untouched
+    growRequestedLines("w1:p1", { host: "badger" });
+    expect(getRequestedLines("w1:p1", { host: "badger" })).toBe(1000);
+    expect(getRequestedLines("w1:p1")).toBe(600); // still untouched — a different machine entirely
+    expect(getRequestedLines("w1:p1", { host: "badger", session: "collie-demo" })).toBe(600);
+  });
+
+  // The host dimension, end to end through a loader: the wire param, the per-scope stale cache, and
+  // the nav-vs-revalidate classification a host switch must get for free (the URL changed).
+  it("hands back a referentially STABLE scope across revalidations", async () => {
+    const { rootLoader } = await import("./loaders");
+    const a = await rootLoader({ request: new Request("http://localhost/?h=badger&s=demo") });
+    const b = await rootLoader({ request: new Request("http://localhost/?h=badger&s=demo") });
+    // Identity, not just equality: `data.scope` replaces a plain string in React dep arrays.
+    expect(a.scope).toBe(b.scope);
+    const lead = await rootLoader({ request: new Request("http://localhost/") });
+    expect(lead.scope).not.toBe(a.scope);
+  });
+
+  it("rootLoader reads ?h= off the URL and sends it as host=", async () => {
+    let captured: { host: string | null; session: string | null } | undefined;
+    server.use(
+      http.get("/api/snapshot", ({ request }) => {
+        const q = new URL(request.url).searchParams;
+        captured = { host: q.get("host"), session: q.get("session") };
+        return HttpResponse.json(fixtureSnapshot);
+      }),
+    );
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://localhost/?h=badger&s=collie-demo") });
+    expect(captured).toEqual({ host: "badger", session: "collie-demo" });
+    expect(data.scope).toEqual({ host: "badger", session: "collie-demo" });
+  });
+
+  it("keeps the stale snapshot cache per HOST — one machine's failure shows no other's herd", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/") }); // prime the lead
+
+    failSnapshot();
+    const stale = await rootLoader({ request: new Request("http://localhost/?h=badger") });
+
+    expect(stale.error).toBe(true);
+    expect(stale.scope).toEqual({ host: "badger", session: undefined });
+    expect(stale.agents).toEqual([]); // NOT the lead's cached herd
+  });
+
+  it("paneLoader keys its stale text per host — no cross-host mirror bleed", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, ({ request }) => {
+        const host = new URL(request.url).searchParams.get("host");
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: host ? `on ${host}` : "on the lead",
+          truncated: false,
+          revision: 1,
+        });
+      }),
+    );
+    const { paneLoader } = await import("./loaders");
+    const lead = await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1%3Ap1"),
+    });
+    const peer = await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1%3Ap1?h=badger"),
+    });
+    expect(lead.text).toBe("on the lead");
+    expect(peer.text).toBe("on badger");
+
+    // Now fail every read: each scope must fall back to ITS OWN last-known text, not the other's.
+    server.use(http.get(/\/api\/pane\/[^/]+$/, () => new HttpResponse(null, { status: 500 })));
+    const leadStale = await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1%3Ap1?stale=1"),
+    });
+    const peerStale = await paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1%3Ap1?h=badger&stale=1"),
+    });
+    expect(leadStale.text).toBe("on the lead");
+    expect(peerStale.text).toBe("on badger");
   });
 });
 
@@ -326,6 +407,26 @@ describe("loaders — offline navigation fast path", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(data.error).toBe(true);
     expect(data.authError).toBe(true);
+  });
+
+  // Free consequence of putting the host in the URL: a host switch changes the URL, so the existing
+  // full-URL compare already classifies it as a NAVIGATION. No special case, no flag — the offline
+  // fast path is correct for it the day the dimension ships.
+  it("a HOST switch reads as a navigation, not a revalidation", async () => {
+    const { rootLoader } = await import("./loaders");
+    const { latchLost } = await import("./connection-health");
+
+    await rootLoader({ request: new Request("http://localhost/") }); // prime + set lastRootUrl
+    latchLost();
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    // Same path, different host ⇒ a different url ⇒ navigation ⇒ fast path, no network.
+    const data = await rootLoader({ request: new Request("http://localhost/?h=badger") });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(data.error).toBe(true);
+    expect(data.scope).toEqual({ host: "badger", session: undefined });
+    // ...and it is that HOST's cache that was consulted, which is empty — never the lead's herd.
+    expect(data.agents).toEqual([]);
   });
 
   it("a revalidation (same url) still really fetches while latched — polls keep probing", async () => {

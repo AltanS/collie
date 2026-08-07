@@ -15,6 +15,7 @@
 import { type MenuModel } from "./blocks";
 import { sendGuardedKeys } from "./dialog-guard";
 import type { ActionResult } from "./harness/guard";
+import type { Scope } from "./scope";
 
 /** The menu identity comparators, part of the neutral contract (harness/menu-model.ts). Re-exported
  *  under their original names so existing call sites and tests keep one import site. */
@@ -34,8 +35,8 @@ export async function submitMenuKeys(args: {
   keys: string[];
   /** True for Up/Down/Left/Right: compare identity only, since the tap's own effect is the change. */
   nav?: boolean;
-  /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
-  session?: string;
+  /** Which machine + which named session the pane lives in — scopes the read + keystroke. */
+  scope?: Scope;
   /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
   agent?: string;
 }): Promise<ActionResult> {

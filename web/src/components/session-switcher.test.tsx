@@ -36,7 +36,7 @@ function renderSwitcher(
   initialPath = "/",
 ) {
   const router = createMemoryRouter(
-    [{ path: "/", element: <SessionSwitcher sessions={sessions} current={current} /> }],
+    [{ path: "/", element: <SessionSwitcher sessions={sessions} scope={{ session: current }} /> }],
     { initialEntries: [initialPath] },
   );
   render(<RouterProvider router={router} />);

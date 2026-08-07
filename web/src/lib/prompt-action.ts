@@ -12,6 +12,7 @@
 import { type PromptModel, type PromptOption } from "./blocks";
 import { sendGuardedKeys } from "./dialog-guard";
 import type { ActionResult } from "./harness/guard";
+import type { Scope } from "./scope";
 
 /** The prompt-select identity comparator, part of the neutral contract (harness/prompt-model.ts).
  *  Re-exported under its original name so existing call sites and tests keep one import site. */
@@ -32,8 +33,8 @@ export async function submitPromptOption(args: {
   detectedRevision: number;
   prompt: PromptModel;
   option: PromptOption;
-  /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
-  session?: string;
+  /** Which machine + which named session the pane lives in — scopes the read + keystroke. */
+  scope?: Scope;
   /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
   agent?: string;
 }): Promise<PromptActionResult> {

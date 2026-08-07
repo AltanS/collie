@@ -9,7 +9,7 @@ import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { DogGallop } from "@/components/dog-gallop";
 import { homePath } from "@/lib/nav";
-import { SESSION_PARAM, normalizeSession } from "@/lib/session";
+import { scopeFromUrl } from "@/lib/session";
 import type { HomeData } from "@/lib/loaders";
 
 // The data root: owns the snapshot loader, drives polling, and fans the herd out to the child
@@ -101,12 +101,9 @@ export function RootError() {
       <button
         type="button"
         onClick={() => {
-          // Reload home, but stay in the session you were in (read from the live URL, since the
-          // router context may be the throwing one). Primary → plain "/".
-          const session = normalizeSession(
-            new URLSearchParams(window.location.search).get(SESSION_PARAM),
-          );
-          window.location.assign(homePath(session));
+          // Reload home, but stay on the machine and in the session you were in (read from the
+          // live URL, since the router context may be the throwing one). Lead + primary → "/".
+          window.location.assign(homePath(scopeFromUrl(window.location.href)));
         }}
         className="text-sm underline underline-offset-4"
       >

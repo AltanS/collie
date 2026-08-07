@@ -6,6 +6,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { worstTriage } from "@/lib/triage";
 import type { AgentView, TabView } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 
 interface TabStripProps {
   workspaceId: string;
@@ -18,7 +19,7 @@ interface TabStripProps {
   /** Show the leading "All" chip (home space view); off for the in-pane tab bar. */
   allowAll?: boolean;
   /** Session scope for the long-press tab actions (rename/close); undefined = primary. */
-  session?: string;
+  scope?: Scope;
   /** Drop the long-press write actions when the device isn't authorised (the sheet shows a note). */
   readOnly?: boolean;
   /** Revalidate after a rename. Long-press tab actions turn on only when this AND onClosed are set. */
@@ -42,7 +43,7 @@ export function TabStrip({
   onSelect,
   onNewTab,
   allowAll = true,
-  session,
+  scope,
   readOnly,
   onRenamed,
   onClosed,
@@ -92,7 +93,7 @@ export function TabStrip({
           open={sheetTab !== null}
           onClose={() => setSheetTab(null)}
           tab={sheetTab}
-          session={session}
+          scope={scope}
           readOnly={readOnly}
           onRenamed={onRenamed}
           onClosed={onClosed}

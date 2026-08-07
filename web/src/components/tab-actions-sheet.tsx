@@ -7,6 +7,7 @@ import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
 import type { TabView } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 
 interface TabActionsSheetProps {
   open: boolean;
@@ -14,7 +15,7 @@ interface TabActionsSheetProps {
   /** The tab these actions target. Null while nothing is selected (sheet closed). */
   tab: TabView | null;
   /** Session scope for the rename/close writes (undefined = primary). */
-  session?: string;
+  scope?: Scope;
   /** This device isn't authorised to write — show a read-only note instead of the actions. */
   readOnly?: boolean;
   /** Fired after a successful rename so the parent can revalidate (the label lands on the next poll). */
@@ -38,7 +39,7 @@ export function TabActionsSheet({
   open,
   onClose,
   tab,
-  session,
+  scope,
   readOnly = false,
   onRenamed,
   onClosed,
@@ -72,7 +73,7 @@ export function TabActionsSheet({
     if (!tab || saving || !trimmed) return;
     setSaving(true);
     try {
-      const res = await api.renameTab(tab.tabId, trimmed, session);
+      const res = await api.renameTab(tab.tabId, trimmed, scope);
       if (res.ok) {
         setStatus("Renamed", "success");
         onRenamed();
@@ -93,7 +94,7 @@ export function TabActionsSheet({
     if (!confirm(tab.tabId)) return;
     setClosing(true);
     try {
-      const res = await api.closeTab(tab.tabId, session);
+      const res = await api.closeTab(tab.tabId, scope);
       if (res.ok) {
         onClose();
         onClosed(tab.tabId);

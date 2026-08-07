@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { fetchSnapshot } from "./api";
-import { normalizeSession, SESSION_PARAM, sessionSearch } from "./session";
+import { HOST_PARAM, normalizeSession, scopeSearch, SESSION_PARAM, sessionSearch } from "./session";
 import type {
   AgentView,
   DeviceAuth,
@@ -154,11 +154,18 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
 });
 
 describe("solo zero-tax — a solo client puts no host on the wire", () => {
-  it("the session param is `s` and nothing else exists to carry a host", () => {
+  it("the session param is `s`, and a solo scope emits no host param at all", () => {
     expect(SESSION_PARAM).toBe("s");
     expect(sessionSearch(undefined)).toBe("");
     expect(sessionSearch("collie-demo")).toBe("?s=collie-demo");
     expect(normalizeSession("")).toBeUndefined();
+    // The host param EXISTS (the addressing dimension shipped), but a solo client never produces it:
+    // no host means no `?h=`, so every URL a solo install builds is byte-identical to before.
+    expect(HOST_PARAM).toBe("h");
+    expect(scopeSearch({})).toBe("");
+    expect(scopeSearch({ host: undefined, session: undefined })).toBe("");
+    expect(scopeSearch({ session: "collie-demo" })).toBe("?s=collie-demo");
+    expect(scopeSearch({ session: "collie-demo" })).toBe(sessionSearch("collie-demo"));
   });
 
   it("fetchSnapshot on a solo install requests a bare /api/snapshot — no query at all", async () => {
@@ -183,7 +190,7 @@ describe("solo zero-tax — a solo client puts no host on the wire", () => {
         return HttpResponse.json(goldenSnapshot);
       }),
     );
-    await fetchSnapshot("collie-demo");
+    await fetchSnapshot({ session: "collie-demo" });
     expect(urls).toEqual(["?session=collie-demo"]);
     expect(urls[0]).not.toMatch(/\b(h|host)=/);
   });

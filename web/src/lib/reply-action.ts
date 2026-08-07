@@ -22,6 +22,7 @@ import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { adapterFor } from "./harness";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
+import type { Scope } from "./scope";
 
 export type ReplyOutcome =
   /** Text was verified in the input box and the submit key went through. */
@@ -166,8 +167,8 @@ export interface GuardedReplyArgs {
   text: string;
   /** The pane's agent — picks the adapter whose `extractInputDraft` can read the input box. */
   agent: string | undefined | null;
-  /** The session the pane lives in (undefined = primary) — scopes every call. */
-  session?: string;
+  /** Which machine + which named session the pane lives in — scopes every call. */
+  scope?: Scope;
   /** Lines to request per verification read (undefined = the bridge's default tail, which is where
    *  the input box always is). */
   requestedLines?: number;
@@ -202,7 +203,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // on a transient network blip. Only a definite `false` refuses.
   if (adapter.composerReady && !args.force) {
     try {
-      const probe = await fetchPane(args.paneId, args.requestedLines, args.session);
+      const probe = await fetchPane(args.paneId, args.requestedLines, args.scope);
       if (!adapter.composerReady(splitLines(parseAnsi(probe.text)))) {
         return {
           status: "blocked",
@@ -217,7 +218,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
 
   let typed;
   try {
-    typed = await sendReply(args.paneId, args.text, false, args.session);
+    typed = await sendReply(args.paneId, args.text, false, args.scope);
   } catch (e) {
     return { status: "error", error: message(e) };
   }
@@ -231,7 +232,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     if (attempt > 0) await sleep(POLL_DELAY_MS);
     let draft: string | null = null;
     try {
-      const fresh = await fetchPane(args.paneId, args.requestedLines, args.session);
+      const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
       draft = adapter.extractInputDraft(splitLines(parseAnsi(fresh.text)));
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
@@ -264,7 +265,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
 /** The pre-#34 behaviour: one call that types AND submits. Only for harnesses with no adapter. */
 async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
   try {
-    const res = await sendReply(args.paneId, args.text, true, args.session);
+    const res = await sendReply(args.paneId, args.text, true, args.scope);
     return res.ok ? { status: "sent" } : { status: "error", error: res.error };
   } catch (e) {
     return { status: "error", error: message(e) };
@@ -278,7 +279,7 @@ async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
  */
 async function submitOnly(args: GuardedReplyArgs): Promise<ReplyOutcome> {
   try {
-    const res = await sendReply(args.paneId, "", true, args.session);
+    const res = await sendReply(args.paneId, "", true, args.scope);
     if (res.ok) return { status: "sent" };
     // The text is verifiably sitting in the input box and only the submit key failed — same shape as
     // the bridge's own partial-failure case. Tell the caller not to resend.

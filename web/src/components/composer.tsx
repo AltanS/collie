@@ -22,6 +22,7 @@ import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
+import { scopeKey, type Scope } from "@/lib/scope";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -30,8 +31,8 @@ export interface ComposerHandle {
 
 interface ComposerProps {
   paneId: string;
-  /** The session the pane lives in (undefined = primary) — scopes every write to the right Herdr. */
-  session?: string;
+  /** Which machine + which named session the pane lives in — scopes every write to the right Herdr. */
+  scope?: Scope;
   /** The pane's agent name — drives the slash-command palette and the reply-vs-shell placeholder. */
   agent: string | undefined | null;
   /** True for a bare shell pane (tweaks the placeholder copy). */
@@ -125,7 +126,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
+  { paneId, scope, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -135,7 +136,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
   // pane view is keyed by paneId, so without this, stepping over to another tab mid-reply ate the
   // message. Lazy initialiser so the restore happens on the mount, before first paint.
-  const [input, setInput] = useState(() => loadDraft(session, paneId) ?? "");
+  const [input, setInput] = useState(() => loadDraft(scope, paneId) ?? "");
   // Mirror of `input` for the write-through path: updateInput needs the previous value to apply a
   // functional update AND to persist the result, without either reading stale state or doing the
   // save inside a (double-invoked) state updater.
@@ -145,7 +146,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the component must not depend on that: if it is ever rendered with a changed paneId/session in
   // place, the effect below saves the outgoing pane's draft and loads the incoming one, so pane A's
   // text can never surface in pane B.
-  const draftPaneRef = useRef({ session, paneId });
+  // Compared by VALUE (its cache key), never by object identity: a scope is a value passed as an
+  // object, and an identity compare here would re-run the save/restore below on every poll.
+  const scopeId = scopeKey(scope);
+  const draftPaneRef = useRef({ scope, scopeId, paneId });
 
   /** Set the draft AND persist it. Every write to `input` goes through here — an empty value removes
    *  the stored key, so the deliberate-clear paths (verified send, user emptying the box) need no
@@ -154,18 +158,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const value = typeof next === "function" ? next(inputValueRef.current) : next;
     inputValueRef.current = value;
     setInput(value);
-    saveDraft(session, paneId, value);
+    saveDraft(scope, paneId, value);
   }
 
   useEffect(() => {
     const prev = draftPaneRef.current;
-    if (prev.paneId === paneId && prev.session === session) return;
-    saveDraft(prev.session, prev.paneId, inputValueRef.current);
-    draftPaneRef.current = { session, paneId };
-    const restored = loadDraft(session, paneId) ?? "";
+    if (prev.paneId === paneId && prev.scopeId === scopeId) return;
+    saveDraft(prev.scope, prev.paneId, inputValueRef.current);
+    draftPaneRef.current = { scope, scopeId, paneId };
+    const restored = loadDraft(scope, paneId) ?? "";
     inputValueRef.current = restored;
     setInput(restored);
-  }, [session, paneId]);
+  }, [scope, scopeId, paneId]);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
@@ -389,7 +393,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         const clearRes = await api.sendKeys(
           paneId,
           ["ctrl+k", ...Array(clearCount).fill("Backspace")],
-          session,
+          scope,
         );
         if (!clearRes.ok) {
           setStatus(clearRes.error ?? "Couldn't clear the terminal input", "error");
@@ -401,7 +405,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
       // Guarded: types the text, verifies it reached the input box, and only THEN sends the submit
       // key. A "stalled" outcome means nothing was submitted and the draft must survive (#34).
-      const res = await sendGuardedReply({ paneId, text: t, agent, session, force });
+      const res = await sendGuardedReply({ paneId, text: t, agent, scope, force });
       if (res.status === "sent") {
         // Phone-owned input — cleared once the reply is on its way. Via updateInput, so the stored
         // draft goes with it (an empty value removes the key).
@@ -508,7 +512,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function pressKeys(k: string[]): Promise<boolean> {
     if (locked) return false;
     try {
-      const res = await api.sendKeys(paneId, k, session);
+      const res = await api.sendKeys(paneId, k, scope);
       if (!res.ok) {
         setStatus(res.error ?? "Key send failed", "error");
         return false;
@@ -534,7 +538,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (locked) return;
     setUploading(true);
     try {
-      const res = await api.uploadImage(paneId, file, session);
+      const res = await api.uploadImage(paneId, file, scope);
       if (res.ok) {
         const path = res.path;
         updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));

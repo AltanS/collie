@@ -1,10 +1,15 @@
 // Route path helpers. Pane ids contain a colon (e.g. "wE:p2"), so they must be URL-encoded in the
-// path; React Router decodes them back in useParams. The active session rides along as `?s=` so a
-// navigation stays scoped to the session you're viewing (see lib/session.ts) — omitted on primary.
-import { sessionSearch } from "./session";
+// path; React Router decodes them back in useParams. The active scope — which machine, which named
+// session — rides along in the query (`?h=` / `?s=`, see lib/scope.ts) so a navigation stays pointed
+// at the pane you were actually looking at. Lead + primary emits nothing, so a solo install's paths
+// are byte-identical to what shipped before the host dimension existed.
+//
+// The host stays in the QUERY, never in the path: a `/host/:h/pane/:paneId` shape would fork every
+// route, break every existing deep link, and force the loaders' isPaneUrl() to grow a parser.
+import { scopeSearch, type Scope } from "./scope";
 
-export function panePath(paneId: string, session?: string): string {
-  return `/pane/${encodeURIComponent(paneId)}${sessionSearch(session)}`;
+export function panePath(paneId: string, scope?: Scope): string {
+  return `/pane/${encodeURIComponent(paneId)}${scopeSearch(scope)}`;
 }
 
 /**
@@ -12,21 +17,21 @@ export function panePath(paneId: string, session?: string): string {
  * pane can have (its terminal runs on the alternate screen and retains nothing). A child path of the
  * pane so "back" lands on the live mirror.
  */
-export function historyPath(paneId: string, session?: string): string {
-  return `/pane/${encodeURIComponent(paneId)}/history${sessionSearch(session)}`;
+export function historyPath(paneId: string, scope?: Scope): string {
+  return `/pane/${encodeURIComponent(paneId)}/history${scopeSearch(scope)}`;
 }
 
-/** A space's detail route (its tabs + panes). Deep-linkable; carries the session like panePath. */
-export function spacePath(spaceId: string, session?: string): string {
-  return `/space/${encodeURIComponent(spaceId)}${sessionSearch(session)}`;
+/** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
+export function spacePath(spaceId: string, scope?: Scope): string {
+  return `/space/${encodeURIComponent(spaceId)}${scopeSearch(scope)}`;
 }
 
-/** The dashboard path, carrying the current session so "go home" doesn't drop you back to primary. */
-export function homePath(session?: string): string {
-  return `/${sessionSearch(session)}`;
+/** The dashboard path, carrying the current scope so "go home" doesn't drop you back to the lead. */
+export function homePath(scope?: Scope): string {
+  return `/${scopeSearch(scope)}`;
 }
 
-/** The settings route, carrying the current session like the other path helpers. */
-export function settingsPath(session?: string): string {
-  return `/settings${sessionSearch(session)}`;
+/** The settings route, carrying the current scope like the other path helpers. */
+export function settingsPath(scope?: Scope): string {
+  return `/settings${scopeSearch(scope)}`;
 }

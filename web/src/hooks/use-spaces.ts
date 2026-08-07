@@ -6,6 +6,7 @@ import { setStatus } from "@/lib/status";
 import { panePath } from "@/lib/nav";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 
 // Shared "create a tab/space, then jump into its fresh shell" flow, used by the home space view and
 // the detail Herdr palette. The new pane won't be in the snapshot until the next poll, so we pass
@@ -26,10 +27,10 @@ export function useSpaceActions() {
   const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
   const readOnlyRef = useRef(false);
   readOnlyRef.current = isReadOnly(root?.device);
-  // The session the new tab/space must be created in (and navigated into). Read via a ref so the
-  // returned callbacks stay stable across revalidations, like readOnly above.
-  const sessionRef = useRef<string | undefined>(undefined);
-  sessionRef.current = root?.session;
+  // The scope (machine + named session) the new tab/space must be created in, and navigated into.
+  // Read via a ref so the returned callbacks stay stable across revalidations, like readOnly above.
+  const scopeRef = useRef<Scope | undefined>(undefined);
+  scopeRef.current = root?.scope;
 
   const open = useCallback(
     (res: CreateResponse, what: "tab" | "space") => {
@@ -52,7 +53,7 @@ export function useSpaceActions() {
       };
       setStatus(`New ${what} ready — launch your agent`, "success");
       revalidatorRef.current.revalidate();
-      navigate(panePath(p.paneId, sessionRef.current), { state: { freshPane: fresh } });
+      navigate(panePath(p.paneId, scopeRef.current), { state: { freshPane: fresh } });
     },
     [navigate],
   );
@@ -61,7 +62,7 @@ export function useSpaceActions() {
     async (workspaceId: string) => {
       if (readOnlyRef.current) return setStatus("Read-only — device not authorised", "error");
       try {
-        open(await api.createTab(workspaceId, {}, sessionRef.current), "tab");
+        open(await api.createTab(workspaceId, {}, scopeRef.current), "tab");
       } catch (e) {
         setStatus(e instanceof Error ? e.message : String(e), "error");
       }
@@ -73,7 +74,7 @@ export function useSpaceActions() {
     async (opts: { label?: string; cwd?: string } = {}) => {
       if (readOnlyRef.current) return setStatus("Read-only — device not authorised", "error");
       try {
-        open(await api.createWorkspace(opts, sessionRef.current), "space");
+        open(await api.createWorkspace(opts, scopeRef.current), "space");
       } catch (e) {
         setStatus(e instanceof Error ? e.message : String(e), "error");
       }

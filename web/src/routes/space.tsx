@@ -42,10 +42,10 @@ export function SpaceRoute() {
 
   const selectedWs = data.workspaces.find((w) => w.workspaceId === spaceId);
 
-  const toDashboard = () => navigate(homePath(data.session));
-  const switchSpace = (id: string) => navigate(spacePath(id, data.session));
+  const toDashboard = () => navigate(homePath(data.scope));
+  const switchSpace = (id: string) => navigate(spacePath(id, data.scope));
   const switchTab = (id: string | null) => setTab(id);
-  const open = (id: string) => navigate(panePath(id, data.session));
+  const open = (id: string) => navigate(panePath(id, data.scope));
 
   // Recover from a deleted space: once a healthy snapshot no longer has it, bounce to the dashboard
   // instead of leaving you on an empty shell. Guarded on a connected, non-stale snapshot so a
@@ -60,9 +60,9 @@ export function SpaceRoute() {
   useEffect(() => {
     if (gone && data.bridge === "connected" && !data.error) {
       setStatus(everExisted.current ? "Space closed" : "Space not found", "info");
-      navigate(homePath(data.session), { replace: true });
+      navigate(homePath(data.scope), { replace: true });
     }
-  }, [gone, data.bridge, data.error, data.session, navigate]);
+  }, [gone, data.bridge, data.error, data.scope, navigate]);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -74,7 +74,7 @@ export function SpaceRoute() {
         stalled={stalled}
         onHome={toDashboard}
         wordmark
-        rightTrail={<SettingsGear session={data.session} />}
+        rightTrail={<SettingsGear scope={data.scope} />}
       />
 
       {/* Content region below the header: the viewport-clipped scroller. */}
@@ -98,7 +98,7 @@ export function SpaceRoute() {
               selected={tab}
               onSelect={switchTab}
               onNewTab={newTab}
-              session={data.session}
+              scope={data.scope}
               readOnly={isReadOnly(data.device)}
               onRenamed={() => revalidator.revalidate()}
               // Closing the tab you're filtered to would strand you on an empty view — fall back to

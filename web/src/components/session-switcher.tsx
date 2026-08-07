@@ -6,13 +6,15 @@ import { Check, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/components/ui/sheet";
 import { homePath } from "@/lib/nav";
+import type { Scope } from "@/lib/scope";
 import type { SessionSummary } from "@/lib/types";
 
 interface SessionSwitcherProps {
   /** The bridge's session registry (primary-first). */
   sessions: SessionSummary[];
-  /** The current session name (undefined = primary). */
-  current: string | undefined;
+  /** The scope currently being viewed. Only its session changes here — the host is carried through
+   *  untouched, so switching sessions can never also switch machines. */
+  scope: Scope;
 }
 
 // Compact session switcher for the header's right cluster. Backward compatible by construction: the
@@ -20,7 +22,8 @@ interface SessionSwitcherProps {
 // already on a non-primary one (so you can always get back). A single-session install shows nothing.
 // The sheet lists every session; unreachable ones (crashed / stale socket) are greyed out and
 // non-clickable. Selecting one navigates home in that session (primary → no `?s=`).
-export function SessionSwitcher({ sessions, current }: SessionSwitcherProps) {
+export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
+  const current = scope.session;
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -38,7 +41,7 @@ export function SessionSwitcher({ sessions, current }: SessionSwitcherProps) {
     if (!s.reachable) return; // unreachable rows are non-clickable (disabled), guard anyway
     const target = s.isPrimary ? undefined : s.name; // primary carries no `?s=`
     if (target === current) return; // already here
-    navigate(homePath(target));
+    navigate(homePath({ host: scope.host, session: target }));
   }
 
   return (

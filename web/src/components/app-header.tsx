@@ -8,6 +8,7 @@ import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { AlphaBar } from "@/components/alpha-bar";
 import type { BridgeStatus } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 
 interface AppHeaderProps {
   // Connection state — the inputs that drive the CollieHome dog. The dog gallops on sustained trouble
@@ -95,12 +96,12 @@ export function AppHeader({
 
 // The Settings gear, shared so the dashboard and space headers don't each hand-roll it. Session-scoped
 // so the navigation stays on the session you're viewing.
-export function SettingsGear({ session }: { session?: string }) {
+export function SettingsGear({ scope }: { scope?: Scope }) {
   const navigate = useNavigate();
   return (
     <button
       type="button"
-      onClick={() => navigate(settingsPath(session))}
+      onClick={() => navigate(settingsPath(scope))}
       aria-label="Settings"
       // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
       // keeps icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px
