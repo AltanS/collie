@@ -23,6 +23,7 @@ import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import { modeForWire } from "./pack/mode.ts";
 import type { PackRuntime } from "./pack/config.ts";
+import type { PackHandler } from "./pack/router.ts";
 import { toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
@@ -171,8 +172,16 @@ export function startServer(opts: {
   activity: ActivityLedger;
   /** Resolved once at startup in index.ts, before anything is wired. Solo is `SOLO_RUNTIME`. */
   pack: PackRuntime;
+  /**
+   * The federated surface, supplied by index.ts **only** when a trust store exists. Undefined on
+   * every solo instance, and the paths it owns are declared in `bridge/pack/router.ts` rather than
+   * here — deliberately, so this file names no pack route and `solo-baseline.test.ts` can prove by
+   * grep that solo registers nothing (PACK_PROTOCOL.md §11, "`/pack/v1/*`: not routed at all").
+   */
+  packHandler?: PackHandler;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, pack } = opts;
+  const packHandler = opts.packHandler;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
@@ -195,6 +204,16 @@ export function startServer(opts: {
     async fetch(req) {
       const url = new URL(req.url);
       const { pathname } = url;
+
+      // The federated surface, before anything else. It answers only the prefix it owns and returns
+      // null otherwise, so this is not a branch a browser request can take. Its admission is two
+      // independent factors and shares nothing with `checkAccess()` below — a pack credential never
+      // admits an `/api/*` request and a browser credential never admits a pack one
+      // (PACK_PROTOCOL.md §6, ADR 0013).
+      if (packHandler) {
+        const packed = await packHandler(req, url);
+        if (packed) return secure(packed);
+      }
 
       // Session-scoped routes accept an optional `?session=<name>`; absent → the primary session
       // (identical to pre-multi-session behaviour). The name is only ever a registry Map lookup — it

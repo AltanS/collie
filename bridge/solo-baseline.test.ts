@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import { AuditLog, fileAuditAppender, formatAuditLine, type AuditEntry } from "./audit.ts";
 import { ActivityLedger } from "./activity.ts";
 import { loadConfig, type Config } from "./config.ts";
 import { computeEtag } from "./http-cache.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
+import { TrustStore } from "./pack/trust-store.ts";
 import { Snooze } from "./snooze.ts";
 import {
   SessionRegistry,
@@ -591,19 +592,64 @@ const STATE_DIR_ENTRIES = [
   "uploads",
 ];
 
-describe("solo zero-tax — the filesystem", () => {
-  test("the bridge names exactly today's <stateDir> entries and nothing else", async () => {
-    const dir = import.meta.dir;
-    const files = (await readdir(dir)).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
-    const named = new Set<string>();
-    for (const f of files) {
-      const src = readFileSync(join(dir, f), "utf8");
-      for (const m of src.matchAll(/join\((?:this\.)?cfg\.stateDir, "([^"]+)"\)/g)) named.add(m[1]!);
+/**
+ * The `<stateDir>` entries the FEDERATION modules name. Solo writes none of them — the whole point —
+ * but the scan below must still see them, or it would stop guarding the moment federation code moved
+ * one directory down.
+ *
+ * This list is a second allowlist, not an exemption: a new writer under `bridge/pack/` fails this
+ * test until it is declared here, exactly as a new writer in `bridge/` fails against the list above.
+ * The behavioural half of the guard — that an instance which never enrolled writes NONE of these —
+ * is the `TrustStore` case in "driving every solo write path".
+ */
+const PACK_STATE_DIR_ENTRIES = ["pack-trust.json"];
+
+/** Every `.ts` module under `dir`, recursively, excluding tests. */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sourceFiles(full));
+    else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) out.push(full);
+  }
+  return out;
+}
+
+/** Every `<stateDir>/…` entry a module names, however the state dir and the name reached it. */
+function stateDirEntriesNamedBy(files: string[]): string[] {
+  const named = new Set<string>();
+  for (const f of files) {
+    const src = readFileSync(f, "utf8");
+    // Broader than the original `cfg.stateDir` + string-literal scan, in two directions, because a
+    // writer using either other form would have slipped past it entirely:
+    //  • the state dir arrives as `cfg.stateDir`, `this.cfg.stateDir` or a bare `stateDir` param;
+    //  • the entry name may be a string literal or a `const NAME = "…"` in the same module.
+    const constants = new Map(
+      [...src.matchAll(/^(?:export )?const ([A-Z][A-Z0-9_]*) = "([^"]+)";$/gm)].map((m) => [m[1]!, m[2]!]),
+    );
+    for (const m of src.matchAll(/join\([^)]*stateDir,\s*(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))\)/g)) {
+      const literal = m[1] ?? (m[2] === undefined ? undefined : constants.get(m[2]));
+      if (literal !== undefined) named.add(literal);
+      else if (m[2] !== undefined) {
+        throw new Error(`${f}: <stateDir>/${m[2]} — the scan cannot resolve that name, so it cannot guard it`);
+      }
     }
-    // index.ts wires two of them by hand rather than inside a store.
-    const idx = readFileSync(join(dir, "index.ts"), "utf8");
-    for (const m of idx.matchAll(/join\(cfg\.stateDir, "([^"]+)"\)/g)) named.add(m[1]!);
-    expect([...named].sort()).toEqual(STATE_DIR_ENTRIES);
+  }
+  return [...named].sort();
+}
+
+describe("solo zero-tax — the filesystem", () => {
+  test("the bridge names exactly today's <stateDir> entries and nothing else", () => {
+    const files = sourceFiles(import.meta.dir).filter((f) => !f.includes(`${sep}pack${sep}`));
+    expect(stateDirEntriesNamedBy(files)).toEqual(STATE_DIR_ENTRIES);
+  });
+
+  test("the federation modules name only their own declared entries", () => {
+    // Scanned separately rather than merged in, so the two sets can never be confused for each
+    // other: anything here is a file a solo instance must be proven never to create.
+    const files = sourceFiles(join(import.meta.dir, "pack"));
+    expect(stateDirEntriesNamedBy(files)).toEqual(PACK_STATE_DIR_ENTRIES);
+    expect(PACK_STATE_DIR_ENTRIES.filter((e) => STATE_DIR_ENTRIES.includes(e))).toEqual([]);
   });
 
   test("driving every solo write path produces only known files", async () => {
@@ -620,6 +666,10 @@ describe("solo zero-tax — the filesystem", () => {
         paneId: "w1:p1",
         detail: { text: "ok" },
       });
+      // The trust store, resolved exactly as index.ts resolves it at startup. A solo instance has
+      // never enrolled, so this must open a file that isn't there and create NOTHING — not the
+      // store, not a key, not a default. §11's "Files written" row, driven rather than read.
+      expect(await new TrustStore(stateDir).load()).toBeNull();
       // The audit append is fire-and-forget; let its microtask + write land.
       await Bun.sleep(20);
       const written = (await readdir(stateDir)).sort();
