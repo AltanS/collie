@@ -9,6 +9,7 @@ import { EventPoker } from "./event-poker.ts";
 import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
+import { resolvePackRuntime } from "./pack/config.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
 import { startServer } from "./server.ts";
@@ -37,6 +38,19 @@ const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 const cfg = loadConfig();
+
+// The pack mode, resolved BEFORE anything is wired, because a peer wires fewer things than a lead
+// (PACK_PROTOCOL.md §3) and a mode discovered halfway through startup would already have opened
+// what it was supposed to keep shut.
+//
+// Enrollment comes from the trust store and from nothing else — no env var, no flag (§3). The trust
+// store lands with M4/02; until it does, nothing is enrolled, so `resolvePackRuntime` is handed the
+// same `null` a solo instance will hand it forever after. That path reads no file, generates no key
+// and arms no timer, which is the zero-tax contract (§11) holding at its startup seam.
+const enrollment = null;
+const pack = resolvePackRuntime(enrollment);
+if (pack.conflict) console.warn(`[pack] ${pack.conflict}`);
+if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
 
 // Ensure the state dir exists with private (0700) perms before push/snooze/uploads write into it —
 // it holds push subscription endpoints and uploaded images, so keep it owner-only.
@@ -204,7 +218,17 @@ const sweepTimer = setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
-const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity });
+const server = startServer({
+  cfg,
+  registry,
+  push,
+  snooze,
+  notifyPrefs,
+  updateMonitor,
+  audit,
+  activity,
+  pack,
+});
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");

@@ -43,11 +43,6 @@ function envList(name: string): string[] {
 }
 
 /**
- * Read a boolean env var. Empty/unset → `fallback`. `off`/`0`/`false`/`no` → false; `on`/`1`/`true`/
- * `yes` → true (case-insensitive); anything else falls back with a warning. Used for feature toggles
- * that default on, where a typo silently flipping the feature would be surprising.
- */
-/**
  * Read an env var constrained to a fixed set of string values, falling back (with a warning) on
  * anything not in `allowed`. Empty/unset → `fallback`. Case-insensitive.
  */
@@ -61,8 +56,20 @@ function envEnum<T extends string>(name: string, allowed: readonly T[], fallback
   return fallback;
 }
 
-function envBool(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
+/**
+ * Read a boolean env var. Empty/unset → `fallback`. `off`/`0`/`false`/`no` → false; `on`/`1`/`true`/
+ * `yes` → true (case-insensitive); anything else falls back with a warning.
+ *
+ * Exported so mode-scoped config (`bridge/pack/config.ts`) parses its env in exactly this style
+ * rather than growing a second, subtly different reader. The env source is a parameter so a caller
+ * can drive it purely; it defaults to `process.env`, which is how everything in this file reads.
+ */
+export function envBool(
+  name: string,
+  fallback: boolean,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
   const v = raw.trim().toLowerCase();
   if (["off", "0", "false", "no"].includes(v)) return false;

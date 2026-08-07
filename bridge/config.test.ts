@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { defaultSocketPath, loadConfig } from "./config.ts";
+import { defaultSocketPath, envBool, loadConfig } from "./config.ts";
 
 // loadConfig is the deployment contract — env vars in, a resolved Config out. Pure (just reads
 // process.env + homedir), so we drive it by mutating the environment and restoring it after.
@@ -265,5 +265,32 @@ describe("defaultSocketPath", () => {
     expect(defaultSocketPath("win32", {}, "C:\\Users\\u")).toBe(
       join("C:\\Users\\u", "AppData", "Roaming", "herdr", "herdr.sock"),
     );
+  });
+});
+
+// Exported so mode-scoped config (bridge/pack/config.ts) parses its env in this exact style instead
+// of growing a second reader. The env source is injectable, which is the only new thing here — the
+// truth table below is the one loadConfig has always used.
+describe("envBool", () => {
+  test("empty and unset fall back", () => {
+    expect(envBool("X", true, {})).toBe(true);
+    expect(envBool("X", false, {})).toBe(false);
+    expect(envBool("X", true, { X: "" })).toBe(true);
+    expect(envBool("X", true, { X: "   " })).toBe(true);
+  });
+
+  test("the truthy and falsy vocabularies, case-insensitively", () => {
+    for (const v of ["on", "1", "true", "yes", "TRUE", " Yes "]) expect(envBool("X", false, { X: v })).toBe(true);
+    for (const v of ["off", "0", "false", "no", "OFF", " No "]) expect(envBool("X", true, { X: v })).toBe(false);
+  });
+
+  test("garbage falls back rather than silently flipping a feature", () => {
+    expect(envBool("X", true, { X: "maybe" })).toBe(true);
+    expect(envBool("X", false, { X: "maybe" })).toBe(false);
+  });
+
+  test("defaults to process.env when no source is given", () => {
+    process.env.COLLIE_MULTI_SESSION = "off";
+    expect(envBool("COLLIE_MULTI_SESSION", true)).toBe(false);
   });
 });
