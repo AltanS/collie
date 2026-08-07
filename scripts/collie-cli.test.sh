@@ -275,8 +275,9 @@ assert_contains "$STDOUT" "✓ Collie is running"
 assert_contains "$STDOUT" "service   systemd --user (collie) · active"
 assert_contains "$STDOUT" "local     http://127.0.0.1:${PORT}"
 assert_contains "$STDOUT" "tailnet   https://host.example"
-# A front door that won't come up must not abort `start` (scripts/collie-ctl.sh:431-434): `serve` is
-# still the shell's (M3/03), so it fails here — and `start` still reached the banner and exited 0.
+# A front door that won't come up must not abort `start` (scripts/collie-ctl.sh:431-434). This
+# lifecycle fake answers `serve status --json` with prose, so the publish gate refuses rather than
+# overwriting a root it can't reason about — and `start` still reached the banner and exited 0.
 assert_contains "$STDERR" "the tailnet front door did not come up"
 
 cli "$BIN" status || fail "\`collie status\` failed"
@@ -420,5 +421,206 @@ wait "$BRIDGE_PID" 2>/dev/null || true
 for _ in $(seq 1 50); do port_free "$BRIDGE_PORT" && break; sleep 0.1; done
 port_free "$BRIDGE_PORT" || fail "killing the supervised pid left a bridge behind — _exec-bridge spawned a child"
 
+# ── The front door ───────────────────────────────────────────────────────────
+# `serve` / `unserve` and the tailscale-managed-handler ownership record (ADR 0001): Collie manages
+# exactly ONE mapping, records it, and only ever tears down a mapping still matching that record.
+# Carried from scripts/collie-ctl.test.sh:102-311 — same technique, against the binary.
+#
+# SAFETY: `tailscale` here is a fake on a scratch PATH whose whole serve state is a JSON file this
+# suite owns. Nothing in this section may reach the real tailnet; `serve` and `unserve` publish and
+# tear down a live front door, and this is the deployment host.
+
+FD_HOME="${TMP_ROOT}/frontdoor-home"
+FD_CONFIG="${TMP_ROOT}/frontdoor-config"
+FD_BIN="${TMP_ROOT}/frontdoor-bin"
+FD_CALLS="${TMP_ROOT}/frontdoor-calls"
+FD_STATUS="${TMP_ROOT}/frontdoor-serve-status.json"
+FD_OFF_FAILS="${TMP_ROOT}/frontdoor-off-fails"
+RECORD="${FD_CONFIG}/tailscale-managed-handler"
+mkdir -p "$FD_HOME" "$FD_CONFIG" "$FD_BIN"
+
+# A fake `tailscale` whose serve state lives in a JSON file the test can read and rewrite, so any
+# ownership situation (ours, someone else's, absent) can be staged and the verdict asserted.
+#
+# NOTE: like every fake here it runs with the binary's own environment — under `env -i` that is a
+# PATH holding nothing but this directory. SHELL BUILTINS ONLY: a `cat` would silently yield the
+# empty string and the fake would lie about its own state.
+cat > "${FD_BIN}/tailscale" <<EOF
+#!/bin/sh
+echo "tailscale \$*" >> "$FD_CALLS"
+if [ "\$1" = status ] && [ "\$2" = --json ]; then
+  echo '{"Self":{"DNSName":"host.example."}}'
+  exit 0
+fi
+if [ "\$1" = serve ] && [ "\$2" = status ] && [ "\$3" = --json ]; then
+  while IFS= read -r line; do echo "\$line"; done < "$FD_STATUS"
+  exit 0
+fi
+if [ "\$1" = serve ] && [ "\$2" = --bg ]; then
+  listener=443
+  protocol=HTTPS
+  for arg in "\$@"; do
+    target="\$arg"
+    case "\$arg" in
+      --http=*) listener="\${arg#--http=}"; protocol=HTTP ;;
+    esac
+  done
+  echo "{\"TCP\":{\"\${listener}\":{\"\${protocol}\":true}},\"Web\":{\"host.example:\${listener}\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:\${target}\"}}}}}" > "$FD_STATUS"
+  exit 0
+fi
+for arg in "\$@"; do
+  [ "\$arg" = off ] || continue
+  if [ -f "$FD_OFF_FAILS" ]; then
+    echo "tailscale: refused" >&2
+    exit 1
+  fi
+  echo '{}' > "$FD_STATUS"
+  exit 0
+done
+exit 2
+EOF
+chmod +x "${FD_BIN}/tailscale"
+cat > "${FD_BIN}/systemctl" <<EOF
+#!/bin/sh
+echo "systemctl \$*" >> "$FD_CALLS"
+exit 0
+EOF
+chmod +x "${FD_BIN}/systemctl"
+
+fd() {
+  : > "$FD_CALLS"
+  run_stripped HOME="$FD_HOME" HERDR_PLUGIN_CONFIG_DIR="$FD_CONFIG" PATH="$FD_BIN" \
+    COLLIE_PORT=8787 "$@"
+}
+status_is() { printf '%s\n' "$1" > "$FD_STATUS"; }
+read_status() { tr -d '\n' < "$FD_STATUS"; }
+
+OURS='http://127.0.0.1:8787'
+COLLIE_HTTP_ROOT="{\"TCP\":{\"8787\":{\"HTTP\":true}},\"Web\":{\"host.example:8787\":{\"Handlers\":{\"/\":{\"Proxy\":\"${OURS}\"}}}}}"
+FOREIGN_ROOT='{"TCP":{"8787":{"HTTP":true}},"Web":{"host.example:8787":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:7000"}}}}}'
+
+# Publish onto a free root: the mapping is made AND recorded, and `serve` invoked directly says
+# where to point a phone.
+status_is '{}'
+rm -f "$RECORD"
+fd COLLIE_SERVE_MODE=http "$BIN" serve || fail "\`collie serve\` failed on a free root: ${STDERR}"
+assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|http://127.0.0.1:8787"
+assert_contains "$(cat "$FD_CALLS")" "tailscale serve --bg --http=8787 --set-path=/ 8787"
+assert_contains "$STDOUT" "open: http://host.example:8787"
+
+# Publish onto a FOREIGN root: refuse, change nothing, record nothing. `tailscale serve --bg … /`
+# silently replaces an existing root handler, so this check is all that stands between a Collie
+# start and a stranger's service going dark.
+status_is "$FOREIGN_ROOT"
+rm -f "$RECORD"
+if fd COLLIE_SERVE_MODE=http "$BIN" serve; then
+  fail "an unowned root collision was overwritten"
+fi
+assert_eq "$(read_status)" "$FOREIGN_ROOT"
+[ ! -e "$RECORD" ] || fail "a refused publish created ownership state"
+assert_contains "$STDERR" "unowned root mount on :8787"
+
+# Publish onto a PRE-EXISTING Collie root: adopt it and record it. Every install predating ownership
+# tracking is in exactly this state, so refusing here would brick start/restart/update on upgrade.
+status_is "$COLLIE_HTTP_ROOT"
+rm -f "$RECORD"
+fd COLLIE_SERVE_MODE=http "$BIN" serve || fail "serve refused to adopt Collie's own root mount"
+assert_contains "$STDOUT" "adopting the existing Collie root mount on :8787"
+assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|http://127.0.0.1:8787"
+
+# Teardown of a matching root: scoped to the listener and to `/`, never a blanket reset.
+fd "$BIN" unserve || fail "\`collie unserve\` failed on a mapping we own"
+assert_contains "$(cat "$FD_CALLS")" "tailscale serve --http=8787 --set-path=/ off"
+[ ! -e "$RECORD" ] || fail "teardown left the ownership record behind"
+assert_contains "$STDOUT" "removed Collie's managed http:8787 mapping"
+
+# No record at all: success, and nothing is touched.
+fd "$BIN" unserve || fail "unserve failed with no record"
+assert_contains "$STDOUT" "no Collie-managed mapping recorded"
+
+# An ABSENT root clears a stale record — otherwise it would refuse the next publish forever.
+printf 'http:8787|host.example:8787|%s\n' "$OURS" > "$RECORD"
+status_is '{}'
+fd "$BIN" unserve || fail "unserve failed against an absent root"
+[ ! -e "$RECORD" ] || fail "a stale record survived an absent root"
+assert_contains "$STDOUT" "cleared stale ownership state"
+
+# A REPLACED root is refused and the record RETAINED: removing a handler we no longer own would
+# silently unpublish somebody else's service.
+printf 'http:8787|host.example:8787|%s\n' "$OURS" > "$RECORD"
+status_is "$FOREIGN_ROOT"
+if fd "$BIN" unserve; then
+  fail "an externally replaced root was removed"
+fi
+assert_contains "${STDOUT}${STDERR}" "refusing to remove"
+assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|${OURS}"
+assert_eq "$(read_status)" "$FOREIGN_ROOT"
+
+# A FAILED removal keeps the record for retry — dropping it would orphan a live mapping with
+# nothing left that knows Collie owns it.
+status_is "$COLLIE_HTTP_ROOT"
+: > "$FD_OFF_FAILS"
+if fd "$BIN" unserve; then
+  fail "a failed removal reported success"
+fi
+assert_contains "$STDERR" "retained ${RECORD} for retry"
+assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|${OURS}"
+rm -f "$FD_OFF_FAILS"
+
+# COLLIE_SKIP_SERVE=1 (README Variants C/E): the operator owns the ingress, Collie publishes
+# NOTHING — but still tears down a mapping published before the flag was flipped, which would
+# otherwise stay reachable by a path the operator thinks is closed.
+status_is "$COLLIE_HTTP_ROOT"
+fd COLLIE_SKIP_SERVE=1 "$BIN" serve || fail "serve failed under COLLIE_SKIP_SERVE=1"
+assert_contains "$STDOUT" "tailscale serve skipped (COLLIE_SKIP_SERVE=1)"
+assert_contains "$STDOUT" "bridge is on 127.0.0.1:8787 only"
+[ ! -e "$RECORD" ] || fail "the skipped front door left ownership state behind"
+assert_eq "$(read_status)" "{}"
+case "$(cat "$FD_CALLS")" in
+  *" --bg "*) fail "COLLIE_SKIP_SERVE=1 published a mapping" ;;
+esac
+
+# ── uninstall ────────────────────────────────────────────────────────────────
+# The inverse of `start`, and no more: stop + disable, remove the service definition, remove
+# Collie's own mapping, drop the pidfile — and KEEP .env and the checkout.
+FD_UNIT="${FD_HOME}/.config/systemd/user/collie.service"
+mkdir -p "${FD_HOME}/.config/systemd/user"
+printf '[Unit]\n' > "$FD_UNIT"
+printf 'COLLIE_PORT=8787\n' > "${FD_CONFIG}/.env"
+printf '4242\n' > "${FD_CONFIG}/collie.pid"
+status_is "$COLLIE_HTTP_ROOT"
+printf 'http:8787|host.example:8787|%s\n' "$OURS" > "$RECORD"
+
+fd COLLIE_SUPERVISOR=systemd "$BIN" uninstall || fail "\`collie uninstall\` failed: ${STDERR}"
+CALLS="$(cat "$FD_CALLS")"
+assert_contains "$CALLS" "systemctl --user disable --now collie"
+assert_contains "$CALLS" "systemctl --user daemon-reload"
+assert_contains "$CALLS" "systemctl --user reset-failed collie"
+assert_contains "$CALLS" "tailscale serve --http=8787 --set-path=/ off"
+[ ! -e "$FD_UNIT" ] || fail "uninstall left the unit file behind"
+[ ! -e "${FD_CONFIG}/collie.pid" ] || fail "uninstall left the pidfile behind"
+[ ! -e "$RECORD" ] || fail "uninstall left the ownership record behind"
+assert_eq "$(read_status)" "{}"
+# The two things uninstall deliberately keeps.
+[ -f "${FD_CONFIG}/.env" ] || fail "uninstall deleted the operator's .env"
+[ -f "${ROOT}/herdr-plugin.toml" ] || fail "uninstall touched the checkout"
+assert_contains "$STDOUT" "✓ uninstalled:"
+assert_contains "$STDOUT" "kept: ${FD_CONFIG}/.env and the checkout"
+
+# A teardown it cannot justify ABORTS the uninstall: reporting a clean uninstall over a front door
+# that is still published would be a lie.
+printf '[Unit]\n' > "$FD_UNIT"
+printf 'http:8787|host.example:8787|%s\n' "$OURS" > "$RECORD"
+status_is "$FOREIGN_ROOT"
+if fd COLLIE_SUPERVISOR=systemd "$BIN" uninstall; then
+  fail "uninstall carried on over a front door it refused to tear down"
+fi
+assert_contains "${STDOUT}${STDERR}" "refusing to remove"
+[ -f "$FD_UNIT" ] || fail "an aborted uninstall still removed the unit"
+case "$STDOUT" in
+  *"✓ uninstalled"*) fail "an aborted uninstall reported success" ;;
+esac
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
+echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"

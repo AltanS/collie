@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { collieVersion, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import { cmdUnserve, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { bridgeUrl } from "./tailnet.ts";
 import {
@@ -25,7 +26,7 @@ import {
 // Everything reaches the world through the injected seams (cli/sys.ts), so the whole lifecycle is
 // exercised in `bun test` without a service manager.
 
-export interface LifecycleDeps {
+export interface LifecycleDeps extends ServeDeps {
   ctx: CliContext;
   io: Io;
   exec: Exec;
@@ -36,9 +37,10 @@ export interface LifecycleDeps {
   uid: () => number;
   platform: NodeJS.Platform;
   /**
-   * Publish the front door. M3/03 owns the real implementation; until then this is the not-yet-ported
-   * verb, which fails — and `start` tolerating that failure is itself the ported behaviour
-   * (scripts/collie-ctl.sh:431-434).
+   * Publish the front door — `cmdServe` in production (wired in cli/main.ts). It stays a seam
+   * because what `start` is asserted on here is its TOLERANCE of a front door that won't come up
+   * (scripts/collie-ctl.sh:431-434), which has nothing to say about serve-status fixtures.
+   * `uninstall`, whose relationship to `unserve` is the opposite — it aborts — calls it directly.
    */
   serve: () => Promise<number>;
 }
@@ -267,6 +269,45 @@ export function cmdStop(deps: LifecycleDeps): number {
     stopPidfileProcess(deps);
   }
   deps.io.out("bridge stopped");
+  return EXIT.OK;
+}
+
+/**
+ * The inverse of `start`, and NO MORE (scripts/collie-ctl.sh:455-477): stop + disable the service,
+ * remove the service definition, remove Collie's own tailscale serve mapping, drop the pidfile.
+ *
+ * It deliberately keeps `${CONFIG_DIR}/.env` and the checkout — an operator uninstalling the
+ * service has not asked to lose their config, and the closing summary says so. To remove the plugin
+ * registration too, `herdr plugin uninstall herdr.collie` (or delete a linked clone's checkout).
+ *
+ * `unserve` failing ABORTS: it failed by refusing to touch a mapping it could not prove is ours, and
+ * carrying on would report a clean uninstall over a front door that is still published.
+ */
+export function cmdUninstall(deps: LifecycleDeps): number {
+  const stopped = cmdStop(deps);
+  if (stopped !== EXIT.OK) return stopped;
+  const unserved = cmdUnserve(deps);
+  if (unserved !== EXIT.OK) return unserved;
+
+  const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
+  if (tier === "systemd") {
+    deps.files.remove(unitFilePath(deps.ctx.home));
+    deps.exec.capture("systemctl", ["--user", "daemon-reload"]);
+    deps.exec.capture("systemctl", ["--user", "reset-failed", UNIT_NAME]);
+  } else if (tier === "launchd") {
+    // Plist first: while it is on disk an enabled label is one login from loading again.
+    deps.files.remove(agentFilePath(deps.ctx.home));
+    // `stop`'s `disable` is a record in launchd's per-user database and outlives the plist, so clear
+    // it or a reinstall inherits a disabled label. `enable` resets that state; it can't delete the row.
+    deps.exec.capture("launchctl", ["enable", launchdTarget(deps.uid())]);
+  }
+  deps.files.remove(pidFilePath(deps.ctx.configDir));
+  deps.io.out(
+    "✓ uninstalled: service stopped & disabled, service definition removed, Collie's tailscale serve mapping removed",
+  );
+  deps.io.out(
+    `  kept: ${join(deps.ctx.configDir, ".env")} and the checkout — delete those to remove every trace`,
+  );
   return EXIT.OK;
 }
 
