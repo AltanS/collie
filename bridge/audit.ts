@@ -13,6 +13,10 @@ const MAX_STR = 120;
 export interface AuditEntry {
   /** The action performed, e.g. "reply" / "keys" / "upload" / "tab.create" / "pane.close". */
   action: string;
+  /** The outermost component of the `(host, session, paneId)` address triple (PACK_PROTOCOL.md §4):
+   *  the pack member the action targeted. Absent (not null) when the action targeted this collie
+   *  itself, exactly as `session` is absent on pre-multi-session lines (PACK_PROTOCOL.md §11). */
+  host?: string;
   /** Target pane, when the action is pane-scoped. */
   paneId?: string;
   /** The herdr session the action targeted (registry name); absent on pre-multi-session lines. */
@@ -48,12 +52,15 @@ function sanitize(value: unknown): unknown {
 
 /**
  * Render one entry to a single JSONL line (no trailing newline). Stable field order
- * (ts, action, paneId?, session?, device?, detail) so lines are grep/diff-friendly; optional
- * attribution is omitted (not null) when absent. Pure — `now` (epoch ms) is injected so tests are
- * deterministic.
+ * (ts, action, host?, paneId?, session?, device?, detail) — `host` sits right after `action` since
+ * it is the outermost component of the `(host, session, paneId)` triple (PACK_PROTOCOL.md §4) — so
+ * lines are grep/diff-friendly; optional attribution is omitted (not null) when absent, keeping a
+ * zero-peer line byte-identical to today's (PACK_PROTOCOL.md §11). Pure — `now` (epoch ms) is
+ * injected so tests are deterministic.
  */
 export function formatAuditLine(entry: AuditEntry, now: number): string {
   const line: Record<string, unknown> = { ts: new Date(now).toISOString(), action: entry.action };
+  if (entry.host !== undefined) line.host = entry.host;
   if (entry.paneId !== undefined) line.paneId = entry.paneId;
   if (entry.session !== undefined) line.session = entry.session;
   if (entry.device != null) line.device = entry.device;

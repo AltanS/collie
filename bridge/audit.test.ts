@@ -49,6 +49,33 @@ describe("formatAuditLine", () => {
     );
     expect(parsed.detail.keys).toEqual(["Enter", "a b"]);
   });
+
+  test("renders host right after action, before paneId (PACK_PROTOCOL.md §4)", () => {
+    const line = formatAuditLine(
+      { action: "reply", host: "peer-a", paneId: "w1:p1", detail: { text: "ship it" } },
+      0,
+    );
+    expect(line).toBe(
+      '{"ts":"1970-01-01T00:00:00.000Z","action":"reply","host":"peer-a","paneId":"w1:p1","detail":{"text":"ship it"}}',
+    );
+  });
+
+  test("omits host when absent — byte-identical to a pre-pack line (solo zero-tax, §11)", () => {
+    const line = formatAuditLine({ action: "reply", paneId: "w1:p1", detail: { text: "ship it" } }, 0);
+    expect(line).toBe(
+      '{"ts":"1970-01-01T00:00:00.000Z","action":"reply","paneId":"w1:p1","detail":{"text":"ship it"}}',
+    );
+    expect(line).not.toContain("host");
+  });
+
+  test("two hosts with the same session+paneId produce distinguishable lines", () => {
+    const shared = { action: "reply", session: "default", paneId: "w1:p1", detail: {} } as const;
+    const lineA = formatAuditLine({ ...shared, host: "peer-a" }, 0);
+    const lineB = formatAuditLine({ ...shared, host: "peer-b" }, 0);
+    expect(lineA).not.toBe(lineB);
+    expect(JSON.parse(lineA).host).toBe("peer-a");
+    expect(JSON.parse(lineB).host).toBe("peer-b");
+  });
 });
 
 describe("AuditLog", () => {
