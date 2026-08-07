@@ -198,6 +198,12 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   it needs the port not to be shared in the first place (its own network namespace, or a uid
   owner-match filter such as nftables `meta skuid`); a plain port firewall rule won't stop a
   same-host peer (raised in [#33](https://github.com/AltanS/collie/issues/33)).
+  **Named exception (specified, not yet built): the pack listener.** When pack federation is
+  enabled, a peer binds its `/pack/v1/*` prefix to loopback plus exactly the join address the
+  operator supplied — never `0.0.0.0` — and admits a request only past two independent factors,
+  pinned mutual TLS plus the pack secret, before any handler runs. See
+  [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) and
+  [ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md).
   Under `tailscale serve`, the `Tailscale-User-Login` header is the person gate — trusted **only**
   when the request source is loopback (i.e. it came from tailscaled). `COLLIE_TRUSTED_USER` rejects a
   *mismatching* login and **passes an absent one**: it narrows which tailnet user is trusted, it does
