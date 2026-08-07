@@ -1,10 +1,13 @@
-# Reference systemd --user unit. `scripts/collie-ctl.sh start` generates a copy of this with
-# absolute paths filled in at ~/.config/systemd/user/collie.service. Edit + use this
-# directly only if you prefer to manage it by hand.
+# Reference systemd --user unit. `collie start` generates a copy of this with absolute paths filled
+# in at ~/.config/systemd/user/collie.service. Edit + use this directly only if you prefer to manage
+# it by hand.
 #
 #   cp systemd/collie.service ~/.config/systemd/user/
 #   (edit the @PLACEHOLDERS@ below)
 #   systemctl --user daemon-reload && systemctl --user enable --now collie
+#
+# `cli/unit.test.ts` asserts this file and the generator declare the same directives, so the two
+# cannot drift.
 
 [Unit]
 Description=Collie
@@ -15,7 +18,7 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 WorkingDirectory=@PLUGIN_ROOT@
-ExecStart=@BUN@ run @PLUGIN_ROOT@/bridge/index.ts
+ExecStart=@PLUGIN_ROOT@/bin/collie _exec-bridge
 Restart=on-failure
 RestartSec=5
 # Hardening: the bridge is remote shell access, so deny privilege escalation and give it a private
@@ -26,6 +29,8 @@ PrivateTmp=yes
 Environment=HERDR_SOCKET_PATH=%h/.config/herdr/herdr.sock
 Environment=COLLIE_PORT=8787
 Environment=HERDR_PLUGIN_CONFIG_DIR=%h/.config/collie
+Environment=COLLIE_PLUGIN_ROOT=@PLUGIN_ROOT@
+# Leading '-': a missing .env is not a startup failure.
 EnvironmentFile=-%h/.config/collie/.env
 
 [Install]

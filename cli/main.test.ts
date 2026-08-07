@@ -126,9 +126,20 @@ describe("exit codes", () => {
 
   test("a verb still owned by the shell exits 1 and says where it lives", async () => {
     const io = capture();
-    expect(await run(["start"], io)).toBe(EXIT.FAIL);
+    expect(await run(["build"], io)).toBe(EXIT.FAIL);
     expect(io.stdout).toEqual([]);
-    expect(io.stderr.join("\n")).toContain("scripts/collie-ctl.sh start");
+    expect(io.stderr.join("\n")).toContain("scripts/collie-ctl.sh build");
+  });
+
+  // NOTHING in this file may dispatch a lifecycle verb: `run(["start"])` here would write a unit
+  // into the developer's own ~/.config and `enable --now` it. Those verbs are covered in
+  // cli/lifecycle.test.ts against fakes, and end to end in scripts/collie-cli.test.sh against a
+  // scratch PATH and a throwaway $HOME. This pins which verbs are which.
+  test("the ported lifecycle verbs no longer delegate to the shell", () => {
+    const delegating = ["uninstall", "update", "_apply-update", "build", "serve", "unserve", "push-test"];
+    const ported = ["start", "stop", "restart", "_exec-bridge", "status", "url", "version", "logs"];
+    for (const name of [...delegating, ...ported]) expect(findCommand(name)).toBeDefined();
+    expect([...delegating, ...ported, "help"].length).toBe(COMMANDS.length);
   });
 
   test("a verb that throws becomes an operational failure, not a stack trace", async () => {
