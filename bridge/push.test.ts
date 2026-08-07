@@ -97,6 +97,145 @@ describe("Push — broadcast delivery & pruning", () => {
   });
 });
 
+// Issue #68: a subscription can be permanently dead while the push service answers with something
+// other than 404/410 (Apple says 400 BadDeviceToken), so it was retried forever and re-logged every
+// cycle. Eviction closes that, but only where the evidence is unambiguous — hence the origin guard.
+describe("Push — eviction of persistently-failing subscriptions", () => {
+  const APPLE = "https://web.push.apple.com";
+  const FCM = "https://fcm.googleapis.com";
+  /** A rejection shaped exactly like the WebPushError `web-push` throws (message is the useless
+   *  constant; the real signal is statusCode + the service's reason in `body`). */
+  const rejects = (statusCode: number, body: string) =>
+    Object.assign(new Error("Received unexpected response code"), { statusCode, body });
+
+  /** Collects console output so eviction/prune lines can be asserted (they're the operator's only
+   *  view of this behaviour) without spraying the test run. */
+  async function capturingConsole<T>(fn: () => Promise<T>): Promise<{ result: T; lines: string[] }> {
+    const lines: string[] = [];
+    const collect = ((...args: unknown[]) => void lines.push(args.map(String).join(" "))) as typeof console.warn;
+    const [origWarn, origLog] = [console.warn, console.log];
+    console.warn = collect;
+    console.log = collect;
+    try {
+      return { result: await fn(), lines };
+    } finally {
+      console.warn = origWarn;
+      console.log = origLog;
+    }
+  }
+
+  /** A sender that fails for `failing` endpoints and delivers for everything else. */
+  function partialSender(failing: Map<string, Error>): PushSender {
+    return (s) => {
+      const err = failing.get(s.endpoint);
+      return err ? Promise.reject(err) : Promise.resolve();
+    };
+  }
+
+  const rounds = (push: Push, n: number) =>
+    capturingConsole(async () => {
+      for (let i = 0; i < n; i++) await push.notify("t", "b");
+    });
+
+  test("a dead-but-not-410 subscription is evicted once a sibling on its service succeeds", async () => {
+    const cfg = await tempCfg();
+    const [dead, live] = [`${APPLE}/dead`, `${APPLE}/live`];
+    const push = new Push(cfg, partialSender(new Map([[dead, rejects(400, '{"reason":"BadDeviceToken"}')]])));
+    const subs = enable(push, [sub(dead), sub(live)]);
+
+    // Four rounds of failure are not enough — a run of transients must not cost anyone their pushes.
+    await rounds(push, 4);
+    expect([...subs.keys()]).toEqual([dead, live]);
+
+    const { lines } = await rounds(push, 1);
+    expect([...subs.keys()]).toEqual([live]);
+    expect(await fileEndpoints(cfg.stateDir)).toEqual([live]);
+    expect(lines.some((l) => l.includes("evicting subscription after 5 consecutive failures"))).toBe(true);
+  });
+
+  test("a service-wide rejection never evicts, however long it lasts", async () => {
+    // The 403-storm case: a VAPID slip makes one service reject every device it holds. Nothing on
+    // that origin succeeds, so nothing is counted — otherwise a sender-side mistake would silently
+    // unsubscribe every iPhone in the herd. This test pins the design.
+    const cfg = await tempCfg();
+    const apples = [`${APPLE}/a`, `${APPLE}/b`, `${APPLE}/c`];
+    const storm = rejects(403, '{"reason":"InvalidProviderToken"}');
+    const push = new Push(cfg, partialSender(new Map(apples.map((e) => [e, storm]))));
+    const subs = enable(push, [...apples.map(sub), sub(`${FCM}/ok`)]);
+
+    await rounds(push, 20);
+
+    expect([...subs.keys()].length).toBe(4);
+  });
+
+  test("the only subscription is never evicted, however long it fails", async () => {
+    // No sibling ⇒ no proof the token is at fault. Losing the sole subscription would trade a loud
+    // log line for silent no-push, which is strictly worse for the one-phone operator.
+    const cfg = await tempCfg();
+    const only = `${APPLE}/only`;
+    const push = new Push(cfg, partialSender(new Map([[only, rejects(400, "BadDeviceToken")]])));
+    const subs = enable(push, [sub(only)]);
+
+    await rounds(push, 20);
+
+    expect([...subs.keys()]).toEqual([only]);
+  });
+
+  test("one delivery resets the streak", async () => {
+    const cfg = await tempCfg();
+    const [flaky, live] = [`${APPLE}/flaky`, `${APPLE}/live`];
+    const failing = new Map([[flaky, rejects(500, "")]]);
+    const push = new Push(cfg, partialSender(failing));
+    const subs = enable(push, [sub(flaky), sub(live)]);
+
+    await rounds(push, 4);
+    failing.delete(flaky);
+    await rounds(push, 1); // recovers
+    failing.set(flaky, rejects(500, ""));
+    await rounds(push, 4); // four more is short of the threshold again
+
+    expect([...subs.keys()]).toEqual([flaky, live]);
+  });
+
+  test("re-subscribing clears the streak of an identical endpoint", async () => {
+    const cfg = await tempCfg();
+    const [flaky, live] = [`${APPLE}/flaky`, `${APPLE}/live`];
+    const push = new Push(cfg, partialSender(new Map([[flaky, rejects(400, "BadDeviceToken")]])));
+    const subs = enable(push, [sub(flaky), sub(live)]);
+
+    await rounds(push, 4);
+    await push.addSubscription(sub(flaky)); // the device just asked for pushes again
+    await rounds(push, 4);
+
+    expect([...subs.keys()]).toEqual([flaky, live]);
+  });
+
+  test("a failure logs the status and the service's reason, not just the useless message", async () => {
+    // `err.message` alone is the constant "Received unexpected response code" — the whole reason
+    // this issue was undiagnosable from the logs.
+    const cfg = await tempCfg();
+    const endpoint = `${APPLE}/x`;
+    const push = new Push(cfg, partialSender(new Map([[endpoint, rejects(400, '{"reason":"BadDeviceToken"}')]])));
+    enable(push, [sub(endpoint)]);
+
+    const { lines } = await rounds(push, 1);
+
+    const failed = lines.find((l) => l.includes("send failed"));
+    expect(failed).toContain("status=400");
+    expect(failed).toContain("BadDeviceToken");
+  });
+
+  test("a 410 prune says so out loud", async () => {
+    const cfg = await tempCfg();
+    const push = new Push(cfg, (s) => (s.endpoint === "dead" ? Promise.reject(gone("dead")) : Promise.resolve()));
+    enable(push, [sub("dead")]);
+
+    const { lines } = await rounds(push, 1);
+
+    expect(lines.some((l) => l.includes("pruning gone subscription (410)"))).toBe(true);
+  });
+});
+
 describe("Push — persistence", () => {
   test("addSubscription persists with owner-only (0600) permissions", async () => {
     const cfg = await tempCfg();
