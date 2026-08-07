@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/section-header";
 import { StatusDot } from "@/components/status-badge";
 import { filterSpaces, sortSpacesByRecency, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
+import { spaceKey } from "@/lib/hosts";
 import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
 import { STATUS_LABEL } from "@/lib/types";
@@ -17,6 +18,12 @@ interface SpaceOverviewProps {
   shellPanes?: AgentView[];
   onOpen: (workspaceId: string) => void;
   onNewSpace: () => void;
+  /**
+   * The machine these workspaces belong to — the lead, since the merged snapshot deliberately does
+   * not union peer workspaces. Undefined on a solo install. Without it, a peer's `w1` would pour its
+   * triage dot and its last-seen time into the lead's `w1` row (lib/spaces.ts).
+   */
+  host?: string;
   /** Fold state, owned by the dashboard so it can be persisted. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,6 +38,7 @@ export function SpaceOverview({
   shellPanes = [],
   onOpen,
   onNewSpace,
+  host,
   open,
   onOpenChange,
 }: SpaceOverviewProps) {
@@ -45,7 +53,7 @@ export function SpaceOverview({
   // chip can never mean different things by the same colour (lib/spaces.ts).
   const worstBySpace = spaceTriageMap(agents);
   const blockedSpaces = [...worstBySpace.values()].filter((b) => b === "needs").length;
-  const visible = filterSpaces(sortSpacesByRecency(workspaces, panes, lastSeen), query);
+  const visible = filterSpaces(sortSpacesByRecency(workspaces, panes, lastSeen, host), query);
 
   return (
     <section className="flex flex-col gap-2 px-3 py-4">
@@ -110,10 +118,13 @@ export function SpaceOverview({
             </p>
           ) : (
             visible.map((w) => {
-              const bucket = worstBySpace.get(w.workspaceId);
+              // (host, workspaceId): these rows are the lead's spaces, so a peer that happens to
+              // expose the same workspace id contributes nothing to them.
+              const key = spaceKey(host, w.workspaceId);
+              const bucket = worstBySpace.get(key);
               const status = bucket ? TRIAGE_STATUS[bucket] : null;
               const blocked = bucket === "needs";
-              const seen = lastSeen.get(w.workspaceId) ?? 0;
+              const seen = lastSeen.get(key) ?? 0;
               return (
                 <button
                   key={w.workspaceId}

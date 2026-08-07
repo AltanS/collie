@@ -7,6 +7,7 @@ import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { ConnectionBanner } from "@/components/connection-banner";
+import { PackProvider } from "@/components/pack-provider";
 import { DogGallop } from "@/components/dog-gallop";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
@@ -34,18 +35,23 @@ export function RootLayout() {
   // active route fills the rest (each route root is `min-h-0 flex-1`). This is what keeps a banner
   // from covering the route's sticky header — it reserves real space instead of overlaying.
   return (
-    <div className="flex h-[100dvh] flex-col">
-      {/* API-observed self-update: mounted unconditionally so its controller runs (and can
-          auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh
-          build is confirmed but auto-update is held off (unsent work) or already spent. */}
-      <UpdateAvailableBanner />
-      {/* The app's ONE connection surface: a thin, animated bar that stays hidden while healthy, fades
-          in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
-          red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
-          same shared-clock signals as the header dog, so the two always agree. */}
-      <ConnectionBanner bridge={data.bridge} error={data.error} authError={data.authError} />
-      <Outlet />
-    </div>
+    // The pack roster is published here, at the data root, so every surface below — including sheets
+    // portalled out to document.body — can answer "which machine?" without a prop chain. With no pack
+    // the provider publishes the solo value and nothing downstream renders any host chrome.
+    <PackProvider servers={data.servers}>
+      <div className="flex h-[100dvh] flex-col">
+        {/* API-observed self-update: mounted unconditionally so its controller runs (and can
+            auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh
+            build is confirmed but auto-update is held off (unsent work) or already spent. */}
+        <UpdateAvailableBanner />
+        {/* The app's ONE connection surface: a thin, animated bar that stays hidden while healthy, fades
+            in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
+            red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
+            same shared-clock signals as the header dog, so the two always agree. */}
+        <ConnectionBanner bridge={data.bridge} error={data.error} authError={data.authError} />
+        <Outlet />
+      </div>
+    </PackProvider>
   );
 }
 

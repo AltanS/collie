@@ -16,6 +16,8 @@ import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
+import { HostChip } from "@/components/host-chip";
+import { useAmbientHost, useHostLabel } from "@/components/pack-provider";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
@@ -99,17 +101,24 @@ const KEY_REVALIDATE_MS = 300;
 // viewport with a tall tray. One wrapper so Keys and Quick can't drift apart.
 function ComposerDock({
   title,
+  host,
   onClose,
   children,
 }: {
   title: string;
+  /** The machine a key sent from this dock lands on. Renders nothing on a single-host install. */
+  host?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
   return (
     <div className="-mx-3 mb-2 flex flex-col border-t border-border bg-background">
       <div className="flex items-center justify-between px-3 pt-2">
-        <SectionLabel>{title}</SectionLabel>
+        <div className="flex min-w-0 items-center gap-2">
+          <SectionLabel>{title}</SectionLabel>
+          {/* A key press from the Keys dock IS a write into a terminal — the dock names which one. */}
+          <HostChip host={host} variant="target" />
+        </div>
         <Button
           variant="ghost"
           size="icon"
@@ -132,6 +141,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const revalidator = useRevalidator();
   // Every write affordance is off when the pane is gone OR this device is read-only.
   const locked = gone || readOnly;
+  // The machine every write on this row lands on. The pane view addresses one host (the pane's own,
+  // carried in `?h=` since the row was opened), so the ambient scope IS the target here. Undefined on
+  // a solo install, which renders no chip and leaves every confirm string unchanged.
+  const writeHost = useAmbientHost(scope?.host);
+  // Its display name, or undefined when there is no pack — the copy-level half of the hide rule.
+  const writeHostLabel = useHostLabel(scope?.host);
 
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
   // pane view is keyed by paneId, so without this, stepping over to another tab mid-reply ate the
@@ -473,7 +488,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     const reason = isDestructiveInput(input);
     if (reason && !sendConfirm.confirm("send")) {
-      setStatus(`Destructive: ${reason} — tap Send again to confirm`, "info");
+      // On a pack the confirm names the machine as well as the pattern: "rm -r" is a different
+      // sentence depending on whose disk it runs on, and this line is the last thing read before the
+      // second tap. Solo copy is unchanged, byte for byte.
+      const where = writeHostLabel ? ` on ${writeHostLabel}` : "";
+      setStatus(`Destructive: ${reason}${where} — tap Send again to confirm`, "info");
       return;
     }
     sendConfirm.reset();
@@ -606,7 +625,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             one-tap reply grids; Display mounts the labelled mirror prefs. Agent stays a covering
             BottomSheet below (it's a palette, not a pad). */}
         {drawer === "keys" && (
-          <ComposerDock title="Keys" onClose={closeDrawer}>
+          <ComposerDock title="Keys" host={writeHost} onClose={closeDrawer}>
             <NavTray onSend={pressKeys} onQueueChange={setQueuedKeys} disabled={locked} />
           </ComposerDock>
         )}
@@ -704,6 +723,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
           />
         )}
+        {/* Which machine this reply is about to be typed into, immediately above the input and Send.
+            A host named only in a header read once at the top of a scroll is not named where the
+            mistake happens (milestone constraint). Renders nothing unless the pack has >1 machine. */}
+        <HostChip host={writeHost} variant="target" className="mb-1 self-start" />
         <div className="flex items-end gap-2">
           {/* Attach image — messenger-style, left of the input, always available (previously buried
               in the keyboard-only quick-key strip). preventDefault keeps the textarea focused so the

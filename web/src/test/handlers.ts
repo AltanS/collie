@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 
 import type {
   AgentView,
+  ServerSummary,
   SessionSummary,
   SnapshotResponse,
   TabView,
@@ -93,6 +94,77 @@ export const fixtureSnapshot: SnapshotResponse = {
   notifications: { snoozedUntil: null },
   sessions: fixtureSessions,
   ts: 0,
+};
+
+// ── The pack fixtures ────────────────────────────────────────────────────────
+// Everything above is the SOLO snapshot, and it stays that way: no `servers`, no `host` anywhere, so
+// every existing test keeps asserting the one-host world and any host chrome that leaks into it
+// fails loudly. The pack fixtures below are opt-in — a test that wants two machines asks for them.
+//
+// Shapes mirror what the lead's merge actually emits (bridge/pack/merge.ts): the lead's OWN panes and
+// sessions are host-tagged too (not left bare), workspace ids repeat across machines because Herdr
+// numbers them per machine, and the roster's first entry is the lead.
+
+/** Lead + one reachable peer + one that is up but speaking another protocol version. */
+export const fixtureServers: ServerSummary[] = [
+  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1_000 },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 990 },
+  {
+    id: "attic",
+    name: "attic",
+    isLead: false,
+    reachable: false,
+    protocol: "incompatible",
+    protocolDetail: "pack protocol 2 (this collie speaks 1)",
+    lastSeenAt: 500,
+  },
+];
+
+/**
+ * Agents across two machines, with `w1` deliberately used on BOTH — the id collision that makes a
+ * host-blind space key merge two projects. One blocked agent per host, so "Needs you" is provably a
+ * single cross-host list.
+ */
+export const fixturePackAgents: AgentView[] = [
+  { ...fixtureAgents[0]!, host: "bluefin" },
+  { ...fixtureAgents[1]!, host: "bluefin" },
+  {
+    paneId: "w1:p1",
+    workspaceId: "w1",
+    workspaceLabel: "moonward",
+    workspaceNumber: 1,
+    tabId: "w1:t1",
+    agent: "codex",
+    status: "blocked",
+    cwd: "/home/you/moonward",
+    focused: false,
+    host: "workshop",
+  },
+];
+
+export const fixturePackShellPanes: AgentView[] = fixtureShellPanes.map((p) => ({
+  ...p,
+  host: "bluefin",
+}));
+
+/** Both machines run a session called "default" — which is why the switchers stay separate. */
+export const fixturePackSessions: SessionSummary[] = [
+  { ...fixtureSessions[0]!, host: "bluefin" },
+  { ...fixtureSessions[1]!, host: "bluefin" },
+  { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 1, host: "workshop" },
+];
+
+/**
+ * The merged snapshot a lead serves. `workspaces`/`tabs` stay the LEAD's — the merge deliberately
+ * does not union peer workspaces (their ids are only unique per machine, and a pane already carries
+ * the denormalised labels the home list renders).
+ */
+export const fixturePackSnapshot: SnapshotResponse = {
+  ...fixtureSnapshot,
+  agents: fixturePackAgents,
+  shellPanes: fixturePackShellPanes,
+  sessions: fixturePackSessions,
+  servers: fixtureServers,
 };
 
 /** A minimal two-turn transcript: a human ask and the agent's tool-call-plus-answer reply. */

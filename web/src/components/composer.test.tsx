@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ComponentProps } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -8,8 +8,10 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { server } from "@/test/setup";
-import { recordReply } from "@/test/handlers";
+import { fixtureServers, recordReply } from "@/test/handlers";
+import { PackProvider } from "./pack-provider";
 import { Composer } from "./composer";
+import type { ServerSummary } from "@/lib/types";
 
 // A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
 // input line — submit-only (empty text). Overriding the reply handler therefore has to keep the fake
@@ -61,8 +63,12 @@ function StatusSentinel() {
   return <div data-testid="status">{status?.text ?? ""}</div>;
 }
 
-/** renderComposer + the status sentinel, for cases that assert on the status line. */
-function renderComposerWithStatus(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+/** renderComposer + the status sentinel, for cases that assert on the status line. `servers` opts
+ *  the render into a pack (default: solo, i.e. no host chrome and no host in any copy). */
+function renderComposerWithStatus(
+  overrides: Partial<ComponentProps<typeof Composer>> = {},
+  servers?: ServerSummary[],
+) {
   const props: ComponentProps<typeof Composer> = {
     paneId: "w1:p1",
     agent: "claude",
@@ -84,10 +90,10 @@ function renderComposerWithStatus(overrides: Partial<ComponentProps<typeof Compo
     {
       path: "/",
       element: (
-        <>
+        <PackProvider servers={servers}>
           <StatusSentinel />
           <Composer {...props} />
-        </>
+        </PackProvider>
       ),
     },
   ]);
@@ -346,6 +352,29 @@ describe("Composer — destructive-input confirm", () => {
     await user.click(screen.getByRole("button", { name: /really send/i }));
     await waitFor(() => expect(box).toHaveValue(""));
     expect(props.onSent).toHaveBeenCalled();
+  });
+
+  it("names the machine in the confirm — and only on a pack", async () => {
+    const user = userEvent.setup();
+    // Solo: the copy is exactly what it has always been, host clause and all absent.
+    renderComposerWithStatus({ scope: { host: "workshop" } });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "sudo reboot");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByTestId("status")).toHaveTextContent(
+      "Destructive: sudo (runs as root) — tap Send again to confirm",
+    );
+    cleanup();
+
+    // On a pack, "rm -r" is a different sentence depending on whose disk it runs on.
+    clearStatus();
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "sudo reboot");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByTestId("status")).toHaveTextContent(
+      "Destructive: sudo (runs as root) on workshop — tap Send again to confirm",
+    );
+    // And the host is legible right where the tap happens, not only in a header.
+    expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
   });
 
   it("does not arm the confirm for innocent input", async () => {

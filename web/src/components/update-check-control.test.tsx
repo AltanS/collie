@@ -31,6 +31,7 @@ function homeData(update: UpdateInfo | undefined): HomeData {
     workspaces: [],
     tabs: [],
     sessions: [],
+    servers: [],
     scope: {},
     snoozedUntil: null,
     update,

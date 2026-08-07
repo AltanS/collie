@@ -5,6 +5,7 @@ import { AgentChat } from "@/components/agent-chat";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { homePath, panePath } from "@/lib/nav";
+import { findPane, paneScope } from "@/lib/hosts";
 import { setStatus } from "@/lib/status";
 import type { AgentView } from "@/lib/types";
 
@@ -41,9 +42,13 @@ export function DetailRoute() {
   if (inSnapshot) seenPaneId.current = paneId;
   const seen = seenPaneId.current === paneId;
 
+  // Looked up WITHIN the scope's host: `w1:p1` exists on every machine in a pack, so a match by id
+  // alone could hand this view another machine's pane — rendering its space, tab and cwd around a
+  // mirror of, and a composer typing into, the one the URL actually addresses. Solo panes carry no
+  // host and match unconditionally, so this is the same lookup it has always been.
   const agent =
-    root.agents.find((a) => a.paneId === paneId) ??
-    root.shellPanes.find((p) => p.paneId === paneId) ??
+    findPane(root.agents, paneId, scope, root.servers) ??
+    findPane(root.shellPanes, paneId, scope, root.servers) ??
     (fresh && fresh.paneId === paneId && !seen ? fresh : undefined);
   const tabLabel = root.tabs.find((t) => t.tabId === agent?.tabId)?.label;
   const gone = !agent;
@@ -76,7 +81,11 @@ export function DetailRoute() {
       error={root.error}
       stalled={stalled}
       onBack={() => navigate(homePath(scope))}
-      onSelect={(id) => navigate(panePath(id, scope))}
+      onSelect={(id) =>
+        navigate(
+          panePath(id, paneScope(scope, findPane([...root.agents, ...root.shellPanes], id, scope, root.servers), root.servers)),
+        )
+      }
     />
   );
 }

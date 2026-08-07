@@ -22,6 +22,7 @@ import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
+import { HostChip } from "@/components/host-chip";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -636,10 +637,15 @@ export function AgentChat({
               {/* A user-set pane label leads when present (the identifier they chose), then Claude's
                   own /rename session name, otherwise the default space › tab. The cwd subline keeps
                   context either way. */}
-              <div className="truncate font-semibold leading-tight">
-                {agent.paneLabel ??
-                  agent.sessionName ??
-                  `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-semibold leading-tight">
+                  {agent.paneLabel ??
+                    agent.sessionName ??
+                    `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
+                </span>
+                {/* Where space is tight the breadcrumb truncates the NAME (it already does) — never
+                    the host, which is `shrink-0` and therefore the last thing to go. */}
+                <HostChip host={agent.host} />
               </div>
               <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
                 {shortCwd(agent.cwd)}
@@ -669,6 +675,7 @@ export function AgentChat({
         {agent && (
           <TabStrip
             workspaceId={agent.workspaceId}
+            host={agent.host}
             tabs={tabs}
             agents={agents}
             selected={agent.tabId}

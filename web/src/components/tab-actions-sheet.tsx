@@ -3,6 +3,8 @@ import { Pencil, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
+import { HostChip } from "@/components/host-chip";
+import { useAmbientHost } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
@@ -109,6 +111,10 @@ export function TabActionsSheet({
   }
 
   const confirming = !!tab && pending === tab.tabId;
+  // A tab has no host of its own — the tab list is the LEAD's, and both writes here are addressed by
+  // the ambient scope. So the chip names the machine the write will land on: `?h=` when set,
+  // otherwise the lead. Nothing renders on a single-host install.
+  const host = useAmbientHost(scope?.host);
   // Closing a tab kills every pane in it — name the blast radius on the confirm so it's honest. The
   // count rides on the tab record (snapshot `pane_count`); fall back to a plain confirm if it's 0.
   const paneCount = tab?.paneCount ?? 0;
@@ -123,6 +129,7 @@ export function TabActionsSheet({
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
+          <HostChip host={host} variant="target" className="mb-1 self-start" />
           <ActionRow
             icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
             label="Rename"
