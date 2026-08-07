@@ -1,0 +1,671 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { AuditLog, fileAuditAppender, formatAuditLine, type AuditEntry } from "./audit.ts";
+import { ActivityLedger } from "./activity.ts";
+import { loadConfig, type Config } from "./config.ts";
+import { computeEtag } from "./http-cache.ts";
+import { NotifyPrefsStore } from "./notify-prefs.ts";
+import { Snooze } from "./snooze.ts";
+import {
+  SessionRegistry,
+  herdTagFor,
+  type SessionFactory,
+  type SessionParts,
+} from "./sessions.ts";
+import type { EngineSnapshot } from "./state-engine.ts";
+import { toPaneWire } from "./types.ts";
+import type {
+  AgentView,
+  DeviceAuth,
+  PaneWire,
+  SessionSummary,
+  SnapshotResponse,
+  TabView,
+  UpdateStatus,
+  WorkspaceView,
+} from "./types.ts";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOLO ZERO-TAX BASELINE — you are not allowed to tax a solo user.
+//
+// Pack federation (M3/M4) is being built on top of this code. The contract in PACK_PROTOCOL.md §11
+// says that with ZERO peers enrolled, Collie's observable behaviour stays byte-for-byte what it is
+// TODAY: no added snapshot field, no shifted ETag, no new route, no new state file, no new env key,
+// no changed notification tag or audit line.
+//
+// This file is a CHARACTERIZATION baseline, landed BEFORE any federation code exists. That timing is
+// the whole point: written afterwards, it would only re-record whatever the new code does. A failure
+// here does NOT mean "the golden is stale" — it means a solo instance's observable behaviour moved,
+// and the change either has to become peer-conditional or the contract has to be renegotiated.
+//
+// REGENERATING A GOLDEN IS A DELIBERATE ACT:
+//   COLLIE_REGEN_SOLO_BASELINE=1 bun test bridge/solo-baseline.test.ts
+// rewrites the fixtures under bridge/fixtures/solo-baseline/. Any PR that does so MUST say so in its
+// description, with the reason and the §11 row it renegotiates. Silent regeneration defeats the test.
+//
+// Two layers, deliberately:
+//   • TYPE level — an exhaustive `Record<keyof T, true>` per wire type. `keyof` includes optional
+//     keys, so adding `servers?:` or `host?:` to a wire type fails `bun run typecheck` at the exact
+//     line the field was added. server.ts emits its snapshot `satisfies SnapshotResponse`, so a new
+//     emitted key must first exist on the type — the chain has no gap.
+//   • BYTE level — a golden body, deep-equalled and byte-compared, plus its ETag.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FIXTURES = join(import.meta.dir, "fixtures", "solo-baseline");
+const REGEN = process.env.COLLIE_REGEN_SOLO_BASELINE === "1";
+
+function golden(name: string): string {
+  return readFileSync(join(FIXTURES, name), "utf8");
+}
+
+/** Compare against a committed golden, or rewrite it under COLLIE_REGEN_SOLO_BASELINE=1. */
+function expectGolden(name: string, actual: string): void {
+  if (REGEN) {
+    writeFileSync(join(FIXTURES, name), actual);
+    console.warn(`[solo-baseline] REGENERATED ${name} — say so in the PR description, with a reason.`);
+  }
+  expect(actual).toBe(golden(name));
+}
+
+// ── The fixed fake herd ───────────────────────────────────────────────────────
+// A solo instance: one herdr session (the primary), two agent panes, one shell pane, one space,
+// one tab. Frozen inputs — every number here is arbitrary but must never change, or the golden
+// stops being a comparison against yesterday.
+
+const TS = 1_754_000_000_000;
+
+const claudePane: AgentView = {
+  paneId: "w1:p1",
+  workspaceId: "w1",
+  workspaceLabel: "collie",
+  workspaceNumber: 1,
+  tabId: "w1:t1",
+  agent: "claude",
+  status: "blocked",
+  cwd: "/home/you/playground/collie",
+  focused: true,
+  kind: "agent",
+  paneLabel: "guard work",
+  sessionName: "guard-work",
+  // Server-side only: toPaneWire must strip this to `hasSession` and never leak the value.
+  agentSession: { kind: "id", value: "abc-123" },
+  readableLines: 48,
+  tabLabel: "collie",
+  lastActiveAt: TS - 60_000,
+  lastSeenAt: TS - 300_000,
+};
+
+const codexPane: AgentView = {
+  paneId: "w1:p2",
+  workspaceId: "w1",
+  workspaceLabel: "collie",
+  workspaceNumber: 1,
+  tabId: "w1:t1",
+  agent: "codex",
+  status: "working",
+  cwd: "/home/you/playground/collie",
+  focused: false,
+  kind: "agent",
+};
+
+const shellPane: AgentView = {
+  paneId: "w1:p3",
+  workspaceId: "w1",
+  workspaceLabel: "collie",
+  workspaceNumber: 1,
+  tabId: "w1:t1",
+  agent: "shell",
+  status: "idle",
+  cwd: "/home/you",
+  focused: false,
+  kind: "shell",
+};
+
+const workspaces: WorkspaceView[] = [
+  {
+    workspaceId: "w1",
+    number: 1,
+    label: "collie",
+    focused: true,
+    activeTabId: "w1:t1",
+    tabCount: 1,
+    paneCount: 3,
+  },
+];
+
+const tabs: TabView[] = [
+  { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "collie", focused: true, paneCount: 3 },
+];
+
+const engineSnapshot: EngineSnapshot = {
+  agents: [claudePane, codexPane],
+  shellPanes: [shellPane],
+  workspaces,
+  tabs,
+  bridge: "connected",
+};
+
+const updateStatus: UpdateStatus = {
+  current: "1.0.0-alpha.1",
+  latest: null,
+  latestUrl: null,
+  releaseAvailable: false,
+  bridgeStale: false,
+  checkedAt: null,
+};
+
+/** Only claude has a journal adapter in this fixture — codex/shell must not advertise History. */
+const hasJournal = (agent: string) => agent === "claude";
+
+/**
+ * A registry over exactly one session (the primary), built with the same fake-factory convention as
+ * sessions.test.ts. `list()` is the REAL implementation — this pins what a solo `sessions` looks like.
+ */
+function soloRegistry(): SessionRegistry {
+  const factory: SessionFactory = () => ({
+    herdr: {} as unknown as SessionParts["herdr"],
+    engine: { current: () => engineSnapshot, stop: () => {} } as unknown as SessionParts["engine"],
+    poker: { stop: () => {} } as unknown as SessionParts["poker"],
+    notifications: { clearAll: () => {} } as unknown as SessionParts["notifications"],
+  });
+  return new SessionRegistry({
+    configRoot: "/home/you/.config/herdr",
+    primarySocketPath: "/home/you/.config/herdr/herdr.sock",
+    factory,
+    multiSession: true,
+    listSessionDirs: () => [],
+    exists: () => false,
+  });
+}
+
+/**
+ * Assemble the snapshot body exactly as the `/api/snapshot` handler does
+ * (bridge/server.ts:193-212) for a solo instance: device auth off (so the key is absent), no peers.
+ * Kept in lockstep with that handler by the `satisfies SnapshotResponse` on both sides plus the
+ * exhaustive key assertions below — a key added there must exist on the type, which fails here.
+ */
+function soloSnapshot(registry: SessionRegistry): SnapshotResponse {
+  const { agents, shellPanes, workspaces: ws, tabs: tb, bridge } = registry.get()!.engine.current();
+  return {
+    bridge,
+    // device: omitted — COLLIE_DEVICE_HEADER unset is the default deployment.
+    agents: agents.map((p) => toPaneWire(p, hasJournal)),
+    shellPanes: shellPanes.map((p) => toPaneWire(p, hasJournal)),
+    workspaces: ws,
+    tabs: tb,
+    sessions: registry.list(),
+    notifications: { snoozedUntil: null },
+    update: updateStatus,
+    ts: TS,
+  } satisfies SnapshotResponse;
+}
+
+// ── 1. Wire shapes: no `servers`, no `host`, no anything ─────────────────────
+// §11 rows: "Snapshot bytes", "?h=". These maps are exhaustive by construction — `Record<keyof T,…>`
+// makes every key of T (optional ones included) required here, so adding a federation field to a
+// wire type is a TYPECHECK failure, not a silent widening.
+
+const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
+  bridge: true,
+  device: true,
+  agents: true,
+  shellPanes: true,
+  workspaces: true,
+  tabs: true,
+  sessions: true,
+  notifications: true,
+  update: true,
+  ts: true,
+};
+
+const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
+  name: true,
+  isPrimary: true,
+  reachable: true,
+  agents: true,
+  working: true,
+  blocked: true,
+};
+
+const PANE_WIRE_KEYS: Record<keyof PaneWire, true> = {
+  paneId: true,
+  workspaceId: true,
+  workspaceLabel: true,
+  workspaceNumber: true,
+  tabId: true,
+  agent: true,
+  status: true,
+  cwd: true,
+  focused: true,
+  kind: true,
+  paneLabel: true,
+  sessionName: true,
+  readableLines: true,
+  tabLabel: true,
+  lastActiveAt: true,
+  lastSeenAt: true,
+  hasSession: true,
+};
+
+const DEVICE_AUTH_KEYS: Record<keyof DeviceAuth, true> = {
+  enforced: true,
+  device: true,
+  authorized: true,
+};
+
+const UPDATE_STATUS_KEYS: Record<keyof UpdateStatus, true> = {
+  current: true,
+  latest: true,
+  latestUrl: true,
+  releaseAvailable: true,
+  bridgeStale: true,
+  checkedAt: true,
+};
+
+const WORKSPACE_KEYS: Record<keyof WorkspaceView, true> = {
+  workspaceId: true,
+  number: true,
+  label: true,
+  focused: true,
+  activeTabId: true,
+  tabCount: true,
+  paneCount: true,
+};
+
+const TAB_KEYS: Record<keyof TabView, true> = {
+  tabId: true,
+  workspaceId: true,
+  number: true,
+  label: true,
+  focused: true,
+  paneCount: true,
+};
+
+describe("solo zero-tax — wire shapes carry no pack dimension", () => {
+  test("SnapshotResponse has exactly today's fields (no `servers`, no `host`)", () => {
+    expect(Object.keys(SNAPSHOT_KEYS).sort()).toEqual([
+      "agents",
+      "bridge",
+      "device",
+      "notifications",
+      "sessions",
+      "shellPanes",
+      "tabs",
+      "ts",
+      "update",
+      "workspaces",
+    ]);
+  });
+
+  test("SessionSummary has exactly today's fields (no `host`)", () => {
+    expect(Object.keys(SESSION_SUMMARY_KEYS).sort()).toEqual([
+      "agents",
+      "blocked",
+      "isPrimary",
+      "name",
+      "reachable",
+      "working",
+    ]);
+  });
+
+  test("PaneWire has exactly today's fields (no `host`)", () => {
+    expect(Object.keys(PANE_WIRE_KEYS).sort()).toEqual([
+      "agent",
+      "cwd",
+      "focused",
+      "hasSession",
+      "kind",
+      "lastActiveAt",
+      "lastSeenAt",
+      "paneId",
+      "paneLabel",
+      "readableLines",
+      "sessionName",
+      "status",
+      "tabId",
+      "tabLabel",
+      "workspaceId",
+      "workspaceLabel",
+      "workspaceNumber",
+    ]);
+  });
+
+  test("the supporting wire types are unchanged too", () => {
+    expect(Object.keys(DEVICE_AUTH_KEYS).sort()).toEqual(["authorized", "device", "enforced"]);
+    expect(Object.keys(UPDATE_STATUS_KEYS).sort()).toEqual([
+      "bridgeStale",
+      "checkedAt",
+      "current",
+      "latest",
+      "latestUrl",
+      "releaseAvailable",
+    ]);
+    expect(Object.keys(WORKSPACE_KEYS).sort()).toEqual([
+      "activeTabId",
+      "focused",
+      "label",
+      "number",
+      "paneCount",
+      "tabCount",
+      "workspaceId",
+    ]);
+    expect(Object.keys(TAB_KEYS).sort()).toEqual([
+      "focused",
+      "label",
+      "number",
+      "paneCount",
+      "tabId",
+      "workspaceId",
+    ]);
+  });
+});
+
+// ── 2. The golden snapshot body ──────────────────────────────────────────────
+
+describe("solo zero-tax — the snapshot body is byte-for-byte today's", () => {
+  const body = JSON.stringify(soloSnapshot(soloRegistry()), null, 2);
+
+  test("assembles to the committed golden, byte for byte", () => {
+    expectGolden("snapshot.json", `${body}\n`);
+  });
+
+  // Deep equality, not a subset match: an added key fails here even if the golden were regenerated
+  // carelessly, because the parsed golden is compared BOTH ways.
+  test("deep-equals the golden with no extra keys on either side", () => {
+    const parsed = JSON.parse(golden("snapshot.json")) as SnapshotResponse;
+    const actual = soloSnapshot(soloRegistry());
+    expect(actual).toEqual(parsed);
+    expect(parsed).toEqual(actual);
+  });
+
+  test("a solo snapshot names no pack anywhere in its bytes", () => {
+    expect(body).not.toMatch(/"servers"|"peers"|"pack"|"host":|"lead"/);
+  });
+
+  test("solo emits exactly one session, the primary, and never a session ref", () => {
+    const snap = soloSnapshot(soloRegistry());
+    expect(snap.sessions).toEqual([
+      { name: "default", isPrimary: true, reachable: true, agents: 2, working: 1, blocked: 1 },
+    ]);
+    // hasSession is the flag; agentSession (a filesystem path for pi) must never reach the wire.
+    expect(snap.agents.map((p) => (p as Record<string, unknown>).agentSession)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(snap.agents.map((p) => p.hasSession)).toEqual([true, undefined]);
+  });
+});
+
+// ── 3. ETag stability ────────────────────────────────────────────────────────
+// §11: the solo snapshot ETag is UNCHANGED — a hard requirement, not an accepted one-time break.
+// The literal hash is deliberately NOT pinned: Bun.hash is a runtime implementation detail and a Bun
+// upgrade legitimately moves it. What §11 actually promises is that the *body bytes* don't move, and
+// that the ETag is a pure function of those bytes. Both are asserted; the negative control below
+// proves the gate has teeth.
+
+describe("solo zero-tax — ETag", () => {
+  test("is a pure function of the body: identical bytes → identical ETag", () => {
+    const a = JSON.stringify(soloSnapshot(soloRegistry()));
+    const b = JSON.stringify(soloSnapshot(soloRegistry()));
+    expect(a).toBe(b);
+    expect(computeEtag(a)).toBe(computeEtag(b));
+  });
+
+  test("the golden body's ETag matches the assembled body's", () => {
+    const fromGolden = JSON.stringify(JSON.parse(golden("snapshot.json")));
+    const fromCode = JSON.stringify(soloSnapshot(soloRegistry()));
+    expect(computeEtag(fromCode)).toBe(computeEtag(fromGolden));
+  });
+
+  // NEGATIVE CONTROL — this is the tax, measured. It is why `servers` is optional-and-absent rather
+  // than an always-present empty array (PACK_PROTOCOL.md §11).
+  test("adding an empty `servers: []` would move every solo ETag", () => {
+    const today = JSON.stringify(soloSnapshot(soloRegistry()));
+    const taxed = JSON.stringify({ ...soloSnapshot(soloRegistry()), servers: [] });
+    expect(computeEtag(taxed)).not.toBe(computeEtag(today));
+  });
+});
+
+// ── 4. Routes ────────────────────────────────────────────────────────────────
+// §11: zero routes added, no `/pack` prefix registered. The dispatch lives inside `Bun.serve`, which
+// `bun test` cannot stand up (CLAUDE.md), so the route table is pinned by reading the source's route
+// literals. Crude, but it is the actual registration site — a new `if (pathname === "/pack/…")` in
+// server.ts fails here even though no server was started.
+
+function declaredRoutes(): string[] {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+  const exact = [...src.matchAll(/pathname === "([^"]+)"/g)].map((m) => m[1]!);
+  const prefixes = [...src.matchAll(/pathname\.startsWith\("([^"]+)"\)/g)].map((m) => `${m[1]}*`);
+  const patterns = [...src.matchAll(/^const \w*ROUTE = (\/\^.+\/);$/gm)].map((m) => m[1]!);
+  return [...new Set([...exact, ...prefixes, ...patterns])].sort();
+}
+
+describe("solo zero-tax — routes", () => {
+  test("server.ts registers exactly today's routes", () => {
+    expect(declaredRoutes()).toEqual([
+      "/",
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history))?$/",
+      "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      "/api/config",
+      "/api/notifications/prefs",
+      "/api/notifications/snooze",
+      "/api/snapshot",
+      "/api/subscribe",
+      "/api/tab",
+      "/api/update/check",
+      "/api/workspace",
+      "/auth",
+      "/auth/*",
+    ]);
+  });
+
+  test("no /pack prefix is routed at all", () => {
+    expect(declaredRoutes().filter((r) => r.includes("pack"))).toEqual([]);
+    expect(readFileSync(join(import.meta.dir, "server.ts"), "utf8")).not.toMatch(/"\/pack/);
+  });
+});
+
+// ── 5. Config: no pack keys, no pack env ─────────────────────────────────────
+
+const CONFIG_KEYS: Record<keyof Config, true> = {
+  socketPath: true,
+  dialMode: true,
+  port: true,
+  host: true,
+  pollMs: true,
+  pollIdleMs: true,
+  notifyDelayMs: true,
+  readLines: true,
+  transcript: true,
+  journalRoots: true,
+  submitKeys: true,
+  trustedUser: true,
+  deviceHeader: true,
+  deviceAllowlist: true,
+  allowedOrigins: true,
+  publicHosts: true,
+  vapidPublic: true,
+  vapidPrivate: true,
+  vapidSubject: true,
+  stateDir: true,
+  multiSession: true,
+  skipServe: true,
+};
+
+describe("solo zero-tax — config", () => {
+  test("Config carries no pack/peer/lead key", () => {
+    const keys = Object.keys(CONFIG_KEYS).sort();
+    expect(keys).toEqual([
+      "allowedOrigins",
+      "deviceAllowlist",
+      "deviceHeader",
+      "dialMode",
+      "host",
+      "journalRoots",
+      "multiSession",
+      "notifyDelayMs",
+      "pollIdleMs",
+      "pollMs",
+      "port",
+      "publicHosts",
+      "readLines",
+      "skipServe",
+      "socketPath",
+      "stateDir",
+      "submitKeys",
+      "transcript",
+      "trustedUser",
+      "vapidPrivate",
+      "vapidPublic",
+      "vapidSubject",
+    ]);
+    expect(keys.filter((k) => /pack|peer|lead|federat/i.test(k))).toEqual([]);
+  });
+
+  test("loadConfig with a bare environment produces exactly those keys and one loopback port", () => {
+    const cfg = loadConfig();
+    expect(Object.keys(cfg).sort()).toEqual(Object.keys(CONFIG_KEYS).sort());
+    // §11 "Ports opened": exactly one, loopback.
+    expect(cfg.host).toBe("127.0.0.1");
+    expect(typeof cfg.port).toBe("number");
+  });
+
+  test("the poll cadence defaults are unchanged — no second timer to configure", () => {
+    // §11 "Poll cadence". Env is not scrubbed here (a deployment may override), so assert the
+    // defaults from the source rather than from a live env.
+    const src = readFileSync(join(import.meta.dir, "config.ts"), "utf8");
+    expect(src).toContain('envInt("COLLIE_POLL_MS", 1500');
+    expect(src).toContain('envInt("COLLIE_POLL_IDLE_MS", 12_000');
+  });
+
+  test("config.ts reads exactly today's COLLIE_* env keys — no pack enrollment key", () => {
+    const src = readFileSync(join(import.meta.dir, "config.ts"), "utf8");
+    const keys = [...new Set([...src.matchAll(/COLLIE_[A-Z0-9_]+/g)].map((m) => m[0]))].sort();
+    expect(keys).toEqual([
+      "COLLIE_ALLOWED_ORIGINS",
+      "COLLIE_CODEX_ROOT",
+      "COLLIE_DEVICE_ALLOWLIST",
+      "COLLIE_DEVICE_HEADER",
+      "COLLIE_HERDR_DIAL",
+      "COLLIE_HOST",
+      "COLLIE_MULTI_SESSION",
+      "COLLIE_NOTIFY_DELAY_MS",
+      "COLLIE_OPENCODE_ROOT",
+      "COLLIE_PI_ROOT",
+      "COLLIE_POLL_IDLE_MS",
+      "COLLIE_POLL_MS",
+      "COLLIE_PORT",
+      "COLLIE_PUBLIC_HOSTS",
+      "COLLIE_READ_LINES",
+      "COLLIE_SERVE_MODE",
+      "COLLIE_SKIP_SERVE",
+      "COLLIE_STATE_DIR",
+      "COLLIE_SUBMIT_KEYS",
+      "COLLIE_TRANSCRIPT",
+      "COLLIE_TRANSCRIPT_ROOT",
+      "COLLIE_TRUSTED_USER",
+      "COLLIE_VAPID_PRIVATE",
+      "COLLIE_VAPID_PUBLIC",
+      "COLLIE_VAPID_SUBJECT",
+    ]);
+  });
+});
+
+// ── 6. Files written ─────────────────────────────────────────────────────────
+// §11: a solo instance writes exactly today's set — no key, no certificate, no trust store, no
+// roster. Two assertions, because neither alone is enough: driving the stores proves what actually
+// lands on disk; scanning the source proves no OTHER module has a `<stateDir>/…` writer at all.
+
+/** Every `<stateDir>/…` path any bridge module names. `uploads` is a directory, the rest are files. */
+const STATE_DIR_ENTRIES = [
+  "activity.json",
+  "audit.log",
+  "notify-prefs.json",
+  "push-subscriptions.json",
+  "snooze.json",
+  "update-state.json",
+  "uploads",
+];
+
+describe("solo zero-tax — the filesystem", () => {
+  test("the bridge names exactly today's <stateDir> entries and nothing else", async () => {
+    const dir = import.meta.dir;
+    const files = (await readdir(dir)).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+    const named = new Set<string>();
+    for (const f of files) {
+      const src = readFileSync(join(dir, f), "utf8");
+      for (const m of src.matchAll(/join\((?:this\.)?cfg\.stateDir, "([^"]+)"\)/g)) named.add(m[1]!);
+    }
+    // index.ts wires two of them by hand rather than inside a store.
+    const idx = readFileSync(join(dir, "index.ts"), "utf8");
+    for (const m of idx.matchAll(/join\(cfg\.stateDir, "([^"]+)"\)/g)) named.add(m[1]!);
+    expect([...named].sort()).toEqual(STATE_DIR_ENTRIES);
+  });
+
+  test("driving every solo write path produces only known files", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "collie-solo-baseline-"));
+    try {
+      const cfg: Config = { ...loadConfig(), stateDir };
+      await new Snooze(cfg, () => TS).set(TS + 60_000);
+      await new NotifyPrefsStore(cfg).set({ blocked: false });
+      const ledger = new ActivityLedger({ stateDir }, () => TS, 60 * 60 * 1000);
+      ledger.ensure("default", "w1:p1");
+      await ledger.flush();
+      new AuditLog(fileAuditAppender(join(stateDir, "audit.log")), () => TS).record({
+        action: "reply",
+        paneId: "w1:p1",
+        detail: { text: "ok" },
+      });
+      // The audit append is fire-and-forget; let its microtask + write land.
+      await Bun.sleep(20);
+      const written = (await readdir(stateDir)).sort();
+      expect(written).toEqual(["activity.json", "audit.log", "notify-prefs.json", "snooze.json"]);
+      expect(written.filter((f) => !STATE_DIR_ENTRIES.includes(f))).toEqual([]);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── 7. Notification tags and push payload ────────────────────────────────────
+
+describe("solo zero-tax — notifications", () => {
+  test("the primary session keeps the bare collie:herd tag", () => {
+    expect(herdTagFor(true, "default")).toBe("collie:herd");
+    // Whatever the primary is NAMED, its tag stays bare — the name never enters the solo tag.
+    expect(herdTagFor(true, "work")).toBe("collie:herd");
+  });
+
+  test("push.ts stamps `session` only for a non-primary session — the same discipline a host field owes", () => {
+    // Pinned at the source, because Push.send needs the web-push module to broadcast. The shape of
+    // the `data` payload is the contract an installed service worker already caches.
+    const src = readFileSync(join(import.meta.dir, "push.ts"), "utf8");
+    expect(src).toContain(
+      'const data: { paneId?: string; session?: string; target?: "settings" } = { paneId: msg.paneId };',
+    );
+    expect(src).toContain("if (msg.session !== undefined) data.session = msg.session;");
+    expect(src).not.toMatch(/data\.host/);
+  });
+});
+
+// ── 8. Audit lines ───────────────────────────────────────────────────────────
+
+const AUDIT_ENTRIES: AuditEntry[] = [
+  { action: "reply", paneId: "w1:p1", detail: { text: "ship it" } },
+  { action: "keys", paneId: "w1:p1", detail: { keys: ["ctrl+c"] } },
+  { action: "tab.create", detail: { workspaceId: "w1" } },
+  { action: "pane.close", paneId: "w1:p3", session: "collie-demo", detail: {} },
+  { action: "upload", paneId: "w1:p1", device: "phone", detail: { filename: "shot.png", size: 1234 } },
+];
+
+describe("solo zero-tax — audit lines", () => {
+  test("format exactly as they do today: `host` absent, not null", () => {
+    const lines = AUDIT_ENTRIES.map((e) => formatAuditLine(e, TS)).join("\n");
+    expectGolden("audit.jsonl", `${lines}\n`);
+    expect(lines).not.toMatch(/"host"/);
+  });
+});

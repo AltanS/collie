@@ -1,0 +1,5 @@
+{"ts":"2025-07-31T22:13:20.000Z","action":"reply","paneId":"w1:p1","detail":{"text":"ship it"}}
+{"ts":"2025-07-31T22:13:20.000Z","action":"keys","paneId":"w1:p1","detail":{"keys":["ctrl+c"]}}
+{"ts":"2025-07-31T22:13:20.000Z","action":"tab.create","detail":{"workspaceId":"w1"}}
+{"ts":"2025-07-31T22:13:20.000Z","action":"pane.close","paneId":"w1:p3","session":"collie-demo","detail":{}}
+{"ts":"2025-07-31T22:13:20.000Z","action":"upload","paneId":"w1:p1","device":"phone","detail":{"filename":"shot.png","size":1234}}

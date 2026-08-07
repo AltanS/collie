@@ -1,0 +1,93 @@
+{
+  "bridge": "connected",
+  "agents": [
+    {
+      "paneId": "w1:p1",
+      "workspaceId": "w1",
+      "workspaceLabel": "collie",
+      "workspaceNumber": 1,
+      "tabId": "w1:t1",
+      "agent": "claude",
+      "status": "blocked",
+      "cwd": "/home/you/playground/collie",
+      "focused": true,
+      "kind": "agent",
+      "paneLabel": "guard work",
+      "sessionName": "guard-work",
+      "readableLines": 48,
+      "tabLabel": "collie",
+      "lastActiveAt": 1753999940000,
+      "lastSeenAt": 1753999700000,
+      "hasSession": true
+    },
+    {
+      "paneId": "w1:p2",
+      "workspaceId": "w1",
+      "workspaceLabel": "collie",
+      "workspaceNumber": 1,
+      "tabId": "w1:t1",
+      "agent": "codex",
+      "status": "working",
+      "cwd": "/home/you/playground/collie",
+      "focused": false,
+      "kind": "agent"
+    }
+  ],
+  "shellPanes": [
+    {
+      "paneId": "w1:p3",
+      "workspaceId": "w1",
+      "workspaceLabel": "collie",
+      "workspaceNumber": 1,
+      "tabId": "w1:t1",
+      "agent": "shell",
+      "status": "idle",
+      "cwd": "/home/you",
+      "focused": false,
+      "kind": "shell"
+    }
+  ],
+  "workspaces": [
+    {
+      "workspaceId": "w1",
+      "number": 1,
+      "label": "collie",
+      "focused": true,
+      "activeTabId": "w1:t1",
+      "tabCount": 1,
+      "paneCount": 3
+    }
+  ],
+  "tabs": [
+    {
+      "tabId": "w1:t1",
+      "workspaceId": "w1",
+      "number": 1,
+      "label": "collie",
+      "focused": true,
+      "paneCount": 3
+    }
+  ],
+  "sessions": [
+    {
+      "name": "default",
+      "isPrimary": true,
+      "reachable": true,
+      "agents": 2,
+      "working": 1,
+      "blocked": 1
+    }
+  ],
+  "notifications": {
+    "snoozedUntil": null
+  },
+  "update": {
+    "current": "1.0.0-alpha.1",
+    "latest": null,
+    "latestUrl": null,
+    "releaseAvailable": false,
+    "bridgeStale": false,
+    "checkedAt": null
+  },
+  "ts": 1754000000000
+}
