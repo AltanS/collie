@@ -10,6 +10,7 @@ import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { Push } from "./push.ts";
+import { pluginRoot } from "./root.ts";
 import { startServer } from "./server.ts";
 import {
   deriveConfigRoot,
@@ -65,8 +66,8 @@ const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")));
 // The running plugin version, captured NOW at module load — never re-read from disk later, or a
 // post-pull package.json would mask the very update we detect (same class of bug as the buildId gap).
 // The bridge-source stamp is snapshotted here too, so a rebuilt-but-not-restarted process reads stale.
-const bridgeDir = import.meta.dir;
-const rootDir = join(bridgeDir, "..");
+const rootDir = pluginRoot();
+const bridgeDir = join(rootDir, "bridge");
 const currentVersion = (
   JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as { version: string }
 ).version;

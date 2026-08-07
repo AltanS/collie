@@ -14,5 +14,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["bridge", "scripts/**/*.ts"]
+  "include": ["bridge", "cli", "scripts/**/*.ts"]
 }
