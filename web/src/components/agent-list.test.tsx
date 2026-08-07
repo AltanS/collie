@@ -98,9 +98,12 @@ describe("AgentList — sections", () => {
   it("opens the pane behind a tapped row", async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
-    render(<AgentList agents={[agent("p1", "blocked")]} onOpen={onOpen} />);
+    // The whole PANE, not just its id: `w1:p1` names a different terminal on every machine in a
+    // pack, and this list is one herd across all of them.
+    const row = agent("p1", "blocked");
+    render(<AgentList agents={[row]} onOpen={onOpen} />);
     await user.click(screen.getByRole("button", { name: /p1/ }));
-    expect(onOpen).toHaveBeenCalledExactlyOnceWith("p1");
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(row);
   });
 
   it("shows the herd-empty placeholder, and suppresses it when asked", () => {

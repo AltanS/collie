@@ -1,5 +1,13 @@
 // Helpers for the space/tab navigator: shape the flat snapshot (agents + shell panes + tabs) into
 // the per-space, per-tab tree the home space view renders.
+//
+// ── EVERY SPACE KEY IS (host, workspaceId) ───────────────────────────────────
+// A Herdr workspace id is unique only WITHIN one machine, and a merged pack snapshot carries panes
+// from several. Keying on the bare id would silently fold two machines' `w1` into one space row:
+// one triage dot for two projects, one last-seen time, one tab group. The fix is the key, not a
+// filter — see lib/hosts.ts `spaceKey`, which degrades to a pure prefix (`"\0w1"`) on a solo
+// snapshot where no pane is host-tagged at all.
+import { paneSpaceKey, spaceKey } from "./hosts";
 import { bucketOf, TRIAGE_ORDER, type TriageKey } from "./triage";
 import type { AgentView, TabView, WorkspaceView } from "./types";
 
@@ -12,14 +20,20 @@ export interface TabGroup {
 /**
  * Group a workspace's panes (agents + shells) by tab, in tab order. Panes whose tab isn't in the
  * tab list yet (a brief poll race after a create) fall into a trailing group so they're never lost.
+ *
+ * `host` is the machine the workspace belongs to (undefined on a solo snapshot, and on the lead-local
+ * navigator before the pack tags anything). Panes from any OTHER machine are not in this space, even
+ * when they report the same workspace id.
  */
 export function groupPanesByTab(
   workspaceId: string,
   tabs: TabView[],
   agents: AgentView[],
   shellPanes: AgentView[],
+  host?: string,
 ): TabGroup[] {
-  const panes = [...agents, ...shellPanes].filter((p) => p.workspaceId === workspaceId);
+  const key = spaceKey(host, workspaceId);
+  const panes = [...agents, ...shellPanes].filter((p) => paneSpaceKey(p) === key);
   const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
 
   const groups: TabGroup[] = wsTabs.map((t) => ({
@@ -30,7 +44,9 @@ export function groupPanesByTab(
 
   const known = new Set(wsTabs.map((t) => t.tabId));
   const orphans = panes.filter((p) => !known.has(p.tabId));
-  if (orphans.length) groups.push({ tabId: `${workspaceId}:other`, label: "…", panes: orphans });
+  // The orphan group's id is host-qualified too — it is a React key in a list that can hold two
+  // machines' spaces, and `w1:other` twice over would collide.
+  if (orphans.length) groups.push({ tabId: `${key}:other`, label: "…", panes: orphans });
 
   return groups;
 }
@@ -54,9 +70,10 @@ export function spaceTriageMap(agents: readonly AgentView[]): Map<string, Triage
   const worst = new Map<string, TriageKey>();
   for (const a of agents) {
     const bucket = bucketOf(a);
-    const held = worst.get(a.workspaceId);
+    const key = paneSpaceKey(a);
+    const held = worst.get(key);
     if (held === undefined || TRIAGE_ORDER.indexOf(bucket) < TRIAGE_ORDER.indexOf(held)) {
-      worst.set(a.workspaceId, bucket);
+      worst.set(key, bucket);
     }
   }
   return worst;
@@ -71,7 +88,8 @@ export function spaceLastSeenMap(panes: readonly AgentView[]): Map<string, numbe
   const seen = new Map<string, number>();
   for (const p of panes) {
     const at = p.lastSeenAt ?? 0;
-    if (at > (seen.get(p.workspaceId) ?? 0)) seen.set(p.workspaceId, at);
+    const key = paneSpaceKey(p);
+    if (at > (seen.get(key) ?? 0)) seen.set(key, at);
   }
   return seen;
 }
@@ -87,9 +105,11 @@ export function sortSpacesByRecency(
   workspaces: readonly WorkspaceView[],
   panes: readonly AgentView[],
   seen: Map<string, number> = spaceLastSeenMap(panes),
+  host?: string,
 ): WorkspaceView[] {
   return [...workspaces].sort(
-    (a, b) => (seen.get(b.workspaceId) ?? 0) - (seen.get(a.workspaceId) ?? 0),
+    (a, b) =>
+      (seen.get(spaceKey(host, b.workspaceId)) ?? 0) - (seen.get(spaceKey(host, a.workspaceId)) ?? 0),
   );
 }
 

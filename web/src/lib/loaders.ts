@@ -22,6 +22,7 @@ import type {
   DeviceAuth,
   PaneHistoryResponse,
   PaneReadResponse,
+  ServerSummary,
   SessionSummary,
   SnapshotResponse,
   TabView,
@@ -71,6 +72,12 @@ export interface HomeData {
   tabs: TabView[];
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
+  /**
+   * The pack roster (lead first); EMPTY on a solo bridge, which emits no `servers` at all. Kept as
+   * an array rather than `ServerSummary[] | undefined` for the same reason `sessions` is: consumers
+   * ask "more than one?" (lib/hosts.ts `isMultiHost`), never "was the key present?".
+   */
+  servers: ServerSummary[];
   /** The scope this snapshot was fetched for (host + session) — so children don't re-derive it. */
   scope: Scope;
   /** Active notification snooze deadline (epoch ms), or null when not snoozed. */
@@ -151,6 +158,7 @@ function toHomeData(snap: SnapshotResponse, scope: Scope, error: boolean): HomeD
     workspaces: snap.workspaces ?? [],
     tabs: snap.tabs ?? [],
     sessions: snap.sessions ?? [],
+    servers: snap.servers ?? [],
     scope,
     snoozedUntil: snap.notifications?.snoozedUntil ?? null,
     update: snap.update,
@@ -175,6 +183,7 @@ function staleHome(scope: Scope): HomeData {
         workspaces: [],
         tabs: [],
         sessions: [],
+        servers: [],
         scope,
         snoozedUntil: null,
         update: undefined,

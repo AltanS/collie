@@ -3,6 +3,7 @@ import { useNavigate, useRouteLoaderData } from "react-router";
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
+import { ServerSwitcher } from "@/components/server-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
@@ -14,7 +15,9 @@ import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import { leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
+import type { AgentView } from "@/lib/types";
 
 // Dashboard home screen. Everything you might ACT on comes first — Needs you → Ready · unseen →
 // Working → Recent (see lib/triage.ts) — and the Spaces navigator sits last, under the thing it
@@ -34,8 +37,19 @@ export function HomeRoute() {
   // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
   const spacesOpen = openForCount(prefs.spacesOpen, data.workspaces.length);
 
-  const open = (id: string) => navigate(panePath(id, data.scope));
+  // A row is opened with the PANE's host, never the ambient one: the dashboard is one list across
+  // every machine (hosts are a label, not a split), so the row you tapped may well live somewhere
+  // other than where the URL currently points. Resolving it here is what stops a reply landing on the
+  // right pane name on the wrong terminal. Solo: every pane is untagged, so this is `data.scope`.
+  const open = (pane: AgentView) =>
+    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers)));
   const drillInto = (id: string) => navigate(spacePath(id, data.scope));
+  // The space navigator is LEAD-LOCAL (the merge deliberately does not union peer workspaces — their
+  // ids are only unique per machine), so the spaces on screen belong to the lead and their panes must
+  // be looked up under the lead's host. Undefined when solo, which keys everything exactly as before.
+  const navHost = leadHost(data.servers);
+  // Sessions are a per-host registry, so the session switcher only ever lists this host's.
+  const sessionsHere = sessionsOnHost(data.sessions ?? [], data.scope, data.servers);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -46,7 +60,15 @@ export function HomeRoute() {
         error={data.error}
         stalled={stalled}
         wordmark
-        rightLead={<SessionSwitcher sessions={data.sessions ?? []} scope={data.scope} />}
+        rightLead={
+          <>
+            {/* Host first, then session — outer dimension first, and the two are deliberately
+                different shapes (bordered server pill vs filled layers capsule) so a glance can tell
+                "change machine" from "change session on this machine". Both self-hide. */}
+            <ServerSwitcher servers={data.servers} scope={data.scope} agents={data.agents} />
+            <SessionSwitcher sessions={sessionsHere} scope={data.scope} />
+          </>
+        }
         rightTrail={<SettingsGear scope={data.scope} />}
       />
 
@@ -71,6 +93,7 @@ export function HomeRoute() {
             workspaces={data.workspaces}
             agents={data.agents}
             shellPanes={data.shellPanes}
+            host={navHost}
             onOpen={drillInto}
             onNewSpace={() => setNewSpaceOpen(true)}
             open={spacesOpen}

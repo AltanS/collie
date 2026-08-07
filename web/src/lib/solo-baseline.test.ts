@@ -33,6 +33,17 @@ const goldenSnapshot = JSON.parse(readFileSync(GOLDEN, "utf8")) as SnapshotRespo
 
 // Exhaustive by construction: `Record<keyof T, true>` makes every key of T — optional ones included —
 // required here, so adding `servers?:` or `host?:` to a mirror type fails `bun run typecheck`.
+//
+// ── THE TRIPWIRE FIRED, IN M5/02 — THE CLIENT HALF OF M4/04 ──────────────────
+// `servers?:` (SnapshotResponse) and `host?:` (SessionSummary, AgentView) are the frontend mirrors of
+// the fields the snapshot merge added bridge-side; `bridge/solo-baseline.test.ts` recorded the same
+// three, the same way, in M4/04. Read it as the type-level guard working: the mirror cannot grow a
+// pack dimension without an author acknowledging it HERE.
+//
+// **No golden was regenerated and no byte moved.** All three are optional-and-absent, so the bridge's
+// committed solo body still contains none of them — which the golden assertion below now states
+// positively, not just as "no unknown keys". Only the key-LIST assertions in this file changed; every
+// byte-level and wire-level assertion is untouched. (§11's "Why `servers` is optional-and-absent".)
 const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
   bridge: true,
   device: true,
@@ -44,6 +55,8 @@ const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
   sessions: true,
   update: true,
   ts: true,
+  // Present on the type since M5/02, absent from every solo body — see the section header.
+  servers: true,
 };
 
 const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
@@ -53,6 +66,7 @@ const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
   agents: true,
   working: true,
   blocked: true,
+  host: true,
 };
 
 const AGENT_VIEW_KEYS: Record<keyof AgentView, true> = {
@@ -73,6 +87,7 @@ const AGENT_VIEW_KEYS: Record<keyof AgentView, true> = {
   tabLabel: true,
   lastActiveAt: true,
   lastSeenAt: true,
+  host: true,
 };
 
 const DEVICE_AUTH_KEYS: Record<keyof DeviceAuth, true> = {
@@ -97,6 +112,7 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "bridge",
       "device",
       "notifications",
+      "servers",
       "sessions",
       "shellPanes",
       "tabs",
@@ -106,14 +122,28 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
     ]);
   });
 
-  it("SessionSummary, AgentView and the supporting types gained no `host`", () => {
-    expect(Object.keys(SESSION_SUMMARY_KEYS)).not.toContain("host");
-    expect(Object.keys(AGENT_VIEW_KEYS)).not.toContain("host");
+  it("the pack dimension is on the mirror types, and every field of it is optional", () => {
+    // Renegotiated in M5/02 (see the header above the key maps): `servers`/`host` EXIST here now,
+    // mirroring bridge/types.ts. What must never change is that they are optional — a solo bridge
+    // emits none of them, so a snapshot literal without them still satisfies the type.
+    const solo: SnapshotResponse = {
+      bridge: "connected",
+      agents: [],
+      shellPanes: [],
+      workspaces: [],
+      tabs: [],
+      ts: 0,
+    };
+    expect(Object.keys(solo)).not.toContain("servers");
+    expect(SNAPSHOT_KEYS.servers).toBe(true);
+    expect(SESSION_SUMMARY_KEYS.host).toBe(true);
+    expect(AGENT_VIEW_KEYS.host).toBe(true);
     expect(Object.keys(AGENT_VIEW_KEYS).sort()).toEqual([
       "agent",
       "cwd",
       "focused",
       "hasSession",
+      "host",
       "kind",
       "lastActiveAt",
       "lastSeenAt",
@@ -149,6 +179,19 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
     const sessionKeys = new Set(Object.keys(SESSION_SUMMARY_KEYS));
     for (const s of goldenSnapshot.sessions ?? []) {
       expect(Object.keys(s).filter((k) => !sessionKeys.has(k))).toEqual([]);
+    }
+  });
+
+  it("the golden solo body carries NONE of the pack fields the types now allow", () => {
+    // The half the key maps can no longer state on their own, now that `servers`/`host` are known
+    // keys: a solo BODY still has none of them. This is the byte-level claim §11 actually makes, and
+    // it is why M5/02 renegotiated the key lists without regenerating a single golden.
+    expect(goldenSnapshot).not.toHaveProperty("servers");
+    for (const pane of [...goldenSnapshot.agents, ...goldenSnapshot.shellPanes]) {
+      expect(pane).not.toHaveProperty("host");
+    }
+    for (const s of goldenSnapshot.sessions ?? []) {
+      expect(s).not.toHaveProperty("host");
     }
   });
 });

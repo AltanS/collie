@@ -5,6 +5,7 @@ import { Chip } from "@/components/ui/chip";
 import { SectionLabel } from "@/components/ui/section-label";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { worstTriage } from "@/lib/triage";
+import { hostKey } from "@/lib/hosts";
 import type { AgentView, TabView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 
@@ -12,6 +13,8 @@ interface TabStripProps {
   workspaceId: string;
   tabs: TabView[];
   agents: AgentView[];
+  /** The machine this space is on — tab ids collide across a pack, so status is counted per host. */
+  host?: string;
   /** Selected tab id, or null for "All" (every tab's panes). */
   selected: string | null;
   onSelect: (tabId: string | null) => void;
@@ -39,6 +42,7 @@ export function TabStrip({
   workspaceId,
   tabs,
   agents,
+  host,
   selected,
   onSelect,
   onNewTab,
@@ -53,6 +57,10 @@ export function TabStrip({
   // chips stay plain tap-to-switch — long-press is inert.
   const actionsEnabled = !!onRenamed && !!onClosed;
 
+  // Tab status is computed over THIS machine's panes only: tab ids (`w1:t1`) collide across a pack
+  // exactly as pane and workspace ids do, so an unfiltered merged list would paint a peer's blocked
+  // agent onto the lead's tab chip. Solo panes are untagged and `host` is undefined — same set as before.
+  const here = agents.filter((a) => hostKey(a) === (host ?? ""));
   const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
   if (wsTabs.length === 0) return null;
 
@@ -70,7 +78,7 @@ export function TabStrip({
             ring={t.focused}
             // What's actually going on in there — blocked / ready / working / idle — instead of a
             // dot that only ever appeared for blocked and left every other state unreadable.
-            status={worstTriage(agents.filter((a) => a.tabId === t.tabId))}
+            status={worstTriage(here.filter((a) => a.tabId === t.tabId))}
             onClick={() => onSelect(t.tabId)}
             // Long-press (and a tap on the already-active tab) opens the actions sheet — only when the
             // parent wired the actions; otherwise the chips stay plain tap-to-switch.

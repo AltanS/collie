@@ -14,6 +14,8 @@ import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { homePath, panePath, spacePath } from "@/lib/nav";
+import { leadHost, paneScope } from "@/lib/hosts";
+import type { AgentView } from "@/lib/types";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
 
@@ -45,7 +47,11 @@ export function SpaceRoute() {
   const toDashboard = () => navigate(homePath(data.scope));
   const switchSpace = (id: string) => navigate(spacePath(id, data.scope));
   const switchTab = (id: string | null) => setTab(id);
-  const open = (id: string) => navigate(panePath(id, data.scope));
+  // Lead-local navigator (peer workspaces are not unioned), so its panes are the lead's — but the
+  // pane still supplies its own host, so opening one can never point the URL at another machine.
+  const navHost = leadHost(data.servers);
+  const open = (pane: AgentView) =>
+    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers)));
 
   // Recover from a deleted space: once a healthy snapshot no longer has it, bounce to the dashboard
   // instead of leaving you on an empty shell. Guarded on a connected, non-stale snapshot so a
@@ -93,6 +99,7 @@ export function SpaceRoute() {
             />
             <TabStrip
               workspaceId={selectedWs.workspaceId}
+              host={navHost}
               tabs={data.tabs}
               agents={data.agents}
               selected={tab}
@@ -116,6 +123,7 @@ export function SpaceRoute() {
                 shellPanes={data.shellPanes}
                 selectedTab={tab}
                 onOpen={open}
+                host={navHost}
               />
             </main>
           </>

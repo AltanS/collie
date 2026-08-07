@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
+import { HostChip } from "@/components/host-chip";
 import { timeAgoShort } from "@/lib/format";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
 import { STATUS_LABEL } from "@/lib/types";
@@ -127,6 +128,9 @@ export function AgentCard({
           {inTab ? (
             <div className="flex min-w-0 items-baseline gap-2">
               <span className="min-w-0 flex-1 truncate font-medium">{tabTitle.primary}</span>
+              {/* Which machine this row lives on. Self-hiding: nothing renders unless the snapshot
+                  lists more than one (components/host-chip.tsx), so a solo row is untouched. */}
+              <HostChip host={agent.host} />
             </div>
           ) : (
             <div className="flex min-w-0 items-baseline gap-1">
@@ -153,6 +157,9 @@ export function AgentCard({
               )}
               {/* The age rides the title row: alone on a line of its own it claimed the same
                   vertical presence as the title, for a footnote. */}
+              {/* The host rides the title row, AFTER the discriminating tab name and before the
+                  age — it must survive the truncation that eats the project name first. */}
+              <HostChip host={agent.host} />
               {stamp !== undefined && <Age at={stamp} />}
             </div>
           )}

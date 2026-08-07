@@ -3,6 +3,7 @@ import { Pencil, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
+import { HostChip } from "@/components/host-chip";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
@@ -117,6 +118,9 @@ export function PaneActionsSheet({
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
+          {/* Close kills a real terminal; on a pack the sheet says which machine's before you arm
+              the two-tap. Renders nothing on a single-host install. */}
+          <HostChip host={pane?.host} variant="target" className="mb-1 self-start" />
           <ActionRow
             icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
             label="Rename"

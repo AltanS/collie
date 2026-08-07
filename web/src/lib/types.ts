@@ -61,6 +61,17 @@ export interface AgentView {
    * `lastActiveAt > lastSeenAt`, so opening the pane clears it by construction.
    */
   lastSeenAt?: number;
+  /**
+   * Which member of the pack this pane lives on — the `?h=` value (PACK_PROTOCOL.md §4). Mirrors
+   * `PaneWire.host` in bridge/types.ts.
+   *
+   * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise: a solo
+   * snapshot host-tags nothing (§11), so every install that exists today reads `undefined` here and
+   * renders byte-identically. A pane id (`w1:p1`) is unique only within one session on one machine,
+   * so this is the field that makes a row addressable — open it with the PANE's host, never the
+   * ambient one, or a reply lands on the right pane name on the wrong terminal.
+   */
+  host?: string;
 }
 
 /**
@@ -135,6 +146,40 @@ export interface SessionSummary {
   agents: number;
   working: number;
   blocked: number;
+  /**
+   * Which member of the pack fronts this session — the `?h=` value. Present exactly when
+   * {@link SnapshotResponse.servers} is (PACK_PROTOCOL.md §9.2/§11); absent on every solo snapshot.
+   * Sessions are a PER-HOST registry, which is why the switcher lists one host's sessions at a time:
+   * a flat merged list would offer "default" twice with no way to tell them apart.
+   */
+  host?: string;
+}
+
+/**
+ * One member of the pack (PACK_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field
+ * for field. The lead's own entry is included, so the phone renders one uniform host list instead of
+ * special-casing "here".
+ *
+ * Note what is NOT here: per-host agent/working/blocked counts. `SessionSummary` carries those
+ * because the bridge computes them per session; a `ServerSummary` does not, so the switcher derives
+ * them client-side from the merged `agents` array (see `hostCounts` in lib/hosts.ts). That keeps the
+ * counts consistent with the rows actually on screen — including an unreachable host's last-good
+ * panes, which stay listed rather than zeroing (§10.2).
+ */
+export interface ServerSummary {
+  /** Member id — the `?h=` value. */
+  id: string;
+  /** Operator-chosen label; today the member id itself. */
+  name: string;
+  isLead: boolean;
+  /** Whether the lead's last poll of this member succeeded. Always true for the lead's own entry. */
+  reachable: boolean;
+  /** Version negotiation state (§7). */
+  protocol: "ok" | "incompatible" | "unknown";
+  /** The peer's refusal reason, verbatim, when incompatible — rendered as text, never paraphrased. */
+  protocolDetail?: string;
+  /** Epoch ms, stamped by the LEAD on receipt — never the peer's clock (§10.2). `0` = never answered. */
+  lastSeenAt: number;
 }
 
 /**
@@ -169,6 +214,14 @@ export interface SnapshotResponse {
   notifications?: { snoozedUntil: number | null };
   /** The bridge's session registry (primary-first). Absent on a single-session / older bridge. */
   sessions?: SessionSummary[];
+  /**
+   * Every member of the pack, the lead's own entry first (PACK_PROTOCOL.md §9.2).
+   *
+   * **Optional-and-absent, like `update?` and unlike the always-present `sessions`** — a solo bridge
+   * emits no such key at all (§11), so absent (or fewer than two entries) is the one condition under
+   * which the whole host dimension renders nothing: no switcher, no chips, no extra row height.
+   */
+  servers?: ServerSummary[];
   /** Version / upgrade status. Absent on an older bridge that doesn't report it. */
   update?: UpdateInfo;
   ts: number;

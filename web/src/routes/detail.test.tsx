@@ -42,6 +42,7 @@ const connected = (agents: AgentView[], shellPanes: AgentView[] = []): HomeData 
   tabs: [],
   device: undefined,
   sessions: [],
+  servers: [],
   scope: {},
   snoozedUntil: null,
   update: undefined,
