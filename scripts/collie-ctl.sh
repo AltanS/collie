@@ -132,14 +132,27 @@ xml_escape() {
   printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
+write_action_launcher() {
+  local launcher="${PLUGIN_ROOT}/build/collie-action-v1.exe"
+  if [ ! -e "$launcher" ]; then
+    mkdir -p "${PLUGIN_ROOT}/build"
+    printf '%s\n' '#!/bin/sh' 'exec bash "$(dirname "$0")/../scripts/collie-ctl.sh" "$@"' > "$launcher"
+  elif [ "$(head -n 1 "$launcher")" != '#!/bin/sh' ]; then
+    echo "error: action launcher was built for Windows; delete '$launcher' and rebuild" >&2
+    return 1
+  fi
+  chmod +x "$launcher"
+}
+
 # Build the Vite/React PWA into web/dist. The bridge serves that directory; without it the API
 # still runs but the UI 503s. Safe to call repeatedly (no-op if already built, unless forced).
 cmd_build() {
   [ -n "$BUN" ] || { echo "error: bun not found on PATH" >&2; exit 1; }
+  write_action_launcher
   # Version gate: refuse to build a release whose version files / CHANGELOG disagree.
   # Override (e.g. mid-refactor) with SKIP_VERSION_CHECK=1.
   if [ "${SKIP_VERSION_CHECK:-}" != "1" ]; then
-    bash "${PLUGIN_ROOT}/scripts/check-version.sh"
+    "$BUN" run "${PLUGIN_ROOT}/scripts/check-version.ts"
   fi
   # Install BOTH dependency trees before typechecking. The root typecheck (tsconfig `types: ["bun"]`)
   # resolves @types/bun from the ROOT node_modules; a fresh Herdr checkout ships neither tree, so
@@ -804,7 +817,7 @@ cmd_serve() {
   if [ "$SERVE_MODE" = "http" ]; then
     ensure_tailscale_root_available "$PORT" http "$expected_proxy" || return 1
     printf '%s|%s|%s\n' "http:${PORT}" "${tailscale_host}:${PORT}" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
-    if tailscale serve --bg --http="$PORT" --set-path=/ "$PORT" >"$out" 2>&1; then
+    if tailscale serve --yes --bg --http="$PORT" --set-path=/ "$PORT" >"$out" 2>&1; then
       echo "tailscale serve (http) → tailnet :${PORT} -> 127.0.0.1:${PORT}"
     else
       rm -f "$TAILSCALE_HANDLER_FILE"
@@ -815,7 +828,7 @@ cmd_serve() {
   else
     ensure_tailscale_root_available 443 https "$expected_proxy" || return 1
     printf '%s|%s|%s\n' "https:443" "${tailscale_host}:443" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
-    if tailscale serve --bg --set-path=/ "$PORT" >"$out" 2>&1; then
+    if tailscale serve --yes --bg --set-path=/ "$PORT" >"$out" 2>&1; then
       echo "tailscale serve (https) → tailnet :443 -> 127.0.0.1:${PORT}"
     else
       rm -f "$TAILSCALE_HANDLER_FILE"

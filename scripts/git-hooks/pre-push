@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pre-push guard: typecheck both sides, then run the test suites (backend Bun + web Vitest) before
-# anything leaves the machine. Install with: scripts/install-hooks.sh (sets core.hooksPath).
+# Pre-push guard: typecheck both sides, then run the platform lifecycle and web suites. The backend
+# suite also runs on POSIX; its path and file-mode assertions are not portable to native Windows.
 # Override once: SKIP_TYPECHECK=1 git push (skip typecheck) · SKIP_TESTS=1 git push (skip tests).
 set -euo pipefail
 
@@ -34,22 +34,27 @@ if [ "${SKIP_TESTS:-}" = "1" ]; then
   exit 0
 fi
 
-echo "pre-push: running backend test suite (bun test ./bridge)…" >&2
-if ! (cd "$ROOT" && bun test ./bridge); then
-  cat >&2 <<'EOF'
+if [ "${OS:-}" = "Windows_NT" ]; then
+  echo "pre-push: running Windows lifecycle suite…" >&2
+  (cd "$ROOT" && bun run test:ctl)
+else
+  echo "pre-push: running backend test suite (bun test ./bridge)…" >&2
+  if ! (cd "$ROOT" && bun test ./bridge); then
+    cat >&2 <<'EOF'
 ✗ pre-push: backend tests failed — push aborted.
   Fix the failing tests, or override once with: SKIP_TESTS=1 git push
 EOF
-  exit 1
-fi
+    exit 1
+  fi
 
-echo "pre-push: running control-script lifecycle suite (collie-ctl.test.sh)…" >&2
-if ! (cd "$ROOT" && bash scripts/collie-ctl.test.sh); then
-  cat >&2 <<'EOF'
+  echo "pre-push: running platform control-script lifecycle suite…" >&2
+  if ! (cd "$ROOT" && bun run test:ctl); then
+    cat >&2 <<'EOF'
 ✗ pre-push: collie-ctl lifecycle tests failed — push aborted.
   Fix the failing tests, or override once with: SKIP_TESTS=1 git push
 EOF
-  exit 1
+    exit 1
+  fi
 fi
 
 echo "pre-push: running web test suite (vitest)…" >&2
