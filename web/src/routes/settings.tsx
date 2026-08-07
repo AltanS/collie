@@ -17,14 +17,14 @@ import { fetchConfig } from "@/lib/api";
 import { usePushControl } from "@/hooks/use-push";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { homePath } from "@/lib/nav";
-import { useSession } from "@/lib/session";
+import { useScope } from "@/lib/session";
 import type { PushAvailability } from "@/lib/push";
 
 // Settings page — currently just the push-notification toggle. Reachable from the home header gear.
 // Lives under the root route, so the snapshot polling/push-setup in RootLayout keeps running behind it.
 export function SettingsRoute() {
   const navigate = useNavigate();
-  const session = useSession();
+  const scope = useScope();
   const { state, busy, setEnabled } = usePushControl();
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +63,7 @@ export function SettingsRoute() {
           size="icon"
           // size="icon" is 36px; the header's other controls are 44px since the tap-target pass.
           className="size-11"
-          onClick={() => navigate(homePath(session))}
+          onClick={() => navigate(homePath(scope))}
           aria-label="Back"
         >
           <ArrowLeft className="size-5" />

@@ -41,6 +41,7 @@ import {
   type GuardOutcome,
   type Sleep,
 } from "./harness/guard";
+import type { Scope } from "./scope";
 
 /** What identifies the dialog a tap is aimed at: where it lives, when it was seen, and what it was. */
 export interface DialogTarget<K extends DialogKind> {
@@ -48,8 +49,8 @@ export interface DialogTarget<K extends DialogKind> {
   requestedLines: number;
   /** The `revision` the rendered dialog was detected against. */
   detectedRevision: number;
-  /** The session the pane lives in (undefined = primary) — scopes every read + keystroke. */
-  session?: string;
+  /** Which machine + which named session the pane lives in — scopes every read + keystroke. */
+  scope?: Scope;
   /**
    * The pane's Herdr `agent` string — which adapter re-derives the fresh screen. An agent with no
    * adapter re-derives to nothing, so the guard refuses: fail-CLOSED, the only safe default when we
@@ -132,15 +133,15 @@ export async function sendGuardedKeys<K extends DialogKind>(
  *  undefined = an unbound write (a later step of a multi-step choreography, which has deliberately
  *  changed the screen since the guard ran). */
 export async function sendBoundKeys(
-  target: { paneId: string; session?: string },
+  target: { paneId: string; scope?: Scope },
   keys: string[],
   region?: string,
 ): Promise<ActionResult> {
   try {
     const res =
       region === undefined
-        ? await sendKeys(target.paneId, keys, target.session)
-        : await sendKeys(target.paneId, keys, target.session, region);
+        ? await sendKeys(target.paneId, keys, target.scope)
+        : await sendKeys(target.paneId, keys, target.scope, region);
     if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };
@@ -157,7 +158,7 @@ export async function readDialog<K extends DialogKind>(
   return readModel(
     target.paneId,
     target.requestedLines,
-    target.session,
+    target.scope,
     dialogDetector(target.kind, target.agent),
   );
 }

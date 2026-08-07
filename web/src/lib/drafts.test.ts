@@ -20,9 +20,27 @@ describe("drafts", () => {
 
   it("scopes the key by session so two sessions' panes can't collide", () => {
     saveDraft(undefined, "w1:p1", "primary");
-    saveDraft("demo", "w1:p1", "demo session");
+    saveDraft({ session: "demo" }, "w1:p1", "demo session");
     expect(loadDraft(undefined, "w1:p1")).toBe("primary");
-    expect(loadDraft("demo", "w1:p1")).toBe("demo session");
+    expect(loadDraft({ session: "demo" }, "w1:p1")).toBe("demo session");
+  });
+
+  it("scopes the key by host too, so the same pane id on two machines can't collide", () => {
+    saveDraft(undefined, "w1:p1", "lead");
+    saveDraft({ host: "badger" }, "w1:p1", "badger");
+    saveDraft({ host: "badger", session: "demo" }, "w1:p1", "badger demo");
+    expect(loadDraft(undefined, "w1:p1")).toBe("lead");
+    expect(loadDraft({ host: "badger" }, "w1:p1")).toBe("badger");
+    expect(loadDraft({ host: "badger", session: "demo" }, "w1:p1")).toBe("badger demo");
+  });
+
+  // Byte-identical keys on the lead: an install that upgrades into the host dimension must still
+  // find the drafts it already stored. A host segment is emitted ONLY when there is a host.
+  it("keeps the lead's storage keys exactly as they shipped", () => {
+    saveDraft({ host: "  ", session: "  " }, "w1:p1", "still the lead");
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).not.toBeNull();
+    saveDraft({ session: "demo" }, "w1:p2", "named");
+    expect(localStorage.getItem("collie:draft:demo:w1:p2")).not.toBeNull();
   });
 
   it("removes the key when the text is empty or whitespace", () => {

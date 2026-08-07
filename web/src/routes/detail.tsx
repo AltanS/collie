@@ -19,7 +19,7 @@ export function DetailRoute() {
   const { paneId = "" } = useParams();
   // The session this pane belongs to (undefined = primary), read from the pane loader so every
   // navigation and write below stays scoped to it.
-  const session = pane.session;
+  const scope = pane.scope;
   const navigate = useNavigate();
   const location = useLocation();
   const stalled = useLoadingStalled();
@@ -54,15 +54,15 @@ export function DetailRoute() {
   useEffect(() => {
     if (gone && root.bridge === "connected" && !root.error) {
       setStatus("Pane closed", "info");
-      navigate(homePath(session), { replace: true });
+      navigate(homePath(scope), { replace: true });
     }
-  }, [gone, root.bridge, root.error, navigate, session]);
+  }, [gone, root.bridge, root.error, navigate, scope]);
 
   return (
     <AgentChat
       key={paneId}
       paneId={paneId}
-      session={session}
+      scope={scope}
       agent={agent}
       agents={root.agents}
       shellPanes={root.shellPanes}
@@ -75,8 +75,8 @@ export function DetailRoute() {
       bridge={root.bridge}
       error={root.error}
       stalled={stalled}
-      onBack={() => navigate(homePath(session))}
-      onSelect={(id) => navigate(panePath(id, session))}
+      onBack={() => navigate(homePath(scope))}
+      onSelect={(id) => navigate(panePath(id, scope))}
     />
   );
 }

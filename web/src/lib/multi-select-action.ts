@@ -27,6 +27,7 @@ import {
 } from "./dialog-guard";
 import { multiSelectIdentity } from "./harness/multi-select-model";
 import { defaultSleep, type ActionResult, type Sleep } from "./harness/guard";
+import { paneScopeKey, type Scope } from "./scope";
 
 /** One tap's intent, resolved to keystrokes by {@link submitMultiSelectIntent}. Shared with the
  *  MultiSelectBlock renderer (its `onAction` emits exactly these). */
@@ -50,8 +51,8 @@ interface GuardArgs {
   /** The `revision` the rendered dialog was detected against. */
   detectedRevision: number;
   multi: MultiSelectModel;
-  /** The session the pane lives in (undefined = primary) — scopes every read + keystroke below. */
-  session?: string;
+  /** Which machine + which named session the pane lives in — scopes every read + keystroke below. */
+  scope?: Scope;
   /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
   agent?: string;
   /** Test seam for the verification polls' pacing. */
@@ -75,7 +76,7 @@ function target(args: GuardArgs): DialogTarget<"multi-select"> {
 // read→send window (fully closing it would need server-side coordination — out of scope). An overlap
 // is rejected as "changed" so the caller simply revalidates onto the fresh state.
 const inFlight = new Set<string>();
-const paneKey = (paneId: string, session: string | undefined) => `${session ?? ""}\u0000${paneId}`;
+const paneKey = (paneId: string, scope: Scope | undefined) => paneScopeKey(scope, paneId);
 
 /**
  * Dispatch a multi-select intent through the race guard, serialized per pane. Toggle/escape/confirm/
@@ -86,7 +87,7 @@ const paneKey = (paneId: string, session: string | undefined) => `${session ?? "
 export async function submitMultiSelectIntent(
   args: GuardArgs & { intent: MultiSelectIntent },
 ): Promise<ActionResult> {
-  const key = paneKey(args.paneId, args.session);
+  const key = paneKey(args.paneId, args.scope);
   if (inFlight.has(key)) return { status: "changed" }; // a sibling action holds this pane
   inFlight.add(key);
   try {

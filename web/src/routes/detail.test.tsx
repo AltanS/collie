@@ -42,7 +42,7 @@ const connected = (agents: AgentView[], shellPanes: AgentView[] = []): HomeData 
   tabs: [],
   device: undefined,
   sessions: [],
-  session: undefined,
+  scope: {},
   snoozedUntil: null,
   update: undefined,
   error: false,
@@ -63,7 +63,7 @@ function makeRouter(initialPath: string, homeLoader: () => HomeData) {
             path: "pane/:paneId",
             loader: ({ params }): PaneData => ({
               paneId: params.paneId ?? "",
-              session: undefined,
+              scope: {},
               text: "",
               truncated: false,
               requestedLines: 600,

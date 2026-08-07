@@ -8,6 +8,7 @@ import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
 import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 
 interface PaneActionsSheetProps {
   open: boolean;
@@ -15,7 +16,7 @@ interface PaneActionsSheetProps {
   /** The pane these actions target. Null while nothing is selected (sheet closed). */
   pane: AgentView | null;
   /** Session scope for the rename/close writes (undefined = primary). */
-  session?: string;
+  scope?: Scope;
   /** This device isn't authorised to write — show a read-only note instead of the actions. */
   readOnly?: boolean;
   /** Fired after a successful rename so the parent can revalidate (the label lands on the next poll). */
@@ -38,7 +39,7 @@ export function PaneActionsSheet({
   open,
   onClose,
   pane,
-  session,
+  scope,
   readOnly = false,
   onRenamed,
   onClosed,
@@ -71,7 +72,7 @@ export function PaneActionsSheet({
     const next = label.trim();
     setSaving(true);
     try {
-      const res = await api.renamePane(pane.paneId, next, session);
+      const res = await api.renamePane(pane.paneId, next, scope);
       if (res.ok) {
         setStatus(next ? "Renamed" : "Label cleared", "success");
         onRenamed();
@@ -92,7 +93,7 @@ export function PaneActionsSheet({
     if (!confirm(pane.paneId)) return;
     setClosing(true);
     try {
-      const res = await api.closePane(pane.paneId, session);
+      const res = await api.closePane(pane.paneId, scope);
       if (res.ok) {
         onClose();
         onClosed(pane.paneId);

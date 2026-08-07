@@ -12,6 +12,8 @@
 // AND a try/catch, because Safari private mode throws on setItem rather than reporting quota. A
 // draft is never important enough to break a render or a send.
 
+import { normalizeScope, type Scope } from "./scope";
+
 const PREFIX = "collie:draft:";
 
 /** Drafts older than this are pruned on first use — an ancient half-thought must never resurface. */
@@ -27,8 +29,13 @@ interface DraftEntry {
   at: number;
 }
 
-function keyFor(session: string | undefined, paneId: string): string {
-  return `${PREFIX}${session ?? "default"}:${paneId}`;
+// A pane id is unique only within one session on one machine, so a draft is keyed by the whole
+// (host, session, paneId) triple — otherwise the draft you typed for `w1:p1` on one machine would be
+// restored into `w1:p1` on another. The lead's keys are byte-identical to what shipped: the host
+// segment is emitted only when there IS one, so every existing stored draft is still found.
+function keyFor(scope: Scope | undefined, paneId: string): string {
+  const { host, session } = normalizeScope(scope);
+  return `${PREFIX}${host ? `${host}@` : ""}${session ?? "default"}:${paneId}`;
 }
 
 function storage(): Storage | null {
@@ -82,15 +89,15 @@ function parse(raw: string | null): DraftEntry | null {
 }
 
 /** The stored draft for a pane, or null if there is none (or it's expired/unreadable). */
-export function loadDraft(session: string | undefined, paneId: string): string | null {
+export function loadDraft(scope: Scope | undefined, paneId: string): string | null {
   prunedOnce();
   const store = storage();
   if (!store) return null;
   try {
-    const entry = parse(store.getItem(keyFor(session, paneId)));
+    const entry = parse(store.getItem(keyFor(scope, paneId)));
     if (entry === null) return null;
     if (Date.now() - entry.at > MAX_AGE_MS) {
-      store.removeItem(keyFor(session, paneId));
+      store.removeItem(keyFor(scope, paneId));
       return null;
     }
     return entry.text;
@@ -104,28 +111,28 @@ export function loadDraft(session: string | undefined, paneId: string): string |
  * deliberately emptied the box" looks like, and it means the clear-on-send path needs no special
  * case beyond saving the now-empty input.
  */
-export function saveDraft(session: string | undefined, paneId: string, text: string): void {
+export function saveDraft(scope: Scope | undefined, paneId: string, text: string): void {
   prunedOnce();
   const store = storage();
   if (!store) return;
   if (text.trim() === "") {
-    clearDraft(session, paneId);
+    clearDraft(scope, paneId);
     return;
   }
   if (text.length > MAX_CHARS) return; // see MAX_CHARS — skip, don't truncate
   try {
     const entry: DraftEntry = { text, at: Date.now() };
-    store.setItem(keyFor(session, paneId), JSON.stringify(entry));
+    store.setItem(keyFor(scope, paneId), JSON.stringify(entry));
   } catch {
     // Quota / private mode. The in-memory draft is still on screen; only its persistence is lost.
   }
 }
 
-export function clearDraft(session: string | undefined, paneId: string): void {
+export function clearDraft(scope: Scope | undefined, paneId: string): void {
   const store = storage();
   if (!store) return;
   try {
-    store.removeItem(keyFor(session, paneId));
+    store.removeItem(keyFor(scope, paneId));
   } catch {
     // ignore
   }

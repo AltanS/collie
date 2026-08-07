@@ -8,6 +8,7 @@ import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
 import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 
 interface PaneStripProps {
   /** The panes that share the current tab (agents + shells), in stable order. */
@@ -15,7 +16,7 @@ interface PaneStripProps {
   currentPaneId: string;
   onSelect: (paneId: string) => void;
   /** Session scope for the long-press pane actions (rename/close); undefined = primary. */
-  session?: string;
+  scope?: Scope;
   /** Drop the long-press write actions when the device isn't authorised. */
   readOnly?: boolean;
   /** Revalidate after a rename. Long-press pane actions turn on only when this AND onClosed are set. */
@@ -33,7 +34,7 @@ export function PaneStrip({
   panes,
   currentPaneId,
   onSelect,
-  session,
+  scope,
   readOnly,
   onRenamed,
   onClosed,
@@ -68,7 +69,7 @@ export function PaneStrip({
           open={sheetPane !== null}
           onClose={() => setSheetPane(null)}
           pane={sheetPane}
-          session={session}
+          scope={scope}
           readOnly={readOnly}
           onRenamed={onRenamed}
           onClosed={onClosed}

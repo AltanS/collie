@@ -34,8 +34,8 @@ export function HomeRoute() {
   // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
   const spacesOpen = openForCount(prefs.spacesOpen, data.workspaces.length);
 
-  const open = (id: string) => navigate(panePath(id, data.session));
-  const drillInto = (id: string) => navigate(spacePath(id, data.session));
+  const open = (id: string) => navigate(panePath(id, data.scope));
+  const drillInto = (id: string) => navigate(spacePath(id, data.scope));
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -46,8 +46,8 @@ export function HomeRoute() {
         error={data.error}
         stalled={stalled}
         wordmark
-        rightLead={<SessionSwitcher sessions={data.sessions ?? []} current={data.session} />}
-        rightTrail={<SettingsGear session={data.session} />}
+        rightLead={<SessionSwitcher sessions={data.sessions ?? []} scope={data.scope} />}
+        rightTrail={<SettingsGear scope={data.scope} />}
       />
 
       {/* Content region below the header: a viewport-clipped internal scroller. */}

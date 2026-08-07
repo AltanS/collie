@@ -47,11 +47,12 @@ import type {
   PromptOption,
   WizardModel,
 } from "@/lib/blocks";
+import type { Scope } from "@/lib/scope";
 
 interface AgentChatProps {
   paneId: string;
-  /** The session this pane lives in (undefined = primary) — scopes every read/write + the safety chip. */
-  session?: string;
+  /** Which machine + which named session this pane lives in — scopes every read/write + the safety chip. */
+  scope?: Scope;
   agent: AgentView | undefined;
   agents: AgentView[];
   shellPanes: AgentView[];
@@ -91,7 +92,7 @@ type Drawer = "switcher" | null;
 // only to re-follow the tail after a send, focus on a mirror tap, and open find (which freezes the tail).
 export function AgentChat({
   paneId,
-  session,
+  scope,
   agent,
   agents,
   shellPanes,
@@ -252,7 +253,7 @@ export function AgentChat({
   const moreScrollback =
     agent?.readableLines !== undefined &&
     requestedLines < agent.readableLines &&
-    canGrowRequestedLines(paneId, session);
+    canGrowRequestedLines(paneId, scope);
 
   // Load older scrollback: raise the per-pane requested line count and refetch. The enlarged buffer
   // prepends older lines at the top, so we adopt it into the frozen display and re-anchor the scroll
@@ -262,12 +263,12 @@ export function AgentChat({
   const adoptTarget = useRef<number | null>(null); // the requestedLines a pending grow is waiting on
   const pendingRestore = useRef(false); // re-anchor scroll after the enlarged display paints
   function loadOlder() {
-    if (loadingOlder || !canGrowRequestedLines(paneId, session)) return;
+    if (loadingOlder || !canGrowRequestedLines(paneId, scope)) return;
     const el = listRef.current?.getScrollElement();
     olderAnchor.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
     setLoadingOlder(true);
     setFollowing(false); // stay put in history rather than snapping to the tail
-    adoptTarget.current = growRequestedLines(paneId, session);
+    adoptTarget.current = growRequestedLines(paneId, scope);
     revalidator.revalidate();
   }
   // Adopt the enlarged buffer into the frozen display once the *grown* fetch lands — keyed on the
@@ -326,7 +327,7 @@ export function AgentChat({
       }
       const result = await submitPromptOption({
         paneId,
-        session,
+        scope,
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
@@ -345,7 +346,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -361,7 +362,7 @@ export function AgentChat({
       }
       const result = await submitWizardKeys({
         paneId,
-        session,
+        scope,
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
@@ -380,7 +381,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -396,7 +397,7 @@ export function AgentChat({
       }
       const base = {
         paneId,
-        session,
+        scope,
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
@@ -424,7 +425,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -440,7 +441,7 @@ export function AgentChat({
       }
       const result = await submitMultiSelectIntent({
         paneId,
-        session,
+        scope,
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
@@ -459,7 +460,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -474,7 +475,7 @@ export function AgentChat({
       }
       const result = await submitMenuKeys({
         paneId,
-        session,
+        scope,
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
@@ -494,7 +495,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
@@ -519,7 +520,7 @@ export function AgentChat({
   // back up out of the pane, so it slides backward.
   function openSpace(workspaceId: string) {
     closeDrawer();
-    navigate(spacePath(workspaceId, session));
+    navigate(spacePath(workspaceId, scope));
   }
 
   // Tapping the terminal mirror focuses the composer so you can start typing right away. Two bails:
@@ -596,7 +597,7 @@ export function AgentChat({
               {agent.hasSession && (
                 <button
                   type="button"
-                  onClick={() => navigate(historyPath(paneId, session))}
+                  onClick={() => navigate(historyPath(paneId, scope))}
                   aria-label="Conversation history"
                   className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
                 >
@@ -674,7 +675,7 @@ export function AgentChat({
             onSelect={(id) => id && goToTab(id)}
             onNewTab={newTab}
             allowAll={false}
-            session={session}
+            scope={scope}
             readOnly={readOnly}
             onRenamed={() => revalidator.revalidate()}
             // Closing the tab this pane lives in kills the pane too — leave for Home the same way a
@@ -692,7 +693,7 @@ export function AgentChat({
               .sort((a, b) => a.paneId.localeCompare(b.paneId))}
             currentPaneId={paneId}
             onSelect={switchTo}
-            session={session}
+            scope={scope}
             readOnly={readOnly}
             onRenamed={() => revalidator.revalidate()}
             // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
@@ -736,7 +737,7 @@ export function AgentChat({
                 {historyAvailable ? (
                   <button
                     type="button"
-                    onClick={() => navigate(historyPath(paneId, session))}
+                    onClick={() => navigate(historyPath(paneId, scope))}
                     className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
                   >
                     <ScrollText className="size-3.5" />
@@ -845,7 +846,7 @@ export function AgentChat({
           <Composer
             ref={composerRef}
             paneId={paneId}
-            session={session}
+            scope={scope}
             agent={agent?.agent}
             isShell={isShell}
             gone={gone}

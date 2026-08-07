@@ -11,6 +11,7 @@
 import { fetchPane } from "../api";
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
+import type { Scope } from "../scope";
 
 /**
  * The canonical result of a guarded action. `sent` = the keystrokes went through; `changed` = the
@@ -49,10 +50,10 @@ type RegionOf<M> = (model: M) => string;
 export async function readModel<M>(
   paneId: string,
   requestedLines: number,
-  session: string | undefined,
+  scope: Scope | undefined,
   detect: Detect<M>,
 ): Promise<{ revision: number; model: M | null }> {
-  const fresh = await fetchPane(paneId, requestedLines, session);
+  const fresh = await fetchPane(paneId, requestedLines, scope);
   return { revision: fresh.revision, model: detect(splitLines(parseAnsi(fresh.text))) };
 }
 
@@ -75,7 +76,7 @@ export async function entryGuard<M>(
     /** The `revision` the rendered dialog was detected against. */
     detectedRevision: number;
     /** The session the pane lives in (undefined = primary) — scopes the read. */
-    session?: string;
+    scope?: Scope;
   },
   tapped: M,
   detect: Detect<M>,
@@ -84,7 +85,7 @@ export async function entryGuard<M>(
 ): Promise<GuardOutcome> {
   let fresh;
   try {
-    fresh = await readModel(args.paneId, args.requestedLines, args.session, detect);
+    fresh = await readModel(args.paneId, args.requestedLines, args.scope, detect);
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     return { ok: false, result: { status: "error", error } };
@@ -124,8 +125,8 @@ export async function pollUntil<M>(
   args: {
     paneId: string;
     requestedLines: number;
-    /** The session the pane lives in (undefined = primary) — scopes every read. */
-    session?: string;
+    /** Which machine + which named session the pane lives in — scopes every read. */
+    scope?: Scope;
     /** Test seam for the poll pacing. */
     sleep?: Sleep;
   },
@@ -140,7 +141,7 @@ export async function pollUntil<M>(
     await sleep(POLL_DELAY_MS);
     let fresh;
     try {
-      fresh = await readModel(args.paneId, args.requestedLines, args.session, detect);
+      fresh = await readModel(args.paneId, args.requestedLines, args.scope, detect);
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
     }

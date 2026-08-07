@@ -6,8 +6,10 @@ import { __resetConnectionHealth, lastHealthyAt } from "./connection-health";
 import {
   checkForUpdates,
   createTab,
+  fetchConfig,
   fetchPane,
   fetchSnapshot,
+  getNotifyPrefs,
   sendKeys,
   sendReply,
   uploadImage,
@@ -201,10 +203,11 @@ describe("api client — request timeouts", () => {
   });
 });
 
-// The browser URL uses the short `?s=`; on the wire every session-scoped endpoint takes `session=`.
-// A named session must append that param (composing correctly with fetchPane's `?lines=`); the
-// primary session (undefined) must leave the path untouched so a single-session bridge is unaffected.
-describe("api client — session scoping", () => {
+// The browser URL uses the short `?h=` / `?s=`; on the wire every scoped endpoint takes the long
+// names `host=` and `session=`, in that fixed order. A named host/session must append its param
+// (composing correctly with fetchPane's `?lines=`); the lead's primary session (both undefined) must
+// leave the path untouched, so a solo bridge sees byte-identical requests to what shipped.
+describe("api client — scope on the wire", () => {
   afterEach(() => vi.restoreAllMocks());
 
   function captureUrls() {
@@ -218,20 +221,118 @@ describe("api client — session scoping", () => {
 
   it("appends session= to a named session (composing with ?lines=)", async () => {
     const urls = captureUrls();
-    await fetchSnapshot("collie-demo");
-    await fetchPane("w1:p1", 600, "collie-demo");
-    await sendReply("w1:p1", "hi", true, "collie-demo");
+    const scope = { session: "collie-demo" };
+    await fetchSnapshot(scope);
+    await fetchPane("w1:p1", 600, scope);
+    await sendReply("w1:p1", "hi", true, scope);
     expect(urls[0]).toBe("/api/snapshot?session=collie-demo");
     expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600&session=collie-demo");
     expect(urls[2]).toBe("/api/pane/w1%3Ap1/reply?session=collie-demo");
   });
 
-  it("leaves the path untouched on the primary session (no param)", async () => {
+  it("appends host= before session=, composing with an existing query", async () => {
+    const urls = captureUrls();
+    const scope = { host: "badger", session: "collie-demo" };
+    await fetchSnapshot(scope);
+    await fetchPane("w1:p1", 600, scope);
+    await sendReply("w1:p1", "hi", true, scope);
+    expect(urls[0]).toBe("/api/snapshot?host=badger&session=collie-demo");
+    expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600&host=badger&session=collie-demo");
+    expect(urls[2]).toBe("/api/pane/w1%3Ap1/reply?host=badger&session=collie-demo");
+  });
+
+  it("appends host= alone on a peer's primary session", async () => {
+    const urls = captureUrls();
+    await fetchSnapshot({ host: "badger" });
+    await fetchPane("w1:p1", 600, { host: "badger" });
+    expect(urls[0]).toBe("/api/snapshot?host=badger");
+    expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600&host=badger");
+  });
+
+  it("URL-encodes both params", async () => {
+    const urls = captureUrls();
+    await fetchSnapshot({ host: "a b", session: "c d" });
+    expect(urls[0]).toBe("/api/snapshot?host=a%20b&session=c%20d");
+  });
+
+  it("leaves the path untouched on the lead's primary session (no param)", async () => {
     const urls = captureUrls();
     await fetchSnapshot();
     await fetchPane("w1:p1", 600);
+    await fetchSnapshot({});
+    await fetchSnapshot({ host: "  ", session: "  " });
     expect(urls[0]).toBe("/api/snapshot");
     expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600");
+    expect(urls[2]).toBe("/api/snapshot");
+    expect(urls[3]).toBe("/api/snapshot");
+  });
+
+  // THE invariant this dimension exists for. fetchPane keeps a client-side (ETag, body) cache and
+  // sends If-None-Match on the next poll; a pane id is unique only within one session on one machine,
+  // so a key that stopped at (session, paneId) would let one host's mirror 304 into another's. Same
+  // bug the session component was added to prevent, one dimension deeper — and this time the wrong
+  // answer is a phone showing you machine A's terminal while every write goes to machine B.
+  it("never serves one host's ETag or body to another host's same pane id", async () => {
+    const seen: { url: string; inm: string | null }[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      seen.push({ url, inm: headers.get("if-none-match") });
+      const host = new URL(url, "http://localhost").searchParams.get("host") ?? "lead";
+      return new Response(
+        JSON.stringify({ paneId: "w1:p1", text: `mirror of ${host}`, truncated: false, revision: 1 }),
+        { status: 200, headers: { "content-type": "application/json", etag: `"etag-${host}"` } },
+      );
+    });
+
+    await fetchPane("w1:p1", 600); // the lead — caches "etag-lead"
+    await fetchPane("w1:p1", 600, { host: "badger" }); // a peer, SAME pane id
+
+    // The peer's first read must be unconditional: it has no cache entry of its own, and it must not
+    // inherit the lead's ETag (which would 304 it into the lead's mirror).
+    expect(seen[0]?.inm).toBeNull();
+    expect(seen[1]?.inm).toBeNull();
+
+    // Second round: each now revalidates with ITS OWN etag, and gets ITS OWN body.
+    const lead = await fetchPane("w1:p1", 600);
+    const peer = await fetchPane("w1:p1", 600, { host: "badger" });
+    expect(seen[2]?.inm).toBe('"etag-lead"');
+    expect(seen[3]?.inm).toBe('"etag-badger"');
+    expect(lead.text).toBe("mirror of lead");
+    expect(peer.text).toBe("mirror of badger");
+  });
+
+  it("keys the pane cache by session within a host too", async () => {
+    const inms: (string | null)[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      inms.push(new Headers(init?.headers).get("if-none-match"));
+      const q = new URL(String(input), "http://localhost").searchParams;
+      const tag = `${q.get("host") ?? "-"}/${q.get("session") ?? "-"}`;
+      return new Response(
+        JSON.stringify({ paneId: "w1:p1", text: tag, truncated: false, revision: 1 }),
+        { status: 200, headers: { "content-type": "application/json", etag: `"${tag}"` } },
+      );
+    });
+    // A host this file has not touched, so the module-scoped cache starts empty for both scopes.
+    await fetchPane("w1:p1", 600, { host: "otter" });
+    await fetchPane("w1:p1", 600, { host: "otter", session: "demo" });
+    expect(inms).toEqual([null, null]); // neither inherited the other's ETag
+    await fetchPane("w1:p1", 600, { host: "otter", session: "demo" });
+    expect(inms[2]).toBe('"otter/demo"');
+  });
+
+  // The bridge-wide endpoints are the lead's own: push config, quiet hours and the update banner
+  // belong to the collie this phone is talking to, and a per-host copy would be pack administration.
+  it("never scopes the bridge-wide endpoints", async () => {
+    const urls = captureUrls();
+    await fetchConfig();
+    await getNotifyPrefs();
+    await checkForUpdates();
+    expect(urls).toEqual([
+      "/api/config",
+      "/api/notifications/prefs",
+      "/api/update/check",
+    ]);
   });
 });
 

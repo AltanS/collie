@@ -47,7 +47,7 @@ export function HistoryRoute() {
   const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
   const { paneId = "" } = useParams();
   const navigate = useNavigate();
-  const session = data.session;
+  const scope = data.scope;
 
   const agent =
     root.agents.find((a) => a.paneId === paneId) ??
@@ -98,7 +98,7 @@ export function HistoryRoute() {
     captureAnchor();
     setLoading(true);
     try {
-      const res = await fetchHistory(paneId, { limit: HISTORY_PAGE_SIZE, before: oldest }, session);
+      const res = await fetchHistory(paneId, { limit: HISTORY_PAGE_SIZE, before: oldest }, scope);
       if (!res.available) {
         setHasMore(false);
         return;
@@ -111,7 +111,7 @@ export function HistoryRoute() {
     } finally {
       setLoading(false);
     }
-  }, [entries, hasMore, loading, paneId, session]);
+  }, [entries, hasMore, loading, paneId, scope]);
 
   /** Reveal more of what we already hold; only hit the network once nothing is left in memory. */
   const growUpward = useCallback(() => {
@@ -189,7 +189,7 @@ export function HistoryRoute() {
       <AppHeader
         bridge={root.bridge}
         error={root.error}
-        onHome={() => navigate(panePath(paneId, session))}
+        onHome={() => navigate(panePath(paneId, scope))}
         override={
           findOpen ? (
             <FindBar
@@ -228,7 +228,7 @@ export function HistoryRoute() {
         rightTrail={
           <button
             type="button"
-            onClick={() => navigate(panePath(paneId, session))}
+            onClick={() => navigate(panePath(paneId, scope))}
             aria-label="Close history"
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
           >

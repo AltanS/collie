@@ -23,6 +23,7 @@ import { type PreviewOption, type PreviewSelectModel } from "./blocks";
 import { guardDialog, pollDialog, type DialogTarget } from "./dialog-guard";
 import { previewCoreEqual, previewStructureEqual } from "./harness/preview-model";
 import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
+import type { Scope } from "./scope";
 
 /** This module's slice of the generic guard: the preview dialog the tap is aimed at. */
 function target(args: GuardArgs): DialogTarget<"preview-select"> & { sleep?: Sleep } {
@@ -47,8 +48,8 @@ interface GuardArgs {
   /** The `revision` the rendered dialog was detected against. */
   detectedRevision: number;
   preview: PreviewSelectModel;
-  /** The session the pane lives in (undefined = primary) — scopes every read + keystroke below. */
-  session?: string;
+  /** Which machine + which named session the pane lives in — scopes every read + keystroke below. */
+  scope?: Scope;
   /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
   agent?: string;
   /** Test seam for the verification polls' pacing. */
@@ -71,7 +72,7 @@ export async function submitPreviewOption(
     const digit = await sendKeys(
       args.paneId,
       [String(args.option.n)],
-      args.session,
+      args.scope,
       guarded.region,
     );
     if (!digit.ok && digit.code === "prompt_changed") return { status: "changed" };
@@ -89,7 +90,7 @@ export async function submitPreviewOption(
   if (pointed !== "ok") return { status: "changed" };
 
   try {
-    const enter = await sendKeys(args.paneId, ["Enter"], args.session);
+    const enter = await sendKeys(args.paneId, ["Enter"], args.scope);
     if (!enter.ok) return { status: "error", error: enter.error };
     return { status: "sent" };
   } catch (e) {
@@ -122,7 +123,7 @@ export async function submitPreviewNote(
 
   try {
     // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const open = await sendKeys(args.paneId, ["n"], args.session, guarded.region);
+    const open = await sendKeys(args.paneId, ["n"], args.scope, guarded.region);
     if (!open.ok && open.code === "prompt_changed") return { status: "changed" };
     if (!open.ok) return { status: "error", error: open.error };
   } catch (e) {
@@ -143,7 +144,7 @@ export async function submitPreviewNote(
       const clear = await sendKeys(
         args.paneId,
         ["ctrl+k", ...Array.from({ length: CLEAR_SWEEP }, () => "Backspace")],
-        args.session,
+        args.scope,
       );
       if (!clear.ok) return { status: "error", error: clear.error };
       if (
@@ -153,7 +154,7 @@ export async function submitPreviewNote(
       }
     }
     if (text.length > 0) {
-      const typed = await sendReply(args.paneId, text, false, args.session);
+      const typed = await sendReply(args.paneId, text, false, args.scope);
       if (!typed.ok) return { status: "error", error: typed.error };
       // Wait for the text to render. The input windows long text around the trailing cursor, so
       // the visible value is the TAIL of what we typed (the whole of it when it fits).
@@ -171,7 +172,7 @@ export async function submitPreviewNote(
     // (a successor dialog, or a now-running agent — pollUntil returns "drifted"), a second blind
     // Escape would cancel/interrupt whatever is there now — so abort with "changed" and send nothing.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const blur = await sendKeys(args.paneId, ["Escape"], args.session);
+      const blur = await sendKeys(args.paneId, ["Escape"], args.scope);
       if (!blur.ok) return { status: "error", error: blur.error };
       const blurred = await pollDialog(
         target(args),
@@ -198,7 +199,7 @@ export async function submitPreviewKeys(
   if (!guarded.ok) return guarded.result;
   try {
     // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const res = await sendKeys(args.paneId, args.keys, args.session, guarded.region);
+    const res = await sendKeys(args.paneId, args.keys, args.scope, guarded.region);
     if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
     if (!res.ok) return { status: "error", error: res.error };
     return { status: "sent" };

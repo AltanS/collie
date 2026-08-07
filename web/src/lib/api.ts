@@ -3,6 +3,7 @@
 
 import { trackBusy } from "./busy";
 import { markLive } from "./connection-health";
+import { normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import type {
   ActionResponse,
@@ -66,14 +67,19 @@ export function withTimeout(
   return AbortSignal.any([signal, timeoutSignal]);
 }
 
-// Append the `session=<name>` query param to an API path, composing with any query already present
-// (fetchPane carries `?lines=`). The browser URL uses the short `?s=`; on the wire it's `session=`.
-// Blank / absent session → the primary session, so the path is returned untouched (no param).
-function withSession(path: string, session?: string): string {
-  const s = session?.trim();
-  if (!s) return path;
-  const sep = path.includes("?") ? "&" : "?";
-  return `${path}${sep}session=${encodeURIComponent(s)}`;
+// Append the addressing scope to an API path, composing with any query already present (fetchPane
+// carries `?lines=`). The browser URL uses the short `?h=` / `?s=`; on the wire they take their long
+// names, `host=` and `session=`, in that same fixed order.
+//
+// Blank / absent host → the lead (the collie this phone is connected to); blank / absent session →
+// that host's primary session. Both absent returns the path UNTOUCHED, so a solo install puts no
+// query on the wire at all — byte-identical requests to what shipped.
+function withScope(path: string, scope?: Scope): string {
+  const { host, session } = normalizeScope(scope);
+  let out = path;
+  if (host) out += `${out.includes("?") ? "&" : "?"}host=${encodeURIComponent(host)}`;
+  if (session) out += `${out.includes("?") ? "&" : "?"}session=${encodeURIComponent(session)}`;
+  return out;
 }
 
 // Best-effort human-readable failure detail: the response body if present, else the status text.
@@ -159,10 +165,10 @@ function req<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise
 }
 
 export async function fetchSnapshot(
-  session?: string,
+  scope?: Scope,
   signal?: AbortSignal,
 ): Promise<SnapshotResponse> {
-  const snap = await req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
+  const snap = await req<SnapshotResponse>(withScope("/api/snapshot", scope), { signal });
   // A snapshot whose herd link is UP is a provably-live moment — stamp the shared connection-health
   // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
   // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the
@@ -193,14 +199,16 @@ const PANE_CACHE_MAX = 20;
 export async function fetchPane(
   paneId: string,
   lines?: number,
-  session?: string,
+  scope?: Scope,
   signal?: AbortSignal,
 ): Promise<PaneReadResponse> {
   const q = lines ? `?lines=${lines}` : "";
-  const url = withSession(`/api/pane/${encodeURIComponent(paneId)}${q}`, session);
-  // Pane ids are per-session (each session is a separate Herdr server), so the ETag/body cache must
-  // be keyed by session too — otherwise a "w1:p1" in one session would 304 into another's mirror.
-  const cacheKey = `${session ?? ""}\u0000${paneId}`;
+  const url = withScope(`/api/pane/${encodeURIComponent(paneId)}${q}`, scope);
+  // Pane ids are unique only within one session on one machine (each session is its own Herdr
+  // server; each pack member is its own machine again), so the ETag/body cache is keyed by the full
+  // (host, session, paneId) triple — otherwise a "w1:p1" in one session, or on one host, would 304
+  // into another's mirror. Shared with the loaders' caches via lib/scope, so the two can't drift.
+  const cacheKey = paneScopeKey(scope, paneId);
 
   const cached = paneCache.get(cacheKey);
   // SEEN_HEADER is what tells the bridge this read came from our own page and may mark the pane
@@ -251,7 +259,7 @@ export async function fetchPane(
 export function fetchHistory(
   paneId: string,
   opts: { limit?: number; before?: string } = {},
-  session?: string,
+  scope?: Scope,
   signal?: AbortSignal,
 ): Promise<PaneHistoryResponse> {
   const q = new URLSearchParams();
@@ -261,7 +269,7 @@ export function fetchHistory(
   const path = `/api/pane/${encodeURIComponent(paneId)}/history${qs ? `?${qs}` : ""}`;
   // Reading the transcript is looking at the pane — and history is a READ, so like fetchPane it
   // carries the header that lets the bridge count it (bridge/server.ts → marksPaneSeen).
-  return req<PaneHistoryResponse>(withSession(path, session), {
+  return req<PaneHistoryResponse>(withScope(path, scope), {
     signal,
     headers: { "x-collie-seen": "1" },
   });
@@ -271,11 +279,11 @@ export function sendReply(
   paneId: string,
   text: string,
   submit = true,
-  session?: string,
+  scope?: Scope,
   expectedPrompt?: string,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(
-    withSession(`/api/pane/${encodeURIComponent(paneId)}/reply`, session),
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/reply`, scope),
     {
       method: "POST",
       body: JSON.stringify({
@@ -291,11 +299,11 @@ export function sendReply(
 export function sendKeys(
   paneId: string,
   keys: string[],
-  session?: string,
+  scope?: Scope,
   expectedPrompt?: string,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(
-    withSession(`/api/pane/${encodeURIComponent(paneId)}/keys`, session),
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/keys`, scope),
     {
       method: "POST",
       body: JSON.stringify({
@@ -308,8 +316,8 @@ export function sendKeys(
 }
 
 /** Close a pane ("kill the agent"). */
-export function closePane(paneId: string, session?: string): Promise<ActionResponse> {
-  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/close`, session), {
+export function closePane(paneId: string, scope?: Scope): Promise<ActionResponse> {
+  return req<ActionResponse>(withScope(`/api/pane/${encodeURIComponent(paneId)}/close`, scope), {
     method: "POST",
   });
 }
@@ -318,9 +326,9 @@ export function closePane(paneId: string, session?: string): Promise<ActionRespo
 export function renamePane(
   paneId: string,
   label: string,
-  session?: string,
+  scope?: Scope,
 ): Promise<ActionResponse> {
-  return req<ActionResponse>(withSession(`/api/pane/${encodeURIComponent(paneId)}/rename`, session), {
+  return req<ActionResponse>(withScope(`/api/pane/${encodeURIComponent(paneId)}/rename`, scope), {
     method: "POST",
     body: JSON.stringify({ label }),
   });
@@ -330,17 +338,17 @@ export function renamePane(
 export function renameTab(
   tabId: string,
   label: string,
-  session?: string,
+  scope?: Scope,
 ): Promise<ActionResponse> {
-  return req<ActionResponse>(withSession(`/api/tab/${encodeURIComponent(tabId)}/rename`, session), {
+  return req<ActionResponse>(withScope(`/api/tab/${encodeURIComponent(tabId)}/rename`, scope), {
     method: "POST",
     body: JSON.stringify({ label }),
   });
 }
 
 /** Close a tab, killing every pane inside it. */
-export function closeTab(tabId: string, session?: string): Promise<ActionResponse> {
-  return req<ActionResponse>(withSession(`/api/tab/${encodeURIComponent(tabId)}/close`, session), {
+export function closeTab(tabId: string, scope?: Scope): Promise<ActionResponse> {
+  return req<ActionResponse>(withScope(`/api/tab/${encodeURIComponent(tabId)}/close`, scope), {
     method: "POST",
   });
 }
@@ -349,9 +357,9 @@ export function closeTab(tabId: string, session?: string): Promise<ActionRespons
 export function createTab(
   workspaceId: string,
   opts: { label?: string; cwd?: string } = {},
-  session?: string,
+  scope?: Scope,
 ): Promise<CreateResponse> {
-  return req<CreateResponse>(withSession("/api/tab", session), {
+  return req<CreateResponse>(withScope("/api/tab", scope), {
     method: "POST",
     body: JSON.stringify({ workspaceId, ...opts }),
   });
@@ -360,9 +368,9 @@ export function createTab(
 /** Create a new space (workspace) with a fresh shell pane. `cwd` omitted = the host's home dir. */
 export function createWorkspace(
   opts: { label?: string; cwd?: string } = {},
-  session?: string,
+  scope?: Scope,
 ): Promise<CreateResponse> {
-  return req<CreateResponse>(withSession("/api/workspace", session), {
+  return req<CreateResponse>(withScope("/api/workspace", scope), {
     method: "POST",
     body: JSON.stringify(opts),
   });
@@ -412,13 +420,13 @@ export function checkForUpdates(): Promise<UpdateInfo> {
  * Upload an image; the bridge saves it to a host file and returns the path to reference in a
  * message. Uses multipart/form-data (NOT the JSON `req` helper — the browser sets the boundary).
  */
-export function uploadImage(paneId: string, file: File, session?: string): Promise<UploadResponse> {
+export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<UploadResponse> {
   // Multipart, so it bypasses `req` (the browser sets the boundary) — track it explicitly instead.
   return trackBusy(
     (async () => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(withSession(`/api/pane/${encodeURIComponent(paneId)}/upload`, session), {
+      const res = await fetch(withScope(`/api/pane/${encodeURIComponent(paneId)}/upload`, scope), {
         method: "POST",
         body: fd,
         signal: withTimeout(undefined, UPLOAD_TIMEOUT_MS),
