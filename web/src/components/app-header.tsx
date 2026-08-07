@@ -6,6 +6,7 @@ import { isConnecting } from "@/lib/connection";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
+import { AlphaBar } from "@/components/alpha-bar";
 import type { BridgeStatus } from "@/lib/types";
 
 interface AppHeaderProps {
@@ -63,22 +64,31 @@ export function AppHeader({
   const trouble = useConnectionTrouble(connecting);
   const lost = useConnectionLost(connecting);
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-muted pl-4 pr-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
-      {override ?? (
-        <>
-          <CollieHome onHome={onHome} trouble={trouble} lost={lost} wordmark={wordmark} />
-          {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
-              pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight. */}
-          <div className="flex min-w-0 flex-1 items-center">{children}</div>
-          {/* gap-1, not gap-3: the icon buttons now carry their own 12px of padding to reach 44px,
-              so a 12px gap on top of that reads as a gulf. 4px keeps the apparent spacing between
-              icons close to what it was. */}
-          <div className="flex items-center gap-1">
-            {rightLead}
-            {rightTrail}
-          </div>
-        </>
-      )}
+    // A column, not a row: the sticky bar owns the safe-area inset and stacks the (usually absent)
+    // prerelease strip above the header row proper, which keeps its original padding. On a stable
+    // build AlphaBar renders null and the geometry is byte-for-byte what it always was — the inset +
+    // the row's own py-2 reproduce the old `calc(safe-area + 0.5rem)` top padding exactly. The strip
+    // sits ABOVE everything including the find-bar override: while you're searching an alpha it is
+    // still an alpha.
+    <header className="sticky top-0 z-20 flex flex-col border-b border-border/60 bg-muted [padding-top:env(safe-area-inset-top)]">
+      <AlphaBar />
+      <div className="flex items-center gap-2 pl-4 pr-2 py-2">
+        {override ?? (
+          <>
+            <CollieHome onHome={onHome} trouble={trouble} lost={lost} wordmark={wordmark} />
+            {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
+                pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight. */}
+            <div className="flex min-w-0 flex-1 items-center">{children}</div>
+            {/* gap-1, not gap-3: the icon buttons now carry their own 12px of padding to reach 44px,
+                so a 12px gap on top of that reads as a gulf. 4px keeps the apparent spacing between
+                icons close to what it was. */}
+            <div className="flex items-center gap-1">
+              {rightLead}
+              {rightTrail}
+            </div>
+          </>
+        )}
+      </div>
     </header>
   );
 }
