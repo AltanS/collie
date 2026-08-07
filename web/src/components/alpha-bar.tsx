@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react";
+import { Info } from "lucide-react";
 
 import { BUILD, prereleaseLabel } from "@/lib/build";
 import { cn } from "@/lib/utils";
@@ -19,10 +19,12 @@ interface AlphaBarProps {
 // prereleaseLabel returns undefined and this component is nothing at all — no flag, no fetch, no
 // setting to forget to turn off.
 //
-// Colours are the shared `status-working` amber token, which is declared with `light-dark()` in
-// index.css and therefore already correct under both themes — hence NO `dark:` variants here. The
-// treatment (border-b + /15 wash + solid token text) is deliberately the ReadOnlyBanner's, so the
-// app's two "this session is not normal" strips read as one family.
+// Colours are the shared `status-info` sky token, which is declared with `light-dark()` in
+// index.css and therefore already correct under both themes — hence NO `dark:` variants here. Sky
+// rather than the `status-working` amber deliberately: this strip isn't a warning, just a calm
+// "you're on the prerelease build" fact. The treatment (border-b + /15 wash + solid token text) is
+// deliberately the ReadOnlyBanner's, so the app's two "this session is not normal" strips read as
+// one family.
 export function AlphaBar({ version = BUILD.version, className }: AlphaBarProps) {
   const label = prereleaseLabel(version);
   if (!label) return null;
@@ -35,12 +37,12 @@ export function AlphaBar({ version = BUILD.version, className }: AlphaBarProps) 
         // One short line, py-0.5 + 11px text ⇒ ~20px tall, and it lives INSIDE the sticky header's
         // safe-area padding (see app-header.tsx), so it costs the pane mirror one line of height and
         // shifts nothing sideways. min-w-0 + truncate so a long tag can never widen the header.
-        "flex min-w-0 items-center justify-center gap-1.5 border-b border-status-working/40" +
-          " bg-status-working/15 px-3 py-0.5 text-[11px] font-medium leading-tight text-status-working",
+        "flex min-w-0 items-center justify-center gap-1.5 border-b border-status-info/40" +
+          " bg-status-info/15 px-3 py-0.5 text-[11px] font-medium leading-tight text-status-info",
         className,
       )}
     >
-      <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />
+      <Info className="size-3 shrink-0" aria-hidden="true" />
       <span className="truncate tracking-wide">
         {label} <span aria-hidden="true">·</span> <span className="font-mono">{version}</span>
       </span>

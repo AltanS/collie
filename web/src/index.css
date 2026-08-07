@@ -99,6 +99,13 @@
   --status-idle: light-dark(oklch(0.45 0.02 250), oklch(0.65 0.02 250));
   --status-unknown: light-dark(oklch(0.43 0.02 250), oklch(0.6 0.02 250));
 
+  /* Calm-info sky blue — same shape as the lifecycle palette above (light tuned to clear 4.5:1 on
+     the rgb(235) chip ground, dark brighter to glow on near-black) but a distinct hue (230, cool
+     sky) so it never gets confused with `status-working`'s amber "needs attention" signal. Used by
+     surfaces that are informational, not a status: currently just the prerelease strip
+     (alpha-bar.tsx). */
+  --status-info: light-dark(oklch(0.46 0.14 230), oklch(0.8 0.15 230));
+
   /* ── Terminal palette ─────────────────────────────────────────────────────────────────────────
      The 16 indexed ANSI slots, emitted by lib/ansi.ts as var(--ansi-N).
 
@@ -164,6 +171,7 @@
   --color-status-done: var(--status-done);
   --color-status-idle: var(--status-idle);
   --color-status-unknown: var(--status-unknown);
+  --color-status-info: var(--status-info);
 
   --font-mono: "JetBrains Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace,
     SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;

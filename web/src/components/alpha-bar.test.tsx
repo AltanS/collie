@@ -32,14 +32,14 @@ describe("AlphaBar — the prerelease marker", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("colours itself from the shared status-working token, with no dark: variants", () => {
+  it("colours itself from the shared status-info token, with no dark: variants", () => {
     // The token is declared with light-dark() in index.css, so ONE class set is correct under both
     // themes. A `dark:` variant here would mean someone hard-coded a single-theme colour.
     render(<AlphaBar version="1.0.0-alpha.3" />);
     const cls = screen.getByText(/ALPHA/).closest("div")?.className ?? "";
-    expect(cls).toContain("text-status-working");
-    expect(cls).toContain("bg-status-working/15");
-    expect(cls).toContain("border-status-working/40");
+    expect(cls).toContain("text-status-info");
+    expect(cls).toContain("bg-status-info/15");
+    expect(cls).toContain("border-status-info/40");
     expect(cls).not.toMatch(/(^|\s)dark:/);
   });
 });
