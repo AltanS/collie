@@ -77,7 +77,13 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
   let n = 0;
 
   const deps: PackDeps = {
-    ctx: context({}, { socket: "/home/pat/.config/herdr/herdr.sock" }),
+    // `clientFor` races the fake fetch (which resolves as soon as the event loop turns) against a
+    // REAL `setTimeout` sized from this env var (`packTimeoutBudget`, default ~1200ms here). Nothing
+    // in this suite exercises that budget — every "unreachable" case throws synchronously instead —
+    // so the only thing the default timeout can do here is misfire under a stalled event loop and
+    // report a reachable fake peer as unreachable. Set it far above anything this process could stall
+    // for real, so the timer never fires; it does not change what any test observes.
+    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000" }, { socket: "/home/pat/.config/herdr/herdr.sock" }),
     io: out,
     exec,
     files,

@@ -4,7 +4,7 @@ import { Pencil, XCircle } from "lucide-react";
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
-import { useAmbientHost } from "@/components/pack-provider";
+import { useAmbientHost, useHostWriteBlock } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
@@ -115,6 +115,9 @@ export function TabActionsSheet({
   // the ambient scope. So the chip names the machine the write will land on: `?h=` when set,
   // otherwise the lead. Nothing renders on a single-host install.
   const host = useAmbientHost(scope?.host);
+  // …and the same host is what decides whether either write may be attempted at all (§10.3). Same
+  // gate as the pane sheet, one dimension up: undefined on a solo install and on a reachable host.
+  const hostBlock = useHostWriteBlock(host);
   // Closing a tab kills every pane in it — name the blast radius on the confirm so it's honest. The
   // count rides on the tab record (snapshot `pane_count`); fall back to a plain confirm if it's 0.
   const paneCount = tab?.paneCount ?? 0;
@@ -126,6 +129,12 @@ export function TabActionsSheet({
       {readOnly ? (
         <p className="py-2 text-sm text-muted-foreground">
           Read-only — this device isn't authorised to rename or close tabs.
+        </p>
+      ) : hostBlock ? (
+        // Refused before it is attempted (§10.3) — closing a tab kills every pane in it, and a
+        // half-known outcome on that is the worst one to hand somebody.
+        <p className="py-2 text-sm text-muted-foreground">
+          {hostBlock} — rename and close are unavailable until it answers.
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">

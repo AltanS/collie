@@ -6,7 +6,9 @@ import type { ReactElement } from "react";
 import { AppHeader, SettingsGear } from "./app-header";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
-import { __resetConnectionHealth } from "@/lib/connection-health";
+import { __resetConnectionHealth, isLostLatched } from "@/lib/connection-health";
+import { PackProvider } from "./pack-provider";
+import type { ServerSummary } from "@/lib/types";
 
 // AppHeader mounts CollieHome (a button) and, via SettingsGear, useNavigate — so it needs a router.
 function renderHeader(ui: ReactElement) {
@@ -117,5 +119,28 @@ describe("AppHeader — the dog keys on trouble/lost, not the first not-live fra
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - TROUBLE_MS));
     expect(container.querySelector(".dog-gallop")).toBeNull();
     expect(container.querySelector("img")?.className ?? "").toMatch(/grayscale/);
+  });
+});
+
+// The header dog and the ConnectionBanner read ONE anchor (lib/connection-health.ts), which is why
+// they can never disagree — and why a pack member going quiet must not reach it. The dog is asserted
+// alongside the banner deliberately: they escalate together, so a mistake here would be wrong twice.
+describe("AppHeader — a quiet pack member is not the phone's connection", () => {
+  beforeEach(() => __resetConnectionHealth());
+
+  it("stays at rest with an unreachable peer in the roster and a healthy lead", () => {
+    const roster: ServerSummary[] = [
+      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+      { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
+    ];
+    const { container } = renderHeader(
+      <PackProvider servers={roster} ts={100_000} pollMs={1500}>
+        <AppHeader bridge="connected" error={false} wordmark />
+      </PackProvider>,
+    );
+    // Nothing about a peer feeds `isConnecting`, so: no gallop, no pill, no escalation.
+    expect(container.querySelector(".dog-gallop")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(isLostLatched()).toBe(false);
   });
 });

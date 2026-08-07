@@ -1,6 +1,6 @@
 import { Outlet, useLoaderData, useParams, useRouteError } from "react-router";
 
-import { usePolling } from "@/hooks/use-polling";
+import { intervalFor, usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
 import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
@@ -38,7 +38,12 @@ export function RootLayout() {
     // The pack roster is published here, at the data root, so every surface below — including sheets
     // portalled out to document.body — can answer "which machine?" without a prop chain. With no pack
     // the provider publishes the solo value and nothing downstream renders any host chrome.
-    <PackProvider servers={data.servers}>
+    //
+    // `ts` and the poll cadence ride along for tier-2 (lead↔peer) health: §10.2 presents a member
+    // stale once the lead's last receipt from it is older than `3 × pollMs` (capped at 15s), and
+    // `intervalFor` is the same pure resolver `usePolling` above is running on — read here rather
+    // than re-derived, so the tolerance can never be computed against a cadence we aren't using.
+    <PackProvider servers={data.servers} ts={data.ts} pollMs={intervalFor(data, paneId)}>
       <div className="flex h-[100dvh] flex-col">
         {/* API-observed self-update: mounted unconditionally so its controller runs (and can
             auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh

@@ -32,6 +32,7 @@ function homeData(update: UpdateInfo | undefined): HomeData {
     tabs: [],
     sessions: [],
     servers: [],
+    ts: 0,
     scope: {},
     snoozedUntil: null,
     update,

@@ -26,6 +26,9 @@ import { HostChip } from "@/components/host-chip";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
+import { HostStaleBanner } from "@/components/host-stale-banner";
+import { useHostHealth } from "@/components/pack-provider";
+import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
 import { ShellBadge, StatusBadge } from "@/components/status-badge";
 import { submitPromptOption } from "@/lib/prompt-action";
@@ -125,6 +128,32 @@ export function AgentChat({
   // This device isn't allowlisted to type into agents: the backend rejects every write, so the
   // composer drops to read-only (and shows a banner). The mirror still polls (reading is fine).
   const readOnly = isReadOnly(device);
+  // TIER 2: is the machine THIS pane lives on still answering the lead? Read off the pane's own host
+  // — never the ambient scope — because the pane row is what carries the truth about where it lives;
+  // `scope.host` is the fallback for a pane the snapshot has already dropped (an absent `?h=` is the
+  // lead, which `useHostHealth` resolves through the roster).
+  //
+  // Two separate answers, deliberately: `hostHealth` drives PRESENTATION (the mirror below is
+  // last-good, and says so), while `hostBlock` — the §10.3 refusal — drives WRITES. They differ by
+  // §10.2's tolerance, so a single missed sweep never flashes a banner, but a member the lead
+  // currently believes unreachable is refused the instant it says so. Neither one touches the global
+  // clock: the lead answered, so this poll was live, and the ConnectionBanner stays silent.
+  const hostHealth = useHostHealth(agent?.host ?? scope?.host);
+  const hostBlock = writeRefusal(hostHealth);
+  /**
+   * The ONE reason this pane currently refuses a write, or undefined when it accepts them. Every
+   * write handler below starts with it, so there is a single place that decides both which gates
+   * exist and in what order they speak — the device gate first (it is about YOU and holds on every
+   * machine), then the host gate (it is about ONE machine and clears on the next poll).
+   *
+   * Deliberately a function of both gates rather than two checks per handler: five handlers × two
+   * gates is exactly the shape where the sixth handler gets written with one of them missing, and a
+   * missing host gate here means keys typed at a terminal the lead can't reach.
+   */
+  const refuseWrite = useCallback(
+    (): string | undefined => (readOnly ? "Read-only — device not authorised" : hostBlock),
+    [readOnly, hostBlock],
+  );
 
   // Drawers/sheets are mutually exclusive — at most one open. A single value makes that invariant
   // unrepresentable to violate.
@@ -322,8 +351,9 @@ export function AgentChat({
   // result is visible. The composer stays live for the free-text rows we don't render as buttons.
   const handlePromptAction = useCallback(
     async (option: PromptOption, prompt: PromptModel) => {
-      if (readOnly) {
-        setStatus("Read-only — device not authorised", "error");
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
         return;
       }
       const result = await submitPromptOption({
@@ -347,7 +377,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -357,8 +387,9 @@ export function AgentChat({
   // (buildBlocks gates on ctx.agent), so this handler can't fire for other agents.
   const handleWizardAction = useCallback(
     async (keys: string[], wizard: WizardModel) => {
-      if (readOnly) {
-        setStatus("Read-only — device not authorised", "error");
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
         return;
       }
       const result = await submitWizardKeys({
@@ -382,7 +413,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -392,8 +423,9 @@ export function AgentChat({
   // gate: claude-only (see hasBlockGrammar) — preview blocks only ever exist for a Claude pane.
   const handlePreviewAction = useCallback(
     async (action: PreviewBlockAction, preview: PreviewSelectModel) => {
-      if (readOnly) {
-        setStatus("Read-only — device not authorised", "error");
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
         return;
       }
       const base = {
@@ -426,7 +458,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -436,8 +468,9 @@ export function AgentChat({
   // blocks only ever exist for a Claude pane, buildBlocks gates on ctx.agent).
   const handleMultiSelectAction = useCallback(
     async (action: MultiSelectIntent, multi: MultiSelectModel) => {
-      if (readOnly) {
-        setStatus("Read-only — device not authorised", "error");
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
         return;
       }
       const result = await submitMultiSelectIntent({
@@ -461,7 +494,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -470,8 +503,9 @@ export function AgentChat({
   // gate: claude-only (menu blocks only ever exist for a Claude pane).
   const handleMenuAction = useCallback(
     async (action: MenuBlockAction, menu: MenuModel) => {
-      if (readOnly) {
-        setStatus("Read-only — device not authorised", "error");
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
         return;
       }
       const result = await submitMenuKeys({
@@ -496,7 +530,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
@@ -669,6 +703,12 @@ export function AgentChat({
 
         {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
         <ReadOnlyBanner device={device} />
+
+        {/* The pane's MACHINE is not answering the lead — the mirror below is last-good and the
+            composer is locked. Its tier-1 twin (the app-wide ConnectionBanner) lives up in
+            RootLayout; this one is scoped to the pane because the phone's link is fine. Renders
+            nothing on a solo install, or while the host is live. */}
+        <HostStaleBanner health={hostHealth} />
 
         {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
             pane, or create one with +. No "All" here (you're always in a specific tab). */}
@@ -858,6 +898,10 @@ export function AgentChat({
             isShell={isShell}
             gone={gone}
             readOnly={readOnly}
+            // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the
+            // composer must not invite a reply it already knows the lead will refuse, and "which
+            // machine am I typing into" has to be answerable without tapping Send to find out.
+            hostBlock={hostBlock}
             dialogPresent={dialogPresent}
             text={text}
             terminalDraft={terminalDraft}

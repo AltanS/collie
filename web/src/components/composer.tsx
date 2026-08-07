@@ -43,6 +43,16 @@ interface ComposerProps {
   gone: boolean;
   /** This device isn't authorised to type — locks the composer with a distinct placeholder. */
   readOnly: boolean;
+  /**
+   * The pane's MACHINE is not reachable from the lead, so a write would be refused before it left
+   * the lead (PACK_PROTOCOL.md §10.3) — the refusal text, naming the host, or undefined when writes
+   * may proceed. Always undefined on a solo install, so nothing here changes for one machine.
+   *
+   * Locks the composer exactly as `readOnly` does. It is NOT folded into `readOnly` by the caller
+   * because the two say different things and the operator's next move differs: one is "this device
+   * will never be allowed to type", the other is "this machine is quiet, wait for the next poll".
+   */
+  hostBlock?: string;
   /** A dialog (prompt/wizard/preview/multi-select) is on screen, so the TUI's keyboard belongs to it.
    * Free-text sending is refused while true — see send(). Answer it with its own buttons instead. */
   dialogPresent: boolean;
@@ -135,12 +145,14 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
-  // Every write affordance is off when the pane is gone OR this device is read-only.
-  const locked = gone || readOnly;
+  // Every write affordance is off when the pane is gone, this device is read-only, OR the pane's
+  // machine is unreachable from the lead. All three are "the write cannot land"; only the copy below
+  // differs, because only the copy tells you what to do about it.
+  const locked = gone || readOnly || hostBlock !== undefined;
   // The machine every write on this row lands on. The pane view addresses one host (the pane's own,
   // carried in `?h=` since the row was opened), so the ambient scope IS the target here. Undefined on
   // a solo install, which renders no chip and leaves every confirm string unchanged.
@@ -759,9 +771,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? "Pane is gone"
                 : readOnly
                   ? "Read-only — device not authorised"
-                  : isShell
-                    ? "Type a shell command…"
-                    : "Type a reply…"
+                  : // Names the machine, because on a pack "why can't I type?" has two possible
+                    // answers and only one of them is about this device.
+                    hostBlock
+                    ? hostBlock
+                    : isShell
+                      ? "Type a shell command…"
+                      : "Type a reply…"
             }
             disabled={locked}
             rows={1}

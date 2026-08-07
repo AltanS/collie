@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { fetchSnapshot } from "./api";
+import { healthFor, hostHealthMap, writeRefusal } from "./host-health";
 import { HOST_PARAM, normalizeSession, scopeSearch, SESSION_PARAM, sessionSearch } from "./session";
 import type {
   AgentView,
@@ -236,5 +237,26 @@ describe("solo zero-tax — a solo client puts no host on the wire", () => {
     await fetchSnapshot({ session: "collie-demo" });
     expect(urls).toEqual(["?session=collie-demo"]);
     expect(urls[0]).not.toMatch(/\b(h|host)=/);
+  });
+});
+
+// TIER 2 (lead↔peer health) is the newest thing that could tax a solo install, because it is the
+// first pack feature that DERIVES rather than merely labels — and a derivation that produces an
+// entry for "here" would give a one-machine install a peer-health dimension it has no peers for.
+describe("solo runs no per-host health machinery at all", () => {
+  it("derives an empty health map from the golden solo snapshot", () => {
+    // `servers` is optional-and-absent in the committed solo body (§11), which is the whole input.
+    expect(goldenSnapshot.servers).toBeUndefined();
+    const map = hostHealthMap(goldenSnapshot.servers, { at: goldenSnapshot.ts, pollMs: 1500 });
+    expect(map.size).toBe(0);
+  });
+
+  it("answers 'nothing to say' for every lookup, so no surface can render host chrome or refuse a write", () => {
+    const map = hostHealthMap(goldenSnapshot.servers, { at: goldenSnapshot.ts, pollMs: 1500 });
+    // `undefined` (no host in hand) and a named host both answer the same on solo — there is no
+    // host dimension to be wrong about, which is what makes the hide rule data rather than a flag.
+    expect(healthFor(map, undefined)).toBeUndefined();
+    expect(healthFor(map, "anything")).toBeUndefined();
+    expect(writeRefusal(healthFor(map, "anything"))).toBeUndefined();
   });
 });

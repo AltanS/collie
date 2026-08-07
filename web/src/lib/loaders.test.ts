@@ -648,3 +648,28 @@ describe("historyLoader", () => {
     ).rejects.toThrow();
   });
 });
+
+// The lead's own clock has to reach the components, because it is what per-host staleness is measured
+// against (lib/host-health.ts). It rides on HomeData rather than being read from `Date.now()` at the
+// point of use — a phone whose clock is minutes off would otherwise report every peer in the pack
+// permanently stale, or permanently fresh, depending on which way it is wrong.
+describe("rootLoader — the snapshot's own timestamp", () => {
+  it("carries `ts` through to the route data", async () => {
+    server.use(
+      http.get("/api/snapshot", () => HttpResponse.json({ ...fixtureSnapshot, ts: 1_234_567 })),
+    );
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://x/") });
+    expect(data.ts).toBe(1_234_567);
+  });
+
+  it("is 0 on the empty degraded shape, where there are no servers to date anyway", async () => {
+    server.use(http.get("/api/snapshot", () => new HttpResponse("boom", { status: 502 })));
+    // A scope nothing has ever been cached for, so `staleHome` takes its no-cache branch.
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://x/?h=never-fetched") });
+    expect(data.error).toBe(true);
+    expect(data.servers).toEqual([]);
+    expect(data.ts).toBe(0);
+  });
+});

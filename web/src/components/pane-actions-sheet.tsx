@@ -4,6 +4,7 @@ import { Pencil, XCircle } from "lucide-react";
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
+import { useHostWriteBlock } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
@@ -51,6 +52,11 @@ export function PaneActionsSheet({
   const [closing, setClosing] = useState(false);
   const { pending, confirm, reset } = usePendingConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
+  // Rename and close are writes, and both are §10.3 writes to a specific machine — the PANE's, read
+  // off the row rather than from the ambient scope, because a pane's host is the only thing that
+  // says where closing it kills a terminal. Undefined on a solo install and on a reachable host, so
+  // this sheet is byte-identical to today everywhere except a pack with a quiet member.
+  const hostBlock = useHostWriteBlock(pane?.host);
 
   // Reset to the action list — and reprefill the label — whenever the sheet opens on a (new) pane,
   // AND whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the
@@ -115,6 +121,14 @@ export function PaneActionsSheet({
       {readOnly ? (
         <p className="py-2 text-sm text-muted-foreground">
           Read-only — this device isn't authorised to rename or close panes.
+        </p>
+      ) : hostBlock ? (
+        // Refused BEFORE anything is attempted (§10.3): no queue, no retry, no "try anyway" — the
+        // lead would answer `host_unreachable` and the operator would be left guessing whether a
+        // close half-landed. Offering the actions greyed out would suggest they're one tap from
+        // working; naming the machine and its last-seen age says what to actually wait for.
+        <p className="py-2 text-sm text-muted-foreground">
+          {hostBlock} — rename and close are unavailable until it answers.
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">

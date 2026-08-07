@@ -21,6 +21,8 @@ import { clearStatus } from "@/lib/status";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents } from "@/test/handlers";
+import { PackProvider } from "./pack-provider";
+import type { ServerSummary } from "@/lib/types";
 import { AgentChat } from "./agent-chat";
 
 // The detail view's core job: type a reply and submit it to the bridge. This drives the whole wired
@@ -528,5 +530,109 @@ describe("AgentChat — top-of-mirror history affordance", () => {
     renderChat({ agent, agents: [agent], requestedLines: 600 });
     expect(showHistory()).toBeInTheDocument();
     expect(loadOlder()).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIER 2 — the pane's MACHINE is quiet, the phone's link is fine (M5/03).
+//
+// Everything here is about one distinction: a peer outage degrades THIS pane and says so, while the
+// app-wide connection surfaces (banner, header dog, polling) belong to tier 1 and stay out of it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const packRoster: ServerSummary[] = [
+  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 5_000 },
+  // Reachable-but-long-unseen would be equally stale; unreachable is the case the operator meets.
+  { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
+  {
+    id: "attic",
+    name: "attic",
+    isLead: false,
+    reachable: false,
+    protocol: "incompatible",
+    protocolDetail: "pack protocol 2 (this collie speaks 1)",
+    lastSeenAt: 0,
+  },
+];
+
+/** As above, but inside a pack whose lead assembled the snapshot at `ts` (the lead's own clock). */
+function renderPackChat(host: string, overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
+  const agent = { ...fixtureAgents[0]!, host };
+  const props: ComponentProps<typeof AgentChat> = {
+    paneId: agent.paneId,
+    scope: { host },
+    agent,
+    agents: [agent],
+    shellPanes: [],
+    tabs: [],
+    text: "output from before it went quiet",
+    onBack: vi.fn(),
+    onSelect: vi.fn(),
+    ...overrides,
+  };
+  const router = createMemoryRouter([
+    {
+      path: "/",
+      element: (
+        <PackProvider servers={packRoster} ts={20_000} pollMs={1500}>
+          <AgentChat {...props} />
+        </PackProvider>
+      ),
+    },
+  ]);
+  render(<RouterProvider router={router} />);
+  return props;
+}
+
+describe("AgentChat — a pane on a host the lead can't reach", () => {
+  it("keeps showing the last known mirror, attributed to the machine by name", () => {
+    renderPackChat("workshop");
+    // Never blank, never a spinner: the content is real, it is just not current.
+    expect(screen.getByText(/output from before it went quiet/)).toBeInTheDocument();
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(/workshop is unreachable/i);
+    expect(notice).toHaveTextContent(/last known/i);
+  });
+
+  it("says a write will be refused — before the user taps Send to find out", () => {
+    renderPackChat("workshop");
+    expect(screen.getByRole("status")).toHaveTextContent(/refused/i);
+    // The composer names the machine rather than the generic read-only reason.
+    expect(screen.getByPlaceholderText(/workshop is unreachable/i)).toBeDisabled();
+    expect(screen.queryByPlaceholderText(/type a reply/i)).not.toBeInTheDocument();
+  });
+
+  it("refuses the reply BEFORE any request is made (§10.3 — no queue, no retry)", async () => {
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/(reply|keys)$/, ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderPackChat("workshop");
+    const box = screen.getByPlaceholderText(/workshop is unreachable/i);
+    // Disabled, so the user can't even get text in — and Send is off with it. The point of asserting
+    // the network too is that nothing routes around the disabled state.
+    expect(box).toBeDisabled();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toEqual([]);
+  });
+
+  it("gives an incompatible member its own reason, verbatim", () => {
+    renderPackChat("attic");
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(/attic is running an incompatible Collie/i);
+    expect(notice).toHaveTextContent(/pack protocol 2 \(this collie speaks 1\)/);
+    // Never seen at all → there is no last-good screen under the banner, and it says so rather than
+    // implying the empty mirror is the machine's real state.
+    expect(notice).toHaveTextContent(/nothing cached/i);
+  });
+
+  it("a live host in the same pack is completely untouched", () => {
+    renderPackChat("bluefin");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/type a reply/i)).not.toBeDisabled();
   });
 });
