@@ -166,6 +166,31 @@ describe("Push — per-message collapse topic (update must not share the herd sl
     expect("target" in JSON.parse(sends[0]!.payload).data).toBe(false);
   });
 
+  test("the payload `data` gains `host` only when the message names one", async () => {
+    const cfg = await tempCfg();
+    const { sender, sends } = capturing();
+    const push = new Push(cfg, sender);
+    enable(push, [sub("a")]);
+
+    // A local (or solo) alert: no `host` key at all — omitted, not null, exactly as `session` is.
+    await push.send({ title: "claude needs you", body: "…", tag: "collie:herd", paneId: "w1:p1" });
+    expect(JSON.parse(sends[0]!.payload).data).toEqual({ paneId: "w1:p1" });
+
+    // A peer's alert, raised by the lead: the host completes the `(host, session, paneId)` address.
+    await push.send({
+      title: "claude needs you",
+      body: "…",
+      tag: "collie:herd@laptop",
+      paneId: "w1:p1",
+      host: "laptop",
+    });
+    expect(JSON.parse(sends[1]!.payload).data).toEqual({ paneId: "w1:p1", host: "laptop" });
+
+    // Both dimensions at once still stamp independently.
+    await push.send({ title: "t", body: "b", paneId: "w1:p1", session: "work", host: "laptop" });
+    expect(JSON.parse(sends[2]!.payload).data).toEqual({ paneId: "w1:p1", session: "work", host: "laptop" });
+  });
+
   test("a clear stays on the herd topic (it closes the herd slot)", async () => {
     const cfg = await tempCfg();
     const { sender, sends } = capturing();

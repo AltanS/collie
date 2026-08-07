@@ -96,6 +96,16 @@ export interface PackLeadDeps {
   readonly proxy: ForwardTransport;
   /** This collie's member id and label — the `servers[0]` entry (§9.2). */
   readonly self: { readonly id: string; readonly name: string };
+  /**
+   * Called with a body **that just parsed on this sweep** — never with a retained last-good one.
+   * That distinction is the whole contract: `PeerNotifier` derives transitions by diffing successive
+   * bodies, so re-offering the retained body of an unreachable peer would make a peer going down
+   * look like "nothing changed" forever (harmless) and a peer coming back look like a fresh round of
+   * transitions (not harmless — it would re-buzz the phone about hour-old blocks).
+   */
+  readonly onPeerSnapshot?: (memberId: string, body: PeerSnapshotBody) => void;
+  /** Called for a member the registry has dropped (`leave`/revocation/rotation) — see PeerNotifier.forget. */
+  readonly onPeerGone?: (memberId: string) => void;
   readonly now?: () => number;
 }
 
@@ -130,7 +140,10 @@ export class PackLead {
     try {
       // A member dropped by `leave`/revocation/rotation stops existing rather than lingering as a
       // stale row — the registry's contract, and its body goes with it.
-      for (const id of this.deps.registry.prune()) this.memory.delete(id);
+      for (const id of this.deps.registry.prune()) {
+        this.memory.delete(id);
+        this.deps.onPeerGone?.(id);
+      }
 
       const now = this.now();
       const due = this.deps.registry.links().filter((l) => dueForProbe(this.memory.get(l.memberId), now));
@@ -139,7 +152,16 @@ export class PackLead {
       const outcomes = await sweepPeers(due, (link) => this.deps.snapshot(link));
       for (const [memberId, outcome] of outcomes) {
         this.deps.registry.record(memberId, outcome);
-        this.memory.set(memberId, foldPeerMemory(this.memory.get(memberId), outcome, this.now()));
+        const previous = this.memory.get(memberId);
+        const next = foldPeerMemory(previous, outcome, this.now());
+        this.memory.set(memberId, next);
+        // Identity, not equality: `parsePeerSnapshot` mints a fresh object on every success and the
+        // fold RETAINS the old one on every failure, so `!==` is exactly "this poll produced a body".
+        // An unchanged peer still yields a new object each poll — a diff of nothing, which is what
+        // makes the notifier's dedupe cheap rather than a second cache to keep honest.
+        if (next.body !== null && next.body !== previous?.body) {
+          this.deps.onPeerSnapshot?.(memberId, next.body);
+        }
       }
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the pack degrades to

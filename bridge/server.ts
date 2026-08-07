@@ -218,9 +218,18 @@ export function startServer(opts: {
    * body that leaves this file is the object literal it has always been.
    */
   packLead?: PackLead;
+  /**
+   * The lead's per-peer notification coordinators, supplied under the same condition as
+   * {@link startServer} `packLead`. The two notification-policy routes below fan across it exactly as
+   * they fan across `registry.all()` — snooze and prefs are one pack-wide setting the lead owns
+   * (PACK_PROTOCOL.md §5), and the lead being the only sender is what makes that fan complete.
+   * Structurally typed, not the class: this file needs "fan a pref change, list the live slots".
+   */
+  peerNotifier?: { applyPrefs(): void; tags(): string[] };
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, pack } = opts;
   const packLead = opts.packLead;
+  const peerNotifier = opts.peerNotifier;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
@@ -582,6 +591,11 @@ export function startServer(opts: {
           for (const rt of registry.all()) {
             void push.send({ type: "clear", tag: herdTagFor(rt.isPrimary, rt.name) });
           }
+          // …and across every peer's slot. A snooze that only quiets the lead's own sessions is the
+          // bug the operator finds at 3am. Nothing is asked of the peer to make this work: the lead
+          // raised those alerts and owns the subscription, so an unreachable peer is irrelevant here
+          // — there is no policy to deliver and nothing to queue for reconnect (§5).
+          for (const tag of peerNotifier?.tags() ?? []) void push.send({ type: "clear", tag });
         }
         return json({ snoozedUntil: snooze.until() }, req.headers.get("accept-encoding"));
       }
@@ -608,6 +622,8 @@ export function startServer(opts: {
           // Prefs may have just disabled a kind — retract any pending/outstanding alerts of it, in
           // every live session (prefs are bridge-wide; each session has its own coordinator).
           for (const rt of registry.all()) rt.notifications.applyPrefs();
+          // Same fan, one dimension out — a disabled kind must retract on every host, not just here.
+          peerNotifier?.applyPrefs();
           return json(updated, req.headers.get("accept-encoding"));
         }
         return text("method not allowed", 405);

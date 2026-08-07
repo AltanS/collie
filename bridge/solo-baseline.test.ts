@@ -9,6 +9,7 @@ import { ActivityLedger } from "./activity.ts";
 import { loadConfig, type Config } from "./config.ts";
 import { computeEtag } from "./http-cache.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
+import type { PushMessage } from "./push.ts";
 import { TrustStore } from "./pack/trust-store.ts";
 import { Snooze } from "./snooze.ts";
 import {
@@ -706,15 +707,40 @@ describe("solo zero-tax — notifications", () => {
     expect(herdTagFor(true, "work")).toBe("collie:herd");
   });
 
-  test("push.ts stamps `session` only for a non-primary session — the same discipline a host field owes", () => {
+  test("push.ts stamps `session` and `host` only when the message names one", () => {
     // Pinned at the source, because Push.send needs the web-push module to broadcast. The shape of
     // the `data` payload is the contract an installed service worker already caches.
+    //
+    // ── RENEGOTIATED BY M4/06, THE SAME WAY THE WIRE-TYPE ROWS WERE BY M4/04 ──
+    // This assertion used to read `expect(src).not.toMatch(/data\.host/)`. It was a source-text
+    // PROXY for the row it defends — "push payload unchanged: no `host` field, mirroring how
+    // `session` is stamped only for non-primary" (§11) — written before there was a host to stamp.
+    // The row itself is intact and is now pinned where it belongs: `host` is conditional exactly as
+    // `session` is, so a solo instance (which never has a host) emits the identical bytes, and
+    // `push.test.ts` asserts the produced `data` object for both cases rather than the source that
+    // builds it. What would be a real regression is an UNCONDITIONAL stamp — hence the two
+    // `if (… !== undefined)` lines below being the pinned form.
     const src = readFileSync(join(import.meta.dir, "push.ts"), "utf8");
-    expect(src).toContain(
-      'const data: { paneId?: string; session?: string; target?: "settings" } = { paneId: msg.paneId };',
-    );
     expect(src).toContain("if (msg.session !== undefined) data.session = msg.session;");
-    expect(src).not.toMatch(/data\.host/);
+    expect(src).toContain("if (msg.host !== undefined) data.host = msg.host;");
+    // Never stamped unconditionally: an unguarded assignment is what would change the solo payload.
+    const stamps = src.split("\n").filter((l) => l.includes("data.host"));
+    expect(stamps).toEqual(["    if (msg.host !== undefined) data.host = msg.host;"]);
+  });
+
+  test("a solo payload has no host: the sink stamps it only when a host is named", async () => {
+    // The behavioural half of the row above, at the layer that decides: `makeNotifySink` is what
+    // every local session's coordinator renders through, and a solo instance passes it no host.
+    const { makeNotifySink } = await import("./notifications.ts");
+    const sent: PushMessage[] = [];
+    const sink = makeNotifySink({ send: (m: PushMessage) => sent.push(m) }, { isMuted: () => false }, "collie:herd");
+    sink.render({ title: "claude needs you", body: "demo · /home/you", paneId: "p1", renotify: true });
+    sink.clear();
+    expect(sent).toEqual([
+      { title: "claude needs you", body: "demo · /home/you", tag: "collie:herd", paneId: "p1", renotify: true },
+      { type: "clear", tag: "collie:herd" },
+    ]);
+    expect(sent.every((m) => !("host" in m))).toBe(true);
   });
 });
 

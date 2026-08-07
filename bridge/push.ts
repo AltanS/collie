@@ -63,6 +63,14 @@ export interface PushMessage {
    * then stays byte-identical to the single-session case (an older cached SW keeps working).
    */
   session?: string;
+  /**
+   * The pack member the alerting session lives on (`?h=`, PACK_PROTOCOL.md §4). Threaded into the
+   * payload `data` alongside `session` so a tap deep-links to the right machine. Absent for the
+   * collie that is sending — i.e. always absent on a solo instance, and always absent for the lead's
+   * own sessions — which is the same omitted-not-null discipline `session` follows and what keeps
+   * the solo payload byte-identical (§11).
+   */
+  host?: string;
   /** Where a tap should land instead of the default pane deep-link. `"settings"` for update alerts;
    *  absent = today's pane deep-link (so the agent-alert payload is unchanged). */
   target?: "settings";
@@ -121,10 +129,14 @@ export class Push {
 
   /** Send a notification instruction (render, clear, or update) to every subscribed device. */
   async send(msg: PushMessage): Promise<void> {
-    // The SW reads deep-link fields from `data`. `session` is omitted for the primary (absent on the
-    // message), keeping that payload identical to the pre-multi-session shape.
-    const data: { paneId?: string; session?: string; target?: "settings" } = { paneId: msg.paneId };
+    // The SW reads deep-link fields from `data`. `session` is omitted for the primary and `host` for
+    // this collie's own sessions (both absent on the message), keeping that payload identical to the
+    // pre-multi-session, pre-pack shape.
+    const data: { paneId?: string; session?: string; host?: string; target?: "settings" } = {
+      paneId: msg.paneId,
+    };
     if (msg.session !== undefined) data.session = msg.session;
+    if (msg.host !== undefined) data.host = msg.host;
     if (msg.target !== undefined) data.target = msg.target;
     // Per-message collapse topic — update alerts must not share the herd slot (see UPDATE_SEND_OPTIONS).
     const options = msg.type === "update" ? UPDATE_SEND_OPTIONS : SEND_OPTIONS;
