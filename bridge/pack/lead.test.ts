@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SnapshotResponse } from "../types.ts";
-import { member } from "./fixtures.ts";
+import { member, neverProxy } from "./fixtures.ts";
 import {
   dueForProbe,
   foldPeerMemory,
@@ -11,7 +11,7 @@ import {
   type PeerMemory,
 } from "./lead.ts";
 import type { PackLink, PeerOutcome } from "./peer-client.ts";
-import { PackRegistry } from "./registry.ts";
+import { PackRegistry, type PeerState } from "./registry.ts";
 import type { TrustedMember } from "./trust-store.ts";
 
 // The sweep and what it remembers. The registry owns a peer's HEALTH (M4/03); this class owns the
@@ -79,6 +79,7 @@ function lead(members: TrustedMember[], script: (link: PackLink, call: number) =
       calls.push(link.memberId);
       return script(link, calls.filter((c) => c === link.memberId).length);
     },
+    proxy: neverProxy,
     self: { id: "desk", name: "the herd" },
     now: () => clock,
   });
@@ -139,6 +140,7 @@ describe("PackLead — the sweep rides the lead's poll, it does not arm a timer"
     const l = new PackLead({
       registry,
       snapshot: () => Promise.reject(new Error("boom")),
+      proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
     });
     await expect(l.sweep()).resolves.toBeUndefined();
@@ -257,5 +259,42 @@ describe("foldPeerMemory — the three states as a pure function", () => {
     for (const outcome of [down, skewed, ok("not a snapshot"), ok(null)]) {
       expect(foldPeerMemory(seeded, outcome, NOW).body).toBe(seeded.body!);
     }
+  });
+});
+
+describe("forward — the lead's per-pane hop (M4/05)", () => {
+  test("it delegates to the injected transport and answers with the peer's own response", async () => {
+    const registry = new PackRegistry({
+      sessions: { get: () => undefined },
+      self: "desk",
+      members: () => [member({ memberId: "laptop" })],
+    });
+    const dials: string[] = [];
+    const lead = new PackLead({
+      registry,
+      snapshot: async () => ({ ok: false, state: "unreachable", reason: "unused", receivedAt: 0 }),
+      proxy: async (_link, route) => {
+        dials.push(route);
+        return {
+          ok: true,
+          value: new Response(`{"lines":["hi"]}`, { status: 200, headers: { etag: '"peer"' } }),
+          status: 200,
+          member: "laptop",
+          receivedAt: 1,
+        };
+      },
+      self: { id: "desk", name: "the herd" },
+    });
+
+    const url = new URL("https://lead.example/api/pane/w1:p1?host=laptop");
+    const resolved = lead.resolve({ kind: "member", id: "laptop" });
+    expect(resolved?.kind).toBe("peer");
+    const res = await lead.forward(new Request(url), url, resolved as { link: PackLink; state: PeerState });
+
+    expect(dials).toEqual(["pane/w1:p1"]);
+    expect(res.status).toBe(200);
+    // The peer's ETag, not one this build computed — the lead adds nothing (§9.1).
+    expect(res.headers.get("etag")).toBe('"peer"');
+    expect(await res.json()).toEqual({ lines: ["hi"] });
   });
 });

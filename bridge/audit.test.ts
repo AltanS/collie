@@ -128,3 +128,50 @@ describe("AuditLog", () => {
     }
   });
 });
+
+// ── §12: a pack-originated write is identifiable in the PEER's own log ───────
+
+describe("pack attribution", () => {
+  test("via + from ride next to device, and only when present", () => {
+    const line = JSON.parse(
+      formatAuditLine(
+        { action: "reply", paneId: "w1:p1", session: "work", device: "phone-7", via: "pack", from: "desk", detail: { text: "hi" } },
+        0,
+      ),
+    ) as Record<string, unknown>;
+    expect(Object.keys(line)).toEqual(["ts", "action", "paneId", "session", "device", "via", "from", "detail"]);
+    expect(line.via).toBe("pack");
+    expect(line.from).toBe("desk");
+  });
+
+  test("a line with no pack attribution is byte-identical to a pre-pack one", () => {
+    // The solo zero-tax contract (PACK_PROTOCOL.md §11): optional fields are OMITTED, never nulled.
+    const line = formatAuditLine({ action: "reply", paneId: "w1:p1", session: "work", detail: {} }, 0);
+    expect(line).not.toContain("via");
+    expect(line).not.toContain("from");
+    expect(line).toBe(
+      JSON.stringify({ ts: new Date(0).toISOString(), action: "reply", paneId: "w1:p1", session: "work", detail: {} }),
+    );
+  });
+
+  test("`scoped()` stamps every entry, so a handler cannot forget the attribution", async () => {
+    // This is how the peer hands the UNMODIFIED browser handlers a log that already knows the action
+    // arrived over a pack link — the handlers take no `via` parameter and there is nothing to forget.
+    const lines: string[] = [];
+    const log = new AuditLog((l) => void lines.push(l), () => 0);
+    const packLog = log.scoped({ via: "pack", from: "desk" });
+    packLog.record({ action: "keys", paneId: "w1:p1", device: "phone-7", detail: { keys: ["Enter"] } });
+    // The unscoped log is untouched — one process, two views, no leakage between them.
+    log.record({ action: "keys", paneId: "w1:p1", detail: {} });
+    await Bun.sleep(5);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ action: "keys", via: "pack", from: "desk", device: "phone-7" });
+    expect(lines[1]).not.toContain("pack");
+  });
+
+  test("an entry's own field beats the scope's — the record is what happened, not what was assumed", () => {
+    const lines: string[] = [];
+    const log = new AuditLog((l) => void lines.push(l), () => 0).scoped({ via: "pack", from: "desk" });
+    log.record({ action: "reply", from: "nas", detail: {} });
+    expect(JSON.parse(lines[0]!).from).toBe("nas");
+  });
+});

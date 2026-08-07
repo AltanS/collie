@@ -1,7 +1,8 @@
 import type { SnapshotResponse } from "../types.ts";
+import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forward.ts";
 import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnapshotBody } from "./merge.ts";
 import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
-import type { HostResolution, HostSelector, PackRegistry } from "./registry.ts";
+import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
 
 // The lead's side of the pack, assembled: sweep the peers, remember the last-good body, merge.
 //
@@ -87,6 +88,12 @@ export interface PackLeadDeps {
   readonly registry: PackRegistry;
   /** `(link) => the peer's /pack/v1/snapshot outcome`. Injected so the sweep is testable without TLS. */
   readonly snapshot: (link: PackLink) => Promise<PeerOutcome<unknown>>;
+  /**
+   * `PeerClient.proxy`, for the per-pane forward (M4/05). Injected for the same reason `snapshot` is
+   * — the routes must be exercisable without a socket — and typed as the pass-through variant, so a
+   * peer's own status codes reach the phone intact (§9.1).
+   */
+  readonly proxy: ForwardTransport;
   /** This collie's member id and label — the `servers[0]` entry (§9.2). */
   readonly self: { readonly id: string; readonly name: string };
   readonly now?: () => number;
@@ -150,6 +157,26 @@ export class PackLead {
    */
   resolve(host: HostSelector, session?: string): HostResolution | undefined {
     return this.deps.registry.resolve(host, session);
+  }
+
+  /**
+   * Forward one session-scoped request to the peer that owns it and answer with what the peer said
+   * (§5, §9.1, §10.3). Delegates wholesale to {@link forwardToPeer}, which is pure but for this
+   * transport — the class contributes the link and nothing else, so the forwarding rules have one
+   * home and it is not a runtime object.
+   */
+  forward(
+    req: Request,
+    url: URL,
+    resolved: { readonly link: PackLink; readonly state: PeerState },
+    opts: { readonly audit?: ForwardDeps["audit"]; readonly device?: string | null } = {},
+  ): Promise<Response> {
+    return forwardToPeer(req, url, {
+      link: resolved.link,
+      state: resolved.state,
+      transport: this.deps.proxy,
+      ...opts,
+    });
   }
 
   /** What {@link mergeSnapshot} consumes: registry health + this class's last-good bodies. */

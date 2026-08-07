@@ -453,6 +453,13 @@ bytes may already be in the terminal, and a retry types them twice. Concretely:
   is exactly why (the same reasoning that forbids a key queue outliving its dock,
   [ADR 0005](./.adr/0005-a-composed-key-queue-never-outlives-its-dock.md)).
 
+**On the wire** (what the phone renders on — `bridge/pack/forward.ts`): every lead-generated refusal
+is JSON with `{ok: false, code, error, host}` and a distinct status — `host_unreachable` (503),
+`host_incompatible` (503), `write_outcome_unknown` (504), `image_too_large` (413),
+`route_not_federated` (501, for a route outside §5's table). Never a bare 500,
+and never a silent success. A peer's *own* answer is never given one of these: it is passed through
+as itself (§9.1), including its 403 when the peer's write gate refuses.
+
 ---
 
 ## 11. The solo zero-tax contract

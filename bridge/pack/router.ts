@@ -2,14 +2,18 @@ import type { AuditLog } from "../audit.ts";
 import {
   admitPackRequest,
   factsFrom,
+  MEMBER_HEADER,
   packResponseHeaders,
   parseProtocolHeader,
   protocolMismatchResponse,
+  PROTOCOL_HEADER,
   unauthorizedResponse,
   unwiredFingerprints,
   type PeerFingerprintSource,
   type RefusedFactor,
 } from "./admission.ts";
+import { apiPathFor } from "./forward.ts";
+import { HOST_PARAM } from "./registry.ts";
 import {
   commitPackChange,
   consumeInvite,
@@ -53,11 +57,29 @@ export const PACK_SNAPSHOT_PATH = "/pack/v1/snapshot";
  */
 export type SnapshotSource = (session?: string) => SnapshotResponse | undefined;
 
+/**
+ * Run one session-scoped route — the pane family, tabs, workspaces — as this collie would for its
+ * own operator (§5). `from` is the admitted member that forwarded it, for the peer's audit line.
+ *
+ * Injected from `bridge/server.ts` for the same reason {@link SnapshotSource} is: it hands over the
+ * very block the browser routes dispatch through, so "the peer runs the same handler" is a fact about
+ * the wiring rather than a claim about two implementations.
+ */
+export type ApiDispatch = (req: Request, url: URL, from: string) => Promise<Response>;
+
+/** What this collie exposes to an admitted lead. Absent ⇒ that half of §5's table simply 404s. */
+export interface PackSurface {
+  readonly snapshot?: SnapshotSource;
+  readonly dispatch?: ApiDispatch;
+}
+
 export interface PackRouterDeps {
   readonly store: TrustStore;
   readonly audit: AuditLog | null;
   /** Absent ⇒ `/pack/v1/snapshot` 404s like any unimplemented route. */
   readonly snapshot?: SnapshotSource;
+  /** Absent ⇒ the per-pane/tab/workspace half of §5's table 404s. */
+  readonly dispatch?: ApiDispatch;
   /** Reads the caller's TLS certificate fingerprint. Stubbed to "none, so refuse" until TLS lands. */
   readonly fingerprints?: PeerFingerprintSource;
   readonly now?: () => number;
@@ -133,6 +155,37 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
         status: 200,
         headers: packResponseHeaders(verdict.self),
       });
+    }
+
+    // ── The 1:1 half of §5's table ───────────────────────────────────────────
+    // Pane read/history/reply/keys/upload/close/rename, tab create/rename/close, workspace create —
+    // dispatched into the SAME handlers the browser routes use, with the same `?session=` semantics.
+    //
+    // Three rules hold this together, and each is one line below:
+    //   1. The route must be on the allowlist (`apiPathFor`), so a route §5 excludes — subscribe,
+    //      notifications, update/check — is not reachable across a link merely because it exists.
+    //   2. `host=` is REFUSED, never forwarded. A peer has no peers (§4); accepting one would be the
+    //      first hop of a chain this protocol does not have.
+    //   3. The dispatched response is stamped with the pack headers §6 requires. That is not
+    //      cosmetic: the lead checks the version before it reads a byte (§7), and an unstamped
+    //      response would read as a version skew.
+    const route = pathname.slice(PACK_PREFIX.length);
+    const apiPath = apiPathFor(route);
+    if (apiPath !== null && deps.dispatch !== undefined) {
+      if (url.searchParams.has(HOST_PARAM)) {
+        return new Response(JSON.stringify({ error: "a pack request may not name a host" }), {
+          status: 400,
+          headers: packResponseHeaders(verdict.self),
+        });
+      }
+      const local = new URL(url.toString());
+      local.pathname = apiPath;
+      const answer = await deps.dispatch(req, local, verdict.member.memberId);
+      const headers = new Headers(answer.headers);
+      headers.set(PROTOCOL_HEADER, String(PACK_PROTOCOL_VERSION));
+      headers.set(MEMBER_HEADER, verdict.self);
+      const bodyless = answer.status === 304 || answer.status === 204;
+      return new Response(bodyless ? null : answer.body, { status: answer.status, headers });
     }
 
     return new Response(JSON.stringify({ error: "not found" }), {

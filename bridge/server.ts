@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
 import type { ActivityLedger } from "./activity.ts";
-import type { AuditLog } from "./audit.ts";
+import { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
@@ -24,8 +24,10 @@ import type { JournalAdapter } from "./journal/types.ts";
 import { modeForWire } from "./pack/mode.ts";
 import type { PackRuntime } from "./pack/config.ts";
 import type { PackLead } from "./pack/lead.ts";
+import { packDeviceOf, packGate } from "./pack/peer-gate.ts";
 import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
-import type { PackHandler, SnapshotSource } from "./pack/router.ts";
+import type { PackHandler, PackSurface } from "./pack/router.ts";
+import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
 import { toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
@@ -39,13 +41,6 @@ import type {
   UploadResponse,
 } from "./types.ts";
 
-// Image upload limits. Herdr's socket only carries text/keys, so we can't paste an image into the
-// terminal — instead we save it to a host file and the client references its path in the message
-// (the agent reads images by path). See uploadPane().
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
-// Multipart wraps the file in a boundary + part headers, so a legitimately-sized image arrives a
-// little over MAX_UPLOAD_BYTES on the wire. Allow a small slack for the Content-Length pre-check.
-const MAX_UPLOAD_OVERHEAD = 64 * 1024; // 64 KB
 // Hard cap the runtime enforces on ANY request body (Bun.serve maxRequestBodySize). Bigger than the
 // upload cap + overhead so the handler's own 413 fires first for honest clients; this cuts off a
 // chunked or lying client that never sends an accurate Content-Length.
@@ -155,6 +150,29 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
  * body is byte-identical to the pre-federation one, which is the whole zero-tax point; a client
  * reads the mode as `mode ?? "solo"`.
  */
+/**
+ * Who is asking for a session-scoped route, and everything that differs between them.
+ *
+ * There are exactly two implementations and there must never be a third: the browser at this
+ * collie's front door, and a lead over an admitted pack link (PACK_PROTOCOL.md §5). Each route
+ * handler below is written once and consumes this — so the answer to "does a peer run the same code
+ * my phone does?" is structural rather than a promise.
+ */
+interface RouteCaller {
+  /**
+   * `(host, session)` → the runtime to act on, or the Response refusing/answering it. For a browser
+   * this may resolve to *another machine*, in which case the request is forwarded and the peer's own
+   * response comes back here (§9.1). For a pack caller it is always local.
+   */
+  resolve(): Promise<SessionRuntime | Response>;
+  /** The caller's own authorisation at this level, or `null` to proceed. */
+  gate(level: "read" | "write"): Response | null;
+  /** The device a write is attributed to. */
+  device(): string | null;
+  /** Where a write's audit line lands — the peer's is pre-stamped `via:"pack"` + originator (§12). */
+  readonly audit: AuditLog;
+}
+
 export function bridgeConfigBody(opts: {
   push: boolean;
   vapidPublicKey: string;
@@ -187,12 +205,12 @@ export function startServer(opts: {
    * here — deliberately, so this file names no pack route and `solo-baseline.test.ts` can prove by
    * grep that solo registers nothing (PACK_PROTOCOL.md §11, "`/pack/v1/*`: not routed at all").
    *
-   * A **factory**, not a handler, for one reason: a peer's `/pack/v1/snapshot` must answer the exact
-   * body its own `/api/snapshot` would, and the only way to guarantee that is to hand the pack router
-   * the very closure this file serves browsers from. Two assemblies that "agree" would be two
-   * assemblies that drift.
+   * A **factory**, not a handler, for one reason: a peer's `/pack/v1/*` must answer exactly what its
+   * own `/api/*` would, and the only way to guarantee that is to hand the pack router the very
+   * closures this file serves browsers from — the snapshot body, and the session-scoped route block.
+   * Two assemblies that "agree" would be two assemblies that drift.
    */
-  packRouter?: (snapshot: SnapshotSource) => PackHandler;
+  packRouter?: (surface: PackSurface) => PackHandler;
   /**
    * The lead runtime, supplied **only** when this collie leads a pack with at least one enrolled
    * member. Its presence is exactly the condition under which `servers` goes on the wire and every
@@ -255,9 +273,145 @@ export function startServer(opts: {
     } satisfies SnapshotResponse;
   };
 
+  /**
+   * This collie's own `(session)` resolution: the identical `registry.get` call the bridge made
+   * before packs existed, plus the 404 it always answered. Named once so that BOTH the browser's host
+   * gate and the peer's pack dispatch reach a local runtime through the same expression — two
+   * spellings of "the primary session, or 404" would be two chances to disagree about what `?session=`
+   * means, and §5 says a peer resolves it with today's exact semantics.
+   */
+  const localRuntime = (session: string | undefined, acceptEncoding: string | null): SessionRuntime | Response =>
+    registry.get(session) ?? jsonError(`unknown session: ${session ?? ""}`, 404, acceptEncoding);
+
+  /**
+   * Everything session-scoped: the pane family, tab create/rename/close, workspace create.
+   *
+   * ── ONE BLOCK, TWO CALLERS, NO SECOND HANDLER SET ────────────────────────────
+   * A browser reaches it through `Bun.serve`'s dispatch below; a LEAD reaches it through this
+   * collie's `/pack/v1/*` surface, which hands over this very closure (PACK_PROTOCOL.md §5: "a 1:1
+   * re-exposure of the routes the phone already calls, dispatched into the same handlers"). Not a
+   * copy that agrees — the same code, so `reply` cannot acquire a pack-only behaviour and `history`
+   * cannot acquire a host parameter.
+   *
+   * What differs between the two callers is *only* who is asking, which is exactly the
+   * {@link RouteCaller} it takes: how the caller's request resolves to a runtime (a browser's may
+   * resolve to another machine and be forwarded), how the caller is authorised (a browser by
+   * `guard()`, a lead by the pack link plus the peer's own device policy — §12), and which audit log
+   * the write lands in (the peer's is stamped `via:"pack"`).
+   *
+   * `null` ⇒ not a session-scoped path; the caller carries on with its own routing.
+   */
+  const serveSessionRoute = async (
+    req: Request,
+    url: URL,
+    caller: RouteCaller,
+  ): Promise<Response | null> => {
+    const { pathname } = url;
+
+    // ── Structural creates: new tab / new space (each opens a fresh shell pane) ──
+    if (pathname === "/api/tab" && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      return createTab(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name);
+    }
+    if (pathname === "/api/workspace" && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      return createWorkspace(rt.herdr, req, caller.audit, caller.device(), rt.name);
+    }
+
+    // ── Tab actions: rename (set its label) / close (kill it + every pane in it) ──
+    const tabMatch = pathname.match(TAB_ACTION_ROUTE);
+    if (tabMatch && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      const tabId = decodeURIComponent(tabMatch[1]!);
+      const action = tabMatch[2];
+      const device = caller.device();
+      if (action === "close") return closeTab(rt.herdr, tabId, req, caller.audit, device, rt.name);
+      return renameTab(rt.herdr, tabId, req, caller.audit, device, rt.name);
+    }
+
+    // ── Per-pane read / send ─────────────────────────────────────────────
+    const paneMatch = pathname.match(PANE_ROUTE);
+    if (paneMatch) {
+      const paneId = decodeURIComponent(paneMatch[1]!);
+      const action = paneMatch[2];
+      // Reading a pane is allowed for any access-gated client; every action (reply/keys/upload/
+      // close) types into or restructures a terminal, so it additionally needs an authorised device.
+      // `history` is a READ despite being an action segment — it only ever reads a log off disk.
+      const isRead = !action || action === "history";
+      const denied = caller.gate(isRead ? "read" : "write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      const { herdr, name: session } = rt;
+      // You are in this pane: reading it, replying, sending keys, browsing its history. That is
+      // the whole definition of "seen" (.adr/0003), and this is the one place every such request
+      // passes through. It cannot false-positive from background polling — the dashboard loader
+      // only ever fetches /api/snapshot; paneLoader is the sole reader of pane text — nor from a
+      // cross-site request forged at a guessed pane id (see marksPaneSeen).
+      //
+      // Gated on the request actually being ROUTED below. PANE_ROUTE constrains `action` to the
+      // known set, so the only way to reach here unrouted is a method mismatch (a GET at /reply, a
+      // POST at /history) — which 405s. Without this a malformed request still marked the pane seen.
+      //
+      // ── AND IT IS RECORDED EXACTLY ONCE, ON THE OWNING HOST ────────────────
+      // A pane on a peer never reaches this line on the LEAD: `caller.resolve()` returned the peer's
+      // forwarded response above. It reaches it on the PEER, through the pack dispatch, against the
+      // peer's own ledger — which is what makes "seen" one shared fact (.adr/0003) rather than two
+      // machines' guesses, and why the `x-collie-seen` header is forwarded verbatim.
+      const routed = isRead ? req.method === "GET" : req.method === "POST";
+      if (routed && marksPaneSeen(req, action)) activity.noteSeen(session, paneId);
+      // Every action is a write; attribute it to the authorised device for the audit trail.
+      // `history` is a read, so it gets no device attribution (nothing is written to attribute).
+      const device = isRead ? null : caller.device();
+      const audit_ = caller.audit;
+
+      if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
+      if (action === "history" && req.method === "GET")
+        return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
+      if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit_, device, session);
+      if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit_, device, session);
+      if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit_, device, session);
+      if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit_, device, session);
+      if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit_, device, session);
+      return text("method not allowed", 405);
+    }
+
+    return null;
+  };
+
   // A peer answers its lead with its OWN view and never a merged one — a pack link never forwards a
   // `host=` because a peer has no peers (§4). Hence `localSnapshot`, not the merged body below.
-  const packHandler = opts.packRouter?.((session) => localSnapshot(session, null));
+  //
+  // The second closure is the per-pane half of the same idea (§5): the lead's request is dispatched
+  // into the block above, authorised by the PEER's own gate (bridge/pack/peer-gate.ts) and audited in
+  // the PEER's own log with `via:"pack"` and the originating member (§12). The lead's verdict is not
+  // an input — it never crosses the wire.
+  const packHandler = opts.packRouter?.({
+    snapshot: (session) => localSnapshot(session, null),
+    dispatch: async (req, url, from) => {
+      const session = url.searchParams.get("session") ?? undefined;
+      const device = packDeviceOf(req);
+      const routed = await serveSessionRoute(req, url, {
+        resolve: async () => localRuntime(session, null),
+        gate: (level) => {
+          const verdict = packGate(level, cfg, device);
+          return verdict.ok ? null : text(verdict.reason, 403);
+        },
+        device: () => device,
+        audit: audit.scoped({ via: "pack", from }),
+      });
+      return routed ?? jsonError("not found", 404, null);
+    },
+  });
   // Per-session background notifications live in each session's runtime (built by the factory in
   // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
   // snooze-clears across every live session's coordinator.
@@ -302,11 +456,14 @@ export function startServer(opts: {
        *
        * An unknown host is a 404, mirroring `unknownSession()` exactly (§4) — and so is an
        * ill-formed one, which is the shape a probe takes (a path, a URL, an IP). A *known* peer is
-       * refused with a 501 until M4/05 lands the proxy: the load-bearing part is that it is never
-       * silently served from the LEAD's registry, because pane ids collide across machines and
-       * `?h=laptop` + `w1:p1` must never type into the desk's `w1:p1`.
+       * FORWARDED, and the peer's own answer is what comes back (§5, §9.1): the load-bearing part is
+       * that it is never silently served from the LEAD's registry, because pane ids collide across
+       * machines and `?h=laptop` + `w1:p1` must never type into the desk's `w1:p1`.
+       *
+       * The forward is the only asynchrony this adds, and it is why `target()` is async: a local
+       * request does not await a thing it did not do — `registry.get` is still one Map lookup.
        */
-      const target = (): SessionRuntime | Response => {
+      const target = async (): Promise<SessionRuntime | Response> => {
         if (host.kind !== "local") {
           const resolved = packLead?.resolve(host, sessionName);
           if (resolved === undefined) {
@@ -317,15 +474,27 @@ export function startServer(opts: {
             );
           }
           if (resolved.kind === "peer") {
-            return jsonError(
-              `host ${resolved.link.memberId} is a pack member; per-pane proxying is not implemented in this build`,
-              501,
-              req.headers.get("accept-encoding"),
+            // The lead's own record of the forward (§12): one line, the same `action` the peer will
+            // write, plus the target host — two independent logs of one event, neither depending on
+            // the other machine's disk.
+            return secure(
+              await packLead!.forward(req, url, resolved, {
+                device: deviceAuth(req, cfg).device,
+                audit: (entry) =>
+                  audit.record({
+                    action: entry.action,
+                    host: entry.host,
+                    ...(entry.paneId === undefined ? {} : { paneId: entry.paneId }),
+                    ...(entry.session === undefined ? {} : { session: entry.session }),
+                    device: deviceAuth(req, cfg).device,
+                    detail: { forwarded: entry.outcome },
+                  }),
+              }),
             );
           }
           return resolved.runtime;
         }
-        return registry.get(sessionName) ?? unknownSession();
+        return localRuntime(sessionName, req.headers.get("accept-encoding"));
       };
 
       // ── Live state (polled by the client) ────────────────────────────────
@@ -347,75 +516,17 @@ export function startServer(opts: {
         );
       }
 
-      // ── Structural creates: new tab / new space (each opens a fresh shell pane) ──
-      if (pathname === "/api/tab" && req.method === "POST") {
-        const denied = guard(req, cfg, "write");
-        if (denied) return denied;
-        const rt = target();
-        if (rt instanceof Response) return rt;
-        return createTab(rt.herdr, rt.engine, req, audit, deviceAuth(req, cfg).device, rt.name);
-      }
-      if (pathname === "/api/workspace" && req.method === "POST") {
-        const denied = guard(req, cfg, "write");
-        if (denied) return denied;
-        const rt = target();
-        if (rt instanceof Response) return rt;
-        return createWorkspace(rt.herdr, req, audit, deviceAuth(req, cfg).device, rt.name);
-      }
-
-      // ── Tab actions: rename (set its label) / close (kill it + every pane in it) ──
-      const tabMatch = pathname.match(TAB_ACTION_ROUTE);
-      if (tabMatch && req.method === "POST") {
-        const denied = guard(req, cfg, "write");
-        if (denied) return denied;
-        const rt = target();
-        if (rt instanceof Response) return rt;
-        const tabId = decodeURIComponent(tabMatch[1]!);
-        const action = tabMatch[2];
-        const device = deviceAuth(req, cfg).device;
-        if (action === "close") return closeTab(rt.herdr, tabId, req, audit, device, rt.name);
-        return renameTab(rt.herdr, tabId, req, audit, device, rt.name);
-      }
-
-      // ── Per-pane read / send ─────────────────────────────────────────────
-      const paneMatch = pathname.match(PANE_ROUTE);
-      if (paneMatch) {
-        const paneId = decodeURIComponent(paneMatch[1]!);
-        const action = paneMatch[2];
-        // Reading a pane is allowed for any access-gated client; every action (reply/keys/upload/
-        // close) types into or restructures a terminal, so it additionally needs an authorised device.
-        // `history` is a READ despite being an action segment — it only ever reads a log off disk.
-        const isRead = !action || action === "history";
-        const denied = guard(req, cfg, isRead ? "read" : "write");
-        if (denied) return denied;
-        const rt = target();
-        if (rt instanceof Response) return rt;
-        const { herdr, name: session } = rt;
-        // You are in this pane: reading it, replying, sending keys, browsing its history. That is
-        // the whole definition of "seen" (.adr/0003), and this is the one place every such request
-        // passes through. It cannot false-positive from background polling — the dashboard loader
-        // only ever fetches /api/snapshot; paneLoader is the sole reader of pane text — nor from a
-        // cross-site request forged at a guessed pane id (see marksPaneSeen).
-        //
-        // Gated on the request actually being ROUTED below. PANE_ROUTE constrains `action` to the
-        // known set, so the only way to reach here unrouted is a method mismatch (a GET at /reply, a
-        // POST at /history) — which 405s. Without this a malformed request still marked the pane seen.
-        const routed = isRead ? req.method === "GET" : req.method === "POST";
-        if (routed && marksPaneSeen(req, action)) activity.noteSeen(session, paneId);
-        // Every action is a write; attribute it to the authorised device for the audit trail.
-        // `history` is a read, so it gets no device attribution (nothing is written to attribute).
-        const device = isRead ? null : deviceAuth(req, cfg).device;
-
-        if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
-        if (action === "history" && req.method === "GET")
-          return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
-        if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device, session);
-        if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit, device, session);
-        if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
-        if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device, session);
-        if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit, device, session);
-        return text("method not allowed", 405);
-      }
+      // ── Session-scoped routes: the pane family, tabs, workspaces ─────────
+      // The block itself lives above, shared with the pack surface (§5). What a browser supplies is
+      // its own gate (`guard`), its own device attribution, this collie's audit log, and the host
+      // gate — which is the one thing a pack caller never has, because a peer has no peers (§4).
+      const sessionRouted = await serveSessionRoute(req, url, {
+        resolve: target,
+        gate: (level) => guard(req, cfg, level),
+        device: () => deviceAuth(req, cfg).device,
+        audit,
+      });
+      if (sessionRouted) return sessionRouted;
 
       // ── Misc API ─────────────────────────────────────────────────────────
       if (pathname === "/api/config") {
@@ -1179,8 +1290,7 @@ async function uploadPane(
   // Reject an oversize upload by its declared Content-Length BEFORE buffering — req.formData()
   // reads the whole body into memory first, so a 100 MB "image" would be materialised just to fail
   // the size check below. Multipart adds a boundary + part headers, so allow a small slack.
-  const declared = Number(req.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES + MAX_UPLOAD_OVERHEAD) {
+  if (uploadTooLarge(req.headers.get("content-length"))) {
     return secure(
       new Response(
         JSON.stringify({
