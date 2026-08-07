@@ -269,6 +269,43 @@ and unknown member all produce the identical response — `401` with body `{"err
 no `code`, no timing branch, no hint about which factor failed. An unauthenticated caller learns only
 that something is listening.
 
+> **Amended 2026-08-07 — where the certificate factor is *enforced*, and in what shape.**
+>
+> **On a peer's listener the TLS factor is enforced at the handshake.** The peer's `Bun.serve` is
+> built with `ca: [<its lead's certificate>] · requestCert · rejectUnauthorized`, so BoringSSL
+> verifies the presented chain before a byte of HTTP exists. **An unpinned certificate, or none, is a
+> transport refusal — not the uniform 401.** That is a deliberate narrowing of the paragraph above,
+> forced by a measured fact: Bun 1.3.14 can *enforce* a client certificate on `Bun.serve` but exposes
+> no way to *read* one (no accessor on `Server`, on `Request`, or through `node:https`), so a
+> fingerprint cannot be compared in the router. It reveals **less**, not more — §8.5's "learns only
+> that something is listening and speaks TLS" survives intact, and the uniform 401 still covers the
+> secret factor and everything above it.
+>
+> Two consequences follow, and both are load-bearing:
+>
+> - **A peer's `ca` list holds exactly one certificate.** A peer's roster holds exactly one member
+>   (§8.2 step 4), so an admitted connection can only be its lead. Admission therefore takes the
+>   transport's verdict as a **boolean attestation** (`transportPinned`) set by the code that built
+>   the listener, never read from a header — and resolves it to the pinned lead. A peer that cannot
+>   build its anchor sets it `false` and refuses **everything**: down, never single-factor.
+> - **The lead's own listener pins nothing, and cannot.** Its pack surface rides the front door, and
+>   `tailscale serve` — or any conforming reverse proxy (README Variant C) — terminates TLS before
+>   the process sees the connection. No client certificate survives to a lead under any design. The
+>   peer→lead direction re-establishes the second factor at the application layer instead: **§8.6**.
+>
+> **There is no live re-pin.** `server.reload({ tls })` does not swap a pinned `ca`; a membership
+> change takes effect through the restart every membership verb already performs.
+>
+> **`COLLIE_PEER_BROWSER=1` and a pinned listener are mutually exclusive.** A browser cannot present
+> the lead's client certificate, so on a pinned peer that flag's surface is unreachable. The bridge
+> warns and pins anyway — the pack's factor is not weakened for an opt-in convenience.
+>
+> **Promotion is bounded by this.** A peer pins its *current* lead, so a newly promoted member's
+> handshake is refused by every other peer until that peer re-joins. With two members promotion is
+> unaffected (the claim goes to the old lead, over §8.6). With three or more, the peers that are not
+> the old lead must be re-enrolled — which is the rule §14 and §8.4 already state for an unreachable
+> member, now reached for a second reason.
+
 ### 8.2 Enrollment — `collie join <lead-address> <token>`
 
 Run **on the peer**, once.
@@ -281,8 +318,8 @@ Run **on the peer**, once.
 
    | Item | Direction | Persisted by |
    |---|---|---|
-   | Peer's certificate fingerprint | peer → lead | lead (pinned) |
-   | Lead's certificate fingerprint | lead → peer | peer (pinned) |
+   | Peer's certificate **and** its fingerprint | peer → lead | lead (pinned) |
+   | Lead's certificate **and** its fingerprint | lead → peer | peer (pinned) |
    | Pack secret | lead → peer | both |
    | Pack identity (pack id + human name) | lead → peer | both |
    | Peer's member id (minted by the lead) | lead → peer | both |
@@ -293,6 +330,29 @@ Run **on the peer**, once.
 **`<lead-address>` is whatever the operator can reach.** Any network: tailnet, LAN, WireGuard,
 someone else's overlay, an SSH tunnel. Collie owns authentication; **the operator owns reachability**.
 There is no discovery, no enumeration, and no overlay-network integration — ever.
+
+> **Amended 2026-08-07 — what actually authenticates an enrollment, stated rather than implied.**
+>
+> **The token and the payload. Not the transport. Trust-on-first-use, at the moment of `join`.**
+>
+> This was always true and used to read as though mutual TLS covered it. It cannot: enrollment is
+> answered by the **lead**, whose surface sits behind a TLS-terminating front door, so no client
+> certificate reaches the process (§8.1's amendment). And it could not be otherwise even in
+> principle — at this instant the joiner is pinned by nobody, which is the entire reason an
+> enrollment exchange exists.
+>
+> So the guarantees are exactly these, and no more:
+> - the **single-use, ten-minute token** the operator carried out of band is what vouches for the
+>   certificate in the payload;
+> - the **certificate travels with its fingerprint**, and each side refuses a payload whose
+>   certificate does not hash to the stated fingerprint — so what is pinned is provably what the
+>   sender will present, and a pin can never be persisted in two disagreeing halves;
+> - **the certificate itself is transferred**, not only its hash. A hash cannot be enforced: BoringSSL
+>   anchors on certificates, and Bun offers no fingerprint-pinning hook. A member holding only a hash
+>   could compare a pin it had no way to check.
+>
+> Everything *after* the exchange is two-factor (§8.1, §8.6). The exchange itself is one factor, on
+> purpose, and it is the operator's ten-minute window that bounds it (§8.5).
 
 ### 8.3 Secrets never touch argv
 
@@ -355,6 +415,48 @@ Stated plainly, because a pack link is remote shell access to a second machine.
 - **`tailscale whois` is an optional extra, never a factor.** A `COLLIE_TRUSTED_USER`-shaped narrowing
   on top of a gate that already holds without it (`bridge/server.ts:1144-1149` is the existing shape).
   It is never discovery and the model never depends on it.
+
+### 8.6 Signed membership requests (added 2026-08-07)
+
+The peer → lead direction cannot pin at the handshake (§8.1's amendment), and the two requests that
+travel it are the most consequential in the protocol: `leave` removes a member from a roster, and
+`lead` moves the crown (§14). The pack secret is **pack-wide**, so with it alone any member could
+speak for any other. The second factor is therefore re-established over material both sides already
+pinned — no new key, no new trust, the same guarantee the handshake gives the other way.
+
+**`POST /pack/v1/leave` and `POST /pack/v1/lead` MUST carry a signature.** `GET /pack/v1/hello` MAY,
+and does when a verb sends it, so `collie pack status` and `collie reconnect` can probe a lead at
+all. Nothing else may: the proxy surface (§5) runs lead → peer over a pinned handshake, and hashing a
+body to verify a signature there would pull a streamed upload (§13) into memory on the security path.
+`/pack/v1/enroll` cannot — at that instant nobody has pinned the caller (§8.2).
+
+- **`X-Pack-Signature`** — base64 ECDSA-P256-SHA256 over the canonical string, made with the private
+  key behind the sender's **pinned** certificate and verified with that certificate's public key.
+- **`X-Pack-Timestamp`** — epoch milliseconds, decimal.
+- **The canonical string**, exactly:
+
+  ```
+  <METHOD>\n<path>\n<sha256(body) hex>\n<timestamp>
+  ```
+
+  Four fields, each closing one substitution: the **method** so a signed `POST` is not replayable as
+  something else; the **path** so a body cannot be moved from `leave` to `lead`; the **body digest**
+  because §14's claim lives *in* the body; the **timestamp** so a capture cannot be re-stamped
+  forward. The **query string is deliberately absent** — no signable route takes one, and signing a
+  value no route reads is a rule that silently stops holding the day one does. The **host is absent
+  too**: an address is a hint the operator may re-point (§4), and binding a signature to it would
+  make roaming a signature failure.
+
+- **Skew: ±5 minutes**, both directions. A future timestamp is refused as firmly as a past one —
+  parking a captured request for later is what a future stamp buys.
+- **Replay: strictly monotonic per member.** A timestamp must be **greater than** the last one this
+  collie admitted from that member; the floor is persisted (`TrustedMember.signedAt`), because a
+  counter that resets on restart is no counter and every membership verb restarts the bridge. The
+  floor moves **before** the request is handled. It is advanced only for the membership routes, which
+  are the state-changing ones — a replayed `hello` changes nothing and is bounded by the skew window.
+- **A failure at any step is the uniform 401** of §8.1 — indistinguishable from a wrong secret, an
+  unpinned certificate, or an unknown member. The signature is checked **before** the timestamp, so a
+  caller who cannot sign learns nothing about this collie's clock or about what it has already seen.
 
 ---
 
@@ -527,6 +629,23 @@ bound port count**, **the absence of a second timer / peer sweep at runtime**, a
 payload** for a primary-session alert. Those four are the integration harness's charter; everything
 else in the table is covered by the unit baseline today.
 
+> **Status 2026-08-07 — the harness landed (`bridge/pack/harness.test.ts`); three of the four rows
+> are now measured.**
+>
+> - **Status codes per route** — measured on a live solo instance: `/api/snapshot`, `/api/config` and
+>   a real pane read answer today's codes, and `/pack/v1/*` is **indistinguishable from an arbitrary
+>   unknown path** (same status, no version banner). Asserted as indistinguishability rather than as a
+>   literal `404`, because the code depends on whether a frontend build is present and the promise
+>   does not.
+> - **Bound port count** — measured: exactly one, and its neighbour is closed.
+> - **No second timer** — measured indirectly, and the indirection is the honest form of the claim:
+>   the lead's call rate to its *own* Herdr is recorded while solo and re-measured once it leads a
+>   pack, and must not move. A lead that had armed a sweep timer of its own would poll on two clocks.
+> - **Live push payload** — **still out of reach.** It needs VAPID keys, a real subscription and a web
+>   push endpoint; the harness has none, and `web-push` is an optional dependency. Its shape stays
+>   pinned by `push.test.ts` at the unit layer. Closing it properly is M5/M6's, and it needs a
+>   loopback push receiver, not a bigger pack harness.
+
 ---
 
 ## 12. Writes and audit attribution
@@ -581,6 +700,17 @@ Transparent failover is a non-goal.**
 - The pack identity, the pack secret and existing pinned certificates are **reused** — promotion is a
   role change, not a re-enrollment. What changes is which member holds the front door and which
   address the others dial.
+- **The claim is signature-authenticated** (added 2026-08-07). `POST /pack/v1/lead` carries §8.6's
+  signature, made with the key behind the claimant's pinned certificate, over a canonical string that
+  includes the body — so the claim *and* the certificate travelling with it are under the signature.
+  A member may still only claim leadership for itself (the claimed id must be the admitted one), and
+  the two rules are complementary: the signature proves *who is speaking*, the id check stops them
+  nominating a third party. Without this, a pack-wide secret plus a lead whose front door terminates
+  TLS (§8.1) would let any member move the crown to any other.
+- **Only the old lead is reachable by the promotion itself** (added 2026-08-07). Every other peer pins
+  its *current* lead at the handshake, so the new lead's connection is refused until that peer
+  re-joins. With two members this changes nothing. With three or more, the peers that are not the old
+  lead fall under the re-enrollment rule below — for a second reason, on top of unreachability.
 - Every remaining peer must be told the new lead's address. Reachable peers are updated by the
   promotion itself; **a peer that is unreachable during promotion must be re-enrolled** (`collie join`
   against the new lead, fresh token) — the same rule rotation uses (§8.4), for the same reason.

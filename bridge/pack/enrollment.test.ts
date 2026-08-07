@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { X509Certificate } from "node:crypto";
+
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import {
   acceptEnrollment,
@@ -7,6 +9,7 @@ import {
   adoptSecret,
   commitPackChange,
   demoteSelf,
+  identityMinter,
   isLeading,
   parseRoster,
   promoteSelf,
@@ -25,19 +28,18 @@ import {
   removeMember,
   rotatePackSecret,
   selfIdentity,
-  unmintableIdentity,
 } from "./enrollment.ts";
-import { hashToken, isMemberId } from "./identity.ts";
+import { fingerprintOfCert, hashToken, isMemberId } from "./identity.ts";
 import { TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
 import { counterRandom, fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
 
 const R = () => counterRandom("r");
 
 describe("this collie's own identity", () => {
-  test("the default minter REFUSES rather than enrolling with an unpinnable certificate", async () => {
-    // The stub is the honest state of the world: nothing in this dependency tree can issue an X.509
-    // certificate. Enrollment fails loudly instead of pinning a placeholder.
-    await expect(unmintableIdentity()).rejects.toThrow(/certificate minting is not wired/);
+  test("identityMinter really mints — the fingerprint matches the certificate, and the PEMs parse", async () => {
+    const minted = await identityMinter({ commonName: "collie-test" })();
+    expect(fingerprintOfCert(minted.certPem)).toBe(minted.fingerprint);
+    expect(() => new X509Certificate(minted.certPem)).not.toThrow();
   });
 
   test("a fresh store is an identity and nothing else — no pack, no roster, no invites", () => {
@@ -74,7 +76,9 @@ describe("invites", () => {
   test("the token is returned once and stored only as a hash", () => {
     const { next, result } = mintInvite(fresh, { now: T0, random: R() });
     expect(next.invites[0]!.tokenHash).toBe(hashToken(result.token));
-    expect(JSON.stringify(next)).not.toContain(result.token);
+    // Scoped to `invites` (not the whole store): `next.self` now carries a real minted certificate,
+    // whose base64 can coincidentally contain a short deterministic token like "r1" as a substring.
+    expect(JSON.stringify(next.invites)).not.toContain(result.token);
   });
 
   test("it expires in ten minutes (§8.2)", () => {
@@ -132,16 +136,23 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
   const lead = leadStore();
 
   test("the lead pins the peer, mints its id, and hands back every listed item", () => {
-    const change = enrollPeer(lead, { fingerprint: fp("laptop"), address: "laptop.ts.net:8787", label: "laptop" }, T0, R())!;
+    const change = enrollPeer(
+      lead,
+      { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "laptop.ts.net:8787", label: "laptop" },
+      T0,
+      R(),
+    )!;
     expect(change.next.peers).toEqual([
       {
         memberId: "laptop",
         fingerprint: fp("laptop"),
+        certPem: material("laptop").certPem,
         address: "laptop.ts.net:8787",
         role: "peer",
         status: "enrolled",
         enrolledAt: T0,
         secretGeneration: 1,
+        signedAt: 0,
       },
     ]);
     expect(change.result).toEqual({
@@ -153,25 +164,43 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
       memberId: "laptop",
       leadMemberId: "desk",
       leadFingerprint: fp("desk"),
+      leadCertPem: material("desk").certPem,
     });
   });
 
   test("a collie with no pack cannot enroll anybody", () => {
-    expect(enrollPeer(leadStore({ pack: null }), { fingerprint: fp("x"), address: "a", label: null }, T0)).toBeNull();
+    expect(
+      enrollPeer(leadStore({ pack: null }), { fingerprint: fp("x"), certPem: material("x").certPem, address: "a", label: null }, T0),
+    ).toBeNull();
   });
 
   test("a member id never collides with an existing peer or with the lead itself", () => {
     const crowded = leadStore({ peers: [member({ memberId: "laptop" })] });
-    const minted = enrollPeer(crowded, { fingerprint: fp("other"), address: "a", label: "laptop" }, T0, R())!;
+    const minted = enrollPeer(
+      crowded,
+      { fingerprint: fp("other"), certPem: material("other").certPem, address: "a", label: "laptop" },
+      T0,
+      R(),
+    )!;
     expect(minted.result.memberId).toBe("laptop-r1");
-    const asLead = enrollPeer(leadStore(), { fingerprint: fp("other"), address: "a", label: "desk" }, T0, R())!;
+    const asLead = enrollPeer(
+      leadStore(),
+      { fingerprint: fp("other"), certPem: material("other").certPem, address: "a", label: "desk" },
+      T0,
+      R(),
+    )!;
     expect(asLead.result.memberId).toBe("desk-r1");
     expect(isMemberId(asLead.result.memberId)).toBe(true);
   });
 
   test("a RE-JOIN keeps the member id and re-pins — the documented recovery from a missed rotation", () => {
     const dropped = leadStore({ peers: [member({ memberId: "laptop", fingerprint: fp("laptop"), status: "unenrolled" })] });
-    const again = enrollPeer(dropped, { fingerprint: fp("laptop"), address: "new.addr:1", label: "whatever" }, T0 + 5, R())!;
+    const again = enrollPeer(
+      dropped,
+      { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "new.addr:1", label: "whatever" },
+      T0 + 5,
+      R(),
+    )!;
     expect(again.result.memberId).toBe("laptop");
     expect(again.next.peers).toHaveLength(1);
     expect(again.next.peers[0]!.status).toBe("enrolled");
@@ -181,7 +210,12 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
   test("the peer adopts the pack, pins the lead, and takes the id the lead minted", () => {
     const joining = createTrustStore(selfIdentity("placeholder", material("laptop"), T0));
-    const res = enrollPeer(lead, { fingerprint: fp("laptop"), address: "a", label: "laptop" }, T0, R())!.result;
+    const res = enrollPeer(
+      lead,
+      { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "a", label: "laptop" },
+      T0,
+      R(),
+    )!.result;
     const change = acceptEnrollment(joining, res, "desk.ts.net:8787", T0 + 1);
     expect(change.next.self.memberId).toBe("laptop");
     expect(change.next.self.keyPem).toBe(joining.self.keyPem);
@@ -195,23 +229,37 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
     expect(change.next.lead).toEqual({
       memberId: "desk",
       fingerprint: fp("desk"),
+      certPem: material("desk").certPem,
       address: "desk.ts.net:8787",
       role: "lead",
       status: "enrolled",
       enrolledAt: T0 + 1,
       secretGeneration: 1,
+      signedAt: 0,
     });
   });
 
   test("a peer's roster gains EXACTLY one entry — a peer has no peers", () => {
     const confused = { ...peerStore(), peers: [member({ memberId: "nas" })] };
-    const res = enrollPeer(lead, { fingerprint: fp("laptop"), address: "a", label: "laptop" }, T0, R())!.result;
+    const res = enrollPeer(
+      lead,
+      { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "a", label: "laptop" },
+      T0,
+      R(),
+    )!.result;
     expect(acceptEnrollment(confused, res, "a", T0).next.peers).toEqual([]);
   });
 });
 
 describe("the exchange — parsing untrusted payloads", () => {
-  const req = { protocol: 1, token: "t", fingerprint: fp("laptop"), address: "a:1", label: "laptop" };
+  const req = {
+    protocol: 1,
+    token: "t",
+    fingerprint: fp("laptop"),
+    certPem: material("laptop").certPem,
+    address: "a:1",
+    label: "laptop",
+  };
 
   test("a well-formed request parses, normalising the fingerprint", () => {
     const colons = fp("laptop").match(/../g)!.join(":").toUpperCase();
@@ -242,6 +290,7 @@ describe("the exchange — parsing untrusted payloads", () => {
       memberId: "laptop",
       leadMemberId: "desk",
       leadFingerprint: fp("desk"),
+      leadCertPem: material("desk").certPem,
     };
     expect(parseEnrollResponse(res)).toEqual(res);
     expect(parseEnrollResponse({ ...res, memberId: "Laptop" })).toBeNull();
@@ -424,7 +473,7 @@ describe("adoptSecret", () => {
 
 describe("adoptLead / demoteSelf / promoteSelf", () => {
   // `peerStore()` is "laptop", enrolled by "desk"; the pack is promoting "nas".
-  const claim = { memberId: "nas", fingerprint: fp("nas"), address: "nas.example:8787" };
+  const claim = { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" };
 
   test("a peer re-pins the new lead and keeps its id, its pack and its secret — a role change", () => {
     const before = peerStore();
@@ -436,7 +485,9 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
   });
 
   test("adopting the lead already pinned at that address changes nothing", () => {
-    expect(adoptLead(peerStore(), { memberId: "desk", fingerprint: fp("desk"), address: "desk.example:8787" }, T0)).toBeNull();
+    expect(
+      adoptLead(peerStore(), { memberId: "desk", fingerprint: fp("desk"), certPem: material("desk").certPem, address: "desk.example:8787" }, T0),
+    ).toBeNull();
   });
 
   test("a collie never adopts ITSELF as lead", () => {
@@ -462,7 +513,14 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
 
   test("promoteSelf takes the roster it is GIVEN, so --force is the same code with an empty list", () => {
     const store = peerStore();
-    const full = promoteSelf(store, [rosterEntryOf(member({ memberId: "desk", role: "lead" })), { memberId: "nas", fingerprint: fp("nas"), address: "nas:1" }], T0)!;
+    const full = promoteSelf(
+      store,
+      [
+        rosterEntryOf(member({ memberId: "desk", role: "lead" })),
+        { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas:1" },
+      ],
+      T0,
+    )!;
     expect(full.next.lead).toBeNull();
     expect(full.next.peers.map((p) => p.memberId)).toEqual(["desk", "nas"]);
     expect(full.next.peers.every((p) => p.role === "peer" && p.secretGeneration === PACK.secretGeneration)).toBe(true);
@@ -474,7 +532,11 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
   });
 
   test("promotion never puts this collie in its own roster", () => {
-    const change = promoteSelf(peerStore(), [{ memberId: "laptop", fingerprint: fp("laptop"), address: "x:1" }], T0)!;
+    const change = promoteSelf(
+      peerStore(),
+      [{ memberId: "laptop", fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "x:1" }],
+      T0,
+    )!;
     expect(change.next.peers).toEqual([]);
   });
 });
@@ -502,16 +564,28 @@ describe("updateMemberAddress", () => {
 describe("parseRoster", () => {
   test("accepts a well-formed roster and normalises the fingerprint spelling", () => {
     const upper = fp("nas").toUpperCase().replace(/(..)(?=.)/g, "$1:");
-    expect(parseRoster([{ memberId: "nas", fingerprint: upper, address: "nas:1" }])).toEqual([
-      { memberId: "nas", fingerprint: fp("nas"), address: "nas:1" },
-    ]);
+    expect(
+      parseRoster([{ memberId: "nas", fingerprint: upper, certPem: material("nas").certPem, address: "nas:1" }]),
+    ).toEqual([{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas:1" }]);
   });
 
   test("one bad row rejects the whole roster — a partial roster is an unpinned member", () => {
-    expect(parseRoster([{ memberId: "nas", fingerprint: fp("nas"), address: "nas:1" }, { memberId: "!" }])).toBeNull();
+    expect(
+      parseRoster([
+        { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas:1" },
+        { memberId: "!" },
+      ]),
+    ).toBeNull();
     expect(parseRoster("nope")).toBeNull();
     expect(parseRoster([{ memberId: "nas", fingerprint: "short", address: "a" }])).toBeNull();
-    expect(parseRoster([{ memberId: "nas", fingerprint: fp("nas"), address: "" }])).toBeNull();
+    expect(
+      parseRoster([{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "" }]),
+    ).toBeNull();
+    // The certificate and fingerprint must be the same certificate (§8.2) — a row that names one and
+    // presents another is refused rather than pinned with the two disagreeing.
+    expect(
+      parseRoster([{ memberId: "nas", fingerprint: fp("nas"), certPem: material("stranger").certPem, address: "nas:1" }]),
+    ).toBeNull();
   });
 });
 

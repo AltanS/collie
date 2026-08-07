@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { join } from "node:path";
 
 import type { AuditLog } from "../bridge/audit.ts";
@@ -18,12 +19,14 @@ import {
   selfIdentity,
   updateMemberAddress,
   createTrustStore,
-  unmintableIdentity,
+  identityMinter,
   type IdentityMinter,
   type RosterEntry,
   PACK_PROTOCOL_VERSION,
 } from "../bridge/pack/enrollment.ts";
 import { mintMemberId, randomToken, type RandomSource } from "../bridge/pack/identity.ts";
+import { signRequest } from "../bridge/pack/signing.ts";
+import { dialTls } from "../bridge/pack/transport.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
 import {
   packTimeoutBudget,
@@ -115,14 +118,31 @@ function timeoutFor(ctx: CliContext): number {
  * been handed it would refuse a request carrying it (§8.4 — no grace window, so the lead must dial
  * with the value the peer still holds).
  */
-function clientFor(deps: PackDeps, self: string, secret: string): PeerClient {
+function clientFor(deps: PackDeps, data: TrustStoreData, secret: string): PeerClient {
   return new PeerClient({
-    self,
+    self: data.self.memberId,
     secret: () => secret,
     timeoutMs: timeoutFor(deps.ctx),
     fetch: deps.fetch,
     now: deps.now,
+    // Pin whichever member this dial is aimed at (§8.1). A verb only ever dials a member already in
+    // this store, so the lookup is total in practice and a miss is a member we must not dial pinless.
+    tls: (link) => {
+      const member = memberById(data, link.memberId);
+      return member === undefined ? undefined : (dialTls(data, member) ?? undefined);
+    },
+    // EVERY CLI-ORIGINATED CALL IS SIGNED (§8.6), not only the two that require it. The verbs are the
+    // peer→lead direction, where the transport cannot pin (`bridge/pack/transport.ts`); signing the
+    // whole set means `pack status` and `reconnect` can probe a lead at all, and it costs one ECDSA
+    // signature per one-shot command. The receiver only *requires* one on the membership routes.
+    sign: (parts) => signRequest(data.self.keyPem, parts),
   });
+}
+
+/** A member of this collie's roster by id — its lead, or one of its peers. */
+function memberById(data: TrustStoreData, memberId: string): TrustedMember | undefined {
+  if (data.lead !== null && data.lead.memberId === memberId) return data.lead;
+  return data.peers.find((p) => p.memberId === memberId);
 }
 
 const linkOf = (member: TrustedMember): PackLink => ({
@@ -229,9 +249,9 @@ export async function readToken(
  *
  * Materialisation happens **here and on no other path**: minting an invite or answering one are the
  * operator's first pack actions, and until one of them happens a solo instance has no file, no key
- * and no roster (PACK_PROTOCOL.md §11). The minter refuses in this build (`unmintableIdentity`), and
- * that refusal is surfaced verbatim rather than worked around — enrolling with a placeholder
- * certificate would make an unpinnable link look pinned.
+ * and no roster (PACK_PROTOCOL.md §11). This is the ONLY call site of the minter in the codebase,
+ * which is what makes "solo mints nothing" a structural fact rather than a promise: there is no other
+ * path on which a key could come into existence.
  */
 async function ensureStore(deps: PackDeps, label: string | undefined): Promise<TrustStoreData | null> {
   const existing = await deps.store.load();
@@ -384,6 +404,11 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
         protocol: PACK_PROTOCOL_VERSION,
         token,
         fingerprint: data.self.fingerprint,
+        // The certificate itself, not only its hash: the lead pins by fingerprint but ENFORCES by
+        // certificate (its dial's `ca` list), and it has no other way to obtain the material. The
+        // lead re-derives the fingerprint from these bytes and refuses a payload where the two
+        // disagree, so sending both adds a cross-check rather than a second source of truth.
+        certPem: data.self.certPem,
         address: mine,
         label: flags.label ?? null,
       }),
@@ -478,7 +503,7 @@ export async function cmdLeave(deps: PackDeps): Promise<number> {
 
   let revoked = false;
   if (data.lead !== null) {
-    const client = clientFor(deps, data.self.memberId, data.pack.secret);
+    const client = clientFor(deps, data, data.pack.secret);
     const outcome = await client.json(linkOf(data.lead), "leave", undefined, {
       method: "POST",
       headers: CONTENT_TYPE,
@@ -593,7 +618,7 @@ function probeMembers(
   members: readonly TrustedMember[],
 ): Promise<Map<string, PeerOutcome<unknown>>> {
   const secret = data.pack?.secret ?? "";
-  const client = clientFor(deps, data.self.memberId, secret);
+  const client = clientFor(deps, data, secret);
   return sweepPeers<PeerOutcome<unknown>>(
     members.filter((m) => m.status === "enrolled").map(linkOf),
     (link) => client.hello(link),
@@ -631,7 +656,7 @@ export async function cmdPackRotate(deps: PackDeps): Promise<number> {
   if (next === null || next === undefined) return EXIT.FAIL;
   deps.io.out(`rotating to generation ${rotated.secretGeneration} — the previous secret is already dead here.`);
 
-  const client = clientFor(deps, data.self.memberId, previous);
+  const client = clientFor(deps, data, previous);
   const targets = data.peers.filter((p) => p.status === "enrolled");
   const outcomes = await sweepPeers(targets.map(linkOf), (link) =>
     client.json(link, "secret", undefined, {
@@ -724,9 +749,12 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
   const claim: RosterEntry = {
     memberId: data.self.memberId,
     fingerprint: data.self.fingerprint,
+    // The certificate travels with the claim so a recipient that has never pinned this member can.
+    // It authenticates nothing by itself — §8.6's signature over the request does that (§14).
+    certPem: data.self.certPem,
     address: mine,
   };
-  const client = clientFor(deps, data.self.memberId, data.pack.secret);
+  const client = clientFor(deps, data, data.pack.secret);
   const handover = await client.json(linkOf(data.lead), "lead", undefined, {
     method: "POST",
     headers: CONTENT_TYPE,
@@ -846,7 +874,7 @@ export async function cmdReconnect(deps: PackDeps, args: readonly string[]): Pro
   }
   deps.io.out(`✓ "${target}" moved from ${moved.from} to ${address} — its pinned certificate is unchanged.`);
 
-  const client = clientFor(deps, data.self.memberId, data.pack.secret);
+  const client = clientFor(deps, data, data.pack.secret);
   const outcome = await client.hello({ memberId: target, address });
   deps.io.out(outcome.ok ? "  it answered there." : `  it did not answer there yet — ${failureLine(outcome)}`);
   await applyLocally(deps, "the new address");
@@ -912,7 +940,18 @@ export function packDeps(
     fetch: (url, init) => fetch(url, init),
     now: () => Date.now(),
     random: randomToken,
-    mintIdentity: unmintableIdentity,
+    // Built per call, NOT eagerly: `tailnetName` shells out to `tailscale`, and `packDeps` is
+    // constructed for every pack verb — including the ones that never mint. An eager build would
+    // make `collie pack status` run a tailnet lookup it has no use for.
+    //
+    // The CN and SANs are legibility, not trust: a pin is a fingerprint and the dialling side
+    // overrides the name check (`bridge/pack/transport.ts`), so a member that roams stays the same
+    // member. They are filled in anyway so `openssl x509 -text` on this file says something true.
+    mintIdentity: () =>
+      identityMinter({
+        commonName: `collie-${hostname()}`,
+        sans: [tailnetName(base.exec) ?? "", hostname(), "localhost", "127.0.0.1"],
+      })(),
     readStdin: () => new Response(Bun.stdin.stream()).text(),
     clearNotifications: (tags) => clearViaPush(base.ctx, tags),
   };

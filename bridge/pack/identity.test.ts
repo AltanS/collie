@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { sign, verify, X509Certificate } from "node:crypto";
 
 import {
   bearerToken,
   fingerprintFromDer,
+  fingerprintOfCert,
   hashToken,
+  mintIdentity,
   isFingerprint,
   isMemberId,
   mintMemberId,
@@ -119,5 +122,73 @@ describe("bearerToken", () => {
     expect(bearerToken("Bearer a b")).toBeNull();
     expect(bearerToken(null)).toBeNull();
     expect(bearerToken("")).toBeNull();
+  });
+});
+
+// ── Minting ──────────────────────────────────────────────────────────────────
+
+describe("minting this collie's certificate", () => {
+  test("it is a v3 EC certificate a real X.509 parser accepts", () => {
+    const minted = mintIdentity({ commonName: "collie-desk", sans: ["desk.example", "127.0.0.1"] });
+    const cert = new X509Certificate(minted.certPem);
+    expect(cert.subject).toContain("CN=collie-desk");
+    // Self-signed: issuer IS subject. Not cosmetic — a certificate whose issuer differs would not
+    // verify against itself as a trust anchor, which is the only way it is ever used (§8.1).
+    expect(cert.issuer).toBe(cert.subject);
+    expect(cert.ca).toBe(true);
+    expect(cert.subjectAltName).toContain("desk.example");
+    expect(cert.subjectAltName).toContain("127.0.0.1");
+    // Ten years (§8.1: expiry is not a trust boundary, the pin is).
+    const years = (Date.parse(cert.validTo) - Date.parse(cert.validFrom)) / (365.25 * 24 * 3600 * 1000);
+    expect(years).toBeGreaterThan(9.9);
+    expect(years).toBeLessThan(10.1);
+  });
+
+  test("the private key really signs for the public key in the certificate", () => {
+    const minted = mintIdentity({ commonName: "collie-desk" });
+    const message = Buffer.from("a pack request");
+    const signature = sign("sha256", message, minted.keyPem);
+    expect(verify("sha256", message, new X509Certificate(minted.certPem).publicKey, signature)).toBe(true);
+  });
+
+  test("the fingerprint is EXACTLY what `X509Certificate.fingerprint256` says, canonically spelled", () => {
+    const minted = mintIdentity({ commonName: "collie-desk" });
+    const cert = new X509Certificate(minted.certPem);
+    expect(minted.fingerprint).toBe(cert.fingerprint256.replace(/:/g, "").toLowerCase());
+    expect(minted.fingerprint).toBe(fingerprintFromDer(cert.raw));
+    expect(fingerprintOfCert(minted.certPem)).toBe(minted.fingerprint);
+    expect(isFingerprint(minted.fingerprint)).toBe(true);
+    // The colon-separated spelling normalises to the same value — one pin, one string (§8.1).
+    expect(normalizeFingerprint(cert.fingerprint256) ?? "").toBe(minted.fingerprint);
+  });
+
+  test("every mint is a different certificate", () => {
+    const a = mintIdentity({ commonName: "collie-desk" });
+    const b = mintIdentity({ commonName: "collie-desk" });
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+  });
+
+  test("an unparseable certificate has no fingerprint, rather than a plausible one", () => {
+    expect(fingerprintOfCert("not a certificate")).toBeNull();
+    expect(fingerprintOfCert("-----BEGIN CERTIFICATE-----\nnope\n-----END CERTIFICATE-----\n")).toBeNull();
+  });
+
+  test("openssl agrees, where openssl exists", () => {
+    // A second, INDEPENDENT parser. `X509Certificate` and our encoder could in principle agree on a
+    // shared misreading of RFC 5280; BoringSSL-via-openssl could not be in on it. Skipped rather
+    // than failed where openssl is absent — this is corroboration, not the contract.
+    const openssl = Bun.which("openssl");
+    if (openssl === null) return;
+    const minted = mintIdentity({ commonName: "collie-openssl", sans: ["probe.example"] });
+    const shown = Bun.spawnSync([openssl, "x509", "-noout", "-text"], { stdin: Buffer.from(minted.certPem) });
+    const text = shown.stdout.toString();
+    expect(shown.exitCode).toBe(0);
+    expect(text).toContain("ecdsa-with-SHA256");
+    expect(text).toContain("CA:TRUE");
+    // The keyUsage BIT STRING is the one byte-level detail that fails late and opaquely when wrong
+    // (`KEY_USAGE_BIT_INCORRECT` at `Bun.serve` bind time), so it is read back from a real parser.
+    expect(text).toContain("Digital Signature, Certificate Sign");
+    expect(text).toContain("TLS Web Server Authentication, TLS Web Client Authentication");
+    expect(text).toContain("DNS:probe.example");
   });
 });

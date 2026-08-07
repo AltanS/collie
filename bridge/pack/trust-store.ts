@@ -80,6 +80,17 @@ export interface TrustedMember {
   readonly memberId: string;
   /** The pinned certificate fingerprint. Pairwise: this is *our* pin of *them* (§8.1). */
   readonly fingerprint: string;
+  /**
+   * The pinned certificate itself, PEM.
+   *
+   * **The fingerprint is the pin; this is the material that lets the pin be *enforced*.** BoringSSL
+   * verifies a peer's chain against a `ca` list of certificates, and Bun exposes no hook that pins by
+   * fingerprint instead — so a store holding only a hash could compare pins it had no way to check.
+   * It is also the public key §8.6's signatures are verified with. Storing it costs nothing in trust:
+   * a certificate is a public document, and {@link TrustedMember.fingerprint} is derived from these
+   * exact bytes, so the two can never disagree.
+   */
+  readonly certPem: string;
   /** Where this collie dials or expects the member. A hint — never an identity (§4). */
   readonly address: string;
   readonly role: "lead" | "peer";
@@ -87,6 +98,14 @@ export interface TrustedMember {
   readonly enrolledAt: number;
   /** The secret generation this member is known to hold. Behind `pack.secretGeneration` = stale. */
   readonly secretGeneration: number;
+  /**
+   * The `X-Pack-Timestamp` of the last signed request this collie **admitted** from this member
+   * (§8.6). `0` until one arrives.
+   *
+   * Persisted rather than held in memory because every membership verb restarts the bridge — a replay
+   * window that reopens on restart is not a replay window at all.
+   */
+  readonly signedAt: number;
 }
 
 /**
@@ -134,11 +153,14 @@ function isMember(value: unknown): value is TrustedMember {
   return (
     isMemberId(m.memberId) &&
     isFingerprint(m.fingerprint) &&
+    typeof m.certPem === "string" &&
+    m.certPem.includes("BEGIN CERTIFICATE") &&
     typeof m.address === "string" &&
     (m.role === "lead" || m.role === "peer") &&
     (m.status === "enrolled" || m.status === "unenrolled") &&
     typeof m.enrolledAt === "number" &&
-    typeof m.secretGeneration === "number"
+    typeof m.secretGeneration === "number" &&
+    typeof m.signedAt === "number"
   );
 }
 

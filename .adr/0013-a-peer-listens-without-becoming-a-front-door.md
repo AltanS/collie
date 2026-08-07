@@ -121,6 +121,21 @@ the lead.** 0001's criterion is untouched — *we manage only what we run and ca
   [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md), and this ADR is the reason it is not optional.
 - **Every non-tailnet deployment stays the operator's, exactly as ADR 0001 promised.** Collie
   publishes nothing new; a pack listener is a listener, not an ingress Collie supervises.
+- **(Added 2026-08-07, implementation) The certificate factor is enforced at the *handshake*, and the
+  two directions are not symmetric.** "Two independent factors, both, always, before routing" holds
+  in both directions; *where* the first one is checked differs, because Bun 1.3.14 can **enforce** a
+  client certificate on `Bun.serve` but exposes no way to **read** one. So a **peer** pins its lead in
+  the listener's `ca` (an unpinned caller is refused before HTTP exists — a transport refusal, which
+  reveals less than the uniform 401 and does not weaken §8.5), while a **lead** pins nothing inbound:
+  its pack surface rides the front door, and `tailscale serve` or a conforming proxy terminates TLS
+  before the process sees the connection. Peer→lead requests carry a signature over the request,
+  verified against the pinned certificate, instead (`PACK_PROTOCOL.md` §8.6). Three follow-ons worth
+  keeping in view: a peer's `ca` holds exactly one certificate, so admission takes the transport's
+  verdict as a boolean set by the code that built the listener rather than as a readable identity;
+  there is **no live re-pin** (`server.reload` does not swap `ca`), so membership changes land through
+  the restart the verbs already perform; and `COLLIE_PEER_BROWSER=1` cannot coexist with a pinned
+  listener, because a browser has no client certificate to present. This narrows the decision's
+  *mechanism*, not its criterion — a peer still has a pack listener and still has no front door.
 
 ### What would justify revisiting
 

@@ -14,6 +14,7 @@
     "web:dev": "cd web && bun run dev",
     "test": "bun test ./bridge ./cli && bash scripts/collie-ctl.test.sh && bash scripts/collie-cli.test.sh",
     "test:ctl": "bash scripts/collie-ctl.test.sh",
+    "test:pack": "bun test ./bridge/pack/harness.test.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
