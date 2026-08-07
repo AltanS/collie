@@ -66,7 +66,20 @@ export type PackFetch = (url: string, init: RequestInit) => Promise<Response>;
 /** Why a peer is not answering usefully. The three states of §10.2, minus `reachable`. */
 export type PeerFailure =
   /** Timeout, connection refused, TLS failure, auth failure — retried on the poll cadence. */
-  | { readonly state: "unreachable"; readonly reason: string }
+  | {
+      readonly state: "unreachable";
+      readonly reason: string;
+      /**
+       * Whether the request reached the transport at all.
+       *
+       * Only ever `false` when this module can PROVE nothing was sent (no pack secret, an address it
+       * refuses to dial). Absent or `true` means it may have been written to a socket, which for a
+       * write is the difference between "refused" and "outcome unknown" (§10.3) — and the absence of
+       * proof has to read as "possibly sent", or an ambiguous send gets reported as a clean failure
+       * and the operator sends it twice. Reads ignore this field; nothing changed either way.
+       */
+      readonly attempted?: boolean;
+    }
   /** `X-Pack-Protocol` skew (§7) — NOT retried on the cadence; probed on a slow backoff. */
   | {
       readonly state: "incompatible";
@@ -193,7 +206,33 @@ export class PeerClient {
   }
 
   /**
-   * A pack call whose `Response` the lead hands on untouched — the proxied reads of §9.1.
+   * A pack call whose `Response` the lead hands on untouched, with **every status the peer chose
+   * preserved** — the proxied reads and forwarded writes of §9.1/§5.
+   *
+   * This is {@link PeerClient.raw} minus its `!res.ok ⇒ unreachable` rule, and the difference is the
+   * entire point: `raw` is for bodies the lead consumes, where a 404 is a broken peer; `proxy` is for
+   * responses the phone consumes, where the peer's `304`, `404`, `405`, `409`-from-a-handler and
+   * `413` are the *answer* and flattening them into "unreachable" would destroy exactly the fidelity
+   * §9.1 asks for — most sharply the `304`, which is the whole conditional-GET win.
+   *
+   * The link's own refusals are still failures, not answers: an unadmitted 401 carries no pack
+   * headers by construction (§8.5), so it never reaches the phone as a 401 the operator would read as
+   * *their* credentials failing. A peer's own gate refuses with pack headers attached and is passed
+   * through, because that refusal is the peer's write-level check doing its job (§12).
+   *
+   * The body is never read here, so an ETag and a byte-for-byte mirror survive the hop.
+   */
+  async proxy(
+    link: PackLink,
+    route: string,
+    params?: Record<string, string>,
+    init: RequestInit = {},
+  ): Promise<PeerOutcome<Response>> {
+    return this.dial(link, route, params, init, "passthrough");
+  }
+
+  /**
+   * A pack call whose `Response` the lead hands on untouched, refusing any non-2xx.
    *
    * The body is not read here, so an ETag and a byte-for-byte mirror survive the hop.
    */
@@ -203,22 +242,43 @@ export class PeerClient {
     params?: Record<string, string>,
     init: RequestInit = {},
   ): Promise<PeerOutcome<Response>> {
+    return this.dial(link, route, params, init, "consumed");
+  }
+
+  /**
+   * The one dial. `mode` decides only what a non-2xx status means — everything before that (the
+   * credential, the URL, the budget, the version check, §7's 409) is identical by construction,
+   * because two dial paths would be two places for a pack request to forget its `Authorization`.
+   */
+  private async dial(
+    link: PackLink,
+    route: string,
+    params: Record<string, string> | undefined,
+    init: RequestInit,
+    mode: "consumed" | "passthrough",
+  ): Promise<PeerOutcome<Response>> {
     const secret = this.deps.secret();
     if (secret === null || secret === "") {
       // Never send an unauthenticated pack request. A missing secret is a local fault (not in a pack,
       // or a store that failed to load), and probing a peer without a credential would teach an
       // operator's logs nothing while looking exactly like an attack.
-      return this.fail({ state: "unreachable", reason: "no pack secret" });
+      return this.fail({ state: "unreachable", reason: "no pack secret", attempted: false });
     }
     const url = packUrl(link.address, route, params);
-    if (url === null) return this.fail({ state: "unreachable", reason: `unusable address: ${link.address}` });
+    if (url === null) {
+      return this.fail({ state: "unreachable", reason: `unusable address: ${link.address}`, attempted: false });
+    }
 
     const device = this.deps.device?.() ?? null;
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${secret}`);
     headers.set(PROTOCOL_HEADER, String(PACK_PROTOCOL_VERSION));
     headers.set(MEMBER_HEADER, this.deps.self);
-    if (device !== null && device !== "") headers.set(DEVICE_HEADER, device);
+    // A per-call device (a forwarded phone request, §12) wins over the client-wide one: it is the
+    // operator the LEAD authenticated for *this* action, where the client-level source is a process
+    // default with no request behind it. Authorization/protocol/member are NOT negotiable this way —
+    // they are set unconditionally above, so nothing a caller passes can shape the link's own claims.
+    if (!headers.has(DEVICE_HEADER) && device !== null && device !== "") headers.set(DEVICE_HEADER, device);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.deps.timeoutMs);
@@ -232,6 +292,9 @@ export class PeerClient {
       const reason = controller.signal.aborted
         ? `timed out after ${this.deps.timeoutMs}ms`
         : errorReason(err);
+      // `attempted` is left absent, i.e. "possibly sent". The runtime does not tell us whether the
+      // request had already been written when the socket died, and §10.3 is explicit that an
+      // unresolvable ambiguity is surfaced rather than guessed.
       return this.fail({ state: "unreachable", reason: `${route}: ${reason}` });
     } finally {
       clearTimeout(timer);
@@ -242,6 +305,13 @@ export class PeerClient {
     // cannot read is a mismatch, not a parse error." Reading the body first would turn a v2 peer's
     // perfectly well-formed answer into a parse failure and hide the real cause.
     const received = parseProtocolHeader(res.headers.get(PROTOCOL_HEADER));
+    if (received === null && res.status === 401) {
+      // An unadmitted caller gets a bare 401 with NO version banner (§8.5, `unauthorizedResponse`).
+      // That is the shape of a rotated secret or a dropped pin, and §10.2 files an auth failure under
+      // `unreachable` — not `incompatible`, which would put it on the slow backoff and leave the
+      // operator waiting ten minutes after fixing the very thing `pack status` told them to fix.
+      return this.fail({ state: "unreachable", reason: `${route}: refused by the peer (unauthorized)` });
+    }
     if (received !== PACK_PROTOCOL_VERSION) {
       return this.fail({
         state: "incompatible",
@@ -261,7 +331,7 @@ export class PeerClient {
         received: mismatch.received,
       });
     }
-    if (!res.ok) {
+    if (mode === "consumed" && !res.ok) {
       // Includes 401 — an auth failure is `unreachable`, per §10.2's table, and not a distinct state:
       // a rotated secret and a pulled cable both mean "the lead cannot see this member right now".
       return this.fail({ state: "unreachable", reason: `${route}: HTTP ${res.status}` });

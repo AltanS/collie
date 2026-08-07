@@ -23,6 +23,18 @@ export interface AuditEntry {
   session?: string;
   /** Attributed device (from the per-device auth header), or null/absent when the feature is off. */
   device?: string | null;
+  /**
+   * How the action arrived. Absent ⇒ the phone talked to THIS collie directly (every pre-pack line,
+   * and every line on a solo instance). `"pack"` ⇒ it arrived over a pack link, i.e. a lead forwarded
+   * it (PACK_PROTOCOL.md §12) — written on the PEER, whose terminals actually moved.
+   */
+  via?: "pack";
+  /**
+   * Who forwarded it: the originating pack member id, as proven by the link's two factors (§8.1).
+   * Peer-side counterpart of {@link AuditEntry.host}, which is what the LEAD writes on the same event
+   * — the two logs are independent records, so neither machine needs the other's disk (§12).
+   */
+  from?: string;
   /** Truncated, newline-safe parameters — reply text, key names, filename+size, labels, etc. */
   detail?: Record<string, unknown>;
 }
@@ -52,11 +64,12 @@ function sanitize(value: unknown): unknown {
 
 /**
  * Render one entry to a single JSONL line (no trailing newline). Stable field order
- * (ts, action, host?, paneId?, session?, device?, detail) — `host` sits right after `action` since
- * it is the outermost component of the `(host, session, paneId)` triple (PACK_PROTOCOL.md §4) — so
- * lines are grep/diff-friendly; optional attribution is omitted (not null) when absent, keeping a
- * zero-peer line byte-identical to today's (PACK_PROTOCOL.md §11). Pure — `now` (epoch ms) is
- * injected so tests are deterministic.
+ * (ts, action, host?, paneId?, session?, device?, via?, from?, detail) — `host` sits right after
+ * `action` since it is the outermost component of the `(host, session, paneId)` triple
+ * (PACK_PROTOCOL.md §4), and `via`/`from` sit next to `device` because all three answer "who did
+ * this" — so lines are grep/diff-friendly; optional attribution is omitted (not null) when absent,
+ * keeping a zero-peer line byte-identical to today's (PACK_PROTOCOL.md §11). Pure — `now` (epoch ms)
+ * is injected so tests are deterministic.
  */
 export function formatAuditLine(entry: AuditEntry, now: number): string {
   const line: Record<string, unknown> = { ts: new Date(now).toISOString(), action: entry.action };
@@ -64,6 +77,8 @@ export function formatAuditLine(entry: AuditEntry, now: number): string {
   if (entry.paneId !== undefined) line.paneId = entry.paneId;
   if (entry.session !== undefined) line.session = entry.session;
   if (entry.device != null) line.device = entry.device;
+  if (entry.via !== undefined) line.via = entry.via;
+  if (entry.from !== undefined) line.from = entry.from;
   line.detail = sanitize(entry.detail ?? {});
   return JSON.stringify(line);
 }
@@ -82,12 +97,29 @@ export class AuditLog {
   constructor(
     private readonly append: AppendFn,
     private readonly now: () => number = Date.now,
+    /**
+     * Fields stamped on every entry this instance records. Empty for the process-wide log, which is
+     * why a solo line is byte-identical to a pre-pack one — see {@link AuditLog.scoped}.
+     */
+    private readonly defaults: Readonly<Partial<AuditEntry>> = {},
   ) {}
+
+  /**
+   * A view of this log that stamps `defaults` onto every entry.
+   *
+   * Exists for exactly one caller: the peer's pack dispatch, which hands the *unmodified* handler
+   * closures an audit log that already knows the action arrived over a pack link (§12). The handlers
+   * therefore need no `via` parameter and cannot forget to pass one — a route reachable from both a
+   * browser and a lead audits correctly in both directions with one code path.
+   */
+  scoped(defaults: Readonly<Partial<AuditEntry>>): AuditLog {
+    return new AuditLog(this.append, this.now, { ...this.defaults, ...defaults });
+  }
 
   record(entry: AuditEntry): void {
     let line: string;
     try {
-      line = formatAuditLine(entry, this.now());
+      line = formatAuditLine({ ...this.defaults, ...entry }, this.now());
     } catch (err) {
       console.warn(`[audit] could not format ${entry.action}: ${(err as Error).message}`);
       return;

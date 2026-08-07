@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
+import { neverProxy } from "./pack/fixtures.ts";
 import { PackLead } from "./pack/lead.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import type { SnapshotResponse } from "./types.ts";
@@ -995,6 +996,7 @@ function leadOverDeadPeer(): PackLead {
     registry,
     // Every dial fails, exactly as `PeerClient` reports a peer that is off: a value, not a throw.
     snapshot: async () => ({ ok: false, state: "unreachable", reason: "connection refused", receivedAt: 1 }),
+    proxy: neverProxy,
     self: { id: "desk", name: "the herd" },
   });
 }
@@ -1037,14 +1039,43 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
   test("every session-scoped route resolves through the gate, never past it", () => {
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
-    expect([...src.matchAll(/const rt = target\(\);/g)]).toHaveLength(4);
-    // Exactly two unguarded `registry.get(sessionName)` calls remain, and both are the sanctioned
-    // ones: assembling THIS collie's own body, and the gate's own `local` branch. A third would be
-    // a route reaching past the gate.
-    expect([...src.matchAll(/registry\.get\(sessionName\)/g)]).toHaveLength(2);
-    // A peer is refused with a legible status until M4/05 lands the proxy; an unknown or ill-formed
-    // host is a 404, mirroring unknownSession() (§4).
+    //
+    // All four session-scoped routes (tab create, workspace create, tab action, the pane family)
+    // reach their runtime through the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(4);
+    // Exactly two `registry.get(` calls remain, and both are the sanctioned ones: assembling THIS
+    // collie's own body, and `localRuntime`, the single "(session) → runtime, or 404" helper both
+    // callers share. A third would be a route reaching past the gate.
+    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(2);
+    // An unknown or ill-formed host is a 404, mirroring unknownSession() (§4)…
     expect(src).toMatch(/`unknown host: \$\{host\.kind === "member" \? host\.id : host\.raw\}`/);
-    expect(src).toContain("per-pane proxying is not implemented in this build");
+    // …and a KNOWN peer is forwarded, with the peer's own response handed back (§5, §9.1). The
+    // forward is the gate's own branch — no route may grow a second one.
+    expect([...src.matchAll(/packLead!\.forward\(/g)]).toHaveLength(1);
+    expect(src).not.toContain("per-pane proxying is not implemented in this build");
+  });
+
+  test("a peer's own routes are the SAME closure the browser's are (§5), with two callers", () => {
+    // The 1:1 rule: `/pack/v1/pane/:id/reply` and `/api/pane/:id/reply` are not two handlers that
+    // agree — they are one block reached by two callers. Exactly one definition, exactly two calls.
+    expect([...src.matchAll(/const serveSessionRoute = async/g)]).toHaveLength(1);
+    expect([...src.matchAll(/serveSessionRoute\(\s*req/g)]).toHaveLength(2);
+    // The peer's caller supplies its OWN gate and its OWN audit attribution — the lead's verdict is
+    // never an input, and the write lands in the peer's log marked pack-originated (§12).
+    expect(src).toContain("packGate(level, cfg, device)");
+    expect(src).toContain('audit.scoped({ via: "pack", from })');
+  });
+
+  test('"seen" is marked once, on the owning host, and never for a remote pane (.adr/0003)', () => {
+    // One call site, and it sits AFTER the resolver — so a pane on a peer has already returned the
+    // peer's forwarded response and cannot reach it. The peer marks it, against its own ledger,
+    // because the `x-collie-seen` header is forwarded verbatim. Two machines counting one look would
+    // be exactly the "one shared fact" ADR 0003 forbids.
+    const calls = [...src.matchAll(/activity\.noteSeen\(/g)];
+    expect(calls).toHaveLength(1);
+    expect(src.indexOf("activity.noteSeen(")).toBeGreaterThan(src.indexOf("await caller.resolve();"));
+    // And it is still keyed by (session, paneId) alone: the ledger's host dimension exists for the
+    // LEAD's own bookkeeping, not for a peer marking its own panes (bridge/activity.ts).
+    expect(src).toContain("activity.noteSeen(session, paneId)");
   });
 });

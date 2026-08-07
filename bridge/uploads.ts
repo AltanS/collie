@@ -6,6 +6,35 @@ import { join } from "node:path";
 // than the TTL. The decision — which names are stale — is a pure, tested function; the runner that
 // stats the dir and unlinks takes an injectable fs surface so it too can be exercised without disk.
 
+// Image upload limits. Herdr's socket only carries text/keys, so we can't paste an image into the
+// terminal — instead we save it to a host file and the client references its path in the message
+// (the agent reads images by path). See `uploadPane()` in bridge/server.ts.
+//
+// They live HERE, next to the sweep, rather than in server.ts, because two independent places now
+// enforce them: the handler that writes the file, and the lead's upload forward, which rejects an
+// oversize body BEFORE spending a phone's cellular uplink on a peer that would only reject it
+// (PACK_PROTOCOL.md §13). One constant, two enforcers — a second copy would drift.
+
+/** Largest image accepted, decoded. */
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+/**
+ * Multipart wraps the file in a boundary + part headers, so a legitimately-sized image arrives a
+ * little over {@link MAX_UPLOAD_BYTES} on the wire. Allow a small slack for a Content-Length
+ * pre-check, which is always about the *encoded* body.
+ */
+export const MAX_UPLOAD_OVERHEAD = 64 * 1024; // 64 KB
+
+/**
+ * Whether a declared `Content-Length` is already too big to be a legal upload. Pure, and shared by
+ * both enforcement points so "too large" means the same number on the lead and on the peer. A
+ * missing or unparseable length is NOT oversize here — the handler's own post-parse check is what
+ * catches a lying client (and `maxRequestBodySize` catches the rest).
+ */
+export function uploadTooLarge(contentLength: string | null): boolean {
+  const declared = Number(contentLength);
+  return Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES + MAX_UPLOAD_OVERHEAD;
+}
+
 /** Uploads older than this are swept (Herdr already read them by path; they're single-use). */
 export const UPLOAD_TTL_MS = 48 * 60 * 60 * 1000; // 48 h
 /** How often the runner re-sweeps after the startup pass. */

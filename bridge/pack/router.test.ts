@@ -382,3 +382,130 @@ describe("browser credentials admit nothing here", () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ── §5: the pane/tab/workspace half of the peer surface ──────────────────────
+//
+// The rule is 1:1 dispatch INTO THE SAME HANDLERS, so what these tests pin is the wiring, not a
+// second implementation: which paths reach the injected dispatch, what URL it is handed, what it is
+// told about who asked, and what happens to its answer on the way out. What the handlers then DO is
+// bridge/server.ts's business and is asserted there.
+
+describe("dispatched routes — the peer runs its own routes for an admitted lead (§5)", () => {
+  const nas = member({ memberId: "nas" });
+
+  /** A dispatch that records what it was handed and answers with whatever the test wants. */
+  function dispatcher(answer: () => Response) {
+    const seen: { path: string; search: string; from: string; method: string }[] = [];
+    return {
+      seen,
+      dispatch: async (req: Request, url: URL, from: string) => {
+        seen.push({ path: url.pathname, search: url.search, from, method: req.method });
+        return answer();
+      },
+    };
+  }
+
+  function peerRouter(d?: ReturnType<typeof dispatcher>) {
+    const h = harness(leadStore({ peers: [nas] }));
+    return {
+      h,
+      handler: createPackRouter({
+        store: h.store,
+        audit: h.audit,
+        fingerprints: () => fp("nas"),
+        ...(d === undefined ? {} : { dispatch: d.dispatch }),
+      }),
+    };
+  }
+
+  test("every §5 route reaches the dispatch as its own /api path, verbatim", async () => {
+    const d = dispatcher(() => new Response(`{"ok":true}`, { status: 200 }));
+    const { handler } = peerRouter(d);
+    const routes: Array<[string, string]> = [
+      ["pane/w1:p1", "GET"],
+      ["pane/w1:p1/history", "GET"],
+      ["pane/w1:p1/reply", "POST"],
+      ["pane/w1:p1/keys", "POST"],
+      ["pane/w1:p1/upload", "POST"],
+      ["pane/w1:p1/close", "POST"],
+      ["pane/w1:p1/rename", "POST"],
+      ["tab", "POST"],
+      ["tab/w1:t1/rename", "POST"],
+      ["tab/w1:t1/close", "POST"],
+      ["workspace", "POST"],
+    ];
+    for (const [route, method] of routes) {
+      const res = (await call(handler, `${PACK_PREFIX}${route}`, {
+        method,
+        headers: authed,
+        ...(method === "POST" ? { body: "{}" } : {}),
+      }))!;
+      expect(res.status).toBe(200);
+    }
+    expect(d.seen.map((s) => s.path)).toEqual(routes.map(([r]) => `/api/${r}`));
+    // Who forwarded it — the member the two factors proved, never a header the caller chose.
+    expect(new Set(d.seen.map((s) => s.from))).toEqual(new Set(["nas"]));
+  });
+
+  test("`?session=` rides through untouched — the PEER's registry resolves it (§5)", async () => {
+    const d = dispatcher(() => new Response("{}"));
+    const { handler } = peerRouter(d);
+    await call(handler, `${PACK_PREFIX}pane/w1:p1?session=work&lines=80`, { headers: authed });
+    expect(d.seen[0]!.search).toBe("?session=work&lines=80");
+  });
+
+  test("a pack request may NOT name a host — a peer has no peers (§4)", async () => {
+    const d = dispatcher(() => new Response("{}"));
+    const { handler } = peerRouter(d);
+    const res = (await call(handler, `${PACK_PREFIX}pane/w1:p1?host=desk`, { headers: authed }))!;
+    expect(res.status).toBe(400);
+    // Refused before dispatch: there is no first hop of a chain this protocol does not have.
+    expect(d.seen).toEqual([]);
+  });
+
+  test("the routes §5 excludes are not reachable across a link, even though they exist locally", async () => {
+    const d = dispatcher(() => new Response("{}"));
+    const { handler } = peerRouter(d);
+    for (const route of ["subscribe", "notifications/snooze", "notifications/prefs", "update/check", "config"]) {
+      expect((await call(handler, `${PACK_PREFIX}${route}`, { method: "POST", headers: authed }))!.status).toBe(404);
+    }
+    expect(d.seen).toEqual([]);
+  });
+
+  test("an unadmitted caller never reaches the dispatch — routing happens after both factors", async () => {
+    const d = dispatcher(() => new Response("{}"));
+    const h = harness(leadStore({ peers: [nas] }));
+    const stranger = createPackRouter({ store: h.store, audit: h.audit, dispatch: d.dispatch });
+    const res = (await call(stranger, `${PACK_PREFIX}pane/w1:p1/reply`, { method: "POST", headers: authed }))!;
+    expect(res.status).toBe(401);
+    expect(d.seen).toEqual([]);
+  });
+
+  test("the answer keeps its own status and body, and gains the pack headers §6 requires", async () => {
+    const d = dispatcher(() => new Response(`{"ok":false,"error":"no such pane"}`, { status: 404 }));
+    const { handler } = peerRouter(d);
+    const res = (await call(handler, `${PACK_PREFIX}pane/nope`, { headers: authed }))!;
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ ok: false, error: "no such pane" });
+    // Not cosmetic: the lead checks the version BEFORE it reads a byte (§7), so an unstamped
+    // response from a perfectly healthy peer would read as a version skew.
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-pack-member")).toBe("desk");
+  });
+
+  test("a 304 survives the peer surface with its ETag and no body (§9.1)", async () => {
+    const d = dispatcher(() => new Response(null, { status: 304, headers: { etag: '"peer-etag"' } }));
+    const { handler } = peerRouter(d);
+    const res = (await call(handler, `${PACK_PREFIX}pane/w1:p1`, {
+      headers: { ...authed, "if-none-match": '"peer-etag"' },
+    }))!;
+    expect(res.status).toBe(304);
+    expect(res.headers.get("etag")).toBe('"peer-etag"');
+    expect(res.body).toBeNull();
+  });
+
+  test("a build with no dispatch wired 404s the whole half of the table", async () => {
+    const { handler } = peerRouter();
+    expect((await call(handler, `${PACK_PREFIX}pane/w1:p1`, { headers: authed }))!.status).toBe(404);
+  });
+});

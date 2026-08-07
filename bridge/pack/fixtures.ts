@@ -1,4 +1,5 @@
 import { createTrustStore, selfIdentity, type IdentityMaterial } from "./enrollment.ts";
+import type { ForwardTransport } from "./forward.ts";
 import type { PackIdentity, TrustStoreData, TrustedMember } from "./trust-store.ts";
 
 // Shared test fixtures for the pack modules. Not a test file itself (so `bun test` doesn't collect
@@ -61,6 +62,16 @@ export function peerStore(over: Partial<TrustStoreData> = {}): TrustStoreData {
     ...over,
   };
 }
+
+/**
+ * A forward transport that fails the test if it is ever dialled.
+ *
+ * The default for every `PackLead` a test builds to exercise the SWEEP: forwarding is a per-request
+ * path, so a snapshot test that reaches it has found a bug rather than a missing stub.
+ */
+export const neverProxy: ForwardTransport = (link, route) => {
+  throw new Error(`unexpected pack forward: ${route} → ${link.memberId}`);
+};
 
 /** Deterministic entropy: `r("a")` yields "a1", "a2", … so a minted value is assertable. */
 export function counterRandom(prefix: string): (bytes: number) => string {

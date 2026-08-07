@@ -314,3 +314,98 @@ describe("sweepPeers — concurrent, never serial (§10.1)", () => {
     expect(ran).toBe(0);
   });
 });
+
+// ── proxy(): the pass-through variant the per-pane forward uses (§9.1) ───────
+
+describe("proxy — the peer's own status codes are the answer, not a failure", () => {
+  test("a 304 comes back as an outcome, not as `unreachable` — the whole conditional-GET win", async () => {
+    const { fetch } = replying("", { status: 304 });
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok && outcome.value.status).toBe(304);
+    // `raw` is for bodies the LEAD consumes, where a non-2xx is a broken peer. Same dial, one rule
+    // apart, and the difference is exactly who reads the response.
+    const consumed = await client(replying("", { status: 304 }).fetch).raw(laptop, "pane/w1:p1");
+    expect(consumed.ok).toBe(false);
+  });
+
+  test("a peer's 404/405/413 reaches the phone as itself", async () => {
+    for (const status of [400, 404, 405, 413, 500]) {
+      const { fetch } = replying({ error: "x" }, { status });
+      const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+      expect(outcome.ok && outcome.value.status).toBe(status);
+    }
+  });
+
+  test("a peer's OWN 403 is passed through — that is its write gate doing its job (§12)", async () => {
+    // Stamped with the pack headers, so it is the peer answering rather than the link refusing.
+    const { fetch } = replying("device not authorised", { status: 403 });
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/keys", undefined, { method: "POST" });
+    expect(outcome.ok && outcome.value.status).toBe(403);
+  });
+
+  test("an UNSTAMPED 401 is the link refusing us, and is unreachable — never a 401 for the phone", async () => {
+    // `unauthorizedResponse()` carries no version banner by construction (§8.5), which is exactly how
+    // a rotated secret is told apart from a peer's own refusal. §10.2 files auth failure under
+    // `unreachable`, so it stays on the poll cadence rather than the ten-minute skew backoff.
+    const { fetch } = replying({ error: "unauthorized" }, { status: 401, protocol: null });
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    expect(outcome.ok).toBe(false);
+    expect(!outcome.ok && outcome.state).toBe("unreachable");
+    expect(!outcome.ok && outcome.reason).toContain("unauthorized");
+  });
+
+  test("a version skew is still a skew, before any status or body is looked at (§7)", async () => {
+    const { fetch } = replying({ ok: true }, { status: 200, protocol: "2" });
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    expect(!outcome.ok && outcome.state).toBe("incompatible");
+  });
+
+  test("the response body is never read here — an ETag and the bytes survive the hop", async () => {
+    const { fetch } = replying({ lines: ["hello"] }, { status: 200 });
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    expect(outcome.ok && outcome.value.bodyUsed).toBe(false);
+    expect(outcome.ok && (await outcome.value.json())).toEqual({ lines: ["hello"] });
+  });
+});
+
+describe("`attempted` — the input to §10.3's refuse-vs-unknown decision", () => {
+  test("a fault that provably never left this process says so", async () => {
+    const { fetch } = replying({});
+    const noSecret = await client(fetch, { secret: null }).proxy(laptop, "pane/w1:p1/reply");
+    expect(!noSecret.ok && noSecret.state === "unreachable" && noSecret.attempted).toBe(false);
+    const badAddress = await client(fetch).proxy({ memberId: "x", address: "http://a/b?c=1" }, "pane/p/reply");
+    expect(!badAddress.ok && badAddress.state === "unreachable" && badAddress.attempted).toBe(false);
+  });
+
+  test("a transport failure does NOT claim it wasn't sent — absence of proof is not proof", async () => {
+    // The runtime does not tell us whether the request had been written when the socket died, and a
+    // write reported as cleanly-failed is a write the operator sends again (.adr/0010).
+    const fetch: PackFetch = () => Promise.reject(new Error("socket hang up"));
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+    expect(!outcome.ok && outcome.state === "unreachable" && outcome.attempted).toBeUndefined();
+  });
+});
+
+describe("the forwarded device identity (§12)", () => {
+  test("a per-request device wins over the client-wide one", async () => {
+    const { fetch, calls } = replying({});
+    await client(fetch, { device: "process-default" }).proxy(laptop, "pane/w1:p1/reply", undefined, {
+      method: "POST",
+      headers: { [DEVICE_HEADER]: "phone-7" },
+    });
+    expect(new Headers(calls[0]!.init.headers).get(DEVICE_HEADER)).toBe("phone-7");
+  });
+
+  test("nothing a caller passes can shape the link's own claims", async () => {
+    const { fetch, calls } = replying({});
+    await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, {
+      method: "POST",
+      headers: { authorization: "Bearer forged", [PROTOCOL_HEADER]: "99", [MEMBER_HEADER]: "not-desk" },
+    });
+    const sent = new Headers(calls[0]!.init.headers);
+    expect(sent.get("authorization")).toBe(`Bearer ${PACK.secret}`);
+    expect(sent.get(PROTOCOL_HEADER)).toBe("1");
+    expect(sent.get(MEMBER_HEADER)).toBe("desk");
+  });
+});

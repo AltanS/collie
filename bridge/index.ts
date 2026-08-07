@@ -256,6 +256,9 @@ const packLead = (() => {
   return new PackLead({
     registry: packRegistry,
     snapshot: (link) => client.snapshot(link),
+    // The per-pane forward (§5, §9.1). `proxy`, not `raw`: the peer's own status codes — its 304
+    // above all — are the answer, and flattening them would cost the conditional-GET win end to end.
+    proxy: (link, route, params, init) => client.proxy(link, route, params, init),
     self: { id: data.self.memberId, name: data.pack?.name ?? data.self.memberId },
   });
 })();
@@ -281,12 +284,12 @@ const server = startServer({
   // Registered on the EXISTENCE of a trust store, not on the mode: a lead answering its very first
   // `collie join` still has zero peers and is therefore still `solo` by mode. An instance that never
   // enrolled has no store, gets no handler, and so registers no pack route at all (§11). The
-  // snapshot source is handed back by server.ts so a peer answers its lead with the same body its
-  // own `/api/snapshot` would.
+  // surface is handed back by server.ts so a peer answers its lead out of the same closures its own
+  // browser routes use — the same snapshot body, and the same session-scoped handlers (§5).
   packRouter:
     trustStore.current() === null
       ? undefined
-      : (snapshot) => createPackRouter({ store: trustStore, audit, snapshot }),
+      : (surface) => createPackRouter({ store: trustStore, audit, ...surface }),
 });
 
 const shutdown = async () => {
