@@ -10,6 +10,8 @@ import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { resolvePackRuntime } from "./pack/config.ts";
+import { createPackRouter } from "./pack/router.ts";
+import { enrollmentOf, TrustStore } from "./pack/trust-store.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
 import { startServer } from "./server.ts";
@@ -43,11 +45,13 @@ const cfg = loadConfig();
 // (PACK_PROTOCOL.md §3) and a mode discovered halfway through startup would already have opened
 // what it was supposed to keep shut.
 //
-// Enrollment comes from the trust store and from nothing else — no env var, no flag (§3). The trust
-// store lands with M4/02; until it does, nothing is enrolled, so `resolvePackRuntime` is handed the
-// same `null` a solo instance will hand it forever after. That path reads no file, generates no key
-// and arms no timer, which is the zero-tax contract (§11) holding at its startup seam.
-const enrollment = null;
+// Enrollment comes from the trust store and from nothing else — no env var, no flag (§3). On a solo
+// instance the store file does not exist, so this is one failed `open()`: nothing is created, no key
+// is generated, no default is written back and no timer is armed. That is the zero-tax contract
+// (§11) holding at its startup seam — and `trustStore.load()` returning `null` is the same `null` a
+// solo instance will hand `resolvePackRuntime` forever after.
+const trustStore = new TrustStore(cfg.stateDir);
+const enrollment = enrollmentOf(await trustStore.load());
 const pack = resolvePackRuntime(enrollment);
 if (pack.conflict) console.warn(`[pack] ${pack.conflict}`);
 if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
@@ -228,6 +232,10 @@ const server = startServer({
   audit,
   activity,
   pack,
+  // Registered on the EXISTENCE of a trust store, not on the mode: a lead answering its very first
+  // `collie join` still has zero peers and is therefore still `solo` by mode. An instance that never
+  // enrolled has no store, gets no handler, and so registers no pack route at all (§11).
+  packHandler: trustStore.current() === null ? undefined : createPackRouter({ store: trustStore, audit }),
 });
 
 const shutdown = async () => {
