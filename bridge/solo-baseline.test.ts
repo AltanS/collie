@@ -205,10 +205,19 @@ function soloSnapshot(registry: SessionRegistry): SnapshotResponse {
   } satisfies SnapshotResponse;
 }
 
-// ── 1. Wire shapes: no `servers`, no `host`, no anything ─────────────────────
+// ── 1. Wire shapes: the pack dimension exists on the TYPE, never in solo's BYTES ──
 // §11 rows: "Snapshot bytes", "?h=". These maps are exhaustive by construction — `Record<keyof T,…>`
 // makes every key of T (optional ones included) required here, so adding a federation field to a
 // wire type is a TYPECHECK failure, not a silent widening.
+//
+// ── THE TRIPWIRE FIRED, ONCE, IN M4/04 ───────────────────────────────────────
+// `servers?:` (SnapshotResponse) and `host?:` (SessionSummary, PaneWire) were added by the snapshot
+// merge and are recorded below. Read that as what it is: the type-level guard doing its job, forcing
+// the addition to be acknowledged here rather than slipping in. **No golden was regenerated and no
+// byte moved** — all three are optional-and-absent, so a solo body still contains none of them,
+// which §2/§3 below assert directly and which is why they are `?:` and not required (§11's "Why
+// `servers` is optional-and-absent"). The key-LIST assertions in this section are therefore the one
+// authorised change; every byte-level assertion in this file is untouched.
 
 const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
   bridge: true,
@@ -221,6 +230,8 @@ const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
   notifications: true,
   update: true,
   ts: true,
+  // Present on the type since M4/04, absent from every solo body — see the section header.
+  servers: true,
 };
 
 const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
@@ -230,6 +241,7 @@ const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
   agents: true,
   working: true,
   blocked: true,
+  host: true,
 };
 
 const PANE_WIRE_KEYS: Record<keyof PaneWire, true> = {
@@ -250,6 +262,7 @@ const PANE_WIRE_KEYS: Record<keyof PaneWire, true> = {
   lastActiveAt: true,
   lastSeenAt: true,
   hasSession: true,
+  host: true,
 };
 
 const DEVICE_AUTH_KEYS: Record<keyof DeviceAuth, true> = {
@@ -287,12 +300,13 @@ const TAB_KEYS: Record<keyof TabView, true> = {
 };
 
 describe("solo zero-tax — wire shapes carry no pack dimension", () => {
-  test("SnapshotResponse has exactly today's fields (no `servers`, no `host`)", () => {
+  test("SnapshotResponse carries `servers` as OPTIONAL and nothing else new", () => {
     expect(Object.keys(SNAPSHOT_KEYS).sort()).toEqual([
       "agents",
       "bridge",
       "device",
       "notifications",
+      "servers",
       "sessions",
       "shellPanes",
       "tabs",
@@ -302,10 +316,11 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
     ]);
   });
 
-  test("SessionSummary has exactly today's fields (no `host`)", () => {
+  test("SessionSummary gained `host` and nothing else", () => {
     expect(Object.keys(SESSION_SUMMARY_KEYS).sort()).toEqual([
       "agents",
       "blocked",
+      "host",
       "isPrimary",
       "name",
       "reachable",
@@ -313,12 +328,13 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
     ]);
   });
 
-  test("PaneWire has exactly today's fields (no `host`)", () => {
+  test("PaneWire gained `host` and nothing else", () => {
     expect(Object.keys(PANE_WIRE_KEYS).sort()).toEqual([
       "agent",
       "cwd",
       "focused",
       "hasSession",
+      "host",
       "kind",
       "lastActiveAt",
       "lastSeenAt",

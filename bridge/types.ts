@@ -88,6 +88,13 @@ export type PaneWire = Omit<AgentView, "agentSession"> & {
    *  has a journal adapter. Says nothing about whether the log is readable — a named session whose
    *  file is missing still answers `available:false` with reason `no-log`. */
   hasSession?: boolean;
+  /**
+   * Which member of the pack this pane lives on — the `?h=` value completing the `(host, session,
+   * paneId)` address (PACK_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
+   * is; absent on every solo snapshot (§11). Pane ids are only unique per machine, which is why a
+   * merged list must carry this and why the phone's per-pane cache keys on it.
+   */
+  host?: string;
 };
 
 /**
@@ -142,6 +149,15 @@ export interface SessionSummary {
   /** Agent panes currently working / blocked (0 when unreachable). */
   working: number;
   blocked: number;
+  /**
+   * Which member of the pack fronts this session — the `?h=` value (PACK_PROTOCOL.md §4).
+   *
+   * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise. A solo
+   * instance emits neither (§11: "no `host` field is added to sessions or panes"), so a session name
+   * on a solo snapshot means what it has always meant. The lead stamps this from the registry key it
+   * dialled; a peer never asserts its own (see `parsePeerSnapshot`).
+   */
+  host?: string;
 }
 
 /**
@@ -177,12 +193,50 @@ export interface SnapshotResponse {
    * single-session deployment lists just the primary, so the switcher UI can stay hidden.
    */
   sessions: SessionSummary[];
+  /**
+   * Every member of the pack, the lead's own entry included (PACK_PROTOCOL.md §9.2).
+   *
+   * **Optional-and-absent, following `update?` rather than the always-present `sessions`** — and the
+   * choice is forced, not stylistic (§11). An always-present field, even an empty array, changes
+   * every solo snapshot body and therefore every solo snapshot ETag exactly once: one forced refetch
+   * for every solo user, bought for a uniformity nothing needs. Absent means "no pack", which is
+   * precisely true. Present ⇒ `host` is stamped on every session and every pane; absent ⇒ on none.
+   */
+  servers?: ServerSummary[];
   /** Notification quiet-hours: the active snooze deadline (epoch ms) or null. */
   notifications?: { snoozedUntil: number | null };
   /** Update-availability signal. Optional — a stale bridge that predates the field simply omits it,
    *  which the client reads as "no info" (see bridge/update.ts). */
   update?: UpdateStatus;
   ts: number;
+}
+
+/**
+ * One member of the pack in the merged snapshot (PACK_PROTOCOL.md §9.2) — the row `pack status` and
+ * the phone's host list render.
+ *
+ * `reachable` is not an invention: {@link SessionSummary.reachable} already models an unreachable
+ * member as a *rendered state* with zeroed counts rather than a failed response. This is that
+ * precedent one level up — a down peer degrades its entry, never the response (§10.2).
+ */
+export interface ServerSummary {
+  /** Member id — the `?h=` value. The lead's own entry is present too. */
+  id: string;
+  /** Operator-chosen label. Today the member id itself, which is the `join` label slugified (§8.2). */
+  name: string;
+  isLead: boolean;
+  /** Whether the lead's last poll of this member succeeded. Always true for the lead's own entry. */
+  reachable: boolean;
+  /** Version negotiation state (§7). `incompatible` is retried on a slow backoff, not the cadence. */
+  protocol: "ok" | "incompatible" | "unknown";
+  /** The peer's refusal reason, verbatim, when incompatible. */
+  protocolDetail?: string;
+  /**
+   * Epoch ms, **stamped by the lead on receipt — never the peer's clock** (§10.2). The client
+   * derives "stale since …" from it (stale once older than 3 × pollMs or 15 s, whichever is first);
+   * `0` means this member has never answered.
+   */
+  lastSeenAt: number;
 }
 
 /**

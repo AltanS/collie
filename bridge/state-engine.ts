@@ -64,6 +64,7 @@ export interface EngineSnapshot {
 type TransitionListener = (agent: AgentView, from: AgentStatus, to: AgentStatus) => void;
 type RemoveListener = (paneId: string) => void;
 type UpdateListener = (snap: EngineSnapshot) => void;
+type TickListener = () => void;
 
 export class StateEngine {
   private agents: AgentView[] = [];
@@ -79,6 +80,7 @@ export class StateEngine {
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
+  private readonly tickListeners = new Set<TickListener>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private started = false;
   private polling = false;
@@ -113,6 +115,23 @@ export class StateEngine {
   onUpdate(fn: UpdateListener): () => void {
     this.updateListeners.add(fn);
     return () => this.updateListeners.delete(fn);
+  }
+
+  /**
+   * Fires after every poll ATTEMPT — success or failure, no snapshot handed over.
+   *
+   * This is the hook the pack's peer sweep rides (PACK_PROTOCOL.md §10.1: "the peer sweep is a part
+   * of the existing poll, not a second timer"), and it is deliberately not `onUpdate`: that one only
+   * fires on success, so a lead whose own Herdr socket is down would freeze every peer's freshness
+   * at the moment its local herd went away. A peer's reachability has nothing to do with the lead's
+   * Herdr, and two machines' outages must not be able to mask each other.
+   *
+   * With no listener — i.e. on every solo instance — this costs one iteration of an empty Set per
+   * poll and arms nothing (§11's "no second timer, no peer sweep").
+   */
+  onTick(fn: TickListener): () => void {
+    this.tickListeners.add(fn);
+    return () => this.tickListeners.delete(fn);
   }
 
   current(): EngineSnapshot {
@@ -328,6 +347,15 @@ export class StateEngine {
       this.bridge = "disconnected";
     } finally {
       this.polling = false;
+      // Every poll attempt, however it went (see onTick). Listener throws are contained: a tick
+      // subscriber must never be able to break the poll loop that hosts it.
+      for (const fn of this.tickListeners) {
+        try {
+          fn();
+        } catch (err) {
+          console.warn(`[state] tick listener failed: ${(err as Error).message}`);
+        }
+      }
       // Run the single follow-up an event-poke asked for while this poll was in flight.
       if (this.queuedPoll) {
         this.queuedPoll = false;

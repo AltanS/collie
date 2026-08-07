@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../audit.ts";
+import type { SnapshotResponse } from "../types.ts";
 import { mintInvite, type EnrollResponse } from "./enrollment.ts";
 import { counterRandom, fp, leadStore, member, PACK, T0 } from "./fixtures.ts";
-import { createPackRouter, PACK_ENROLL_PATH, PACK_HELLO_PATH, PACK_PREFIX } from "./router.ts";
+import {
+  createPackRouter,
+  PACK_ENROLL_PATH,
+  PACK_HELLO_PATH,
+  PACK_PREFIX,
+  PACK_SNAPSHOT_PATH,
+  type SnapshotSource,
+} from "./router.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
 
 // The endpoint. It takes a plain `Request` and needs no `Bun.serve`, so unlike the rest of the HTTP
@@ -129,6 +137,88 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     expect(h.lines.map((l) => [l.action, (l.detail as Record<string, unknown>).factor])).toEqual([
       ["pack.refused", "certificate"],
     ]);
+  });
+});
+
+/** A minimal but shape-correct snapshot body — this peer's own view, never a merged one (§9.2). */
+function ownSnapshot(over: Partial<SnapshotResponse> = {}): SnapshotResponse {
+  return {
+    bridge: "connected",
+    agents: [],
+    shellPanes: [],
+    workspaces: [],
+    tabs: [],
+    sessions: [{ name: "default", isPrimary: true, reachable: true, agents: 0, working: 0, blocked: 0 }],
+    ts: T0,
+    ...over,
+  };
+}
+
+describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
+  const nas = member({ memberId: "nas" });
+
+  test("an admitted caller gets the peer's own snapshot body verbatim, with the pack headers", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const body = ownSnapshot();
+    const source: SnapshotSource = () => body;
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(body);
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-pack-member")).toBe("desk");
+  });
+
+  test("?session= is passed through to the injected source", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const calls: Array<string | undefined> = [];
+    const source: SnapshotSource = (session) => {
+      calls.push(session);
+      return ownSnapshot();
+    };
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    await call(handler, `${PACK_SNAPSHOT_PATH}?session=collie-demo`, { headers: authed });
+    expect(calls).toEqual(["collie-demo"]);
+  });
+
+  test("an unknown session (source returns undefined) is the peer's OWN 404, not the lead's", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const source: SnapshotSource = () => undefined;
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    const res = (await call(handler, `${PACK_SNAPSHOT_PATH}?session=nope`, { headers: authed }))!;
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "unknown session" });
+  });
+
+  test("a router built WITHOUT a snapshot dep 404s exactly like any unimplemented route", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
+  });
+
+  test("an UNADMITTED caller gets the standard 401 and the snapshot source is NEVER invoked", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    let calls = 0;
+    const source: SnapshotSource = () => {
+      calls += 1;
+      return ownSnapshot();
+    };
+    // No fingerprints dep wired => the unwired default admits nobody, same as the hello tests.
+    const handler = createPackRouter({ store: h.store, audit: h.audit, snapshot: source });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(res.status).toBe(401);
+    expect(calls).toBe(0);
+  });
+
+  test("a non-GET method on the path falls through to the ordinary 404, not 405", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const source: SnapshotSource = () => ownSnapshot();
+    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { method: "POST", headers: authed }))!;
+    expect(res.status).toBe(404);
+    expect(res.status).not.toBe(405);
   });
 });
 

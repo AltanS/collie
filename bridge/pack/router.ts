@@ -19,6 +19,7 @@ import {
 } from "./enrollment.ts";
 import { randomToken, type RandomSource } from "./identity.ts";
 import type { TrustStore } from "./trust-store.ts";
+import type { SnapshotResponse } from "../types.ts";
 
 // The `/pack/v1/*` surface. This module exists **so that `bridge/server.ts` contains no pack route
 // literal at all**: a solo instance's route table is asserted, by reading server.ts's source, to be
@@ -41,10 +42,22 @@ export const PACK_PREFIX = "/pack/v1/";
 
 export const PACK_ENROLL_PATH = "/pack/v1/enroll";
 export const PACK_HELLO_PATH = "/pack/v1/hello";
+export const PACK_SNAPSHOT_PATH = "/pack/v1/snapshot";
+
+/**
+ * This collie's own snapshot body, for the one merged route (§9.2). `undefined` ⇒ the `?session=`
+ * named does not exist here, which is the peer's own 404 and not the lead's.
+ *
+ * Injected from `bridge/server.ts`, which hands over the very closure it serves browsers from —
+ * a peer therefore cannot answer its lead with a body that differs from its own `/api/snapshot`.
+ */
+export type SnapshotSource = (session?: string) => SnapshotResponse | undefined;
 
 export interface PackRouterDeps {
   readonly store: TrustStore;
   readonly audit: AuditLog | null;
+  /** Absent ⇒ `/pack/v1/snapshot` 404s like any unimplemented route. */
+  readonly snapshot?: SnapshotSource;
   /** Reads the caller's TLS certificate fingerprint. Stubbed to "none, so refuse" until TLS lands. */
   readonly fingerprints?: PeerFingerprintSource;
   readonly now?: () => number;
@@ -96,6 +109,27 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // Liveness + version + member id (§5). Nothing else: `hello` is what an admitted lead uses to
       // confirm a link, so it must not become a place to learn anything an unadmitted caller wants.
       return new Response(JSON.stringify({ protocol: PACK_PROTOCOL_VERSION, member: verdict.self }), {
+        status: 200,
+        headers: packResponseHeaders(verdict.self),
+      });
+    }
+
+    if (pathname === PACK_SNAPSHOT_PATH && req.method === "GET" && deps.snapshot !== undefined) {
+      // The only merged route (§9.2), and the peer's half of it: it answers with its OWN view,
+      // never a merged one — a pack link never forwards a `host=`, because a peer has no peers (§4).
+      // `?session=` is honoured with the identical semantics the browser API has: absent ⇒ primary,
+      // unknown ⇒ 404, and the name is only ever a registry key.
+      const body = deps.snapshot(url.searchParams.get("session") ?? undefined);
+      if (body === undefined) {
+        return new Response(JSON.stringify({ error: "unknown session" }), {
+          status: 404,
+          headers: packResponseHeaders(verdict.self),
+        });
+      }
+      // No `etag` and no conditional handling: the lead re-serialises this body into its merged
+      // snapshot, so a 304 here would save a transfer the lead cannot pass on and would leave it
+      // with nothing to merge. Proxied reads (§9.1, M4/05) are the opposite case and keep theirs.
+      return new Response(JSON.stringify(body), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
       });
