@@ -53,24 +53,45 @@ export interface MuteGate {
 }
 
 /**
+ * Who the alerts flowing through a sink belong to — the `(host, session)` half of the address triple
+ * (PACK_PROTOCOL.md §4). **Both halves are omitted-not-null**, and for the same reason: a stamped
+ * field that is absent for the default case keeps that payload byte-identical to the shape an
+ * already-installed service worker was built against.
+ */
+export interface NotifyIdentity {
+  /** Herdr session (registry name). Absent for the primary — §11's push-payload row. */
+  readonly session?: string;
+  /** Pack member owning the session. Absent for this collie, so a solo payload gains nothing (§11). */
+  readonly host?: string;
+}
+
+/**
  * Build the {@link NotifySink} the coordinator drives. One session's whole herd shares one
  * notification slot (`herdTag`), so a render replaces rather than stacks; an active snooze mutes both
- * render and clear (nothing is shown, so there's nothing to close). `sessionName` (the registry name)
- * is stamped into the push payload so the service worker can deep-link to the right session — omit it
- * (undefined) for the primary, keeping its payload byte-identical to the single-session case. Kept
- * here, decoupled from `Push`/`Snooze`, so the gating + summary→message mapping is unit-testable.
+ * render and clear (nothing is shown, so there's nothing to close). {@link NotifyIdentity} is stamped
+ * into the push payload so the service worker can deep-link to the right `(host, session)` — omit
+ * either half for "here"/"primary", keeping that payload byte-identical to the case that predates the
+ * dimension. Kept here, decoupled from `Push`/`Snooze`, so the gating + summary→message mapping is
+ * unit-testable.
+ *
+ * A peer's summary also NAMES its host in the body. Per-host slots mean two machines' alerts never
+ * overwrite each other, but they also mean the text is the only thing that says *which machine* —
+ * and "claude needs you" is identical on every host in the pack.
  */
 export function makeNotifySink(
   push: PushSender,
   mute: MuteGate,
   herdTag: string,
-  sessionName?: string,
+  ident: NotifyIdentity = {},
 ): NotifySink {
+  const { session: sessionName, host } = ident;
   return {
     render: (s) => {
       if (mute.isMuted()) return;
-      const msg: PushMessage = { title: s.title, body: s.body, tag: herdTag, paneId: s.paneId, renotify: s.renotify };
+      const body = host === undefined ? s.body : `${host} · ${s.body}`;
+      const msg: PushMessage = { title: s.title, body, tag: herdTag, paneId: s.paneId, renotify: s.renotify };
       if (sessionName !== undefined) msg.session = sessionName;
+      if (host !== undefined) msg.host = host;
       void push.send(msg);
     },
     clear: () => {

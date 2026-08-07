@@ -11,6 +11,7 @@ import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./not
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { resolvePackRuntime } from "./pack/config.ts";
 import { PackLead } from "./pack/lead.ts";
+import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
@@ -162,7 +163,12 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
     schedule: (fn, ms) => setTimeout(fn, ms),
     cancel: (h) => clearTimeout(h),
   };
-  const sink = makeNotifySink(push, snooze, herdTagFor(isPrimary, name), isPrimary ? undefined : name);
+  // In peer mode this machine's own herd alerts are muted at the sink: the lead derives them from the
+  // swept snapshot and owns the one phone registration (PACK_PROTOCOL.md §5). Nothing is deleted —
+  // see herdPushGate. Solo and lead get `snooze` back by identity, so there is no pack tax here.
+  const sink = makeNotifySink(push, herdPushGate(pack.mode, snooze), herdTagFor(isPrimary, name), {
+    session: isPrimary ? undefined : name,
+  });
   const notifications = new NotificationCoordinator(clock, sink, cfg.notifyDelayMs, (status) =>
     notifyPrefs.isNotifiable(status),
   );
@@ -231,6 +237,21 @@ sweepTimer.unref();
 // exists": an instance that has a trust store but has enrolled nobody keeps emitting a solo body,
 // and a peer builds none at all (it has no peers to sweep, and a pack link never forwards a
 // `host=` — PACK_PROTOCOL.md §4, §9.2, §11).
+// The lead's notification coordinators for its peers — one phone registration, on the lead (§5).
+// Built only in `lead` mode, so a solo instance holds no map and adds no tag (§11); it arms nothing
+// on its own, being driven entirely by bodies the sweep hands it below. The lead's OWN snooze and
+// notify-prefs are what it reads, which is what makes them pack-wide by construction.
+const peerNotifier =
+  pack.mode === "lead"
+    ? new PeerNotifier<ReturnType<typeof setTimeout>>({
+        clock: { schedule: (fn, ms) => setTimeout(fn, ms), cancel: (h) => clearTimeout(h) },
+        push,
+        mute: snooze,
+        delayMs: cfg.notifyDelayMs,
+        isNotifiable: (status) => notifyPrefs.isNotifiable(status),
+      })
+    : undefined;
+
 const packLead = (() => {
   if (pack.mode !== "lead") return undefined;
   const data = trustStore.current();
@@ -260,6 +281,10 @@ const packLead = (() => {
     // above all — are the answer, and flattening them would cost the conditional-GET win end to end.
     proxy: (link, route, params, init) => client.proxy(link, route, params, init),
     self: { id: data.self.memberId, name: data.pack?.name ?? data.self.memberId },
+    // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
+    // pushed through the same coordinator machinery a local session uses (M4/06).
+    onPeerSnapshot: (memberId, body) => peerNotifier?.observe(memberId, body),
+    onPeerGone: (memberId) => peerNotifier?.forget(memberId),
   });
 })();
 
@@ -281,6 +306,7 @@ const server = startServer({
   activity,
   pack,
   packLead,
+  peerNotifier,
   // Registered on the EXISTENCE of a trust store, not on the mode: a lead answering its very first
   // `collie join` still has zero peers and is therefore still `solo` by mode. An instance that never
   // enrolled has no store, gets no handler, and so registers no pack route at all (§11). The

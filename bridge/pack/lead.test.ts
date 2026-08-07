@@ -262,6 +262,83 @@ describe("foldPeerMemory — the three states as a pure function", () => {
   });
 });
 
+// ── Fresh bodies only (M4/06) ────────────────────────────────────────────────
+
+describe("PackLead — what it hands the notifier", () => {
+  /** A lead whose peer answers a scripted sequence, recording every fresh-body / gone callback. */
+  function withNotifier(members: TrustedMember[], script: (link: PackLink, call: number) => PeerOutcome<unknown>) {
+    const roster = [...members];
+    const calls: string[] = [];
+    const fresh: { memberId: string; blocked: number }[] = [];
+    const gone: string[] = [];
+    let clock = NOW;
+    const registry = new PackRegistry({
+      sessions: { get: () => undefined },
+      self: "desk",
+      members: () => roster,
+    });
+    const l = new PackLead({
+      registry,
+      snapshot: async (link) => {
+        calls.push(link.memberId);
+        return script(link, calls.filter((c) => c === link.memberId).length);
+      },
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      onPeerSnapshot: (memberId, b) =>
+        fresh.push({ memberId, blocked: b.agents.filter((a) => a.status === "blocked").length }),
+      onPeerGone: (memberId) => gone.push(memberId),
+      now: () => clock,
+    });
+    // Sweeping past an incompatible verdict needs the clock to clear its backoff — the sweep is the
+    // lead's poll, and a poll happens on a wall clock this test owns.
+    return {
+      lead: l,
+      fresh,
+      gone,
+      roster,
+      sweep: async () => {
+        clock += 15 * 60_000;
+        await l.sweep();
+      },
+    };
+  }
+
+  test("a poll that parsed a body offers it; one that did not offers nothing", async () => {
+    const idle = { ...body, agents: [{ ...body.agents[0]!, status: "working" }] };
+    const script = (_l: PackLink, call: number) =>
+      call === 1 ? ok(body) : call === 2 ? down : call === 3 ? skewed : call === 4 ? ok("garbage") : ok(idle);
+    const { fresh, sweep } = withNotifier([member({ memberId: "laptop" })], script);
+
+    for (let i = 0; i < 5; i++) await sweep();
+
+    // Calls 2–4 (unreachable / incompatible / unparseable) all RETAIN the last-good body — offering
+    // it again would replay hour-old blocks onto the phone the moment a peer came back.
+    expect(fresh).toEqual([
+      { memberId: "laptop", blocked: 1 },
+      { memberId: "laptop", blocked: 0 },
+    ]);
+  });
+
+  test("an unchanged peer still offers a body each poll — the diff, not this class, dedupes", async () => {
+    const { fresh, sweep } = withNotifier([member({ memberId: "laptop" })], () => ok(body));
+    await sweep();
+    await sweep();
+    expect(fresh).toHaveLength(2);
+  });
+
+  test("a member the registry drops is reported gone, once", async () => {
+    const { gone, roster, sweep } = withNotifier([member({ memberId: "laptop" })], () => ok(body));
+    await sweep();
+    expect(gone).toEqual([]);
+
+    roster.length = 0; // `collie leave` / revocation / rotation
+    await sweep();
+    await sweep();
+    expect(gone).toEqual(["laptop"]);
+  });
+});
+
 describe("forward — the lead's per-pane hop (M4/05)", () => {
   test("it delegates to the injected transport and answers with the peer's own response", async () => {
     const registry = new PackRegistry({
