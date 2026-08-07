@@ -1,7 +1,9 @@
 import type { AuditEntry, AuditLog } from "../audit.ts";
 import {
+  fingerprintOfCert,
   hashToken,
   isMemberId,
+  mintIdentity,
   mintMemberId,
   normalizeFingerprint,
   randomToken,
@@ -52,36 +54,23 @@ export interface IdentityMaterial {
   readonly fingerprint: string;
 }
 
-/** Mints {@link IdentityMaterial}. Injected — see {@link unmintableIdentity} for why it has to be. */
+/**
+ * Mints {@link IdentityMaterial}. Injected so a test pins exact material without generating a key —
+ * and so this module, which is otherwise pure, never reaches for entropy of its own.
+ */
 export type IdentityMinter = () => Promise<IdentityMaterial>;
 
 /**
- * The default minter, which **refuses**.
+ * The production minter: a self-signed EC P-256 certificate, ten years, from `identity.ts`.
  *
- * ── STUB, DELIBERATELY LOUD ──────────────────────────────────────────────────
- * Minting a self-signed X.509 certificate needs an ASN.1/DER encoder. Neither Bun nor Node ships one
- * (`node:crypto` can *parse* a certificate via `X509Certificate` and can generate a keypair, but it
- * cannot issue a certificate), and this repo has no dependency that can — verified against
- * `package.json`: `web-push` and `typescript` are the entire tree. Hand-rolling a DER encoder inside
- * a trust store is exactly the improvisation this spec's own overview rules out.
- *
- * So the *seam* ships and the *minting* does not. Everything downstream of the certificate — the
- * store shape, the pinning, the two-factor admission, the exchange, rotation, revocation — is real,
- * tested, and needs no change when a real minter lands. What must close it:
- *   • the spec that wires TLS supplies a real `IdentityMinter` and a `PeerFingerprintSource`
- *     (bridge/pack/admission.ts) that reads the fingerprint off the live TLS session;
- *   • M4/08's two-instance harness asserts a real handshake end to end.
- * Until then this throws with a message an operator can act on, rather than enrolling with a
- * placeholder certificate that would make an unpinnable link look pinned.
+ * **Called on exactly one path** — `ensureStore` in `cli/pack.ts`, at the operator's first
+ * `pack invite` or `join`. A solo instance never mints, never writes a key and never has a trust
+ * store (§11); that is a property of *where this is called*, not of what it does, which is why it is
+ * a value the CLI wires rather than a default anything could fall into.
  */
-export const unmintableIdentity: IdentityMinter = () => {
-  return Promise.reject(
-    new Error(
-      "pack: cannot generate TLS identity material in this build — certificate minting is not wired yet " +
-        "(PACK_PROTOCOL.md §8.1). Enrollment is refused rather than completed without a pinnable certificate.",
-    ),
-  );
-};
+export function identityMinter(opts: { commonName: string; sans?: readonly string[] }): IdentityMinter {
+  return () => Promise.resolve(mintIdentity({ commonName: opts.commonName, sans: opts.sans }));
+}
 
 /** Build this collie's identity record from freshly minted material. Pure given the material. */
 export function selfIdentity(memberId: string, material: IdentityMaterial, now: number): SelfIdentity {
@@ -202,6 +191,11 @@ export interface EnrollRequest {
   readonly token: string;
   /** The peer's certificate fingerprint, which the lead will pin. */
   readonly fingerprint: string;
+  /**
+   * The peer's certificate, PEM. Cross-checked against `fingerprint` before anything is pinned, so
+   * the two can never be persisted disagreeing — see {@link parseEnrollRequest}.
+   */
+  readonly certPem: string;
   /** The address the peer will listen on, and therefore the address the lead will dial (§8.2). */
   readonly address: string;
   /** A suggested label for the peer's member id. A hint the lead may ignore. */
@@ -219,6 +213,8 @@ export interface EnrollResponse {
   readonly memberId: string;
   readonly leadMemberId: string;
   readonly leadFingerprint: string;
+  /** The lead's certificate, PEM — what the peer's listener will pin as its trust anchor (§8.1). */
+  readonly leadCertPem: string;
 }
 
 // The lead's address is deliberately NOT in the response. The peer just dialled it — it is the
@@ -234,12 +230,17 @@ export function parseEnrollRequest(value: unknown): EnrollRequest | null {
   if (typeof v.fingerprint !== "string") return null;
   const fingerprint = normalizeFingerprint(v.fingerprint);
   if (fingerprint === null) return null;
+  // The certificate and the fingerprint must be the same certificate. A joiner that could have the
+  // lead pin fingerprint A while the lead *enforces* certificate B would be pinned to something it
+  // does not hold — the exact confusion `certPem` was added to make impossible.
+  if (typeof v.certPem !== "string" || fingerprintOfCert(v.certPem) !== fingerprint) return null;
   if (typeof v.address !== "string" || v.address.length === 0) return null;
   if (v.label !== null && v.label !== undefined && typeof v.label !== "string") return null;
   return {
     protocol: typeof v.protocol === "number" ? v.protocol : Number.NaN,
     token: v.token,
     fingerprint,
+    certPem: v.certPem,
     address: v.address,
     label: (v.label as string | undefined) ?? null,
   };
@@ -256,7 +257,9 @@ export function parseEnrollResponse(value: unknown): EnrollResponse | null {
     typeof v.secretGeneration !== "number" ||
     !isMemberId(v.memberId) ||
     !isMemberId(v.leadMemberId) ||
-    fingerprint === null
+    fingerprint === null ||
+    typeof v.leadCertPem !== "string" ||
+    fingerprintOfCert(v.leadCertPem) !== fingerprint
   ) {
     return null;
   }
@@ -269,6 +272,7 @@ export function parseEnrollResponse(value: unknown): EnrollResponse | null {
     memberId: v.memberId,
     leadMemberId: v.leadMemberId,
     leadFingerprint: fingerprint,
+    leadCertPem: v.leadCertPem,
   };
 }
 
@@ -286,7 +290,7 @@ export function parseEnrollResponse(value: unknown): EnrollResponse | null {
  */
 export function enrollPeer(
   data: TrustStoreData,
-  req: { fingerprint: string; address: string; label: string | null },
+  req: { fingerprint: string; certPem: string; address: string; label: string | null },
   now: number,
   random: RandomSource = randomToken,
 ): PackChange<EnrollResponse> | null {
@@ -297,11 +301,15 @@ export function enrollPeer(
   const member: TrustedMember = {
     memberId,
     fingerprint: req.fingerprint,
+    certPem: req.certPem,
     address: req.address,
     role: "peer",
     status: "enrolled",
     enrolledAt: now,
     secretGeneration: data.pack.secretGeneration,
+    // A re-join resets the replay floor with the pin: the member is presenting a fresh certificate
+    // and a fresh invite, so a timestamp from before it is not a request this link ever admitted.
+    signedAt: 0,
   };
   return {
     next: {
@@ -317,6 +325,7 @@ export function enrollPeer(
       memberId,
       leadMemberId: data.self.memberId,
       leadFingerprint: data.self.fingerprint,
+      leadCertPem: data.self.certPem,
     },
     audit: {
       action: "pack.enroll",
@@ -342,11 +351,13 @@ export function acceptEnrollment(
   const lead: TrustedMember = {
     memberId: res.leadMemberId,
     fingerprint: res.leadFingerprint,
+    certPem: res.leadCertPem,
     address: leadAddress,
     role: "lead",
     status: "enrolled",
     enrolledAt: now,
     secretGeneration: res.secretGeneration,
+    signedAt: 0,
   };
   return {
     next: {
@@ -490,12 +501,19 @@ export function leavePack(data: TrustStoreData): PackChange<{ pack: string | nul
 export interface RosterEntry {
   readonly memberId: string;
   readonly fingerprint: string;
+  /** The member's certificate, PEM — public material, and the only way the recipient can pin it. */
+  readonly certPem: string;
   readonly address: string;
 }
 
 /** Project a pinned member down to the row that travels. Deliberately drops status and generation. */
 export function rosterEntryOf(member: TrustedMember): RosterEntry {
-  return { memberId: member.memberId, fingerprint: member.fingerprint, address: member.address };
+  return {
+    memberId: member.memberId,
+    fingerprint: member.fingerprint,
+    certPem: member.certPem,
+    address: member.address,
+  };
 }
 
 export function parseRosterEntry(value: unknown): RosterEntry | null {
@@ -503,8 +521,11 @@ export function parseRosterEntry(value: unknown): RosterEntry | null {
   const v = value as Record<string, unknown>;
   const fingerprint = typeof v.fingerprint === "string" ? normalizeFingerprint(v.fingerprint) : null;
   if (!isMemberId(v.memberId) || fingerprint === null) return null;
+  // Same cross-check as the enrollment payloads: a row whose certificate is not the one its
+  // fingerprint names is refused outright rather than pinned in two disagreeing halves.
+  if (typeof v.certPem !== "string" || fingerprintOfCert(v.certPem) !== fingerprint) return null;
   if (typeof v.address !== "string" || v.address.length === 0) return null;
-  return { memberId: v.memberId, fingerprint, address: v.address };
+  return { memberId: v.memberId, fingerprint, certPem: v.certPem, address: v.address };
 }
 
 export function parseRoster(value: unknown): RosterEntry[] | null {
@@ -523,11 +544,13 @@ function memberFrom(entry: RosterEntry, role: "lead" | "peer", generation: numbe
   return {
     memberId: entry.memberId,
     fingerprint: entry.fingerprint,
+    certPem: entry.certPem,
     address: entry.address,
     role,
     status: "enrolled",
     enrolledAt: now,
     secretGeneration: generation,
+    signedAt: 0,
   };
 }
 
@@ -659,6 +682,36 @@ export function promoteSelf(
       action: "pack.promote",
       detail: { pack: data.pack.packId, peers: adopted.map((r) => r.memberId), demoted: data.lead?.memberId },
     },
+  };
+}
+
+/**
+ * Advance a member's replay floor after a signed request was admitted (§8.6).
+ *
+ * Persisted **before the request is handled**, so a request that arrives twice cannot both be acted
+ * on: the second one is refused by {@link timestampVerdict} against the floor the first one wrote.
+ * A stale or equal timestamp is `null` — nothing to write, and the caller has already refused it.
+ */
+export function recordSignedRequest(
+  data: TrustStoreData,
+  memberId: string,
+  timestamp: number,
+): PackChange<{ signedAt: number }> | null {
+  const bump = (m: TrustedMember): TrustedMember => ({ ...m, signedAt: timestamp });
+  if (data.lead !== null && data.lead.memberId === memberId) {
+    if (data.lead.signedAt >= timestamp) return null;
+    return {
+      next: { ...data, lead: bump(data.lead) },
+      result: { signedAt: timestamp },
+      audit: { action: "pack.signed", detail: { member: memberId, at: timestamp } },
+    };
+  }
+  const peer = data.peers.find((p) => p.memberId === memberId);
+  if (peer === undefined || peer.signedAt >= timestamp) return null;
+  return {
+    next: { ...data, peers: data.peers.map((p) => (p.memberId === memberId ? bump(p) : p)) },
+    result: { signedAt: timestamp },
+    audit: { action: "pack.signed", detail: { member: memberId, at: timestamp } },
   };
 }
 

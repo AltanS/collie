@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import type { SnapshotResponse } from "../types.ts";
 import { mintInvite, type EnrollResponse } from "./enrollment.ts";
-import { counterRandom, fp, leadStore, member, PACK, peerStore, T0 } from "./fixtures.ts";
+import { counterRandom, fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
 import {
   createPackRouter,
   PACK_ENROLL_PATH,
@@ -15,6 +15,7 @@ import {
   PACK_SNAPSHOT_PATH,
   type SnapshotSource,
 } from "./router.ts";
+import { signRequest, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
 
 // The endpoint. It takes a plain `Request` and needs no `Bun.serve`, so unlike the rest of the HTTP
@@ -52,6 +53,27 @@ function call(
 
 const authed = { authorization: `Bearer ${PACK.secret}`, "x-pack-protocol": "1" };
 
+/**
+ * Sign a §8.6 request as `memberLabel` — whose pinned certificate is `material(memberLabel).certPem`
+ * — so a SIGNABLE_PATHS route admits it as that member. Only `leave`, `lead` and `hello` read these.
+ */
+function signed(memberLabel: string, method: string, path: string, body: string, timestamp: number): Record<string, string> {
+  return {
+    [SIGNATURE_HEADER]: signRequest(material(memberLabel).keyPem, { method, path, body, timestamp }),
+    [TIMESTAMP_HEADER]: String(timestamp),
+  };
+}
+
+/** A signed POST: `Authorization` + protocol + signature headers, and the body they cover. */
+function signedPost(memberLabel: string, path: string, body: unknown, timestamp: number): RequestInit {
+  const json = JSON.stringify(body);
+  return {
+    method: "POST",
+    headers: { ...authed, "content-type": "application/json", ...signed(memberLabel, "POST", path, json, timestamp) },
+    body: json,
+  };
+}
+
 describe("the prefix", () => {
   test("it is /pack/v1/ and collides with nothing reserved (§5)", () => {
     expect(PACK_PREFIX).toBe("/pack/v1/");
@@ -75,8 +97,11 @@ describe("GET /pack/v1/hello — behind both factors", () => {
 
   test("an admitted lead gets liveness, version and the member id", async () => {
     const h = harness(leadStore({ peers: [nas] }));
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
-    const res = (await call(handler, PACK_HELLO_PATH, { headers: authed }))!;
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    // `hello` travels peer → lead: `nas` signs it, since the lead's front door cannot pin a client cert.
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ protocol: 1, member: "desk" });
     expect(res.headers.get("x-pack-protocol")).toBe("1");
@@ -93,13 +118,15 @@ describe("GET /pack/v1/hello — behind both factors", () => {
 
   test("every refusal cause produces the identical response (§8.1)", async () => {
     const h = harness(leadStore({ peers: [nas] }));
+    // A stranger's signature — pinned by nobody in this store — so identity never admits either.
+    const strangerSig = signed("stranger", "GET", PACK_HELLO_PATH, "", T0);
     const cases: Array<[string, HeadersInit]> = [
-      ["no secret", { "x-pack-protocol": "1" }],
-      ["wrong secret", { authorization: "Bearer nope", "x-pack-protocol": "1" }],
-      ["no version", { authorization: `Bearer ${PACK.secret}` }],
-      ["wrong version", { ...authed, "x-pack-protocol": "9" }],
+      ["no secret", { "x-pack-protocol": "1", ...strangerSig }],
+      ["wrong secret", { authorization: "Bearer nope", "x-pack-protocol": "1", ...strangerSig }],
+      ["no version", { authorization: `Bearer ${PACK.secret}`, ...strangerSig }],
+      ["wrong version", { ...authed, "x-pack-protocol": "9", ...strangerSig }],
     ];
-    const unpinned = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("stranger") });
+    const unpinned = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
     const shapes: string[] = [];
     for (const [, headers] of cases) {
       const res = (await call(unpinned, PACK_HELLO_PATH, { headers }))!;
@@ -113,8 +140,10 @@ describe("GET /pack/v1/hello — behind both factors", () => {
 
   test("an admitted caller on the wrong version DOES get the legible 409 (§7)", async () => {
     const h = harness(leadStore({ peers: [nas] }));
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
-    const res = (await call(handler, PACK_HELLO_PATH, { headers: { ...authed, "x-pack-protocol": "2" } }))!;
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, "x-pack-protocol": "2", ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
       error: "pack protocol mismatch",
@@ -125,8 +154,10 @@ describe("GET /pack/v1/hello — behind both factors", () => {
   });
 
   test("an unimplemented pack route is a 404 only for an admitted caller, else the same 401", async () => {
-    const h = harness(leadStore({ peers: [nas] }));
-    const admitted = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
+    // `/pack/v1/snapshot` is not signable — it travels lead → peer over the pinned handshake — so an
+    // admitted caller here is this collie's own PINNED LEAD, not a peer of its own.
+    const h = harness(peerStore());
+    const admitted = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true });
     expect((await call(admitted, "/pack/v1/snapshot", { headers: authed }))!.status).toBe(404);
     const stranger = createPackRouter({ store: h.store, audit: h.audit });
     expect((await call(stranger, "/pack/v1/snapshot", { headers: authed }))!.status).toBe(401);
@@ -158,57 +189,58 @@ function ownSnapshot(over: Partial<SnapshotResponse> = {}): SnapshotResponse {
 }
 
 describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
-  const nas = member({ memberId: "nas" });
+  // `snapshot` is not signable — it travels lead → peer over the pinned handshake (the lead dials
+  // each peer to merge its view). So the admitted caller here is this collie's own PINNED LEAD.
 
   test("an admitted caller gets the peer's own snapshot body verbatim, with the pack headers", async () => {
-    const h = harness(leadStore({ peers: [nas] }));
+    const h = harness(peerStore());
     const body = ownSnapshot();
     const source: SnapshotSource = () => body;
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, snapshot: source });
     const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(body);
     expect(res.headers.get("x-pack-protocol")).toBe("1");
-    expect(res.headers.get("x-pack-member")).toBe("desk");
+    expect(res.headers.get("x-pack-member")).toBe("laptop");
   });
 
   test("?session= is passed through to the injected source", async () => {
-    const h = harness(leadStore({ peers: [nas] }));
+    const h = harness(peerStore());
     const calls: Array<string | undefined> = [];
     const source: SnapshotSource = (session) => {
       calls.push(session);
       return ownSnapshot();
     };
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, snapshot: source });
     await call(handler, `${PACK_SNAPSHOT_PATH}?session=collie-demo`, { headers: authed });
     expect(calls).toEqual(["collie-demo"]);
   });
 
   test("an unknown session (source returns undefined) is the peer's OWN 404, not the lead's", async () => {
-    const h = harness(leadStore({ peers: [nas] }));
+    const h = harness(peerStore());
     const source: SnapshotSource = () => undefined;
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, snapshot: source });
     const res = (await call(handler, `${PACK_SNAPSHOT_PATH}?session=nope`, { headers: authed }))!;
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "unknown session" });
   });
 
   test("a router built WITHOUT a snapshot dep 404s exactly like any unimplemented route", async () => {
-    const h = harness(leadStore({ peers: [nas] }));
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
+    const h = harness(peerStore());
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true });
     const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "not found" });
   });
 
   test("an UNADMITTED caller gets the standard 401 and the snapshot source is NEVER invoked", async () => {
-    const h = harness(leadStore({ peers: [nas] }));
+    const h = harness(peerStore());
     let calls = 0;
     const source: SnapshotSource = () => {
       calls += 1;
       return ownSnapshot();
     };
-    // No fingerprints dep wired => the unwired default admits nobody, same as the hello tests.
+    // transportPinned not set => the unwired default admits nobody, same as the hello tests.
     const handler = createPackRouter({ store: h.store, audit: h.audit, snapshot: source });
     const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
     expect(res.status).toBe(401);
@@ -216,9 +248,9 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
   });
 
   test("a non-GET method on the path falls through to the ordinary 404, not 405", async () => {
-    const h = harness(leadStore({ peers: [nas] }));
+    const h = harness(peerStore());
     const source: SnapshotSource = () => ownSnapshot();
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), snapshot: source });
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, snapshot: source });
     const res = (await call(handler, PACK_SNAPSHOT_PATH, { method: "POST", headers: authed }))!;
     expect(res.status).toBe(404);
     expect(res.status).not.toBe(405);
@@ -235,6 +267,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
   const body = (over: Record<string, unknown> = {}) => ({
     protocol: 1,
     fingerprint: fp("laptop"),
+    certPem: material("laptop").certPem,
     address: "laptop.ts.net:8787",
     label: "laptop",
     ...over,
@@ -321,40 +354,13 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     expect(res.status).toBe(401);
   });
 
-  test("a TLS fingerprint that disagrees with the payload's claim is refused", async () => {
-    // The stub returns null today, so this is the behaviour that must hold the moment TLS lands:
-    // the transport is authoritative and a peer cannot have the lead pin a certificate it lacks.
-    const h = invited();
-    const handler = createPackRouter({
-      store: h.store,
-      audit: h.audit,
-      now: () => T0 + 1,
-      fingerprints: () => fp("someone-else"),
-    });
-    const res = (await call(handler, PACK_ENROLL_PATH, {
-      method: "POST",
-      headers: { "x-pack-protocol": "1" },
-      body: JSON.stringify(body({ token: h.token })),
-    }))!;
-    expect(res.status).toBe(401);
-    expect(h.data().peers).toEqual([]);
-  });
-
-  test("a matching TLS fingerprint enrolls", async () => {
-    const h = invited();
-    const handler = createPackRouter({
-      store: h.store,
-      audit: h.audit,
-      now: () => T0 + 1,
-      fingerprints: () => fp("laptop"),
-    });
-    const res = (await call(handler, PACK_ENROLL_PATH, {
-      method: "POST",
-      headers: { "x-pack-protocol": "1" },
-      body: JSON.stringify(body({ token: h.token })),
-    }))!;
-    expect(res.status).toBe(200);
-  });
+  // The two "TLS fingerprint (dis)agrees with the payload's claim" cases that used to live here are
+  // gone: the production `enroll()` handler never consults `deps.transportPinned` or a signature at
+  // all. "THE CERTIFICATE ARRIVES IN THE PAYLOAD, AND THAT IS THE WHOLE TRUST STORY HERE (§8.2)" —
+  // `router.ts`'s own comment on `enroll()` — because the lead's front door terminates TLS, so no
+  // client certificate can ever reach this process on this route. What the old tests exercised (a
+  // transport-level identity check gating enrollment) is not merely unwired now, it is asserted in
+  // the shipping code to not exist on this path.
 
   test("enrollment never leaks the token into the audit log", async () => {
     const h = invited();
@@ -408,14 +414,17 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
     };
   }
 
+  // §5 dispatch is not signable — it travels lead → peer over the pinned handshake — so this
+  // router models a PEER ("laptop") answering its own admitted LEAD ("desk"), not a lead answering
+  // one of its own peers.
   function peerRouter(d?: ReturnType<typeof dispatcher>) {
-    const h = harness(leadStore({ peers: [nas] }));
+    const h = harness(peerStore());
     return {
       h,
       handler: createPackRouter({
         store: h.store,
         audit: h.audit,
-        fingerprints: () => fp("nas"),
+        transportPinned: true,
         ...(d === undefined ? {} : { dispatch: d.dispatch }),
       }),
     };
@@ -447,7 +456,7 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
     }
     expect(d.seen.map((s) => s.path)).toEqual(routes.map(([r]) => `/api/${r}`));
     // Who forwarded it — the member the two factors proved, never a header the caller chose.
-    expect(new Set(d.seen.map((s) => s.from))).toEqual(new Set(["nas"]));
+    expect(new Set(d.seen.map((s) => s.from))).toEqual(new Set(["desk"]));
   });
 
   test("`?session=` rides through untouched — the PEER's registry resolves it (§5)", async () => {
@@ -493,7 +502,7 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
     // Not cosmetic: the lead checks the version BEFORE it reads a byte (§7), so an unstamped
     // response from a perfectly healthy peer would read as a version skew.
     expect(res.headers.get("x-pack-protocol")).toBe("1");
-    expect(res.headers.get("x-pack-member")).toBe("desk");
+    expect(res.headers.get("x-pack-member")).toBe("laptop");
   });
 
   test("a 304 survives the peer surface with its ETag and no body (§9.1)", async () => {
@@ -525,8 +534,10 @@ const post = (body: unknown): RequestInit => ({
 });
 
 describe("POST /pack/v1/secret — the peer side of rotation (§8.4)", () => {
+  // `secret` is not signable — it travels lead → peer over the pinned handshake — so `asLead` admits
+  // via `transportPinned`, which resolves to exactly this collie's own pinned lead ("desk").
   const asLead = (h: ReturnType<typeof harness>) =>
-    createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk"), now: () => T0 });
+    createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => T0 });
 
   test("this collie's own lead hands it the new secret and generation", async () => {
     const h = harness(peerStore());
@@ -544,10 +555,17 @@ describe("POST /pack/v1/secret — the peer side of rotation (§8.4)", () => {
     expect(h.data().pack!.secret).toBe(PACK.secret);
   });
 
-  test("a MEMBER THAT IS NOT THE LEAD cannot rotate the pack — a peer must not lock out its lead", async () => {
-    // `desk` leads `nas` and `laptop`; `nas` is admitted, and still refused here.
+  test("a collie that IS the lead has no lead of its own to admit here — this route is peer-only", async () => {
+    // `secret` is not signable, and `transportPinned` only ever resolves to `data.lead` (§8.6's
+    // comment: a peer's listener pins exactly one certificate, its lead's). A LEAD's own store has no
+    // `lead` of its own, so nobody — not even one of its own peers, "nas" — can be admitted here at
+    // all: the role check `secret()` still carries (`data.lead.memberId !== from.memberId`) is
+    // unreachable from an admitted caller now that the transport enforces it one layer up. This
+    // replaces the old "an admitted-but-wrong-member is refused" case, which the new admission model
+    // no longer lets a test construct: nothing can present as an identified caller here except a
+    // collie's own pinned lead.
     const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true });
     const res = (await call(handler, PACK_SECRET_PATH, post({ secret: "hostile-value-zzzzzzzzzzzzz", generation: 99 })))!;
     expect(res.status).toBe(401);
     expect(h.data().pack!.secret).toBe(PACK.secret);
@@ -573,16 +591,18 @@ describe("POST /pack/v1/secret — the peer side of rotation (§8.4)", () => {
 });
 
 describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
-  const claim = { memberId: "nas", fingerprint: fp("nas"), address: "nas.example:8787" };
+  const claim = { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" };
 
   test("the old lead demotes itself and answers with its roster", async () => {
+    // A NEW lead ("nas") claiming the crown travels peer → lead — the old lead ("desk") cannot pin a
+    // client certificate, so "nas" proves itself with a §8.6 signature instead.
     const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas"), now: () => T0 });
-    const res = (await call(handler, PACK_LEAD_PATH, post({ lead: claim })))!;
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, PACK_LEAD_PATH, signedPost("nas", PACK_LEAD_PATH, { lead: claim }, T0)))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       demoted: "desk",
-      roster: [{ memberId: "laptop", fingerprint: fp("laptop"), address: "laptop.example:8787" }],
+      roster: [{ memberId: "laptop", fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "laptop.example:8787" }],
     });
     expect(h.data().lead).toMatchObject({ memberId: "nas", role: "lead" });
     expect(h.data().peers).toEqual([]);
@@ -591,10 +611,11 @@ describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
   });
 
   test("a peer re-pins the new lead and answers with an empty roster — it has no peers", async () => {
+    // Here the direction reverses: the CURRENT lead ("desk") relays a promotion it already accepted
+    // to one of its remaining peers — lead → peer, over the pinned handshake, so `transportPinned`.
     const h = harness(peerStore());
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk"), now: () => T0 });
-    // The current lead ("desk") is the one that relays a promotion it already accepted.
-    const relayed = { memberId: "desk", fingerprint: fp("desk"), address: "desk.moved:8787" };
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => T0 });
+    const relayed = { memberId: "desk", fingerprint: fp("desk"), certPem: material("desk").certPem, address: "desk.moved:8787" };
     const res = (await call(handler, PACK_LEAD_PATH, post({ lead: relayed })))!;
     expect(await res.json()).toEqual({ lead: "desk", applied: true, roster: [] });
     expect(h.data().lead!.address).toBe("desk.moved:8787");
@@ -602,7 +623,7 @@ describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
 
   test("a member may only claim leadership FOR ITSELF — nobody nominates a third party", async () => {
     const h = harness(peerStore());
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk") });
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true });
     const res = (await call(handler, PACK_LEAD_PATH, post({ lead: { ...claim, memberId: "nas" } })))!;
     expect(res.status).toBe(400);
     expect(h.data().lead!.memberId).toBe("desk");
@@ -618,7 +639,7 @@ describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
 
   test("a malformed claim is a 400 on an admitted link — it may say why", async () => {
     const h = harness(peerStore());
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("desk") });
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true });
     const res = (await call(handler, PACK_LEAD_PATH, post({ lead: { memberId: "desk" } })))!;
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "a leadership claim needs `lead`" });
@@ -626,10 +647,13 @@ describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
 });
 
 describe("POST /pack/v1/leave — the caller drops ITSELF (§8.4)", () => {
+  // `leave` travels peer → lead — the lead cannot pin a client certificate — so every admitted call
+  // here is a §8.6 signature from the leaving member.
+
   test("an admitted member removes its own roster entry and nothing else", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
-    const res = (await call(handler, PACK_LEAVE_PATH, post({ member: "laptop" })))!;
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, PACK_LEAVE_PATH, signedPost("nas", PACK_LEAVE_PATH, { member: "laptop" }, T0)))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ removed: "nas" });
     expect(h.data().peers.map((p) => p.memberId)).toEqual(["laptop"]);
@@ -637,10 +661,11 @@ describe("POST /pack/v1/leave — the caller drops ITSELF (§8.4)", () => {
 
   test("leaving twice is 200 both times — the operator's question has the same answer", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
-    const handler = createPackRouter({ store: h.store, audit: h.audit, fingerprints: () => fp("nas") });
-    expect((await call(handler, PACK_LEAVE_PATH, post({})))!.status).toBe(200);
-    // Still pinned in this test's fingerprint source, so it is still admitted — and still 200.
-    expect((await call(handler, PACK_LEAVE_PATH, post({})))!.status).toBe(401);
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    expect((await call(handler, PACK_LEAVE_PATH, signedPost("nas", PACK_LEAVE_PATH, {}, T0)))!.status).toBe(200);
+    // "nas" is no longer in the roster at all — its signature can no longer be verified against
+    // anything pinned, so the second call is refused rather than re-admitted.
+    expect((await call(handler, PACK_LEAVE_PATH, signedPost("nas", PACK_LEAVE_PATH, {}, T0)))!.status).toBe(401);
   });
 
   test("an unadmitted caller removes nobody", async () => {

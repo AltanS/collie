@@ -984,11 +984,13 @@ function leadOverDeadPeer(): PackLead {
       {
         memberId: "laptop",
         fingerprint: "a".repeat(64),
+        certPem: "-----BEGIN CERTIFICATE-----\nunused-in-this-test\n-----END CERTIFICATE-----\n",
         address: "laptop.example:8787",
         role: "peer",
         status: "enrolled",
         enrolledAt: 0,
         secretGeneration: 1,
+        signedAt: 0,
       },
     ],
   });

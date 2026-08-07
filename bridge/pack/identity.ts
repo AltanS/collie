@@ -1,4 +1,11 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  randomBytes,
+  sign as cryptoSign,
+  timingSafeEqual,
+  X509Certificate,
+} from "node:crypto";
 
 // The pack's naming and secret primitives: member ids, certificate fingerprints, the pack secret and
 // enrollment tokens. Everything here is PURE except the three `random*` mints, which take their
@@ -133,4 +140,149 @@ export function bearerToken(authorization: string | null | undefined): string | 
   if (!authorization) return null;
   const match = /^Bearer[ \t]+(\S+)$/i.exec(authorization.trim());
   return match ? match[1]! : null;
+}
+
+// ── Minting this collie's certificate ────────────────────────────────────────
+//
+// `node:crypto` parses X.509 (`X509Certificate`) and generates keys, but has no entry point that
+// *issues* a certificate. There is no dependency in this repo that can either, and adding one to a
+// trust boundary is a worse trade than the ~70 lines of DER below — which is all a self-signed EC
+// certificate actually is. Everything here is a literal reading of RFC 5280's TBSCertificate.
+//
+// THE PROFILE IS NOT DECORATIVE. Each extension buys something concrete:
+//   • basicConstraints CA:TRUE + keyUsage keyCertSign — a member's own certificate is used as a
+//     TRUST ANCHOR in the other side's `ca` list (that is what pinning is, here), and BoringSSL
+//     refuses to anchor a leaf that does not say it may sign certificates;
+//   • keyUsage digitalSignature — it is also the end-entity key for the handshake and for §8.6's
+//     request signatures;
+//   • EKU server+client auth — the same certificate is presented in both directions;
+//   • 10 years — §8.1: expiry is not a trust boundary here, the pin is.
+//
+// GOTCHA, PAID FOR ONCE: `keyUsage` must be a well-formed BIT STRING (`03 02 04 86`… i.e. 2 unused
+// bits). A malformed one is accepted by every parser we tested and then fails opaquely at
+// `Bun.serve` bind time with `BoringSSL error … KEY_USAGE_BIT_INCORRECT`. Do not hand-edit the bytes.
+
+const derLen = (n: number): Buffer => {
+  if (n < 0x80) return Buffer.from([n]);
+  const bytes: number[] = [];
+  for (let v = n; v > 0; v >>= 8) bytes.unshift(v & 0xff);
+  return Buffer.from([0x80 | bytes.length, ...bytes]);
+};
+const der = (tag: number, body: Buffer): Buffer => Buffer.concat([Buffer.from([tag]), derLen(body.length), body]);
+const SEQ = (...parts: Buffer[]): Buffer => der(0x30, Buffer.concat(parts));
+const SET = (...parts: Buffer[]): Buffer => der(0x31, Buffer.concat(parts));
+const INT = (b: Buffer): Buffer => der(0x02, b[0]! & 0x80 ? Buffer.concat([Buffer.from([0]), b]) : b);
+const BOOL = (v: boolean): Buffer => der(0x01, Buffer.from([v ? 0xff : 0x00]));
+const OCTET = (b: Buffer): Buffer => der(0x04, b);
+const UTF8 = (s: string): Buffer => der(0x0c, Buffer.from(s, "utf8"));
+const BITSTR = (b: Buffer): Buffer => der(0x03, Buffer.concat([Buffer.from([0]), b]));
+const CTX = (n: number, b: Buffer): Buffer => der(0xa0 | n, b);
+
+function OID(dotted: string): Buffer {
+  const parts = dotted.split(".").map(Number);
+  const out: number[] = [parts[0]! * 40 + parts[1]!];
+  for (const value of parts.slice(2)) {
+    const bytes: number[] = [value & 0x7f];
+    for (let v = value >> 7; v > 0; v >>= 7) bytes.unshift((v & 0x7f) | 0x80);
+    out.push(...bytes);
+  }
+  return der(0x06, Buffer.from(out));
+}
+
+/** `YYMMDDHHMMSSZ`. UTCTime is correct until 2049; a 10-year certificate minted today is inside it. */
+const utcTime = (d: Date): Buffer =>
+  der(0x17, Buffer.from(`${d.toISOString().replace(/[-:T]/g, "").slice(2, 14)}Z`, "ascii"));
+
+/** `ecdsa-with-SHA256`, the one signature algorithm this build mints and verifies. */
+const ECDSA_SHA256 = SEQ(OID("1.2.840.10045.4.3.2"));
+
+const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/** A SAN entry: `iPAddress` for a dotted quad, `dNSName` for anything else. */
+function sanEntry(value: string): Buffer {
+  if (IPV4_RE.test(value)) return der(0x87, Buffer.from(value.split(".").map(Number)));
+  return der(0x82, Buffer.from(value, "ascii"));
+}
+
+/** Freshly minted key material: PEMs plus the canonical pin, all derived from the same DER. */
+export interface MintedIdentity {
+  readonly certPem: string;
+  readonly keyPem: string;
+  /** {@link fingerprintFromDer} of the certificate just minted. Equals `X509Certificate.fingerprint256`. */
+  readonly fingerprint: string;
+}
+
+export interface MintOptions {
+  /** The certificate's CN. Cosmetic — a pin is a fingerprint, never a name (§4, §8.1). */
+  readonly commonName: string;
+  /**
+   * `subjectAltName` entries. **Also cosmetic to the trust decision**: both sides pin by certificate,
+   * and the dialling side overrides `checkServerIdentity`, so a member that roams to an address its
+   * SAN never mentioned is still the same member (§4). They are minted anyway so the certificate is
+   * legible to `openssl x509 -text` and to any operator who inspects it.
+   */
+  readonly sans?: readonly string[];
+  readonly years?: number;
+  readonly now?: Date;
+}
+
+/**
+ * Mint this collie's self-signed certificate and private key (§8.1).
+ *
+ * Called on **one** path only — `ensureStore` in `cli/pack.ts`, at the operator's first `pack invite`
+ * or `join`. A solo instance never reaches it, which is the "solo mints nothing" row of §11.
+ */
+export function mintIdentity(opts: MintOptions): MintedIdentity {
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const spki = publicKey.export({ type: "spki", format: "der" }) as Buffer;
+  const name = SEQ(SET(SEQ(OID("2.5.4.3"), UTF8(opts.commonName))));
+  const from = opts.now ?? new Date();
+  const to = new Date(from);
+  to.setUTCFullYear(to.getUTCFullYear() + (opts.years ?? 10));
+
+  const extension = (oid: string, critical: boolean, value: Buffer): Buffer =>
+    SEQ(OID(oid), ...(critical ? [BOOL(true)] : []), OCTET(value));
+  const sans = (opts.sans ?? []).filter((s) => s !== "");
+  const extensions = SEQ(
+    extension("2.5.29.19", true, SEQ(BOOL(true))), // basicConstraints: CA:TRUE
+    extension("2.5.29.15", true, der(0x03, Buffer.from([0x02, 0x84]))), // keyUsage: digitalSignature|keyCertSign
+    extension("2.5.29.37", false, SEQ(OID("1.3.6.1.5.5.7.3.1"), OID("1.3.6.1.5.5.7.3.2"))), // EKU server+client
+    ...(sans.length > 0 ? [extension("2.5.29.17", false, SEQ(...sans.map(sanEntry)))] : []),
+  );
+  const tbs = SEQ(
+    CTX(0, INT(Buffer.from([2]))), // version: v3
+    INT(randomBytes(16)), // serial
+    ECDSA_SHA256,
+    name, // issuer == subject: self-signed
+    SEQ(utcTime(from), utcTime(to)),
+    name,
+    spki,
+    CTX(3, extensions),
+  );
+  const certDer = SEQ(tbs, ECDSA_SHA256, BITSTR(cryptoSign("sha256", tbs, privateKey)));
+  return {
+    certPem: pemOf("CERTIFICATE", certDer),
+    keyPem: privateKey.export({ type: "pkcs8", format: "pem" }) as string,
+    fingerprint: fingerprintFromDer(certDer),
+  };
+}
+
+function pemOf(label: string, body: Buffer): string {
+  const b64 = body.toString("base64").replace(/(.{64})/g, "$1\n").replace(/\n$/, "");
+  return `-----BEGIN ${label}-----\n${b64}\n-----END ${label}-----\n`;
+}
+
+/**
+ * The canonical fingerprint of a certificate given its PEM, or `null` when it will not parse.
+ *
+ * Goes through {@link fingerprintFromDer} on the parsed DER rather than reformatting
+ * `X509Certificate.fingerprint256`: one derivation, so the stored pin and the minted pin cannot
+ * disagree about spelling. (`identity.test.ts` pins that the two agree.)
+ */
+export function fingerprintOfCert(certPem: string): string | null {
+  try {
+    return fingerprintFromDer(new X509Certificate(certPem).raw);
+  } catch {
+    return null;
+  }
 }

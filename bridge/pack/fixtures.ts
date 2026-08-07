@@ -1,4 +1,5 @@
 import { createTrustStore, selfIdentity, type IdentityMaterial } from "./enrollment.ts";
+import { mintIdentity } from "./identity.ts";
 import type { ForwardTransport } from "./forward.ts";
 import type { PackIdentity, TrustStoreData, TrustedMember } from "./trust-store.ts";
 
@@ -6,22 +7,33 @@ import type { PackIdentity, TrustStoreData, TrustedMember } from "./trust-store.
 // it) and not imported by any production path — it exists so five test files agree on what a member,
 // a pack and a certificate fingerprint look like, rather than each inventing a plausible one.
 
-/** A fingerprint-shaped value: 64 lowercase hex chars, derived from a label so it reads in failures. */
-export function fp(label: string): string {
-  const seed = label.padEnd(8, "-");
-  let out = "";
-  for (let i = 0; i < 32; i++) out += (seed.charCodeAt(i % seed.length) % 256).toString(16).padStart(2, "0");
-  return out;
-}
-
 export const T0 = 1_754_000_000_000;
 
+/**
+ * REAL minted material, one certificate per label, memoised for the process.
+ *
+ * It used to be a shaped placeholder (`-----BEGIN CERTIFICATE-----\n<label>\n…`) with a fingerprint
+ * derived from the label, which was fine while nothing could parse a certificate. It is not fine now:
+ * the enrollment and roster parsers re-derive the fingerprint FROM the certificate and refuse a
+ * payload where the two disagree, and §8.6 verifies a signature against the pinned certificate's
+ * public key. A fixture that could not survive those checks would let a test pass on a store the
+ * production path would have rejected.
+ *
+ * Memoised because a test that builds the same member twice must get the same pin — and because
+ * minting is the one thing in this file that costs anything (~1 ms per label).
+ */
+const minted = new Map<string, IdentityMaterial>();
 export function material(label: string): IdentityMaterial {
-  return {
-    certPem: `-----BEGIN CERTIFICATE-----\n${label}\n-----END CERTIFICATE-----\n`,
-    keyPem: `-----BEGIN PRIVATE KEY-----\n${label}\n-----END PRIVATE KEY-----\n`,
-    fingerprint: fp(label),
-  };
+  const cached = minted.get(label);
+  if (cached !== undefined) return cached;
+  const fresh = mintIdentity({ commonName: `collie-${label}`, sans: ["localhost", "127.0.0.1"] });
+  minted.set(label, fresh);
+  return fresh;
+}
+
+/** The canonical fingerprint of `label`'s certificate — the value a store would actually hold. */
+export function fp(label: string): string {
+  return material(label).fingerprint;
 }
 
 export const PACK: PackIdentity = {
@@ -35,11 +47,13 @@ export const PACK: PackIdentity = {
 export function member(over: Partial<TrustedMember> & { memberId: string }): TrustedMember {
   return {
     fingerprint: fp(over.memberId),
+    certPem: material(over.memberId).certPem,
     address: `${over.memberId}.example:8787`,
     role: "peer",
     status: "enrolled",
     enrolledAt: T0,
     secretGeneration: 1,
+    signedAt: 0,
     ...over,
   };
 }

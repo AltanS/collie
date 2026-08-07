@@ -27,6 +27,7 @@ import type { PackLead } from "./pack/lead.ts";
 import { packDeviceOf, packGate } from "./pack/peer-gate.ts";
 import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
 import type { PackHandler, PackSurface } from "./pack/router.ts";
+import type { PackTlsOptions } from "./pack/transport.ts";
 import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
 import { toPaneWire } from "./types.ts";
 import type {
@@ -211,6 +212,12 @@ export function startServer(opts: {
    * Two assemblies that "agree" would be two assemblies that drift.
    */
   packRouter?: (surface: PackSurface) => PackHandler;
+  /**
+   * The peer listener's pinned-mTLS options, supplied **only** by a peer that could build them
+   * (`bridge/pack/transport.ts`). Absent on solo and on a lead, so this file's `Bun.serve` call is
+   * byte-identical to today's for every instance that is not a peer (§11).
+   */
+  tls?: PackTlsOptions;
   /**
    * The lead runtime, supplied **only** when this collie leads a pack with at least one enrolled
    * member. Its presence is exactly the condition under which `servers` goes on the wire and every
@@ -431,6 +438,13 @@ export function startServer(opts: {
     // Runtime cap on any request body — a chunked/lying client is cut off here even if its
     // Content-Length is absent or false. The upload handler still does its own precise check.
     maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+    // Present ONLY on a peer that pins its lead (`bridge/pack/peerListenerTls`); `undefined` for
+    // solo and for a lead, which is the zero-tax shape — an absent key, not a disabled one. When it
+    // is present the handshake itself is the first factor: an unpinned or absent client certificate
+    // never reaches `fetch` at all, so nothing below has to defend against it.
+    // `ca` is copied out of its readonly array because Bun's `TLSOptions` wants a mutable one; the
+    // spread is the only reason this is not a bare `tls: opts.tls`.
+    ...(opts.tls === undefined ? {} : { tls: { ...opts.tls, ca: [...opts.tls.ca] } }),
 
     async fetch(req) {
       const url = new URL(req.url);

@@ -162,6 +162,7 @@ const ENROLLED: EnrollResponse = {
   memberId: "laptop",
   leadMemberId: "desk",
   leadFingerprint: fp("desk"),
+  leadCertPem: material("desk").certPem,
 };
 
 const text = (io: ReturnType<typeof capture>): string => [...io.stdout, ...io.stderr].join("\n");
@@ -229,7 +230,9 @@ describe("collie pack invite", () => {
     expect(await cmdPackInvite(h.deps, [])).toBe(EXIT.OK);
     const token = h.io.stdout[0]!;
     expect(token).toBe("r1");
-    expect(serializeTrustStore(h.data()!)).not.toContain(token);
+    // Scoped to `invites` (not the whole store): `self` now carries a real minted certificate, whose
+    // base64 can coincidentally contain a short deterministic token like "r1" as a substring.
+    expect(JSON.stringify(h.data()!.invites)).not.toContain(token);
     expect(text(h.io)).toContain("single-use");
     expect(text(h.io)).toContain("expires");
   });
@@ -283,6 +286,7 @@ describe("collie join", () => {
       protocol: 1,
       token: "token-from-stdin",
       fingerprint: fp("fresh"),
+      certPem: material("fresh").certPem,
       address: "laptop.tail.ts.net",
       label: null,
     });
@@ -549,7 +553,14 @@ describe("collie promote", () => {
 
   test("a clean handover demotes the lead, adopts its roster, and tells every reachable member", async () => {
     const h = harness(peerStore(), [
-      jsonReply({ demoted: "desk", roster: [{ memberId: "nas", fingerprint: fp("nas"), address: "nas.example:1" }] }, 200, "desk"),
+      jsonReply(
+        {
+          demoted: "desk",
+          roster: [{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:1" }],
+        },
+        200,
+        "desk",
+      ),
       jsonReply({ lead: "laptop", applied: true }, 200, "nas"),
     ]);
     expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
@@ -561,7 +572,7 @@ describe("collie promote", () => {
     expect(data.self.memberId).toBe("laptop");
     expect(h.requests[1]!.url).toBe("https://nas.example:1/pack/v1/lead");
     expect(JSON.parse(h.requests[1]!.body)).toEqual({
-      lead: { memberId: "laptop", fingerprint: fp("laptop"), address: "laptop.tail.ts.net" },
+      lead: { memberId: "laptop", fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "laptop.tail.ts.net" },
     });
   });
 
@@ -580,7 +591,14 @@ describe("collie promote", () => {
 
   test("a member unreachable during promotion is named, with the re-join rule", async () => {
     const h = harness(peerStore(), [
-      jsonReply({ demoted: "desk", roster: [{ memberId: "nas", fingerprint: fp("nas"), address: "nas.example:1" }] }, 200, "desk"),
+      jsonReply(
+        {
+          demoted: "desk",
+          roster: [{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:1" }],
+        },
+        200,
+        "desk",
+      ),
       new Error("nope"),
     ]);
     await cmdPromote(h.deps, []);

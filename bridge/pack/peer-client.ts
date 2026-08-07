@@ -1,6 +1,8 @@
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
 import { PACK_PREFIX } from "./router.ts";
+import { SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
+import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 
 // The LEAD side of a pack link: the client that dials a peer's `/pack/v1/*` surface.
 //
@@ -61,7 +63,7 @@ export interface PackLink {
  * production value is the platform's `fetch` (with the pinned-TLS agent, when M4/08 wires one), and
  * a test's value is a function. Anything richer would be a seam only the tests use.
  */
-export type PackFetch = (url: string, init: RequestInit) => Promise<Response>;
+export type PackFetch = (url: string, init: PackRequestInit) => Promise<Response>;
 
 /** Why a peer is not answering usefully. The three states of §10.2, minus `reachable`. */
 export type PeerFailure =
@@ -115,6 +117,20 @@ export interface PeerClientDeps {
   readonly now?: () => number;
   /** The operator's device id, forwarded for the peer's audit trail (§6, §12). Off ⇒ `null`. */
   readonly device?: () => string | null;
+  /**
+   * The pinned TLS material for dialling this member (§8.1, `bridge/pack/transport.ts`). A function
+   * of the link rather than a value, for the same reason `secret` is: pins change under a running
+   * process. `undefined` means "no material" — the far side's own listener then refuses the
+   * handshake, which is exactly the refusal we want and not a quiet downgrade.
+   */
+  readonly tls?: (link: PackLink) => PackTlsOptions | undefined;
+  /**
+   * Sign every request with this collie's own identity key (§8.6). Supplied by the CLI, which is the
+   * only caller that runs in the **peer → lead** direction; the bridge's lead-side client leaves it
+   * unset, because that direction is pinned at the handshake and hashing a body to sign it would
+   * pull a streamed upload into memory on the security path.
+   */
+  readonly sign?: (parts: { method: string; path: string; body: string; timestamp: number }) => string;
 }
 
 /**
@@ -191,7 +207,7 @@ export class PeerClient {
     link: PackLink,
     route: string,
     params?: Record<string, string>,
-    init: RequestInit = {},
+    init: PackRequestInit = {},
   ): Promise<PeerOutcome<unknown>> {
     const outcome = await this.raw(link, route, params, init);
     if (!outcome.ok) return outcome;
@@ -226,7 +242,7 @@ export class PeerClient {
     link: PackLink,
     route: string,
     params?: Record<string, string>,
-    init: RequestInit = {},
+    init: PackRequestInit = {},
   ): Promise<PeerOutcome<Response>> {
     return this.dial(link, route, params, init, "passthrough");
   }
@@ -240,7 +256,7 @@ export class PeerClient {
     link: PackLink,
     route: string,
     params?: Record<string, string>,
-    init: RequestInit = {},
+    init: PackRequestInit = {},
   ): Promise<PeerOutcome<Response>> {
     return this.dial(link, route, params, init, "consumed");
   }
@@ -254,7 +270,7 @@ export class PeerClient {
     link: PackLink,
     route: string,
     params: Record<string, string> | undefined,
-    init: RequestInit,
+    init: PackRequestInit,
     mode: "consumed" | "passthrough",
   ): Promise<PeerOutcome<Response>> {
     const secret = this.deps.secret();
@@ -280,11 +296,26 @@ export class PeerClient {
     // they are set unconditionally above, so nothing a caller passes can shape the link's own claims.
     if (!headers.has(DEVICE_HEADER) && device !== null && device !== "") headers.set(DEVICE_HEADER, device);
 
+    // §8.6's signature, when this client holds an identity key. Signed over the body **as it will be
+    // sent** — hence the requirement that `init.body` be a string here: a stream could not be hashed
+    // without consuming it, and a signature over bytes other than the ones on the wire is worse than
+    // none. Every signed route's body is a small JSON literal built by a verb, so this costs nothing.
+    if (this.deps.sign !== undefined) {
+      const timestamp = this.now();
+      const body = typeof init.body === "string" ? init.body : "";
+      const path = new URL(url).pathname;
+      headers.set(TIMESTAMP_HEADER, String(timestamp));
+      headers.set(SIGNATURE_HEADER, this.deps.sign({ method: init.method ?? "GET", path, body, timestamp }));
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.deps.timeoutMs);
     let res: Response;
     try {
-      res = await this.deps.fetch(url, { ...init, headers, signal: controller.signal });
+      // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
+      // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
+      const tls = this.deps.tls?.(link);
+      res = await this.deps.fetch(url, { ...init, headers, signal: controller.signal, ...(tls ? { tls } : {}) });
     } catch (err) {
       // Timeout, connection refused, DNS, TLS — one state, because the phone's answer is the same in
       // all of them: last-good state, marked stale (§10.2). The peer's address is named; the secret

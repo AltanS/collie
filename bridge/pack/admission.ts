@@ -32,10 +32,29 @@ export const DEVICE_HEADER = "x-pack-device";
  */
 export interface PackRequestFacts {
   /**
-   * The SHA-256 fingerprint of the certificate the caller presented, or `null` when the transport
-   * offered none. `null` is a refusal, never a pass — see {@link PeerFingerprintSource}.
+   * **The transport attestation**: this request arrived on a listener that was constructed
+   * pin-enforcing (`bridge/pack/transport.ts`), so BoringSSL already refused every caller that did
+   * not present the one pinned certificate.
+   *
+   * A boolean rather than a fingerprint because Bun exposes no way to *read* the certificate a caller
+   * presented — see transport.ts for the measurement. It is not lossy, because the only listener that
+   * pins is a PEER's, and a peer pins exactly one member: its lead (§8.2 step 4). "Admitted by the
+   * transport" and "is the lead" are therefore the same statement.
+   *
+   * `false` on a lead (its front door terminates TLS, §8.6) and `false` on any mis-wiring — in which
+   * case nothing at all is admitted, because the value is only ever set by the code that built the
+   * listener, never by a header and never by configuration.
    */
-  readonly presentedFingerprint: string | null;
+  readonly transportPinned: boolean;
+  /**
+   * The member id proven by a verified request signature (§8.6), or `null` when the request carried
+   * none or it did not verify.
+   *
+   * Verified upstream, in the router, against the public key of the certificate this collie already
+   * pinned for that member — so by the time it reaches here it is a *fact*, exactly like
+   * {@link PackRequestFacts.transportPinned}, and this function stays pure.
+   */
+  readonly signedMember: string | null;
   /** The raw `Authorization` header. */
   readonly authorization: string | null;
   /** The raw `X-Pack-Protocol` header. */
@@ -51,28 +70,14 @@ export type PackVerdict =
   | { readonly ok: false; readonly refusal: "unauthorized"; readonly factor: RefusedFactor }
   | { readonly ok: false; readonly refusal: "protocol_mismatch"; readonly received: number | null };
 
-/**
- * Read the fingerprint of the certificate a caller presented on this connection.
- *
- * ── SEAM, STUBBED ────────────────────────────────────────────────────────────
- * `Bun.serve`'s `fetch(req)` exposes no client-certificate accessor, so there is no way to obtain
- * this value in-process today. The whole gate is built to take it as an input for exactly that
- * reason: when TLS client verification lands, one function is supplied and nothing else moves.
- *
- * The default {@link unwiredFingerprints} returns `null`, which **refuses every request**. That is
- * the correct unwired behaviour and the reason it is not a boolean flag: there is no configuration
- * that turns pinning off, so no deployment can end up single-factor by accident. M4/08's harness is
- * what proves a real handshake pins.
- */
-export type PeerFingerprintSource = (req: Request) => string | null;
-
-/** The default source: no TLS session is readable, so nothing is pinned, so nothing is admitted. */
-export const unwiredFingerprints: PeerFingerprintSource = () => null;
-
-/** Lift a request plus a fingerprint source into the facts {@link admitPackRequest} decides on. */
-export function factsFrom(req: Request, fingerprints: PeerFingerprintSource): PackRequestFacts {
+/** Lift a request plus the two identity facts into what {@link admitPackRequest} decides on. */
+export function factsFrom(
+  req: Request,
+  identity: { transportPinned: boolean; signedMember: string | null },
+): PackRequestFacts {
   return {
-    presentedFingerprint: fingerprints(req),
+    transportPinned: identity.transportPinned,
+    signedMember: identity.signedMember,
     authorization: req.headers.get("authorization"),
     protocol: req.headers.get(PROTOCOL_HEADER),
   };
@@ -103,10 +108,17 @@ export function admitPackRequest(data: TrustStoreData | null, facts: PackRequest
     return { ok: false, refusal: "unauthorized", factor: "not-a-pack-member" };
   }
 
-  // Factor 1 — pinned certificate. An `unenrolled` member is pinned but refused: that is what
-  // "dropped by a rotation" means, and it must not read as an unknown machine to the operator's log.
-  const presented = facts.presentedFingerprint;
-  const pinned = presented === null ? undefined : pinnedMembers(data).find((m) => m.fingerprint === presented);
+  // Factor 1 — the pinned certificate, proven one of two ways and never any other:
+  //   • a VERIFIED SIGNATURE names the member (§8.6). Checked first, because it is the more specific
+  //     claim: a member that signed said which member it is, where the transport only says "the one
+  //     this listener pins".
+  //   • the TRANSPORT attested a pin-enforcing handshake, which on a peer's listener can only be its
+  //     lead (see `PackRequestFacts.transportPinned`). Resolving it to anything else — a header, a
+  //     body field — would be reading identity from the caller, which is the whole thing pinning
+  //     exists to avoid.
+  // An `unenrolled` member is pinned but refused either way: that is what "dropped by a rotation"
+  // means, and it must not read as an unknown machine to the operator's log.
+  const pinned = resolveCaller(data, facts);
   const identified = pinned !== undefined && pinned.status === "enrolled";
 
   // Factor 2 — the pack-wide bearer secret. Evaluated regardless of factor 1's outcome so the two
@@ -121,6 +133,14 @@ export function admitPackRequest(data: TrustStoreData | null, facts: PackRequest
   if (version !== PACK_PROTOCOL_VERSION) return { ok: false, refusal: "protocol_mismatch", received: version };
 
   return { ok: true, member: pinned, self: data.self.memberId };
+}
+
+/** Who the two identity facts say is calling, if anyone. Never reads a header, never reads a body. */
+function resolveCaller(data: TrustStoreData, facts: PackRequestFacts): TrustedMember | undefined {
+  if (facts.signedMember !== null) {
+    return pinnedMembers(data).find((m) => m.memberId === facts.signedMember);
+  }
+  return facts.transportPinned ? (data.lead ?? undefined) : undefined;
 }
 
 /**

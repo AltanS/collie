@@ -7,10 +7,9 @@ import {
   parseProtocolHeader,
   protocolMismatchResponse,
   unauthorizedResponse,
-  unwiredFingerprints,
   type PackRequestFacts,
 } from "./admission.ts";
-import { fp, leadStore, member, PACK, peerStore } from "./fixtures.ts";
+import { leadStore, member, PACK, peerStore } from "./fixtures.ts";
 
 // The two-factor gate (PACK_PROTOCOL.md §8.1) is the whole of federation's security posture, so it
 // is tested as a MATRIX rather than as a set of happy paths: every combination of "which factor did
@@ -29,7 +28,8 @@ const store = leadStore({ peers: [nas] });
 
 function facts(over: Partial<PackRequestFacts> = {}): PackRequestFacts {
   return {
-    presentedFingerprint: fp("nas"),
+    transportPinned: false,
+    signedMember: "nas",
     authorization: `Bearer ${PACK.secret}`,
     protocol: "1",
     ...over,
@@ -64,7 +64,7 @@ describe("admitPackRequest — the failure matrix", () => {
   });
 
   test("an UNPINNED certificate is refused even with the correct secret", () => {
-    expect(admitPackRequest(store, facts({ presentedFingerprint: fp("stranger") }))).toEqual({
+    expect(admitPackRequest(store, facts({ signedMember: "stranger" }))).toEqual({
       ok: false,
       refusal: "unauthorized",
       factor: "certificate",
@@ -72,12 +72,12 @@ describe("admitPackRequest — the failure matrix", () => {
   });
 
   test("NO certificate is refused — the unwired transport must not degrade to one factor", () => {
-    expect(admitPackRequest(store, facts({ presentedFingerprint: null })).ok).toBe(false);
+    expect(admitPackRequest(store, facts({ signedMember: null })).ok).toBe(false);
   });
 
   test("a pinned certificate with a wrong secret is refused — neither factor alone admits", () => {
     expect(admitPackRequest(store, facts({ authorization: "Bearer wrong" })).ok).toBe(false);
-    expect(admitPackRequest(store, facts({ presentedFingerprint: fp("stranger"), authorization: null })).ok).toBe(
+    expect(admitPackRequest(store, facts({ signedMember: "stranger", authorization: null })).ok).toBe(
       false,
     );
   });
@@ -95,7 +95,7 @@ describe("admitPackRequest — the failure matrix", () => {
 
   test("a peer admits its LEAD — pinning is pairwise and works in both directions", () => {
     const peer = peerStore();
-    const verdict = admitPackRequest(peer, facts({ presentedFingerprint: fp("desk") }));
+    const verdict = admitPackRequest(peer, facts({ transportPinned: true, signedMember: null }));
     expect(verdict.ok).toBe(true);
     if (!verdict.ok) throw new Error("unreachable");
     expect(verdict.member.role).toBe("lead");
@@ -127,7 +127,7 @@ describe("admitPackRequest — version negotiation is LAST", () => {
   test("an UNAUTHENTICATED caller on a wrong version learns nothing — 401, not 409 (§8.5)", () => {
     // This ordering is the whole reconciliation of §7 (be legible) with §8.5 (no version banner):
     // the 409 exists, but only behind the gate. A prober cannot use it to discover the protocol.
-    const verdict = admitPackRequest(store, facts({ protocol: "2", presentedFingerprint: null, authorization: null }));
+    const verdict = admitPackRequest(store, facts({ protocol: "2", signedMember: null, authorization: null }));
     expect(verdict).toEqual({ ok: false, refusal: "unauthorized", factor: "certificate" });
   });
 });
@@ -149,9 +149,9 @@ describe("the refusal is indistinguishable — the RESPONSE, not just the decisi
     const causes = [
       facts({ authorization: null }),
       facts({ authorization: "Bearer wrong" }),
-      facts({ presentedFingerprint: fp("stranger") }),
-      facts({ presentedFingerprint: null }),
-      facts({ presentedFingerprint: fp("stranger"), authorization: null }),
+      facts({ signedMember: "stranger" }),
+      facts({ signedMember: null }),
+      facts({ signedMember: "stranger", authorization: null }),
     ];
     const shapes = await Promise.all(
       causes.map(async (f) => {
@@ -199,10 +199,9 @@ describe("the 409 body names both sides", () => {
 });
 
 describe("the transport seam", () => {
-  test("the default fingerprint source refuses everything — no config can make it single-factor", () => {
+  test("no identity offered refuses everything — no config can make it single-factor", () => {
     const req = new Request("https://peer.example/pack/v1/hello");
-    expect(unwiredFingerprints(req)).toBeNull();
-    expect(admitPackRequest(store, factsFrom(req, unwiredFingerprints)).ok).toBe(false);
+    expect(admitPackRequest(store, factsFrom(req, { transportPinned: false, signedMember: null })).ok).toBe(false);
   });
 
   test("factsFrom reads only pack headers — never Origin, Host or a device header", () => {
@@ -215,8 +214,8 @@ describe("the transport seam", () => {
         "x-pack-protocol": "1",
       },
     });
-    const f = factsFrom(req, () => fp("nas"));
-    expect(Object.keys(f).sort()).toEqual(["authorization", "presentedFingerprint", "protocol"]);
+    const f = factsFrom(req, { transportPinned: false, signedMember: "nas" });
+    expect(Object.keys(f).sort()).toEqual(["authorization", "protocol", "signedMember", "transportPinned"]);
     // Browser credentials are present on this request and admit nothing on their own.
     expect(admitPackRequest(store, { ...f, authorization: null }).ok).toBe(false);
   });

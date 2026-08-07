@@ -9,7 +9,8 @@ import { EventPoker } from "./event-poker.ts";
 import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
-import { resolvePackRuntime } from "./pack/config.ts";
+import { PEER_BROWSER_ENV, resolvePackRuntime } from "./pack/config.ts";
+import { dialTls, peerListenerTls } from "./pack/transport.ts";
 import { PackLead } from "./pack/lead.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
@@ -252,6 +253,35 @@ const peerNotifier =
       })
     : undefined;
 
+// ── The transport half of §8.1's first factor ────────────────────────────────
+// A PEER pins its lead's certificate on its own listener, so BoringSSL refuses an unpinned or absent
+// client certificate at the handshake and the admission gate is told, as a fact it cannot be lied to
+// about, that the transport already did its half (`bridge/pack/transport.ts`).
+//
+// A LEAD pins nothing here: its pack surface rides the front door, which terminates TLS. Peer→lead
+// requests carry a §8.6 signature instead. A SOLO instance never reaches this — `listenerTls` is
+// `null` and no `tls` key is passed to `Bun.serve` (§11: "Ports opened — exactly one, loopback, as
+// today", unchanged in shape as well as in count).
+//
+// MIS-WIRING IS FAIL-CLOSED, NOT DEGRADED: a peer whose store cannot produce an anchor gets
+// `transportPinned === false`, and admission then refuses every request rather than running on the
+// pack secret alone.
+const listenerTls = peerListenerTls(pack.mode, trustStore.current());
+const transportPinned = listenerTls !== null;
+if (pack.mode === "peer" && !transportPinned) {
+  console.warn(
+    "[pack] this peer could not build its pinned listener (no enrolled lead certificate in the trust " +
+      "store) — the pack surface will refuse every request. Re-run `collie join` on this machine.",
+  );
+}
+if (transportPinned && pack.peerServesBrowser) {
+  console.warn(
+    `[pack] ${PEER_BROWSER_ENV} is set, but this peer's port now requires the lead's client certificate ` +
+      "at the TLS handshake — a browser cannot present one, so the browser surface is unreachable here. " +
+      "Use the lead's front door, or leave the pack on this machine.",
+  );
+}
+
 const packLead = (() => {
   if (pack.mode !== "lead") return undefined;
   const data = trustStore.current();
@@ -271,8 +301,16 @@ const packLead = (() => {
     // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
     // (§10.1). The clamp lives in packTimeoutBudget; nothing here is allowed to widen it.
     timeoutMs: packTimeoutBudget(cfg.pollMs),
-    // The platform fetch. Pinned mutual TLS is M4/08's to wire in here and nowhere else.
     fetch: (url, init) => fetch(url, init),
+    // Pinned mutual TLS, per member, read through the store on every dial for the same reason the
+    // secret and the roster are: `pack remove`, a re-join and a rotation all change what this lead
+    // may pin, and a captured copy would keep trusting a certificate the operator revoked. A member
+    // we cannot build a pin for is dialled with no TLS material at all — which the peer's own
+    // listener then refuses at the handshake, i.e. `unreachable`, never an unpinned connection.
+    tls: (link) => {
+      const member = trustStore.current()?.peers.find((p) => p.memberId === link.memberId);
+      return member === undefined ? undefined : (dialTls(trustStore.current(), member) ?? undefined);
+    },
   });
   return new PackLead({
     registry: packRegistry,
@@ -315,7 +353,9 @@ const server = startServer({
   packRouter:
     trustStore.current() === null
       ? undefined
-      : (surface) => createPackRouter({ store: trustStore, audit, ...surface }),
+      : (surface) => createPackRouter({ store: trustStore, audit, transportPinned, ...surface }),
+  // Peer only, and only when the pin could actually be built. See `transportPinned` above.
+  tls: listenerTls ?? undefined,
 });
 
 const shutdown = async () => {

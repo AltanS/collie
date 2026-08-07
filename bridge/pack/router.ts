@@ -8,8 +8,6 @@ import {
   protocolMismatchResponse,
   PROTOCOL_HEADER,
   unauthorizedResponse,
-  unwiredFingerprints,
-  type PeerFingerprintSource,
   type RefusedFactor,
 } from "./admission.ts";
 import { apiPathFor } from "./forward.ts";
@@ -24,11 +22,19 @@ import {
   isLeading,
   parseEnrollRequest,
   parseRosterEntry,
+  recordSignedRequest,
   removeMember,
   PACK_PROTOCOL_VERSION,
 } from "./enrollment.ts";
 import { randomToken, type RandomSource } from "./identity.ts";
-import type { TrustedMember, TrustStore } from "./trust-store.ts";
+import {
+  parseTimestamp,
+  timestampVerdict,
+  verifyRequestSignature,
+  SIGNATURE_HEADER,
+  TIMESTAMP_HEADER,
+} from "./signing.ts";
+import type { TrustedMember, TrustStore, TrustStoreData } from "./trust-store.ts";
 import type { SnapshotResponse } from "../types.ts";
 
 // The `/pack/v1/*` surface. This module exists **so that `bridge/server.ts` contains no pack route
@@ -73,6 +79,25 @@ export const PACK_LEAD_PATH = "/pack/v1/lead";
 export const PACK_LEAVE_PATH = "/pack/v1/leave";
 
 /**
+ * The routes a caller may authenticate with a §8.6 signature — deliberately a closed set.
+ *
+ * These are exactly the routes that travel **peer → lead**, which is the one direction where the
+ * transport cannot pin (the lead's front door terminates TLS, `bridge/pack/transport.ts`). The two
+ * membership routes are why the mechanism exists; `hello` is on the list because `collie pack status`
+ * and `collie reconnect` run on a peer and must be able to probe their lead — a diagnostic that could
+ * not authenticate would report every healthy lead as refusing.
+ *
+ * **The proxy surface is not on this list and must not be**: those calls run lead → peer over a
+ * pinned handshake, and admitting a signature there would mean reading a request body to hash it,
+ * turning a streamed upload (§13) into a buffered one on the security path. `enroll` is not on it
+ * either — at that instant the joiner is pinned by nobody (§8.2).
+ */
+const SIGNABLE_PATHS: ReadonlySet<string> = new Set([PACK_LEAVE_PATH, PACK_LEAD_PATH, PACK_HELLO_PATH]);
+
+/** The subset of {@link SIGNABLE_PATHS} that CHANGES STATE, and therefore advances the replay floor. */
+const MEMBERSHIP_PATHS: ReadonlySet<string> = new Set([PACK_LEAVE_PATH, PACK_LEAD_PATH]);
+
+/**
  * This collie's own snapshot body, for the one merged route (§9.2). `undefined` ⇒ the `?session=`
  * named does not exist here, which is the peer's own 404 and not the lead's.
  *
@@ -104,14 +129,64 @@ export interface PackRouterDeps {
   readonly snapshot?: SnapshotSource;
   /** Absent ⇒ the per-pane/tab/workspace half of §5's table 404s. */
   readonly dispatch?: ApiDispatch;
-  /** Reads the caller's TLS certificate fingerprint. Stubbed to "none, so refuse" until TLS lands. */
-  readonly fingerprints?: PeerFingerprintSource;
+  /**
+   * Whether the listener this handler is mounted on was built pin-enforcing
+   * (`bridge/pack/transport.ts`). **Defaults to `false`, which admits nothing but a signed request.**
+   *
+   * Not a configuration key and not readable from a request: it is set by the same code that
+   * constructed the TLS options, so "pinned" cannot be claimed by anything that did not do the
+   * pinning. A peer whose pin could not be built passes `false` and is down rather than single-factor.
+   */
+  readonly transportPinned?: boolean;
   readonly now?: () => number;
   readonly random?: RandomSource;
 }
 
 /** Answers a pack request, or `null` when the path is not ours (so the normal router continues). */
 export type PackHandler = (req: Request, url: URL) => Promise<Response | null>;
+
+/** The outcome of checking a §8.6 signature: who signed, when, or which factor to refuse on. */
+interface SignedCaller {
+  readonly member: string | null;
+  readonly timestamp?: number;
+  readonly refusal?: RefusedFactor;
+}
+
+/**
+ * Verify a §8.6 signature against a **pinned** member's certificate.
+ *
+ * Order is the rule: the signature is checked before the timestamp, so a caller who cannot sign
+ * learns nothing about clock skew or about which timestamps this collie has already seen. Every
+ * failure returns the same `certificate` factor, which the caller sees as the same uniform 401 as an
+ * unpinned certificate — because that is exactly what it is.
+ *
+ * The candidate set is the pinned roster, narrowed by `X-Pack-Member` when it is present. That header
+ * is a **hint that saves verifications, never an identity** (§6): if it names a member whose key does
+ * not verify the signature, nothing is admitted, and the fallback tries the rest of the roster rather
+ * than trusting the claim.
+ */
+function verifySigned(
+  data: TrustStoreData,
+  req: Request,
+  url: URL,
+  signature: string,
+  body: string,
+  now: number,
+): SignedCaller {
+  const timestamp = parseTimestamp(req.headers.get(TIMESTAMP_HEADER));
+  if (timestamp === null) return { member: null, refusal: "certificate" };
+  const parts = { method: req.method, path: url.pathname, body, timestamp };
+
+  const claimed = req.headers.get(MEMBER_HEADER);
+  const roster = [...(data.lead === null ? [] : [data.lead]), ...data.peers].filter((m) => m.status === "enrolled");
+  const ordered = claimed === null ? roster : [...roster.filter((m) => m.memberId === claimed), ...roster];
+  const signer = ordered.find((m) => verifyRequestSignature(m.certPem, signature, parts));
+  if (signer === undefined) return { member: null, refusal: "certificate" };
+
+  const verdict = timestampVerdict(timestamp, now, signer.signedAt);
+  if (verdict !== "ok") return { member: null, refusal: "certificate" };
+  return { member: signer.memberId, timestamp };
+}
 
 /**
  * Build the pack handler.
@@ -124,7 +199,7 @@ export type PackHandler = (req: Request, url: URL) => Promise<Response | null>;
  * instance that never enrolled, and such an instance has no trust store to register on.
  */
 export function createPackRouter(deps: PackRouterDeps): PackHandler {
-  const fingerprints = deps.fingerprints ?? unwiredFingerprints;
+  const transportPinned = deps.transportPinned ?? false;
   const now = deps.now ?? Date.now;
   const random = deps.random ?? randomToken;
 
@@ -145,10 +220,35 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     // independent factors, both, always, before routing". An admitted caller asking for a route this
     // build does not implement gets a 404; an unadmitted one cannot tell which routes exist.
     const data = await deps.store.load();
-    const verdict = admitPackRequest(data, factsFrom(req, fingerprints));
+
+    // §8.6's signature, when one is offered. The BODY is read here — and only here, and only when the
+    // header is present — because the digest is part of what was signed. A request without the header
+    // (every lead→peer call: those ride the pinned handshake) never has its body touched, which is
+    // what keeps a proxied upload a stream rather than a buffer.
+    const signature = SIGNABLE_PATHS.has(pathname) ? req.headers.get(SIGNATURE_HEADER) : null;
+    let signedBody: string | null = null;
+    let signed: SignedCaller = { member: null };
+    if (signature !== null && data !== null) {
+      signedBody = req.method === "GET" || req.method === "HEAD" ? "" : await req.text();
+      signed = verifySigned(data, req, url, signature, signedBody, now());
+      if (signed.refusal !== undefined) return refuse(pathname, signed.refusal);
+    }
+
+    const verdict = admitPackRequest(data, factsFrom(req, { transportPinned, signedMember: signed.member }));
     if (!verdict.ok) {
       if (verdict.refusal === "protocol_mismatch") return protocolMismatchResponse(verdict.received);
       return refuse(pathname, verdict.factor);
+    }
+
+    // The replay floor moves BEFORE the request is handled, so a captured request replayed against a
+    // slow handler cannot land twice (§8.6). Only for a signed MEMBERSHIP call: `hello` changes
+    // nothing, so a replay of it is bounded by the skew window alone and does not earn a disk write —
+    // and an unsigned call rode a pinned handshake, where replay is the transport's problem.
+    const signedAt = signed.timestamp;
+    if (signed.member !== null && signedAt !== undefined && MEMBERSHIP_PATHS.has(pathname)) {
+      await commitPackChange(deps.store, deps.audit, (current) =>
+        current === null ? null : recordSignedRequest(current, verdict.member.memberId, signedAt),
+      );
     }
 
     if (pathname === PACK_HELLO_PATH && req.method === "GET") {
@@ -161,10 +261,10 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     }
 
     if (pathname === PACK_SECRET_PATH && req.method === "POST") {
-      return secret(req, verdict.member, verdict.self);
+      return secret(req, signedBody, verdict.member, verdict.self);
     }
     if (pathname === PACK_LEAD_PATH && req.method === "POST") {
-      return newLead(req, verdict.member, verdict.self);
+      return newLead(req, signedBody, verdict.member, verdict.self);
     }
     if (pathname === PACK_LEAVE_PATH && req.method === "POST") {
       // The caller drops ITSELF, and can drop nothing else — the member id is the admitted one, never
@@ -238,10 +338,16 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     });
   };
 
-  /** A JSON body, or `null` when it will not parse. Every membership route answers `null` with a 400. */
-  async function readJson(req: Request): Promise<unknown> {
+  /**
+   * A JSON body, or `null` when it will not parse. Every membership route answers `null` with a 400.
+   *
+   * `cached` is the body text already read to verify a §8.6 signature. Re-reading `req` after that
+   * would throw on a consumed stream — and, worse, parsing a *second* read would mean the bytes that
+   * were signed and the bytes that are acted on could differ. One read, one meaning.
+   */
+  async function readJson(req: Request, cached: string | null): Promise<unknown> {
     try {
-      return await req.json();
+      return cached === null ? await req.json() : (JSON.parse(cached) as unknown);
     } catch {
       return null;
     }
@@ -267,8 +373,8 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
    * window in which both are accepted (§8.4), so the lead dials with the superseded value it still
    * holds in memory and the peer's very next request already needs the new one.
    */
-  async function secret(req: Request, from: TrustedMember, self: string): Promise<Response> {
-    const body = (await readJson(req)) as Record<string, unknown> | null;
+  async function secret(req: Request, cached: string | null, from: TrustedMember, self: string): Promise<Response> {
+    const body = (await readJson(req, cached)) as Record<string, unknown> | null;
     const value = typeof body?.secret === "string" ? body.secret : null;
     const generation = typeof body?.generation === "number" ? body.generation : null;
     if (value === null || value === "" || generation === null || !Number.isSafeInteger(generation)) {
@@ -304,8 +410,8 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
    * nobody can nominate a third party, and the fingerprint travels in the body only so a peer that has
    * never pinned this member can pin it now.
    */
-  async function newLead(req: Request, from: TrustedMember, self: string): Promise<Response> {
-    const body = (await readJson(req)) as Record<string, unknown> | null;
+  async function newLead(req: Request, cached: string | null, from: TrustedMember, self: string): Promise<Response> {
+    const body = (await readJson(req, cached)) as Record<string, unknown> | null;
     const claim = parseRosterEntry(body?.lead);
     if (claim === null) return badRequest(self, "a leadership claim needs `lead`");
     if (claim.memberId !== from.memberId) {
@@ -373,21 +479,24 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       return protocolMismatchResponse(Number.isFinite(version) ? version : null);
     }
 
-    // The certificate the peer will be pinned by. Once TLS client verification is wired, the
-    // transport's value is authoritative and a payload that disagrees is a refusal — a joining peer
-    // must not be able to have the lead pin a certificate it does not hold. Until then the transport
-    // offers nothing and the payload's claim is what the operator's out-of-band token vouches for.
-    const presented = fingerprints(req);
-    if (presented !== null && presented !== parsed.fingerprint) {
-      return refuse(PACK_ENROLL_PATH, "certificate");
-    }
-
+    // THE CERTIFICATE ARRIVES IN THE PAYLOAD, AND THAT IS THE WHOLE TRUST STORY HERE (§8.2).
+    // There is no transport cross-check to make: enrollment is answered by the LEAD, whose surface
+    // sits behind a TLS-terminating front door, so a client certificate cannot reach this process
+    // under any design (`bridge/pack/transport.ts`). What vouches for the certificate is the
+    // single-use token the operator carried out of band, and the pin is trust-on-first-use at this
+    // instant — `parseEnrollRequest` has already refused a payload whose certificate and fingerprint
+    // are not the same certificate, so what is pinned is what the joiner will actually present.
     const response = await commitPackChange(deps.store, deps.audit, (data) =>
       data === null
         ? null
         : enrollPeer(
             data,
-            { fingerprint: parsed.fingerprint, address: parsed.address, label: parsed.label ?? invite.label },
+            {
+              fingerprint: parsed.fingerprint,
+              certPem: parsed.certPem,
+              address: parsed.address,
+              label: parsed.label ?? invite.label,
+            },
             now(),
             random,
           ),
