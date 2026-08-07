@@ -6,6 +6,28 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.4] - 2026-08-07
+
+> v1 integration line. M5 complete: the phone knows about servers. First real pack live (bluefin lead + minibuch peer).
+
+### Added
+
+- **Prerelease bar** — ALPHA/BETA/RC badge on the header, auto from the build version, sky-toned (82657ac, 35a5fbb)
+- **COLLIE_INSTANCE side-by-side knob** + enrollment/demotion staleness surfaced in pack status (e5b0e6b)
+- **Host dimension in the web app** — ?h= addressing, (host,session,paneId) cache keys, widened draft keys (8883491)
+- **Server view** — switcher, host chips on rows/pane/Send, packed dashboard, honest staleness (df82da4)
+- **Two-tier connection health** — per-host live/stale/unknown against the lead's clock; stale panes keep last-good mirror, writes gate with the host named (72991c0)
+- **Host-scoped notification taps + /pack/v1 SW denylist**; unreachable servers navigate to last-good instead of disabled rows (97de117)
+
+### Fixed
+
+- cli/pack.test.ts flake: test harness raced a real pack timeout against synchronous fakes (72991c0)
+
+### Known gaps (bridge follow-ups tracked)
+
+- Peer listener binds COLLIE_HOST only (ADR 0013 loopback+join-address bind unimplemented; workaround: COLLIE_HOST=<tailnet IP>)
+- A join exiting unreachable can half-enroll (spent token + ghost member on the lead); scheme-less lead addresses fail to dial
+
 ## [1.0.0-alpha.3] - 2026-08-07
 
 > v1 integration line. M4 complete: the pack federation engine, end to end.
