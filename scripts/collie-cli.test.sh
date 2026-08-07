@@ -630,6 +630,142 @@ case "$STDOUT" in
   *"✓ uninstalled"*) fail "an aborted uninstall reported success" ;;
 esac
 
+# ── Two instances on one host ────────────────────────────────────────────────
+# A stable Collie and a next-major one, side by side out of the SAME checkout: `COLLIE_INSTANCE=v1`
+# names the unit, the launchd label, the pidfile, the log and the ownership record; the port, the
+# config dir and the state dir stay explicitly configured, because a knob that invented those would
+# be deciding where a second service writes.
+#
+# What is asserted is the SEPARATION. Every place one instance can see the other's service is a place
+# `start` stops the wrong bridge or `uninstall` unpublishes the wrong front door.
+
+# The refusals come first: both of them exist so a second instance cannot be created by accident.
+run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
+  COLLIE_INSTANCE=v1 "$BIN" status && fail "COLLIE_INSTANCE without COLLIE_PORT was accepted"
+assert_contains "$STDERR" "explicit COLLIE_PORT"
+run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
+  COLLIE_INSTANCE="V 1" COLLIE_PORT=9999 "$BIN" status && fail "an unusable instance name was accepted"
+assert_contains "$STDERR" "not a usable instance name"
+
+# A second readiness listener, so v1's banner does not pay the probe's full budget (as for $PORT).
+V1_PORT="$(pick_port 48790 48890 48990)"
+bun -e "Bun.serve({ port: ${V1_PORT}, hostname: '127.0.0.1', fetch: () => new Response('ok') })" \
+  >/dev/null 2>&1 &
+V1_LISTENER_PID=$!
+cleanup_instances() { kill "$V1_LISTENER_PID" 2>/dev/null || true; }
+trap 'cleanup_instances; cleanup_lifecycle; cleanup' EXIT
+for _ in $(seq 1 40); do port_free "$V1_PORT" || break; sleep 0.1; done
+port_free "$V1_PORT" && fail "the v1 readiness listener never came up on ${V1_PORT}"
+
+cli_v1() {
+  : > "$L_CALLS"
+  run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
+    COLLIE_INSTANCE=v1 COLLIE_PORT="$V1_PORT" "$@"
+}
+
+V1_UNIT_FILE="${L_HOME}/.config/systemd/user/collie-v1.service"
+cli "$BIN" start || fail "the stable instance failed to start: ${STDERR}"
+cli_v1 "$BIN" start || fail "the v1 instance failed to start: ${STDERR}"
+
+# Two units, both on disk, and only the second one was just enabled.
+[ -f "$UNIT_FILE" ] || fail "starting v1 removed the stable instance's unit"
+[ -f "$V1_UNIT_FILE" ] || fail "starting v1 wrote no unit of its own"
+assert_contains "$(cat "$L_CALLS")" "systemctl --user enable --now collie-v1"
+case "$(cat "$L_CALLS")" in
+  *"enable --now collie"$'\n'*) fail "starting v1 also touched the stable unit" ;;
+esac
+V1_UNIT="$(cat "$V1_UNIT_FILE")"
+# The argv marker is what the pidfile guard tells the two bridges apart by — they share a binary path.
+assert_contains "$V1_UNIT" "ExecStart=${ROOT}/bin/collie _exec-bridge --instance v1"
+assert_contains "$V1_UNIT" "Environment=COLLIE_INSTANCE=v1"
+assert_contains "$V1_UNIT" "Environment=COLLIE_PORT=${V1_PORT}"
+assert_contains "$V1_UNIT" "Description=Collie (instance v1)"
+# …and the stable unit is untouched by any of it.
+assert_contains "$(cat "$UNIT_FILE")" "ExecStart=${ROOT}/bin/collie _exec-bridge"
+case "$(cat "$UNIT_FILE")" in *--instance*) fail "the stable unit grew an instance marker" ;; esac
+
+# Each instance's status describes ITSELF: its own unit, its own port, and never the other's.
+cli_v1 "$BIN" status || fail "\`collie status\` failed for v1"
+assert_contains "$STDOUT" "instance  v1"
+assert_contains "$STDOUT" "service   systemd --user (collie-v1) · active"
+assert_contains "$STDOUT" "local     http://127.0.0.1:${V1_PORT}"
+assert_contains "$(cat "$L_CALLS")" "systemctl --user is-active collie-v1"
+cli "$BIN" status || fail "\`collie status\` failed for the stable instance"
+assert_contains "$STDOUT" "service   systemd --user (collie) · active"
+assert_contains "$STDOUT" "local     http://127.0.0.1:${PORT}"
+case "$STDOUT" in *"instance "*) fail "the stable instance's banner named an instance" ;; esac
+
+# `logs` reads the instance's own journal unit, and its own log file off systemd.
+cli_v1 "$BIN" logs 3 || fail "\`collie logs\` failed for v1"
+assert_contains "$(cat "$L_CALLS")" "journalctl --user -u collie-v1 -n 3 --no-pager"
+printf 'stable\n' > "${L_CONFIG}/collie.log"
+printf 'v-one\n' > "${L_CONFIG}/collie-v1.log"
+cli_v1 COLLIE_SUPERVISOR=unsupervised "$BIN" logs 1 || fail "v1 could not read its own log"
+assert_eq "$STDOUT" "v-one"
+cli COLLIE_SUPERVISOR=unsupervised "$BIN" logs 1 || fail "the stable instance could not read its own log"
+assert_eq "$STDOUT" "stable"
+rm -f "${L_CONFIG}/collie.log" "${L_CONFIG}/collie-v1.log"
+
+# Stopping one leaves the other's unit enabled — the verbs name their own unit and no other.
+cli_v1 "$BIN" stop || fail "\`collie stop\` failed for v1"
+assert_contains "$(cat "$L_CALLS")" "systemctl --user disable --now collie-v1"
+case "$(cat "$L_CALLS")" in
+  *"disable --now collie"$'\n'*) fail "stopping v1 also disabled the stable unit" ;;
+esac
+
+# ── Two instances: the front door, and uninstalling one of them ──────────────
+# Back in the front-door sandbox, whose fake `tailscale` keeps real serve state: the two instances
+# publish two mappings and record them in two files, and tearing one down leaves the other alone.
+V1_RECORD="${FD_CONFIG}/tailscale-managed-handler-v1"
+FD_V1_UNIT="${FD_HOME}/.config/systemd/user/collie-v1.service"
+# ONE config dir for both instances — the hostile arrangement, on purpose. A real side-by-side
+# deployment gives each instance its own `HERDR_PLUGIN_CONFIG_DIR`; what is asserted here is that
+# even when it does not, no file one instance owns is named the same as a file the other owns.
+# The `.env` left by the uninstall section goes: it pins COLLIE_PORT, and a `.env` OVERRIDES the
+# ambient environment (as `set -a; . .env` did), so it would decide both instances' ports.
+rm -f "$RECORD" "$V1_RECORD" "$FD_UNIT" "${FD_CONFIG}/.env"
+status_is '{}'
+
+fd_v1() {
+  : > "$FD_CALLS"
+  run_stripped HOME="$FD_HOME" HERDR_PLUGIN_CONFIG_DIR="$FD_CONFIG" PATH="$FD_BIN" \
+    COLLIE_INSTANCE=v1 COLLIE_PORT=8788 "$@"
+}
+
+fd COLLIE_SERVE_MODE=http "$BIN" serve || fail "the stable instance could not publish: ${STDERR}"
+assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|http://127.0.0.1:8787"
+fd_v1 COLLIE_SERVE_MODE=http "$BIN" serve || fail "v1 could not publish: ${STDERR}"
+# Its OWN record, under its own name — never the unsuffixed one, which the stable instance owns.
+assert_eq "$(cat "$V1_RECORD")" "http:8788|host.example:8788|http://127.0.0.1:8788"
+assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|http://127.0.0.1:8787"
+assert_contains "$(cat "$FD_CALLS")" "tailscale serve --bg --http=8788 --set-path=/ 8788"
+# The serve output file is per-instance too, or one publish's diagnostics would overwrite the other's.
+[ -f "${FD_CONFIG}/serve-v1.out" ] || fail "v1 wrote no serve output of its own"
+
+# Uninstalling v1: its unit, its record and its mapping go; the stable instance keeps all three.
+printf '[Unit]\n' > "$FD_UNIT"
+mkdir -p "${FD_HOME}/.config/systemd/user"
+printf '[Unit]\n' > "$FD_V1_UNIT"
+printf '4242\n' > "${FD_CONFIG}/collie-v1.pid"
+printf '1111\n' > "${FD_CONFIG}/collie.pid"
+fd_v1 COLLIE_SUPERVISOR=systemd "$BIN" uninstall || fail "uninstalling v1 failed: ${STDERR}"
+CALLS="$(cat "$FD_CALLS")"
+assert_contains "$CALLS" "systemctl --user disable --now collie-v1"
+assert_contains "$CALLS" "systemctl --user reset-failed collie-v1"
+assert_contains "$CALLS" "tailscale serve --http=8788 --set-path=/ off"
+[ ! -e "$FD_V1_UNIT" ] || fail "uninstalling v1 left its unit behind"
+[ ! -e "$V1_RECORD" ] || fail "uninstalling v1 left its ownership record behind"
+[ ! -e "${FD_CONFIG}/collie-v1.pid" ] || fail "uninstalling v1 left its pidfile behind"
+# The other instance: untouched, all of it.
+[ -f "$FD_UNIT" ] || fail "uninstalling v1 removed the stable instance's unit"
+[ -f "${FD_CONFIG}/collie.pid" ] || fail "uninstalling v1 removed the stable instance's pidfile"
+assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|http://127.0.0.1:8787"
+case "$CALLS" in
+  *"reset-failed collie"$'\n'*) fail "uninstalling v1 reset the stable unit" ;;
+  *"--http=8787"*) fail "uninstalling v1 tore down the stable instance's mapping" ;;
+esac
+rm -f "$RECORD" "${FD_CONFIG}/collie.pid" "$FD_UNIT"
+
 # ── build ────────────────────────────────────────────────────────────────────
 # The five ordered steps, and the invariant they exist for: a build that fails leaves the previously
 # served `web/dist` byte-identical, because the swap is a same-filesystem rename performed LAST.
@@ -960,6 +1096,7 @@ assert_eq "$(cat "$PACK_CALLS")" ""
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
+echo "✓ collie CLI two instances: COLLIE_INSTANCE refusals, two units, two records, uninstall isolation"
 echo "✓ collie CLI build: five ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
 echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull re-exec, the managed re-link refusal"
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"

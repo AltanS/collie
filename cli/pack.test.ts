@@ -300,6 +300,18 @@ describe("collie join", () => {
     expect(h.audit.map((l) => l.action)).toContain("pack.joined");
   });
 
+  test("names the LEAD's restart as the last step — nothing else can tell the operator", async () => {
+    // The enrollment landed in the lead's RUNNING process, which read its roster at boot. This side
+    // restarts itself; the lead cannot be restarted from here, so it is said out loud.
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain("ONE STEP LEFT, on the lead (desk): `collie restart` there.");
+    expect(rendered).toContain("read that roster at");
+    // This machine still restarts itself — the reminder is in addition, not instead.
+    expect(h.restarts).toHaveLength(1);
+  });
+
   test("joining a pack you are already in is its OWN exit code and says what to run", async () => {
     const h = harness(peerStore());
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.STATE);
@@ -451,6 +463,53 @@ describe("collie pack status", () => {
     expect(text(h.io)).toContain("not probed");
   });
 
+  // ── The running bridge vs. the store on disk ──────────────────────────────
+  // A membership change can arrive over the wire, at a process that read its roster at boot and does
+  // not re-read it. `pack status` is where an operator finds out, because nothing else can tell them.
+
+  test("says ENROLLED BUT INACTIVE when the bridge booted before the enrollment landed", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    // The marker the bridge left at boot: this lead came up with an EMPTY roster, then answered a
+    // `collie join` in-process — exactly the gap the two-instance harness found.
+    h.files.write(
+      "/state/pack-runtime.json",
+      JSON.stringify({ bootedAt: T0, pid: 999, mode: "solo", roster: [] }),
+    );
+    expect(await cmdPackStatus(h.deps, ["--no-probe"])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain("enrolled but INACTIVE");
+    expect(rendered).toContain("not yet active:  peer:nas");
+    expect(rendered).toContain("collie restart");
+    // Still a read: noticing must not restart anything on its own.
+    expect(h.restarts).toEqual([]);
+  });
+
+  test("names the mode split when a demoted lead is still running as one", async () => {
+    const h = harness(peerStore());
+    h.files.write(
+      "/state/pack-runtime.json",
+      JSON.stringify({ bootedAt: T0, pid: 999, mode: "lead", roster: ["peer:nas"] }),
+    );
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).toContain("a peer on disk and a lead in memory");
+  });
+
+  test("no marker, no warning — a status run before the first `start` invents nothing", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).not.toContain("INACTIVE");
+  });
+
+  test("a marker that matches the store is silent", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    h.files.write(
+      "/state/pack-runtime.json",
+      JSON.stringify({ bootedAt: T0, pid: 999, mode: "lead", roster: ["peer:nas"] }),
+    );
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).not.toContain("INACTIVE");
+  });
+
   test("it changes nothing — status is a read", async () => {
     const before = leadStore({ peers: [member({ memberId: "nas" })] });
     const h = harness(before);
@@ -540,6 +599,17 @@ describe("collie promote", () => {
     expect(text(h.io)).toContain("--force");
     expect(h.data()!.lead).not.toBeNull();
     expect(h.serves).toEqual([]);
+  });
+
+  test("tells the demoted machine's operator to restart it, then unserve — in that order", async () => {
+    const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster: [] }, 200, "desk")]);
+    expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    // The old lead adopted the demotion on disk when it answered — and kept its lead-mode listener.
+    expect(rendered).toContain("`collie restart`, then `collie unserve`");
+    expect(rendered).toContain("still the lead it");
+    // `restart` re-publishes on the way up, which is the whole reason `unserve` comes second.
+    expect(rendered.indexOf("collie restart")).toBeLessThan(rendered.lastIndexOf("collie unserve"));
   });
 
   test("--force promotes anyway and says the old lead may still believe it leads", async () => {

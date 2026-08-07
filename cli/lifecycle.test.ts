@@ -27,6 +27,7 @@ import {
   statusBanner,
   stopPidfileProcess,
   supervisionTier,
+  writeUnit,
 } from "./lifecycle.ts";
 
 // The lifecycle, driven end to end against fakes for the two seams (cli/fakes.ts). The shell could
@@ -46,6 +47,8 @@ type HarnessOptions = Partial<
     platform: NodeJS.Platform;
     ready: boolean;
     env: Record<string, string | undefined>;
+    /** The `COLLIE_INSTANCE` suffix this Collie was resolved with. Absent = the solo instance. */
+    instance: string | null;
     files: Record<string, string>;
     serve: () => Promise<number>;
   }
@@ -58,7 +61,7 @@ function harness(over: HarnessOptions = {}): Harness {
   // asserting the "no binary" guard by accident.
   const files = fakeFiles({ [BINARY]: "", ...(over.files ?? {}) });
   const deps: LifecycleDeps = {
-    ctx: context(over.env),
+    ctx: context(over.env, over.instance === undefined ? {} : { instance: over.instance }),
     io,
     exec,
     files,
@@ -480,5 +483,106 @@ describe("uninstall", () => {
     expect(h.files.exists(RECORD)).toBe(true);
     expect(h.files.exists(UNIT_FILE)).toBe(true);
     expect(h.io.stdout.join("\n")).not.toContain("✓ uninstalled");
+  });
+});
+
+// ── Two instances on one host ────────────────────────────────────────────────
+// A stable Collie and a next-major one, side by side: same checkout, same binary, different unit,
+// different pidfile, different log. What is asserted here is the SEPARATION — every place one
+// instance could reach the other's service is a place `start` could stop the wrong bridge.
+
+describe("the COLLIE_INSTANCE knob", () => {
+  test("suffixes the unit, its file, and every systemctl call that names it", async () => {
+    const h = harness({ instance: "v1" });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.files.exists(`${HOME}/.config/systemd/user/collie-v1.service`)).toBe(true);
+    expect(h.files.exists(`${HOME}/.config/systemd/user/collie.service`)).toBe(false);
+    expect(h.exec.calls).toContain("systemctl --user enable --now collie-v1");
+    expect(h.exec.calls).not.toContain("systemctl --user enable --now collie");
+    expect(h.io.stdout.join("\n")).toContain("bridge started (systemd --user: collie-v1)");
+  });
+
+  test("the unit runs the binary with its instance marker, and carries COLLIE_INSTANCE", () => {
+    const h = harness({ instance: "v1" });
+    expect(writeUnit(h.deps)).toBe(true);
+    const unit = h.files.read(`${HOME}/.config/systemd/user/collie-v1.service`)!;
+    expect(unit).toContain(`ExecStart=${BINARY} _exec-bridge --instance v1`);
+    expect(unit).toContain("Environment=COLLIE_INSTANCE=v1");
+    expect(unit).toContain("Description=Collie (instance v1)");
+  });
+
+  test("the launchd label, plist and target are the instance's own", () => {
+    const h = harness({ instance: "v1", answers: NO_SYSTEMD, platform: "darwin" });
+    expect(cmdStop(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("launchctl bootout gui/501/herdr.collie-v1");
+    expect(h.exec.calls).not.toContain("launchctl bootout gui/501/herdr.collie");
+  });
+
+  test("`logs` reads the instance's own journal unit and its own log file", () => {
+    const h = harness({ instance: "v1" });
+    expect(cmdLogs(h.deps, ["9"])).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("journalctl --user -u collie-v1 -n 9 --no-pager");
+
+    const solo = harness({ files: { [`${CONFIG}/collie.log`]: "solo\n" }, answers: NO_SYSTEMD });
+    const v1 = harness({
+      instance: "v1",
+      answers: NO_SYSTEMD,
+      files: { [`${CONFIG}/collie.log`]: "solo\n", [`${CONFIG}/collie-v1.log`]: "v1\n" },
+    });
+    expect(cmdLogs(solo.deps, [])).toBe(EXIT.OK);
+    expect(solo.io.stdout).toEqual(["solo"]);
+    expect(cmdLogs(v1.deps, [])).toBe(EXIT.OK);
+    expect(v1.io.stdout).toEqual(["v1"]);
+  });
+
+  test("the pidfile predicate refuses the OTHER instance's bridge, both directions", () => {
+    // Same checkout, so the binary path proves nothing — only the argv marker does.
+    const solo = `${BINARY} _exec-bridge`;
+    const v1 = `${BINARY} _exec-bridge --instance v1`;
+    expect(isOurBridge(solo, BINARY, null)).toBe(true);
+    expect(isOurBridge(v1, BINARY, "v1")).toBe(true);
+    expect(isOurBridge(v1, BINARY, null)).toBe(false);
+    expect(isOurBridge(solo, BINARY, "v1")).toBe(false);
+    expect(isOurBridge(`${BINARY} _exec-bridge --instance v2`, BINARY, "v1")).toBe(false);
+    // A prefix is not a match: `v1` must not adopt `v10`'s bridge.
+    expect(isOurBridge(`${BINARY} _exec-bridge --instance v10`, BINARY, "v1")).toBe(false);
+  });
+
+  test("stopping one instance never kills the other's pid", () => {
+    const OTHER = 7777;
+    const h = harness({
+      instance: "v1",
+      files: { [`${CONFIG}/collie.pid`]: `${OTHER}\n`, [`${CONFIG}/collie-v1.pid`]: "8888\n" },
+      ps: { [OTHER]: `${BINARY} _exec-bridge`, 8888: `${BINARY} _exec-bridge --instance v1` },
+    });
+    stopPidfileProcess(h.deps);
+    expect(h.exec.killed).toEqual([8888]);
+    // The solo instance's pidfile is untouched — it is not this instance's record to drop.
+    expect(h.files.exists(`${CONFIG}/collie.pid`)).toBe(true);
+    expect(h.files.exists(`${CONFIG}/collie-v1.pid`)).toBe(false);
+  });
+
+  test("the banner names the instance, and a solo banner still does not", async () => {
+    const v1 = harness({ instance: "v1" });
+    expect((await statusBanner(v1.deps)).join("\n")).toContain("instance  v1");
+    const solo = harness();
+    expect((await statusBanner(solo.deps)).join("\n")).not.toContain("instance ");
+    expect(serviceDescription(v1.deps)).toContain("(collie-v1)");
+    expect(serviceDescription(solo.deps)).toContain("(collie)");
+  });
+
+  test("uninstalling one instance leaves the other's unit and ownership record alone", () => {
+    const SOLO_UNIT = `${HOME}/.config/systemd/user/collie.service`;
+    const V1_UNIT = `${HOME}/.config/systemd/user/collie-v1.service`;
+    const h = harness({
+      instance: "v1",
+      files: { [SOLO_UNIT]: "[Unit]\n", [V1_UNIT]: "[Unit]\n", [`${CONFIG}/tailscale-managed-handler`]: "https:443|host.example:443|http://127.0.0.1:8787\n" },
+    });
+    expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+    expect(h.files.exists(V1_UNIT)).toBe(false);
+    expect(h.files.exists(SOLO_UNIT)).toBe(true);
+    // v1's handler record is `…-v1`, so the solo instance's front-door record survives untouched.
+    expect(h.files.read(`${CONFIG}/tailscale-managed-handler`)).toContain("http://127.0.0.1:8787");
+    expect(h.exec.calls).toContain("systemctl --user reset-failed collie-v1");
   });
 });

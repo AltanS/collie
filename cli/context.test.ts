@@ -11,6 +11,8 @@ import {
   PLUGIN_ID,
   resolveConfigDir,
   resolveHome,
+  instanceSuffix,
+  resolveInstance,
 } from "./context.ts";
 
 // Ported behaviour, so these tests are written against the shell they replace: the config-dir
@@ -210,5 +212,48 @@ describe("resolveHome", () => {
     const h = resolveHome({});
     expect(h.startsWith("/")).toBe(true);
     expect(h).not.toBe("");
+  });
+});
+
+// ── The instance suffix ──────────────────────────────────────────────────────
+// The knob that lets a second Collie run beside the first. Its most important property is the one
+// that is easiest to lose: ABSENT must stay absent — `null`, never `""` — because every name
+// downstream is built by concatenation and an empty suffix would look identical right up until
+// something serialises it.
+
+describe("resolveInstance", () => {
+  test("no variable, an empty one and whitespace are all the solo instance", () => {
+    for (const env of [{}, { COLLIE_INSTANCE: "" }, { COLLIE_INSTANCE: "   " }]) {
+      expect(resolveInstance(env)).toBeNull();
+    }
+  });
+
+  test("a valid suffix needs an explicit port and then resolves to itself", () => {
+    expect(resolveInstance({ COLLIE_INSTANCE: "v1", COLLIE_PORT: "8788" })).toBe("v1");
+    expect(resolveInstance({ COLLIE_INSTANCE: "next-2", COLLIE_PORT: "9000" })).toBe("next-2");
+  });
+
+  test("REFUSES a named instance with no explicit port — two instances would fight for 8787", () => {
+    expect(() => resolveInstance({ COLLIE_INSTANCE: "v1" })).toThrow(/explicit COLLIE_PORT/);
+    // A non-numeric port is no port: `deriveSettings` would fall back to the default, which is
+    // exactly the collision this refusal exists to prevent.
+    expect(() => resolveInstance({ COLLIE_INSTANCE: "v1", COLLIE_PORT: "eight" })).toThrow(
+      /explicit COLLIE_PORT/,
+    );
+  });
+
+  test("refuses anything that is not a safe unit name, label and filename", () => {
+    for (const bad of ["V1", "v 1", "v/1", "v.1", "../etc", "a".repeat(17), "v1_beta"]) {
+      expect(() => resolveInstance({ COLLIE_INSTANCE: bad, COLLIE_PORT: "8788" })).toThrow(
+        /not a usable instance name/,
+      );
+    }
+  });
+});
+
+describe("instanceSuffix", () => {
+  test("the solo instance contributes NOTHING to a name", () => {
+    expect(instanceSuffix(null)).toBe("");
+    expect(instanceSuffix("v1")).toBe("-v1");
   });
 });

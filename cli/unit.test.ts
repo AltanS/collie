@@ -23,6 +23,7 @@ import {
 
 const SPEC: ServiceSpec = {
   root: "/opt/collie",
+  instance: null,
   binary: "/opt/collie/bin/collie",
   configDir: "/home/pat/.config/collie",
   socket: "/home/pat/.config/herdr/herdr.sock",
@@ -167,5 +168,51 @@ describe("paths and escaping", () => {
   test("xmlEscape does ampersands first", () => {
     // `&` last would re-escape the ampersands the `<`/`>` rules introduce.
     expect(xmlEscape("a&b<c>d")).toBe("a&amp;b&lt;c&gt;d");
+  });
+});
+
+// ── A second instance's service definition ───────────────────────────────────
+// Same checkout, same binary, different service. Pinned in full for the same reason the solo unit is:
+// an operator never watches us write it, and a collision here is two services fighting over one name.
+
+describe("a suffixed instance", () => {
+  const V1: ServiceSpec = { ...SPEC, instance: "v1", port: 8788 };
+
+  test("names its own unit file and launchd plist, and leaves the solo names free", () => {
+    expect(unitFilePath("/home/pat", "v1")).toBe("/home/pat/.config/systemd/user/collie-v1.service");
+    expect(unitFilePath("/home/pat")).toBe("/home/pat/.config/systemd/user/collie.service");
+    expect(agentFilePath("/home/pat", "v1")).toBe("/home/pat/Library/LaunchAgents/herdr.collie-v1.plist");
+    expect(agentFilePath("/home/pat")).toBe("/home/pat/Library/LaunchAgents/herdr.collie.plist");
+  });
+
+  test("carries the instance in argv and in the environment, and the solo spec carries neither", () => {
+    expect(bridgeCommand(V1)).toEqual(["/opt/collie/bin/collie", "_exec-bridge", "--instance", "v1"]);
+    expect(bridgeCommand(SPEC)).toEqual(["/opt/collie/bin/collie", "_exec-bridge"]);
+    expect(bridgeEnvironment(V1).COLLIE_INSTANCE).toBe("v1");
+    expect(bridgeEnvironment(SPEC)).not.toHaveProperty("COLLIE_INSTANCE");
+  });
+
+  test("the unit differs from the solo one in exactly the instance-bearing lines", () => {
+    const solo = systemdUnit(SPEC).split("\n");
+    const v1 = systemdUnit(V1).split("\n");
+    const changed = v1.filter((line) => !solo.includes(line)).filter((l) => l !== "");
+    expect(changed).toEqual([
+      "Description=Collie (instance v1)",
+      "ExecStart=/opt/collie/bin/collie _exec-bridge --instance v1",
+      "Environment=COLLIE_PORT=8788",
+      "Environment=COLLIE_INSTANCE=v1",
+    ]);
+    // The directive SHAPE is unchanged but for the one added Environment= — the hand-managed
+    // reference unit stays a valid description of the solo service.
+    expect(unitDirectives(systemdUnit(V1)).filter((d) => d !== "Environment=COLLIE_INSTANCE")).toEqual(
+      unitDirectives(systemdUnit(SPEC)),
+    );
+  });
+
+  test("the plist's label and log path are the instance's own", () => {
+    const plist = launchAgentPlist(V1);
+    expect(plist).toContain("<string>herdr.collie-v1</string>");
+    expect(plist).toContain("<string>/home/pat/.config/collie/collie-v1.log</string>");
+    expect(launchAgentPlist(SPEC)).toContain("<string>/home/pat/.config/collie/collie.log</string>");
   });
 });
