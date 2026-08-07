@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { DEFAULT_PORT, defaultSocketPath } from "../bridge/config.ts";
 import { pluginRoot } from "../bridge/root.ts";
 import { findTool } from "./tools.ts";
 
@@ -164,18 +165,24 @@ function readIfPresent(p: string): string | null {
 
 // ── Derived settings ─────────────────────────────────────────────────────────
 
-/** `COLLIE_PORT` → port, `COLLIE_SERVE_MODE` → https|http, `HERDR_SOCKET_PATH` → socket. */
+/**
+ * `COLLIE_PORT` → port, `COLLIE_SERVE_MODE` → https|http, `HERDR_SOCKET_PATH` → socket.
+ *
+ * The port and socket defaults come from `bridge/config.ts`, not from a second copy: the CLI writes
+ * them into the generated unit and the bridge reads them at boot, so a divergence would put the
+ * service on one port and the banner on another.
+ */
 export function deriveSettings(
   env: Record<string, string | undefined>,
   home: string,
 ): Pick<CliContext, "port" | "serveMode" | "socket"> {
   const rawPort = env.COLLIE_PORT?.trim();
-  const port = rawPort && /^\d+$/.test(rawPort) ? Number(rawPort) : 8787;
+  const port = rawPort && /^\d+$/.test(rawPort) ? Number(rawPort) : DEFAULT_PORT;
   const mode = env.COLLIE_SERVE_MODE?.trim();
   return {
     port,
     serveMode: mode === "http" ? "http" : "https",
-    socket: env.HERDR_SOCKET_PATH?.trim() || join(home, ".config", "herdr", "herdr.sock"),
+    socket: env.HERDR_SOCKET_PATH?.trim() || defaultSocketPath(process.platform, env, home),
   };
 }
 

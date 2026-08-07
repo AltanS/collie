@@ -1,25 +1,21 @@
 import { collieVersion, loadContext } from "./context.ts";
+import { EXIT, type Io, realIo } from "./io.ts";
+import {
+  cmdExecBridge,
+  cmdLogs,
+  cmdRestart,
+  cmdStart,
+  cmdStatus,
+  cmdStop,
+  cmdUrl,
+  type LifecycleDeps,
+} from "./lifecycle.ts";
+import { realExec, realFiles, waitReady } from "./sys.ts";
 
 // The `collie` binary: argv in, exit code out. This module owns ONLY the dispatch — every verb's
 // behaviour lives in its own module under `cli/`, taking the resolved context as an argument.
-//
-// Exit codes are a contract, ported from `scripts/collie-ctl.sh`:
-//   0  success
-//   1  operational failure — something we tried, that failed
-//   2  usage error — unknown verb, bad argument (scripts/collie-ctl.sh:878)
-// Diagnostics go to stderr; machine-readable output (`url`, `version`) to stdout, undecorated.
 
-export const EXIT = { OK: 0, FAIL: 1, USAGE: 2 } as const;
-
-export interface Io {
-  out(line: string): void;
-  err(line: string): void;
-}
-
-export const realIo: Io = {
-  out: (line) => console.log(line),
-  err: (line) => console.error(line),
-};
+export { EXIT, realIo, type Io };
 
 export interface Command {
   readonly name: string;
@@ -47,21 +43,61 @@ function notYetPorted(name: string, summary: string, internal = false): Command 
   };
 }
 
+/**
+ * Everything a lifecycle verb needs, resolved once per invocation: the context, the process and
+ * filesystem seams, and the clock. Real implementations here; `cli/lifecycle.test.ts` supplies
+ * fakes for the same interfaces.
+ */
+export function lifecycleDeps(io: Io): LifecycleDeps {
+  const ctx = loadContext(io.err);
+  return {
+    ctx,
+    io,
+    exec: realExec(ctx.env, ctx.home),
+    files: realFiles,
+    ready: (port) => waitReady(port),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    uid: () => process.getuid?.() ?? 0,
+    platform: process.platform,
+    // `serve` lands in M3/03. Until then it is the not-yet-ported verb and fails — and `start`
+    // surviving that failure is itself ported behaviour, so this wiring is exercised, not stubbed.
+    serve: async () => {
+      const serve = findCommand("serve");
+      return serve === undefined ? EXIT.FAIL : await serve.run([], io);
+    },
+  };
+}
+
+/** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
+function lifecycleCommand(
+  name: string,
+  summary: string,
+  body: (deps: LifecycleDeps, args: readonly string[]) => number | Promise<number>,
+  internal = false,
+): Command {
+  return { name, summary, internal, run: (args, io) => body(lifecycleDeps(io), args) };
+}
+
 // Declaration order is the order of the usage line — the shell's dispatch order
 // (scripts/collie-ctl.sh:862-879), so the two read the same.
 export const COMMANDS: readonly Command[] = [
-  notYetPorted("start", "start the bridge service (and publish the front door)"),
-  notYetPorted("stop", "stop the bridge service"),
-  notYetPorted("restart", "stop then start"),
+  lifecycleCommand("start", "start the bridge service (and publish the front door)", cmdStart),
+  lifecycleCommand("stop", "stop the bridge service", cmdStop),
+  lifecycleCommand("restart", "stop then start", cmdRestart),
   notYetPorted("uninstall", "remove the service, the front door and its ownership record"),
   notYetPorted("update", "advance the checkout, rebuild, restart"),
   notYetPorted("_apply-update", "internal: the second half of `update`, run post-pull", true),
-  notYetPorted("_exec-bridge", "internal: the process the supervisor watches", true),
+  lifecycleCommand(
+    "_exec-bridge",
+    "internal: the process the supervisor watches",
+    cmdExecBridge,
+    true,
+  ),
   notYetPorted("build", "typecheck both sides and build the PWA (staged, atomic swap)"),
   notYetPorted("serve", "publish the single managed `tailscale serve` front door"),
   notYetPorted("unserve", "tear down the front door we published"),
-  notYetPorted("status", "is it running, and on what URLs"),
-  notYetPorted("url", "print the bridge URL"),
+  lifecycleCommand("status", "is it running, and on what URLs", cmdStatus),
+  lifecycleCommand("url", "print the bridge URL", cmdUrl),
   {
     name: "version",
     summary: "print the version actually being served",
@@ -72,7 +108,9 @@ export const COMMANDS: readonly Command[] = [
     },
   },
   notYetPorted("push-test", "send a one-off Web Push to every subscribed device"),
-  notYetPorted("logs", "tail the service log (default 50 lines)"),
+  lifecycleCommand("logs", "tail the service log (default 50 lines)", (deps, args) =>
+    cmdLogs(deps, args),
+  ),
   {
     name: "help",
     summary: "print this help",

@@ -180,6 +180,13 @@ export interface Config {
 }
 
 /**
+ * The loopback port the bridge binds. Exported because the CLI writes it into the generated service
+ * unit and into `status` — one source of truth, so a default changed here can't leave the unit and
+ * the process disagreeing about where Collie is.
+ */
+export const DEFAULT_PORT = 8787;
+
+/**
  * herdr's default socket location: `~/.config/herdr/herdr.sock` on Unix, `%APPDATA%\herdr\herdr.sock`
  * on Windows (the Windows beta keeps its config root under AppData\Roaming). Pure so both branches
  * are unit-testable on any platform.
@@ -207,7 +214,7 @@ export function loadConfig(): Config {
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),
     dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto"),
-    port: envInt("COLLIE_PORT", 8787, { min: 1, max: 65535 }),
+    port: envInt("COLLIE_PORT", DEFAULT_PORT, { min: 1, max: 65535 }),
     host: process.env.COLLIE_HOST ?? "127.0.0.1",
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),
     pollIdleMs: envInt("COLLIE_POLL_IDLE_MS", 12_000, { min: 1000 }),
