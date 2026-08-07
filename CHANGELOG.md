@@ -6,6 +6,25 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.3] - 2026-08-07
+
+> v1 integration line. M4 complete: the pack federation engine, end to end.
+
+### Added
+
+- **Instance modes + pack config** — solo/lead/peer derived from enrollment alone; conflict fails toward peer (adf0b8c)
+- **Trust store, enrollment, two-factor admission** — hashed spend-once invites, uniform 401, version negotiation behind the gate (79a8552)
+- **Lead-side peer client + registry** — verdict classification, clamped timeout budget, last-good state that never vanishes (d00d9cd)
+- **Merged snapshot + peer sweep on the existing poll** — host-tagged sessions, no second timer, host addressing mounted (67a0682, 58a5c7d)
+- **Byte-for-byte per-pane proxy + forwarded writes** — ETag/304 fidelity, refuse-before-attempt, unknown-outcome discipline, dual-sided audit (eb7c51c)
+- **Push convergence** — the lead notifies for the whole pack; peers mute, alerts resume on leave (d953dc9)
+- **Pack operator verbs** — invite/join/leave/status/rotate/remove/promote/reconnect with role checks and stdin-only secrets (e5d28fd)
+- **Real mTLS pinning + signed membership + two-instance e2e harness** — in-repo certificate minting, handshake-enforced pins, ECDSA-signed membership routes, 32 live assertions (409a410)
+
+### Known gaps (tracked for the next spec)
+
+- The lead needs a restart after its first enrollment before it starts merging; promote does not restart the demoted machine (409a410)
+
 ## [1.0.0-alpha.2] - 2026-08-07
 
 > v1 integration line. M3 complete: the `collie` CLI fully absorbs `collie-ctl.sh`.
