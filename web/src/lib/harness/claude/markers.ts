@@ -5,6 +5,7 @@
 // separate styled segments). Pure functions, no I/O, no React.
 
 import { isBlank, lineText } from "../../blocks";
+import { CLAUDE_RULE_GLYPH_CLASS } from "../../rule-glyphs";
 import { displayWidth } from "../../text-width";
 import type { PromptFamily } from "../prompt-model";
 
@@ -17,7 +18,7 @@ export { isBlank, lineText };
 // includes the dashed forms ╌ ╍ ┄ ┅ …), the block eighths used as rules (U+2581–U+2594, e.g. ▁ ▔),
 // and the figure/en/em/horizontal-bar dashes (U+2012–U+2015). ASCII `-`/`=` are deliberately
 // excluded so markdown and code rules in real agent output aren't mistaken for TUI separators.
-const RULE_ONLY = /^[─-╿▁-▔‒-―]+$/;
+const RULE_ONLY = new RegExp(`^[${CLAUDE_RULE_GLYPH_CLASS}]+$`);
 
 /** True when the whole line is a horizontal rule / separator (ignoring surrounding spaces). */
 export function isHorizontalRule(text: string): boolean {
