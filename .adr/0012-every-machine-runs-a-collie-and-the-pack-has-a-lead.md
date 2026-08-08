@@ -118,3 +118,11 @@ string).
 - **The rename shipping and hurting** — operators consistently mis-reading "lead" as a verb, or
   external tooling found to key off an action title. Both are observable, and neither is a reason to
   reopen the themed-names question.
+- **A peer pinning more than its single lead** (added 2026-08-08). Two roles is also what makes a
+  peer's roster hold **exactly one member** — its lead (§8.2 step 4) — and that "roster of one" is
+  load-bearing beyond vocabulary: it lets `bridge/pack/transport.ts` attest the pinned client
+  certificate to the admission gate as a lossless **boolean** (`transportPinned`) rather than
+  per-member, and lets `PACK_PROTOCOL.md` §8.6 reason about a single possible signer per pinned link. A
+  third role, a multi-lead topology, or any change that lets a peer pin more than one lead invalidates
+  that boolean-attestation assumption — both `transport.ts` and §8.6 would have to move to per-member
+  identity — so such a change reopens this ADR as a set, not by analogy.

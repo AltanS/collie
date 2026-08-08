@@ -256,6 +256,13 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     // slow handler cannot land twice (§8.6). Only for a signed MEMBERSHIP call: `hello` changes
     // nothing, so a replay of it is bounded by the skew window alone and does not earn a disk write —
     // and an unsigned call rode a pinned handshake, where replay is the transport's problem.
+    // TOCTOU, noted and today harmless: the freshness verdict read `signer.signedAt` back in
+    // `verifySigned` (the admission read), while THIS commit advances the replay floor a step later and
+    // is serialized behind that read — so two signed requests interleaving could both clear admission
+    // before either has committed the new floor. It costs nothing because the only signed state-changing
+    // routes are `leave` and `lead` (`MEMBERSHIP_PATHS`), and both are idempotent — a doubled leave or a
+    // doubled self-claim lands the same roster. A future NON-idempotent signed membership route must
+    // close the window (read-and-advance the floor in one serialized step) rather than inherit this note.
     const signedAt = signed.timestamp;
     if (signed.member !== null && signedAt !== undefined && MEMBERSHIP_PATHS.has(pathname)) {
       await commitPackChange(deps.store, deps.audit, (current) =>

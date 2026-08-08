@@ -55,6 +55,15 @@ export const MAX_SKEW_MS = 5 * 60 * 1000;
  * route reads would be a rule that silently stops holding the day one does. A membership route that
  * ever grows a parameter must extend this string and the version that goes with it.
  *
+ * **Neither the RECEIVER nor the pack id is named here**, so a signed request verifies at *any* collie
+ * that pins the signer's certificate — not only at the one it was aimed at. This is inert today because
+ * roster topology bounds who-pins-whom: a peer pins only its lead and a lead pins only its members
+ * (§8.2), so a given signer's key is pinned in exactly one place and a captured signature has exactly
+ * one collie it could replay at. A v2 that broadens that — a peer pinning more than one lead, a shared
+ * or nested roster (ADR 0012's "what would justify revisiting") — MUST bind a receiver identity and/or
+ * the pack id into this string, or a signature minted for one collie would verify at another that
+ * happens to pin the same key.
+ *
  * `path` is the URL's pathname only — never the host. A pack member is dialled at an address the
  * operator owns and may re-point (§4, `collie reconnect`); binding the signature to it would make
  * roaming a signature failure.

@@ -684,6 +684,125 @@ describe("teardown", () => {
   }, 60_000);
 });
 
+// ── §8.1/§8.6 PREMISE CANARIES: Bun can ENFORCE a client certificate but not READ it ─────────
+//
+// Two facts about Bun 1.3.14 underwrite the ENTIRE application-layer half of the pack's first factor:
+//   1. `Bun.serve` verifies a pinned client certificate at the handshake but exposes NO per-request
+//      accessor for the certificate that was presented. That is why identity is attested to the
+//      admission gate as a boolean (`transportPinned`, bridge/pack/transport.ts) instead of read, and
+//      why peer→lead requests must re-establish the second factor with a signature (§8.6, signing.ts).
+//   2. `server.reload({ tls })` does NOT swap the enforced `ca`. That is why there is no live re-pin and
+//      why every membership verb restarts the bridge to change its anchors (`applyLocally`, cli/pack.ts).
+//
+// If EITHER premise breaks in a future Bun, the workaround it justifies should be DISMANTLED, not
+// silently fossilised. These probes stand up a minimal real `Bun.serve` over mutual TLS with certs this
+// build mints, and assert the CURRENT limitation still holds — so they PASS today and FAIL loudly the
+// day Bun gains the capability, pointing the next engineer at transport.ts / signing.ts / §8.6.
+describe("Bun-capability canaries (the pin can be enforced but not read; a reload cannot re-pin)", () => {
+  test("CANARY — the receiving side still cannot read the presented client certificate per request", async () => {
+    const serverId = mintIdentity({ commonName: "canary-server", sans: ["127.0.0.1", "localhost"] });
+    const clientId = mintIdentity({ commonName: "canary-client", sans: ["127.0.0.1"] });
+
+    // Every per-request surface a client certificate could plausibly appear on. Enumerated by name and
+    // captured from INSIDE the handler, on the enforced path — the handshake below only completes for a
+    // pinned client, so if any of these is non-`undefined` the certificate is readable, which is exactly
+    // the capability this canary guards against.
+    let surfaces: Record<string, unknown> = {};
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      tls: {
+        cert: serverId.certPem,
+        key: serverId.keyPem,
+        ca: [clientId.certPem],
+        requestCert: true,
+        rejectUnauthorized: true,
+      },
+      fetch(req, srv) {
+        const r = req as unknown as Record<string, unknown>;
+        const s = srv as unknown as Record<string, (req: Request) => unknown>;
+        surfaces = {
+          // On the `Request`…
+          "req.socket": r.socket,
+          "req.getPeerCertificate": r.getPeerCertificate,
+          "req.peerCertificate": r.peerCertificate,
+          "req.clientCertificate": r.clientCertificate,
+          // …on the `Server` handed to the handler.
+          "server.getPeerCertificate": typeof s.getPeerCertificate === "function" ? s.getPeerCertificate(req) : s.getPeerCertificate,
+          "server.requestClientCertificate":
+            typeof s.requestClientCertificate === "function" ? s.requestClientCertificate(req) : s.requestClientCertificate,
+          "server.peerCertificate": s.peerCertificate,
+        };
+        return new Response("ok");
+      },
+    });
+    try {
+      const res = await fetch(`https://127.0.0.1:${server.port}/`, {
+        tls: {
+          cert: clientId.certPem,
+          key: clientId.keyPem,
+          ca: [serverId.certPem],
+          checkServerIdentity: () => undefined,
+        },
+      } as PackRequestInit as RequestInit);
+      // The handshake completed → the pin was ENFORCED and the handler ran. That half must keep working.
+      expect(res.status).toBe(200);
+
+      // CANARY — when any of these becomes readable, Bun gained the capability; dismantle the workaround
+      // (transport.ts's boolean `transportPinned` / signing.ts's §8.6 signatures / §8.6 itself), because
+      // the receiver could then read the peer identity directly instead of re-deriving it from a signature.
+      for (const [name, value] of Object.entries(surfaces)) {
+        expect(value, `${name} must stay absent — see transport.ts / signing.ts / PACK_PROTOCOL §8.6`).toBeUndefined();
+      }
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("CANARY — server.reload({tls:{ca}}) does NOT change the enforced pin", async () => {
+    const serverId = mintIdentity({ commonName: "canary-server", sans: ["127.0.0.1", "localhost"] });
+    const pinned = mintIdentity({ commonName: "canary-pinned", sans: ["127.0.0.1"] });
+    const added = mintIdentity({ commonName: "canary-added", sans: ["127.0.0.1"] });
+
+    const serveOpts = (ca: string[]) => ({
+      port: 0,
+      hostname: "127.0.0.1",
+      tls: {
+        cert: serverId.certPem,
+        key: serverId.keyPem,
+        ca,
+        requestCert: true,
+        rejectUnauthorized: true,
+      },
+      fetch: () => new Response("ok"),
+    });
+    const server = Bun.serve(serveOpts([pinned.certPem]));
+    const dial = (who: { certPem: string; keyPem: string }): Promise<Response> =>
+      fetch(`https://127.0.0.1:${server.port}/`, {
+        tls: { cert: who.certPem, key: who.keyPem, ca: [serverId.certPem], checkServerIdentity: () => undefined },
+      } as PackRequestInit as RequestInit);
+    try {
+      // Baseline: the pinned client is admitted; a client the listener never anchored is refused at the
+      // handshake (BoringSSL rejects it before any handler) — establishing that enforcement is real.
+      expect((await dial(pinned)).status).toBe(200);
+      await expect(dial(added)).rejects.toThrow();
+
+      // Add the second certificate to the anchor list the ONLY way a live process could: reload.
+      server.reload(serveOpts([pinned.certPem, added.certPem]));
+
+      // CANARY — the newly-added client is STILL refused, because reload did not swap the enforced `ca`.
+      // When this stops throwing, `server.reload({tls})` re-pins live; dismantle the "no live re-pin /
+      // restart to re-pin" workaround (transport.ts, and the membership-verb restart in cli/pack.ts).
+      await expect(
+        dial(added),
+        "reload re-pinned live — revisit transport.ts's no-live-re-pin and PACK_PROTOCOL §8.6",
+      ).rejects.toThrow();
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Dial the pinned member as the other member would — real client certificate, real pin. */
