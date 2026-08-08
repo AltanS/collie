@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.25.1] - 2026-08-08
+
+### Changed
+
+- **Long terminal rule borders clip at the mirror edge** instead of wrapping into several rows; ordinary output keeps normal wrapping (ab23eb1)
+
 ## [0.25.0] - 2026-08-07
 
 ### Added
