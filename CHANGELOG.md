@@ -6,6 +6,14 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.8] - 2026-08-08
+
+### Security
+
+- **F2** — `PACK_PROTOCOL.md` §8.5 threat model corrected: a compromised peer can issue a consent-free `POST /pack/v1/lead` self-claim that denies the pack and, after the old lead's next restart, drives the *former lead's* terminals — beyond the "its own machine's terminals" the doc claimed; containment (per-member pinning) and the deferred mitigation (promote-as-confirm) stated honestly; no behavior change (6ba66a3)
+- **F2** — added a `bun test` canary (`bridge/pack/harness.test.ts`) that asserts Bun 1.3.14 still cannot read a presented client certificate per request and that `server.reload({tls})` cannot re-pin live — it fails loudly when either premise breaks, cueing dismantling of `transportPinned` / signing.ts / §8.6 (6ba66a3)
+- **F2** — cross-referenced the "roster of one → boolean attestation" assumption from ADR 0012 into `transport.ts`/§8.6, and noted two inert v2 hazards in comments: the signed string binds neither receiver nor pack id (signing.ts), and the signedAt admission-read vs floor-commit TOCTOU (router.ts) (6ba66a3)
+
 ## [1.0.0-alpha.7] - 2026-08-08
 
 ### Fixed
