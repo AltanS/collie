@@ -379,6 +379,23 @@ There is no discovery, no enumeration, and no overlay-network integration — ev
 > The marker is written only by an instance that **has** a trust store, so §11's zero-tax contract is
 > untouched: solo still writes nothing.
 
+> **Amended 2026-08-08 — the invite carries the lead's fingerprint, so the lead is authenticated to
+> the joiner (closes F1).**
+>
+> The 2026-08-07 amendment above admitted the gap plainly: the exchange authenticates *the joiner to
+> the lead* (the token) and pins the lead trust-on-first-use, with **nothing authenticating the lead
+> to the joiner**. A man-in-the-middle on the enrollment path — or a mistyped/rebound `<lead-address>`
+> — could capture the token, relay it to the real lead as its own enrollment, and answer the joiner
+> with its *own* certificate as "the lead", pinned permanently in both directions.
+>
+> The fix is the Syncthing model: **the operator-carried token is now `<token>.<lead-fingerprint>`**,
+> where the suffix is the lead's own certificate fingerprint (public material). The wire is unchanged —
+> `EnrollRequest.token` is still exactly `<token>`, and the lead still stores only its hash — the
+> fingerprint travels only in the operator's out-of-band paste. **`join` refuses a lead whose
+> certificate does not hash to the invited fingerprint, before anything is pinned or persisted**, and
+> **fails closed on an old-format token that names no lead**. It is the fingerprint, not the transport,
+> that authenticates the lead — so `http://` remains allowed on a trusted network.
+
 ### 8.3 Secrets never touch argv
 
 `ps -eo args` and `/proc/<pid>/cmdline` (mode 444) are world-readable — this is not theoretical; it is
