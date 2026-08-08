@@ -73,6 +73,24 @@ describe("NavTray", () => {
     expect(isBefore(right, space)).toBe(true);
   });
 
+  it("a quick Ctrl+C button sits in the Esc/Up gap and fires ctrl+c immediately", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} />);
+
+    const esc = screen.getByRole("button", { name: "Esc" });
+    const ctrlC = screen.getByRole("button", { name: "Ctrl+C" });
+    const up = screen.getByRole("button", { name: "Up" });
+    const isBefore = (a: HTMLElement, b: HTMLElement) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+    expect(isBefore(esc, ctrlC)).toBe(true);
+    expect(isBefore(ctrlC, up)).toBe(true);
+
+    await user.click(ctrlC);
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
+  });
+
   it("does not fire anything when disabled", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
