@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
-import { PACK_PROTOCOL_VERSION, type EnrollResponse } from "../bridge/pack/enrollment.ts";
+import {
+  createTrustStore,
+  PACK_PROTOCOL_VERSION,
+  selfIdentity,
+  type EnrollResponse,
+} from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, PACK, peerStore, T0 } from "../bridge/pack/fixtures.ts";
 import {
   serializeTrustStore,
@@ -111,7 +116,10 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
       return () => `r${++i}`;
     })(),
     mintIdentity: () => Promise.resolve(material("fresh")),
-    readStdin: () => Promise.resolve("token-from-stdin\n"),
+    // The operator now pastes `<token>.<lead-fingerprint>` (§8.2). The suffix is the lead's own cert
+    // fingerprint — `fp("desk")`, matching the lead in `ENROLLED` — so a `join` split yields the wire
+    // token "token-from-stdin" and an invited fingerprint the answer will match.
+    readStdin: () => Promise.resolve(`token-from-stdin.${fp("desk")}\n`),
     restart: () => {
       restarts.push(requests.length);
       return Promise.resolve(EXIT.OK);
@@ -191,7 +199,9 @@ describe("parsePackArgs", () => {
 describe("readToken — §8.3, and the warning that makes it real", () => {
   test("`-` reads stdin and says nothing", async () => {
     const h = harness(null);
-    expect(await readToken("-", h.deps)).toBe("token-from-stdin");
+    // `readToken` is a passthrough: it returns the whole operator string, fingerprint suffix and all —
+    // `join` is what splits `<token>.<lead-fingerprint>`, not this.
+    expect(await readToken("-", h.deps)).toBe(`token-from-stdin.${fp("desk")}`);
     expect(h.io.stderr).toEqual([]);
   });
 
@@ -231,14 +241,17 @@ describe("enrollUrl", () => {
 // ── pack invite ──────────────────────────────────────────────────────────────
 
 describe("collie pack invite", () => {
-  test("mints a token, prints it once, and stores only its hash", async () => {
+  test("mints a token, prints `<token>.<lead-fingerprint>` once, and stores only the token's hash", async () => {
     const h = harness(leadStore());
     expect(await cmdPackInvite(h.deps, [])).toBe(EXIT.OK);
-    const token = h.io.stdout[0]!;
-    expect(token).toBe("r1");
-    // Scoped to `invites` (not the whole store): `self` now carries a real minted certificate, whose
-    // base64 can coincidentally contain a short deterministic token like "r1" as a substring.
-    expect(JSON.stringify(h.data()!.invites)).not.toContain(token);
+    const printed = h.io.stdout[0]!;
+    // The operator carries the wire token AND this lead's own certificate fingerprint (§8.2), so `join`
+    // can authenticate the lead back. `fp("desk")` is `leadStore`'s `self.fingerprint`.
+    expect(printed).toBe(`r1.${fp("desk")}`);
+    // The wire token — the part the lead ever hashes — is only "r1", and it is never stored in the
+    // clear. Scoped to `invites` (not the whole store): `self` carries a real certificate whose base64
+    // can coincidentally contain a short deterministic token like "r1" as a substring.
+    expect(JSON.stringify(h.data()!.invites)).not.toContain("r1");
     expect(text(h.io)).toContain("single-use");
     expect(text(h.io)).toContain("expires");
   });
@@ -377,6 +390,69 @@ describe("collie join", () => {
     const h = harness(null);
     expect(await cmdJoin(h.deps, ["desk.ts.net"])).toBe(EXIT.USAGE);
     expect(h.requests).toEqual([]);
+  });
+
+  // ── The lead's fingerprint on the invite authenticates the lead to the joiner (F1) ──
+  // The operator carries `<token>.<lead-fingerprint>`. `join` sends ONLY the token on the wire and
+  // requires the lead's answer to present the fingerprinted certificate — closing the MITM/relay a
+  // self-consistent enrollment response could not.
+
+  test("the wire EnrollRequest.token is still just T — the fingerprint never leaves this machine", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
+    const wireToken = JSON.parse(h.requests[0]!.body).token as string;
+    expect(wireToken).toBe("token-from-stdin");
+    // The invited fingerprint rode alongside the token in the operator's paste, not on the wire.
+    expect(wireToken).not.toContain(".");
+    expect(h.requests[0]!.body).not.toContain(fp("desk"));
+  });
+
+  test("a lead whose certificate does not match the invite fingerprint is REFUSED, nothing persisted", async () => {
+    // A solo store already on disk: `ensureStore` returns it untouched, so an "untouched" assertion is
+    // a clean deep-equal rather than a claim about a freshly-materialised identity.
+    const solo = createTrustStore(selfIdentity("laptop", material("laptop"), T0));
+    // The invite names `fp("nas")`, but the answer (`ENROLLED`) presents `desk`'s certificate — a relay
+    // answering with its own identity. The token was well-formed, so the refusal is the pin check.
+    const h = harness(solo, [jsonReply(ENROLLED, 200, "desk")], {
+      readStdin: () => Promise.resolve(`token-from-stdin.${fp("nas")}`),
+    });
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("does not match the invite");
+    expect(text(h.io)).toContain("man-in-the-middle");
+    // The request WAS made (the answer had to arrive to be judged) — but nothing was pinned.
+    expect(h.requests).toHaveLength(1);
+    expect(h.data()).toEqual(solo);
+    expect(h.audit.map((l) => l.action)).not.toContain("pack.joined");
+  });
+
+  test("a matching fingerprint enrolls and pins — the check passes the honest lead through", async () => {
+    // `joinArgs` + the default stdin carry `fp("desk")`, which is exactly `ENROLLED`'s lead.
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
+    expect(h.data()!.lead).toMatchObject({ memberId: "desk", fingerprint: fp("desk") });
+    expect(h.audit.map((l) => l.action)).toContain("pack.joined");
+  });
+
+  test("an old-format token with no `.` FAILS CLOSED — refused before any dial", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")], {
+      readStdin: () => Promise.resolve("token-with-no-fingerprint"),
+    });
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("no lead fingerprint");
+    // Fail-closed happens before the network: nothing was dialled, nothing was persisted.
+    expect(h.requests).toEqual([]);
+    expect(h.data()).toBeNull();
+  });
+
+  test("a malformed (non-64-hex) fingerprint part is refused — a truncated paste does not enroll", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")], {
+      readStdin: () => Promise.resolve("token-from-stdin.not-a-real-fingerprint"),
+    });
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("malformed");
+    expect(h.requests).toEqual([]);
+    // Refused before `ensureStore`, so no identity was even materialised — the store is still absent.
+    expect(h.data()).toBeNull();
   });
 });
 

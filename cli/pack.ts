@@ -24,7 +24,7 @@ import {
   type RosterEntry,
   PACK_PROTOCOL_VERSION,
 } from "../bridge/pack/enrollment.ts";
-import { mintMemberId, randomToken, type RandomSource } from "../bridge/pack/identity.ts";
+import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } from "../bridge/pack/identity.ts";
 import { signRequest } from "../bridge/pack/signing.ts";
 import { dialTls } from "../bridge/pack/transport.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
@@ -336,12 +336,19 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
   if (minted === null) return EXIT.FAIL;
 
   const address = selfAddress(deps, flags.address);
-  deps.io.out(minted.token);
+  // The operator carries `<token>.<lead-fingerprint>` (§8.2): the token still authenticates the joiner
+  // to the lead, and the fingerprint — this lead's OWN certificate hash, public material — lets `join`
+  // authenticate the lead back. Only the printed string gains the suffix: the wire token stays exactly
+  // `minted.token` and the store still holds only `hashToken(minted.token)`, so nothing else changes.
+  // `join` refuses a lead whose certificate does not hash to this fingerprint, which closes the
+  // enrollment-path MITM/relay: a token that names no lead is a token `join` will not act on.
+  const leadFp = data.self.fingerprint;
+  deps.io.out(`${minted.token}.${leadFp}`);
   deps.io.out("");
   deps.io.out(`  single-use · expires ${new Date(minted.expiresAt).toISOString()} (10 minutes)`);
   deps.io.out("  Shown once — only its hash is stored. Run this on the machine that is joining:");
   deps.io.out(
-    `    collie join ${address ?? "<this-lead-address>"} -    # then paste the token on stdin`,
+    `    collie join ${address ?? "<this-lead-address>"} -    # then paste the whole token on stdin`,
   );
   deps.io.out("  Passing it as an argument instead leaves it in `ps` output for every local uid.");
   await applyLocally(deps, "the bridge can answer this invite");
@@ -373,10 +380,30 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
     return EXIT.STATE;
   }
 
-  const token = await readToken(rawToken, deps);
-  if (token === null) {
+  const raw = await readToken(rawToken, deps);
+  if (raw === null) {
     deps.io.err("error: the token was empty");
     return EXIT.USAGE;
+  }
+
+  // The operator-carried token is `<token>.<lead-fingerprint>` (§8.2). Split on the LAST dot: minted
+  // tokens and fingerprints hold none, so this is unambiguous, and the wire `EnrollRequest.token` is
+  // ONLY the part before it — the far side never sees the fingerprint. FAIL CLOSED on an old-format
+  // token: a token that names no lead, or names a malformed one, is refused here rather than enrolled
+  // without ever authenticating the lead. That refusal is the whole point — it cannot be skippable.
+  const dot = raw.lastIndexOf(".");
+  if (dot <= 0 || dot === raw.length - 1) {
+    deps.io.err("error: this invite has no lead fingerprint — mint a fresh one on an updated lead.");
+    deps.io.err("       A token that names no lead cannot pin one, so Collie refuses to enroll on it:");
+    deps.io.err("       run `collie pack invite` on the lead and paste the whole `<token>.<fingerprint>`.");
+    return EXIT.REFUSED;
+  }
+  const token = raw.slice(0, dot);
+  const invitedFp = normalizeFingerprint(raw.slice(dot + 1));
+  if (invitedFp === null) {
+    deps.io.err("error: the invite's lead fingerprint is malformed — a fingerprint is 64 hex characters.");
+    deps.io.err("       The token was likely truncated or mistyped. Mint a fresh one: `collie pack invite`.");
+    return EXIT.REFUSED;
   }
 
   const data = await ensureStore(deps, flags.label);
@@ -438,6 +465,20 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   if (parsed === null) {
     deps.io.err("error: the lead's enrollment response was not one this build can read.");
     return EXIT.FAIL;
+  }
+
+  // The invite named the lead's certificate fingerprint; the answer must present THAT certificate.
+  // `parseEnrollResponse` already proved `leadFingerprint === fingerprintOfCert(leadCertPem)`, so this
+  // one comparison is the lead authenticating itself to the joiner — it is what a self-consistent
+  // response could never do on its own. A MITM or a mistyped/rebound address that captured the token
+  // and answered with ITS OWN certificate is refused here, BEFORE anything is pinned or persisted
+  // (§8.2). http:// stays allowed precisely because this fingerprint, not the transport, is the anchor.
+  if (invitedFp !== parsed.leadFingerprint) {
+    deps.io.err("error: the lead's certificate does not match the invite — this is not the machine the");
+    deps.io.err("       invite was minted on. Possible man-in-the-middle on the enrollment path, or the");
+    deps.io.err("       wrong <lead-address>. Nothing was pinned or persisted. Check the address; if it is");
+    deps.io.err("       right, mint a fresh invite on the lead: `collie pack invite`.");
+    return EXIT.REFUSED;
   }
 
   const accepted = await commitPackChange(deps.store, deps.audit, (current) =>
