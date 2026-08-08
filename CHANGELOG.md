@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.5] - 2026-08-08
+
+### Security
+
+- **F4** — an unauthenticated `POST /pack/v1/enroll` no longer rewrites the trust store (private key + pack secret) or appends a spend audit line when the token spends nothing; a no-op `consumeInvite` now returns `null`, while an expiry sweep still persists, and both refuse identically (2dc6995)
+
 ## [1.0.0-alpha.4] - 2026-08-07
 
 > v1 integration line. M5 complete: the phone knows about servers. First real pack live (bluefin lead + minibuch peer).
@@ -472,6 +478,8 @@ argued about again.
 ## [0.9.1] - 2026-07-09
 
 ### Security
+
+- Unauthenticated `POST /pack/v1/enroll` no longer rewrites the trust store or appends an audit line on a no-op spend — write-amplification against the key/secret file (F4) (2dc6995)
 - Removed one-tap yes/no reply buttons from push notifications — they POSTed to the terminal without opening the app, i.e. approving blind. Notifications now only deep-link to the pane (cb26ee0)
 
 ## [0.9.0] - 2026-07-07
@@ -529,6 +537,8 @@ argued about again.
   is a no-op, so no notes UI is shown).
 
 ### Security
+
+- Unauthenticated `POST /pack/v1/enroll` no longer rewrites the trust store or appends an audit line on a no-op spend — write-amplification against the key/secret file (F4) (2dc6995)
 - **Preview-note tap guard hardened to region-signature parity.** The preview dialog's race guard now
   carries a pointer- and note-independent **core signature** (the subject/question/stepper above the
   options joined with the option rows' left column, `❯` normalised) — matching the 0.4.0 `signature`
@@ -599,6 +609,8 @@ argued about again.
   the raw mirror (drive it with the keys pad, or via the new escape hatch) rather than mis-sending.
 
 ### Security
+
+- Unauthenticated `POST /pack/v1/enroll` no longer rewrites the trust store or appends an audit line on a no-op spend — write-amplification against the key/secret file (F4) (2dc6995)
 - **Prompt/wizard taps are guarded against same-shaped successor dialogs.** The tap race guard now
   compares a byte-signature of the whole dialog region — including the subject above the options (the
   diff/command being approved), not just the question and option labels. So a tap on a frozen mirror
