@@ -462,6 +462,29 @@ Stated plainly, because a pack link is remote shell access to a second machine.
   arbitrary snapshot and pane content, which the lead renders; that content is already treated as
   attacker-influenceable and rendered as React text nodes under a strict CSP
   (`bridge/server.ts:77-80`, `ARCHITECTURE.md` §6).
+
+  **It also reaches past "its own machine" through the promotion path (amended 2026-08-08).**
+  `POST /pack/v1/lead` (§14) accepts a signature-verified self-claim from **any** enrolled member with
+  **no operator consent required on the receiving lead** — the wire cannot tell an operator-run
+  `collie promote` from a compromised peer running the same verb (`bridge/pack/router.ts`, `newLead`).
+  The signature authenticates *which member* is claiming, not *that an operator willed it*. Two
+  consequences follow, and neither is contained by "its own terminals":
+    - **(a) Denial of service against the pack.** The claim forces a leadership change no operator
+      consented to: the current lead demotes itself on disk and hands the claimant the **full roster** —
+      every member's certificate and address (`demoteSelf`, `router.ts:~449`) — and the front door moves.
+    - **(b) The former lead's terminals.** After the demoted lead's **next restart** it comes back a
+      peer that pins the claimant as *its* lead, at which point the attacker drives the **former lead's**
+      panes, journal and uploads — the reach §8.5 otherwise reserves to a compromised *lead*, now had
+      from a single compromised *peer*.
+  **Containment, stated honestly.** This is **not** silent full-pack capture. Pinning is per-member, so
+  the other peers keep following the old lead and will not adopt the claimant without a manual re-join
+  (a peer re-pins only a lead it is told to — `adoptLead` — never one that merely announced itself). So
+  from one compromised peer the attacker gets pack-wide **denial** plus the **old lead's machine** — well
+  beyond "its own machine's terminals", and short of the whole pack, which still needs operator error. **A
+  mitigation is identified and deferred:** requiring operator consent *on the old lead* to demote it —
+  *promote as a confirm on the receiver, not a command from the claimant* — closes this. It is specified
+  separately and **is not shipped today**, so this bullet describes the protocol as it currently stands,
+  not a fix that exists.
 - **A compromised lead** reaches **everything, on every member**. This is total, and it is inherent:
   the lead holds the pack secret and a pinned link to every peer, and its whole job is driving
   terminals. **The lead is a lateral-movement hub by construction.** Naming it is the mitigation
