@@ -74,7 +74,7 @@ if [ "\${1:-}" = serve ] && [ "\${2:-}" = status ] && [ "\${3:-}" = --json ]; th
   cat "$TS_STATUS"
   exit 0
 fi
-if [ "\${1:-}" = serve ] && [[ " \$* " == *" --bg "* ]]; then
+if [ "\${1:-}" = serve ] && [[ " \$* " == *" --yes "* ]] && [[ " \$* " == *" --bg "* ]]; then
   target="\${!#}"
   listener=443
   protocol=HTTPS
@@ -648,6 +648,30 @@ EOF
   assert_contains "$(cat "${CASE_DIR}/build.out")" 'bun not found'
 }
 
+test_action_launcher_generation() {
+  setup_case action-launcher
+  local plugin_root="${CASE_DIR}/plugin & space" harness="${CASE_DIR}/launcher.sh"
+  mkdir -p "$plugin_root"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+PLUGIN_ROOT="$plugin_root"
+write_action_launcher
+EOF
+  bash "$harness"
+  local launcher="${plugin_root}/build/collie-action-v1.exe"
+  [ -x "$launcher" ] || fail "Unix action launcher is not executable"
+  bash -n "$launcher"
+  assert_contains "$(cat "$launcher")" 'collie-ctl.sh'
+  local before; before="$(cat "$launcher")"
+  bash "$harness"
+  assert_eq "$(cat "$launcher")" "$before"
+}
+
 # ── update: the checkout can be in either of the two shapes Collie is installed in ───────────────
 #
 # `herdr plugin install` does NOT clone: it runs `git init` + `git fetch --depth 1 origin HEAD` +
@@ -803,5 +827,6 @@ test_update_advances_a_herdr_managed_checkout
 test_update_fast_forwards_a_linked_clone
 test_update_reports_a_non_git_checkout
 test_registry_refresh_skips_a_managed_checkout
+test_action_launcher_generation
 
 echo "collie-ctl lifecycle tests: passed"

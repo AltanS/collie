@@ -11,8 +11,8 @@ Each agent gets a colored terminal mirror, a slash-command palette, a special-ke
 conversation history you can scroll and search. The reply box is an ordinary text field, so your
 phone's own voice dictation works in it; Collie ships none of its own.
 
-A Herdr plugin (thin launcher) plus a Bun/TypeScript bridge running as a `systemd --user` service,
-serving a Vite + React + shadcn PWA.
+A Herdr plugin (thin launcher) plus a supervised Bun/TypeScript bridge serving a Vite + React +
+shadcn PWA.
 
 ## Contents
 
@@ -141,14 +141,14 @@ On the **host** (the tailnet node your agents run on):
 
 Soft dependencies: **Node.js** (the control script uses it to extract your MagicDNS name from
 `tailscale status --json`; without it the banner falls back to the loopback URL) and a **service
-supervisor** — `systemd --user` on Linux, **launchd** on macOS (both ship with the OS); a host with
-neither falls back to an unsupervised `nohup` process. You never install JS
+supervisor** — `systemd --user` on Linux, **launchd** on macOS, or Task Scheduler on Windows; a
+POSIX host with neither falls back to an unsupervised `nohup` process. You never install JS
 deps by hand — the build runs `bun install` for you; the backend imports only Bun + `node:*`.
 [`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see [Web
 Push](#web-push-optional)).
 
-**Linux and macOS are the supported hosts.** The bridge itself also runs on **Windows**
-(experimental) against Herdr's Windows beta — see [Windows](#windows-experimental).
+**Linux, macOS, and Windows are supported hosts.** Windows remains experimental while Herdr's
+Windows support is in preview; see [Windows](#windows-experimental).
 
 ## Install
 
@@ -165,30 +165,31 @@ herdr plugin action invoke start --plugin herdr.collie
 
 ```bash
 git clone https://github.com/AltanS/collie.git && cd collie
+bash scripts/collie-ctl.sh build
 herdr plugin link "$(pwd)"
 herdr plugin action invoke start --plugin herdr.collie
 ```
 
 They differ in *when* the UI builds — a GitHub install builds at install time (the manifest's
-`[[build]]` step), a linked clone on first `start` — and in **what lands on disk**, which matters when
+`[[build]]` step), while a linked clone builds explicitly before linking — and in **what lands on
+disk**, which matters when
 you go to [update](#update-to-a-new-release): `herdr plugin install` doesn't clone, it fetches one
 commit and detaches onto it, so the checkout has no branch. Both shapes update fine from 0.23.1 on;
 **installed earlier than that, see the note in [Update](#update-to-a-new-release)**. Either way,
 `start` does four things:
 
 1. **builds** `web/dist` if it's missing (typechecked, staged, swapped in atomically),
-2. **starts the bridge** as the `systemd --user` service `collie` (`nohup` fallback without systemd),
-3. **publishes it on the tailnet** — literally `tailscale serve --bg 8787`: HTTPS on the host's
-   MagicDNS name, `:443 → 127.0.0.1:8787`, tailnet-only,
+2. **starts the bridge** under the native user supervisor (`nohup` fallback on POSIX without one),
+3. **uses the tailnet front door** — Collie-managed on POSIX, operator-managed on Windows,
 4. **prints the banner** with the URL to open — walked through line by line in
    [First run](#first-run--what-youll-see).
 
-> No Herdr? Run `scripts/collie-ctl.sh start` directly — same effect (config then lives in
-> `~/.config/collie/.env`).
+> No Herdr? On POSIX, run `scripts/collie-ctl.sh start` directly — same effect (config then lives
+> in `~/.config/collie/.env`). Windows has the equivalent `scripts/collie-ctl.ps1` commands.
 
 ## First run — what you'll see
 
-The transcripts below are the control script's inline output. **Through `invoke start` you get
+The POSIX transcript below is the control script's inline output. **Through `invoke start` you get
 Herdr's JSON envelope instead** — the same text is the action's *captured stdout*, read with
 `herdr plugin log list --plugin herdr.collie`.
 
@@ -219,18 +220,21 @@ The `✓` is a real probe — the script connected to the bridge's port and got 
    `~/.config/systemd/user/collie.service`, enabled and started, auto-restarting on failure. Inspect
    it with `systemctl --user status collie`. On macOS a launchd agent labelled `herdr.collie`, written
    to `~/Library/LaunchAgents/herdr.collie.plist` and bootstrapped into `gui/$(id -u)`; inspect it
-   with `launchctl print gui/$(id -u)/herdr.collie`. (Neither supervisor? A `nohup` process with a
-   pidfile in the config dir instead.)
-3. **A tailnet-only `tailscale serve` mapping** — the script ran `tailscale serve --bg 8787`:
+   with `launchctl print gui/$(id -u)/herdr.collie`. On Windows, Task Scheduler runs `herdr.collie`
+   at logon and restarts it after failures. (No POSIX supervisor? A `nohup` process with a pidfile.)
+3. **A tailnet-only `tailscale serve` mapping** — on POSIX the script ran `tailscale serve --bg 8787`;
+   on Windows the operator creates it once:
    HTTPS on the host's MagicDNS name, `:443 → 127.0.0.1:8787`. Tailscale terminates TLS (managed
    cert, nothing to obtain or renew) and injects the identity header the bridge checks. Inspect
    with `tailscale serve status`; remove just this mapping with `scripts/collie-ctl.sh unserve`.
 
-`stop` merely pauses the service; `uninstall` reverses 2 + 3 and keeps your `.env` and the checkout.
+`stop` merely pauses the service. `uninstall` removes the supervisor and keeps your `.env` and
+checkout; POSIX also removes its managed Serve mapping, while Windows leaves operator-owned ingress.
 
 ### Open it on your phone
 
-The URL is the banner's `tailnet` line (print it again anytime with `scripts/collie-ctl.sh url`).
+The URL is the banner's `tailnet` line (print it again with
+`herdr plugin action invoke url --plugin herdr.collie`).
 It resolves for any device on your tailnet — so the phone needs the Tailscale app installed and
 connected to the same tailnet as the host.
 
@@ -394,7 +398,7 @@ Collie registers these actions in `herdr-plugin.toml`; invoke any with
 
 | `<id>` | Title | What it does |
 | --- | --- | --- |
-| `start` | Start web bridge | Build if needed, start the service, `tailscale serve`, print URL + banner |
+| `start` | Start web bridge | Build if needed, start the service, print URL + banner |
 | `stop` | Stop web bridge | Pause the bridge; removes nothing |
 | `restart` | Restart web bridge | `stop` + `start` |
 | `status` | Bridge status | The *Collie is running* banner — readiness ✓/⚠, version, URLs |
@@ -413,10 +417,9 @@ Pause the bridge without removing anything (a later `start` brings it right back
 scripts/collie-ctl.sh stop      # or: herdr plugin action invoke stop --plugin herdr.collie
 ```
 
-To tear the service down completely — stop + disable it, remove the service definition (the
-`systemd --user` unit, or the launchd agent plist on macOS), and remove
-Collie's own `tailscale serve` mapping (port-scoped, so other tailnet mappings on the host survive) —
-use `uninstall`. It leaves your `.env` and the checkout untouched:
+To tear the service down completely, use `uninstall`. It removes the native supervisor and leaves
+your `.env` and checkout untouched. POSIX also removes Collie's managed `tailscale serve` mapping;
+Windows leaves its operator-managed mapping unchanged:
 
 ```bash
 scripts/collie-ctl.sh uninstall # or: herdr plugin action invoke uninstall --plugin herdr.collie
@@ -450,8 +453,8 @@ herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't r
 herdr plugin action invoke version --plugin herdr.collie   # expect 0.23.1 or newer
 ```
 
-Your `.env` and `tailscale serve` state live in the plugin config dir, outside the checkout, so they
-survive. Pinned to a version with `--ref`? Keep refreshing with `herdr plugin install --ref …` —
+Your `.env` lives outside the checkout, and persistent `tailscale serve` mappings survive updates.
+Pinned to a version with `--ref`? Keep refreshing with `herdr plugin install --ref …` —
 `update` always goes to the latest.
 
 #### What `update` actually does to the checkout
@@ -843,28 +846,41 @@ Three things to get right, none of them Collie-specific:
 
 ## Windows (experimental)
 
-The **bridge** runs on Windows against Herdr's Windows beta; the **launcher** does not. Herdr there
-exposes its control socket as a *named pipe* named after the full socket path, not an AF_UNIX
-socket, so Collie dials it through `node:net` instead of `Bun.connect` — one shim,
-[`bridge/dial.ts`](./bridge/dial.ts), which explains the mapping at the top of the file.
+Windows supports the normal Herdr plugin lifecycle. Install and start it from PowerShell:
 
-What that means in practice:
+```powershell
+herdr plugin install AltanS/collie --yes
+herdr plugin action invoke start --plugin herdr.collie
+```
 
-- **Run the bridge directly** — `bun run bridge/index.ts`. There's no systemd unit, and the Herdr
-  action buttons shell out to `bash`, so they only work if Git Bash is on `PATH`. The manifest
-  therefore still declares `linux`/`macos` only, rather than advertising buttons that may not fire.
-- **`tailscale serve` isn't wired up here.** Use the [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
-  posture: loopback bind, your own ingress in front, `COLLIE_PUBLIC_HOSTS` pinned. The security
-  rules in [§Security](#%EF%B8%8F-security--read-before-you-run-it) are not relaxed on Windows.
-- **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
-- The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
-  (an explicit `\\.\pipe\…` value is passed through untouched).
+`start` registers a Task Scheduler job for the current user. The bridge starts at logon, restarts
+after failures, and survives Herdr restarts. The same `start`, `stop`, `restart`, `uninstall`,
+`update`, `url`, `status`, and `version` actions work on Linux, macOS, and Windows.
 
-**Is it actually working?** The bridge logs `[events] stream up` on start — the event stream works
-over the pipe, so Windows gets the same live updates as Linux, not degraded polling.
+The task is limited by default. If Herdr intentionally runs as Administrator, set
+`COLLIE_TASK_RUN_LEVEL=highest` in Collie's `.env`; this gives every phone action Administrator
+power. Prefer running Herdr normally.
 
-`COLLIE_HERDR_DIAL=net` forces that same dialer on Linux/macOS. It exists so the Windows code path
-can be exercised — and regression-tested — without a Windows box; `bridge/dial.test.ts` uses it.
+Windows does not change Tailscale Serve state. In Administrator PowerShell, create the mapping once:
+
+```powershell
+tailscale serve --yes --bg 8787
+```
+
+Enable HTTPS through Tailscale's consent link if prompted. The mapping persists across Collie
+restarts and uninstall; rerun the command if `COLLIE_PORT` changes.
+
+A locally linked checkout must build its platform launcher before linking because `plugin link`
+does not run manifest builds:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/collie-ctl.ps1 build
+herdr plugin link .
+```
+
+Herdr's Windows socket is a named pipe. The socket path defaults to
+`%APPDATA%\herdr\herdr.sock`; an explicit `\\.\pipe\…` value passes through unchanged. The
+event stream and multi-session discovery use the same contracts as Linux and macOS.
 
 ## Web Push (optional)
 
@@ -909,7 +925,7 @@ pull into, and no install of that vintage could refresh itself. The fix ships in
 repairs, so it takes one reinstall to land:
 [Update to a new release](#update-to-a-new-release) has the three commands.
 
-**`start` prints `note: tailscale serve failed`.** The bridge itself is fine (still up on
+**On POSIX, `start` prints `note: tailscale serve failed`.** The bridge itself is fine (still up on
 `127.0.0.1`) — only the tailnet ingress didn't come up, and the script prints tailscale's own error
 right below the note. Usual causes: your user isn't the Tailscale operator
 (`sudo tailscale set --operator=$USER`), the node is logged out (`tailscale up`), or — on
@@ -941,7 +957,8 @@ headless host enable lingering once (`loginctl enable-linger $USER`) and the `co
 `enable`d) starts at boot with your user manager. The `tailscale serve` mapping persists on its own
 (`--bg`), so lingering is usually the whole fix. On macOS the launchd agent starts at **login**, so
 check you're actually logged in (not sitting at the login window) and that the agent is loaded:
-`launchctl print gui/$(id -u)/herdr.collie`.
+`launchctl print gui/$(id -u)/herdr.collie`. On Windows, confirm the `herdr.collie` scheduled task
+is enabled and that the user who registered it has logged in.
 
 **Phone shows a stale UI after a rebuild.** A PWA's service-worker cache is per-origin, so reaching
 Collie at two origins (a custom domain *and* the raw `host:8787`) gives you two installs, each

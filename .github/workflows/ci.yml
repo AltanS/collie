@@ -20,7 +20,7 @@ jobs:
 
       # The MANDATORY invariant: the three version files + the newest CHANGELOG heading must agree.
       - name: Version consistency
-        run: bash scripts/check-version.sh
+        run: bun run scripts/check-version.ts
 
       - name: Install (root)
         run: bun install --frozen-lockfile
@@ -35,3 +35,12 @@ jobs:
         run: cd web && bun run typecheck
       - name: Test (web)
         run: cd web && bun run test
+
+  windows-lifecycle:
+    name: Windows lifecycle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun run scripts/check-version.ts
+      - run: bun run test:ctl

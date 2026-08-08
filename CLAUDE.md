@@ -44,13 +44,13 @@ manifest) you MUST:
    Fixed). Use the real date. **Style: super crisp and short** — one line per change, no prose
    paragraphs, and cite the feature's short commit hash at the end of the line (`… (abc1234)`).
    Land features as their own commits first, then cut the release commit so the entry can cite them.
-3. **Run `scripts/check-version.sh`** — it must print `✓`.
+3. **Run `bun run scripts/check-version.ts` on Windows or `scripts/check-version.sh` on POSIX** — it must print `✓`.
 
 Doc-only changes (`*.md`) don't need a bump. This is enforced two ways, but **you are the first
 line — do it as part of the change, not after**:
 
-- `scripts/check-version.sh` runs inside `scripts/collie-ctl.sh build` (a release can't build while
-  versions disagree).
+- The shared TypeScript version gate runs inside both native control scripts' `build` command (a
+  release can't build while versions disagree).
 - A **git pre-commit hook** (`scripts/git-hooks/pre-commit`, activate once with
   `scripts/install-hooks.sh`) blocks commits where functional code changed but the version didn't.
   Escape hatch for a single commit: `SKIP_VERSION_CHECK=1 git commit …`.
@@ -80,20 +80,26 @@ the unit name; the Herdr action runs from anywhere.
 - **Frontend changes** (`web/`): rebuild with `bun run build` (root) or `cd web && bun run build`.
   The bridge serves `web/dist` **from disk at request time**, so on the deployment host
   a rebuild is **immediately live — no restart**.
-- **Backend changes** (`bridge/*.ts`): Bun does **not** hot-reload the service — you must
-  `systemctl --user restart collie`. Forgetting this is the #1 "my change didn't take" trap.
-- `bun run build` (root) and `collie-ctl.sh build` **typecheck both sides first** (root tsc + web
-  tsc), then build web to `dist-staging` and swap it in atomically — a failed build never empties a
-  live `web/dist`. Bare `cd web && bun run build` still skips typechecking; don't ship from it.
+- **Backend changes** (`bridge/*.ts`): Bun does **not** hot-reload the service — run
+  `herdr plugin action invoke restart --plugin herdr.collie`. Forgetting this is the #1 "my change
+  didn't take" trap.
+- `bun run build` (root) and both native control scripts' `build` command **typecheck both sides
+  first** (root tsc + web tsc), then build web to `dist-staging` and swap it in atomically — a
+  failed build never empties a live `web/dist`. Bare `cd web && bun run build` still skips
+  typechecking; don't ship from it.
 - **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
   browser); backend `bun run test` at the root — Bun's own runner over every pure-logic module in
   `bridge/` (access checks, state engine, config, journal adapters, notifications, uploads, …) plus
-  `scripts/collie-ctl.test.sh`, which exercises the ctl lifecycle in a sandboxed HOME.
-  A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
-  every push — override once with `SKIP_TESTS=1 git push`. The bits that genuinely need `Bun.serve` /
+  the platform lifecycle suite selected by `scripts/test-ctl.ts` (`collie-ctl.test.sh` on POSIX,
+  `collie-ctl.test.ps1` on Windows), each in a sandboxed config directory.
+  A **pre-push hook** (`scripts/git-hooks/pre-push`) runs the platform lifecycle and web suites;
+  POSIX also runs the backend suite, whose path and file-mode assertions are not native-Windows
+  contracts. CI runs it on Linux for every PR. Override once with `SKIP_TESTS=1 git push`.
+  The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
   so keep new backend logic pure/injectable enough for `bun test`, or exercise it through `web/`.
-- Service: `systemd --user` unit `collie` on the deployment host; logs `journalctl --user -u collie -f`.
+- Supervisor: `systemd --user` unit `collie`, launchd agent `herdr.collie`, or Windows scheduled
+  task `herdr.collie`, depending on the host.
 - **Dependencies must be 7 days old to install** (`bunfig.toml` + `web/bunfig.toml`, mirrored in
   `.npmrc` for npm users) — a compromised release is usually pulled within hours. A brand-new
   version resolving to an older one is the rule working, not a bug; CI's `--frozen-lockfile` is
@@ -174,8 +180,6 @@ conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-or
 identity/device gates · strict CSP. A socket call can type into a real terminal — treat the bridge as
 remote shell access.
 
-**Collie manages exactly one front door: `tailscale serve`** — `collie-ctl.sh` publishes it, records
-the mapping in `tailscale-managed-handler`, and only ever tears down a mapping matching that record.
-Every other tunnel (NetBird, ZeroTier, Cloudflare Tunnel) is `COLLIE_SKIP_SERVE=1` + README Variant
-E: the operator owns the ingress, Collie publishes nothing. **Don't add a second managed front
-door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
+**Collie uses exactly one front door.** The POSIX controller manages `tailscale serve`; Windows and
+every other tunnel use operator-owned ingress. **Don't add a second managed front door** —
+[ADR 0001](./.adr/0001-one-managed-front-door.md).

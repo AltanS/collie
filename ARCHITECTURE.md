@@ -49,21 +49,22 @@ The browser never touches the socket directly; the bridge is the only thing that
    Herdr server (owns panes, agents, state)
 ```
 
-## 3. Deployment model — **systemd user service, not a plugin pane**
+## 3. Deployment model — **native user supervisor, not a plugin pane**
 
 This is the clearest call in the design. A plugin **pane** runs inside a terminal pane: if the pane
 closes, the user detaches, or Herdr restarts, the bridge dies — exactly when you're on mobile and not
 watching the TUI. A long-lived network daemon must be supervised independently.
 
-- **The bridge runs as a `systemd --user` service** (launchd agent on macOS) — starts at login,
-  restarts on failure, survives Herdr restarts.
+- **The bridge runs under the native user supervisor** — `systemd --user` on Linux, a launchd agent
+  on macOS, or Task Scheduler on Windows. It starts at login, restarts on failure, and survives
+  Herdr restarts.
 - **The Herdr plugin stays — as a thin registration/launcher,** so the bridge shows up in
   `herdr plugin list` and Herdr conventions still apply. Its `[[actions]]` do things like
-  `systemctl --user start collie` and **print the tailnet URL**; they do *not* host the server. A
-  `[[build]]` step builds the web UI on `herdr plugin install` (GitHub); local `link` installs skip
-  it and build lazily on first `start`. Concretely that's `[[actions]]` + `[[build]]` and nothing
-  else: `[[panes]]` is what this section argues against, and `[[events]]` would duplicate the
-  bridge's own `events.subscribe` stream (§5).
+  start the supervisor and **print the tailnet URL**; they do *not* host the server. A `[[build]]`
+  step builds the web UI and a platform-native action launcher on `herdr plugin install`; local
+  `link` installs skip builds and must run one explicitly. Concretely that's `[[actions]]` +
+  `[[build]]` and nothing else: `[[panes]]` is what this section argues against, and `[[events]]`
+  would duplicate the bridge's own `events.subscribe` stream (§5).
 - **The checkout on disk *is* the plugin — in one of two shapes.** `herdr plugin install` does not
   clone: it `git init`s, `git fetch --depth 1 origin HEAD`s and `git checkout --detach FETCH_HEAD`s
   into `~/.config/herdr/plugins/github/<hashed-id>`, so a turnkey install is **detached and shallow**
