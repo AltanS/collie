@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.7] - 2026-08-08
+
+### Fixed
+
+- **F3** — `PACK_PROTOCOL.md` §3 no longer claims a peer binds "loopback plus exactly the join address, no `0.0.0.0`" (never implemented, not expressible — `Bun.serve` takes one hostname): the pack listener binds `COLLIE_HOST` and the operator owns that bind; a peer on a wildcard bind (`0.0.0.0`/`::`/empty) now emits a loud startup warning, and `collie pack status` shows the resolved bind — the two-factor gate is unchanged, only who may attempt it (ADR 0013 amended) (813c09d)
+
 ## [1.0.0-alpha.6] - 2026-08-08
 
 ### Security
