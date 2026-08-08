@@ -107,25 +107,50 @@ describe("spending an invite", () => {
   const token = minted.result.token;
 
   test("a good token is accepted exactly ONCE — single-use is enforced by removal", () => {
-    const first = consumeInvite(data, token, T0 + 1);
+    const first = consumeInvite(data, token, T0 + 1)!;
     expect(first.result).not.toBeNull();
     expect(first.next.invites).toEqual([]);
-    expect(consumeInvite(first.next, token, T0 + 2).result).toBeNull();
+    // Nothing left to spend and nothing left to sweep: the retry is a pure no-op, so it does not
+    // even ask for a write.
+    expect(consumeInvite(first.next, token, T0 + 2)).toBeNull();
   });
 
-  test("a wrong, absent or expired token is refused", () => {
-    expect(consumeInvite(data, "wrong", T0 + 1).result).toBeNull();
-    expect(consumeInvite(data, null, T0 + 1).result).toBeNull();
-    expect(consumeInvite(data, token, T0 + INVITE_TTL_MS + 1).result).toBeNull();
+  test("a wrong or absent token against only-live invites is a NO-OP — no store to write, nothing spent", () => {
+    // F4: this is the unauthenticated path. Returning a `next` here made every junk POST to the
+    // enrollment endpoint re-serialize the file holding the private key and the pack secret.
+    expect(consumeInvite(data, "wrong", T0 + 1)).toBeNull();
+    expect(consumeInvite(data, null, T0 + 1)).toBeNull();
   });
 
-  test("an expired invite is swept even when the spend fails", () => {
-    const after = consumeInvite(data, "wrong", T0 + INVITE_TTL_MS + 1);
+  test("an expired invite is swept even when the spend fails — that sweep IS worth a write", () => {
+    const after = consumeInvite(data, "wrong", T0 + INVITE_TTL_MS + 1)!;
+    expect(after.next.invites).toEqual([]);
+    expect(after.result).toBeNull();
+  });
+
+  test("a token that is right but too late sweeps and reports nothing spent", () => {
+    const after = consumeInvite(data, token, T0 + INVITE_TTL_MS + 1)!;
+    expect(after.result).toBeNull();
     expect(after.next.invites).toEqual([]);
   });
 
+  test("a match among a mix spends exactly it and sweeps the expired one in the same pass", () => {
+    const random = R();
+    const short = mintInvite(createTrustStore(selfIdentity("desk", material("desk"), T0)), {
+      now: T0,
+      ttlMs: 1_000,
+      random,
+    });
+    const long = mintInvite(short.next, { now: T0, random });
+    expect(long.next.invites).toHaveLength(2);
+
+    const spent = consumeInvite(long.next, long.result.token, T0 + 2_000)!;
+    expect(spent.result?.tokenHash).toBe(hashToken(long.result.token));
+    expect(spent.next.invites).toEqual([]);
+  });
+
   test("the audit line records only whether it was accepted", () => {
-    expect(consumeInvite(data, token, T0 + 1).audit).toEqual({
+    expect(consumeInvite(data, token, T0 + 1)!.audit).toEqual({
       action: "pack.invite.spend",
       detail: { accepted: true },
     });

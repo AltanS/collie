@@ -31,15 +31,26 @@ function headerList(res: Response): string[] {
 function harness(initial: TrustStoreData) {
   const lines: AuditEntry[] = [];
   let contents: string | null = serializeTrustStore(initial);
+  // `writes` counts trips to the disk, not changes to the data — the point of counting is that an
+  // unauthenticated caller cannot make the store re-serialize at all (F4), even to the same bytes.
+  let writes = 0;
   const io: TrustStoreIo = {
     read: async () => contents,
     write: async (_p, d) => {
+      writes += 1;
       contents = d;
     },
   };
   const store = new TrustStore("/unused", io);
   const audit = new AuditLog((l) => void lines.push(JSON.parse(l) as AuditEntry), () => T0);
-  return { store, audit, lines, data: () => store.current()! };
+  return {
+    store,
+    audit,
+    lines,
+    data: () => store.current()!,
+    writes: () => writes,
+    contents: () => contents,
+  };
 }
 
 function call(
@@ -361,6 +372,81 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
   // client certificate can ever reach this process on this route. What the old tests exercised (a
   // transport-level identity check gating enrollment) is not merely unwired now, it is asserted in
   // the shipping code to not exist on this path.
+
+  test("F4: a junk enroll rewrites NOTHING — no store write, no audit line, unbounded and free to us", async () => {
+    // The endpoint is unauthenticated by design, so a no-op spend that still persisted turned every
+    // garbage POST into a re-serialize of the file holding the private key and the pack secret.
+    const h = invited();
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
+    // Load the store once up front so the baseline is "loaded, not written".
+    await h.store.load();
+    const before = h.contents();
+    for (const payload of [{}, body({ token: "bogus" }), { token: "bogus" }, "not-a-json-object"]) {
+      const res = (await call(handler, PACK_ENROLL_PATH, {
+        method: "POST",
+        headers: { "x-pack-protocol": "1" },
+        body: JSON.stringify(payload),
+      }))!;
+      expect(res.status).toBe(401);
+    }
+    await Bun.sleep(5);
+    expect(h.writes()).toBe(0);
+    expect(h.contents()).toBe(before);
+    // No spend was recorded. The `pack.refused` lines `refuse()` writes are a separate, deliberate
+    // record of the refusal itself (see "a refusal is audited locally with its real cause") — what
+    // F4 was about is the store write and the spend line that used to accompany it.
+    expect(h.lines.map((l) => l.action)).not.toContain("pack.invite.spend");
+    // The live invite is untouched: refusing junk must not sweep what has not expired.
+    expect(h.data().invites).toHaveLength(1);
+  });
+
+  test("F4: the refusal is byte-identical whether the no-op wrote or the sweep did", async () => {
+    // Case C (nothing matched, nothing expired → no write) and case B (nothing matched, but an
+    // expired invite was swept → a write DID happen) must be indistinguishable from outside, or the
+    // fix has traded a write-amplification for an oracle on "is there an expired invite in there".
+    const shapes: string[] = [];
+    let sweepWrites = 0;
+    for (const [at, expectWrite] of [
+      [T0 + 1, false],
+      [T0 + 11 * 60 * 1000, true],
+    ] as const) {
+      const h = invited();
+      const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => at });
+      const res = (await call(handler, PACK_ENROLL_PATH, {
+        method: "POST",
+        headers: { "x-pack-protocol": "1" },
+        body: JSON.stringify(body({ token: "bogus" })),
+      }))!;
+      shapes.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
+      expect(h.writes() > 0).toBe(expectWrite);
+      sweepWrites += h.writes();
+    }
+    // The two branches really were different underneath…
+    expect(sweepWrites).toBe(1);
+    // …and identical on the wire.
+    expect(new Set(shapes).size).toBe(1);
+    expect(JSON.parse(shapes[0]!).body).toBe('{"error":"unauthorized"}');
+  });
+
+  test("F4: a REAL invite still enrolls after the no-op path stopped writing", async () => {
+    const h = invited();
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
+    for (const junk of [{}, body({ token: "bogus" })]) {
+      await call(handler, PACK_ENROLL_PATH, {
+        method: "POST",
+        headers: { "x-pack-protocol": "1" },
+        body: JSON.stringify(junk),
+      });
+    }
+    const res = (await call(handler, PACK_ENROLL_PATH, {
+      method: "POST",
+      headers: { "x-pack-protocol": "1" },
+      body: JSON.stringify(body({ token: h.token })),
+    }))!;
+    expect(res.status).toBe(200);
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["laptop"]);
+    expect(h.data().invites).toEqual([]);
+  });
 
   test("enrollment never leaks the token into the audit log", async () => {
     const h = invited();

@@ -155,14 +155,18 @@ export function mintInvite(
  * **The token is consumed whether or not the exchange goes on to succeed** (spec requirement). That
  * is why consumption is its own transition: an enrollment that fails validation later has still
  * burned the invite, so a stolen token cannot be retried against a different failure. Expired
- * invites are swept in the same pass, and an unmatched token still returns a `next` store — the
- * sweep is worth persisting even when nothing was spent.
+ * invites are swept in the same pass, and that sweep is worth persisting even when nothing was
+ * spent — but a **pure no-op returns `null` and writes nothing**. Nothing matched and nothing
+ * expired means an unauthenticated caller reaching the enrollment endpoint would otherwise force a
+ * full re-serialize of the file holding the private key and the pack secret, plus an audit line,
+ * once per request. The refusal the caller sees is identical either way: `commitPackChange`
+ * collapses "no change" and "changed, spent nothing" into the same `null` at the call site.
  */
 export function consumeInvite(
   data: TrustStoreData,
   token: string | null,
   now: number,
-): PackChange<PendingInvite | null> {
+): PackChange<PendingInvite | null> | null {
   const live = data.invites.filter((i) => i.expiresAt > now);
   const hash = token === null ? null : hashToken(token);
   // Constant-time against every live invite: `find` on a plain === would leak, via timing, how many
@@ -171,6 +175,7 @@ export function consumeInvite(
   for (const invite of live) {
     if (hash !== null && secretEquals(hash, invite.tokenHash)) matched = invite;
   }
+  if (matched === null && live.length === data.invites.length) return null;
   const remaining = matched === null ? live : live.filter((i) => i !== matched);
   return {
     next: { ...data, invites: remaining },
