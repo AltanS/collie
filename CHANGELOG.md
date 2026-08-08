@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.6] - 2026-08-08
+
+### Security
+
+- **F1** — the enrollment invite now carries the lead's certificate fingerprint (`<token>.<lead-fingerprint>`); `join` sends only the token on the wire but refuses a lead whose certificate does not match the invited fingerprint, and fails closed on an old-format token — closing the MITM/relay on the enrollment path where nothing authenticated the lead to the joiner (3ab1998)
+
 ## [1.0.0-alpha.5] - 2026-08-08
 
 ### Security
