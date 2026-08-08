@@ -175,9 +175,9 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks[0]!.lines).toBe(lines); // untouched — same reference
   });
 
-  // The hasBlockGrammar gate is provably Claude-only: the SAME menu-shaped buffer that Claude lifts
-  // into a prompt-select stays a single raw block for a codex agent (above) AND for an unknown/absent
-  // agent (below) — the universal fallback. No Claude-tuned matcher ever runs on them.
+  // Claude's prompt-select grammar is adapter-scoped: the SAME menu-shaped buffer it lifts stays a
+  // single raw block for codex (above) and an unknown/absent agent (below). Other registered adapters
+  // select their own projections.
   it("leaves a menu-shaped buffer raw for an unknown/absent agent (universal fallback)", () => {
     const lines = fixtureLines("claude--select-menu.txt");
     const blocks = buildBlocks(lines, { agent: undefined });

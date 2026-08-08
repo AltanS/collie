@@ -636,6 +636,25 @@ describe("Composer — terminal-draft preview", () => {
 // Enter lands), it must NOT be treated as a stranded draft — no chip, and no destructive clear-prefix
 // on the next Send. A harness lets the test flip `terminalDraft` after a send, the way the parent
 // would once the mirror echoes the in-flight text back.
+describe("Composer — opaque Pi terminal draft", () => {
+  it("shows Pi's own lowercase paste marker without offering to take it over", () => {
+    renderComposer({
+      agent: "pi",
+      terminalDraft: "[paste #2 +11 lines]",
+      rawTerminalDraft: "[paste #2 +11 lines]",
+    });
+
+    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+    expect(screen.getByText("[paste #2 +11 lines]")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /take over/i })).not.toBeInTheDocument();
+  });
+});
+
+// Mitigation A for the in-flight self-race: the composer knows what it just sent, so when the SAME
+// text shows up on the terminal's "❯" line moments later (our own reply before the bridge's pending
+// Enter lands), it must NOT be treated as a stranded draft — no chip, and no destructive clear-prefix
+// on the next Send. A harness lets the test flip `terminalDraft` after a send, the way the parent
+// would once the mirror echoes the in-flight text back.
 describe("Composer — in-flight echo suppression (match-last-sent)", () => {
   function EchoHarness({ echoValue }: { echoValue: string }) {
     // The echo lands on BOTH the raw and the stabilised line at once (a persistent echo is stable).

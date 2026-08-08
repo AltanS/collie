@@ -112,6 +112,32 @@ All sandbox-generated (a scratch pane driven through the bridge) except `claude-
 which is a real pane working on this repo. Every `blocked` fixture's menu sits at the **buffer
 tail** — the invariant T2's detector leans on.
 
+## Pi editor corpus (captured 2026-08-08, Pi 0.82.1, SANITIZED)
+
+| Fixture | State / what's in it |
+|---|---|
+| `pi--editor.txt` | Offline, resource-disabled Pi standard editor with an inverse blank cursor, its two `─` borders, and the untouched cwd/context footer. |
+| `pi--editor-draft.txt` | The same physical viewport with an unsent synthetic `review emoji: é 👩‍👧‍👦` draft before autocomplete; pins draft recovery including the rendered graphemes. |
+
+Captured from a newly-created, non-focused disposable Herdr workspace/pane (41 viewport rows) through
+`GET /api/pane/:id?lines=41`, after a temporary PATH wrapper named `pi` emitted `CSI 2J`, `CSI H`,
+and `CSI 3J` immediately before execing Pi. Pi ran with `--offline --no-session --no-tools`, all
+resource discovery disabled, isolated HOME/XDG/Pi directories, no model prompt, and no submit key.
+The created workspace and all temporary files were removed after capture. No existing pane output was
+read. The fixture contains literal SGR and CRLF bytes from that endpoint. Every identifying filesystem
+span (`/Users/...` and the disposable `/private/...` root) was deterministically replaced with an
+ASCII same-byte-width `/xxx…` span; ANSI placement, CRLFs, physical row width, row count, styles, and
+all editor-detector-relevant content are otherwise unchanged. The Pi startup warning and footer remain
+on purpose: the adapter must retain output/footer raw and omit only the confidently recognised editor.
+
+Pi projection supports only this single-row stock rendering. Trailing draft whitespace is normalised
+because the grid cannot distinguish it from padding/cursor space; internal whitespace is preserved.
+Visible wraps/scrolling, custom footer/status tails, autocomplete, and disrupted layouts remain raw.
+Away overlays and shape-preserving custom editors cannot be detected from pane bytes, so Pi does not
+claim composer readiness. Baseline reply verification prevents an unchanged draft from authorising
+Enter, but cannot stop text/pre-clear keys reaching the focused component or prove custom Enter
+semantics.
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

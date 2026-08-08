@@ -54,8 +54,8 @@ export interface AnsiOutputProps {
   currentMatch?: number;
   /** Reports the current match count back to the parent (drives the find bar's "3/17"). */
   onMatchCount?: (count: number) => void;
-  /** The pane's agent — gates the Claude-only block grammars (prompt-select, chrome). Absent/other
-   *  agents render pure raw output. */
+  /** The pane's agent — selects its registered adapter's projection. Unknown/absent agents render
+   *  pure raw output. */
   agent?: string;
   /** Injected handler for a prompt-select tap (the race guard lives in AgentChat). Absent (or with a
    *  disabled block) means the buttons render but don't act — AnsiOutput never touches the network. */

@@ -7,12 +7,13 @@ import { adapterFor, hasBlockGrammar } from "./registry";
 // pinning directly — this re-homes the old grammar/agents predicate test onto the registry, which
 // now derives the predicate from adapterFor().
 describe("hasBlockGrammar", () => {
-  it("is true only for Claude Code", () => {
+  it("is true for every verified adapter", () => {
     expect(hasBlockGrammar("claude")).toBe(true);
+    expect(hasBlockGrammar("pi")).toBe(true);
   });
 
-  it("is false for every non-Claude agent (unverified TUI ⇒ raw mirror)", () => {
-    for (const agent of ["codex", "opencode", "pi", "shell", "unknown"]) {
+  it("is false for unverified agents (raw mirror)", () => {
+    for (const agent of ["codex", "opencode", "shell", "unknown"]) {
       expect(hasBlockGrammar(agent)).toBe(false);
     }
   });

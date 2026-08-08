@@ -29,13 +29,13 @@ export interface HarnessAdapter {
    *  known placeholder). */
   extractInputDraft(lines: StyledLine[]): string | null;
   /**
-   * Whether this agent's free-text input box is on screen right now — i.e. whether typing a reply
-   * would reach the composer at all, rather than a modal that has the keyboard.
+   * Whether this adapter has independent evidence that its stock composer owns input and retains
+   * normal Enter semantics. Rendered pane bytes alone cannot establish child focus or custom-editor
+   * identity, so an adapter that only sees terminal output MUST omit this.
    *
    * OPTIONAL, and its absence means "no idea": the reply path's pre-flight (lib/reply-action.ts)
-   * only refuses to type when an adapter answers a definite `false`. An adapter that can't tell
-   * omits it and keeps today's type-then-verify behaviour, which is still safe — the submit key is
-   * withheld either way; the pre-flight just avoids depositing the text in a menu first.
+   * only refuses to type when an adapter answers a definite `false`. It still requires a changed
+   * post-type draft before Enter, but that cannot stop text/pre-clear keys reaching another component.
    */
   composerReady?(lines: StyledLine[]): boolean;
   /**

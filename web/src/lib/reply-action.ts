@@ -191,28 +191,27 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // harnesses gain this safety exactly when they gain an adapter.
   if (!adapter) return oneShot(args);
 
-  // PRE-FLIGHT. The verify-after guard below is enough to keep Enter from answering a dialog, but it
-  // is not enough to keep the MESSAGE out of one: it types first and checks second, so a modal that
-  // owns the keyboard (Claude's `/model` picker — no input box at the tail at all) receives the
-  // user's text before anything notices. One read up front is the difference between "nothing
-  // happened" and "your reply is now sitting in a picker".
-  //
-  // Adapter-scoped and fail-OPEN in both weak directions: an adapter without `composerReady` keeps
-  // today's behaviour, and a read that throws falls through to the guard rather than blocking a send
-  // on a transient network blip. Only a definite `false` refuses.
-  if (adapter.composerReady && !args.force) {
-    try {
-      const probe = await fetchPane(args.paneId, args.requestedLines, args.session);
-      if (!adapter.composerReady(splitLines(parseAnsi(probe.text)))) {
-        return {
-          status: "blocked",
-          error:
-            "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.",
-        };
-      }
-    } catch {
-      // Transient read failure: fall through. The type-then-verify guard still protects the submit key.
+  // PRE-TYPE BASELINE. A later draft that merely repeats an old visible value cannot vouch for Enter:
+  // it may belong to an underlying editor while an overlay has focus. This read is mandatory even for
+  // adapters that cannot report composer readiness. `force` may overrule only a definite readiness
+  // refusal; it never overrules the baseline because without it there is no way to prove movement.
+  let baseline: string | null;
+  try {
+    const probe = await fetchPane(args.paneId, args.requestedLines, args.session);
+    const lines = splitLines(parseAnsi(probe.text));
+    baseline = adapter.extractInputDraft(lines);
+    if (adapter.composerReady && !args.force && !adapter.composerReady(lines)) {
+      return {
+        status: "blocked",
+        error:
+          "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.",
+      };
     }
+  } catch {
+    return {
+      status: "blocked",
+      error: "Couldn't read the agent input before typing. Nothing was typed.",
+    };
   }
 
   let typed;
@@ -236,6 +235,9 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
     }
+    // A matching stale baseline can be an editor painted beneath an overlay. It must never authorise
+    // Enter, including through an adapter's opaque-paste evidence below.
+    if (draft === baseline) continue;
     if (draftCarriesSend(args.text, draft)) return submitOnly(args);
     // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
     // paint a token of its own instead (Claude collapses anything past its paste threshold into

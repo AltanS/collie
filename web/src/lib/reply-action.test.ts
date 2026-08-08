@@ -12,9 +12,21 @@ const BOX_RULE = "─".repeat(40); // clears the 20-glyph border threshold in ha
 const paneWithDraft = (draft: string) => `some output\n${BOX_RULE}\n❯ ${draft}\n${BOX_RULE}`;
 // A focused permission dialog: no input box at the tail at all, so extractInputDraft sees nothing.
 const paneWithDialog = "Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel";
+const PI_RULE = "─".repeat(40);
+const paneWithPiDraft = (draft: string) => {
+  const meter = "0.0%/0 (auto)";
+  const model = "no-model";
+  return [
+    `\x1b[38;2;80;80;80m${PI_RULE}\x1b[0m`,
+    `${draft}\x1b[7m \x1b[0m`,
+    `\x1b[38;2;80;80;80m${PI_RULE}\x1b[0m`,
+    "\x1b[38;2;102;102;102m/sandbox/cwd\x1b[0m",
+    `\x1b[38;2;102;102;102m${meter}${" ".repeat(PI_RULE.length - meter.length - model.length)}${model}\x1b[0m`,
+  ].join("\n");
+};
 
 /** Record every reply POST, and let the fake pane's screen be swapped per test. */
-function harness(screen: () => string) {
+function harness(screen: () => string, onReply: (body: { text: string; submit: boolean }) => void = () => {}) {
   const calls: Array<{ text: string; submit: boolean }> = [];
   server.use(
     http.get(/\/api\/pane\/[^/]+$/, () =>
@@ -23,6 +35,7 @@ function harness(screen: () => string) {
     http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
       const body = (await request.json()) as { text: string; submit: boolean };
       calls.push(body);
+      onReply(body);
       return HttpResponse.json({ ok: true });
     }),
   );
@@ -182,8 +195,14 @@ describe("draftCarriesSend", () => {
 });
 
 describe("sendGuardedReply", () => {
-  it("types, verifies the text on the input line, then submits", async () => {
-    const calls = harness(() => paneWithDraft("ship it please"));
+  it("types, verifies a changed input line, then submits", async () => {
+    let draft = "";
+    const calls = harness(
+      () => paneWithDraft(draft),
+      ({ text, submit }) => {
+        draft = submit ? "" : text;
+      },
+    );
 
     const out = await sendGuardedReply({
       paneId: "w1:p1",
@@ -199,6 +218,62 @@ describe("sendGuardedReply", () => {
       { text: "ship it please", submit: false },
       { text: "", submit: true },
     ]);
+  });
+
+  it("uses Pi's recognised standard editor for the same guarded reply protocol", async () => {
+    let draft = "";
+    const calls = harness(
+      () => paneWithPiDraft(draft),
+      ({ text, submit }) => {
+        draft = submit ? "" : text;
+      },
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "pi",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "ship it please", submit: false },
+      { text: "", submit: true },
+    ]);
+  });
+
+  it("never submits an unchanged stale generic or Pi draft, even when it matches the send", async () => {
+    for (const [agent, screen] of [
+      ["claude", () => paneWithDraft("ship it please")],
+      ["pi", () => paneWithPiDraft("ship it please")],
+    ] as const) {
+      const calls = harness(screen);
+      const out = await sendGuardedReply({ paneId: "w1:p1", text: "ship it please", agent, ...instant });
+      expect(out.status).toBe("stalled");
+      expect(calls).toEqual([{ text: "ship it please", submit: false }]);
+    }
+  });
+
+  it("requires a successful baseline read even under force", async () => {
+    const calls: Array<{ text: string; submit: boolean }> = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.error()),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        calls.push((await request.json()) as { text: string; submit: boolean });
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "claude",
+      force: true,
+      ...instant,
+    });
+    expect(out).toMatchObject({ status: "blocked", error: expect.stringMatching(/read.*before typing/i) });
+    expect(calls).toEqual([]);
   });
 
   // The PRE-FLIGHT (.adr/0009). The verify-after guard below already kept Enter from answering a
@@ -267,8 +342,14 @@ describe("sendGuardedReply", () => {
   // holds `[Pasted text #N +M lines]`, so the generic matcher can never see our words and the send
   // stalled forever, un-sendable, with every retry re-collapsing (.adr/0010). The adapter's
   // supplemental evidence is what closes that.
-  it("submits when the box holds a paste placeholder consistent with a long multi-line send", async () => {
-    const calls = harness(() => paneWithDraft("[Pasted text #3 +3 lines]"));
+  it("submits when a changed box holds a paste placeholder consistent with a long multi-line send", async () => {
+    let draft = "";
+    const calls = harness(
+      () => paneWithDraft(draft),
+      ({ submit }) => {
+        draft = submit ? "" : "[Pasted text #3 +3 lines]";
+      },
+    );
 
     const out = await sendGuardedReply({
       paneId: "w1:p1",
@@ -282,6 +363,18 @@ describe("sendGuardedReply", () => {
       { text: "first line\nsecond line\nthird line\nfourth line", submit: false },
       { text: "", submit: true },
     ]);
+  });
+
+  it("does not let an unchanged stale paste placeholder authorise Enter", async () => {
+    const calls = harness(() => paneWithDraft("[Pasted text #3 +3 lines]"));
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "first line\nsecond line\nthird line\nfourth line",
+      agent: "claude",
+      ...instant,
+    });
+    expect(out.status).toBe("stalled");
+    expect(calls.some((call) => call.submit)).toBe(false);
   });
 
   it("stalls on a placeholder inconsistent with what we sent — no submit key", async () => {
@@ -337,17 +430,19 @@ describe("sendGuardedReply", () => {
   });
 
   it("reports textDelivered when the text landed but the submit key failed", async () => {
+    let draft = "";
     server.use(
       http.get(/\/api\/pane\/[^/]+$/, () =>
         HttpResponse.json({
           paneId: "w1:p1",
-          text: paneWithDraft("ship it please"),
+          text: paneWithDraft(draft),
           truncated: false,
           revision: 1,
         }),
       ),
       http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { submit: boolean };
+        const body = (await request.json()) as { text: string; submit: boolean };
+        if (!body.submit) draft = body.text;
         return body.submit
           ? HttpResponse.json({ ok: false, error: "keys failed" })
           : HttpResponse.json({ ok: true });

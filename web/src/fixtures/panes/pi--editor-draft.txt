@@ -1,0 +1,22 @@
+[0m[38;5;3mfd not found. Offline mode enabled, skipping download.[0m
+
+ [0m[1m[38;2;138;190;183mpi[0m[38;2;102;102;102m v0.82.1[0m                                                                                                                                                  
+ [0m[38;2;102;102;102mescape[0m[38;2;128;128;128m interrupt · [0m[38;2;102;102;102mctrl+c/ctrl+d[0m[38;2;128;128;128m clear/exit · [0m[38;2;102;102;102m/[0m[38;2;128;128;128m commands · [0m[38;2;102;102;102m![0m[38;2;128;128;128m bash · [0m[38;2;102;102;102mctrl+o[0m[38;2;128;128;128m more[0m                                                                             
+ [0m[38;2;102;102;102mPress ctrl+o to show full startup help and loaded resources.[0m                                                                                                
+                                                                                                                                                             
+ [0m[38;2;102;102;102mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                                                       
+
+
+ [0m[38;2;255;255;0mWarning: No models available. Use /login to log into a provider via OAuth or API key. See:                                                                  [0m
+ [0m[38;2;255;255;0m                                                                                                                                                            [0m
+ [0m[38;2;255;255;0m/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [0m
+ [0m[38;2;255;255;0ms/@earendil-works/pi-coding-agent/docs/providers.md                                                                                                         [0m
+ [0m[38;2;255;255;0m                                                                                                                                                            [0m
+ [0m[38;2;255;255;0m/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [0m
+ [0m[38;2;255;255;0ms/@earendil-works/pi-coding-agent/docs/models.md[0m                                                                                                            
+
+[0m[38;2;80;80;80m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+review emoji: é 👩‍👧‍👦[0m[7m [0m                                                                                                                                          
+[0m[38;2;80;80;80m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;102;102;102m/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/cwd[0m
+[0m[38;2;102;102;102m0.0%/0 (auto)                                                                                                                                         unknown[0m

@@ -2,8 +2,8 @@
 
 Collie up-levels an agent's terminal dialogs (permission prompts, AskUserQuestion menus, plan
 approvals, …) into native phone buttons. The per-agent knowledge that makes this safe lives in a
-**harness adapter**. Claude Code is the one verified adapter today; this is how you add another
-(codex, pi, opencode, …).
+**harness adapter**. Claude Code and Pi are verified adapters today; this is how you add another
+(codex, opencode, …).
 
 Read first: [`ARCHITECTURE.md`](./ARCHITECTURE.md) (the interaction loop + security model),
 [`HERDR_API.md`](./HERDR_API.md) (the verified socket + `pane.send_keys` key grammar), and
@@ -30,7 +30,7 @@ Detectors are developed and gated entirely against **byte-faithful pane captures
 from screenshots. The loop:
 
 1. In a **sandbox pane** (a scratch agent, never a real work session), drive the agent into the dialog
-   state you want to lift.
+   or chrome state you want to project.
 2. Capture it byte-for-byte:
    ```sh
    scripts/capture-fixture.sh <paneId> <name>   # paneIds: GET /api/snapshot
@@ -51,13 +51,13 @@ An adapter earns capability incrementally. Ship a lower tier first; each is inde
 - **Tier 0 — raw mirror.** Every agent gets this for free: the colored terminal mirror + slash palette
   + special-keys pad. No adapter needed. It already works.
 - **Tier 1 — read-only lift.** Chrome/status/draft extraction (`extractStatusLines`,
-  `extractInputDraft`) plus **detection of a NEW, not-yet-wired block kind** — recognised and drawn,
-  but with no keystroke recipe behind it, so taps send **no keystrokes**. Mergeable **from fixtures
-  alone**: a mis-parse only costs cosmetics because there is no send path to fire into a terminal.
-  **Caveat:** this holds only for a brand-new kind. If your adapter emits an EXISTING interactive kind
-  (`prompt-select` / `wizard` / `multi-select`), its keystroke recipe is already live, so those taps
-  go hot the moment your detector matches — that is automatically **Tier 2** and must clear the full
-  Tier-2 bar below (corpus, notes, conformance, live-verification), not the read-only one.
+  `extractInputDraft`) plus either **detection of a NEW, not-yet-wired block kind** or a conservative
+  raw-only projection that omits verified harness chrome. Neither sends keystrokes. Mergeable **from
+  fixtures alone**: a mis-parse only costs cosmetics because there is no send path to fire into a
+  terminal. **Caveat:** if your adapter emits an EXISTING interactive kind (`prompt-select` /
+  `wizard` / `multi-select`), its keystroke recipe is already live, so those taps go hot the moment
+  your detector matches — that is automatically **Tier 2** and must clear the full Tier-2 bar below
+  (corpus, notes, conformance, live-verification), not the read-only one.
 - **Tier 2 — interactive.** Wiring taps to keystrokes (the buttons go hot). This is the bar that types
   into a real shell, so it requires **all** of:
   - a **dated fixture corpus** covering the dialog's states,
@@ -66,12 +66,21 @@ An adapter earns capability incrementally. Ship a lower tier first; each is inde
   - a green **`describeAdapterConformance`** run (the CI gate, below), and
   - **maintainer live-verification against a real pane** before the send path is enabled.
 
-### The fail-closed contract (non-negotiable)
+### The conservative detection contract (non-negotiable)
 
 **A detector MUST return `null` on anything it does not confidently recognise.** A partial lift is a
 bug, not a nicety — it types a keystroke into a live terminal. When in doubt, fall back to the raw
 mirror; the user can always drive Tier 0 by hand. Never up-level a dialog you can't fully model (e.g.
 a menu numbered past 9, whose option would need the unsendable key `"10"` — bail to raw instead).
+
+### Rendered-pane limit
+
+A pane buffer cannot reveal which Pi child component owns focus or whether a shape-preserving custom
+editor preserves stock key semantics. Do not claim that a row-shape detector rejects every overlay or
+custom editor, and do not implement `composerReady` without independent focus/semantics evidence.
+Baseline reply verification prevents an unchanged visible draft from authorising Enter, but cannot
+prevent text or pre-clear keys reaching the focused component, prove custom Enter semantics, or
+attribute a changed draft to Collie rather than concurrent activity.
 
 ## Menus (generic modals)
 

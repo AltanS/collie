@@ -330,10 +330,9 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
   });
 });
 
-// The block grammars are provably scoped to Claude Code (spec T8): a non-Claude pane gets the plain
-// raw mirror — no prompt-select buttons, no chrome stripping, no re-surfaced status strip — because
-// running Claude-tuned matchers on an unverified TUI could mis-lift or mis-strip its output.
-describe("AgentChat — block-grammar scoping (Claude-only)", () => {
+// Harness adapters stay scoped to their verified TUI shape: unverified panes get the raw mirror,
+// while Pi gets only its conservative standard-editor projection (no Claude dialogs or status strip).
+describe("AgentChat — block-grammar scoping", () => {
   // A codex agent sharing the Claude fixture's ids, so only the agent kind differs from the default.
   const codexAgent = { ...fixtureAgents[0]!, agent: "codex" };
 
@@ -367,6 +366,24 @@ describe("AgentChat — block-grammar scoping (Claude-only)", () => {
     expect(status.closest("pre")).not.toBeNull();
     // …and the input box itself is preserved verbatim (no chrome stripping for a non-Claude agent).
     expect(screen.getByText(/❯/)).toBeInTheDocument();
+  });
+
+  it("omits Pi's confident editor without extracting a status strip or hiding its footer", () => {
+    const piAgent = { ...fixtureAgents[0]!, agent: "pi" };
+    const piMeter = "0.0%/0 (auto)";
+    const piModel = "no-model";
+    const piText = [
+      `\x1b[38;2;80;80;80m${RULE}\x1b[0m`,
+      "draft\x1b[7m \x1b[0m",
+      `\x1b[38;2;80;80;80m${RULE}\x1b[0m`,
+      "\x1b[38;2;102;102;102m/sandbox/cwd\x1b[0m",
+      `\x1b[38;2;102;102;102m${piMeter}${" ".repeat(RULE.length - piMeter.length - piModel.length)}${piModel}\x1b[0m`,
+    ].join("\n");
+    renderChat({ text: piText, agent: piAgent });
+
+    expect(screen.queryByText("draft")).not.toBeInTheDocument();
+    const footer = screen.getByText(/0\.0%\/0 \(auto\)/);
+    expect(footer.closest("pre")).not.toBeNull();
   });
 });
 

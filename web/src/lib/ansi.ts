@@ -16,6 +16,8 @@ export interface AnsiSegment {
   italic?: boolean;
   underline?: boolean;
   strike?: boolean;
+  /** Raw SGR 7 state, retained for harnesses that need to distinguish reverse video from a background. */
+  inverse?: boolean;
   // Pre-computed presentation — consumed by AnsiOutput to avoid per-render allocation.
   style: CSSProperties;
   /** True when the segment contains only box-drawing/rule glyphs; the renderer mutes it. */
@@ -169,6 +171,7 @@ export function parseAnsi(input: string): AnsiSegment[] {
       italic: state.italic,
       underline: state.underline,
       strike: state.strike,
+      inverse: state.inverse,
       style: buildStyle(state, fg, bg),
       muted: checkMuted(buf),
     });
