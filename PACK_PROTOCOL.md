@@ -86,10 +86,32 @@ In **peer mode the browser-facing surface is disabled**: `serveStatic()` (the SP
 the `/api/*` routes are not served to the pack listener. A peer answers `/pack/v1/*` and nothing else.
 
 **There is no second port.** The pack surface is a path prefix on the collie's existing listener, with
-its own admission path. This is what "as narrow as the deployment allows" means concretely: a peer
-binds loopback plus exactly the address the operator supplied at `join` time — nothing wildcard, no
-`0.0.0.0`. The posture argument (front door vs. pack listener, and what an off-loopback bind costs)
-is [ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md), which amends ADR 0001 to
+its own admission path.
+
+**The bind is `COLLIE_HOST`, and the operator owns it** *(amended 2026-08-08 — see below)*. The pack
+listener answers on the one address `COLLIE_HOST` names (`bridge/config.ts` `host`, default
+`127.0.0.1`); `Bun.serve` takes a single `hostname`, so there is exactly one bind, not a pair.
+`join` does not touch it — reachability is the operator's to own here exactly as it is at §8.2 and
+everywhere else in this design. The bind bounds only **which interface the listener answers on**; it
+is **pinned mutual TLS + the pack-secret admission that actually gates** every request (§8.1). A
+wider bind therefore widens *who can attempt* the gate, never *who passes* it.
+
+Concretely: a peer reachable only over an overlay or a LAN must set `COLLIE_HOST` to that interface
+— a loopback-only bind refuses the lead's dial. `COLLIE_HOST=0.0.0.0` (or `::`, or empty) binds all
+interfaces; that is not a hole — the two factors still gate — but it is worth stating, so a peer on a
+wildcard bind emits a loud one-line startup warning naming the effective bind, and `collie pack
+status` shows the resolved bind so an operator can see it rather than infer it. Collie **warns, it
+does not refuse to start** (ADR 0013's posture: a startup refusal it cannot justify is paternalism).
+
+> **Amendment (2026-08-08, F3).** Earlier drafts of this section claimed a peer "binds loopback plus
+> exactly the address the operator supplied at `join` time — nothing wildcard, no `0.0.0.0`". That
+> dual-bind was never implemented and is not expressible (`Bun.serve` takes one `hostname`); the real
+> bind is `COLLIE_HOST` alone, and nothing warned on a wildcard. The claim overstated a control — the
+> exact failure ADR 0013 names — so it is corrected here to match the code, and the guardrail its
+> intent wanted (the wildcard-bind warning + the `pack status` bind line) is now built.
+
+The posture argument (front door vs. pack listener, and what an off-loopback bind costs) is
+[ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md), which amends ADR 0001 to
 *one managed front door **per pack***; this document takes its conclusion as given.
 
 ---

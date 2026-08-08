@@ -3,7 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { loadConfig } from "../config.ts";
-import { PEER_BROWSER_ENV, resolvePackRuntime, SOLO_RUNTIME, type PackRuntime } from "./config.ts";
+import {
+  bindIsWildcard,
+  PEER_BROWSER_ENV,
+  resolvePackRuntime,
+  SOLO_RUNTIME,
+  warnsOnWildcardBind,
+  type PackRuntime,
+} from "./config.ts";
 import type { Enrollment } from "./mode.ts";
 
 // Pack config is a pure function of (trust store, env) — driven here with an injected env object
@@ -91,5 +98,46 @@ describe("pack config pays no solo tax at the config layer", () => {
 
   test("the runtime carries exactly these three facts", () => {
     expect(Object.keys(RUNTIME_KEYS).sort()).toEqual(["conflict", "mode", "peerServesBrowser"]);
+  });
+});
+
+describe("bindIsWildcard — which binds answer on every interface", () => {
+  test("the three wildcard values are wildcard", () => {
+    expect(bindIsWildcard("0.0.0.0")).toBe(true);
+    expect(bindIsWildcard("::")).toBe(true);
+    expect(bindIsWildcard("")).toBe(true);
+    // Absent COLLIE_HOST and whitespace-only are the empty case.
+    expect(bindIsWildcard(undefined)).toBe(true);
+    expect(bindIsWildcard("  ")).toBe(true);
+  });
+
+  test("every concrete address is bounded, not wildcard", () => {
+    expect(bindIsWildcard("127.0.0.1")).toBe(false);
+    expect(bindIsWildcard("::1")).toBe(false);
+    expect(bindIsWildcard("100.101.102.103")).toBe(false); // a tailnet IP
+    expect(bindIsWildcard("192.168.1.20")).toBe(false); // a LAN IP
+    expect(bindIsWildcard("nas.tail.ts.net")).toBe(false); // a hostname
+  });
+});
+
+describe("warnsOnWildcardBind — only a peer on a wildcard bind warns", () => {
+  test("a peer on a wildcard bind warns", () => {
+    expect(warnsOnWildcardBind("peer", "0.0.0.0")).toBe(true);
+    expect(warnsOnWildcardBind("peer", "::")).toBe(true);
+    expect(warnsOnWildcardBind("peer", "")).toBe(true);
+    expect(warnsOnWildcardBind("peer", undefined)).toBe(true);
+  });
+
+  test("a peer on a concrete bind does NOT warn", () => {
+    expect(warnsOnWildcardBind("peer", "127.0.0.1")).toBe(false);
+    expect(warnsOnWildcardBind("peer", "100.101.102.103")).toBe(false);
+  });
+
+  test("solo and lead never warn, even on a wildcard bind", () => {
+    // A solo opens no pack listener; a lead's pack surface rides the hardened front door (ADR 0013).
+    expect(warnsOnWildcardBind("solo", "0.0.0.0")).toBe(false);
+    expect(warnsOnWildcardBind("lead", "0.0.0.0")).toBe(false);
+    expect(warnsOnWildcardBind("solo", "")).toBe(false);
+    expect(warnsOnWildcardBind("lead", "::")).toBe(false);
   });
 });

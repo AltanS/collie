@@ -78,6 +78,17 @@ the lead.** 0001's criterion is untouched — *we manage only what we run and ca
   supplied at `join` time. Nothing wildcard; `0.0.0.0` is never the documented value.** Concretely,
   per deployment:
 
+  > **Amended (2026-08-08, F3).** The "loopback plus exactly the join address" dual-bind stated here
+  > and in the table below was never implemented and is not expressible — `Bun.serve` takes a single
+  > `hostname`, so the real bind is **`COLLIE_HOST` alone** (default loopback), and the operator owns
+  > it exactly as they own reachability elsewhere. This ADR's *criterion* is unchanged — a wider bind
+  > still only widens who may *attempt* the two-factor gate, never who passes — but the *mechanism* is
+  > one address, not two. Collie now **warns** (never refuses, per the last Decision bullet) when a
+  > peer's bind is wildcard (`0.0.0.0`/`::`/empty) and shows the resolved bind in `collie pack status`.
+  > The corrected contract is [`PACK_PROTOCOL.md` §3](../PACK_PROTOCOL.md); the exposure table below
+  > still holds row-for-row once "Bind" is read as *the value the operator sets `COLLIE_HOST` to* for
+  > that deployment rather than an automatic dual-bind.
+
   | Deployment | Bind | Honest exposure |
   | --- | --- | --- |
   | Lead and peer on one host (dev, tests) | loopback | No change beyond the existing local-uid surface §6 already documents. |
