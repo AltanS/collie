@@ -61,6 +61,35 @@ export function resolvePackRuntime(
 }
 
 /**
+ * Does this bind address answer on *every* interface rather than one?
+ *
+ * Three values do: the IPv4 any-address `0.0.0.0`, the IPv6 any-address `::`, and an empty/absent
+ * value (`Bun.serve` with no `hostname` binds all interfaces). Any concrete address — loopback, a
+ * tailnet IP, a LAN IP, a hostname — is bounded and returns `false`.
+ *
+ * This is the predicate behind the peer's wildcard-bind warning. The bind never *gates* the pack
+ * listener — pinned mutual TLS plus the pack secret do (PACK_PROTOCOL.md §3, ADR 0013) — but a
+ * wildcard bind widens *which networks can attempt* that gate to all of them, which the operator
+ * should be told rather than left to infer. Pure so the startup path can call it and a test can pin
+ * its truth table.
+ */
+export function bindIsWildcard(host: string | undefined): boolean {
+  const h = (host ?? "").trim();
+  return h === "" || h === "0.0.0.0" || h === "::";
+}
+
+/**
+ * Should this collie emit the wildcard-bind warning at startup? True only for a **peer** whose bind
+ * is wildcard — the composite the startup guard checks, factored out so its truth across modes is
+ * pinned by a test rather than living only inside the un-unit-testable `Bun.serve` bootstrap. A solo
+ * instance and a lead never warn: a solo opens no pack listener at all, and a lead's pack surface
+ * rides the front door the operator already hardened (ADR 0013), so its bind is not the peer story.
+ */
+export function warnsOnWildcardBind(mode: PackMode, host: string | undefined): boolean {
+  return mode === "peer" && bindIsWildcard(host);
+}
+
+/**
  * The solo runtime, spelled out once so the startup path reads as a statement rather than as a
  * `null` someone has to decode. Identical to `resolvePackRuntime(null)` and pinned as such by the
  * tests — it exists for legibility, not to short-circuit anything.

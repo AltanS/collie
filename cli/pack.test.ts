@@ -511,6 +511,10 @@ describe("collie pack status", () => {
     expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
     const rendered = text(h.io);
     expect(rendered).toContain("mode   lead");
+    // The effective pack-listener bind (COLLIE_HOST, resolved) is shown so the operator sees it. The
+    // harness sets no COLLIE_HOST, so it resolves to loopback and carries no wildcard note.
+    expect(rendered).toContain("bind   127.0.0.1");
+    expect(rendered).not.toContain("ALL interfaces");
     expect(rendered).toContain("nas");
     expect(rendered).toContain("reachable");
     expect(rendered).toContain("HAS NOT picked up the current secret");
@@ -518,6 +522,18 @@ describe("collie pack status", () => {
     // The one thing a status render must never do.
     expect(rendered).not.toContain(PACK.secret);
     expect(rendered).not.toContain(leadStore().self.keyPem.trim());
+  });
+
+  test("a wildcard COLLIE_HOST is shown as ALL interfaces in the bind line", async () => {
+    const h = harness(peerStore(), [], {
+      ctx: context(
+        { COLLIE_HOST: "0.0.0.0", COLLIE_PACK_TIMEOUT_MS: "60000" },
+        { socket: "/home/pat/.config/herdr/herdr.sock" },
+      ),
+    });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const rendered = text(h.io);
+    expect(rendered).toContain("bind   0.0.0.0 — ALL interfaces, gated only by pinned mTLS + the pack secret");
   });
 
   test("an unenrolled tombstone explains WHY it went quiet and what recovery is", async () => {

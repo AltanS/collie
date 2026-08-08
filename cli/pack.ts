@@ -24,6 +24,7 @@ import {
   type RosterEntry,
   PACK_PROTOCOL_VERSION,
 } from "../bridge/pack/enrollment.ts";
+import { bindIsWildcard } from "../bridge/pack/config.ts";
 import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } from "../bridge/pack/identity.ts";
 import { signRequest } from "../bridge/pack/signing.ts";
 import { dialTls } from "../bridge/pack/transport.ts";
@@ -608,6 +609,13 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   deps.io.out(`pack   ${data.pack.name}  (${data.pack.packId})`);
   deps.io.out(`mode   ${mode}`);
   deps.io.out(`self   ${data.self.memberId}  ${data.self.fingerprint.slice(0, 16)}…`);
+  // What interface this collie's own pack listener answers on — COLLIE_HOST, resolved the same way
+  // the bridge resolves it (default loopback). Shown so an operator SEES the bind rather than infers
+  // it; the bind never gates (pinned mTLS + the pack secret do, §3), it only bounds who can attempt.
+  const bind = deps.ctx.env.COLLIE_HOST ?? "127.0.0.1";
+  const bindShown = bind.trim() === "" ? "0.0.0.0/:: (COLLIE_HOST empty)" : bind;
+  const bindNote = bindIsWildcard(bind) ? " — ALL interfaces, gated only by pinned mTLS + the pack secret" : "";
+  deps.io.out(`bind   ${bindShown}${bindNote}`);
   deps.io.out(`secret generation ${data.pack.secretGeneration}, rotated ${new Date(data.pack.rotatedAt).toISOString()}`);
   if (conflict !== null) deps.io.out(`⚠ ${conflict}`);
   reportDrift(deps, data);

@@ -9,7 +9,7 @@ import { EventPoker } from "./event-poker.ts";
 import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
-import { PEER_BROWSER_ENV, resolvePackRuntime } from "./pack/config.ts";
+import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
 import { dialTls, peerListenerTls } from "./pack/transport.ts";
 import { PackLead } from "./pack/lead.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
@@ -318,6 +318,20 @@ if (transportPinned && pack.peerServesBrowser) {
     `[pack] ${PEER_BROWSER_ENV} is set, but this peer's port now requires the lead's client certificate ` +
       "at the TLS handshake — a browser cannot present one, so the browser surface is unreachable here. " +
       "Use the lead's front door, or leave the pack on this machine.",
+  );
+}
+// The peer's pack listener binds COLLIE_HOST (one address, PACK_PROTOCOL.md §3) — the operator owns
+// that bind, exactly as they own reachability everywhere else. A wildcard bind is not a hole: pinned
+// mutual TLS + the pack secret still gate every request. But it widens WHICH networks can attempt the
+// gate to all of them, so say so, loudly, once — and do NOT refuse to start (ADR 0013: a peer warns
+// rather than fails; the same posture as the lead's front-door detection). A specific overlay/LAN
+// address bounds it; loopback-only refuses the lead, which is why the operator set it wide.
+if (warnsOnWildcardBind(pack.mode, cfg.host)) {
+  const shown = cfg.host.trim() === "" ? "0.0.0.0/:: (COLLIE_HOST empty → all interfaces)" : cfg.host;
+  console.warn(
+    `[pack] this peer's pack listener binds ${shown} — reachable on ALL interfaces, not one. It is ` +
+      "gated only by pinned mutual TLS + the pack secret; the bind bounds nothing further. Set " +
+      "COLLIE_HOST to the specific overlay/LAN address the lead dials (PACK_PROTOCOL.md §3).",
   );
 }
 
