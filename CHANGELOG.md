@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.26.0] - 2026-08-08
+
+### Added
+
+- **Pi gets a read-only adapter** — its verified stock inline editor yields a draft while unrecognised terminal state stays raw, and reply submission requires a changed observed draft (2efea2f)
+
 ## [0.25.0] - 2026-08-07
 
 ### Added
