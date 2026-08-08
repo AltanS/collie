@@ -5,6 +5,7 @@
 // separate styled segments). Pure functions, no I/O, no React.
 
 import { isBlank, lineText } from "../../blocks";
+import { CLAUDE_RULE_GLYPH_CLASS } from "../../rule-glyphs";
 import type { PromptFamily } from "../prompt-model";
 
 // `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
@@ -16,7 +17,7 @@ export { isBlank, lineText };
 // includes the dashed forms ╌ ╍ ┄ ┅ …), the block eighths used as rules (U+2581–U+2594, e.g. ▁ ▔),
 // and the figure/en/em/horizontal-bar dashes (U+2012–U+2015). ASCII `-`/`=` are deliberately
 // excluded so markdown and code rules in real agent output aren't mistaken for TUI separators.
-const RULE_ONLY = /^[─-╿▁-▔‒-―]+$/;
+const RULE_ONLY = new RegExp(`^[${CLAUDE_RULE_GLYPH_CLASS}]+$`);
 
 /** True when the whole line is a horizontal rule / separator (ignoring surrounding spaces). */
 export function isHorizontalRule(text: string): boolean {
@@ -28,7 +29,7 @@ export function isHorizontalRule(text: string): boolean {
 // which (unlike a pure rule) can carry an embedded label: Claude's input-box top border reads e.g.
 // "──────────… collie upgrades ──". 20 unbroken box-drawing glyphs never occur in ordinary text, so
 // this stays a confident border test even with a label spliced in.
-const RULE_RUN = /[─-╿▁-▔‒-―]{20,}/;
+const RULE_RUN = new RegExp(`[${CLAUDE_RULE_GLYPH_CLASS}]{20,}`);
 
 /** True when the line contains a long unbroken run of rule glyphs (a box border, label or not). */
 export function isBoxBorder(text: string): boolean {

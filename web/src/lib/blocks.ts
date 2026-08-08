@@ -21,6 +21,7 @@
 // (find covers the raw mirror only).
 
 import type { AnsiSegment } from "./ansi";
+import { PURE_HORIZONTAL_RULE_GLYPH_CLASS } from "./rule-glyphs";
 import type { PromptModel } from "./harness/prompt-model";
 import type { WizardModel } from "./harness/wizard-model";
 import type { PreviewSelectModel } from "./harness/preview-model";
@@ -47,6 +48,8 @@ export type { MenuModel, MenuAction, MenuNav, MenuLeftRight } from "./harness/me
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
 export interface StyledLine {
   segments: AnsiSegment[];
+  /** Keep this known terminal-width border on one visual row when the mirror wraps. */
+  noWrap?: true;
 }
 
 /** A run of raw terminal output. Renders as verbatim styled text (the T1 mirror). */
@@ -154,7 +157,7 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
       const end = idx === -1 ? t.length : idx;
       if (end > start) current.push({ ...seg, text: t.slice(start, end) });
       if (idx === -1) break;
-      lines.push({ segments: current });
+      lines.push(styledLine(current));
       current = [];
       start = idx + 1;
     }
@@ -162,8 +165,22 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
 
   // The trailing run (after the last "\n", or the whole input if it had none) is the final line —
   // pushed even when empty so a trailing newline yields a terminating blank line.
-  lines.push({ segments: current });
+  lines.push(styledLine(current));
   return lines;
+}
+
+// A terminal-width horizontal border is visually useless when browser wrapping turns it into several rows.
+// This deliberately accepts only one repeated horizontal rule glyph (apart from terminal padding): labels,
+// mixed rows, corners/tables, prose, and ASCII rules keep the mirror's ordinary wrapping. Twenty glyphs
+// matches the conservative box-border safety threshold used by the terminal grammars.
+const MIN_NO_WRAP_BORDER_LENGTH = 20;
+const PURE_HORIZONTAL_BORDER = new RegExp(
+  `^([${PURE_HORIZONTAL_RULE_GLYPH_CLASS}])\\1{${MIN_NO_WRAP_BORDER_LENGTH - 1},}$`,
+);
+
+function styledLine(segments: AnsiSegment[]): StyledLine {
+  const text = segments.map((segment) => segment.text).join("");
+  return PURE_HORIZONTAL_BORDER.test(text.trim()) ? { segments, noWrap: true } : { segments };
 }
 
 // The two generic StyledLine probes. They live HERE, in the core AST module that imports nothing
