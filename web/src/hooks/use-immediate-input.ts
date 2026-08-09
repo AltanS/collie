@@ -78,6 +78,11 @@ export function useImmediateInput({
     setValue("");
     setActive(true);
     setStatus("Immediate mode on — keys send as you type.", "success");
+    // Focus synchronously while the long-press/contextmenu gesture still carries browser user
+    // activation; a deferred focus selects the field but mobile browsers may refuse to open their
+    // software keyboard once that activation has expired. The existing callback still runs after
+    // React swaps the controlled value so selection lands at the end.
+    inputRef.current?.focus();
     focusInput();
   }
 

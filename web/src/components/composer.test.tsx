@@ -265,6 +265,12 @@ describe("Composer — Immediate key mode", () => {
     return screen.getByPlaceholderText(/immediate — keys send as you type/i);
   }
 
+  it("focuses the textarea synchronously so the activation gesture opens the phone keyboard", () => {
+    renderComposer();
+
+    expect(activateImmediateMode()).toHaveFocus();
+  });
+
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
     const keyCalls: string[][] = [];
     let replyCalls = 0;
