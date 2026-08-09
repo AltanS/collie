@@ -47,6 +47,18 @@
   --popover-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
   --primary: light-dark(oklch(0.205 0 0), oklch(0.922 0 0));
   --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
+  /* The "this control is ON" tint — a very light sky. Its own token pair rather than reusing
+     --secondary because the two say different things: secondary is a quieter surface, this is a
+     STATE, and the row needs the difference legible at a glance (an open dock, an armed mode). Kept
+     low-chroma so a row of grey controls doesn't turn into a traffic light when two are on.
+
+     The light half is tuned by CHROMA, not luminance: at "very light sky" lightness the tint is only
+     ~1.2:1 against the page by WCAG, and no value that still reads as light sky does better — what
+     makes it visible is that it is the one saturated thing in a neutral row. Don't "fix" that number
+     by darkening it into a mid blue. Text on the tint is what has to clear a contrast bar, and does:
+     7.3:1 light, 9.2:1 dark. */
+  --control-on: light-dark(oklch(0.90 0.06 235), oklch(0.32 0.05 240));
+  --control-on-foreground: light-dark(oklch(0.38 0.12 245), oklch(0.89 0.06 235));
   --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
   --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
   /* Light --muted is a step BELOW --background so the header/composer chrome band still reads as a
@@ -147,6 +159,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-control-on: var(--control-on);
+  --color-control-on-foreground: var(--control-on-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
