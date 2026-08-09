@@ -259,36 +259,107 @@ describe("Composer — send", () => {
   });
 });
 
-describe("Composer — Immediate key mode", () => {
-  function activateImmediateMode() {
-    fireEvent.contextMenu(screen.getByRole("button", { name: /hold send for immediate/i }));
-    return screen.getByPlaceholderText(/type keys/i);
+describe("Composer — typing into the terminal", () => {
+  /** The entry point: the named "Type" toggle in the Controls row, beside Keys. */
+  function startDirectTyping() {
+    fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+    return screen.getByPlaceholderText(/type into the terminal/i);
   }
 
   it("focuses the textarea synchronously so the activation gesture opens the phone keyboard", () => {
     renderComposer();
 
-    expect(activateImmediateMode()).toHaveFocus();
+    expect(startDirectTyping()).toHaveFocus();
   });
 
-  it("re-focuses from pointerup after the hold timer so mobile browsers open the keyboard", () => {
-    vi.useFakeTimers();
-    try {
-      renderComposer();
-      const button = screen.getByRole("button", { name: /hold send for immediate/i });
-      fireEvent.pointerDown(button, { button: 0, clientX: 10, clientY: 10 });
-      act(() => vi.advanceTimersByTime(450));
-      const box = screen.getByPlaceholderText(/type keys/i);
+  // The entry point must be a deliberate press and nothing else: it sits in a row of dock toggles,
+  // so it must not send, and it must not leave a half-open dock covering the keyboard it needs.
+  it("arms from the Controls row without sending, and closes an open dock", async () => {
+    let replyCalls = 0;
+    server.use(replyHandler(() => replyCalls++));
+    renderComposer();
+    fireEvent.click(screen.getByRole("button", { name: /^keys$/i }));
+    expect(screen.getByRole("button", { name: /close keys/i })).toBeInTheDocument();
 
-      act(() => box.blur());
-      expect(box).not.toHaveFocus();
-      fireEvent.pointerUp(button, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
 
-      expect(box).toHaveFocus();
-    } finally {
-      vi.runOnlyPendingTimers();
-      vi.useRealTimers();
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /close keys/i })).toBeNull();
+    expect(replyCalls).toBe(0);
+    expect(screen.getByRole("button", { name: /^type into terminal$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("shows the armed strip and stops from it", async () => {
+    renderComposer();
+    startDirectTyping();
+
+    const strip = screen.getByText(/typing into terminal/i);
+    expect(strip).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+  });
+
+  // The other half of the same rule: the composer locking (pane gone, device demoted to read-only,
+  // or the idle pause) means the view is no longer live either.
+  it("stops when the composer locks under it", async () => {
+    function Harness() {
+      const [gone, setGone] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setGone(true)}>
+            lock it
+          </button>
+          <Composer
+            paneId="w1:p1"
+            agent="claude"
+            isShell={false}
+            gone={gone}
+            readOnly={false}
+            dialogPresent={false}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            onSent={vi.fn()}
+          />
+        </>
+      );
     }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "lock it" }));
+
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+  });
+
+  // The mirror stops tracking the pane when the page is backgrounded, so the next keystroke would
+  // go into a terminal the user is not looking at.
+  it("stops when the page is hidden", async () => {
+    renderComposer();
+    startDirectTyping();
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   });
 
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
@@ -303,8 +374,8 @@ describe("Composer — Immediate key mode", () => {
     );
     renderComposerWithStatus({ dialogPresent: true });
 
-    const box = activateImmediateMode();
-    expect(screen.getByRole("button", { name: /exit immediate key mode/i })).toHaveAttribute(
+    const box = startDirectTyping();
+    expect(screen.getByRole("button", { name: /^type into terminal$/i })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -314,7 +385,7 @@ describe("Composer — Immediate key mode", () => {
     expect(keyCalls.flat()).not.toContain("Enter");
     expect(replyCalls).toBe(0);
     expect(box).toHaveValue("");
-    expect(screen.getByTestId("status")).toHaveTextContent(/immediate mode on/i);
+    expect(screen.getByTestId("status")).toHaveTextContent(/typing into the terminal/i);
   });
 
   it("sends a swiped/IME-composed word once when composition commits", async () => {
@@ -326,7 +397,7 @@ describe("Composer — Immediate key mode", () => {
       }),
     );
     renderComposer();
-    const box = activateImmediateMode();
+    const box = startDirectTyping();
 
     fireEvent.compositionStart(box);
     fireEvent.input(box, {
@@ -359,7 +430,7 @@ describe("Composer — Immediate key mode", () => {
       }),
     );
     renderComposer();
-    const box = activateImmediateMode();
+    const box = startDirectTyping();
 
     fireEvent.keyDown(box, { key: "Backspace" });
     await waitFor(() => expect(keyCalls).toEqual([["Backspace"]]));
@@ -397,27 +468,27 @@ describe("Composer — Immediate key mode", () => {
   it("exits on a tap of the highlighted keyboard button", async () => {
     const user = userEvent.setup();
     renderComposer();
-    const box = activateImmediateMode();
+    const box = startDirectTyping();
 
     fireEvent.blur(box); // dismissing the Android keyboard does not silently disarm the mode
-    expect(screen.getByPlaceholderText(/type keys/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /exit immediate key mode/i }));
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /stop typing into terminal/i }));
 
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /hold send for immediate/i })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
   });
 
-  it("stops Immediate mode when a key batch is refused", async () => {
+  it("stops direct typing when a key batch is refused", async () => {
     server.use(
       http.post(/\/api\/pane\/[^/]+\/keys$/, () =>
         HttpResponse.json({ ok: false, error: "pane unavailable" }, { status: 500 }),
       ),
     );
     renderComposerWithStatus();
-    const box = activateImmediateMode();
+    const box = startDirectTyping();
 
     fireEvent.change(box, { target: { value: "b" } });
 
@@ -432,10 +503,11 @@ describe("Composer — Immediate key mode", () => {
     const box = screen.getByPlaceholderText(/type a reply/i);
     await user.type(box, "keep this draft");
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+    // The refusal belongs on the named choice, where there is somewhere to explain it.
+    fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
 
     expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("keep this draft");
-    expect(screen.queryByPlaceholderText(/type keys/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/type into the terminal/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("status")).toHaveTextContent(/send or clear the draft/i);
   });
 
@@ -468,7 +540,7 @@ describe("Composer — Immediate key mode", () => {
     }
     const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
     render(<RouterProvider router={router} />);
-    activateImmediateMode();
+    startDirectTyping();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch pane" }));
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ChangeEvent,
   CompositionEvent as ReactCompositionEvent,
@@ -6,7 +6,6 @@ import type {
   RefObject,
 } from "react";
 
-import { useLongPress } from "@/hooks/use-long-press";
 import { useOrderedKeySender } from "@/hooks/use-ordered-key-sender";
 import { textToKeySequence } from "@/lib/key-queue";
 import { setStatus } from "@/lib/status";
@@ -34,28 +33,59 @@ function keyForKeyDown(key: string): string | undefined {
   return SPECIAL_KEYS[key];
 }
 
-interface ImmediateInputOptions {
+interface DirectTypingOptions {
   paneKey: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   replyDraft: string;
   canActivate: () => boolean;
+  /** True while the view the mode belongs to has stopped being live: a gone pane, a read-only
+   *  device, or the idle pause. Arming survives none of them — see the disarm effect below. */
+  suspended: boolean;
   sendKeys: (keys: string[]) => Promise<boolean>;
   onActivate: () => void;
   focusInput: () => void;
 }
 
-// The normal composer textarea's direct-terminal mode. It owns the activation gesture, transient
-// Android IME composition value, pane-boundary reset and special-key capture; transport ordering
-// stays in useOrderedKeySender so this hook never permits concurrent one-shot Herdr writes.
-export function useImmediateInput({
+// The composer textarea's direct-terminal mode: what you type goes to the pane as keystrokes,
+// with no trailing Enter. This hook owns the armed state, the transient Android IME composition
+// value, the pane-boundary reset, special-key capture, and the lifecycle rules that disarm it.
+// Transport ordering stays in useOrderedKeySender so this hook never permits concurrent one-shot
+// Herdr writes.
+//
+// It does NOT own the entry point. Arming is an explicit NAMED choice — the "Type" toggle in the
+// composer's Controls row, beside Keys.
+//
+// WHY A NAMED CHOICE AND NOT A GESTURE. The submitted version of this feature armed the mode on a
+// bare long press of the Send button. That reads as a saving of one tap, but the tap is priced per
+// SESSION, not per keystroke: you arm once and then type many keys. What it actually buys is an
+// accidental hold — a pocket, a fumbled scroll, a hesitation over Send with a destructive command in
+// the box — silently pointing the phone keyboard at a live terminal with nothing on screen having
+// asked. This surface's safety story is "you see what is about to go on the wire" (ADR 0005), and a
+// mode you can enter without reading anything sits outside it. A labelled toggle you press on purpose
+// is the cheapest thing that stays inside it. Don't reintroduce a hold as a shortcut.
+//
+// WHY THE MODE DIES WITH THE VIEW. What stands in for a review step here is that you are LOOKING at
+// the pane while you type into it — this is the one write path with no reviewable payload, by design
+// (reviewing each keystroke would defeat it). That condition can quietly stop being true: the mirror
+// is polled, and the poll stops on an idle pause (ADR 0007), on a backgrounded tab, on a pane going
+// away. Hence the disarms below. Never persisted, never restored: there is no path by which this is
+// already armed when you arrive at a screen.
+//
+// Two apparent omissions that are deliberate. A lost connection is NOT a separate trigger — it
+// surfaces as a failed batch, which already disarms, observed directly rather than inferred from a
+// timer. And the reply guard's `composerReady` pre-flight is NOT run on these keystrokes: it refuses
+// to type into an unrecognised screen, and typing into an unrecognised screen is the whole point.
+// Don't "harden" this path by adding it.
+export function useDirectTyping({
   paneKey,
   inputRef,
   replyDraft,
   canActivate,
+  suspended,
   sendKeys,
   onActivate,
   focusInput,
-}: ImmediateInputOptions) {
+}: DirectTypingOptions) {
   const [active, setActive] = useState(false);
   const [value, setValue] = useState("");
   const composing = useRef(false);
@@ -76,7 +106,7 @@ export function useImmediateInput({
     // A buffered reply and live keystrokes cannot safely share one field. Keep the durable draft
     // exactly where it is and make the user send or clear it before arming direct terminal input.
     if (replyDraft.length > 0) {
-      setStatus("Send or clear the draft before starting Immediate mode.", "info");
+      setStatus("Send or clear the draft before typing into the terminal.", "info");
       return;
     }
     onActivate();
@@ -84,7 +114,7 @@ export function useImmediateInput({
     composing.current = false;
     committedComposition.current = null;
     setActive(true);
-    setStatus("Immediate mode on — keys send as you type.", "success");
+    setStatus("Typing into the terminal — keys send as you type.", "success");
     // Focus synchronously while the long-press/contextmenu gesture still carries browser user
     // activation; a deferred focus selects the field but mobile browsers may refuse to open their
     // software keyboard once that activation has expired. The existing callback still runs after
@@ -103,22 +133,33 @@ export function useImmediateInput({
 
   function deactivate() {
     clearMode();
-    setStatus("Immediate mode off", "info");
+    setStatus("Back to sending replies", "info");
   }
 
   function deactivateSilently() {
     clearMode();
   }
 
-  // A normal tap keeps the Send button's existing meaning. Holding toggles Immediate mode;
-  // useLongPress suppresses the synthesized click after the hold, including Android's contextmenu.
-  const longPressAction = active ? deactivate : activate;
-  const focusAfterLongPress = useCallback(() => {
-    inputRef.current?.focus();
-  }, [inputRef]);
-  const longPress = useLongPress(canActivate() ? longPressAction : undefined, {
-    onReleaseAfterLongPress: focusAfterLongPress,
-  });
+  // Arming dies with the view it belongs to. A backgrounded tab, an idle pause and a lost bridge
+  // all mean the same thing: the mirror on screen has stopped tracking the pane, and the next
+  // keystroke would go into a terminal the user is no longer actually looking at. Disarm rather
+  // than hold the mode open across the gap — the cost is one re-arm, the alternative is typing
+  // blind. Never persisted, never restored — see the lifecycle note in send-mode-menu.tsx.
+  useEffect(() => {
+    if (!active || !suspended) return;
+    clearMode();
+    setStatus("Stopped typing into the terminal — the pane view was interrupted.", "info");
+  }, [active, suspended]);
+
+  useEffect(() => {
+    if (!active) return;
+    const onVisibility = () => {
+      if (document.visibilityState !== "hidden") return;
+      clearMode();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [active]);
 
   // Direct input never crosses a pane boundary. Reset also invalidates keys accumulated behind an
   // in-flight call; the call already on the wire captured the old pane and cannot be recalled.
@@ -196,7 +237,7 @@ export function useImmediateInput({
     active,
     value,
     busy: sender.busy,
-    longPress,
+    activate,
     deactivate,
     deactivateSilently,
     onChange,

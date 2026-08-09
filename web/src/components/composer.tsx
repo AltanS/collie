@@ -1,11 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, X, Zap } from "lucide-react";
+import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, Terminal, X, Zap } from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
-import { useImmediateInput } from "@/hooks/use-immediate-input";
+import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { setStatus } from "@/lib/status";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
@@ -23,6 +23,7 @@ import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
+import { DirectTypingStrip } from "@/components/direct-typing-strip";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -229,11 +230,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const immediate = useImmediateInput({
+  const direct = useDirectTyping({
     paneKey: `${session ?? ""}\0${paneId}`,
     inputRef,
     replyDraft: input,
     canActivate: () => !(locked || sending || uploading),
+    // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
+    // deliberately not added here: the mode already disarms on a failed batch, which is the same
+    // event observed directly rather than inferred from a timer, and it fires whether or not any
+    // banner has decided the connection counts as lost yet.
+    suspended: locked,
     sendKeys: pressKeys,
     onActivate: () => {
       sendConfirm.reset();
@@ -306,7 +312,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
   useHoldReload(
     `composer:${paneId}`,
-    input.trim() !== "" || immediate.active || immediate.value !== "" || immediate.busy || uploading,
+    input.trim() !== "" || direct.active || direct.value !== "" || direct.busy || uploading,
   );
 
   // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
@@ -353,7 +359,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function takeOverDraft() {
     if (effectiveRaw === null) return;
     const draft = effectiveRaw;
-    immediate.deactivateSilently();
+    direct.deactivateSilently();
     updateInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
     setHandledKey(normalizeDraft(draft));
     setPreviewLatched(false);
@@ -541,7 +547,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
-    immediate.deactivateSilently();
+    direct.deactivateSilently();
     updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
   }
@@ -555,7 +561,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.uploadImage(paneId, file, session);
       if (res.ok) {
         const path = res.path;
-        immediate.deactivateSilently();
+        direct.deactivateSilently();
         updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
         setStatus("Image added — path in message", "success");
@@ -580,7 +586,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Only intercepts when the clipboard actually carries an image file — a plain text paste (the
   // common case) falls through untouched.
   function onPasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
-    if (locked || immediate.active) return;
+    if (locked || direct.active) return;
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -651,8 +657,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
             and NOT flex-1 — it's a settings affordance, not a peer of the three action toggles, and
             keeping it narrow leaves the labelled buttons their width on a 390px phone. */}
-        <div className="mb-2 flex items-center gap-2">
-          <SectionLabel>Controls</SectionLabel>
+        {/* The "Controls" tag is lifted OUT of the row's flex flow and floated just above it. In
+            flow it was a fixed ~60px of a 390px phone width spent on a word that never changes,
+            which is what squeezed the toggles; absolute costs nothing and the row gets the width
+            back. `pt-3` on the row reserves the space it occupies so it can't collide with whatever
+            sits above. */}
+        <div className="relative mb-2 flex items-center gap-2 pt-3">
+          <SectionLabel className="absolute left-0 top-0 text-[10px] leading-none opacity-80">
+            Controls
+          </SectionLabel>
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
               again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
               while open. Both share the single-valued `drawer`, so opening one closes the other. */}
@@ -666,6 +679,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           >
             <Keyboard className="size-4" />
             Keys
+          </Button>
+          {/* "Type into terminal" lives HERE, beside Keys, rather than on the Send button.
+              It is the same problem split in half: Keys exists because the phone keyboard cannot
+              send Esc/Tab/arrows/chords, this exists because it cannot send bare printable letters —
+              so someone who wants to press `b` looks in this row first. It is also used in bursts
+              (a picker, a y/n prompt) and then not for days, which is the wrong shape for a
+              permanent fixture on the app's most-used control: a split Send button cost a third of
+              the primary action's width every day to serve a mode used on a few of them.
+              Unlike its neighbours this toggles state instead of opening a dock — the armed strip
+              above the input is what makes that visible. Arming is still an explicit NAMED choice,
+              which is what keeps an accidental touch from quietly wiring the keyboard to a live
+              terminal; see use-direct-typing.ts for the rest of that argument. */}
+          <Button
+            variant={direct.active ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 flex-1 gap-1.5 text-muted-foreground"
+            disabled={locked || sending}
+            aria-pressed={direct.active}
+            aria-label="Type into terminal"
+            onClick={() => {
+              if (direct.active) {
+                direct.deactivate();
+                return;
+              }
+              // Close whatever dock is open first: the mode needs the phone keyboard, and a dock
+              // holding half the viewport is the thing in its way. Routed through requestDrawer so a
+              // staged key queue still gets its discard confirm (ADR 0005).
+              requestDrawer(null);
+              direct.activate();
+            }}
+          >
+            <Terminal className="size-4" />
+            Type
           </Button>
           <Button
             variant={drawer === "quick" ? "secondary" : "ghost"}
@@ -719,6 +765,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
           />
         )}
+        {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
+            deliberately NOT only on the button and textarea — see the component. */}
+        {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
         <div className="flex items-end gap-2">
           {/* Attach image — messenger-style, left of the input, always available (previously buried
               in the keyboard-only quick-key strip). preventDefault keeps the textarea focused so the
@@ -728,7 +777,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             variant="ghost"
             size="icon"
             className="rounded-full text-muted-foreground"
-            disabled={uploading || locked || immediate.active}
+            disabled={uploading || locked || direct.active}
             onPointerDown={(e) => e.preventDefault()}
             onClick={() => fileRef.current?.click()}
             aria-label="Attach image"
@@ -737,13 +786,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </Button>
           <ChatInput
             ref={inputRef}
-            value={immediate.active ? immediate.value : input}
-            onChange={immediate.active ? immediate.onChange : (e) => updateInput(e.target.value)}
-            onCompositionStart={immediate.active ? immediate.onCompositionStart : undefined}
-            onCompositionEnd={immediate.active ? immediate.onCompositionEnd : undefined}
+            value={direct.active ? direct.value : input}
+            onChange={direct.active ? direct.onChange : (e) => updateInput(e.target.value)}
+            onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
+            onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
             onKeyDown={
-              immediate.active
-                ? immediate.onKeyDown
+              direct.active
+                ? direct.onKeyDown
                 : (e) => {
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
@@ -757,23 +806,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? "Pane is gone"
                 : readOnly
                   ? "Read-only — device not authorised"
-                  : immediate.active
-                    ? "Type keys to send immediately"
+                  : direct.active
+                    ? "Type into the terminal…"
                     : isShell
                       ? "Type a shell command…"
                       : "Type a reply…"
             }
-            autoCorrect={immediate.active ? "off" : undefined}
-            spellCheck={immediate.active ? false : undefined}
+            autoCorrect={direct.active ? "off" : undefined}
+            spellCheck={direct.active ? false : undefined}
             className={
-              immediate.active
+              direct.active
                 ? "border-primary focus-visible:border-primary focus-visible:ring-primary/30"
                 : undefined
             }
             disabled={locked}
             rows={1}
           />
-          {!immediate.active && forcingSend ? (
+          {!direct.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the
             // submit key is still conditional on the verify step behind it.
@@ -786,7 +835,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               Type anyway?
             </Button>
-          ) : !immediate.active && confirmingSend ? (
+          ) : !direct.active && confirmingSend ? (
             <Button
               variant="destructive"
               className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
@@ -798,26 +847,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           ) : (
             <Button
-              {...immediate.longPress}
               size="icon"
-              className="size-11 shrink-0 select-none rounded-full [-webkit-touch-callout:none]"
-              onClick={immediate.active ? () => immediate.deactivate() : onSendClick}
-              // Keep the empty button pointer-active: holding that exact Send icon is how Immediate
-              // mode is entered. A plain empty tap remains a no-op through send().
+              className="size-11 shrink-0 rounded-full"
+              onClick={direct.active ? () => direct.deactivate() : onSendClick}
               disabled={locked || sending}
-              aria-label={
-                immediate.active
-                  ? "Exit immediate key mode"
-                  : locked || input.trim()
-                    ? "Send"
-                    : "Hold Send for immediate key mode"
-              }
-              aria-pressed={immediate.active}
-              title={
-                immediate.active ? "Immediate key mode — tap to exit" : "Hold for Immediate mode"
-              }
+              aria-label={direct.active ? "Stop typing into terminal" : "Send"}
+              aria-pressed={direct.active}
             >
-              {immediate.active ? (
+              {direct.active ? (
                 <Keyboard className="size-4" />
               ) : sending ? (
                 <Loader2 className="size-4 animate-spin" />
