@@ -45,6 +45,19 @@ export const NAVIGATION_NETWORK_ONLY = [
 ] as const;
 
 /**
+ * The bundled Nerd Font faces (index.css). The SW caches these on first use rather than precaching
+ * them — `unicode-range` keeps them lazy and ~1.1 MB is not something to charge an install for — and
+ * sweeps anything else out of that cache on activate, which is why the live set has to be a value
+ * both sides can read. The version is part of the filename: `public/` assets are unhashed, so a
+ * regenerated subset must be a new URL or the permanent cache would serve the old one forever.
+ * `fonts.test.ts` pins this list against the stylesheet and the files on disk.
+ */
+export const FONT_URLS = [
+  "/fonts/nerd-symbols-3.5.0-pua.woff2",
+  "/fonts/nerd-symbols-3.5.0-spua.woff2",
+] as const;
+
+/**
  * True when the SW must not answer this navigation from the precache. Takes `pathname + search`,
  * matching what workbox feeds the denylist — pass the query string if there is one.
  */
