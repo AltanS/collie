@@ -201,7 +201,7 @@ export function resetTypedDraft(): void {
 export function recordReply(body: { text?: string; submit?: boolean }): void {
   typedDraft = body.submit ? "" : body.text ?? "";
 }
-// 40 box glyphs clears the 20-glyph border threshold in isBoxBorder (harness/claude/markers.ts).
+// 40 box glyphs is comfortably above isBoxBorder's BARE_BORDER_MIN floor (8, harness/claude/markers.ts).
 const BOX_RULE = "─".repeat(40);
 /**
  * `base` output with the current draft rendered inside a Claude-shaped input box below it. The box is

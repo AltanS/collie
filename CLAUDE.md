@@ -119,9 +119,18 @@ the unit name; the Herdr action runs from anywhere.
   still-mounted router (unmounting it ate in-progress composer drafts) and pauses polling through
   `lib/idle.ts`. Don't restore it as a security control or re-describe it as one
   ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
+- **"Type into terminal" is armed by a named choice and dies with the pane view.** Long-pressing Send
+  opens a menu; the hold never arms it alone. It disarms on a pane switch, a composer lock (gone pane,
+  read-only, idle pause), a hidden page, and a failed batch — never persisted, never restored. Don't
+  lift it, and don't add the reply guard's `composerReady` pre-flight to it; the reasoning for both
+  sits in `web/src/components/send-mode-menu.tsx`'s header.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).
+- **The bundled Nerd Font subsets stay lazy and out of the precache** — `unicode-range` per face,
+  version in the filename, cached first-use by `sw.ts`. Don't add them to `globPatterns`, don't
+  widen a range, don't move subsetting into the build; the reasoning for each sits at the line that
+  would change (`web/src/index.css`, `web/vite.config.ts`, `scripts/build-nerd-font.sh`).
 
 ## Herdr socket gotchas (see HERDR_API.md for the full, verified contract)
 

@@ -13,6 +13,9 @@ const MOVE_CANCEL_PX = 16;
 interface LongPressOptions {
   delayMs?: number;
   moveTolerance?: number;
+  // Runs from the trusted pointer/contextmenu event that ends a completed hold. Use this for browser
+  // APIs (notably opening a phone keyboard) that reject calls made from the hold timer itself.
+  onReleaseAfterLongPress?: () => void;
 }
 
 /**
@@ -36,12 +39,17 @@ interface LongPressOptions {
  */
 export function useLongPress(
   onLongPress: (() => void) | undefined,
-  { delayMs = LONG_PRESS_MS, moveTolerance = MOVE_CANCEL_PX }: LongPressOptions = {},
+  {
+    delayMs = LONG_PRESS_MS,
+    moveTolerance = MOVE_CANCEL_PX,
+    onReleaseAfterLongPress,
+  }: LongPressOptions = {},
 ) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startPos = useRef<{ x: number; y: number } | null>(null);
   // A long-press fired on the in-progress gesture → suppress the ensuing click so it doesn't navigate.
   const fired = useRef(false);
+  const releaseHandled = useRef(false);
 
   const clear = useCallback(() => {
     if (timer.current !== null) {
@@ -64,6 +72,12 @@ export function useLongPress(
     onLongPress();
   }, [onLongPress, clear]);
 
+  const finish = useCallback(() => {
+    if (!fired.current || releaseHandled.current) return;
+    releaseHandled.current = true;
+    onReleaseAfterLongPress?.();
+  }, [onReleaseAfterLongPress]);
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent) => {
       if (!onLongPress) return;
@@ -71,6 +85,7 @@ export function useLongPress(
       // so a repeat that reaches us via `contextmenu` (desktop right-click's pointerdown is button 2)
       // can open again rather than being blocked by the previous gesture's still-set flag.
       fired.current = false;
+      releaseHandled.current = false;
       // Primary pointer only (0 for touch/pen too) — ignore right-click / secondary contacts for the
       // hold timer (right-click still opens via onContextMenu below).
       if (e.button !== 0) return;
@@ -92,6 +107,18 @@ export function useLongPress(
     [clear, moveTolerance],
   );
 
+  const finishPointerGesture = useCallback(
+    (e?: ReactPointerEvent) => {
+      clear();
+      if (!fired.current) return;
+      // Do not let the button's pointer-up default action reclaim focus after the completion callback
+      // moves it elsewhere (the exact ordering that otherwise closes a newly-opened phone keyboard).
+      e?.preventDefault();
+      finish();
+    },
+    [clear, finish],
+  );
+
   // Android Chrome raises `contextmenu` at the end of a long-press (desktop does on right-click). When
   // actions are enabled we (1) preventDefault so the native menu never hijacks the gesture, and (2)
   // trigger the sheet — this is the fallback path when a native `pointercancel` already killed the
@@ -102,24 +129,30 @@ export function useLongPress(
       if (!onLongPress) return;
       e.preventDefault();
       fire();
+      finish();
     },
-    [onLongPress, fire],
+    [onLongPress, fire, finish],
   );
 
-  const onClickCapture = useCallback((e: ReactMouseEvent) => {
-    if (!fired.current) return;
-    fired.current = false;
-    // Capture phase runs before the element's own bubble-phase onClick; stopping here cancels it.
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
+  const onClickCapture = useCallback(
+    (e: ReactMouseEvent) => {
+      if (!fired.current) return;
+      finish();
+      fired.current = false;
+      releaseHandled.current = false;
+      // Capture phase runs before the element's own bubble-phase onClick; stopping here cancels it.
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    [finish],
+  );
 
   return {
     onPointerDown,
     onPointerMove,
-    onPointerUp: clear,
-    onPointerLeave: clear,
-    onPointerCancel: clear,
+    onPointerUp: finishPointerGesture,
+    onPointerLeave: finishPointerGesture,
+    onPointerCancel: finishPointerGesture,
     onContextMenu,
     onClickCapture,
   };

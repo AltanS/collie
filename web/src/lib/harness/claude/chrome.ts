@@ -9,7 +9,7 @@
 // matched by POSITION (below the box's bottom border), never by its content strings.
 
 import type { StyledLine } from "../../blocks";
-import { isBlank, isBoxBorder, lineText } from "./markers";
+import { isBlank, isBoxBorder, isInputBoxTopBorder, lineText } from "./markers";
 
 // Rows allowed DIRECTLY under the input box's bottom border: the statusline plus its hint row(s)
 // ("← for agents", "⏵⏵ bypass permissions on …"). A statusline is an arbitrary user command's output,
@@ -25,11 +25,21 @@ const MAX_STATUS_LINES = 8;
 const MAX_FOOTER_LINES = 8;
 
 // A long draft WRAPS inside the input box: the "❯ …" prompt line plus continuation lines (indented,
-// no leading "❯") before the bottom border. We scan up past those to find the prompt, but only this
-// many — a bound that keeps the match tight (a borderless buffer can't strip unboundedly) while
-// comfortably covering a very long draft even on a narrow phone pane. A taller box falls back to the
-// raw mirror (safe: at worst the draft stays visible, exactly the pre-wrap-support behaviour).
-const MAX_DRAFT_LINES = 12;
+// no leading "❯") before the bottom border. We scan up past those to find the prompt, bounded by
+// MAX_DRAFT_LINES — but as DEFENSE-IN-DEPTH, not a correctness bound. The caller's read window
+// defaults to 200 lines (COLLIE_READ_LINES, bridge/config.ts) and is client-requestable up to
+// MAX_READ_LINES (10,000, bridge/server.ts), so an unbounded walk would let a stray line that happens
+// to look like a border (see isBoxBorder in markers.ts) pair up with an unrelated quoted "❯" line
+// dozens (or thousands) of lines further up to complete a full (bogus) box shape — the cap, not the
+// border test alone, is what keeps that match from reaching all the way there. Every line the walk
+// crosses counts against this cap, blank or not: a run of blank padding is not a free pass either
+// (see the blank-line skips inside locateInputBox below, both bounded by the same counter). The OLD
+// cap (12) was simply too tight: a real 610-char/25-line CJK draft wraps to ~40 rows at a narrow
+// pane's column count (CJK glyphs are 2 cells wide), well past it, which made locateInputBox return
+// null and stalled the send guard for good (issue #76). Removing the cap entirely was considered and
+// rejected for the reason above. 100 comfortably covers the observed ~40-row case plus a worst case
+// around 70–80 rows at a 19-column pane, with margin, while still capping how far the walk can reach.
+const MAX_DRAFT_LINES = 100;
 
 // Text Claude draws on the "❯" prompt line that is NOT a real user draft — it's a hint the TUI paints
 // when the box is otherwise empty. Must never be surfaced as a recoverable draft. Kept as an array so
@@ -222,9 +232,12 @@ function locateInputBox(texts: string[], end: number): InputBox | null {
 
   // (d) the "❯" prompt line — the FIRST line of the draft. A long draft wraps onto continuation lines
   //     (indented, no "❯") between the prompt and the bottom border, so scan up past them to the
-  //     prompt. Bounded by MAX_DRAFT_LINES, and any box border en route aborts the match (we'd have
-  //     left the box). Blank padding on either side is tolerated defensively.
-  while (i >= 0 && isBlank(texts[i]!)) i--;
+  //     prompt. Bounded by MAX_DRAFT_LINES (see the comment above — defense-in-depth, not a
+  //     correctness bound), and any box border en route aborts the match (we'd have left the box).
+  //     Blank padding is tolerated on either side, but it draws from the SAME budget as real
+  //     continuation lines — a bare `while (isBlank) i--` here used to skip an unlimited run of blank
+  //     lines for free before this loop even started counting, which let a wall of blanks stand in for
+  //     the non-blank filler the draft-walk cap is supposed to bound.
   let wrapped = 0;
   while (
     i >= 0 &&
@@ -238,9 +251,20 @@ function locateInputBox(texts: string[], end: number): InputBox | null {
   if (i < 0 || !texts[i]!.trimStart().startsWith("❯")) return null;
   const prompt = i;
   i--;
-  while (i >= 0 && isBlank(texts[i]!)) i--;
+  // Blank padding between the prompt and the top border (e.g. a blank first line inside a freshly
+  // opened box) — same shared `wrapped` budget as above, for the same reason: this used to be its own
+  // unbounded `while (isBlank) i--`, so a wall of blanks here could reach an arbitrarily distant top
+  // border for free.
+  while (i >= 0 && isBlank(texts[i]!) && wrapped < MAX_DRAFT_LINES) {
+    wrapped++;
+    i--;
+  }
 
-  // (e) top border
-  if (i < 0 || !isBoxBorder(texts[i]!)) return null;
+  // (e) top border — the LAST anchor checked, so it alone gets the looser flank floor
+  //     (isInputBoxTopBorder): the renderer can clamp a labelled top border's flank down to 1 glyph
+  //     (see the comment on isInputBoxTopBorder in markers.ts), and by this point the bottom border,
+  //     the "❯" line, and the draft-walk cap have already pinned the rest of the shape down, so the
+  //     looser test doesn't reopen the false-positive risk a bare 1-glyph flank would elsewhere.
+  if (i < 0 || !isInputBoxTopBorder(texts[i]!)) return null;
   return { top: i, prompt, bottomBorder, statusEnd };
 }

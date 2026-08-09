@@ -90,6 +90,12 @@ const HEADING_CLASS: Record<number, string> = {
   3: "text-sm font-semibold",
 };
 
+const ALIGN_CLASS: Record<string, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+};
+
 function Block({ block }: { block: MdBlock }) {
   switch (block.kind) {
     case "heading": {
@@ -126,6 +132,41 @@ function Block({ block }: { block: MdBlock }) {
         <blockquote className="border-l-2 pl-2.5 text-muted-foreground italic">
           <Spans spans={block.spans} />
         </blockquote>
+      );
+    case "table":
+      // Columns can't be made to fit a phone, so the table keeps its real widths and pans inside its
+      // own scroller — the same thing a mobile browser does with a table on any normal page.
+      return (
+        <div className="overflow-x-auto">
+          <table className="w-max border-collapse text-xs">
+            <thead>
+              <tr>
+                {block.header.map((cell, i) => (
+                  <th
+                    key={i}
+                    className={`border px-2 py-1 font-semibold ${ALIGN_CLASS[block.align[i] ?? "left"]}`}
+                  >
+                    <Spans spans={cell} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, r) => (
+                <tr key={r}>
+                  {row.map((cell, c) => (
+                    <td
+                      key={c}
+                      className={`border px-2 py-1 align-top ${ALIGN_CLASS[block.align[c] ?? "left"]}`}
+                    >
+                      <Spans spans={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
     case "rule":
       return <hr className="border-border" />;

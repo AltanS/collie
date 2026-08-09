@@ -47,6 +47,18 @@
   --popover-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
   --primary: light-dark(oklch(0.205 0 0), oklch(0.922 0 0));
   --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
+  /* The "this control is ON" tint — a very light sky. Its own token pair rather than reusing
+     --secondary because the two say different things: secondary is a quieter surface, this is a
+     STATE, and the row needs the difference legible at a glance (an open dock, an armed mode). Kept
+     low-chroma so a row of grey controls doesn't turn into a traffic light when two are on.
+
+     The light half is tuned by CHROMA, not luminance: at "very light sky" lightness the tint is only
+     ~1.2:1 against the page by WCAG, and no value that still reads as light sky does better — what
+     makes it visible is that it is the one saturated thing in a neutral row. Don't "fix" that number
+     by darkening it into a mid blue. Text on the tint is what has to clear a contrast bar, and does:
+     7.3:1 light, 9.2:1 dark. */
+  --control-on: light-dark(oklch(0.90 0.06 235), oklch(0.32 0.05 240));
+  --control-on-foreground: light-dark(oklch(0.38 0.12 245), oklch(0.89 0.06 235));
   --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
   --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
   /* Light --muted is a step BELOW --background so the header/composer chrome band still reads as a
@@ -154,6 +166,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-control-on: var(--control-on);
+  --color-control-on-foreground: var(--control-on-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -173,8 +187,50 @@
   --color-status-unknown: var(--status-unknown);
   --color-status-info: var(--status-info);
 
-  --font-mono: "JetBrains Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace,
-    SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: "Nerd Font Symbols", "JetBrains Mono", "Cascadia Mono", "Cascadia Code",
+    "Roboto Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
+/* Nerd Font symbols, bundled — the only webfont Collie ships.
+ *
+ * WHY. Agent prompts and status lines are full of Nerd Font glyphs (Powerline separators, devicons,
+ * Material icons: OMP's `symbolPreset: nerd`, herdr's own output). Desktop browsers can resolve them
+ * from a locally installed Nerd Font; mobile browsers cannot, so on the device Collie is actually
+ * FOR, every one of them rendered as a tofu box (#70). Nothing but shipping the glyphs fixes that.
+ *
+ * WHY IT'S FREE FOR PEOPLE WHO DON'T NEED IT. `unicode-range` restricts each face to private-use
+ * codepoints, so the browser fetches a file only once a glyph in that range is actually painted — a
+ * herd whose agents emit no Nerd Font glyphs downloads zero bytes. The split at the plane boundary
+ * keeps that promise sharp: a Powerline-only prompt pulls the 626 KB BMP face and never touches the
+ * 492 KB Material one. Both are kept OUT of the service-worker precache for the same reason (see
+ * vite.config.ts) and cached on first use instead (src/sw.ts).
+ *
+ * It comes first in `--font-mono` and that is safe precisely because of `unicode-range`: it can
+ * never be consulted for a letter, digit or box-drawing character, and CSS picks the "first
+ * available font" — the one whose metrics set the line — from the faces that cover U+0020, which
+ * this one does not. It carries symbols and nothing else, so the real monospace face still decides
+ * how text looks.
+ *
+ * EXPECTED, NOT A BUG. A symbol takes this font's advance width, not the surrounding monospace's, so
+ * in the pane mirror an icon nudges the columns to its right by a fraction of a cell. Fixing that
+ * needs a terminal emulator, which Collie does not run (ADR 0008) — a glyph you can read beats a
+ * column you can't.
+ *
+ * The files are subsets of Symbols Nerd Font Mono v3.5.0 (MIT — public/fonts/LICENSE.txt), built by
+ * scripts/build-nerd-font.sh. Regenerating means a new version in the filename: public/ assets are
+ * unhashed and the SW caches them forever by URL. */
+@font-face {
+  font-family: "Nerd Font Symbols";
+  src: url("/fonts/nerd-symbols-3.5.0-pua.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+E000-F8FF;
+}
+@font-face {
+  font-family: "Nerd Font Symbols";
+  src: url("/fonts/nerd-symbols-3.5.0-spua.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+F0000-F1AFF;
 }
 
 @layer base {
