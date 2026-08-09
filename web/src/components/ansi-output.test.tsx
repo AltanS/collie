@@ -69,6 +69,47 @@ describe("mirror line wrapping", () => {
     expect(cls).toContain("overflow-x-auto");
     expect(cls).not.toContain("whitespace-pre-wrap");
   });
+
+  it("keeps a marked ANSI border to one clipped row without changing its text, styles, links, or find offsets", () => {
+    const border = `  ${"─".repeat(20)}  `;
+    const text = `ordinary prose\n${ESC}[41m${border.slice(0, 12)}${ESC}[44m${border.slice(12)}${ESC}[0m\nsee https://herdr.dev/docs\n`;
+    const { container } = render(<AnsiOutput text={text} query="───" />);
+    const pre = container.querySelector("pre")!;
+    const clipped = pre.querySelector("span.inline-block")!;
+
+    expect(clipped.className).toContain("max-w-full");
+    expect(clipped.className).toContain("overflow-hidden");
+    // `overflow-hidden` gives an inline-block a bottom-edge baseline; align it to the line box's
+    // bottom so the border keeps the terminal grid's one-row line advance.
+    expect(clipped.className).toContain("align-bottom");
+    expect(clipped.className).toContain("whitespace-pre");
+    expect(clipped.className).not.toContain("whitespace-nowrap");
+    expect(clipped.className).toContain("break-normal");
+    expect(clipped.textContent).toBe(border);
+    expect(clipped.children).toHaveLength(2);
+    expect((clipped.children[0] as HTMLElement).style.backgroundColor).toBe("var(--ansi-1)");
+    expect((clipped.children[1] as HTMLElement).style.backgroundColor).toBe("var(--ansi-4)");
+    expect(clipped.querySelector("[data-find-match]")).not.toBeNull();
+    expect(pre.querySelector("a")?.textContent).toBe("https://herdr.dev/docs");
+    expect(pre.textContent).toBe(`ordinary prose\n${border}\nsee https://herdr.dev/docs\n`);
+  });
+
+  it("clips a plain border only while wrapping, leaving ordinary output and wrap-off panning alone", () => {
+    const border = `  ${"─".repeat(20)}  `;
+    const { container: plain } = render(<AnsiOutput text={`${border}\n`} />);
+    expect(plain.querySelector("span.inline-block")?.textContent).toBe(border);
+
+    const { container: wrapped } = render(<AnsiOutput text={`unbroken-${"x".repeat(40)}\n`} />);
+    const wrappedPre = wrapped.querySelector("pre")!;
+    expect(wrappedPre.className).toContain("break-words");
+    expect(wrappedPre.querySelector("span.inline-block")).toBeNull();
+
+    const { container: panned } = render(<AnsiOutput text={`${border}\n`} wrap={false} />);
+    const pannedPre = panned.querySelector("pre")!;
+    expect(pannedPre.className).toContain("overflow-x-auto");
+    expect(pannedPre.querySelector("span.inline-block")).toBeNull();
+    expect(pannedPre.textContent).toBe(`${border}\n`);
+  });
 });
 
 // URLs printed by an agent are plain characters — the mirror finds them and wraps those ranges in

@@ -219,6 +219,11 @@ test_missing_tailscale_cli() {
   setup_case tailscale-missing
   ln -s "$(command -v dirname)" "${BIN_DIR}/dirname"
   ln -s "$(command -v tr)" "${BIN_DIR}/tr"
+  # A stub bun keeps resolve_bun inside the sandbox. Without it, the absolute-path fallbacks find a
+  # real bun (e.g. /opt/homebrew/bin/bun) and prepend its directory to PATH — which on a Homebrew
+  # Mac also holds the real tailscale, so the "missing CLI" this test stages quietly reappears.
+  printf '#!/bin/sh\nexit 0\n' > "${BIN_DIR}/bun"
+  chmod +x "${BIN_DIR}/bun"
   cat > "${CONFIG_DIR}/.env" <<'EOF'
 COLLIE_PORT=8787
 EOF

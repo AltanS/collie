@@ -1,11 +1,13 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, X, Zap } from "lucide-react";
+import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, Terminal, X, Zap } from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
+import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { setStatus } from "@/lib/status";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
@@ -25,6 +27,7 @@ import { adapterFor } from "@/lib/harness";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { scopeKey, type Scope } from "@/lib/scope";
+import { DirectTypingStrip } from "@/components/direct-typing-strip";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -90,6 +93,12 @@ interface ComposerProps {
 // in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
 type ComposerDrawer = "quick" | "cmd" | "keys" | "display" | null;
+
+// The Controls row's "on" look, authored once so an open dock and an armed mode can never drift
+// apart. `hover:` is pinned to the same tint: without it, hovering an already-on control repaints it
+// with the ghost variant's hover background and it reads as switching off under the cursor.
+const CONTROL_ON = "bg-control-on text-control-on-foreground hover:bg-control-on";
+const CONTROL_OFF = "text-muted-foreground";
 
 // Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text.
 const TUI_SETTLE_MS = 350;
@@ -259,6 +268,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const direct = useDirectTyping({
+    paneKey: `${scopeId}\0${paneId}`,
+    inputRef,
+    replyDraft: input,
+    canActivate: () => !(locked || sending || uploading),
+    // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
+    // deliberately not added here: the mode already disarms on a failed batch, which is the same
+    // event observed directly rather than inferred from a timer, and it fires whether or not any
+    // banner has decided the connection counts as lost yet.
+    suspended: locked,
+    sendKeys: pressKeys,
+    onActivate: () => {
+      sendConfirm.reset();
+      forceConfirm.reset();
+    },
+    focusInput: focusInputEnd,
+  });
   const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What we last sent, and when — so we can recognise our OWN reply momentarily echoing on the "❯"
@@ -322,7 +348,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // is SAFE on its own — it lives on the "❯" line and its preview re-derives after a reload — so it
   // never holds. When held, the self-updater shows the "tap to update" banner instead and updates once
   // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
-  useHoldReload(`composer:${paneId}`, input.trim() !== "" || uploading);
+  useHoldReload(
+    `composer:${paneId}`,
+    input.trim() !== "" || direct.active || direct.value !== "" || direct.busy || uploading,
+  );
 
   // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
   // this is the ONLY gate that waits for the 1.5s stability, so a blip or an in-flight send never
@@ -368,6 +397,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function takeOverDraft() {
     if (effectiveRaw === null) return;
     const draft = effectiveRaw;
+    direct.deactivateSilently();
     updateInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
     setHandledKey(normalizeDraft(draft));
     setPreviewLatched(false);
@@ -559,6 +589,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
+    direct.deactivateSilently();
     updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
   }
@@ -572,6 +603,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.uploadImage(paneId, file, scope);
       if (res.ok) {
         const path = res.path;
+        direct.deactivateSilently();
         updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
         setStatus("Image added — path in message", "success");
@@ -596,7 +628,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Only intercepts when the clipboard actually carries an image file — a plain text paste (the
   // common case) falls through untouched.
   function onPasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
-    if (locked) return;
+    if (locked || direct.active) return;
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -667,15 +699,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
             and NOT flex-1 — it's a settings affordance, not a peer of the three action toggles, and
             keeping it narrow leaves the labelled buttons their width on a 390px phone. */}
-        <div className="mb-2 flex items-center gap-2">
-          <SectionLabel>Controls</SectionLabel>
+        {/* The "Controls" tag is lifted OUT of the row's flex flow and floated just above it. In
+            flow it was a fixed ~60px of a 390px phone width spent on a word that never changes,
+            which is what squeezed the toggles; absolute costs nothing and the row gets the width
+            back. `pt-3` on the row reserves the space it occupies so it can't collide with whatever
+            sits above. */}
+        <div className="relative mb-2 flex items-center gap-2 pt-3">
+          <SectionLabel className="absolute left-0 top-0 text-[10px] leading-none opacity-80">
+            Controls
+          </SectionLabel>
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
               again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
               while open. Both share the single-valued `drawer`, so opening one closes the other. */}
           <Button
-            variant={drawer === "keys" ? "secondary" : "ghost"}
+            variant="ghost"
             size="sm"
-            className="h-8 flex-1 gap-1.5 text-muted-foreground"
+            className={cn("h-8 flex-1 gap-1.5", drawer === "keys" ? CONTROL_ON : CONTROL_OFF)}
             disabled={locked}
             aria-expanded={drawer === "keys"}
             onClick={() => requestDrawer(drawer === "keys" ? null : "keys")}
@@ -683,10 +722,43 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <Keyboard className="size-4" />
             Keys
           </Button>
+          {/* "Type into terminal" lives HERE, beside Keys, rather than on the Send button.
+              It is the same problem split in half: Keys exists because the phone keyboard cannot
+              send Esc/Tab/arrows/chords, this exists because it cannot send bare printable letters —
+              so someone who wants to press `b` looks in this row first. It is also used in bursts
+              (a picker, a y/n prompt) and then not for days, which is the wrong shape for a
+              permanent fixture on the app's most-used control: a split Send button cost a third of
+              the primary action's width every day to serve a mode used on a few of them.
+              Unlike its neighbours this toggles state instead of opening a dock — the armed strip
+              above the input is what makes that visible. Arming is still an explicit NAMED choice,
+              which is what keeps an accidental touch from quietly wiring the keyboard to a live
+              terminal; see use-direct-typing.ts for the rest of that argument. */}
           <Button
-            variant={drawer === "quick" ? "secondary" : "ghost"}
+            variant="ghost"
             size="sm"
-            className="h-8 flex-1 gap-1.5 text-muted-foreground"
+            className={cn("h-8 flex-1 gap-1.5", direct.active ? CONTROL_ON : CONTROL_OFF)}
+            disabled={locked || sending}
+            aria-pressed={direct.active}
+            aria-label="Type into terminal"
+            onClick={() => {
+              if (direct.active) {
+                direct.deactivate();
+                return;
+              }
+              // Close whatever dock is open first: the mode needs the phone keyboard, and a dock
+              // holding half the viewport is the thing in its way. Routed through requestDrawer so a
+              // staged key queue still gets its discard confirm (ADR 0005).
+              requestDrawer(null);
+              direct.activate();
+            }}
+          >
+            <Terminal className="size-4" />
+            Type
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-8 flex-1 gap-1.5", drawer === "quick" ? CONTROL_ON : CONTROL_OFF)}
             disabled={locked}
             aria-expanded={drawer === "quick"}
             onClick={() => requestDrawer(drawer === "quick" ? null : "quick")}
@@ -709,9 +781,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {/* Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view state, so a
               read-only device or a gone pane can still make its mirror readable. */}
           <Button
-            variant={drawer === "display" ? "secondary" : "ghost"}
+            variant="ghost"
             size="icon"
-            className="size-8 shrink-0 text-muted-foreground"
+            className={cn("size-8 shrink-0", drawer === "display" ? CONTROL_ON : CONTROL_OFF)}
             aria-label="Display settings"
             aria-expanded={drawer === "display"}
             onClick={() => requestDrawer(drawer === "display" ? null : "display")}
@@ -739,32 +811,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             A host named only in a header read once at the top of a scroll is not named where the
             mistake happens (milestone constraint). Renders nothing unless the pack has >1 machine. */}
         <HostChip host={writeHost} variant="target" className="mb-1 self-start" />
-        <div className="flex items-end gap-2">
-          {/* Attach image — messenger-style, left of the input, always available (previously buried
-              in the keyboard-only quick-key strip). preventDefault keeps the textarea focused so the
-              picker opens without the soft keyboard collapsing first. */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="rounded-full text-muted-foreground"
-            disabled={uploading || locked}
-            onPointerDown={(e) => e.preventDefault()}
-            onClick={() => fileRef.current?.click()}
-            aria-label="Attach image"
-          >
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
-          </Button>
+        {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
+            deliberately NOT only on the button and textarea — see the component. */}
+        {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
+        {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
+            field and Send, and the old spacing left them looking joined. */}
+        <div className="flex items-end gap-3">
+          {/* The input and its attach button share one box: the button is positioned INSIDE the
+              field, messenger-style, rather than sitting beside it as a third control in the row.
+              It used to occupy a full-height slot to the left, which spent the widest part of the
+              composer on the least-used action; inside the field it costs nothing but a strip of
+              padding the text was not using anyway. `pr-11` on the textarea reserves that strip so a
+              long line can never run underneath the icon. */}
+          <div className="relative min-w-0 flex-1">
           <ChatInput
             ref={inputRef}
-            value={input}
-            onChange={(e) => updateInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                onSendClick();
-              }
-            }}
+            value={direct.active ? direct.value : input}
+            onChange={direct.active ? direct.onChange : (e) => updateInput(e.target.value)}
+            onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
+            onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
+            onKeyDown={
+              direct.active
+                ? direct.onKeyDown
+                : (e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      onSendClick();
+                    }
+                  }
+            }
             onPaste={onPasteImage}
             placeholder={
               gone
@@ -775,14 +850,47 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     // answers and only one of them is about this device.
                     hostBlock
                     ? hostBlock
-                    : isShell
-                      ? "Type a shell command…"
-                      : "Type a reply…"
+                    : direct.active
+                      ? "Type into the terminal…"
+                      : isShell
+                        ? "Type a shell command…"
+                        : "Type a reply…"
             }
+            autoCorrect={direct.active ? "off" : undefined}
+            spellCheck={direct.active ? false : undefined}
+            className={cn(
+              // Room for the attach button tucked into the bottom-right of the field. `block`
+              // matters: a textarea is inline-level by default, so the wrapper inherits a few px of
+              // baseline gap beneath it and the absolutely-positioned button hangs past the field's
+              // bottom edge.
+              "block pr-11",
+              direct.active &&
+                "border-primary focus-visible:border-primary focus-visible:ring-primary/30",
+            )}
             disabled={locked}
             rows={1}
           />
-          {forcingSend ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              // bottom-1, not centred: the field grows upward as the draft wraps, and a vertically
+              // centred button would drift up with it, away from the thumb and away from the send
+              // button it pairs with. Pinned to the bottom it stays put at any height.
+              className="absolute bottom-1 right-1 size-9 rounded-full text-muted-foreground"
+              disabled={uploading || locked || direct.active}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => fileRef.current?.click()}
+              aria-label="Attach image"
+            >
+              {uploading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImagePlus className="size-4" />
+              )}
+            </Button>
+          </div>
+          {!direct.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the
             // submit key is still conditional on the verify step behind it.
@@ -795,7 +903,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               Type anyway?
             </Button>
-          ) : confirmingSend ? (
+          ) : !direct.active && confirmingSend ? (
             <Button
               variant="destructive"
               className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
@@ -809,11 +917,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <Button
               size="icon"
               className="size-11 shrink-0 rounded-full"
-              onClick={onSendClick}
-              disabled={locked || !input.trim() || sending}
-              aria-label="Send"
+              onClick={direct.active ? () => direct.deactivate() : onSendClick}
+              disabled={locked || sending}
+              aria-label={direct.active ? "Stop typing into terminal" : "Send"}
+              aria-pressed={direct.active}
             >
-              {sending ? (
+              {direct.active ? (
+                <Keyboard className="size-4" />
+              ) : sending ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : justSent ? (
                 <Check className="size-4" />

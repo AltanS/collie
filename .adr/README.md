@@ -24,6 +24,26 @@ signal is that you find yourself explaining *why not* rather than *how*.
 - ❌ "Use Vitest for the web suite" — that's just what the repo does; `CLAUDE.md` covers it
 - ❌ Anything already legible from the code, a test name, or a commit message
 
+**The bar is high, and it is meant to be.** These are for the handful of decisions that shape the
+system, not a record of work done. A merged PR is not an occasion for an ADR; neither is a decision
+that merely took some thought, nor one you'd like on the record because it was hard-won. If a
+directory of ADRs reads like a changelog, it has stopped being useful — the signal drowns, and the
+few entries that genuinely close off a road get skimmed past with the rest.
+
+Before adding one, both of these must be true:
+
+1. **Someone has actually argued for the other road, or demonstrably will.** A real PR, a real issue,
+   a proposal you had to talk someone out of. "A future contributor might wonder" is not enough — that
+   is what a comment is for.
+2. **The argument has nowhere better to live.** If it fits at the line that would change, put it
+   there: whoever reopens the question is reading that code, not this directory. An ADR is for
+   reasoning that spans files, or that argues against a road with no single line to attach to.
+
+When in doubt, don't. A comment at the point of change costs nothing and is read by exactly the
+person who needs it; an ADR that didn't need writing dilutes the ones that did. Two candidates were
+turned down on this basis in one day (bundled-font laziness, and the direct-typing lifecycle) — both
+became file-header comments, and both are better for it.
+
 ## Relationship to the other docs
 
 Nothing here restates what lives elsewhere; the point is the *reasoning*, once.
