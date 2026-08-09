@@ -5,6 +5,7 @@ import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, X, Zap } f
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
+import { useImmediateInput } from "@/hooks/use-immediate-input";
 import { setStatus } from "@/lib/status";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
@@ -228,6 +229,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const immediate = useImmediateInput({
+    paneKey: `${session ?? ""}\0${paneId}`,
+    inputRef,
+    replyDraft: input,
+    canActivate: () => !(locked || sending || uploading),
+    sendKeys: pressKeys,
+    onActivate: () => {
+      sendConfirm.reset();
+      forceConfirm.reset();
+    },
+    focusInput: focusInputEnd,
+  });
   const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What we last sent, and when — so we can recognise our OWN reply momentarily echoing on the "❯"
@@ -291,7 +304,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // is SAFE on its own — it lives on the "❯" line and its preview re-derives after a reload — so it
   // never holds. When held, the self-updater shows the "tap to update" banner instead and updates once
   // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
-  useHoldReload(`composer:${paneId}`, input.trim() !== "" || uploading);
+  useHoldReload(
+    `composer:${paneId}`,
+    input.trim() !== "" || immediate.active || immediate.value !== "" || immediate.busy || uploading,
+  );
 
   // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
   // this is the ONLY gate that waits for the 1.5s stability, so a blip or an in-flight send never
@@ -337,6 +353,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function takeOverDraft() {
     if (effectiveRaw === null) return;
     const draft = effectiveRaw;
+    immediate.deactivateSilently();
     updateInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
     setHandledKey(normalizeDraft(draft));
     setPreviewLatched(false);
@@ -524,6 +541,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
+    immediate.deactivateSilently();
     updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
   }
@@ -537,6 +555,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.uploadImage(paneId, file, session);
       if (res.ok) {
         const path = res.path;
+        immediate.deactivateSilently();
         updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
         setStatus("Image added — path in message", "success");
@@ -561,7 +580,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Only intercepts when the clipboard actually carries an image file — a plain text paste (the
   // common case) falls through untouched.
   function onPasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
-    if (locked) return;
+    if (locked || immediate.active) return;
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -709,7 +728,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             variant="ghost"
             size="icon"
             className="rounded-full text-muted-foreground"
-            disabled={uploading || locked}
+            disabled={uploading || locked || immediate.active}
             onPointerDown={(e) => e.preventDefault()}
             onClick={() => fileRef.current?.click()}
             aria-label="Attach image"
@@ -718,28 +737,43 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </Button>
           <ChatInput
             ref={inputRef}
-            value={input}
-            onChange={(e) => updateInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                onSendClick();
-              }
-            }}
+            value={immediate.active ? immediate.value : input}
+            onChange={immediate.active ? immediate.onChange : (e) => updateInput(e.target.value)}
+            onCompositionStart={immediate.active ? immediate.onCompositionStart : undefined}
+            onCompositionEnd={immediate.active ? immediate.onCompositionEnd : undefined}
+            onKeyDown={
+              immediate.active
+                ? immediate.onKeyDown
+                : (e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      onSendClick();
+                    }
+                  }
+            }
             onPaste={onPasteImage}
             placeholder={
               gone
                 ? "Pane is gone"
                 : readOnly
                   ? "Read-only — device not authorised"
-                  : isShell
-                    ? "Type a shell command…"
-                    : "Type a reply…"
+                  : immediate.active
+                    ? "Type keys to send immediately"
+                    : isShell
+                      ? "Type a shell command…"
+                      : "Type a reply…"
+            }
+            autoCorrect={immediate.active ? "off" : undefined}
+            spellCheck={immediate.active ? false : undefined}
+            className={
+              immediate.active
+                ? "border-primary focus-visible:border-primary focus-visible:ring-primary/30"
+                : undefined
             }
             disabled={locked}
             rows={1}
           />
-          {forcingSend ? (
+          {!immediate.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the
             // submit key is still conditional on the verify step behind it.
@@ -752,7 +786,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               Type anyway?
             </Button>
-          ) : confirmingSend ? (
+          ) : !immediate.active && confirmingSend ? (
             <Button
               variant="destructive"
               className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
@@ -764,13 +798,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           ) : (
             <Button
+              {...immediate.longPress}
               size="icon"
-              className="size-11 shrink-0 rounded-full"
-              onClick={onSendClick}
-              disabled={locked || !input.trim() || sending}
-              aria-label="Send"
+              className="size-11 shrink-0 select-none rounded-full [-webkit-touch-callout:none]"
+              onClick={immediate.active ? () => immediate.deactivate() : onSendClick}
+              // Keep the empty button pointer-active: holding that exact Send icon is how Immediate
+              // mode is entered. A plain empty tap remains a no-op through send().
+              disabled={locked || sending}
+              aria-label={
+                immediate.active
+                  ? "Exit immediate key mode"
+                  : locked || input.trim()
+                    ? "Send"
+                    : "Hold Send for immediate key mode"
+              }
+              aria-pressed={immediate.active}
+              title={
+                immediate.active ? "Immediate key mode — tap to exit" : "Hold for Immediate mode"
+              }
             >
-              {sending ? (
+              {immediate.active ? (
+                <Keyboard className="size-4" />
+              ) : sending ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : justSent ? (
                 <Check className="size-4" />

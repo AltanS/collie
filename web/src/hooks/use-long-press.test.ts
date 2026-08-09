@@ -10,6 +10,9 @@ const DELAY = 450;
 function down(x = 0, y = 0, button = 0): ReactPointerEvent {
   return { button, clientX: x, clientY: y } as unknown as ReactPointerEvent;
 }
+function pointerEndEvent(): ReactPointerEvent {
+  return { preventDefault: vi.fn() } as unknown as ReactPointerEvent;
+}
 function clickEvent(): ReactMouseEvent {
   return { preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as ReactMouseEvent;
 }
@@ -38,6 +41,25 @@ describe("useLongPress", () => {
     act(() => result.current.onPointerDown(down()));
     act(() => vi.advanceTimersByTime(DELAY - 1));
     expect(onLongPress).not.toHaveBeenCalled();
+  });
+
+  it("runs the completion callback from pointerup's trusted gesture after a fired hold", () => {
+    const onLongPress = vi.fn();
+    const onReleaseAfterLongPress = vi.fn();
+    const { result } = renderHook(() =>
+      useLongPress(onLongPress, { onReleaseAfterLongPress }),
+    );
+    act(() => result.current.onPointerDown(down()));
+    act(() => vi.advanceTimersByTime(DELAY));
+    expect(onReleaseAfterLongPress).not.toHaveBeenCalled();
+
+    const up = pointerEndEvent();
+    act(() => result.current.onPointerUp(up));
+    expect(up.preventDefault).toHaveBeenCalled();
+    expect(onReleaseAfterLongPress).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.onClickCapture(clickEvent()));
+    expect(onReleaseAfterLongPress).toHaveBeenCalledTimes(1);
   });
 
   it("cancels on pointerup before the delay (a normal tap)", () => {
@@ -125,13 +147,17 @@ describe("useLongPress", () => {
 
   // Android long-press / desktop right-click reach us as a `contextmenu` event, not (or not only) the
   // hold timer. These cover that trigger and its idempotency against the timer.
-  it("opens via contextmenu and prevents the native menu (Android long-press / right-click)", () => {
+  it("opens and completes via contextmenu (Android long-press / right-click)", () => {
     const onLongPress = vi.fn();
-    const { result } = renderHook(() => useLongPress(onLongPress));
+    const onReleaseAfterLongPress = vi.fn();
+    const { result } = renderHook(() =>
+      useLongPress(onLongPress, { onReleaseAfterLongPress }),
+    );
     const e = contextMenuEvent();
     act(() => result.current.onContextMenu(e));
     expect(e.preventDefault).toHaveBeenCalled();
     expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(onReleaseAfterLongPress).toHaveBeenCalledTimes(1);
   });
 
   it("opens via contextmenu even when a pointercancel already killed the hold timer", () => {

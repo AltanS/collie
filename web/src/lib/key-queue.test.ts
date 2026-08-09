@@ -7,6 +7,7 @@ import {
   modifierLabel,
   nextModMode,
   normalizeBaseChar,
+  textToKeySequence,
 } from "./key-queue";
 
 describe("composeKey", () => {
@@ -124,5 +125,28 @@ describe("normalizeBaseChar", () => {
     expect(normalizeBaseChar("")).toBeNull();
     expect(normalizeBaseChar(" ")).toBeNull();
     expect(normalizeBaseChar("\t")).toBeNull();
+  });
+});
+
+describe("textToKeySequence", () => {
+  it("preserves literal character order and case without adding Enter", () => {
+    expect(textToKeySequence("b")).toEqual(["b"]);
+    expect(textToKeySequence("Ab!")).toEqual(["A", "b", "!"]);
+  });
+
+  it("uses verified names for whitespace keys", () => {
+    expect(textToKeySequence("a b\tc\nd")).toEqual([
+      "a",
+      "Space",
+      "b",
+      "Tab",
+      "c",
+      "Enter",
+      "d",
+    ]);
+  });
+
+  it("normalises CRLF and CR to one explicit Enter each", () => {
+    expect(textToKeySequence("a\r\nb\rc")).toEqual(["a", "Enter", "b", "Enter", "c"]);
   });
 });
