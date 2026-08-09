@@ -224,10 +224,12 @@ export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
       {tab === "keys" ? (
         <>
           {/* Same physical-keyboard geometry as the composer's inline quick keys, for muscle memory:
-              Esc top-left, Tab directly below it, arrows as an inverted-T on the right. */}
+              Esc top-left, Tab directly below it, arrows as an inverted-T on the right. The Esc/Up
+              gap holds a quick Ctrl+C — the one interrupt chord worth a single tap, without opening
+              Presets (which still lists it alongside the other Ctrl chords for discoverability). */}
           <div className="grid grid-cols-4 gap-1.5">
             {navBtn("Esc", ["Escape"])}
-            <div aria-hidden />
+            {navBtn("C-c", ["ctrl+c"], "Ctrl+C")}
             {navBtn(<ArrowUp className="size-4" />, ["Up"], "Up", true)}
             {navBtn("⏎ Enter", ["Enter"])}
             {navBtn("Tab", ["Tab"])}
