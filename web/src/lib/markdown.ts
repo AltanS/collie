@@ -8,8 +8,12 @@
 // no dependency to a phone bundle that currently has seven.
 //
 // SCOPE. The subset agents actually emit: headings, fenced code, lists, blockquotes, rules,
-// paragraphs; inline bold/italic/code/links. Not GFM tables (they'd need real column layout on a
-// 400px screen — they render as literal text lines for now), not images, not HTML passthrough.
+// paragraphs, GFM tables; inline bold/italic/code/links. Not images, not HTML passthrough.
+//
+// FLAT BY DESIGN. Blocks don't nest: a table or a list inside a blockquote or a list item is read as
+// the outer block's text, so a quoted table still collapses into a run-on line. Closing that means a
+// recursive block parser, which is a different program from this one — and agents put tables at the
+// top level, where the collapse actually hurt (#72).
 //
 // TWO DELIBERATE OMISSIONS, both because this content is code-heavy:
 //  - `_underscore_` emphasis is NOT supported. It would mangle `snake_case_identifiers`, which
@@ -39,7 +43,14 @@ export type MdBlock =
   | { kind: "code"; lang: string; text: string }
   | { kind: "list"; ordered: boolean; items: MdSpan[][] }
   | { kind: "quote"; spans: MdSpan[] }
+  /**
+   * GFM table. `align` is one entry per column (null = unaligned), and every row is padded or
+   * truncated to that width so the renderer never has to reason about ragged input.
+   */
+  | { kind: "table"; align: MdAlign[]; header: MdSpan[][]; rows: MdSpan[][][] }
   | { kind: "rule" };
+
+export type MdAlign = "left" | "center" | "right" | null;
 
 // Only these schemes may become a real link. Everything else (javascript:, data:, vbscript:, or a
 // bare word) renders as plain text — a link is the one place this view could otherwise hand a URL
@@ -114,6 +125,73 @@ const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const UL_ITEM = /^\s*[-*+]\s+(.*)$/;
 const OL_ITEM = /^\s*\d+[.)]\s+(.*)$/;
 const QUOTE = /^\s*>\s?(.*)$/;
+
+// A table is recognised by its DELIMITER row, never by the header alone: a line of prose containing
+// a pipe is common, `| --- | :-: |` under it is not. Both spellings agents emit are accepted —
+// with outer pipes and without — but the row must carry at least one pipe, so a bare `---` stays a
+// horizontal rule, and every cell must be dashes (optionally colon-flanked), so `|---|:` is not one.
+const TABLE_DELIM = /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*(?::?-+:?\s*\|?)?\s*$/;
+
+/** Split one table row into raw cell strings. `\|` is an escaped pipe, not a column break. */
+function splitRow(line: string): string[] {
+  const cells: string[] = [];
+  let cur = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (ch === "\\" && line[i + 1] === "|") {
+      cur += "|";
+      i++;
+    } else if (ch === "|") {
+      cells.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  cells.push(cur);
+  // Outer pipes produce empty edge cells; they are punctuation, not columns.
+  if (cells.length > 1 && cells[0]!.trim() === "") cells.shift();
+  if (cells.length > 1 && cells[cells.length - 1]!.trim() === "") cells.pop();
+  return cells.map((c) => c.trim());
+}
+
+function parseAlign(line: string): MdAlign[] {
+  return splitRow(line).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return null;
+  });
+}
+
+/**
+ * Pad/truncate a BODY row to the header's width, so the renderer can assume a rectangle. Ragged body
+ * rows are legal GFM and agents emit them; a ragged delimiter row is not — see `startsTable`.
+ */
+function fitRow(line: string, width: number): MdSpan[][] {
+  const cells = splitRow(line)
+    .slice(0, width)
+    .map((cell) => parseInline(cell));
+  while (cells.length < width) cells.push([]);
+  return cells;
+}
+
+/**
+ * True when `line` opens a table — i.e. the line under it is a delimiter row of the SAME width.
+ *
+ * The width check is what GFM requires, and it is load-bearing here rather than pedantic: without
+ * it, any prose line containing a pipe that happens to sit above a dashed line becomes a table split
+ * at that pipe. Matching the spec keeps the false positives out.
+ *
+ * Two side doors remain, both rare enough to leave: a header that also parses as a list item
+ * (`1. Name | Value`) is claimed by the list branch, which runs first, and the body loop below takes
+ * any pipe-bearing line — so two tables with no blank line between them merge into one.
+ */
+const startsTable = (line: string, next: string | undefined) =>
+  line.includes("|") &&
+  next !== undefined &&
+  TABLE_DELIM.test(next) &&
+  splitRow(next).length === splitRow(line).length;
 
 /**
  * Parse Markdown into blocks. Pure — no React, no DOM — so the whole grammar is unit-testable and
@@ -190,6 +268,25 @@ export function parseMarkdown(source: string): MdBlock[] {
       continue;
     }
 
+    // Tables come last of the recognised blocks: every other construct wins a line that could be
+    // read as either, and a table is the only one that needs to look ahead.
+    if (startsTable(line, lines[i + 1])) {
+      const header = splitRow(line).map((cell) => parseInline(cell));
+      // Widths already match — `startsTable` refused the row otherwise — so the columns line up
+      // without padding either side.
+      const align = parseAlign(lines[i + 1]!);
+      i += 2;
+      const rows: MdSpan[][][] = [];
+      // The body runs until a blank line or anything that isn't a pipe row — a table that bumps
+      // into a heading or a fence ends there rather than swallowing it.
+      while (i < lines.length && lines[i]!.trim() !== "" && lines[i]!.includes("|")) {
+        rows.push(fitRow(lines[i]!, header.length));
+        i++;
+      }
+      blocks.push({ kind: "table", align, header, rows });
+      continue;
+    }
+
     // Paragraph: consecutive lines until a blank or a line that starts some other block. Joined with
     // a space, since a hard-wrapped paragraph should reflow to the phone's width, not keep its
     // source line breaks.
@@ -202,7 +299,8 @@ export function parseMarkdown(source: string): MdBlock[] {
         FENCE.test(l) ||
         RULE.test(l) ||
         QUOTE.test(l) ||
-        isItem(l)
+        isItem(l) ||
+        startsTable(l, lines[i + 1])
       )
         break;
       para.push(l.trim());
