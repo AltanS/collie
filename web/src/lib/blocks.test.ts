@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi, type AnsiSegment } from "./ansi";
 import { lineText, splitLines, type StyledLine } from "./blocks";
 import { buildBlocks } from "./harness";
-import { isHorizontalRule } from "./harness/claude/markers";
+import { isBoxBorder, isHorizontalRule } from "./harness/claude/markers";
 
 // Anchored on this file's directory (not `new URL(import.meta.url)`, which Vite rewrites to an asset).
 const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
@@ -130,9 +130,19 @@ describe("splitLines — no-wrap terminal borders", () => {
     expect(joinLines([ansi])).toBe(border);
   });
 
-  it("requires the conservative 20-glyph border threshold", () => {
+  it("clips at twenty glyphs and not below", () => {
     expect(splitLines(parseAnsi("─".repeat(19)))[0]!.noWrap).toBeUndefined();
     expect(splitLines(parseAnsi("─".repeat(20)))[0]!.noWrap).toBe(true);
+  });
+
+  // The clip rule and the input-box grammar both call a line a "border", for different consumers
+  // (see rule-glyphs.ts). A labelled border is the case where they must visibly disagree: the guard
+  // has to recognise it, and clipping it would crop the session label out of view. Pinned across
+  // both modules so a future edit to either cannot quietly align them.
+  it("never clips a labelled input-box border the guard depends on", () => {
+    const labelled = `${"─".repeat(20)} japanese technical troubleshooting ${"─".repeat(2)}`;
+    expect(isBoxBorder(labelled)).toBe(true);
+    expect(splitLines(parseAnsi(labelled))[0]!.noWrap).toBeUndefined();
   });
 
   it.each([
