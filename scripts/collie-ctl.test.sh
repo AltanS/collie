@@ -4,6 +4,29 @@
 # throwaway $HOME and config dir, so these run anywhere and touch nothing real.
 set -euo pipefail
 
+# "Touch nothing real" has to include the CALLER'S OWN REPOSITORY, and that took a corrupted
+# checkout to notice. Git exports `GIT_DIR` (and friends) into every hook it runs, and a hook is
+# exactly where this suite runs — pre-push. An exported `GIT_DIR` overrides discovery for every git
+# command in the process tree, `-C` included, so `git -C "$sandbox" init` does not create a sandbox
+# repo at all: it silently RE-INITIALISES the caller's repo. From a linked worktree, where `GIT_DIR`
+# points at `.git/worktrees/<name>` and there is no work tree to infer, that re-init writes
+# `bare = true` into the shared config — and the developer's checkout stops working entirely
+# ("fatal: this operation must be run in a work tree") until someone finds it by hand.
+#
+# So the suite starts by dropping every inherited git variable. `${!GIT_@}` is every name beginning
+# `GIT_`, which is deliberately broader than the two that cause this: GIT_INDEX_FILE, GIT_CONFIG*,
+# GIT_OBJECT_DIRECTORY and the rest leak state just as happily, and this suite wants none of them.
+unset "${!GIT_@}" 2>/dev/null || true
+
+# Probe mode for the regression test at the bottom, which re-enters this script with a hostile
+# `GIT_DIR` exported. It has to run the REAL line above rather than a copy of the idiom — a guard
+# that is only tested through a duplicate of itself is not tested at all — so the probe sits here,
+# immediately after it, and does the one thing that used to reach out and wreck the caller's repo.
+if [ -n "${COLLIE_HERMETIC_PROBE:-}" ]; then
+  git -C "$COLLIE_HERMETIC_PROBE" init -q
+  exit 0
+fi
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CTL="${ROOT}/scripts/collie-ctl.sh"
 BASE_PATH="$PATH"
@@ -655,7 +678,13 @@ EOF
 # remote-tracking refs. `git pull --ff-only` cannot work there ("You are not currently on a branch"),
 # which is issue #63 — the turnkey install could never self-update. These stage both shapes for real,
 # against a local origin, and drive the actual git logic.
-git_q() { git -c user.name=collie-test -c user.email=test@example.invalid "$@"; }
+# `core.hooksPath=/dev/null` because these sandboxes make real commits: a developer who set
+# `core.hooksPath` globally (Collie's own install-hooks.sh sets it per-repo, but not everyone's does)
+# would otherwise have this repo's pre-commit fire inside a scratch repo that has no
+# scripts/check-version.sh, failing the suite for a reason that has nothing to do with the test.
+git_q() {
+  git -c user.name=collie-test -c user.email=test@example.invalid -c core.hooksPath=/dev/null "$@"
+}
 
 # A local origin plus the two checkout shapes. Echoes nothing; sets ORIGIN_DIR.
 stage_origin() {
@@ -788,6 +817,36 @@ EOF
   assert_contains "$(cat "$calls")" "plugin link ${clone}"
 }
 
+# The suite must not damage the repository it is run FROM. Git hands every hook a `GIT_DIR`, this
+# suite runs from pre-push, and an exported `GIT_DIR` beats `-C` for every git command in the tree —
+# so `git -C "$sandbox" init` re-initialised the caller's repo instead. From a linked worktree that
+# wrote `bare = true` into the shared config and left the developer's checkout unusable. Stage the
+# exact shape (a repo with a linked worktree) and re-enter the suite pointed at it.
+test_suite_ignores_an_inherited_git_dir() {
+  setup_case hermetic
+  local victim="${CASE_DIR}/victim" probe="${CASE_DIR}/probe"
+  mkdir -p "$victim" "$probe"
+  git_q -C "$victim" init -q -b main
+  echo "x" > "${victim}/f"
+  git_q -C "$victim" add -A
+  git_q -C "$victim" commit -qm first
+  git_q -C "$victim" worktree add -q "${CASE_DIR}/victim-wt" -b side
+
+  COLLIE_HERMETIC_PROBE="$probe" \
+    GIT_DIR="${victim}/.git/worktrees/victim-wt" \
+    GIT_INDEX_FILE="${victim}/.git/worktrees/victim-wt/index" \
+    bash "${ROOT}/scripts/collie-ctl.test.sh"
+
+  # The init landed where it was aimed…
+  [ -d "${probe}/.git" ] || fail "an inherited GIT_DIR redirected \`git -C … init\` away from its target"
+  # …and the caller's repo is untouched. `git init` writes `bare = false`, so `false` is the healthy
+  # baseline here; the corruption flipped it to `true`.
+  assert_eq "$(git -C "$victim" config --get core.bare)" "false"
+  git -C "$victim" status --porcelain > /dev/null 2>&1 ||
+    fail "the suite corrupted the repository it was run from"
+}
+
+test_suite_ignores_an_inherited_git_dir
 test_tailscale_cutovers_and_collisions
 test_missing_tailscale_cli
 test_state_delete_failures
