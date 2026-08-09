@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.26.0] - 2026-08-08
+
+### Added
+
+- **Hold Send to type straight into the terminal** — Immediate mode routes the phone keyboard through ordered key batches with no appended Enter, stays armed through keyboard dismissal, resets on a pane switch, and stops on a transport failure (#74, 4f5a253)
+
 ## [0.25.0] - 2026-08-07
 
 ### Added
