@@ -171,8 +171,19 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
 
 // A terminal-width horizontal border is visually useless when browser wrapping turns it into several rows.
 // This deliberately accepts only one repeated horizontal rule glyph (apart from terminal padding): labels,
-// mixed rows, corners/tables, prose, and ASCII rules keep the mirror's ordinary wrapping. Twenty glyphs
-// matches the conservative box-border safety threshold used by the terminal grammars.
+// mixed rows, corners/tables, prose, and ASCII rules keep the mirror's ordinary wrapping.
+//
+// Twenty stands on two facts of its own, and deliberately cites no other threshold. (1) Nothing in prose,
+// markdown or code runs to twenty IDENTICAL rule glyphs, so the classifier cannot fire on real content.
+// (2) Below roughly twenty columns a row already fits the narrowest mirror without wrapping, so clipping
+// it would buy nothing — the only rows worth clipping are the ones wide enough to wrap.
+//
+// An earlier revision derived this number from the Claude grammar's own 20-glyph box-border run. That run
+// no longer exists: it was a hidden assumption that the pane is at least twenty columns wide, which is
+// exactly what stalled the reply guard on a 19-column pane (issue #76), and markers.ts replaced it with a
+// display-cell floor. Do not re-couple the two. They classify borders for different consumers with
+// opposite failure costs — a false positive there types Enter into the wrong screen, a false positive here
+// crops a short rule — so they share the glyph alphabet in rule-glyphs.ts and nothing else.
 const MIN_NO_WRAP_BORDER_LENGTH = 20;
 const PURE_HORIZONTAL_BORDER = new RegExp(
   `^([${PURE_HORIZONTAL_RULE_GLYPH_CLASS}])\\1{${MIN_NO_WRAP_BORDER_LENGTH - 1},}$`,

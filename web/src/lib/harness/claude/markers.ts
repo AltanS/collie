@@ -51,7 +51,7 @@ const LABELLED_BORDER = /^─{2,}\s+(.+)\s+─{2,}$/;
 
 // The generic rule-glyph class (same one isHorizontalRule tests) plus whitespace — used ONLY to
 // reject a LABELLED_BORDER match whose "label" turns out to be more rule glyphs/spaces, not prose.
-const RULE_OR_SPACE_ONLY = /^[─-╿▁-▔‒-―\s]*$/;
+const RULE_OR_SPACE_ONLY = new RegExp(`^[${CLAUDE_RULE_GLYPH_CLASS}\\s]*$`);
 
 // Both LABELLED_BORDER above and LOOSE_LABELLED_BORDER below are additionally required (in
 // isBoxBorder / isInputBoxTopBorder) to have a total DISPLAY WIDTH >= BARE_BORDER_MIN — the SAME
