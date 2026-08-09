@@ -1,7 +1,7 @@
-// Pure model for the nav-tray key queue: compose a set of modifiers onto a base key, label a key
-// for a chip, flag danger keys, cycle a modifier's three-state mode, and normalise the one-char key
-// input. No React, no I/O — every string this produces is what goes on the wire to Herdr's
-// `pane.send_keys` (see HERDR_API.md).
+// Pure model for the nav-tray key queue and the composer's immediate-input mode: compose a set of
+// modifiers onto a base key, turn typed text into ordered Herdr keys, label keys for chips, flag
+// danger keys, cycle modifier state, and normalise the one-char chord input. No React, no I/O —
+// every string this produces is what goes on the wire to Herdr's `pane.send_keys`.
 
 // The modifiers Collie surfaces in the tray. Multi-modifier chords in ANY order — `ctrl+shift+p`,
 // the triple `ctrl+alt+shift+p`, `alt+Up` — are now LIVE-VERIFIED against Herdr (0.7.3 sandbox +
@@ -108,4 +108,17 @@ export function normalizeBaseChar(raw: string): string | null {
   const code = ch.charCodeAt(0);
   if (code < 0x21 || code > 0x7e) return null;
   return ch.toLowerCase();
+}
+
+// Turn text committed by a phone keyboard into one ordered `pane.send_keys` array. Ordinary
+// characters stay literal and case-preserving; whitespace whose literal wire behaviour is not
+// verified uses Herdr's named keys. A newline the user explicitly typed becomes Enter, but no
+// trailing Enter is ever added. Normalise pasted CRLF/CR first so one visual line break is one key.
+export function textToKeySequence(text: string): string[] {
+  return Array.from(text.replace(/\r\n?/g, "\n"), (char) => {
+    if (char === " ") return "Space";
+    if (char === "\t") return "Tab";
+    if (char === "\n") return "Enter";
+    return char;
+  });
 }
