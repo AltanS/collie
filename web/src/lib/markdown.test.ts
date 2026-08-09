@@ -214,6 +214,95 @@ describe("parseMarkdown", () => {
     ]);
   });
 
+  // Regression (#72): with no table branch, rows fell through to the paragraph branch, which joins
+  // lines with a space — a table arrived as one run-on line, the one unsupported construct that
+  // degraded into something unreadable rather than merely unformatted.
+  describe("tables", () => {
+    const text = (s: string) => ({ kind: "text", text: s });
+
+    it("parses the pipe-delimited form", () => {
+      const src = ["| Option | Cost |", "| --- | --- |", "| A | low |", "| B | high |"].join("\n");
+      expect(parseMarkdown(src)).toEqual([
+        {
+          kind: "table",
+          align: [null, null],
+          header: [[text("Option")], [text("Cost")]],
+          rows: [
+            [[text("A")], [text("low")]],
+            [[text("B")], [text("high")]],
+          ],
+        },
+      ]);
+    });
+
+    it("parses the form without outer pipes", () => {
+      const src = ["Option | Cost", "--- | ---", "A | low"].join("\n");
+      expect(parseMarkdown(src)).toEqual([
+        {
+          kind: "table",
+          align: [null, null],
+          header: [[text("Option")], [text("Cost")]],
+          rows: [[[text("A")], [text("low")]]],
+        },
+      ]);
+    });
+
+    it("reads column alignment off the delimiter row", () => {
+      const src = ["| l | c | r | n |", "| :-- | :-: | --: | --- |", "| 1 | 2 | 3 | 4 |"].join("\n");
+      const [table] = parseMarkdown(src);
+      expect(table).toMatchObject({ kind: "table", align: ["left", "center", "right", null] });
+    });
+
+    it("inline-parses cells", () => {
+      const src = ["| Flag | Default |", "|------|---------|", "| `--wrap` | **on** |"].join("\n");
+      const [table] = parseMarkdown(src);
+      expect(table).toMatchObject({
+        rows: [[[{ kind: "code", text: "--wrap" }], [{ kind: "bold", spans: [text("on")] }]]],
+      });
+    });
+
+    it("squares off ragged rows against the header", () => {
+      const src = ["| a | b |", "| --- | --- |", "| 1 |", "| 1 | 2 | 3 |"].join("\n");
+      const [table] = parseMarkdown(src);
+      expect(table).toMatchObject({
+        rows: [
+          [[text("1")], []],
+          [[text("1")], [text("2")]],
+        ],
+      });
+    });
+
+    it("treats an escaped pipe as a cell character, not a column break", () => {
+      const src = ["| a | b |", "| --- | --- |", "| x \\| y | z |"].join("\n");
+      const [table] = parseMarkdown(src);
+      expect(table).toMatchObject({ rows: [[[text("x | y")], [text("z")]]] });
+    });
+
+    // The delimiter row is the whole signal: a bare `---` is still a rule, and a paragraph that
+    // happens to contain a pipe is still a paragraph.
+    it("does not eat prose that merely contains a pipe", () => {
+      expect(parseMarkdown("run a | b\nthen c").map((b) => b.kind)).toEqual(["paragraph"]);
+      expect(parseMarkdown("---").map((b) => b.kind)).toEqual(["rule"]);
+    });
+
+    // GFM's own rule, and load-bearing rather than pedantic: without it any prose line holding a
+    // pipe, above any dashed line, becomes a two-column table split at that pipe.
+    it("refuses a delimiter row that doesn't match the header's width", () => {
+      const src = ["a | b | c", "--- | ---", "1 | 2 | 3"].join("\n");
+      expect(parseMarkdown(src).map((b) => b.kind)).toEqual(["paragraph"]);
+    });
+
+    it("refuses a delimiter cell that isn't dashes", () => {
+      expect(parseMarkdown("a | b\n--- | x").map((b) => b.kind)).toEqual(["paragraph"]);
+      expect(parseMarkdown("a | b\n--- | :").map((b) => b.kind)).toEqual(["paragraph"]);
+    });
+
+    it("ends the table at a blank line and starts after a paragraph", () => {
+      const src = ["intro", "| a |", "| --- |", "| 1 |", "", "after"].join("\n");
+      expect(parseMarkdown(src).map((b) => b.kind)).toEqual(["paragraph", "table", "paragraph"]);
+    });
+  });
+
   it("empty input yields no blocks", () => {
     expect(parseMarkdown("")).toEqual([]);
     expect(parseMarkdown("\n\n  \n")).toEqual([]);
