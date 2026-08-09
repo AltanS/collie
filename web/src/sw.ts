@@ -4,7 +4,7 @@ import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
 import { decidePush, type PushPayload } from "./lib/push-decision";
-import { NAVIGATION_NETWORK_ONLY } from "./lib/sw-routes";
+import { FONT_URLS, NAVIGATION_NETWORK_ONLY } from "./lib/sw-routes";
 
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
 // Workbox SW did — precache the app shell + SPA-fallback navigations — PLUS the two handlers a
@@ -32,6 +32,55 @@ registerRoute(
     denylist: [...NAVIGATION_NETWORK_ONLY],
   }),
 );
+
+// The bundled Nerd Font faces are out of the precache on purpose — `unicode-range` keeps them lazy,
+// and ~1.1 MB is not something to charge an install for (vite.config.ts, index.css). Cache-first on
+// first use gives them back offline. Hand-rolled rather than workbox-strategies: the SW bundle stays
+// at one dependency. Entries are never revised — the version is in the filename, so a regenerated
+// subset is a different URL and old entries are swept on activate, not overwritten.
+//
+// The cost, stated plainly: a device that installs the PWA and goes offline without ever painting a
+// Nerd Font glyph shows tofu until it is online once. Precaching would fix that by charging EVERY
+// install ~1.1 MB, including the installs that never need a glyph — the wrong way round.
+const FONT_CACHE = "collie-fonts";
+
+// WHAT MAY BE STORED. This cache is permanent, so a wrong entry is permanent too — the same shape as
+// the 401ing proxy that once froze an installed SW, one layer down. A fronting proxy with an expired
+// session answers a subresource with 302 → 200 sign-in HTML, and `response.ok` is true for that: the
+// login page would be cached AS the font, tofu forever with no recovery but clearing site data. So a
+// response must be an unredirected 200 that actually claims to be a font. (Bare `.ok` also admits
+// 206, which `cache.put` rejects outright.)
+const storable = (r: Response) =>
+  r.status === 200 && !r.redirected && (r.headers.get("content-type") ?? "").includes("font");
+
+registerRoute(
+  ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/fonts/"),
+  async ({ request }) => {
+    const cache = await caches.open(FONT_CACHE);
+    const hit = await cache.match(request);
+    if (hit) return hit;
+    const response = await fetch(request);
+    // Writing is best-effort and off the response path: a full quota or a storage error costs the
+    // glyphs on the next load, never this one.
+    if (storable(response)) void cache.put(request, response.clone()).catch(() => null);
+    return response;
+  },
+);
+
+// A font version bump changes the filename, so the superseded entry would otherwise sit in storage
+// forever. Sweep anything the current build doesn't name — the precache manifest is workbox's job,
+// this cache is ours.
+self.addEventListener("activate", (event: ExtendableEvent) => {
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(FONT_CACHE);
+      const live = new Set<string>(FONT_URLS);
+      for (const req of await cache.keys()) {
+        if (!live.has(new URL(req.url).pathname)) await cache.delete(req);
+      }
+    })(),
+  );
+});
 
 // `registerType: "autoUpdate"` means a fresh build should take over without a user gesture. With
 // injectManifest we own that lifecycle: skip the waiting phase on install, claim open clients on
