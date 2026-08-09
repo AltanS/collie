@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
   ChangeEvent,
   KeyboardEvent as ReactKeyboardEvent,
@@ -104,7 +104,12 @@ export function useImmediateInput({
   // A normal tap keeps the Send button's existing meaning. Holding toggles Immediate mode;
   // useLongPress suppresses the synthesized click after the hold, including Android's contextmenu.
   const longPressAction = active ? deactivate : activate;
-  const longPress = useLongPress(canActivate() ? longPressAction : undefined);
+  const focusAfterLongPress = useCallback(() => {
+    inputRef.current?.focus();
+  }, [inputRef]);
+  const longPress = useLongPress(canActivate() ? longPressAction : undefined, {
+    onReleaseAfterLongPress: focusAfterLongPress,
+  });
 
   // Direct input never crosses a pane boundary. Reset also invalidates keys accumulated behind an
   // in-flight call; the call already on the wire captured the old pane and cannot be recalled.

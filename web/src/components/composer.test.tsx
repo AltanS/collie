@@ -271,6 +271,26 @@ describe("Composer — Immediate key mode", () => {
     expect(activateImmediateMode()).toHaveFocus();
   });
 
+  it("re-focuses from pointerup after the hold timer so mobile browsers open the keyboard", () => {
+    vi.useFakeTimers();
+    try {
+      renderComposer();
+      const button = screen.getByRole("button", { name: /hold send for immediate/i });
+      fireEvent.pointerDown(button, { button: 0, clientX: 10, clientY: 10 });
+      act(() => vi.advanceTimersByTime(450));
+      const box = screen.getByPlaceholderText(/immediate — keys send as you type/i);
+
+      act(() => box.blur());
+      expect(box).not.toHaveFocus();
+      fireEvent.pointerUp(button, { button: 0, clientX: 10, clientY: 10 });
+
+      expect(box).toHaveFocus();
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
     const keyCalls: string[][] = [];
     let replyCalls = 0;
