@@ -328,10 +328,15 @@ export const AnsiOutput = memo(function AnsiOutput({
               </span>
             );
           });
+          const content = line.noWrap && wrap ? (
+            <span className="inline-block max-w-full overflow-hidden align-bottom whitespace-pre break-normal">{segNodes}</span>
+          ) : (
+            segNodes
+          );
           return (
             <Fragment key={li}>
               {li > 0 ? "\n" : null}
-              {segNodes}
+              {content}
             </Fragment>
           );
         })}

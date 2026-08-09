@@ -5,6 +5,7 @@
 // separate styled segments). Pure functions, no I/O, no React.
 
 import { isBlank, lineText } from "../../blocks";
+import { CLAUDE_RULE_GLYPH_CLASS } from "../../rule-glyphs";
 import { displayWidth } from "../../text-width";
 import type { PromptFamily } from "../prompt-model";
 
@@ -17,7 +18,7 @@ export { isBlank, lineText };
 // includes the dashed forms ╌ ╍ ┄ ┅ …), the block eighths used as rules (U+2581–U+2594, e.g. ▁ ▔),
 // and the figure/en/em/horizontal-bar dashes (U+2012–U+2015). ASCII `-`/`=` are deliberately
 // excluded so markdown and code rules in real agent output aren't mistaken for TUI separators.
-const RULE_ONLY = /^[─-╿▁-▔‒-―]+$/;
+const RULE_ONLY = new RegExp(`^[${CLAUDE_RULE_GLYPH_CLASS}]+$`);
 
 /** True when the whole line is a horizontal rule / separator (ignoring surrounding spaces). */
 export function isHorizontalRule(text: string): boolean {
@@ -50,7 +51,7 @@ const LABELLED_BORDER = /^─{2,}\s+(.+)\s+─{2,}$/;
 
 // The generic rule-glyph class (same one isHorizontalRule tests) plus whitespace — used ONLY to
 // reject a LABELLED_BORDER match whose "label" turns out to be more rule glyphs/spaces, not prose.
-const RULE_OR_SPACE_ONLY = /^[─-╿▁-▔‒-―\s]*$/;
+const RULE_OR_SPACE_ONLY = new RegExp(`^[${CLAUDE_RULE_GLYPH_CLASS}\\s]*$`);
 
 // Both LABELLED_BORDER above and LOOSE_LABELLED_BORDER below are additionally required (in
 // isBoxBorder / isInputBoxTopBorder) to have a total DISPLAY WIDTH >= BARE_BORDER_MIN — the SAME

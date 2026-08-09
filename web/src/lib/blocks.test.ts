@@ -3,8 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi, type AnsiSegment } from "./ansi";
-import { splitLines, type StyledLine } from "./blocks";
+import { lineText, splitLines, type StyledLine } from "./blocks";
 import { buildBlocks } from "./harness";
+import { isBoxBorder, isHorizontalRule } from "./harness/claude/markers";
 
 // Anchored on this file's directory (not `new URL(import.meta.url)`, which Vite rewrites to an asset).
 const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
@@ -101,6 +102,64 @@ describe("splitLines — exact text preservation", () => {
   });
 });
 
+describe("splitLines — no-wrap terminal borders", () => {
+  // This is the complete horizontal subset of the established Claude rule contract. Keep it
+  // independent from the clipping classifier so adding a Claude-accepted horizontal glyph cannot
+  // silently leave it wrapping. Corners, junctions, and vertical box drawing are deliberately absent.
+  const pureHorizontalRuleGlyphs = [
+    ..."─━┄┅┈┉╌╍═╴╶╸╺╼╾",
+    ...Array.from({ length: 0x2594 - 0x2581 + 1 }, (_, i) => String.fromCodePoint(0x2581 + i)),
+    ..."‒–—―",
+  ];
+
+  it("clips every established pure horizontal rule glyph only at the long-border threshold", () => {
+    for (const glyph of pureHorizontalRuleGlyphs) {
+      // Claude recognizes rules at three glyphs; visual clipping remains intentionally stricter.
+      expect(isHorizontalRule(glyph.repeat(3)), glyph).toBe(true);
+      expect(splitLines(parseAnsi(glyph.repeat(19)))[0]!.noWrap, glyph).toBeUndefined();
+      expect(splitLines(parseAnsi(glyph.repeat(20)))[0]!.noWrap, glyph).toBe(true);
+    }
+  });
+
+  it("marks an ANSI-segmented border", () => {
+    const border = "─".repeat(20);
+    const ansi = splitLines(parseAnsi(`${ESC}[31m${border.slice(0, 10)}${ESC}[34m${border.slice(10)}${ESC}[0m`))[0]!;
+
+    expect(ansi.noWrap).toBe(true);
+    expect(ansi.segments).toHaveLength(2);
+    expect(joinLines([ansi])).toBe(border);
+  });
+
+  it("clips at twenty glyphs and not below", () => {
+    expect(splitLines(parseAnsi("─".repeat(19)))[0]!.noWrap).toBeUndefined();
+    expect(splitLines(parseAnsi("─".repeat(20)))[0]!.noWrap).toBe(true);
+  });
+
+  // The clip rule and the input-box grammar both call a line a "border", for different consumers
+  // (see rule-glyphs.ts). A labelled border is the case where they must visibly disagree: the guard
+  // has to recognise it, and clipping it would crop the session label out of view. Pinned across
+  // both modules so a future edit to either cannot quietly align them.
+  it("never clips a labelled input-box border the guard depends on", () => {
+    const labelled = `${"─".repeat(20)} japanese technical troubleshooting ${"─".repeat(2)}`;
+    expect(isBoxBorder(labelled)).toBe(true);
+    expect(splitLines(parseAnsi(labelled))[0]!.noWrap).toBeUndefined();
+  });
+
+  it.each([
+    ["short Unicode rule", "─".repeat(19)],
+    ["ASCII rule", "-".repeat(40)],
+    ["labeled border", `${"─".repeat(20)} Pi ${"─".repeat(20)}`],
+    ["mixed rule row", "─".repeat(19) + "╌"],
+    ["mixed content", `${"─".repeat(20)}x`],
+    ["corner row", "┌".repeat(40)],
+    ["vertical row", "│".repeat(40)],
+    ["table edge", `┌${"─".repeat(40)}┐`],
+    ["prose", "This ordinary prose should retain its normal wrapping behavior."],
+  ])("does not mark %s", (_name, text) => {
+    expect(splitLines(parseAnsi(text))[0]!.noWrap).toBeUndefined();
+  });
+});
+
 describe("splitLines — round-trips the parser's visible text (find coordinate space)", () => {
   const cases = [
     "hello world",
@@ -153,6 +212,16 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(prompt.prompt.family).toBe("select");
     expect(prompt.prompt.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Chat about this"]);
     expect(blockText(prompt.lines)).toContain("Enter to select"); // the replaced footer lives here
+  });
+
+  it("keeps the plan fixture's long dashed separators as clipped raw rows", () => {
+    const blocks = buildBlocks(fixtureLines("claude--plan-approval.txt"), { agent: "claude" });
+    const raw = blocks[0]!;
+    if (raw.kind !== "raw") throw new Error("expected raw scrollback before the plan prompt");
+
+    const dashedRules = raw.lines.filter((line) => lineText(line).trim().startsWith("╌"));
+    expect(dashedRules).toHaveLength(2);
+    expect(dashedRules.every((line) => line.noWrap)).toBe(true);
   });
 
   it("strips trailing input-box chrome when there is no menu (single raw block)", () => {
