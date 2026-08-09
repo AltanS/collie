@@ -6,6 +6,8 @@
 
 import type { CSSProperties } from "react";
 
+import { BOX_DRAWING_RULE_GLYPH_CLASS, UNICODE_DASH_RULE_GLYPH_CLASS } from "./rule-glyphs";
+
 export interface AnsiSegment {
   text: string;
   // Raw SGR fields — preserved for testing/inspection and external consumers.
@@ -110,7 +112,7 @@ function applySgr(state: State, codes: number[]): void {
 // A segment that's nothing but box-drawing / horizontal-rule glyphs (ignoring spaces) — i.e. a TUI
 // border or separator, not real content. Conservative on purpose: only Unicode box-drawing and
 // dashes count (not ASCII `-`/`=`), so code and markdown rules in real output stay untouched.
-const RULE_GLYPHS = /^[─-╿‒-―]+$/;
+const RULE_GLYPHS = new RegExp(`^[${BOX_DRAWING_RULE_GLYPH_CLASS}${UNICODE_DASH_RULE_GLYPH_CLASS}]+$`);
 function checkMuted(text: string): boolean {
   const compact = text.replace(/\s+/g, "");
   return compact.length >= 2 && RULE_GLYPHS.test(compact);
