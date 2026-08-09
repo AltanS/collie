@@ -259,6 +259,151 @@ describe("Composer — send", () => {
   });
 });
 
+describe("Composer — Immediate key mode", () => {
+  function activateImmediateMode() {
+    fireEvent.contextMenu(screen.getByRole("button", { name: /hold send for immediate/i }));
+    return screen.getByPlaceholderText(/immediate — keys send as you type/i);
+  }
+
+  it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
+    const keyCalls: string[][] = [];
+    let replyCalls = 0;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        keyCalls.push(((await request.json()) as { keys: string[] }).keys);
+        return HttpResponse.json({ ok: true });
+      }),
+      replyHandler(() => replyCalls++),
+    );
+    renderComposerWithStatus({ dialogPresent: true });
+
+    const box = activateImmediateMode();
+    expect(screen.getByRole("button", { name: /exit immediate key mode/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.change(box, { target: { value: "b a" } });
+
+    await waitFor(() => expect(keyCalls).toEqual([["b", "Space", "a"]]));
+    expect(keyCalls.flat()).not.toContain("Enter");
+    expect(replyCalls).toBe(0);
+    expect(box).toHaveValue("");
+    expect(screen.getByTestId("status")).toHaveTextContent(/immediate mode on/i);
+  });
+
+  it("sends terminal keys that do not change the textarea value", async () => {
+    const keyCalls: string[][] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        keyCalls.push(((await request.json()) as { keys: string[] }).keys);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer();
+    const box = activateImmediateMode();
+
+    fireEvent.keyDown(box, { key: "Backspace" });
+    await waitFor(() => expect(keyCalls).toEqual([["Backspace"]]));
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(keyCalls).toEqual([["Backspace"], ["Enter"]]));
+
+    // Android can omit keydown for its virtual Backspace and expose only beforeinput.
+    fireEvent(
+      box,
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "deleteContentBackward",
+      }),
+    );
+    await waitFor(() =>
+      expect(keyCalls).toEqual([["Backspace"], ["Enter"], ["Backspace"]]),
+    );
+  });
+
+  it("exits on a tap of the highlighted keyboard button", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    const box = activateImmediateMode();
+
+    fireEvent.blur(box); // dismissing the Android keyboard does not silently disarm the mode
+    expect(screen.getByPlaceholderText(/immediate/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /exit immediate key mode/i }));
+
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /hold send for immediate/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("stops Immediate mode when a key batch is refused", async () => {
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () =>
+        HttpResponse.json({ ok: false, error: "pane unavailable" }, { status: 500 }),
+      ),
+    );
+    renderComposerWithStatus();
+    const box = activateImmediateMode();
+
+    fireEvent.change(box, { target: { value: "b" } });
+
+    const replyBox = await screen.findByPlaceholderText(/type a reply/i);
+    await waitFor(() => expect(replyBox).not.toHaveFocus());
+    expect(screen.getByTestId("status")).toHaveTextContent(/pane unavailable/i);
+  });
+
+  it("refuses activation while a buffered reply exists", async () => {
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "keep this draft");
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("keep this draft");
+    expect(screen.queryByPlaceholderText(/immediate/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("status")).toHaveTextContent(/send or clear the draft/i);
+  });
+
+  it("resets when the composer changes panes", () => {
+    function Harness() {
+      const [paneId, setPaneId] = useState("w1:p1");
+      return (
+        <>
+          <button type="button" onClick={() => setPaneId("w1:p2")}>
+            Switch pane
+          </button>
+          <Composer
+            paneId={paneId}
+            agent="claude"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={false}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            onSent={vi.fn()}
+          />
+        </>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    activateImmediateMode();
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch pane" }));
+
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/immediate/i)).not.toBeInTheDocument();
+  });
+});
+
 // .adr/0009: a modal that owns the keyboard has no input box, so the reply path's PRE-FLIGHT refuses
 // before typing anything. The composer's job is to keep the draft, say why, and offer one deliberate
 // override — which still runs the type-then-verify guard behind it.
