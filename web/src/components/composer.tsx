@@ -756,7 +756,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 : readOnly
                   ? "Read-only — device not authorised"
                   : immediate.active
-                    ? "Immediate — keys send as you type"
+                    ? "Type keys…"
                     : isShell
                       ? "Type a shell command…"
                       : "Type a reply…"

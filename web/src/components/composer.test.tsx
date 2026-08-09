@@ -262,7 +262,7 @@ describe("Composer — send", () => {
 describe("Composer — Immediate key mode", () => {
   function activateImmediateMode() {
     fireEvent.contextMenu(screen.getByRole("button", { name: /hold send for immediate/i }));
-    return screen.getByPlaceholderText(/immediate — keys send as you type/i);
+    return screen.getByPlaceholderText(/type keys/i);
   }
 
   it("focuses the textarea synchronously so the activation gesture opens the phone keyboard", () => {
@@ -278,7 +278,7 @@ describe("Composer — Immediate key mode", () => {
       const button = screen.getByRole("button", { name: /hold send for immediate/i });
       fireEvent.pointerDown(button, { button: 0, clientX: 10, clientY: 10 });
       act(() => vi.advanceTimersByTime(450));
-      const box = screen.getByPlaceholderText(/immediate — keys send as you type/i);
+      const box = screen.getByPlaceholderText(/type keys/i);
 
       act(() => box.blur());
       expect(box).not.toHaveFocus();
@@ -353,7 +353,7 @@ describe("Composer — Immediate key mode", () => {
     const box = activateImmediateMode();
 
     fireEvent.blur(box); // dismissing the Android keyboard does not silently disarm the mode
-    expect(screen.getByPlaceholderText(/immediate/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/type keys/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /exit immediate key mode/i }));
 
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
@@ -388,7 +388,7 @@ describe("Composer — Immediate key mode", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
 
     expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("keep this draft");
-    expect(screen.queryByPlaceholderText(/immediate/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/type keys/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("status")).toHaveTextContent(/send or clear the draft/i);
   });
 
@@ -426,7 +426,7 @@ describe("Composer — Immediate key mode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch pane" }));
 
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/immediate/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/type keys/i)).not.toBeInTheDocument();
   });
 });
 
