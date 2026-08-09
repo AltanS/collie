@@ -317,6 +317,39 @@ describe("Composer — Immediate key mode", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(/immediate mode on/i);
   });
 
+  it("sends a swiped/IME-composed word once when composition commits", async () => {
+    const keyCalls: string[][] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        keyCalls.push(((await request.json()) as { keys: string[] }).keys);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer();
+    const box = activateImmediateMode();
+
+    fireEvent.compositionStart(box);
+    fireEvent.input(box, {
+      target: { value: "swipe" },
+      data: "swipe",
+      inputType: "insertCompositionText",
+      isComposing: true,
+    });
+    expect(keyCalls).toEqual([]);
+    fireEvent.compositionEnd(box, { data: "swipe" });
+
+    await waitFor(() => expect(keyCalls).toEqual([["s", "w", "i", "p", "e"]]));
+    // Gboard may emit the committed value once more as an ordinary input after compositionend.
+    fireEvent.input(box, {
+      target: { value: "swipe" },
+      data: "swipe",
+      inputType: "insertText",
+      isComposing: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(keyCalls).toEqual([["s", "w", "i", "p", "e"]]);
+  });
+
   it("sends terminal keys that do not change the textarea value", async () => {
     const keyCalls: string[][] = [];
     server.use(
@@ -344,6 +377,20 @@ describe("Composer — Immediate key mode", () => {
     );
     await waitFor(() =>
       expect(keyCalls).toEqual([["Backspace"], ["Enter"], ["Backspace"]]),
+    );
+
+    // Gboard can mark its virtual Enter as composing while it commits the current candidate.
+    fireEvent(
+      box,
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertParagraph",
+        isComposing: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(keyCalls).toEqual([["Backspace"], ["Enter"], ["Backspace"], ["Enter"]]),
     );
   });
 

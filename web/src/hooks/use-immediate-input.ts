@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ChangeEvent,
+  CompositionEvent as ReactCompositionEvent,
   KeyboardEvent as ReactKeyboardEvent,
   RefObject,
 } from "react";
@@ -57,9 +58,13 @@ export function useImmediateInput({
 }: ImmediateInputOptions) {
   const [active, setActive] = useState(false);
   const [value, setValue] = useState("");
+  const composing = useRef(false);
+  const committedComposition = useRef<string | null>(null);
   const sender = useOrderedKeySender(sendKeys, () => {
     setActive(false);
     setValue("");
+    composing.current = false;
+    committedComposition.current = null;
     // Stop the phone keyboard too: otherwise continued typing after a transport failure silently
     // becomes a buffered Reply, which is a different action with an eventual Enter attached. Defer
     // past the activation focus timer so even an immediate failure cannot be re-focused behind us.
@@ -76,6 +81,8 @@ export function useImmediateInput({
     }
     onActivate();
     setValue("");
+    composing.current = false;
+    committedComposition.current = null;
     setActive(true);
     setStatus("Immediate mode on — keys send as you type.", "success");
     // Focus synchronously while the long-press/contextmenu gesture still carries browser user
@@ -89,6 +96,8 @@ export function useImmediateInput({
   function clearMode() {
     setActive(false);
     setValue("");
+    composing.current = false;
+    committedComposition.current = null;
     focusInput();
   }
 
@@ -116,6 +125,8 @@ export function useImmediateInput({
   useEffect(() => {
     setActive(false);
     setValue("");
+    composing.current = false;
+    committedComposition.current = null;
     sender.reset();
   }, [paneKey, sender.reset]);
 
@@ -125,9 +136,11 @@ export function useImmediateInput({
     const inputEl = inputRef.current;
     if (!active || inputEl === null) return;
     const onBeforeInput = (event: InputEvent) => {
-      if (event.isComposing) return;
       const key = keyForInputType(event.inputType);
       if (key === null) return;
+      // Backspace inside an active IME edits the candidate; Enter commits/submits and must still reach
+      // the terminal. Gboard commonly marks that insertParagraph event as composing.
+      if (event.isComposing && key === "Backspace") return;
       event.preventDefault();
       sender.enqueue([key]);
     };
@@ -138,11 +151,37 @@ export function useImmediateInput({
   function onChange(event: ChangeEvent<HTMLTextAreaElement>) {
     const next = event.target.value;
     setValue(next);
-    // Keep an Android IME's in-progress composition local. Its final change event arrives with
-    // isComposing=false and sends the committed string in one ordered batch.
     const inputEvent = event.nativeEvent as InputEvent;
-    if (inputEvent.isComposing || next.length === 0) return;
+    if (inputEvent.isComposing || composing.current) return;
+
+    // Gboard can follow compositionend with one ordinary input carrying the same committed word.
+    // Drop that prefix rather than sending a swipe twice, while preserving any suffix typed in the
+    // same event (commonly the auto-inserted space before the next swiped word).
+    const committed = committedComposition.current;
+    if (committed !== null) {
+      committedComposition.current = null;
+      const remainder = next.startsWith(committed) ? next.slice(committed.length) : next;
+      if (remainder.length > 0) sender.enqueue(textToKeySequence(remainder));
+      setValue("");
+      return;
+    }
+
+    if (next.length === 0) return;
     sender.enqueue(textToKeySequence(next));
+    setValue("");
+  }
+
+  function onCompositionStart() {
+    composing.current = true;
+    committedComposition.current = null;
+  }
+
+  function onCompositionEnd(event: ReactCompositionEvent<HTMLTextAreaElement>) {
+    composing.current = false;
+    const committed = event.currentTarget.value || event.data;
+    if (committed.length === 0) return;
+    committedComposition.current = committed;
+    sender.enqueue(textToKeySequence(committed));
     setValue("");
   }
 
@@ -161,6 +200,8 @@ export function useImmediateInput({
     deactivate,
     deactivateSilently,
     onChange,
+    onCompositionStart,
+    onCompositionEnd,
     onKeyDown,
   };
 }

@@ -739,6 +739,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ref={inputRef}
             value={immediate.active ? immediate.value : input}
             onChange={immediate.active ? immediate.onChange : (e) => updateInput(e.target.value)}
+            onCompositionStart={immediate.active ? immediate.onCompositionStart : undefined}
+            onCompositionEnd={immediate.active ? immediate.onCompositionEnd : undefined}
             onKeyDown={
               immediate.active
                 ? immediate.onKeyDown
@@ -756,7 +758,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 : readOnly
                   ? "Read-only — device not authorised"
                   : immediate.active
-                    ? "Type keys…"
+                    ? "Type keys to send immediately"
                     : isShell
                       ? "Type a shell command…"
                       : "Type a reply…"
