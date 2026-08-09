@@ -119,6 +119,10 @@ the unit name; the Herdr action runs from anywhere.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).
+- **The bundled Nerd Font subsets stay lazy and out of the precache** — `unicode-range` per face,
+  version in the filename, cached first-use by `sw.ts`. Don't add them to `globPatterns`, don't
+  widen a range, don't move subsetting into the build; the reasoning for each sits at the line that
+  would change (`web/src/index.css`, `web/vite.config.ts`, `scripts/build-nerd-font.sh`).
 
 ## Herdr socket gotchas (see HERDR_API.md for the full, verified contract)
 
