@@ -86,6 +86,8 @@ describe("NavTray", () => {
 
     expect(isBefore(esc, ctrlC)).toBe(true);
     expect(isBefore(ctrlC, up)).toBe(true);
+    // Reads the same as the Ctrl C preset it duplicates — one chord, one spelling, and not tmux's.
+    expect(ctrlC).toHaveTextContent("Ctrl C");
 
     await user.click(ctrlC);
     expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
