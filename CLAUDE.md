@@ -46,6 +46,17 @@ manifest) you MUST:
    Land features as their own commits first, then cut the release commit so the entry can cite them.
 3. **Run `scripts/check-version.sh`** — it must print `✓`.
 
+**A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
+entry — send the functional commits only. The version is the maintainer's to pick, because it depends
+on what else lands in the same release and on which axis the *sum* of those changes sits; a bump
+guessed at PR time collides with the `chore(release):` commit that actually cuts the release, and two
+PRs both guessing `0.26.1` conflict with each other. `scripts/check-version.sh` stays green either
+way — all four files simply keep the version they already agree on. The pre-commit hook may object
+locally; `SKIP_VERSION_CHECK=1 git commit …` is the intended escape hatch here. If you'd like a
+CHANGELOG line in your words, put it in the PR description and it'll be used. (Maintainer side: when
+a fork PR does carry a release commit, cherry-pick the functional commits with `-x` and drop that one
+— authorship is preserved and `main` stays unreleased until you cut it.)
+
 Doc-only changes (`*.md`) don't need a bump. This is enforced two ways, but **you are the first
 line — do it as part of the change, not after**:
 

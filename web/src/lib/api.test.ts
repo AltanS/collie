@@ -15,6 +15,8 @@ import {
   sendReply,
   uploadImage,
   withTimeout,
+  XHR_HEADER,
+  XHR_HEADER_VALUE,
 } from "./api";
 
 // The default happy-path handlers live in test/handlers.ts; here we focus on the write paths and the
@@ -385,5 +387,41 @@ describe("api client — connection-health stamping", () => {
     __resetConnectionHealth(1);
     await expect(fetchSnapshot()).rejects.toThrow(/502/);
     expect(lastHealthyAt()).toBe(1);
+  });
+});
+
+// A proxy that REDIRECTS an unauthenticated request instead of refusing it strips Collie of the only
+// signal `isAuthError` (lib/loaders.ts) can act on: `fetch` follows the cross-origin 302, the call
+// rejects as a TypeError with no status, and the refusal banner — with the Sign-in link that would
+// restore the session — never renders. Marking requests as XHR is what makes such a proxy answer 401
+// instead. Every path that talks to the bridge must carry it, including the two that bypass `req`:
+// fetchPane builds its own header bag, and uploadImage sets none at all so the browser keeps
+// ownership of the multipart boundary.
+describe("api client — XHR marker for identity proxies", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function captureHeaders() {
+    const seen: Headers[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      seen.push(new Headers(init?.headers));
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+    return seen;
+  }
+
+  it("marks reads, mutations, pane polls and uploads alike", async () => {
+    const seen = captureHeaders();
+    await fetchSnapshot();
+    await sendReply("w1:p1", "hi");
+    await fetchPane("w1:p1");
+    await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
+    expect(seen).toHaveLength(4);
+    for (const headers of seen) expect(headers.get(XHR_HEADER)).toBe(XHR_HEADER_VALUE);
+  });
+
+  it("leaves the multipart upload without a content-type so the boundary survives", async () => {
+    const seen = captureHeaders();
+    await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
+    expect(seen[0].get("content-type")).toBeNull();
   });
 });

@@ -215,6 +215,41 @@ bridge_ready() {
   return 1
 }
 
+# Does this tailnet grant ANY peer inbound access to this node? Exit 0 ONLY when the answer is a
+# definite no — every other outcome (including "can't tell") is a 1, because a false "your ACLs are
+# broken" is worse than the silence we shipped before.
+#
+# Why this check exists at all: `bridge_ready` probes 127.0.0.1, and loopback never touches the
+# tailnet packet filter. So a node whose ACLs grant it nothing still passes every local signal —
+# serve mapping present, cert valid, `curl https://<name>/` from the same host returns 200 — while no
+# other device can reach it. The failure is then maximally confusing: `tailscale ping` SUCCEEDS
+# (disco pings bypass ACLs), and blocked traffic is dropped rather than refused, so the phone just
+# hangs and reads as "server down". People go and debug DNS, Safari and the certificate instead.
+#
+# The packet filter is this node's inbound ACL, so an empty one means deny-all. It is read from
+# `tailscale debug netmap`, an UNDOCUMENTED debug surface with no stability guarantee — hence
+# best-effort: no CLI, no bun, no netmap, unparseable JSON or a missing key all return 1 silently.
+# Note the asymmetry, and don't let the wording drift past it: empty proves unreachable, but
+# non-empty proves nothing (a filter can grant some peer some port and still not grant your phone
+# :443). This is a smoke alarm, not a reachability proof.
+tailnet_inbound_blocked() {
+  command -v tailscale >/dev/null 2>&1 || return 1
+  [ -n "$BUN" ] || return 1
+  local netmap
+  # Bounded, because a diagnostic must never hold the banner hostage: a wedged tailscaled (daemon
+  # alive, socket accepting, LocalAPI not answering) would otherwise block `status` — and the tail of
+  # every `start` — indefinitely. Stock macOS ships no `timeout(1)`, so there it stays unbounded
+  # rather than gaining a dependency for a nice-to-have.
+  if command -v timeout >/dev/null 2>&1; then
+    netmap="$(timeout 3 tailscale debug netmap 2>/dev/null)" || return 1
+  else
+    netmap="$(tailscale debug netmap 2>/dev/null)" || return 1
+  fi
+  [ -n "$netmap" ] || return 1
+  printf '%s' "$netmap" | "$BUN" -e \
+    "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const f=JSON.parse(d).PacketFilter;process.exit(Array.isArray(f)&&f.length===0?0:1)}catch{process.exit(1)}})"
+}
+
 # One scannable "is Collie up?" summary — readiness, how it's supervised, and both URLs. Shared by
 # `start` (post-launch confirmation) and `status` (on demand) so the two always agree.
 print_status_banner() {
@@ -248,8 +283,9 @@ print_status_banner() {
     svc="not supervised"
   fi
   local ver; ver="$(collie_version)"
+  local ready=0; bridge_ready || ready=1
   echo
-  if bridge_ready; then
+  if [ "$ready" = 0 ]; then
     echo "  ✓ Collie is running  ·  v${ver}"
   else
     echo "  ⚠ Collie isn't answering on :${PORT} yet (v${ver}) — check 'collie-ctl.sh logs'"
@@ -263,7 +299,31 @@ print_status_banner() {
       echo "    proxy     (COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)"
     fi
   else
-    echo "    tailnet   $(bridge_url)"
+    # The tailnet line is a promise that another device can open this URL, and until now it was
+    # printed with the same confidence whether or not anything backed it. Two things can be known to
+    # falsify it, and each annotates the line rather than removing it — the URL is still what you'd
+    # type once the cause is fixed.
+    local blocked=1; tailnet_inbound_blocked && blocked=0
+    if [ "$blocked" = 0 ]; then
+      echo "    tailnet   $(bridge_url)  (unreachable from other devices)"
+    elif [ "$ready" != 0 ]; then
+      echo "    tailnet   $(bridge_url)  (unverified — the bridge isn't answering locally yet)"
+    else
+      echo "    tailnet   $(bridge_url)"
+    fi
+    if [ "$blocked" = 0 ]; then
+      # Report the observation, not a diagnosis. An empty filter is also what a tailnet with no OTHER
+      # device yet looks like, since a policy written against concrete users/tags compiles to concrete
+      # peer IPs — and telling a first-run operator their ACLs are broken when they simply haven't
+      # added a phone would be its own wrong answer. The admin console is Tailscale's; a Headscale
+      # operator (the population COLLIE_SERVE_MODE=http exists for) edits a policy file instead.
+      echo
+      echo "    ⚠ this node's packet filter admits no peer, so no other device can reach that URL —"
+      echo "      the front door itself is published fine. Either your tailnet policy grants this"
+      echo "      node nothing, or no other device has joined the tailnet yet. Check the policy"
+      echo "      (https://login.tailscale.com/admin/acls on Tailscale; your policy file on Headscale)."
+      echo "      ('tailscale ping' will still succeed — disco pings bypass ACLs.)"
+    fi
   fi
   echo
 }
@@ -838,6 +898,40 @@ cmd_status() {
   fi
 }
 
+# Scan your way onto the bridge. Opt-in as its own subcommand rather than part of `start`: a
+# scannable QR is ~16 rows even in the compact renderer, and Collie is a PWA — once it's on your home
+# screen you never need the URL again, so this is a first-run convenience that shouldn't tax every
+# start. Delegates the drawing to scripts/qr.ts; what lives HERE is which URL is worth a QR at all.
+cmd_qr() {
+  [ -n "$BUN" ] || { echo "error: bun not found on PATH" >&2; exit 1; }
+  local url
+  if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
+    # No managed front door here (ADR 0001) — the operator owns the ingress, and only they can say
+    # what its public URL is. With COLLIE_PUBLIC_URL set that's still a phone-typeable URL worth
+    # scanning, so render it; without it there is nothing true to encode.
+    url="${COLLIE_PUBLIC_URL:-}"
+    [ -n "$url" ] || {
+      echo "no URL to encode: COLLIE_SKIP_SERVE=1 and COLLIE_PUBLIC_URL is unset — set it to your" >&2
+      echo "reverse-proxy URL, or drop COLLIE_SKIP_SERVE to publish the tailnet front door." >&2
+      exit 1
+    }
+  else
+    url="$(bridge_url)"
+    case "$url" in
+      *"(Tailscale name unavailable)"*)
+        echo "no URL to encode: the tailnet front door isn't up (run 'collie-ctl.sh serve')" >&2
+        exit 1 ;;
+    esac
+    # A QR for a URL nothing can reach is just a prettier dead end — it scans perfectly and then
+    # hangs. Say so before drawing it, but still draw it: the ACL is the thing to fix, not the URL.
+    if tailnet_inbound_blocked; then
+      echo "⚠ this node's packet filter admits no peer — scanning this will hang until your tailnet" >&2
+      echo "  policy grants access, or another device joins the tailnet. See 'collie-ctl.sh status'." >&2
+    fi
+  fi
+  "$BUN" run "${PLUGIN_ROOT}/scripts/qr.ts" "$url"
+}
+
 cmd_logs() {
   if have_systemd; then journalctl --user -u "$UNIT" -n "${1:-50}" --no-pager
   else tail -n "${1:-50}" "${CONFIG_DIR}/collie.log" 2>/dev/null || echo "(no log)"; fi
@@ -872,8 +966,9 @@ case "${1:-}" in
   unserve) cmd_unserve ;;
   status)  cmd_status ;;
   url)     bridge_url ;;
+  qr)      cmd_qr ;;
   version) cmd_version ;;
   push-test) shift || true; cmd_push_test "$@" ;;
   logs)    cmd_logs "${2:-50}" ;;
-  *) echo "usage: collie-ctl.sh {start|stop|restart|uninstall|update|version|push-test|build|serve|unserve|status|url|logs}" >&2; exit 2 ;;
+  *) echo "usage: collie-ctl.sh {start|stop|restart|uninstall|update|version|push-test|build|serve|unserve|status|url|qr|logs}" >&2; exit 2 ;;
 esac

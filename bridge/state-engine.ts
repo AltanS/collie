@@ -13,9 +13,19 @@ import {
 // transition events. Polling (vs the per-pane event subscription) keeps this resync-free: a failed
 // poll just retries next tick, and reconnection needs no special handling. See HERDR_API.md.
 
-// How many recent lines to read per claude pane when sniffing its `/rename` session name. Claude's
-// input box (and the named rule above it) sits at the very tail, so a small window is plenty and
-// keeps the extra per-poll reads cheap.
+// How many lines to read per claude pane when sniffing its `/rename` session name. Claude's input
+// box (and the named rule above it) sits at the very tail, so a small window is plenty and keeps the
+// extra per-poll reads cheap.
+//
+// The source MUST stay `visible`. A `recent` text read asking for more rows than the pane currently
+// shows makes Herdr harvest the pages above the viewport, and on a full-screen agent (Claude runs on
+// the alternate screen, which has no host scrollback) the only way to reach them is to drive the
+// agent's own mouse-scroll interface: Herdr scrolls the pane up page by page, then restores it. The
+// operator watches their terminal jump and snap back — once per poll, per idle claude pane.
+// `visible` cannot do that whatever this count is: it is the rendered viewport, clamped to it. Which
+// is also why this number is free to stay generous — the run below the ❯ prompt is a statusline of
+// unknown height ([ADR 0004](../.adr/0004-the-statusline-run-is-bounded.md)), so headroom is worth
+// more here than a smaller read. See HERDR_API.md → `pane.read`.
 const SESSION_NAME_READ_LINES = 40;
 
 // Claude renders its input box as a horizontal rule, the ❯ prompt line, then a closing rule. After
@@ -29,7 +39,7 @@ const NAMED_RULE = /^[─━]{2,}[ \t]+(\S.*?\S|\S)[ \t]+[─━]+[ \t]*$/;
 const PROMPT_LINE = /^❯/;
 
 /**
- * Pull Claude's own session name (set via `/rename`) out of a pane's recent text, or `undefined` when
+ * Pull Claude's own session name (set via `/rename`) out of a pane's visible text, or `undefined` when
  * the session is unnamed (a plain rule) or the pane isn't showing its input box (a dialog, a working
  * spinner). Claude draws the name INTO the horizontal rule directly above the ❯ prompt, e.g.
  * `────────── my-name ──`; we accept that rule ONLY when the very next line is the ❯ prompt, so a
@@ -365,7 +375,7 @@ export class StateEngine {
   }
 
   /**
-   * Read each claude pane's recent text and attach its `/rename` session name (see
+   * Read each claude pane's visible text and attach its `/rename` session name (see
    * {@link extractClaudeSessionName}) to the view, exactly parallel to `paneLabel`. The name lives
    * only in the pane's rendered text — Herdr's pane metadata doesn't carry it — so this is the one
    * place all panes can pick it up (the web app only holds text for the open pane). Reads run in
@@ -380,7 +390,11 @@ export class StateEngine {
     await Promise.all(
       claude.map(async (a) => {
         try {
-          const read = await this.herdr.readPane(a.paneId, "recent", SESSION_NAME_READ_LINES, "text");
+          // `visible` — never `recent`; see SESSION_NAME_READ_LINES for what a `recent` read does
+          // to the operator's screen. The visible grid is also strictly safer to parse: `recent`
+          // hands back transcript scrollback, where Claude echoes past user messages as `❯ …` lines
+          // that the prompt anchor below would have to discriminate against.
+          const read = await this.herdr.readPane(a.paneId, "visible", SESSION_NAME_READ_LINES, "text");
           const name = extractClaudeSessionName(read.text);
           if (name) this.sessionNames.set(a.paneId, name);
         } catch {
