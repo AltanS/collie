@@ -454,7 +454,11 @@ async function readPane(
       ? Math.min(linesParam, MAX_READ_LINES)
       : cfg.readLines;
   try {
-    // "ansi" so the client can render a faithful, colored terminal mirror.
+    // "ansi" so the client can render a faithful, colored terminal mirror. It is also, as far as we
+    // have probed, why this read leaves the operator's terminal alone: a `recent` read only harvests
+    // an alt-screen pane — scrolling it up and back — in `text` format. `lines` here is whatever the
+    // web app asked for (600 for the history view), well past any pane's height, so switching this
+    // to "text" would move someone's screen on every revalidate. See HERDR_API.md → `pane.read`.
     const read = await herdr.readPane(paneId, "recent", lines, "ansi");
     const data = paneReadResponse(paneId, read);
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
