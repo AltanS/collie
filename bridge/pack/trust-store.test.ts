@@ -64,6 +64,30 @@ describe("parse — refusing beats repairing", () => {
     const data = leadStore({ pack: null });
     expect(parseTrustStore(serializeTrustStore(data))).toEqual(data);
   });
+
+  test("`contactedAt` is accepted absent, null or a number, and rejected as anything else", () => {
+    // Exercised through `parseTrustStore`, whose `isMember` guard is the gate. Absent field, an
+    // explicit provisional `null`, and a real contact time all parse.
+    for (const patch of [{}, { contactedAt: null }, { contactedAt: 123 }]) {
+      const store = { ...leadStore(), peers: [{ ...member({ memberId: "nas" }), ...patch }] };
+      expect(parseTrustStore(JSON.stringify(store))).not.toBeNull();
+    }
+    // A non-number/non-null value invalidates the whole store, like any unpinnable field.
+    const bad = { ...leadStore(), peers: [{ ...member({ memberId: "nas" }), contactedAt: "soon" }] };
+    expect(parseTrustStore(JSON.stringify(bad))).toBeNull();
+  });
+
+  test("an old-shape store (no `contactedAt`) parses, and its member is NOT provisional", () => {
+    // The live-pack back-compat rule: a member serialised before this field existed comes back with
+    // `contactedAt` absent (undefined), which is STRICTLY NOT `null` — so it never reads as provisional.
+    const old = leadStore({ peers: [member({ memberId: "minibuch" })] });
+    const serialized = serializeTrustStore(old);
+    expect(serialized).not.toContain("contactedAt");
+    const parsed = parseTrustStore(serialized)!;
+    expect(parsed).not.toBeNull();
+    expect(parsed.peers[0]!.contactedAt).toBeUndefined();
+    expect(parsed.peers[0]!.contactedAt === null).toBe(false);
+  });
 });
 
 describe("enrollmentOf — what the mode seam is handed", () => {

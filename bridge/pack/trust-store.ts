@@ -99,6 +99,14 @@ export interface TrustedMember {
   /** The secret generation this member is known to hold. Behind `pack.secretGeneration` = stale. */
   readonly secretGeneration: number;
   /**
+   * First observed successful contact with this member.
+   *
+   * `null` = enrolled but never once contacted (provisional / a possible half-finished join). A
+   * number = epoch ms of the first successful contact. **ABSENT (undefined)** = a member from before
+   * this field existed — treated as already-contacted, never provisional (back-compat).
+   */
+  readonly contactedAt?: number | null;
+  /**
    * The `X-Pack-Timestamp` of the last signed request this collie **admitted** from this member
    * (§8.6). `0` until one arrives.
    *
@@ -160,7 +168,12 @@ function isMember(value: unknown): value is TrustedMember {
     (m.status === "enrolled" || m.status === "unenrolled") &&
     typeof m.enrolledAt === "number" &&
     typeof m.secretGeneration === "number" &&
-    typeof m.signedAt === "number"
+    typeof m.signedAt === "number" &&
+    // Accept the optional field without newly requiring it. CRITICAL back-compat rule: provisional is
+    // STRICTLY `contactedAt === null`. An absent field is `undefined`, which must NEVER read as
+    // provisional — otherwise every member enrolled before this field existed (the live pack) would
+    // regress to "provisional" on upgrade.
+    (m.contactedAt === undefined || m.contactedAt === null || typeof m.contactedAt === "number")
   );
 }
 

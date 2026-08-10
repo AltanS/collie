@@ -178,6 +178,8 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
         enrolledAt: T0,
         secretGeneration: 1,
         signedAt: 0,
+        // A freshly-enrolled member starts provisional — pinned, never once contacted.
+        contactedAt: null,
       },
     ]);
     expect(change.result).toEqual({

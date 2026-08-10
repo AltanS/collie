@@ -667,12 +667,40 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
       continue;
     }
     const outcome = probes.get(m.memberId);
+    // A member pinned but never once contacted (strictly `contactedAt === null`) is a possible
+    // half-finished join. An ABSENT field is `undefined` — a member from before this field existed —
+    // and must never read as provisional. A number is a real contact time. Suppressed when this very
+    // probe succeeded: a member reachable right now is not half-finished (it is stamped just below).
+    if (m.contactedAt === null && outcome?.ok !== true) {
+      deps.io.out("    status  provisional — enrolled but never once reachable; a half-finished join looks exactly");
+      deps.io.out(`            like this (§8.2). If you did not complete a join for "${m.memberId}", clear it:`);
+      deps.io.out(`            \`collie pack remove ${m.memberId}\`.`);
+    }
     if (outcome === undefined) {
       deps.io.out("    link    not probed (--no-probe)");
       continue;
     }
     if (outcome.ok) {
       deps.io.out(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`);
+      // First successful contact clears the provisional marker: one-time and self-healing. The
+      // bridge's own sweep could also stamp this later; today `pack status` is the clearer.
+      if (m.contactedAt === null) {
+        const at = outcome.receivedAt;
+        const stamp = (x: TrustedMember): TrustedMember => (x.memberId === m.memberId ? { ...x, contactedAt: at } : x);
+        await commitPackChange(deps.store, deps.audit, (current) =>
+          current === null
+            ? null
+            : {
+                next: {
+                  ...current,
+                  lead: current.lead === null ? null : stamp(current.lead),
+                  peers: current.peers.map(stamp),
+                },
+                result: null,
+                audit: { action: "pack.contacted", detail: { member: m.memberId, at } },
+              },
+        );
+      }
       continue;
     }
     if (outcome.state === "incompatible") {
