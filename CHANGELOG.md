@@ -6,6 +6,21 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.9] - 2026-08-10
+
+### Security
+
+- **F5** — `collie join` refuses an `http://` lead address unless `--insecure` is passed: over a plaintext hop the token and pack secret cross in the clear, and an on-path attacker who reads the token can self-enroll its own certificate before the honest joiner (the lead admits on the token alone). **Breaking:** an http:// join that used to work now needs `--insecure` to own the trusted-hop assumption (13a4198)
+- **F5** — `PACK_PROTOCOL.md` §8.2/§8.5 corrected: F1's fingerprint pin authenticates the lead to the joiner but does not defend the lead against a token-thief on a plaintext hop (13a4198)
+
+### Added
+
+- `pack status` flags a never-contacted (provisional) member — an enrolled member the lead has never once reached looks exactly like a half-finished join; it says so and points at `pack remove`, cleared on first successful contact (1f43c4c)
+
+### Changed
+
+- `pack rotate` warns it has no grace window — a peer offline at rotation misses the pickup and drops to an `unenrolled` tombstone that must re-join; `pack rotate` is the leaked-secret remedy, at that cost (13a4198)
+
 ## [1.0.0-alpha.8] - 2026-08-08
 
 ### Security
