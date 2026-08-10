@@ -75,6 +75,8 @@ export interface HomeData {
   snoozedUntil: number | null;
   /** Version / upgrade status for the footer update banner; undefined on an older bridge. */
   update: UpdateInfo | undefined;
+  /** True only when the bridge explicitly advertises the server-side voice capability. */
+  transcriptionEnabled: boolean;
   /** True when this render is the last-good snapshot after a failed refresh. */
   error: boolean;
   /** True when the failed refresh was rejected with HTTP 401 or 403. */
@@ -151,6 +153,8 @@ function toHomeData(snap: SnapshotResponse, session: string | undefined, error: 
     session,
     snoozedUntil: snap.notifications?.snoozedUntil ?? null,
     update: snap.update,
+    // An older bridge omits the capability; fail closed to the existing text-only composer.
+    transcriptionEnabled: snap.transcriptionEnabled ?? false,
     error,
     authError: error && hasAuthError(session),
   };
@@ -175,6 +179,7 @@ function staleHome(session: string | undefined): HomeData {
         session,
         snoozedUntil: null,
         update: undefined,
+        transcriptionEnabled: false,
         error: true,
         authError: hasAuthError(session),
       };

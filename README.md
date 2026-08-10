@@ -7,8 +7,9 @@
 A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL, see
 which agent is waiting on you, and answer it with your phone's keyboard.
 
-The reply box is an ordinary text field, so your phone's own voice dictation works in it; Collie
-ships none of its own.
+The reply box remains an ordinary text field, so your phone's own voice dictation works in it. When
+an operator configures transcription, its trailing action also records one completed voice clip,
+returns an editable draft, and still requires the same explicit Send.
 
 - **React Router + Vite** — TypeScript, Tailwind, shadcn, and a Bun bridge
 - **Runs on your own machine** — loopback bind, no cloud, no account
@@ -20,6 +21,7 @@ ships none of its own.
 - **Special-keys pad** — `Esc`, `Ctrl+C`, arrows, combinable modifiers
 - **Slash-command palette** per agent — tap, don't type
 
+- **Optional voice transcription** — record one clip into an editable draft; Send stays explicit
 - **Send an image** from your camera roll
 - **Find in output** — search a pane, don't eyeball it
 - **Conversation history** the terminal can't scroll back to — read from the agent's own session log
@@ -34,7 +36,7 @@ ships none of its own.
 - [Requirements](#requirements)
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
-- [Configure](#configure)
+- [Configure](#configure) · [Voice input](#voice-input-optional)
 - [Dark mode / light mode](#dark-mode--light-mode)
 - [Commands](#commands) · [Herdr actions](#herdr-actions)
 - [Update](#update-to-a-new-release)
@@ -156,7 +158,8 @@ Soft dependencies: **Node.js** (the control script uses it to extract your Magic
 `tailscale status --json`; without it the banner falls back to the loopback URL) and a **service
 supervisor** — `systemd --user` on Linux, **launchd** on macOS (both ship with the OS); a host with
 neither falls back to an unsupervised `nohup` process. You never install JS
-deps by hand — the build runs `bun install` for you; the backend imports only Bun + `node:*`.
+deps by hand — the build runs `bun install` for you. The optional voice path uses the official
+[`openai`](https://www.npmjs.com/package/openai) SDK server-side; the browser uses native media APIs.
 [`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see [Web
 Push](#web-push-optional)).
 
@@ -252,9 +255,9 @@ QR code** you can point a camera at. It's its own subcommand rather than part of
 Collie is a PWA: once it's on your home screen you never need the URL again.
 
 Then install it as an app: **iOS** — Safari → share sheet → *Add to Home Screen*. **Android** —
-Chrome → ⋮ menu → *Add to Home screen* (or *Install app*). Installing (and Web Push) needs the
-HTTPS origin the default serve mode already provides; over `COLLIE_SERVE_MODE=http` the page works,
-but service worker and install silently no-op.
+Chrome → ⋮ menu → *Add to Home screen* (or *Install app*). Installing, Web Push, and remote browser
+microphone capture need the HTTPS origin the default serve mode already provides; over
+`COLLIE_SERVE_MODE=http` the text UI works, but service worker, install, and remote voice capture do not.
 
 ### Is it actually working?
 
@@ -328,7 +331,8 @@ directly or via a Herdr action:
 cp .env.example "$(herdr plugin config-dir herdr.collie)/.env"
 ```
 
-The bridge reads `.env` only at startup — after any edit, `scripts/collie-ctl.sh restart`. See
+The bridge reads `.env` only at startup — after any edit, run
+`herdr plugin action invoke restart --plugin herdr.collie`. See
 [`.env.example`](./.env.example) for the full option list — commonly `COLLIE_PORT`, or
 `COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains; read by the control script when it runs
 `tailscale serve`).
@@ -342,6 +346,60 @@ your MagicDNS name works as-is, but a different hostname or TLS terminator makes
 ```bash
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 ```
+
+### Voice input (optional)
+
+For a Herdr-installed candidate, configure transcription in the protected plugin config file
+`"$(herdr plugin config-dir herdr.collie)/.env"` — not an `.env` in the checkout — to show a microphone
+only when the composer is empty. The root [`.env.example`](./.env.example) is a hidden dotfile template:
+all transcription assignments are intentionally commented, so copying it keeps voice disabled until you
+uncomment and fill a setting. Any nonblank dedicated setting opts in, and an omitted model resolves to
+Collie's default, `gpt-4o-transcribe`. The browser posts a completed WebM/MP4 recording to the
+same-origin bridge; after validation, the bridge calls **one** OpenAI-compatible transcription endpoint.
+Its narrow provider contract is `POST /audio/transcriptions` with a model/file and `response_format=json`,
+returning `{ "text": "…" }`. Collie puts that text into the ordinary editable draft and waits for you to
+press the existing **Send** button. It never auto-submits text to Herdr.
+
+```dotenv
+# Official OpenAI: uncomment and fill this (the default base URL is https://api.openai.com/v1).
+COLLIE_TRANSCRIPTION_API_KEY=your_openai_api_key
+# Optional explicit override; gpt-4o-transcribe is Collie's default model.
+# COLLIE_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+
+# Instead, a custom OpenAI-compatible endpoint may be keyless. Set its own model only when it does
+# not support Collie's default:
+# COLLIE_TRANSCRIPTION_MODEL=your-transcription-model
+# COLLIE_TRANSCRIPTION_BASE_URL=https://transcription.example.invalid/v1
+```
+
+The browser sees only an enabled/disabled capability — never model, endpoint or credentials — and a
+config change takes effect after `herdr plugin action invoke restart --plugin herdr.collie`. To disable
+voice later, clear or comment **all three** `COLLIE_TRANSCRIPTION_API_KEY`,
+`COLLIE_TRANSCRIPTION_MODEL`, and `COLLIE_TRANSCRIPTION_BASE_URL` settings, then run that restart;
+removing only the key leaves a configured keyless custom endpoint enabled. Remote browser microphone
+capture requires HTTPS; localhost/loopback may be treated as trustworthy by the browser.
+`COLLIE_SERVE_MODE=http` therefore remains usable for text, but cannot record from a remote phone. A
+custom `http:`/`https:` endpoint is allowed without a key; include its expected API prefix (normally
+`/v1`). Keep `http:` providers on trusted loopback/private or independently encrypted transport: remote
+plain HTTP exposes audio and any configured key to that network, so prefer HTTPS. The provider is
+outbound only, never another Collie listener or front door.
+
+Recording stops at about 5 minutes and is rejected above 8 MiB; only WebM/MP4 containers are
+accepted. `duration_ms` is browser-reported recording lifecycle metadata, not media duration parsed by
+the bridge. The browser aborts the complete browser-to-bridge request after 90 seconds and Fetch
+refuses a front-door redirect before it can replay the multipart recording. The bridge bounds the
+complete bridge-to-provider call, including response-body consumption, to 60 seconds with no retry; its
+SDK fetch adapter independently refuses provider redirects and caps **provider** success and error
+response bodies at 256 KiB decoded.
+
+Collie does not intentionally persist or log audio or provider bodies: no audio file is written to
+`stateDir`, backups, or audit/log bodies. The bridge also does not persist or log transcripts. A
+successful transcript enters the normal editable browser `localStorage` draft, which is removed on Send
+or pruned lazily on a later draft access after 48 hours. These are Collie-owned guarantees; browser,
+Bun, OS, and proxy buffering remain outside them. The configured provider receives the audio, and its
+retention or logging is controlled by that provider's policy, not Collie. See
+[ADR 0011](.adr/0011-one-openai-compatible-transcription-endpoint.md) for why this is deliberately one
+narrow SDK-backed endpoint rather than a provider registry.
 
 ## Dark mode / light mode
 
@@ -999,7 +1057,7 @@ replaces the `tailscale serve` box; everything below the front door is identical
 
 - **One module touches the socket** (`bridge/herdr-client.ts`); everything else speaks the bridge's HTTP API.
 - **Polling is still the model** — the bridge polls Herdr (via `session.snapshot`, one RPC per tick) and the browser polls `/api/snapshot`; a long-lived Herdr event stream only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
-- **Actions are plain HTTP** — a reply or key `POST`s to `/api/pane/:id/{reply,keys}` → Herdr `pane.send_keys`, which types into a real terminal (hence the security posture).
+- **Actions are plain HTTP** — a reply or key `POST`s to `/api/pane/:id/{reply,keys}` → Herdr `pane.send_keys`, which types into a real terminal (hence the security posture). Optional voice clips post only to `/api/pane/:id/transcribe`; the returned text stays in the browser draft until that same explicit reply path is used.
 - **The UI is a static PWA** — Vite builds `web/dist`, served from disk, so a rebuild is live with no restart.
 
 Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).

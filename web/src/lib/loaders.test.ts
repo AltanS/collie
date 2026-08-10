@@ -109,6 +109,18 @@ describe("rootLoader", () => {
     const data = await rootLoader();
     expect(data.update).toBeUndefined();
   });
+
+  it("threads only the transcription capability and fails closed for an older bridge", async () => {
+    const { rootLoader } = await import("./loaders");
+    expect((await rootLoader()).transcriptionEnabled).toBe(false);
+
+    server.use(
+      http.get("/api/snapshot", () =>
+        HttpResponse.json({ ...fixtureSnapshot, transcriptionEnabled: true }),
+      ),
+    );
+    expect((await rootLoader()).transcriptionEnabled).toBe(true);
+  });
 });
 
 describe("paneLoader", () => {

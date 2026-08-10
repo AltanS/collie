@@ -1,15 +1,18 @@
-import { useState } from "react";
-import type { ComponentProps } from "react";
+import { createRef, useState } from "react";
+import type { ComponentProps, Ref } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus, useStatus } from "@/lib/status";
+import * as drafts from "@/lib/drafts";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { server } from "@/test/setup";
 import { recordReply } from "@/test/handlers";
-import { Composer } from "./composer";
+
+import type { VoiceInput } from "@/hooks/use-voice-input";
+import { Composer, type ComposerHandle } from "./composer";
 
 // A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
 // input line — submit-only (empty text). Overriding the reply handler therefore has to keep the fake
@@ -31,15 +34,28 @@ function replyHandler(onTyped: (text: string) => void, onSubmit?: () => void) {
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
+const idleVoice = (): VoiceInput => ({
+  phase: "idle",
+  elapsedLabel: "0:00",
+  startRecording: vi.fn(),
+  stopRecording: vi.fn(),
+  cancel: vi.fn(),
+});
+
 beforeEach(() => clearStatus());
 
-function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+function renderComposer(
+  overrides: Partial<ComponentProps<typeof Composer>> = {},
+  ref?: Ref<ComposerHandle>,
+) {
   const props: ComponentProps<typeof Composer> = {
     paneId: "w1:p1",
     agent: "claude",
     isShell: false,
     gone: false,
     readOnly: false,
+    transcriptionEnabled: false,
+    voice: idleVoice(),
     dialogPresent: false,
     text: "pane output",
     terminalDraft: null,
@@ -51,7 +67,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     onSent: vi.fn(),
     ...overrides,
   };
-  const router = createMemoryRouter([{ path: "/", element: <Composer {...props} /> }]);
+  const router = createMemoryRouter([{ path: "/", element: <Composer ref={ref} {...props} /> }]);
   render(<RouterProvider router={router} />);
   return props;
 }
@@ -69,6 +85,8 @@ function renderComposerWithStatus(overrides: Partial<ComponentProps<typeof Compo
     isShell: false,
     gone: false,
     readOnly: false,
+    transcriptionEnabled: false,
+    voice: idleVoice(),
     dialogPresent: false,
     text: "pane output",
     terminalDraft: null,
@@ -94,6 +112,95 @@ function renderComposerWithStatus(overrides: Partial<ComponentProps<typeof Compo
   render(<RouterProvider router={router} />);
   return props;
 }
+
+describe("Composer — voice input", () => {
+  it("transitions Mic → Send → Mic by trimmed emptiness, including whitespace-only input", async () => {
+    const user = userEvent.setup();
+    renderComposer({ transcriptionEnabled: true });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+
+    await user.type(box, " ");
+    expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+
+    await user.type(box, "typed words");
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Record voice" })).not.toBeInTheDocument();
+
+    await user.clear(box);
+    expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled();
+  });
+
+  it("keeps Mic and direct terminal typing mutually exclusive", async () => {
+    renderComposer({ transcriptionEnabled: true });
+
+    fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record voice" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /stop typing into terminal/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled());
+  });
+
+  it("uses an accessible stop control while recording", () => {
+    const recordingVoice: VoiceInput = {
+      ...idleVoice(),
+      phase: "recording",
+      elapsedLabel: "0:01",
+    };
+    renderComposer({ transcriptionEnabled: true, voice: recordingVoice });
+    expect(screen.getByRole("button", { name: "Stop recording" })).toBeEnabled();
+    const cancel = screen.getByRole("button", { name: "Cancel voice input" });
+    expect(cancel).toBeEnabled();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Recording");
+    expect(status).not.toHaveTextContent("0:01");
+    expect(status).not.toContainElement(cancel);
+    const timer = screen.getByRole("timer", { name: "Elapsed recording time" });
+    expect(timer).toHaveTextContent("0:01");
+    expect(timer).toHaveAttribute("aria-live", "off");
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^type into terminal$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Keys" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quick" })).toBeDisabled();
+  });
+
+  it("shows disabled progress while transcribing", () => {
+    renderComposer({
+      transcriptionEnabled: true,
+      voice: { ...idleVoice(), phase: "transcribing" },
+    });
+    expect(screen.getByRole("button", { name: "Transcribing voice" })).toBeDisabled();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeDisabled();
+  });
+
+  it("inserts a transcript as an editable persisted draft and never auto-replies", async () => {
+    const replyCalls: unknown[] = [];
+    const persist = vi.spyOn(drafts, "saveDraft");
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        replyCalls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const composerRef = createRef<ComposerHandle>();
+    renderComposer({ transcriptionEnabled: true }, composerRef);
+
+    act(() => composerRef.current!.acceptVoiceTranscript("review this before sending"));
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(box).toHaveValue("review this before sending");
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(replyCalls).toEqual([]);
+
+    await userEvent.setup().type(box, " now");
+    expect(box).toHaveValue("review this before sending now");
+    expect(persist).toHaveBeenLastCalledWith(undefined, "w1:p1", "review this before sending now");
+    persist.mockRestore();
+  });
+});
 
 describe("Composer — send", () => {
   // #34: a dialog owns the TUI's keyboard. Sending free text at one loses the message AND makes the
@@ -226,6 +333,8 @@ describe("Composer — send", () => {
       isShell: false,
       gone: false,
       readOnly: false,
+      transcriptionEnabled: false,
+      voice: idleVoice(),
       dialogPresent: false,
       text: "pane output",
       terminalDraft: null,
@@ -321,6 +430,8 @@ describe("Composer — typing into the terminal", () => {
             isShell={false}
             gone={gone}
             readOnly={false}
+            transcriptionEnabled={false}
+            voice={idleVoice()}
             dialogPresent={false}
             text="pane output"
             terminalDraft={null}
@@ -525,6 +636,8 @@ describe("Composer — typing into the terminal", () => {
             isShell={false}
             gone={false}
             readOnly={false}
+            transcriptionEnabled={false}
+            voice={idleVoice()}
             dialogPresent={false}
             text="pane output"
             terminalDraft={null}
@@ -658,7 +771,7 @@ describe("Composer — destructive-input confirm", () => {
 // a stabilised draft, live host typing (raw changes while stable lags), and the line clearing — all
 // without real timers. `initialDraft` seeds a fully-stranded draft (raw + stable) at mount.
 function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
-  const { terminalDraft: initialDraft = null, ...rest } = overrides;
+  const { terminalDraft: initialDraft = null, voice = idleVoice(), ...rest } = overrides;
   function Harness() {
     const [raw, setRaw] = useState<string | null>(initialDraft);
     const [stable, setStable] = useState<string | null>(initialDraft);
@@ -668,6 +781,8 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       isShell: false,
       gone: false,
       readOnly: false,
+      transcriptionEnabled: false,
+      voice,
       dialogPresent: false,
       text: "pane output",
       prefs: { wrap: true, fontSize: 11, rawTerminal: false },
@@ -936,6 +1051,8 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       isShell: false,
       gone: false,
       readOnly: false,
+      transcriptionEnabled: false,
+      voice: idleVoice(),
       dialogPresent: false,
       text: "pane output",
       terminalDraft: draft,
@@ -1054,6 +1171,14 @@ describe("Composer — reload-guard hold (no-SW self-update safety gate)", () =>
     await screen.findByText(/draft in terminal/i);
     expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue(""); // nothing phone-owned to lose
     expect(isReloadHeld()).toBe(false);
+  });
+
+  it("holds while voice activity is in progress", () => {
+    renderComposer({
+      transcriptionEnabled: true,
+      voice: { ...idleVoice(), phase: "recording", elapsedLabel: "0:01" },
+    });
+    expect(isReloadHeld()).toBe(true);
   });
 
   it("holds while an image upload is in flight, releases once it settles", async () => {
@@ -1470,6 +1595,8 @@ describe("Composer — draft persistence", () => {
       isShell: false,
       gone: false,
       readOnly: false,
+      transcriptionEnabled: false,
+      voice: idleVoice(),
       dialogPresent: false,
       text: "pane output",
       terminalDraft: null,

@@ -10,6 +10,7 @@ import {
   fetchSnapshot,
   sendKeys,
   sendReply,
+  transcribeAudio,
   uploadImage,
   withTimeout,
   XHR_HEADER,
@@ -108,6 +109,45 @@ describe("api client", () => {
     await expect(uploadImage("w1:p1", file)).rejects.toThrow(/413/);
   });
 
+  it("transcribeAudio posts one redirect-refused multipart recording and reported duration", async () => {
+    let reportedDuration = "";
+    let requests = 0;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/transcribe$/, async ({ request }) => {
+        // MSW's Node multipart parser does not recognise jsdom's File implementation, so assert the
+        // actual encoded multipart contract rather than asking its Node-only parser to rehydrate it.
+        requests += 1;
+        const url = new URL(request.url);
+        const body = await request.text();
+        reportedDuration = body.includes("1234") ? "1234" : "";
+        expect(url.pathname).toBe("/api/pane/w1%3Ap1/transcribe");
+        expect(url.searchParams.get("session")).toBe("collie-demo");
+        expect(request.redirect).toBe("error");
+        expect(request.headers.get(XHR_HEADER)).toBe(XHR_HEADER_VALUE);
+        expect(request.headers.get("content-type")).toMatch(/^multipart\/form-data; boundary=/);
+        expect(body).toContain('name="file"; filename=');
+        expect(body).toContain("Content-Type: audio/webm");
+        expect(body).toContain('name="duration_ms"');
+        return HttpResponse.json({ ok: true, text: "editable words" });
+      }),
+    );
+    const file = new File(["audio"], "recording.webm", { type: "audio/webm" });
+    await expect(transcribeAudio("w1:p1", file, 1234, "collie-demo")).resolves.toEqual({
+      ok: true,
+      text: "editable words",
+    });
+    expect(reportedDuration).toBe("1234");
+    expect(requests).toBe(1);
+  });
+
+  it("transcribeAudio preserves the bridge status error", async () => {
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/transcribe$/, () => new HttpResponse("provider down", { status: 502 })),
+    );
+    const file = new File(["audio"], "recording.webm", { type: "audio/webm" });
+    await expect(transcribeAudio("w1:p1", file, 1234)).rejects.toThrow(/502 provider down/);
+  });
+
   it("checkForUpdates POSTs (no body) and returns the fresh UpdateInfo", async () => {
     const info = {
       current: "0.11.0",
@@ -203,6 +243,82 @@ describe("api client — request timeouts", () => {
   });
 });
 
+// Voice owns a distinct 90-second total deadline because its completed multipart response can stall
+// after headers. These cases stay local to the new endpoint; existing request paths retain main's
+// native timeout coverage above.
+describe("api client — transcription deadline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function stallTranscriptionBody() {
+    let signal: AbortSignal | null | undefined;
+    let resolveBodyRead: () => void = () => {};
+    const bodyReadStarted = new Promise<void>((resolve) => {
+      resolveBodyRead = resolve;
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init?: RequestInit) => {
+      signal = init?.signal;
+      if (!signal) throw new Error("expected transcription deadline signal");
+      const body = new ReadableStream<Uint8Array>(
+        {
+          start(controller) {
+            signal!.addEventListener("abort", () => controller.error(signal!.reason), { once: true });
+          },
+          pull() {
+            resolveBodyRead();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    return {
+      bodyReadStarted,
+      get signal() {
+        return signal;
+      },
+    };
+  }
+
+  it("keeps the 90-second deadline through a stalled transcription body", async () => {
+    vi.useFakeTimers();
+    const stalled = stallTranscriptionBody();
+    const pending = transcribeAudio(
+      "w1:p1",
+      new File(["x"], "recording.webm", { type: "audio/webm" }),
+      1_000,
+    ).catch((error: unknown) => error);
+
+    await stalled.bodyReadStarted;
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    await expect(pending).resolves.toMatchObject({ name: "TimeoutError" });
+    expect(stalled.signal?.aborted).toBe(true);
+  });
+
+  it("keeps caller cancellation through a transcription body after headers", async () => {
+    const caller = new AbortController();
+    const stalled = stallTranscriptionBody();
+    const pending = transcribeAudio(
+      "w1:p1",
+      new File(["x"], "recording.webm", { type: "audio/webm" }),
+      1_000,
+      undefined,
+      caller.signal,
+    );
+
+    await stalled.bodyReadStarted;
+    caller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(stalled.signal?.aborted).toBe(true);
+  });
+});
+
 // The browser URL uses the short `?s=`; on the wire every session-scoped endpoint takes `session=`.
 // A named session must append that param (composing correctly with fetchPane's `?lines=`); the
 // primary session (undefined) must leave the path untouched so a single-session bridge is unaffected.
@@ -276,9 +392,9 @@ describe("api client — connection-health stamping", () => {
 // signal `isAuthError` (lib/loaders.ts) can act on: `fetch` follows the cross-origin 302, the call
 // rejects as a TypeError with no status, and the refusal banner — with the Sign-in link that would
 // restore the session — never renders. Marking requests as XHR is what makes such a proxy answer 401
-// instead. Every path that talks to the bridge must carry it, including the two that bypass `req`:
-// fetchPane builds its own header bag, and uploadImage sets none at all so the browser keeps
-// ownership of the multipart boundary.
+// instead. Every path that talks to the bridge must carry it, including the three that bypass `req`:
+// fetchPane builds its own header bag; uploadImage and transcribeAudio set only this marker so the
+// browser keeps ownership of each multipart boundary.
 describe("api client — XHR marker for identity proxies", () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -291,19 +407,22 @@ describe("api client — XHR marker for identity proxies", () => {
     return seen;
   }
 
-  it("marks reads, mutations, pane polls and uploads alike", async () => {
+  it("marks reads, mutations, pane polls, uploads and transcription alike", async () => {
     const seen = captureHeaders();
     await fetchSnapshot();
     await sendReply("w1:p1", "hi");
     await fetchPane("w1:p1");
     await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
-    expect(seen).toHaveLength(4);
+    await transcribeAudio("w1:p1", new File(["x"], "recording.webm", { type: "audio/webm" }), 1_000);
+    expect(seen).toHaveLength(5);
     for (const headers of seen) expect(headers.get(XHR_HEADER)).toBe(XHR_HEADER_VALUE);
   });
 
-  it("leaves the multipart upload without a content-type so the boundary survives", async () => {
+  it("leaves multipart uploads and transcription without a content-type so boundaries survive", async () => {
     const seen = captureHeaders();
     await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
-    expect(seen[0].get("content-type")).toBeNull();
+    await transcribeAudio("w1:p1", new File(["x"], "recording.webm", { type: "audio/webm" }), 1_000);
+    expect(seen).toHaveLength(2);
+    for (const headers of seen) expect(headers.get("content-type")).toBeNull();
   });
 });

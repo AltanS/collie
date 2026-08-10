@@ -71,6 +71,57 @@ function envBool(name: string, fallback: boolean): boolean {
   return fallback;
 }
 
+export interface TranscriptionConfig {
+  /** Model identifier understood by the configured OpenAI-compatible endpoint. */
+  model: string;
+  /** OpenAI-compatible API base, including its version prefix (for example `/v1`). */
+  baseURL: string;
+  /** Server-held credential. Omitted only for an explicitly configured local/custom endpoint. */
+  apiKey?: string;
+}
+
+/** Collie's default model once any dedicated transcription setting opts in. */
+const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
+/** Official API base used when `COLLIE_TRANSCRIPTION_BASE_URL` is unset. */
+const DEFAULT_TRANSCRIPTION_BASE_URL = "https://api.openai.com/v1";
+
+function loadTranscriptionConfig(): TranscriptionConfig | null {
+  const model = (process.env.COLLIE_TRANSCRIPTION_MODEL ?? "").trim();
+  const rawBaseURL = (process.env.COLLIE_TRANSCRIPTION_BASE_URL ?? "").trim();
+  const apiKey = (process.env.COLLIE_TRANSCRIPTION_API_KEY ?? "").trim();
+
+  // Voice remains off until an operator expresses intent through one of its dedicated settings.
+  // Once opted in, an omitted model resolves to Collie's default rather than becoming another switch.
+  if (!model && !rawBaseURL && !apiKey) return null;
+
+  let url: URL;
+  try {
+    url = new URL(rawBaseURL || DEFAULT_TRANSCRIPTION_BASE_URL);
+  } catch {
+    console.warn("[config] transcription disabled: COLLIE_TRANSCRIPTION_BASE_URL must be an http(s) URL");
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    console.warn("[config] transcription disabled: COLLIE_TRANSCRIPTION_BASE_URL must be an http(s) URL");
+    return null;
+  }
+
+  // A keyless public OpenAI request would only fail later after sending audio. Custom/local compatible
+  // services may deliberately use no authentication, so this requirement is specific to OpenAI's API.
+  const officialOpenAI = url.origin === "https://api.openai.com";
+  if (officialOpenAI && !apiKey) {
+    console.warn("[config] transcription disabled: COLLIE_TRANSCRIPTION_API_KEY is required for OpenAI");
+    return null;
+  }
+
+  return {
+    model: model || DEFAULT_TRANSCRIPTION_MODEL,
+    // Keep a canonical no-trailing-slash base. The SDK appends `/audio/transcriptions` itself.
+    baseURL: url.toString().replace(/\/$/, ""),
+    ...(apiKey ? { apiKey } : {}),
+  };
+}
+
 export interface Config {
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
@@ -155,6 +206,8 @@ export interface Config {
    * to your MagicDNS name (`collie.<tailnet>.ts.net`), especially in http serve mode.
    */
   publicHosts: string[];
+  /** One configured OpenAI-compatible transcription endpoint, or null when voice input is disabled. */
+  transcription: TranscriptionConfig | null;
   /** Web Push (VAPID). All three required to enable push; otherwise push is disabled. */
   vapidPublic: string;
   vapidPrivate: string;
@@ -237,6 +290,7 @@ export function loadConfig(): Config {
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST"),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS"),
     publicHosts: envList("COLLIE_PUBLIC_HOSTS"),
+    transcription: loadTranscriptionConfig(),
     vapidPublic: process.env.COLLIE_VAPID_PUBLIC ?? "",
     vapidPrivate: process.env.COLLIE_VAPID_PRIVATE ?? "",
     vapidSubject: process.env.COLLIE_VAPID_SUBJECT ?? "mailto:admin@example.com",

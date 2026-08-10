@@ -4,6 +4,7 @@ import { extname, join, normalize, sep } from "node:path";
 import type { ActivityLedger } from "./activity.ts";
 import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
+import { TranscriptionProviderError, type Transcriber } from "./transcription.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
@@ -30,6 +31,7 @@ import type {
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
+  TranscriptionResponse,
   UploadResponse,
 } from "./types.ts";
 
@@ -37,13 +39,23 @@ import type {
 // terminal — instead we save it to a host file and the client references its path in the message
 // (the agent reads images by path). See uploadPane().
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
-// Multipart wraps the file in a boundary + part headers, so a legitimately-sized image arrives a
-// little over MAX_UPLOAD_BYTES on the wire. Allow a small slack for the Content-Length pre-check.
-const MAX_UPLOAD_OVERHEAD = 64 * 1024; // 64 KB
+// Multipart wraps a file in a boundary + part headers, so allow a small shared slack for its
+// Content-Length pre-checks.
+const MAX_MULTIPART_OVERHEAD = 64 * 1024; // 64 KB
 // Hard cap the runtime enforces on ANY request body (Bun.serve maxRequestBodySize). Bigger than the
 // upload cap + overhead so the handler's own 413 fires first for honest clients; this cuts off a
 // chunked or lying client that never sends an accurate Content-Length.
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
+// Voice recordings stay below the global body limit. They are never written to the uploads directory
+// or any other filesystem path.
+export const MAX_TRANSCRIPTION_BYTES = 8 * 1024 * 1024; // 8 MB
+export const MAX_TRANSCRIPTION_DURATION_MS = 5 * 60 * 1000; // 5 min
+export const MAX_TRANSCRIPT_CHARS = 8192;
+
+function declaredMultipartTooLarge(req: Request, fileLimit: number): boolean {
+  const declared = Number(req.headers.get("content-length"));
+  return Number.isFinite(declared) && declared > fileLimit + MAX_MULTIPART_OVERHEAD;
+}
 // Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
 const MAX_READ_LINES = 10_000;
 const MAX_EXPECTED_PROMPT_CHARS = 8192;
@@ -84,13 +96,14 @@ const CSP =
 const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
+  "permissions-policy": "microphone=(self)",
 };
 
 // Loopback Host/Origin forms (with an optional port). Loopback is always trusted — only tailscaled
 // (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|transcribe|close|rename|history))?$/;
 // Turns per history page. "Show entire history" means the WHOLE conversation, so the client asks for
 // everything and this ceiling is a safety net against a pathological log, not the normal path — a
 // 1400-turn session is ~1.4 MB raw / ~400 KB gzipped, which a tailnet link serves fine. The default
@@ -123,13 +136,19 @@ export const SEEN_HEADER = "x-collie-seen";
  * doing so promotes it to a preflighted CORS request, and the bridge answers no preflight. Our own
  * same-origin `fetch` sets it freely.
  *
- * Write actions (reply/keys/upload/close/rename) need no header: they already cleared
+ * Write actions (reply/keys/upload/transcribe/close/rename) need no header: they already cleared
  * `guard(…, "write")`, which requires an `Origin`. `history` is a read despite being an action
  * segment, so it needs the header like any other read.
  */
 export function marksPaneSeen(req: Request, action: string | undefined): boolean {
   if (req.headers.get(SEEN_HEADER) !== null) return true;
   return action !== undefined && action !== "history";
+}
+
+/** Whether a pane exists in this session's last successfully reconciled engine snapshot. */
+export function hasKnownPane(engine: StateEngine, paneId: string): boolean {
+  const { agents, shellPanes } = engine.current();
+  return agents.some((pane) => pane.paneId === paneId) || shellPanes.some((pane) => pane.paneId === paneId);
 }
 
 export function startServer(opts: {
@@ -141,8 +160,10 @@ export function startServer(opts: {
   updateMonitor: UpdateMonitor;
   audit: AuditLog;
   activity: ActivityLedger;
+  /** Constructed once at startup only when the protected transcription config is valid. */
+  transcriber: Transcriber | null;
 }) {
-  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity } = opts;
+  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, transcriber } = opts;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
@@ -162,7 +183,7 @@ export function startServer(opts: {
     // Content-Length is absent or false. The upload handler still does its own precise check.
     maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
 
-    async fetch(req) {
+    async fetch(req, bunServer) {
       const url = new URL(req.url);
       const { pathname } = url;
 
@@ -208,6 +229,9 @@ export function startServer(opts: {
             sessions: registry.list(),
             notifications: { snoozedUntil: snooze.until() },
             update: updateMonitor.status(),
+            // The browser learns only whether voice input is usable; model, base URL, key and upstream
+            // failures remain server-side.
+            transcriptionEnabled: transcriber !== null,
             ts: Date.now(),
           } satisfies SnapshotResponse, req.headers.get("accept-encoding")),
           await buildId(),
@@ -250,7 +274,7 @@ export function startServer(opts: {
         const paneId = decodeURIComponent(paneMatch[1]!);
         const action = paneMatch[2];
         // Reading a pane is allowed for any access-gated client; every action (reply/keys/upload/
-        // close) types into or restructures a terminal, so it additionally needs an authorised device.
+        // transcribe/close) types into or restructures a terminal, so it additionally needs an authorised device.
         // `history` is a READ despite being an action segment — it only ever reads a log off disk.
         const isRead = !action || action === "history";
         const denied = guard(req, cfg, isRead ? "read" : "write");
@@ -258,6 +282,14 @@ export function startServer(opts: {
         const rt = registry.get(sessionName);
         if (!rt) return unknownSession();
         const { herdr, name: session } = rt;
+        // Transcription is pane-scoped for its audit attribution, so reject a stale or phantom pane
+        // from the last-known engine state before reading audio, invoking the provider, or marking
+        // activity. This is intentionally not a fresh Herdr RPC: normal UI requests follow this
+        // same polled snapshot and a newly-created pane may take one poll to appear.
+        const isTranscription = action === "transcribe" && req.method === "POST";
+        if (isTranscription && !hasKnownPane(rt.engine, paneId)) {
+          return json({ ok: false, error: "pane not found" } satisfies TranscriptionResponse, req.headers.get("accept-encoding"), 404);
+        }
         // You are in this pane: reading it, replying, sending keys, browsing its history. That is
         // the whole definition of "seen" (.adr/0003), and this is the one place every such request
         // passes through. It cannot false-positive from background polling — the dashboard loader
@@ -279,6 +311,8 @@ export function startServer(opts: {
         if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
+        if (action === "transcribe" && req.method === "POST")
+          return transcribePane(paneId, req, audit, device, session, transcriber, () => bunServer.timeout(req, 90));
         if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device, session);
         if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit, device, session);
         return text("method not allowed", 405);
@@ -1031,6 +1065,118 @@ async function createWorkspace(
   }
 }
 
+/**
+ * Validate and forward one completed voice clip without retaining it. This is deliberately separate
+ * from `uploadPane`: image uploads are durable host files that Herdr reads by path; audio is only a
+ * short-lived multipart value passed onward to the configured transcription endpoint.
+ */
+export async function transcribePane(
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+  transcriber: Transcriber | null,
+  /** Production extends only this validated provider wait past Bun's default request timeout. */
+  beforeProviderCall?: () => void,
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  if (transcriber === null) {
+    return json({ ok: false, error: "transcription unavailable" } satisfies TranscriptionResponse, accept, 503);
+  }
+  if (!req.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data")) {
+    return json({ ok: false, error: "expected multipart audio" } satisfies TranscriptionResponse, accept, 400);
+  }
+  // FormData buffers the completed request, so reject an honest oversized declaration before asking
+  // Bun to parse it. `maxRequestBodySize` remains the hard backstop for chunked or lying requests.
+  if (declaredMultipartTooLarge(req, MAX_TRANSCRIPTION_BYTES)) {
+    return json({ ok: false, error: "audio too large (max 8 MiB)" } satisfies TranscriptionResponse, accept, 413);
+  }
+
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return json({ ok: false, error: "expected multipart audio" } satisfies TranscriptionResponse, accept, 400);
+  }
+  const files = form.getAll("file");
+  const durations = form.getAll("duration_ms");
+  if (files.length !== 1 || !(files[0] instanceof File)) {
+    return json({ ok: false, error: "audio file required" } satisfies TranscriptionResponse, accept, 400);
+  }
+  if (durations.length !== 1 || typeof durations[0] !== "string" || !/^\d+$/.test(durations[0])) {
+    return json({ ok: false, error: "invalid recording duration" } satisfies TranscriptionResponse, accept, 400);
+  }
+  // This is browser-reported recording lifecycle metadata, not media duration parsed by the bridge.
+  const reportedDurationMs = Number(durations[0]);
+  if (!Number.isSafeInteger(reportedDurationMs) || reportedDurationMs < 1) {
+    return json({ ok: false, error: "invalid recording duration" } satisfies TranscriptionResponse, accept, 400);
+  }
+  if (reportedDurationMs > MAX_TRANSCRIPTION_DURATION_MS) {
+    return json({ ok: false, error: "recording too long (max 5 minutes)" } satisfies TranscriptionResponse, accept, 413);
+  }
+
+  const file = files[0];
+  const receivedMime = file.type.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  // Bun's multipart parser derives `video/webm`/`video/mp4` from a normal `.webm`/`.mp4` filename
+  // even when MediaRecorder labelled an audio-only stream `audio/*`. Both spellings describe the
+  // same accepted container here; forward the canonical audio type upstream.
+  const mime =
+    receivedMime === "audio/webm" || receivedMime === "video/webm"
+      ? "audio/webm"
+      : receivedMime === "audio/mp4" || receivedMime === "video/mp4"
+        ? "audio/mp4"
+        : null;
+  if (mime === null) {
+    return json({ ok: false, error: "unsupported audio type" } satisfies TranscriptionResponse, accept, 415);
+  }
+  if (file.size < 1) {
+    return json({ ok: false, error: "audio file required" } satisfies TranscriptionResponse, accept, 400);
+  }
+  if (file.size > MAX_TRANSCRIPTION_BYTES) {
+    return json({ ok: false, error: "audio too large (max 8 MiB)" } satisfies TranscriptionResponse, accept, 413);
+  }
+
+  const detail = { mime, bytes: file.size, reportedDurationMs };
+  // Never forward the caller-supplied filename. It may be sensitive metadata, and the configured
+  // provider only needs a conventional extension to interpret the completed browser recording.
+  const providerFile = new File([file], mime === "audio/mp4" ? "recording.mp4" : "recording.webm", {
+    type: mime,
+  });
+  try {
+    // Multipart validation deliberately retains Bun's normal slow-client timeout. Only the
+    // subsequent provider wait gets route-specific transport headroom above its own 60s deadline.
+    beforeProviderCall?.();
+    const text = (await transcriber.transcribe(providerFile, req.signal)).trim();
+    if (!text || text.length > MAX_TRANSCRIPT_CHARS) {
+      audit.record({ action: "transcribe", paneId, session, device, detail: { ...detail, outcome: "invalid" } });
+      return json({ ok: false, error: "invalid transcription result" } satisfies TranscriptionResponse, accept, 502);
+    }
+    // Metadata only: no filename, audio bytes, provider body, or returned transcript enters audit.log.
+    audit.record({ action: "transcribe", paneId, session, device, detail: { ...detail, outcome: "ok" } });
+    return json({ ok: true, text } satisfies TranscriptionResponse, accept);
+  } catch (error) {
+    const kind = error instanceof TranscriptionProviderError ? error.kind : "unavailable";
+    audit.record({
+      action: "transcribe",
+      paneId,
+      session,
+      device,
+      detail: { ...detail, outcome: kind },
+    });
+    // Provider messages can include account, model, or upstream error-body details; never reflect
+    // them to a browser or log them. A fresh recording is required after every failed request.
+    const status = kind === "timeout" ? 504 : kind === "client-aborted" ? 499 : 502;
+    const message =
+      kind === "timeout"
+        ? "transcription timed out"
+        : kind === "client-aborted"
+          ? "transcription cancelled"
+          : "transcription unavailable";
+    return json({ ok: false, error: message } satisfies TranscriptionResponse, accept, status);
+  }
+}
+
 // Save an uploaded image to a host file and return its absolute path. The client then references
 // that path in a message; Claude Code / Codex read images by path (the terminal can't take a
 // pasted image over the socket). Validated by MIME and size; the filename is server-generated.
@@ -1046,8 +1192,7 @@ async function uploadPane(
   // Reject an oversize upload by its declared Content-Length BEFORE buffering — req.formData()
   // reads the whole body into memory first, so a 100 MB "image" would be materialised just to fail
   // the size check below. Multipart adds a boundary + part headers, so allow a small slack.
-  const declared = Number(req.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES + MAX_UPLOAD_OVERHEAD) {
+  if (declaredMultipartTooLarge(req, MAX_UPLOAD_BYTES)) {
     return secure(
       new Response(
         JSON.stringify({

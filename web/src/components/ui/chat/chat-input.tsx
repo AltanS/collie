@@ -2,8 +2,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-// Auto-growing message composer. It's just a styled textarea, so the phone's native keyboard —
-// including voice dictation via the keyboard mic — works for free. Auto-capitalization is off: this
+// Auto-growing text portion of the composer. Native keyboard dictation still works alongside the
+// optional completed-clip voice input in Composer. Auto-capitalization is off: this
 // drives a terminal (shell commands, slash-commands, agent replies) where a forced leading capital
 // is usually wrong. (Callers can still override via props.)
 function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea">) {

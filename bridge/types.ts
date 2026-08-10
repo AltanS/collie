@@ -182,6 +182,8 @@ export interface SnapshotResponse {
   /** Update-availability signal. Optional — a stale bridge that predates the field simply omits it,
    *  which the client reads as "no info" (see bridge/update.ts). */
   update?: UpdateStatus;
+  /** True only when a protected server-side transcription endpoint is configured and usable. */
+  transcriptionEnabled: boolean;
   ts: number;
 }
 
@@ -252,6 +254,9 @@ export type ActionResponse =
 
 /** POST /api/pane/:id/upload — image saved to a host file; `path` is the absolute path to ref. */
 export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };
+
+/** POST /api/pane/:id/transcribe — one completed in-memory recording becomes editable text. */
+export type TranscriptionResponse = { ok: true; text: string } | { ok: false; error: string };
 
 /** A freshly-created shell pane — enough for the client to navigate into before the next poll. */
 export interface CreatedPane {

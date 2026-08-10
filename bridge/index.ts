@@ -19,6 +19,7 @@ import {
 } from "./sessions.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
+import { createTranscriber } from "./transcription.ts";
 import {
   bridgeStampSync,
   githubTagsFetcher,
@@ -36,6 +37,9 @@ const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 const cfg = loadConfig();
+// Resolve this once: changing protected provider settings requires the same bridge restart as every
+// other config change, and no provider client exists at all when the feature is disabled.
+const transcriber = cfg.transcription ? createTranscriber(cfg.transcription) : null;
 
 // Ensure the state dir exists with private (0700) perms before push/snooze/uploads write into it —
 // it holds push subscription endpoints and uploaded images, so keep it owner-only.
@@ -203,7 +207,7 @@ const sweepTimer = setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
-const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity });
+const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, transcriber });
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");

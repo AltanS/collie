@@ -45,6 +45,7 @@ const connected = (agents: AgentView[], shellPanes: AgentView[] = []): HomeData 
   session: undefined,
   snoozedUntil: null,
   update: undefined,
+  transcriptionEnabled: false,
   error: false,
   authError: false,
 });

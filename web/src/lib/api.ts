@@ -12,6 +12,7 @@ import type {
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
+  TranscriptionResponse,
   UpdateInfo,
   UploadResponse,
 } from "./types";
@@ -69,6 +70,8 @@ const GET_TIMEOUT_MS = 10_000;
 const MUTATION_TIMEOUT_MS = 20_000;
 //   - Uploads carry a whole file over the phone's uplink — the most generous budget.
 const UPLOAD_TIMEOUT_MS = 60_000;
+//   - A completed voice clip has the same uplink cost plus one bounded provider round trip.
+const TRANSCRIPTION_TIMEOUT_MS = 90_000;
 
 /**
  * Compose the caller's abort signal (a loader's `request.signal`, used to supersede a stale poll)
@@ -88,6 +91,42 @@ export function withTimeout(
   if (!signal) return timeoutSignal;
   if (typeof AbortSignal.any !== "function") return signal;
   return AbortSignal.any([signal, timeoutSignal]);
+}
+
+/** Keep voice's deadline and caller signal alive until its response body is consumed. */
+async function transcribeWithDeadline<T>(
+  callerSignal: AbortSignal | undefined,
+  request: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const onCallerAbort = () => {
+    if (!controller.signal.aborted) controller.abort(callerSignal?.reason);
+  };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  if (callerSignal?.aborted) {
+    onCallerAbort();
+  } else {
+    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+    timer = setTimeout(() => {
+      if (!controller.signal.aborted) {
+        controller.abort(new DOMException("Request timed out", "TimeoutError"));
+      }
+    }, TRANSCRIPTION_TIMEOUT_MS);
+  }
+
+  try {
+    const result = await request(controller.signal);
+    if (controller.signal.aborted) throw controller.signal.reason;
+    return result;
+  } catch (error) {
+    // errorDetail falls back to statusText on a failed body read; cancellation must still win.
+    if (controller.signal.aborted) throw controller.signal.reason;
+    throw error;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  }
 }
 
 // Append the `session=<name>` query param to an API path, composing with any query already present
@@ -461,6 +500,43 @@ export function uploadImage(paneId: string, file: File, session?: string): Promi
         throw new ApiError(`upload → ${res.status} ${await errorDetail(res)}`, res.status);
       }
       return (await res.json()) as UploadResponse;
+    })(),
+  );
+}
+
+/**
+ * Submit one completed in-memory recording for transcription. Browser Fetch refuses a front-door
+ * redirect before it can replay the multipart body; no retry is attempted, so callers must make a
+ * fresh recording after failure rather than risk billing the provider twice.
+ */
+export function transcribeAudio(
+  paneId: string,
+  file: File,
+  reportedDurationMs: number,
+  session?: string,
+  signal?: AbortSignal,
+): Promise<TranscriptionResponse> {
+  return trackBusy(
+    (async () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      // The wire field is retained for bridge compatibility; its value is browser-reported lifecycle metadata.
+      fd.append("duration_ms", String(reportedDurationMs));
+      return transcribeWithDeadline(signal, async (deadlineSignal) => {
+        const res = await fetch(withSession(`/api/pane/${encodeURIComponent(paneId)}/transcribe`, session), {
+          method: "POST",
+          body: fd,
+          // Do not set content-type: the browser adds the multipart boundary.
+          headers: { [XHR_HEADER]: XHR_HEADER_VALUE },
+          // Do not replay a voice recording if an identity proxy/front door redirects this POST.
+          redirect: "error",
+          signal: deadlineSignal,
+        });
+        if (!res.ok) {
+          throw new ApiError(`transcription → ${res.status} ${await errorDetail(res)}`, res.status);
+        }
+        return (await res.json()) as TranscriptionResponse;
+      });
     })(),
   );
 }

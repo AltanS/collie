@@ -171,6 +171,8 @@ export interface SnapshotResponse {
   sessions?: SessionSummary[];
   /** Version / upgrade status. Absent on an older bridge that doesn't report it. */
   update?: UpdateInfo;
+  /** Voice input capability only. Provider URL, model, key and errors never leave the bridge. */
+  transcriptionEnabled?: boolean;
   ts: number;
 }
 
@@ -241,6 +243,9 @@ export type ActionResponse =
     };
 
 export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };
+
+/** A successful voice response becomes editable text for review; non-2xx bridge failures throw. */
+export type TranscriptionResponse = { ok: true; text: string };
 
 /** A freshly-created shell pane — enough to navigate into before the next poll lands. */
 export interface CreatedPane {

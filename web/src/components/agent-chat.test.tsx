@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { useState, type ComponentProps } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -15,11 +17,45 @@ vi.mock("@/lib/prompt-action", () => ({
 vi.mock("@/lib/wizard-action", () => ({
   submitWizardKeys: vi.fn(),
 }));
+vi.mock("@/lib/preview-action", () => ({
+  submitPreviewKeys: vi.fn(),
+  submitPreviewNote: vi.fn(),
+  submitPreviewOption: vi.fn(),
+}));
+vi.mock("@/lib/multi-select-action", () => ({
+  submitMultiSelectIntent: vi.fn(),
+}));
+vi.mock("@/lib/menu-action", () => ({
+  submitMenuKeys: vi.fn(),
+}));
+vi.mock("@/hooks/use-voice-input", () => ({
+  useVoiceInput: vi.fn(),
+}));
+
+// Keep the real renderer and controls, but retain its public parent callbacks so this test can call
+// AgentChat's stale/direct-invocation boundary without a disabled DOM control swallowing the event.
+const capturedAnsiOutputs = vi.hoisted(() => [] as AnsiOutputProps[]);
+vi.mock("@/components/ansi-output", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/components/ansi-output")>();
+  const React = await import("react");
+  return {
+    ...original,
+    AnsiOutput: (props: AnsiOutputProps) => {
+      capturedAnsiOutputs.push(props);
+      return React.createElement(original.AnsiOutput, props);
+    },
+  };
+});
 
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
+import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
+import { submitMultiSelectIntent } from "@/lib/multi-select-action";
+import { submitMenuKeys } from "@/lib/menu-action";
+import { useVoiceInput, type VoiceInput, type VoicePhase } from "@/hooks/use-voice-input";
+import type { AnsiOutputProps } from "@/components/ansi-output";
 import { fixtureAgents } from "@/test/handlers";
 import { AgentChat } from "./agent-chat";
 
@@ -31,7 +67,33 @@ beforeAll(() => {
   // jsdom doesn't implement scrollTo; the terminal mirror's auto-scroll calls it.
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
-beforeEach(() => clearStatus());
+let voiceOptions: Parameters<typeof useVoiceInput>[0] | undefined;
+let voice: VoiceInput;
+const voiceMock = vi.mocked(useVoiceInput);
+
+beforeEach(() => {
+  clearStatus();
+  capturedAnsiOutputs.length = 0;
+  voiceOptions = undefined;
+  voice = {
+    phase: "idle",
+    elapsedLabel: "0:00",
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(),
+    cancel: vi.fn(),
+  };
+  voiceMock.mockImplementation((options) => {
+    voiceOptions = options;
+    return voice;
+  });
+  vi.mocked(submitPromptOption).mockResolvedValue({ status: "sent" });
+  vi.mocked(submitWizardKeys).mockResolvedValue({ status: "sent" });
+  vi.mocked(submitPreviewKeys).mockResolvedValue({ status: "sent" });
+  vi.mocked(submitPreviewNote).mockResolvedValue({ status: "sent" });
+  vi.mocked(submitPreviewOption).mockResolvedValue({ status: "sent" });
+  vi.mocked(submitMultiSelectIntent).mockResolvedValue({ status: "sent" });
+  vi.mocked(submitMenuKeys).mockResolvedValue({ status: "sent" });
+});
 
 function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
   const agent = fixtureAgents[0]!; // a blocked claude agent
@@ -41,6 +103,7 @@ function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
     agents: fixtureAgents,
     shellPanes: [],
     tabs: [],
+    transcriptionEnabled: false,
     text: "recent pane output",
     onBack: vi.fn(),
     onSelect: vi.fn(),
@@ -115,6 +178,7 @@ describe("AgentChat — header title block", () => {
               agents={fixtureAgents}
               shellPanes={[]}
               tabs={[]}
+              transcriptionEnabled={false}
               text="out"
               onBack={vi.fn()}
               onSelect={vi.fn()}
@@ -232,6 +296,134 @@ const WIZARD_TEXT = [
   "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
 ].join("\n");
 
+const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
+const PREVIEW_TEXT = readFileSync(join(PANES_DIR, "claude--select-preview.txt"), "utf8");
+const MULTI_SELECT_TEXT = readFileSync(
+  join(PANES_DIR, "claude--select-multiselect-single.txt"),
+  "utf8",
+);
+const GENERIC_MENU_TEXT = readFileSync(join(PANES_DIR, "claude--menu-model-picker.txt"), "utf8");
+
+describe("AgentChat — pane voice write lock", () => {
+  function capturedAnsiOutput(busy: boolean): AnsiOutputProps {
+    const props = [...capturedAnsiOutputs].reverse().find((output) => output.promptDisabled === busy);
+    if (!props) throw new Error(`expected ${busy ? "busy" : "idle"} AnsiOutput callbacks`);
+    return props;
+  }
+
+  function renderVoiceChat(text: string) {
+    let setVoicePhase: (phase: VoicePhase) => void = () => {
+      throw new Error("voice harness not mounted");
+    };
+    const agent = fixtureAgents[0]!;
+    function Harness() {
+      const [, setVersion] = useState(0);
+      setVoicePhase = (phase) => {
+        voice.phase = phase;
+        setVersion((version) => version + 1);
+      };
+      return (
+        <AgentChat
+          paneId={agent.paneId}
+          agent={agent}
+          agents={fixtureAgents}
+          shellPanes={[]}
+          tabs={[]}
+          text={text}
+          transcriptionEnabled
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    return { setVoicePhase: (phase: VoicePhase) => act(() => setVoicePhase(phase)) };
+  }
+
+  it.each([
+    {
+      name: "prompt",
+      text: MENU_TEXT,
+      submit: () => vi.mocked(submitPromptOption),
+      invoke: (output: AnsiOutputProps) =>
+        output.onPromptAction!(undefined as never, undefined as never),
+    },
+    {
+      name: "wizard",
+      text: WIZARD_TEXT,
+      control: () => screen.getByRole("button", { name: /Parser/ }),
+      submit: () => vi.mocked(submitWizardKeys),
+      invoke: (output: AnsiOutputProps) => output.onWizardAction!([], undefined as never),
+    },
+    {
+      name: "preview",
+      text: PREVIEW_TEXT,
+      control: () => screen.getByRole("button", { name: /Boxy/ }),
+      submit: () => vi.mocked(submitPreviewKeys),
+      invoke: (output: AnsiOutputProps) =>
+        output.onPreviewAction!({ kind: "nav", keys: [] }, undefined as never),
+    },
+    {
+      name: "multi-select",
+      text: MULTI_SELECT_TEXT,
+      control: () => screen.getByRole("checkbox", { name: /Cheese/ }),
+      submit: () => vi.mocked(submitMultiSelectIntent),
+      invoke: (output: AnsiOutputProps) =>
+        output.onMultiSelectAction!({ kind: "advance" }, undefined as never),
+    },
+    {
+      name: "generic menu",
+      text: GENERIC_MENU_TEXT,
+      control: () => screen.getByRole("button", { name: "Use this session only" }),
+      submit: () => vi.mocked(submitMenuKeys),
+      invoke: (output: AnsiOutputProps) =>
+        output.onMenuAction!({ keys: [], nav: false }, undefined as never),
+    },
+  ])("disables and hard-locks $name writes while voice is busy, then recovers idle", async ({
+    text,
+    control,
+    submit,
+    invoke,
+  }) => {
+    voice.phase = "recording";
+    submit().mockClear();
+    const { setVoicePhase } = renderVoiceChat(text);
+
+    const busyOutput = capturedAnsiOutput(true);
+    if (control) expect(control()).toBeDisabled();
+    // Calling the parent callback bypasses AnsiOutput's disabled leaf control, proving AgentChat's
+    // own guard blocks stale/direct invocations instead of only relying on visible disabling.
+    await invoke(busyOutput);
+    expect(submit()).not.toHaveBeenCalled();
+
+    setVoicePhase("idle");
+    const idleOutput = capturedAnsiOutput(false);
+    if (control) expect(control()).toBeEnabled();
+    await invoke(idleOutput);
+    await waitFor(() => expect(submit()).toHaveBeenCalledTimes(1));
+  });
+
+  it("routes a completed transcript to the editable draft without sending", () => {
+    renderChat({ transcriptionEnabled: true });
+    expect(voiceOptions).toBeDefined();
+
+    act(() => voiceOptions!.onTranscript("review this before sending"));
+
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("review this before sending");
+  });
+
+  it("reports a voice failure through the existing error status tone", async () => {
+    renderChat({ transcriptionEnabled: true });
+    expect(voiceOptions).toBeDefined();
+
+    act(() => voiceOptions!.onError("Microphone access was unavailable"));
+
+    const message = await screen.findByText("Microphone access was unavailable");
+    expect(message.closest("[role='status']")).toHaveClass("text-status-blocked");
+  });
+});
+
 describe("AgentChat — prompt-select race guard wiring (frozen {text, revision} pair)", () => {
   const mockSubmit = vi.mocked(submitPromptOption);
   beforeEach(() => {
@@ -256,6 +448,7 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
           agents={fixtureAgents}
           shellPanes={[]}
           tabs={[]}
+          transcriptionEnabled={false}
           text={pane.text}
           revision={pane.revision}
           onBack={vi.fn()}
@@ -432,6 +625,7 @@ describe("AgentChat — shared header: stale-status dimming", () => {
           agents={fixtureAgents}
           shellPanes={[]}
           tabs={[]}
+          transcriptionEnabled={false}
           text="out"
           error={error}
           onBack={vi.fn()}

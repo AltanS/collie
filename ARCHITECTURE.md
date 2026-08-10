@@ -43,10 +43,14 @@ The browser never touches the socket directly; the bridge is the only thing that
    Collie (this project)
      • static web app + small JSON API (browser polls /api/snapshot)
      • herdr-client adapter (the ONLY code that knows socket method names)
+     • optional one-shot voice transcription client (outbound only; see §4)
      • snapshot poll, event-poked (see §5)
         │  newline-delimited JSON over Unix socket
         ▼
    Herdr server (owns panes, agents, state)
+
+   Optional voice path: PWA MediaRecorder → same-origin bridge /api/pane/:id/transcribe
+                        → bridge → configured OpenAI-compatible endpoint → editable browser draft
 ```
 
 ## 3. Deployment model — **systemd user service, not a plugin pane**
@@ -102,10 +106,14 @@ Product details that shaped the loop:
     `BlockingMessage`. That was never built: parsing is client-side and pattern-based, over whatever
     the current pane happens to show. It works because agent prompts are formulaic, and it degrades
     to "read the pane" when they aren't.
-- **Voice needs zero special build.** It's a plain text box — Android's default keyboard provides
-  dictation via its mic button. No Web Speech API, no push-to-talk, no voice-specific fallback. Send
-  is a normal explicit button, so dictated text is naturally reviewable before it goes — that's just
-  how the box works, not a feature to build.
+- **Keyboard dictation remains free.** The plain text box still accepts the phone keyboard's own
+  dictation. Separately, an optional native MediaRecorder flow records one completed WebM/MP4 clip,
+  posts it through the existing same-origin write gate; after validation, the bridge asks one
+  configured OpenAI-compatible endpoint for final text. All dedicated transcription settings blank
+  leaves this flow off; any nonblank setting opts in and an omitted model uses Collie's
+  `gpt-4o-transcribe` default. There is no Web Speech API, streaming, playback, codec conversion,
+  provider registry or fallback. The transcript enters the normal editable/persisted draft; only an
+  explicit existing Send reaches Herdr.
 - **Quick replies are heuristics, not guarantees.** Different agents expect different input (a Y/n
   prompt vs a numbered menu vs an approval phrase), so there is always a **"send exactly what I
   type"** fallback.
@@ -227,8 +235,10 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
 Also shipped, as defence in depth:
 
 - **Audit log** — every write-level action appends a JSONL line (timestamp, method, truncated params)
-  to `<stateDir>/audit.log`, mode 0600 since it may echo reply text. An audit failure never fails the
-  user's action (`bridge/audit.ts`).
+  to `<stateDir>/audit.log`, mode 0600 since it may echo reply text. Voice transcription records only
+  MIME, bytes, browser-reported lifecycle duration (`reportedDurationMs`) and outcome (`ok`, `invalid`,
+  `timeout`, `client-aborted`, or `unavailable`) — never audio, filename, transcript or provider body.
+  An audit failure never fails the user's action (`bridge/audit.ts`).
 - **Destructive-action confirm** — a browser-side prompt when input pattern-matches `rm`, `sudo`,
   `git push --force`, `dd`, etc. (`web/src/lib/destructive.ts`). Prevents catastrophic mistaps.
 
@@ -239,6 +249,23 @@ Considered, not built:
 - **A short PIN** gating reconnection — friction against a grabbed phone. This, not the idle lock, is
   where that friction would have to live: the lock is a pause on an unattended screen and deliberately
   gates nothing ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
+
+Collie does not intentionally persist or log voice audio or provider bodies: no `Bun.write`, uploads
+folder, reuse, backup, playback, or request/audit body. The bridge also does not persist or log
+transcripts; a successful transcript enters the browser's ordinary editable `localStorage` draft,
+removed on Send or pruned lazily after 48 hours. These are Collie-owned guarantees: browser, Bun, OS,
+and proxy buffering remain outside them. The configured provider receives the audio, and its retention
+or logging is controlled by that provider's policy, not Collie. The client stops at five minutes and
+bounds the complete browser-to-bridge request, including its body, to 90 seconds; browser Fetch
+refuses a front-door redirect before it can replay the multipart recording. The bridge enforces an 8
+MiB file cap plus the 12 MiB global body cap, validates MIME and browser-reported lifecycle duration
+metadata (not parsed media duration) before the outbound call, and applies a 60-second bridge-to-provider
+deadline through response-body consumption with zero retries. Its SDK fetch boundary independently
+refuses bridge-to-provider redirects and caps decoded **provider** success and error response bodies at
+256 KiB; returned text is bounded to 8192 characters. Bun labels `.webm`/`.mp4` multipart parts as
+`video/*` even when MediaRecorder supplied `audio/*`, so the bridge accepts those container aliases and
+canonicalises them to `audio/webm`/`audio/mp4` for the upstream; no codec inspection or conversion is
+added.
 
 Full passthrough (no command allow-list) is acceptable for a personal tool — an allow-list would
 defeat the purpose. **Never use `tailscale funnel`** (public exposure).

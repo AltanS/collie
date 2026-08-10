@@ -20,6 +20,7 @@ import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
@@ -66,6 +67,8 @@ interface AgentChatProps {
   revision?: number;
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
+  /** Snapshot capability for native voice input; no provider configuration reaches this component. */
+  transcriptionEnabled: boolean;
   // Global connection state — fed straight to the shared AppHeader, which drives the header Collie
   // mark (gallop/rest, identically to the dashboard), and lets us dim the stale StatusBadge while not
   // live. Defaults describe a healthy link so tests that don't care render "live".
@@ -101,6 +104,7 @@ export function AgentChat({
   requestedLines = 0,
   revision = 0,
   device,
+  transcriptionEnabled,
   bridge = "connected",
   error = false,
   stalled = false,
@@ -132,6 +136,16 @@ export function AgentChat({
   const composerRef = useRef<ComposerHandle>(null);
 
   const gone = !agent;
+  // Voice is pane-owned because prompt/menu controls and the composer can all write to this pane.
+  // Passing this one lifecycle to Composer keeps every write lock in sync without shared global state.
+  const voice = useVoiceInput({
+    enabled: transcriptionEnabled && !(gone || readOnly),
+    paneId,
+    session,
+    onTranscript: (transcript) => composerRef.current?.acceptVoiceTranscript(transcript),
+    onError: (message) => setStatus(message, "error"),
+  });
+  const voiceBusy = voice.phase !== "idle";
 
   // Swipe up (or just tap) the handle above the composer to bring up the pane switcher. A lowish
   // threshold + a taller hit area (below) make the gesture easy to land with a thumb; tapping is the
@@ -324,6 +338,7 @@ export function AgentChat({
         setStatus("Read-only — device not authorised", "error");
         return;
       }
+      if (voiceBusy) return;
       const result = await submitPromptOption({
         paneId,
         session,
@@ -345,7 +360,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -359,6 +374,7 @@ export function AgentChat({
         setStatus("Read-only — device not authorised", "error");
         return;
       }
+      if (voiceBusy) return;
       const result = await submitWizardKeys({
         paneId,
         session,
@@ -380,7 +396,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -394,6 +410,7 @@ export function AgentChat({
         setStatus("Read-only — device not authorised", "error");
         return;
       }
+      if (voiceBusy) return;
       const base = {
         paneId,
         session,
@@ -424,7 +441,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -438,6 +455,7 @@ export function AgentChat({
         setStatus("Read-only — device not authorised", "error");
         return;
       }
+      if (voiceBusy) return;
       const result = await submitMultiSelectIntent({
         paneId,
         session,
@@ -459,7 +477,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -472,6 +490,7 @@ export function AgentChat({
         setStatus("Read-only — device not authorised", "error");
         return;
       }
+      if (voiceBusy) return;
       const result = await submitMenuKeys({
         paneId,
         session,
@@ -494,7 +513,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
@@ -770,7 +789,7 @@ export function AgentChat({
                   onPreviewAction={handlePreviewAction}
                   onMultiSelectAction={handleMultiSelectAction}
                   onMenuAction={handleMenuAction}
-                  promptDisabled={readOnly || gone}
+                  promptDisabled={readOnly || gone || voiceBusy}
                 />
               </>
             ) : (
@@ -850,6 +869,8 @@ export function AgentChat({
             isShell={isShell}
             gone={gone}
             readOnly={readOnly}
+            transcriptionEnabled={transcriptionEnabled}
+            voice={voice}
             dialogPresent={dialogPresent}
             text={text}
             terminalDraft={terminalDraft}

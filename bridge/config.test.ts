@@ -29,6 +29,9 @@ const KEYS = [
   "COLLIE_DEVICE_ALLOWLIST",
   "COLLIE_ALLOWED_ORIGINS",
   "COLLIE_PUBLIC_HOSTS",
+  "COLLIE_TRANSCRIPTION_MODEL",
+  "COLLIE_TRANSCRIPTION_BASE_URL",
+  "COLLIE_TRANSCRIPTION_API_KEY",
   "COLLIE_VAPID_PUBLIC",
   "COLLIE_VAPID_PRIVATE",
   "COLLIE_VAPID_SUBJECT",
@@ -79,11 +82,59 @@ describe("loadConfig", () => {
     expect(cfg.publicHosts).toEqual([]);
     // Per-device auth is off by default (empty header = feature disabled).
     expect(cfg.deviceHeader).toBe("");
+    // With every dedicated transcription setting blank, no provider details are available to callers.
+    expect(cfg.transcription).toBeNull();
     expect(cfg.deviceAllowlist).toEqual([]);
     // Multi-session support is on by default.
     expect(cfg.multiSession).toBe(true);
     // tailscale serve is used by default (reverse-proxy bypass is opt-in).
     expect(cfg.skipServe).toBe(false);
+  });
+
+  test("uses an explicit model with the official OpenAI endpoint", () => {
+    process.env.COLLIE_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+    process.env.COLLIE_TRANSCRIPTION_API_KEY = "secret";
+    expect(loadConfig().transcription).toEqual({
+      model: "gpt-4o-mini-transcribe",
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "secret",
+    });
+  });
+
+  test("uses Collie's default model for key-only official and base-only keyless custom opt-in", () => {
+    process.env.COLLIE_TRANSCRIPTION_API_KEY = "secret";
+    expect(loadConfig().transcription).toEqual({
+      model: "gpt-4o-transcribe",
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "secret",
+    });
+
+    delete process.env.COLLIE_TRANSCRIPTION_API_KEY;
+    process.env.COLLIE_TRANSCRIPTION_BASE_URL = "http://127.0.0.1:8000/v1/";
+    expect(loadConfig().transcription).toEqual({
+      model: "gpt-4o-transcribe",
+      baseURL: "http://127.0.0.1:8000/v1",
+    });
+  });
+
+  test("allows a keyless custom endpoint to override the default model", () => {
+    process.env.COLLIE_TRANSCRIPTION_MODEL = "local-whisper";
+    process.env.COLLIE_TRANSCRIPTION_BASE_URL = "http://127.0.0.1:8000/v1/";
+    expect(loadConfig().transcription).toEqual({
+      model: "local-whisper",
+      baseURL: "http://127.0.0.1:8000/v1",
+    });
+  });
+
+  test("rejects a keyless official endpoint and an invalid configured base URL", () => {
+    process.env.COLLIE_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
+    expect(loadConfig().transcription).toBeNull();
+
+    process.env.COLLIE_TRANSCRIPTION_BASE_URL = "https://api.openai.com/v1";
+    expect(loadConfig().transcription).toBeNull();
+
+    process.env.COLLIE_TRANSCRIPTION_BASE_URL = "not a url";
+    expect(loadConfig().transcription).toBeNull();
   });
 
   test("parses COLLIE_MULTI_SESSION as a boolean toggle (default on)", () => {

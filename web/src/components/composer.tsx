@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, Terminal, X, Zap } from "lucide-react";
+import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -20,6 +20,7 @@ import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
+import type { VoiceInput } from "@/hooks/use-voice-input";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { sendGuardedReply } from "@/lib/reply-action";
@@ -29,6 +30,8 @@ import { DirectTypingStrip } from "@/components/direct-typing-strip";
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
   focusInput: () => void;
+  /** Make a completed pane-owned voice transcript the ordinary editable persisted draft. */
+  acceptVoiceTranscript: (transcript: string) => void;
 }
 
 interface ComposerProps {
@@ -43,6 +46,10 @@ interface ComposerProps {
   gone: boolean;
   /** This device isn't authorised to type — locks the composer with a distinct placeholder. */
   readOnly: boolean;
+  /** Server-advertised voice capability only; provider settings remain on the bridge. */
+  transcriptionEnabled: boolean;
+  /** The pane-owned native voice lifecycle, shared with AgentChat's prompt/menu write guards. */
+  voice: VoiceInput;
   /** A dialog (prompt/wizard/preview/multi-select) is on screen, so the TUI's keyboard belongs to it.
    * Free-text sending is refused while true — see send(). Answer it with its own buttons instead. */
   dialogPresent: boolean;
@@ -134,7 +141,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
+  { paneId, session, agent, isShell, gone, readOnly, transcriptionEnabled, voice, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -165,6 +172,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setInput(value);
     saveDraft(session, paneId, value);
   }
+
+  // AgentChat owns this lifecycle because it is the pane's write boundary; the composer consumes
+  // that same object for its own controls, so prompt/menu and composer writes cannot diverge.
+  const voiceBusy = voice.phase !== "idle";
+  const writeLocked = locked || voiceBusy;
 
   useEffect(() => {
     const prev = draftPaneRef.current;
@@ -241,12 +253,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     paneKey: `${session ?? ""}\0${paneId}`,
     inputRef,
     replyDraft: input,
-    canActivate: () => !(locked || sending || uploading),
-    // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
-    // deliberately not added here: the mode already disarms on a failed batch, which is the same
+    canActivate: () => !(locked || sending || uploading || voiceBusy),
+    // `locked` covers a gone pane, a read-only device, and the idle pause. Voice activity also
+    // disarms direct typing: the two modes must never target the composer at once. A LOST CONNECTION
+    // is deliberately not added here: the mode already disarms on a failed batch, which is the same
     // event observed directly rather than inferred from a timer, and it fires whether or not any
     // banner has decided the connection counts as lost yet.
-    suspended: locked,
+    suspended: locked || voiceBusy,
     sendKeys: pressKeys,
     onActivate: () => {
       sendConfirm.reset();
@@ -291,7 +304,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
-  useImperativeHandle(ref, () => ({ focusInput: focusInputImmediately }), []);
+  useImperativeHandle(ref, () => ({ focusInput: focusInputImmediately, acceptVoiceTranscript }));
 
   useEffect(
     () => () => {
@@ -319,7 +332,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
   useHoldReload(
     `composer:${paneId}`,
-    input.trim() !== "" || direct.active || direct.value !== "" || direct.busy || uploading,
+    input.trim() !== "" || direct.active || direct.value !== "" || direct.busy || uploading || voiceBusy,
   );
 
   // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
@@ -386,12 +399,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setTimeout(focusInputImmediately, 0);
   }
 
+  function acceptVoiceTranscript(transcript: string) {
+    // A transcript becomes the same ordinary editable, persisted draft as typed text. It is never
+    // sent here; the existing guarded Send path remains the only terminal write.
+    updateInput(transcript);
+    setStatus("Transcript ready — review before sending.", "success");
+    focusInputEnd();
+  }
+
   // Resolves true only on a VERIFIED send (the text was seen in the pane's input box before the
   // submit key went out). The quick-reply grid consumes the verdict to drive its own ✓ and to decide
   // whether to close its dock, so every early return below has to answer honestly.
   async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
     const t = value.trim();
-    if (!t || locked || sending) return false;
+    if (!t || locked || sending || voiceBusy) return false;
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
     // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
     // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
@@ -490,6 +511,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // "Really send?" state instead of sending; the confirming second tap goes through. Non-destructive
   // input sends immediately (and any stray armed state is cleared).
   function onSendClick() {
+    if (voiceBusy) return;
     // An armed override takes precedence: this tap IS the deliberate "type anyway", so it skips the
     // destructive re-confirm (already answered on the tap that got blocked) and the pre-flight.
     if (forceConfirm.pending === "force") {
@@ -536,7 +558,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // path used to be silent on success, so a press looked like it went nowhere. Errors still go to
   // the status channel; the echo just falls back to idle.
   async function pressKeys(k: string[]): Promise<boolean> {
-    if (locked) return false;
+    if (writeLocked) return false;
     try {
       const res = await api.sendKeys(paneId, k, session);
       if (!res.ok) {
@@ -554,6 +576,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Insert "/cmd " into the composer (arg-taking commands) and focus it. Appends to any draft already
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
+    if (voiceBusy) return;
     direct.deactivateSilently();
     updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
@@ -562,7 +585,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Upload an image; on success append its host path to the composer so the user can add context.
   // Shared by the file picker and clipboard paste.
   async function uploadImage(file: File) {
-    if (locked) return;
+    if (writeLocked) return;
     setUploading(true);
     try {
       const res = await api.uploadImage(paneId, file, session);
@@ -593,7 +616,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Only intercepts when the clipboard actually carries an image file — a plain text paste (the
   // common case) falls through untouched.
   function onPasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
-    if (locked || direct.active) return;
+    if (writeLocked || direct.active) return;
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -621,6 +644,37 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </span>
           </div>
         )}
+        {voiceBusy && (
+          <div
+            className="mb-2 flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
+            role="group"
+            aria-label="Voice input"
+          >
+            <span className="flex items-center gap-1.5" role="status">
+              {voice.phase === "recording" ? <Mic className="size-3 shrink-0" /> : <Loader2 className="size-3 shrink-0 animate-spin" />}
+              {voice.phase === "recording"
+                ? "Recording"
+                : voice.phase === "requesting"
+                  ? "Requesting microphone…"
+                  : "Transcribing voice…"}
+            </span>
+            {voice.phase === "recording" && (
+              <span role="timer" aria-live="off" aria-label="Elapsed recording time">
+                {voice.elapsedLabel}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={voice.cancel}
+              aria-label="Cancel voice input"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
 
         {/* File input stays mounted here (not inside the keyboard-only key row) so the picker
             callback survives the keyboard collapsing. Attach-image fires it from the reply-input row
@@ -635,7 +689,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             BottomSheet below (it's a palette, not a pad). */}
         {drawer === "keys" && (
           <ComposerDock title="Keys" onClose={closeDrawer}>
-            <NavTray onSend={pressKeys} onQueueChange={setQueuedKeys} disabled={locked} />
+            <NavTray onSend={pressKeys} onQueueChange={setQueuedKeys} disabled={writeLocked} />
           </ComposerDock>
         )}
         {drawer === "quick" && (
@@ -645,7 +699,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onClose={closeDrawer}
               agent={agent}
               isShell={isShell}
-              disabled={locked || sending}
+              disabled={writeLocked || sending}
             />
           </ComposerDock>
         )}
@@ -680,7 +734,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             variant="ghost"
             size="sm"
             className={cn("h-8 flex-1 gap-1.5", drawer === "keys" ? CONTROL_ON : CONTROL_OFF)}
-            disabled={locked}
+            disabled={writeLocked}
             aria-expanded={drawer === "keys"}
             onClick={() => requestDrawer(drawer === "keys" ? null : "keys")}
           >
@@ -702,7 +756,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             variant="ghost"
             size="sm"
             className={cn("h-8 flex-1 gap-1.5", direct.active ? CONTROL_ON : CONTROL_OFF)}
-            disabled={locked || sending}
+            disabled={locked || sending || voiceBusy}
             aria-pressed={direct.active}
             aria-label="Type into terminal"
             onClick={() => {
@@ -724,7 +778,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             variant="ghost"
             size="sm"
             className={cn("h-8 flex-1 gap-1.5", drawer === "quick" ? CONTROL_ON : CONTROL_OFF)}
-            disabled={locked}
+            disabled={writeLocked}
             aria-expanded={drawer === "quick"}
             onClick={() => requestDrawer(drawer === "quick" ? null : "quick")}
           >
@@ -736,7 +790,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               variant="ghost"
               size="sm"
               className="h-8 flex-1 gap-1.5 text-muted-foreground"
-              disabled={locked}
+              disabled={writeLocked}
               onClick={() => requestDrawer("cmd")}
             >
               <Slash className="size-4" />
@@ -769,7 +823,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // No Take over when the line is only the harness's own opaque token (Claude's
             // `[Pasted text #N +M lines]`): pulling that into the composer would send the literal
             // string. The preview keeps showing it — the screen really does say that.
-            onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
+            onTakeOver={voiceBusy || adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
           />
         )}
         {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
@@ -824,7 +878,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               direct.active &&
                 "border-primary focus-visible:border-primary focus-visible:ring-primary/30",
             )}
-            disabled={locked}
+            disabled={locked || voiceBusy}
             rows={1}
           />
             <Button
@@ -835,7 +889,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // centred button would drift up with it, away from the thumb and away from the send
               // button it pairs with. Pinned to the bottom it stays put at any height.
               className="absolute bottom-1 right-1 size-9 rounded-full text-muted-foreground"
-              disabled={uploading || locked || direct.active}
+              disabled={uploading || writeLocked || direct.active}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => fileRef.current?.click()}
               aria-label="Attach image"
@@ -847,7 +901,36 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               )}
             </Button>
           </div>
-          {!direct.active && forcingSend ? (
+          {voice.phase === "recording" ? (
+            <Button
+              size="icon"
+              variant="destructive"
+              className="size-11 shrink-0 rounded-full"
+              onClick={voice.stopRecording}
+              aria-label="Stop recording"
+            >
+              <Square className="size-4 fill-current" />
+            </Button>
+          ) : voice.phase === "requesting" || voice.phase === "transcribing" ? (
+            <Button
+              size="icon"
+              className="size-11 shrink-0 rounded-full"
+              disabled
+              aria-label={voice.phase === "requesting" ? "Requesting microphone" : "Transcribing voice"}
+            >
+              <Loader2 className="size-4 animate-spin" />
+            </Button>
+          ) : !direct.active && transcriptionEnabled && input.trim().length === 0 ? (
+            <Button
+              size="icon"
+              className="size-11 shrink-0 rounded-full"
+              onClick={() => void voice.startRecording()}
+              disabled={locked || sending || uploading}
+              aria-label="Record voice"
+            >
+              <Mic className="size-4" />
+            </Button>
+          ) : !direct.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the
             // submit key is still conditional on the verify step behind it.

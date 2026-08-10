@@ -61,6 +61,7 @@ function homeData(update: UpdateInfo | undefined): HomeData {
     session: undefined,
     snoozedUntil: null,
     update,
+    transcriptionEnabled: false,
     error: false,
     authError: false,
   };

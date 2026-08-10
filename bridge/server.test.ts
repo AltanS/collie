@@ -5,9 +5,13 @@ import {
   cacheControlFor,
   checkAccess,
   marksPaneSeen,
+  MAX_TRANSCRIPT_CHARS,
+  MAX_TRANSCRIPTION_BYTES,
+  MAX_TRANSCRIPTION_DURATION_MS,
   SEEN_HEADER,
   deviceAuth,
   guard,
+  hasKnownPane,
   historyParams,
   isHostAllowed,
   isReservedAuthPath,
@@ -18,12 +22,15 @@ import {
   resolveStaticPath,
   sendReplySteps,
   startupWarnings,
+  transcribePane,
   withBuildHeader,
   type ReplySender,
 } from "./server.ts";
 import { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
+import { TranscriptionProviderError, type Transcriber } from "./transcription.ts";
+import type { StateEngine } from "./state-engine.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -58,6 +65,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     deviceAllowlist: [],
     allowedOrigins: [],
     publicHosts: [],
+    transcription: null,
     vapidPublic: "",
     vapidPrivate: "",
     vapidSubject: "mailto:admin@example.com",
@@ -67,6 +75,235 @@ function cfg(overrides: Partial<Config> = {}): Config {
     ...overrides,
   };
 }
+
+describe("voice transcription — guarded, bounded, and body-free", () => {
+  const acceptedRequest = (form: FormData) =>
+    new Request("http://collie.test/api/pane/w1%3Ap1/transcribe", {
+      method: "POST",
+      headers: { host: "collie.test", origin: "http://collie.test" },
+      body: form,
+    });
+  const audioForm = (opts: { type?: string; name?: string; duration?: string; bytes?: number } = {}) => {
+    const form = new FormData();
+    form.append(
+      "file",
+      new File([new Uint8Array(opts.bytes ?? 4)], opts.name ?? "sensitive-recording.webm", {
+        type: opts.type ?? "audio/webm",
+      }),
+    );
+    form.append("duration_ms", opts.duration ?? "1000");
+    return form;
+  };
+  const fakeTranscriber = (text = "review this transcript") => {
+    const files: File[] = [];
+    const transcriber: Transcriber = {
+      transcribe: (file) => {
+        files.push(file);
+        return Promise.resolve(text);
+      },
+    };
+    return { transcriber, files };
+  };
+  const auditEntries = () => {
+    const lines: string[] = [];
+    return { audit: new AuditLog((line) => void lines.push(line)), lines };
+  };
+
+  test("the central write guard rejects before the transcription handler can parse multipart", () => {
+    let parsed = false;
+    const request = {
+      headers: new Headers({ host: "collie.test", origin: "https://evil.test" }),
+      formData: () => {
+        parsed = true;
+        return Promise.resolve(new FormData());
+      },
+    } as unknown as Request;
+
+    // startServer applies this shared guard before dispatching any pane action, including transcribe.
+    const denied = guard(request, cfg(), "write");
+    expect(denied?.status).toBe(403);
+    expect(parsed).toBe(false);
+  });
+
+  test("accepts the exact multipart declaration threshold and rejects one byte over before parsing", async () => {
+    const { transcriber, files } = fakeTranscriber();
+    const { audit } = auditEntries();
+    const declaration = MAX_TRANSCRIPTION_BYTES + 64 * 1024;
+    let parsed = false;
+    const request = (contentLength: number) =>
+      ({
+        headers: new Headers({
+          "content-type": "multipart/form-data",
+          "content-length": String(contentLength),
+        }),
+        signal: new AbortController().signal,
+        formData: () => {
+          parsed = true;
+          return Promise.resolve(audioForm());
+        },
+      }) as unknown as Request;
+
+    await expect(
+      transcribePane("w1:p1", request(declaration), audit, null, "default", transcriber),
+    ).resolves.toHaveProperty("status", 200);
+    expect(parsed).toBe(true);
+    expect(files).toHaveLength(1);
+
+    parsed = false;
+    const rejected = await transcribePane(
+      "w1:p1",
+      request(declaration + 1),
+      audit,
+      null,
+      "default",
+      transcriber,
+    );
+    expect(rejected.status).toBe(413);
+    expect(await rejected.json()).toEqual({ ok: false, error: "audio too large (max 8 MiB)" });
+    expect(parsed).toBe(false);
+    expect(files).toHaveLength(1);
+  });
+
+  test("rejects invalid MIME, size, and reported duration before provider invocation", async () => {
+    const { transcriber, files } = fakeTranscriber();
+    const { audit } = auditEntries();
+    let beforeProviderCalls = 0;
+    for (const form of [
+      // Bun derives multipart MIME from a filename, so use an Ogg extension for this negative case.
+      audioForm({ type: "audio/ogg", name: "recording.ogg" }),
+      audioForm({ bytes: MAX_TRANSCRIPTION_BYTES + 1 }),
+      audioForm({ duration: String(MAX_TRANSCRIPTION_DURATION_MS + 1) }),
+      audioForm({ duration: "not-a-duration" }),
+    ]) {
+      const response = await transcribePane(
+        "w1:p1",
+        acceptedRequest(form),
+        audit,
+        null,
+        "default",
+        transcriber,
+        () => { beforeProviderCalls += 1; },
+      );
+      expect(response.status).toBeGreaterThanOrEqual(400);
+    }
+    expect(files).toEqual([]);
+    expect(beforeProviderCalls).toBe(0);
+  });
+
+  test("waits for valid multipart parsing before extending the provider wait", async () => {
+    const { audit } = auditEntries();
+    let releaseForm!: (form: FormData) => void;
+    const pendingForm = new Promise<FormData>((resolve) => { releaseForm = resolve; });
+    const parsingRequest = {
+      headers: new Headers({ "content-type": "multipart/form-data" }),
+      signal: new AbortController().signal,
+      formData: () => pendingForm,
+    } as unknown as Request;
+    const order: string[] = [];
+    const orderedTranscriber: Transcriber = {
+      transcribe: () => {
+        order.push("transcriber");
+        return Promise.resolve("review this transcript");
+      },
+    };
+    const pending = transcribePane(
+      "w1:p1",
+      parsingRequest,
+      audit,
+      null,
+      "default",
+      orderedTranscriber,
+      () => { order.push("before-provider"); },
+    );
+
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    releaseForm(audioForm());
+
+    await expect(pending).resolves.toHaveProperty("status", 200);
+    expect(order).toEqual(["before-provider", "transcriber"]);
+  });
+
+  test("recognises both agent and shell panes in the last-known state", () => {
+    const engine = {
+      current: () => ({
+        agents: [{ paneId: "w1:agent" }],
+        shellPanes: [{ paneId: "w1:shell" }],
+        workspaces: [],
+        tabs: [],
+        bridge: "connected",
+      }),
+    } as unknown as StateEngine;
+    expect(hasKnownPane(engine, "w1:agent")).toBe(true);
+    expect(hasKnownPane(engine, "w1:shell")).toBe(true);
+    expect(hasKnownPane(engine, "w1:missing")).toBe(false);
+  });
+
+  test("forwards only a generic provider filename and audits no audio or transcript body", async () => {
+    const { transcriber, files } = fakeTranscriber("private transcript text");
+    const { audit, lines } = auditEntries();
+    const response = await transcribePane(
+      "w1:p1",
+      acceptedRequest(audioForm({ name: "personal-note.webm" })),
+      audit,
+      "phone",
+      "default",
+      transcriber,
+    );
+
+    expect(await response.json()).toEqual({ ok: true, text: "private transcript text" });
+    expect(files).toHaveLength(1);
+    expect(files[0]?.name).toBe("recording.webm");
+    await Promise.resolve();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('"outcome":"ok"');
+    expect(lines[0]).not.toContain("personal-note");
+    expect(lines[0]).not.toContain("private transcript text");
+    expect(JSON.parse(lines[0]!).detail).toEqual({
+      mime: "audio/webm",
+      bytes: 4,
+      reportedDurationMs: 1000,
+      outcome: "ok",
+    });
+    expect(lines[0]).not.toContain("durationMs");
+  });
+
+  test("maps deadline, caller-aborted, and unavailable provider failures to distinct outcomes", async () => {
+    const cases: Array<["timeout" | "client-aborted" | "unavailable", number, string]> = [
+      ["timeout", 504, "transcription timed out"],
+      ["client-aborted", 499, "transcription cancelled"],
+      ["unavailable", 502, "transcription unavailable"],
+    ];
+    for (const [kind, status, message] of cases) {
+      const { audit, lines } = auditEntries();
+      const failing: Transcriber = {
+        transcribe: () => Promise.reject(new TranscriptionProviderError(kind)),
+      };
+      const response = await transcribePane("w1:p1", acceptedRequest(audioForm()), audit, null, "default", failing);
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({ ok: false, error: message });
+      await Promise.resolve();
+      expect(JSON.parse(lines[0]!).detail.outcome).toBe(kind);
+    }
+  });
+
+  test("sanitizes provider failures and rejects an overlong provider result", async () => {
+    const { audit } = auditEntries();
+    const failing: Transcriber = {
+      transcribe: () => Promise.reject(new Error("private provider response body")),
+    };
+    const failed = await transcribePane("w1:p1", acceptedRequest(audioForm()), audit, null, "default", failing);
+    expect(failed.status).toBe(502);
+    const failedBody = await failed.text();
+    expect(failedBody).toContain("transcription unavailable");
+    expect(failedBody).not.toContain("private provider response body");
+
+    const { transcriber } = fakeTranscriber("x".repeat(MAX_TRANSCRIPT_CHARS + 1));
+    const tooLong = await transcribePane("w1:p1", acceptedRequest(audioForm()), audit, null, "default", transcriber);
+    expect(tooLong.status).toBe(502);
+    expect(await tooLong.text()).toContain("invalid transcription result");
+  });
+});
 
 describe("checkAccess — same-origin / CSRF gate", () => {
   test("allows a request with no Origin header (same-origin GET)", () => {
@@ -893,7 +1130,7 @@ describe("marksPaneSeen — CSRF guard on marking a pane seen", () => {
   });
 
   test("write actions count without it — they already cleared the Origin-requiring write gate", () => {
-    for (const action of ["reply", "keys", "upload", "close", "rename"]) {
+    for (const action of ["reply", "keys", "upload", "transcribe", "close", "rename"]) {
       expect(marksPaneSeen(withHeader(), action)).toBe(true);
     }
   });

@@ -72,6 +72,7 @@ export function DetailRoute() {
       requestedLines={pane.requestedLines}
       revision={pane.revision}
       device={root.device}
+      transcriptionEnabled={root.transcriptionEnabled}
       bridge={root.bridge}
       error={root.error}
       stalled={stalled}
