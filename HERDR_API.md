@@ -40,6 +40,31 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
     visible grid, and its renderer hard-wraps prose at the pane width — there are no soft-wrapped
     rows for the unwrap to merge. It only differs on scrollback-accumulating panes (shells: one
     probe measured 199 → 188 lines with logical lines up to 222 cols re-joined).
+  - **A `recent` text read can scroll the pane it reads.** Herdr's agent-automation docs state that
+    for an idle, recognized agent at the bottom of its transcript, `recent` / `recent_unwrapped`
+    reads "automatically use the agent's mouse-scroll interface" when `lines` asks for more than the
+    visible screen, collecting overlapping pages and "returning the viewport to the bottom before
+    completing the read". Claude runs on the alt screen, which has no host scrollback, so that is the
+    only way those rows can be reached — and the operator watches their terminal scroll up and snap
+    back, once per read. Live-probed 2026-08-10 (herdr 0.8.0), idle claude pane, `viewport_rows: 71`:
+
+    | `source` | `lines` | `format` | elapsed | lines returned |
+    |---|---|---|---|---|
+    | `recent` | 70 | `text` | 0.00s | 71 |
+    | `recent` | 71 | `text` | 0.00s | 72 |
+    | `recent` | 72 | `text` | 0.85s | 73 |
+    | `recent` | 400 | `text` | 13.8s | 401 |
+    | `recent` | 200 | `ansi` | 0.00s | 71 |
+    | `recent` | 600 | `ansi` | 0.00s | 71 |
+    | `visible` | 600 | `ansi` | 0.00s | 71 |
+
+    The threshold is exactly `lines > viewport_rows`; one row over is enough. **`format: "ansi"` was
+    never observed to harvest** — that is an observation across the probes above, not a documented
+    guarantee, so don't lean on it. `visible` is immune by construction: it *is* the rendered
+    viewport, clamped to it however large `lines` is, so there is nothing above to collect. A
+    background poll that reads panes on a timer must therefore use `visible`
+    (`bridge/state-engine.ts`); anything asking for scrollback is asking to move the operator's
+    screen, and should be a deliberate, user-initiated read.
   **`format: "text"` returns clean plain text (no ANSI escapes)** → safe to render, no XSS surface.
 - `agent.send` writes literal text only; to submit a reply, follow with an Enter keypress
   (`pane.send_keys {keys: ["Enter"]}`) — submit-key name needs live confirmation per agent.
