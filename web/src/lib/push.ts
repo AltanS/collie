@@ -1,4 +1,4 @@
-import { fetchConfig } from "@/lib/api";
+import { fetchConfig, XHR_HEADER, XHR_HEADER_VALUE } from "@/lib/api";
 import type { BridgeConfig } from "@/lib/types";
 
 // Client-side control of Web Push: the browser subscription plus a per-device preference. The bridge
@@ -101,7 +101,7 @@ export async function enablePush(): Promise<EnableResult> {
   }
   await fetch("/api/subscribe", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", [XHR_HEADER]: XHR_HEADER_VALUE },
     body: JSON.stringify(sub),
   });
   setUserDisabled(false);
