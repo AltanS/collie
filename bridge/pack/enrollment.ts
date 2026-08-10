@@ -315,6 +315,9 @@ export function enrollPeer(
     // A re-join resets the replay floor with the pin: the member is presenting a fresh certificate
     // and a fresh invite, so a timestamp from before it is not a request this link ever admitted.
     signedAt: 0,
+    // A freshly-enrolled member starts provisional: pinned, but never once contacted. `pack status`
+    // stamps this to a number on first successful probe (a half-finished join looks exactly like this).
+    contactedAt: null,
   };
   return {
     next: {
@@ -556,6 +559,8 @@ function memberFrom(entry: RosterEntry, role: "lead" | "peer", generation: numbe
     enrolledAt: now,
     secretGeneration: generation,
     signedAt: 0,
+    // Newly pinned from a roster row (enrollment, promotion): provisional until first contact.
+    contactedAt: null,
   };
 }
 

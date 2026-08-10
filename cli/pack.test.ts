@@ -655,6 +655,42 @@ describe("collie pack status", () => {
     expect(h.data()).toEqual(before);
     expect(h.restarts).toEqual([]);
   });
+
+  // ── The provisional (never-contacted) marker ──────────────────────────────
+
+  test("a `contactedAt: null` member with a failing probe is flagged provisional, with the remove verb", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas", contactedAt: null })] }), [new Error("down")]);
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("provisional — enrolled but never once reachable");
+    expect(rendered).toContain("collie pack remove nas");
+  });
+
+  test("an ABSENT contactedAt (back-compat) is NEVER provisional", async () => {
+    // `member()` omits the field — the shape a member enrolled before it existed has on disk.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [new Error("down")]);
+    await cmdPackStatus(h.deps, []);
+    expect(text(h.io)).not.toContain("provisional");
+  });
+
+  test("a numeric contactedAt (already contacted) is not provisional", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas", contactedAt: T0 })] }), [new Error("down")]);
+    await cmdPackStatus(h.deps, []);
+    expect(text(h.io)).not.toContain("provisional");
+  });
+
+  test("a successful probe against a provisional member persists a numeric contactedAt", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas", contactedAt: null })] }), [
+      jsonReply({ protocol: 1, member: "nas" }, 200, "nas"),
+    ]);
+    await cmdPackStatus(h.deps, []);
+    const stamped = h.data()!.peers.find((p) => p.memberId === "nas")!;
+    expect(typeof stamped.contactedAt).toBe("number");
+    expect(stamped.contactedAt).toBe(T0);
+    // Reachable now, so the provisional line is suppressed this run — it was cleared, not half-finished.
+    expect(text(h.io)).not.toContain("provisional");
+    expect(h.audit.map((l) => l.action)).toContain("pack.contacted");
+  });
 });
 
 // ── pack rotate ──────────────────────────────────────────────────────────────
