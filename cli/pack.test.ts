@@ -454,6 +454,46 @@ describe("collie join", () => {
     // Refused before `ensureStore`, so no identity was even materialised — the store is still absent.
     expect(h.data()).toBeNull();
   });
+
+  // ── http:// enrollment is refused without --insecure (the token/secret cross the wire clear) ──
+
+  test("an http:// address is REFUSED without --insecure, and never dialled", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, ["http://desk.ts.net", "-"])).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("refusing to enroll over http://");
+    expect(text(h.io)).toContain("--insecure");
+    // Nothing was dialled and nothing was persisted — the guard runs before the fetch.
+    expect(h.requests).toEqual([]);
+    expect(h.data()!.pack).toBeNull();
+  });
+
+  test("http:// proceeds to the fetch when --insecure is passed", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, ["http://desk.ts.net", "-", "--insecure"])).toBe(EXIT.OK);
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]!.url).toBe("http://desk.ts.net/pack/v1/enroll");
+  });
+
+  test("an explicit https:// address is unaffected — it dials without --insecure", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, ["https://desk.ts.net", "-"])).toBe(EXIT.OK);
+    expect(h.requests[0]!.url).toBe("https://desk.ts.net/pack/v1/enroll");
+    expect(text(h.io)).not.toContain("refusing to enroll over http://");
+  });
+
+  test("a bare host is unaffected — assumed https://, dials without --insecure", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
+    expect(h.requests[0]!.url).toBe("https://desk.ts.net/pack/v1/enroll");
+    expect(text(h.io)).not.toContain("refusing to enroll over http://");
+  });
+
+  test("a scheme-less address that does not answer says https:// was assumed", async () => {
+    const h = harness(null, [new Error("connect ECONNREFUSED")]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.UNREACHABLE);
+    expect(text(h.io)).toContain("https:// was assumed");
+    expect(text(h.io)).toContain("--insecure");
+  });
 });
 
 // ── leave ────────────────────────────────────────────────────────────────────

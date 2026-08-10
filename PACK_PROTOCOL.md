@@ -418,6 +418,18 @@ There is no discovery, no enumeration, and no overlay-network integration — ev
 > **fails closed on an old-format token that names no lead**. It is the fingerprint, not the transport,
 > that authenticates the lead — so `http://` remains allowed on a trusted network.
 
+> **Amended 2026-08-10 — `join` refuses `http://` without `--insecure`.**
+>
+> The enroll exchange carries the invite **token** to the lead and returns the **pack secret** to the
+> joiner. Over a plaintext hop both cross the wire in the clear, so an on-path attacker who reads the
+> token can self-enroll **their own certificate** as a member — the lead admits on the token alone —
+> before the honest joiner spends it, and walks away holding the pack secret and a pinned link. F1's
+> fingerprint pin (above) authenticates the *lead to the joiner*; it does **not** defend the lead
+> against a token-thief racing the spend. So `collie join` now **refuses an `http://` address unless
+> the operator passes `--insecure`**, making the trusted-hop assumption explicit rather than implied.
+> A scheme-less address is treated as `https://`, and an unreachable one whose scheme was assumed says
+> so. The wire is unchanged and `PACK_PROTOCOL_VERSION` is not bumped.
+
 ### 8.3 Secrets never touch argv
 
 `ps -eo args` and `/proc/<pid>/cmdline` (mode 444) are world-readable — this is not theoretical; it is
@@ -445,7 +457,9 @@ operation.
   peer fails — one interval of `stale` (§10.2), which is the price of not keeping a leaked value alive.
 - **A peer offline during rotation is dropped to `unenrolled`.** The lead marks it so; the peer, next
   time it is dialled, fails both factors and stays quiet. Recovery is deliberate and explicit: the
-  operator runs `collie join` on that peer again with a **fresh token**.
+  operator runs `collie join` on that peer again with a **fresh token**. There is **no grace window**:
+  any peer offline at rotation time is dropped and must re-join, and that is precisely the cost the
+  remedy for a suspected secret leak — `collie pack rotate` — pays to invalidate the leaked value.
 - `collie pack status` shows, per member, whether it has picked up the current secret — rotation is
   not "done" as a fire-and-forget; it is a state you can read.
 - **`collie leave`** (on a peer) drops its roster entry and its pinned material; on the lead,
@@ -492,6 +506,11 @@ Stated plainly, because a pack link is remote shell access to a second machine.
 - **A stolen enrollment token** buys one enrollment, within 10 minutes, and only from someone who can
   reach the lead's address. It never buys steady-state traffic — the token authenticates the exchange
   only. It is single-use: a token spent by an attacker is a token that visibly fails for the operator.
+- **An on-path attacker over `http://`** reads the token and the returned pack secret in the clear, and
+  can self-enroll their **own** certificate as a member before the honest joiner spends the token (the
+  lead admits on the token alone; F1's fingerprint pin authenticates the lead, not the joiner). This is
+  why `collie join` refuses an `http://` address unless the operator passes `--insecure` to own the
+  trusted-hop assumption explicitly (§8.2).
 - **Someone who reaches a peer's pack port with neither factor** learns that something is listening and
   speaks TLS. No PWA, no version banner, no member id, no distinction between refusal causes (§8.1).
 - **Local uid reach.** `ARCHITECTURE.md` §6 already documents that every uid in the host's network

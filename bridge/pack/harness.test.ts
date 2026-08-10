@@ -343,7 +343,10 @@ describe("invite → join, end to end", () => {
 
   test("the peer joins, and both sides pin the other's certificate", async () => {
     const joined = await verb(peer, (d) =>
-      cmdJoin(d, [`http://127.0.0.1:${lead.port}`, token, "--address", `127.0.0.1:${peer.port}`]),
+      // `--insecure` because this harness enrolls over loopback `http://`: `join` now refuses a
+      // plaintext hop unless the operator explicitly owns that assumption. A loopback join is exactly
+      // the "genuinely trusted hop" the flag exists for.
+      cmdJoin(d, [`http://127.0.0.1:${lead.port}`, token, "--insecure", "--address", `127.0.0.1:${peer.port}`]),
     );
     expect(joined.err).not.toContain("certificate minting is not wired");
     expect(joined.code).toBe(EXIT.OK);
