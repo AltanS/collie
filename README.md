@@ -234,6 +234,10 @@ The URL is the banner's `tailnet` line (print it again anytime with `scripts/col
 It resolves for any device on your tailnet — so the phone needs the Tailscale app installed and
 connected to the same tailnet as the host.
 
+Rather than typing a MagicDNS name on a phone keyboard, **`scripts/collie-ctl.sh qr` prints it as a
+QR code** you can point a camera at. It's its own subcommand rather than part of `start` because
+Collie is a PWA: once it's on your home screen you never need the URL again.
+
 Then install it as an app: **iOS** — Safari → share sheet → *Add to Home Screen*. **Android** —
 Chrome → ⋮ menu → *Add to Home screen* (or *Install app*). Installing (and Web Push) needs the
 HTTPS origin the default serve mode already provides; over `COLLIE_SERVE_MODE=http` the page works,
@@ -371,6 +375,7 @@ below as `invoke <cmd>`). The ones you'll actually use:
 | **Restart** | `collie-ctl.sh restart` | `invoke restart` |
 | **Status** — the *Collie is running* banner + URLs | `collie-ctl.sh status` | `invoke status` |
 | **URL** — print the tailnet URL | `collie-ctl.sh url` | `invoke url` |
+| **QR** — the same URL as a scannable code | `collie-ctl.sh qr` | — (script only) |
 | **Version** — the running version (`0.x.y+sha`) | `collie-ctl.sh version` | `invoke version` |
 | **Update** — advance the checkout + rebuild + restart | `collie-ctl.sh update` | `invoke update` |
 | **Uninstall** — remove the service; keep `.env` + checkout | `collie-ctl.sh uninstall` | `invoke uninstall` |

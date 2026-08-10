@@ -616,6 +616,57 @@ EOF
   assert_contains "$case_text" "(unverified — the bridge isn't answering locally yet)"
 }
 
+# `qr` exists so a phone can scan its way in. What's testable here is which URL it decides to encode
+# and when it refuses — the drawing itself is decode-tested in scripts/qr.test.ts.
+test_qr_subcommand() {
+  setup_case qr
+  install_fake_tailscale
+
+  # The tailnet front door: whatever `url` reports is what gets encoded.
+  local out
+  out="$(run_ctl qr)" || fail "qr failed on the tailnet path"
+  assert_contains "$out" "https://host.example"
+  assert_contains "$out" "█"
+
+  # Variant C/E with a public URL: still a phone-typeable URL, so still worth a QR.
+  out="$(COLLIE_SKIP_SERVE=1 COLLIE_PUBLIC_URL=https://collie.example.com run_ctl qr)" ||
+    fail "qr failed on the reverse-proxy path"
+  assert_contains "$out" "https://collie.example.com"
+  assert_contains "$out" "█"
+
+  # Variant C/E without one: Collie doesn't know the ingress, so there's nothing true to encode.
+  if out="$(COLLIE_SKIP_SERVE=1 run_ctl qr 2>&1)"; then
+    fail "qr invented a URL under COLLIE_SKIP_SERVE=1"
+  fi
+  assert_contains "$out" "COLLIE_PUBLIC_URL is unset"
+
+  # A front door nothing can reach still gets its QR — the code is fine, the tailnet policy isn't —
+  # but the warning has to reach stderr, or the operator scans a dead end and blames the code.
+  local qr_out="${CASE_DIR}/qr.out" qr_err="${CASE_DIR}/qr.err"
+  cat > "${BIN_DIR}/tailscale" <<'EOF'
+#!/bin/sh
+if [ "$1" = debug ] && [ "$2" = netmap ]; then echo '{"PacketFilter":[]}'; exit 0; fi
+if [ "$1" = status ] && [ "$2" = --json ]; then echo '{"Self":{"DNSName":"host.example."}}'; exit 0; fi
+exit 2
+EOF
+  chmod +x "${BIN_DIR}/tailscale"
+  run_ctl qr > "$qr_out" 2> "$qr_err" || fail "qr refused to draw for a blocked tailnet"
+  assert_contains "$(cat "$qr_err")" "admits no peer"
+  assert_contains "$(cat "$qr_out")" "█"
+  assert_contains "$(cat "$qr_out")" "https://host.example"
+
+  # Tailscale present but with no name to give (logged out, or the daemon is down): refuse rather
+  # than encode `bridge_url`'s loopback placeholder, which would send a phone to its OWN localhost.
+  # Staged by answering `status --json` with nothing rather than by removing the CLI — the caller's
+  # PATH holds a real tailscale, so deleting the fake tests the developer's tailnet, not this branch.
+  printf '#!/bin/sh\necho "{}"\n' > "${BIN_DIR}/tailscale"
+  chmod +x "${BIN_DIR}/tailscale"
+  if out="$(run_ctl qr 2>&1)"; then
+    fail "qr encoded a URL with no tailnet name available"
+  fi
+  assert_contains "$out" "tailnet front door isn't up"
+}
+
 # `bootout` doesn't promise to wait for the job to finish tearing down, and the bridge drains
 # connections on SIGTERM — so `restart` (and therefore `update`) can reach `bootstrap` while the old
 # job is still going, which launchd answers with "Bootstrap failed: 5: Input/output error". Unretried
@@ -956,6 +1007,7 @@ test_serve_failure_does_not_abort_start
 test_launchd_agent_lifecycle
 test_launchd_status_line
 test_tailnet_acl_warning
+test_qr_subcommand
 test_launchd_bootstrap_retries
 test_bun_resolution
 test_non_absolute_bun_never_reaches_path

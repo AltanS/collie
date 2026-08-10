@@ -11,14 +11,19 @@
     "build": "bun run typecheck && cd web && bun install && bun run typecheck && bun run build",
     "build:web": "cd web && bun run build",
     "web:dev": "cd web && bun run dev",
-    "test": "bun test ./bridge && bash scripts/collie-ctl.test.sh",
+    "test": "bun test ./bridge ./scripts && bash scripts/collie-ctl.test.sh",
     "test:ctl": "bash scripts/collie-ctl.test.sh",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/web-push": "^3.6.4",
+    "jsqr": "^1.4.0",
     "typescript": "^5"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
   },
   "optionalDependencies": {
     "web-push": "^3.6.7"

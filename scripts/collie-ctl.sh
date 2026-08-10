@@ -898,6 +898,40 @@ cmd_status() {
   fi
 }
 
+# Scan your way onto the bridge. Opt-in as its own subcommand rather than part of `start`: a
+# scannable QR is ~16 rows even in the compact renderer, and Collie is a PWA — once it's on your home
+# screen you never need the URL again, so this is a first-run convenience that shouldn't tax every
+# start. Delegates the drawing to scripts/qr.ts; what lives HERE is which URL is worth a QR at all.
+cmd_qr() {
+  [ -n "$BUN" ] || { echo "error: bun not found on PATH" >&2; exit 1; }
+  local url
+  if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
+    # No managed front door here (ADR 0001) — the operator owns the ingress, and only they can say
+    # what its public URL is. With COLLIE_PUBLIC_URL set that's still a phone-typeable URL worth
+    # scanning, so render it; without it there is nothing true to encode.
+    url="${COLLIE_PUBLIC_URL:-}"
+    [ -n "$url" ] || {
+      echo "no URL to encode: COLLIE_SKIP_SERVE=1 and COLLIE_PUBLIC_URL is unset — set it to your" >&2
+      echo "reverse-proxy URL, or drop COLLIE_SKIP_SERVE to publish the tailnet front door." >&2
+      exit 1
+    }
+  else
+    url="$(bridge_url)"
+    case "$url" in
+      *"(Tailscale name unavailable)"*)
+        echo "no URL to encode: the tailnet front door isn't up (run 'collie-ctl.sh serve')" >&2
+        exit 1 ;;
+    esac
+    # A QR for a URL nothing can reach is just a prettier dead end — it scans perfectly and then
+    # hangs. Say so before drawing it, but still draw it: the ACL is the thing to fix, not the URL.
+    if tailnet_inbound_blocked; then
+      echo "⚠ this node's packet filter admits no peer — scanning this will hang until your tailnet" >&2
+      echo "  policy grants access, or another device joins the tailnet. See 'collie-ctl.sh status'." >&2
+    fi
+  fi
+  "$BUN" run "${PLUGIN_ROOT}/scripts/qr.ts" "$url"
+}
+
 cmd_logs() {
   if have_systemd; then journalctl --user -u "$UNIT" -n "${1:-50}" --no-pager
   else tail -n "${1:-50}" "${CONFIG_DIR}/collie.log" 2>/dev/null || echo "(no log)"; fi
@@ -932,8 +966,9 @@ case "${1:-}" in
   unserve) cmd_unserve ;;
   status)  cmd_status ;;
   url)     bridge_url ;;
+  qr)      cmd_qr ;;
   version) cmd_version ;;
   push-test) shift || true; cmd_push_test "$@" ;;
   logs)    cmd_logs "${2:-50}" ;;
-  *) echo "usage: collie-ctl.sh {start|stop|restart|uninstall|update|version|push-test|build|serve|unserve|status|url|logs}" >&2; exit 2 ;;
+  *) echo "usage: collie-ctl.sh {start|stop|restart|uninstall|update|version|push-test|build|serve|unserve|status|url|qr|logs}" >&2; exit 2 ;;
 esac
