@@ -929,7 +929,15 @@ is *connected* to the same tailnet as the host; (2) you're opening the banner's 
 (`scripts/collie-ctl.sh url`), not the `local` one — `http://127.0.0.1:8787` only works on the host
 itself; (3) MagicDNS is enabled in your tailnet's DNS settings (the URL is a MagicDNS name); (4) the
 host is online — check `tailscale status` on the host, or ping the host from the phone's Tailscale
-app.
+app; (5) **your tailnet policy actually admits a peer to this node** — if it doesn't, the banner now
+says so under the `tailnet` line, and nothing else will: the front door is published correctly, the
+cert is valid, and `curl` from the host itself returns 200, because loopback never touches the packet
+filter. Two things make this one especially misleading — `tailscale ping` **succeeds** (disco pings
+bypass ACLs), and blocked traffic is dropped rather than refused, so the phone just hangs and reads
+as "server down". Fix it in your ACL policy (<https://login.tailscale.com/admin/acls> on Tailscale;
+your policy file on Headscale). The check is best-effort and deliberately unsure of itself: it speaks
+up only when this node's filter admits *nothing* — which can equally mean no other device has joined
+the tailnet yet — and stays quiet whenever it can't tell.
 
 **Page loads but stays empty; API calls fail `403 cross-origin rejected`.** You're reaching Collie
 through an origin the bridge doesn't expect — a custom domain, or a proxy that rewrites `Host`.
