@@ -520,6 +520,153 @@ EOF
   esac
 }
 
+# The banner's tailnet line is a PROMISE that another device can open that URL, and loopback — all
+# `bridge_ready` can see — never touches the tailnet packet filter. So a node whose ACLs grant it
+# nothing passes every local check while no phone can reach it. These pin both halves of the
+# annotation and, just as importantly, its silence: the netmap is an undocumented debug surface, and a
+# false "your ACLs are broken" would be worse than the nothing we printed before.
+test_tailnet_acl_warning() {
+  setup_case tailnet-acl
+  local harness="${CASE_DIR}/acl.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+have_systemd() { return 1; }
+have_launchd() { return 1; }
+collie_version() { echo "test"; }
+bridge_url() { echo "https://host.example"; }
+bridge_ready() { return 0; }
+
+# Each case restages a real EXECUTABLE \`tailscale\` rather than defining a shell function. That is not
+# a style choice: the probe runs the CLI under \`timeout\`, which execs a binary and never sees a
+# function, so a function-stubbed case would silently fall through to the developer's own tailscale
+# and test their tailnet instead of this branch. It cost a green suite against a broken probe once.
+stage_tailscale() { printf '%s\n' '#!/bin/sh' "\$1" > "${BIN_DIR}/tailscale"; chmod +x "${BIN_DIR}/tailscale"; }
+
+echo "=== CASE deny-all"
+stage_tailscale 'echo "{\\"PacketFilter\\":[],\\"PacketFilterRules\\":null}"'
+print_status_banner
+echo "=== END"
+
+echo "=== CASE granted"
+stage_tailscale 'echo "{\\"PacketFilter\\":[{\\"SrcIPs\\":[\\"*\\"]}]}"'
+print_status_banner
+echo "=== END"
+
+echo "=== CASE netmap unavailable"
+stage_tailscale 'exit 1'
+print_status_banner
+echo "=== END"
+
+echo "=== CASE netmap unparseable"
+stage_tailscale 'echo "not json at all"'
+print_status_banner
+echo "=== END"
+
+echo "=== CASE key absent"
+stage_tailscale 'echo "{\\"DNS\\":{}}"'
+print_status_banner
+echo "=== END"
+
+echo "=== CASE not ready"
+stage_tailscale 'echo "{\\"PacketFilter\\":[{\\"SrcIPs\\":[\\"*\\"]}]}"'
+bridge_ready() { return 1; }
+print_status_banner
+echo "=== END"
+EOF
+  bash "$harness" > "${CASE_DIR}/acl.out" 2>&1 || fail "print_status_banner failed on the ACL path"
+
+  # Slice the output per case so an assertion can't be satisfied by some other case's text. Each
+  # slice runs from its own header to its own `=== END`, both anchored: an awk range whose END pattern
+  # can also match its START collapses to that single line, and a "the banner said nothing" assertion
+  # against a slice holding only a header passes for the wrong reason — silently, and forever.
+  local out case_text
+  out="$(cat "${CASE_DIR}/acl.out")"
+  slice_case() { awk "/^=== CASE $1\$/{f=1;next} /^=== END\$/{f=0} f" <<<"$out"; }
+
+  case_text="$(slice_case "deny-all")"
+  [ -n "$case_text" ] || fail "deny-all slice was empty — the harness markers moved"
+  assert_contains "$case_text" "(unreachable from other devices)"
+  assert_contains "$case_text" "admits no peer"
+  assert_contains "$case_text" "login.tailscale.com/admin/acls"
+  # The URL still gets printed — the ACL is what's broken, not the address.
+  assert_contains "$case_text" "https://host.example"
+
+  # Everything that isn't a definite deny-all must print the plain line and say nothing more. That
+  # includes the three "can't tell" outcomes, which is the whole best-effort contract.
+  local quiet
+  for quiet in granted "netmap unavailable" "netmap unparseable" "key absent"; do
+    case_text="$(slice_case "$quiet")"
+    # Without this the loop is theatre: an empty slice satisfies every negative assertion below.
+    [ -n "$case_text" ] || fail "'${quiet}' slice was empty — nothing was actually asserted"
+    assert_contains "$case_text" "https://host.example"
+    case "$case_text" in
+      *"unreachable from other devices"*) fail "warned about ACLs on the '${quiet}' case" ;;
+      *"admits no peer"*) fail "warned about ACLs on the '${quiet}' case" ;;
+    esac
+  done
+
+  # The ⚠ branch used to print the tailnet line with the same confidence as the ✓ one.
+  case_text="$(slice_case "not ready")"
+  assert_contains "$case_text" "isn't answering on"
+  assert_contains "$case_text" "(unverified — the bridge isn't answering locally yet)"
+}
+
+# `qr` exists so a phone can scan its way in. What's testable here is which URL it decides to encode
+# and when it refuses — the drawing itself is decode-tested in scripts/qr.test.ts.
+test_qr_subcommand() {
+  setup_case qr
+  install_fake_tailscale
+
+  # The tailnet front door: whatever `url` reports is what gets encoded.
+  local out
+  out="$(run_ctl qr)" || fail "qr failed on the tailnet path"
+  assert_contains "$out" "https://host.example"
+  assert_contains "$out" "█"
+
+  # Variant C/E with a public URL: still a phone-typeable URL, so still worth a QR.
+  out="$(COLLIE_SKIP_SERVE=1 COLLIE_PUBLIC_URL=https://collie.example.com run_ctl qr)" ||
+    fail "qr failed on the reverse-proxy path"
+  assert_contains "$out" "https://collie.example.com"
+  assert_contains "$out" "█"
+
+  # Variant C/E without one: Collie doesn't know the ingress, so there's nothing true to encode.
+  if out="$(COLLIE_SKIP_SERVE=1 run_ctl qr 2>&1)"; then
+    fail "qr invented a URL under COLLIE_SKIP_SERVE=1"
+  fi
+  assert_contains "$out" "COLLIE_PUBLIC_URL is unset"
+
+  # A front door nothing can reach still gets its QR — the code is fine, the tailnet policy isn't —
+  # but the warning has to reach stderr, or the operator scans a dead end and blames the code.
+  local qr_out="${CASE_DIR}/qr.out" qr_err="${CASE_DIR}/qr.err"
+  cat > "${BIN_DIR}/tailscale" <<'EOF'
+#!/bin/sh
+if [ "$1" = debug ] && [ "$2" = netmap ]; then echo '{"PacketFilter":[]}'; exit 0; fi
+if [ "$1" = status ] && [ "$2" = --json ]; then echo '{"Self":{"DNSName":"host.example."}}'; exit 0; fi
+exit 2
+EOF
+  chmod +x "${BIN_DIR}/tailscale"
+  run_ctl qr > "$qr_out" 2> "$qr_err" || fail "qr refused to draw for a blocked tailnet"
+  assert_contains "$(cat "$qr_err")" "admits no peer"
+  assert_contains "$(cat "$qr_out")" "█"
+  assert_contains "$(cat "$qr_out")" "https://host.example"
+
+  # Tailscale present but with no name to give (logged out, or the daemon is down): refuse rather
+  # than encode `bridge_url`'s loopback placeholder, which would send a phone to its OWN localhost.
+  # Staged by answering `status --json` with nothing rather than by removing the CLI — the caller's
+  # PATH holds a real tailscale, so deleting the fake tests the developer's tailnet, not this branch.
+  printf '#!/bin/sh\necho "{}"\n' > "${BIN_DIR}/tailscale"
+  chmod +x "${BIN_DIR}/tailscale"
+  if out="$(run_ctl qr 2>&1)"; then
+    fail "qr encoded a URL with no tailnet name available"
+  fi
+  assert_contains "$out" "tailnet front door isn't up"
+}
+
 # `bootout` doesn't promise to wait for the job to finish tearing down, and the bridge drains
 # connections on SIGTERM — so `restart` (and therefore `update`) can reach `bootstrap` while the old
 # job is still going, which launchd answers with "Bootstrap failed: 5: Input/output error". Unretried
@@ -859,6 +1006,8 @@ test_adopts_preexisting_collie_mount
 test_serve_failure_does_not_abort_start
 test_launchd_agent_lifecycle
 test_launchd_status_line
+test_tailnet_acl_warning
+test_qr_subcommand
 test_launchd_bootstrap_retries
 test_bun_resolution
 test_non_absolute_bun_never_reaches_path

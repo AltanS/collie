@@ -7,12 +7,25 @@
 A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL, see
 which agent is waiting on you, and answer it with your phone's keyboard.
 
-Each agent gets a colored terminal mirror, a slash-command palette, a special-keys pad, and a
-conversation history you can scroll and search. The reply box is an ordinary text field, so your
-phone's own voice dictation works in it; Collie ships none of its own.
+The reply box is an ordinary text field, so your phone's own voice dictation works in it; Collie
+ships none of its own.
 
-A Herdr plugin (thin launcher) plus a Bun/TypeScript bridge running as a `systemd --user` service,
-serving a Vite + React + shadcn PWA.
+- **React Router + Vite** — TypeScript, Tailwind, shadcn, and a Bun bridge
+- **Runs on your own machine** — loopback bind, no cloud, no account
+- **Your front door, your choice** — `tailscale serve` by default, or your own reverse proxy
+- **Installs to your home screen** (PWA)
+
+- **A dashboard ranked by who needs you**, not by what changed last
+- **Push notifications** the moment an agent is waiting on you
+- **Special-keys pad** — `Esc`, `Ctrl+C`, arrows, combinable modifiers
+- **Slash-command palette** per agent — tap, don't type
+
+- **Send an image** from your camera roll
+- **Find in output** — search a pane, don't eyeball it
+- **Conversation history** the terminal can't scroll back to — read from the agent's own session log
+- **Easily switch between Herdr sessions**
+
+- **In the works** — more than one machine under a single URL: one Collie leads, the others join it
 
 ## Contents
 
@@ -234,6 +247,10 @@ The URL is the banner's `tailnet` line (print it again anytime with `scripts/col
 It resolves for any device on your tailnet — so the phone needs the Tailscale app installed and
 connected to the same tailnet as the host.
 
+Rather than typing a MagicDNS name on a phone keyboard, **`scripts/collie-ctl.sh qr` prints it as a
+QR code** you can point a camera at. It's its own subcommand rather than part of `start` because
+Collie is a PWA: once it's on your home screen you never need the URL again.
+
 Then install it as an app: **iOS** — Safari → share sheet → *Add to Home Screen*. **Android** —
 Chrome → ⋮ menu → *Add to Home screen* (or *Install app*). Installing (and Web Push) needs the
 HTTPS origin the default serve mode already provides; over `COLLIE_SERVE_MODE=http` the page works,
@@ -371,6 +388,7 @@ below as `invoke <cmd>`). The ones you'll actually use:
 | **Restart** | `collie-ctl.sh restart` | `invoke restart` |
 | **Status** — the *Collie is running* banner + URLs | `collie-ctl.sh status` | `invoke status` |
 | **URL** — print the tailnet URL | `collie-ctl.sh url` | `invoke url` |
+| **QR** — the same URL as a scannable code | `collie-ctl.sh qr` | — (script only) |
 | **Version** — the running version (`0.x.y+sha`) | `collie-ctl.sh version` | `invoke version` |
 | **Update** — advance the checkout + rebuild + restart | `collie-ctl.sh update` | `invoke update` |
 | **Uninstall** — remove the service; keep `.env` + checkout | `collie-ctl.sh uninstall` | `invoke uninstall` |
@@ -929,7 +947,15 @@ is *connected* to the same tailnet as the host; (2) you're opening the banner's 
 (`scripts/collie-ctl.sh url`), not the `local` one — `http://127.0.0.1:8787` only works on the host
 itself; (3) MagicDNS is enabled in your tailnet's DNS settings (the URL is a MagicDNS name); (4) the
 host is online — check `tailscale status` on the host, or ping the host from the phone's Tailscale
-app.
+app; (5) **your tailnet policy actually admits a peer to this node** — if it doesn't, the banner now
+says so under the `tailnet` line, and nothing else will: the front door is published correctly, the
+cert is valid, and `curl` from the host itself returns 200, because loopback never touches the packet
+filter. Two things make this one especially misleading — `tailscale ping` **succeeds** (disco pings
+bypass ACLs), and blocked traffic is dropped rather than refused, so the phone just hangs and reads
+as "server down". Fix it in your ACL policy (<https://login.tailscale.com/admin/acls> on Tailscale;
+your policy file on Headscale). The check is best-effort and deliberately unsure of itself: it speaks
+up only when this node's filter admits *nothing* — which can equally mean no other device has joined
+the tailnet yet — and stays quiet whenever it can't tell.
 
 **Page loads but stays empty; API calls fail `403 cross-origin rejected`.** You're reaching Collie
 through an origin the bridge doesn't expect — a custom domain, or a proxy that rewrites `Host`.

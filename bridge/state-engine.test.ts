@@ -357,10 +357,15 @@ describe("StateEngine — session name enrichment", () => {
   class NameHerdr {
     panes: FakePane[] = [];
     texts = new Map<string, string>();
+    // Every readPane call, verbatim. This read is only harmless because of WHICH source it asks for
+    // and how few lines it wants; a fake that swallowed those arguments would let that regress with
+    // every test still green.
+    reads: Array<[string, string, number, string]> = [];
     sessionSnapshot() {
       return Promise.resolve({ version: "0.7.2", protocol: 16, workspaces: [ws("w1", 1)], tabs: [], panes: this.panes });
     }
-    readPane(paneId: string) {
+    readPane(paneId: string, source: string, lines: number, format: string) {
+      this.reads.push([paneId, source, lines, format]);
       return Promise.resolve({ pane_id: paneId, text: this.texts.get(paneId) ?? "", truncated: false, revision: 0 });
     }
   }
@@ -381,6 +386,20 @@ describe("StateEngine — session name enrichment", () => {
     await poll();
     expect(agent("w1:p1").sessionName).toBe("my-feature");
     expect(agent("w1:p2").sessionName).toBeUndefined();
+  });
+
+  // The scroll-jump guard. A `recent` read that wants more rows than the pane shows makes Herdr
+  // harvest the pages above it, and on a full-screen agent that means scrolling the operator's pane
+  // up and back — once per poll, per idle claude pane. Nothing in the types stops the source from
+  // drifting back, and CI can't see the symptom: it only shows on a real terminal.
+  test("reads the visible grid, never recent", async () => {
+    const { herdr, poll } = makeNameEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    herdr.texts.set("w1:p1", named("pinned"));
+    await poll();
+    // The count is not the safety-critical half — `visible` clamps to the viewport however large it
+    // is — so it is pinned only to keep the whole call in one assertion. Change it freely, here too.
+    expect(herdr.reads).toEqual([["w1:p1", "visible", 40, "text"]]);
   });
 
   test("leaves sessionName absent for an unnamed claude session (plain rule)", async () => {
