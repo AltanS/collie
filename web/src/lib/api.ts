@@ -18,6 +18,30 @@ import type {
 
 export type { NotifyPrefs, UpdateInfo };
 
+/**
+ * Marks every API request as XHR so a fronting identity proxy answers it with a status we can read.
+ *
+ * The refusal banner (components/connection-banner.tsx) is reached only through `isAuthError`
+ * (lib/loaders.ts), which matches 401/403 on an {@link ApiError}. A proxy that answers an
+ * unauthenticated request with a REDIRECT never produces one: `fetch` follows the 302 to the
+ * identity provider's origin, that response carries no CORS headers, and the call rejects as a
+ * `TypeError` — a transport failure with no status. The user then gets the connection banner
+ * ("can't reach Collie") and, worse, loses the Sign-in link that would have fixed it, since a
+ * missing session is precisely the thing it recovers from.
+ *
+ * Measured against Cloudflare Access with no session: a plain request, `Accept: application/json`
+ * and `Sec-Fetch-Mode: cors` all still redirect; only this header flips the answer to a same-origin
+ * 401. `X-Requested-With: XMLHttpRequest` is the conventional "this is XHR, don't redirect me"
+ * signal rather than one vendor's feature — oauth2-proxy and Authelia read it too — so it stays a
+ * single unconditional header with no proxy-specific branching, in keeping with a bridge that gates
+ * on vendor-neutral headers and manages nobody else's front door (ADR 0001).
+ *
+ * Costs nothing against the bridge itself: it is same-origin by design, so no preflight in practice,
+ * and the bridge ignores headers it does not read.
+ */
+export const XHR_HEADER = "x-requested-with";
+export const XHR_HEADER_VALUE = "XMLHttpRequest";
+
 class ApiError extends Error {
   readonly status: number;
   constructor(message: string, status: number) {
@@ -136,7 +160,11 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
   const res = await fetch(path, {
     ...init,
     signal: withTimeout(init?.signal, timeoutMs),
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers: {
+      "content-type": "application/json",
+      [XHR_HEADER]: XHR_HEADER_VALUE,
+      ...init?.headers,
+    },
   });
   captureBuild(res);
   if (!res.ok) {
@@ -206,7 +234,10 @@ export async function fetchPane(
   // SEEN_HEADER is what tells the bridge this read came from our own page and may mark the pane
   // seen. A cross-site no-cors GET can't set a custom header, so it can't clear your alerts by
   // guessing pane ids (bridge/server.ts → marksPaneSeen).
-  const headers: Record<string, string> = { "x-collie-seen": "1" };
+  const headers: Record<string, string> = {
+    "x-collie-seen": "1",
+    [XHR_HEADER]: XHR_HEADER_VALUE,
+  };
   if (cached) headers["if-none-match"] = cached.etag;
 
   const res = await fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
@@ -421,6 +452,9 @@ export function uploadImage(paneId: string, file: File, session?: string): Promi
       const res = await fetch(withSession(`/api/pane/${encodeURIComponent(paneId)}/upload`, session), {
         method: "POST",
         body: fd,
+        // No content-type: the browser sets the multipart boundary. The XHR marker still applies —
+        // an upload refused by a lapsed proxy session must surface as a status, not a redirect.
+        headers: { [XHR_HEADER]: XHR_HEADER_VALUE },
         signal: withTimeout(undefined, UPLOAD_TIMEOUT_MS),
       });
       if (!res.ok) {
