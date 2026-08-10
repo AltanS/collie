@@ -366,7 +366,7 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
  * did not answer is `5`.
  */
 export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<number> {
-  const { positional, flags } = parsePackArgs(args);
+  const { positional, flags, bare } = parsePackArgs(args, ["insecure"]);
   const [address, rawToken] = positional;
   if (address === undefined || rawToken === undefined) {
     deps.io.err("usage: collie join <lead-address> <token|-|@file> [--address <mine>] [--label <name>]");
@@ -422,6 +422,19 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
     return EXIT.USAGE;
   }
 
+  // Refuse a plaintext hop unless the operator owns the risk explicitly. Over http:// both the invite
+  // token and the pack secret cross the wire in the clear — F1's fingerprint pin authenticates the
+  // lead to us, but it does nothing to stop a token-thief racing the spend with its own certificate.
+  if (new URL(url).protocol === "http:" && !bare.has("insecure")) {
+    deps.io.err("error: refusing to enroll over http:// — the invite token and the pack secret would cross the");
+    deps.io.err("       wire in the clear. An on-path attacker who reads the token can enroll THEIR OWN certificate");
+    deps.io.err("       as a member before you do (the lead admits on the token alone), then holds the pack secret");
+    deps.io.err("       and a pinned link. Use an encrypted address (https:// via tailscale serve, or your own TLS");
+    deps.io.err("       front door). If this hop is genuinely trusted and you accept that risk, re-run with");
+    deps.io.err("       --insecure to own that assumption explicitly.");
+    return EXIT.REFUSED;
+  }
+
   let res: Response;
   try {
     res = await deps.fetch(url, {
@@ -445,6 +458,11 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   } catch (err) {
     deps.io.err(`error: could not reach ${address} — ${err instanceof Error ? err.message : String(err)}`);
     deps.io.err("       The lead owns nothing about reachability: check the address, the tunnel, the port.");
+    if (!/^https?:\/\//i.test(address)) {
+      deps.io.err("       No scheme was given, so https:// was assumed. If the lead really is plaintext http://, say");
+      deps.io.err("       so explicitly AND pass --insecure — but the token and pack secret then cross the wire in the");
+      deps.io.err("       clear (see the http:// refusal).");
+    }
     return EXIT.UNREACHABLE;
   }
 
@@ -473,7 +491,10 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   // one comparison is the lead authenticating itself to the joiner — it is what a self-consistent
   // response could never do on its own. A MITM or a mistyped/rebound address that captured the token
   // and answered with ITS OWN certificate is refused here, BEFORE anything is pinned or persisted
-  // (§8.2). http:// stays allowed precisely because this fingerprint, not the transport, is the anchor.
+  // (§8.2). This fingerprint anchors the LEAD to the joiner — a fake lead answering with its own
+  // certificate is refused here — but it does NOT protect the lead from a token-thief on a plaintext
+  // hop: over http:// an on-path attacker races the spend with their own certificate, which is why
+  // http:// enrollment now requires an explicit --insecure (see the guard above).
   if (invitedFp !== parsed.leadFingerprint) {
     deps.io.err("error: the lead's certificate does not match the invite — this is not the machine the");
     deps.io.err("       invite was minted on. Possible man-in-the-middle on the enrollment path, or the");
@@ -744,6 +765,7 @@ export async function cmdPackRotate(deps: PackDeps): Promise<number> {
   const next = (await deps.store.load())?.pack;
   if (next === null || next === undefined) return EXIT.FAIL;
   deps.io.out(`rotating to generation ${rotated.secretGeneration} — the previous secret is already dead here.`);
+  deps.io.out("  No grace window: any peer offline right now misses this pickup and is dropped to an `unenrolled` tombstone that must re-join.");
 
   const client = clientFor(deps, data, previous);
   const targets = data.peers.filter((p) => p.status === "enrolled");
