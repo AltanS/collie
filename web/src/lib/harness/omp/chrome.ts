@@ -368,6 +368,9 @@ export function hasComposer(lines: StyledLine[]): boolean {
   return locateComposer(lines) !== null;
 }
 
+/** `DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts — mirrored, the way web mirrors wire types. */
+const BRIDGE_PROMPT_TAIL_LINES = 6;
+
 /**
  * The composer's OWN prompt row, verbatim as it sits on screen (trailing padding dropped), or null
  * when there is no composer at the tail. This is the `expected_prompt` the reply path binds its
@@ -387,6 +390,21 @@ export function hasComposer(lines: StyledLine[]): boolean {
 export function composerPrompt(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
   if (box === null) return null;
+
+  // Decline the binding when omp has painted too much below the box for the bridge to accept it.
+  // `verifyExpectedPrompt` (bridge/prompt-binding.ts) matches the region against the fresh read's
+  // NON-BLANK rows and requires the match to end inside the last DEFAULT_PROMPT_TAIL_LINES (6) of
+  // them — so a one-row region needs at most 5 non-blank rows beneath it. Every row in
+  // `(bottom, suggestEnd)` is non-blank by construction (locateComposer step (a) rejects a blank
+  // inside the run) and everything past `suggestEnd` is trailing blanks the bridge's normalization
+  // drops, so that count is exactly `suggestEnd - bottom - 1`. The slash palette lives down there
+  // and MAX_SUGGESTION_ROWS admits 64 rows of it, so a long enough palette would put the composer's
+  // own row out of reach and 409 EVERY destructive sweep with "The input box changed while clearing
+  // it" — a permanent, unexplainable refusal on a screen where nothing is wrong. Null instead means
+  // an unbound write, which is exactly what this adapter did before it named a region at all: the
+  // sweep loses its binding, never its pre-flight.
+  if (box.suggestEnd - box.bottom - 1 > BRIDGE_PROMPT_TAIL_LINES - 1) return null;
+
   const row = rstrip(lineText(lines[box.bottom]!));
   return row.length === 0 ? null : row;
 }

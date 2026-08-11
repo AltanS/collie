@@ -548,6 +548,28 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
     }
   });
 
+  // The palette omp paints BELOW the box is what pushes its own bottom border up, and
+  // MAX_SUGGESTION_ROWS admits 64 rows of it while the bridge accepts a binding only within the last
+  // 6 non-blank rows. The committed captures show 5 rows at most — i.e. ZERO margin — so the very
+  // next row omp draws down there turns every destructive sweep into a permanent 409 ("The input box
+  // changed while clearing it") on a screen where nothing is wrong. Declining the region instead is
+  // an UNBOUND write: the sweep is still gated by the reply pre-flight, exactly as it was before this
+  // adapter named a region at all.
+  it("declines the region when the palette pushes the row out of the bridge's tail window", () => {
+    const palette = (n: number) => Array.from({ length: n }, (_, i) => `❯ /command-${i}  a suggestion`);
+    const withPalette = (n: number) => lines([...boxRows("list the files"), ...palette(n)].join("\n"));
+
+    // 5 rows below: the row is the 6th-from-last non-blank, the last position the bridge accepts.
+    expect(hasComposer(withPalette(5))).toBe(true);
+    expect(composerPrompt(withPalette(5))).toContain("list the files");
+
+    // 6 rows below: one too many. `composerReady` still says yes — the composer plainly has the
+    // keyboard — but there is no region the bridge could bind to, so none is named.
+    expect(hasComposer(withPalette(6))).toBe(true);
+    expect(composerPrompt(withPalette(6))).toBeNull();
+    expect(composerPrompt(withPalette(20))).toBeNull();
+  });
+
   it("sits inside the tail window the bridge will accept a binding within", () => {
     // bridge/prompt-binding.ts requires the bound region to still match within the last
     // DEFAULT_PROMPT_TAIL_LINES (6) NON-BLANK rows of a fresh read, so a region with more rows than
