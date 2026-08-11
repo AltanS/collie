@@ -77,6 +77,36 @@ describe("parse — refusing beats repairing", () => {
     expect(parseTrustStore(JSON.stringify(bad))).toBeNull();
   });
 
+  test("`pendingHandover` survives a round trip — the whitelist names it in BOTH halves (§14.1)", () => {
+    // THE TRAP THIS PINS: `parseTrustStore` builds its result from an explicit field whitelist, so a
+    // field validated but left out of that literal vanishes on every load→save — and an approval that
+    // cannot survive a read is an approval the demotion can never find. Gate 1 would be shut forever.
+    const data = leadStore({
+      peers: [member({ memberId: "nas" })],
+      pendingHandover: { memberId: "nas", createdAt: 1, expiresAt: 2 },
+    });
+    const parsed = parseTrustStore(serializeTrustStore(data));
+    expect(parsed).toEqual(data);
+    expect(parsed!.pendingHandover).toEqual({ memberId: "nas", createdAt: 1, expiresAt: 2 });
+  });
+
+  test("absent or null is no approval, and a pre-spec store parses and reads CLOSED", () => {
+    const old = leadStore({ peers: [member({ memberId: "nas" })] });
+    const serialized = serializeTrustStore(old);
+    expect(serialized).not.toContain("pendingHandover");
+    // Absent stays absent rather than becoming an explicit `null`, so the bytes round-trip unchanged.
+    expect(parseTrustStore(serialized)).toEqual(old);
+    expect(parseTrustStore(serialized)!.pendingHandover ?? null).toBeNull();
+    expect(parseTrustStore(JSON.stringify({ ...old, pendingHandover: null }))!.pendingHandover).toBeNull();
+  });
+
+  test("a malformed approval invalidates the WHOLE store, like any other pinned field", () => {
+    for (const patch of [{ memberId: "NAS", createdAt: 1, expiresAt: 2 }, { memberId: "nas", expiresAt: 2 }, 7, "soon"]) {
+      const bad = { ...leadStore(), pendingHandover: patch };
+      expect(parseTrustStore(JSON.stringify(bad))).toBeNull();
+    }
+  });
+
   test("an old-shape store (no `contactedAt`) parses, and its member is NOT provisional", () => {
     // The live-pack back-compat rule: a member serialised before this field existed comes back with
     // `contactedAt` absent (undefined), which is STRICTLY NOT `null` — so it never reads as provisional.
