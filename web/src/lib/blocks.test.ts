@@ -235,7 +235,9 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks[0]!.lines.length).toBeLessThan(lines.length);
   });
 
-  it("leaves a non-Claude agent as a single untouched raw block (conservative gating)", () => {
+  // "No adapter", not "non-Claude": omp is a non-Claude agent that DOES have one (it just up-levels
+  // nothing). What gates these grammars is the registry lookup, not the string "claude".
+  it("leaves an agent with no adapter as a single untouched raw block (conservative gating)", () => {
     const lines = fixtureLines("claude--select-menu.txt");
     const blocks = buildBlocks(lines, { agent: "codex" });
     expect(blocks).toHaveLength(1);
@@ -244,7 +246,7 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks[0]!.lines).toBe(lines); // untouched — same reference
   });
 
-  // The hasBlockGrammar gate is provably Claude-only: the SAME menu-shaped buffer that Claude lifts
+  // The hasBlockGrammar gate is provably per-adapter: the SAME menu-shaped buffer that Claude lifts
   // into a prompt-select stays a single raw block for a codex agent (above) AND for an unknown/absent
   // agent (below) — the universal fallback. No Claude-tuned matcher ever runs on them.
   it("leaves a menu-shaped buffer raw for an unknown/absent agent (universal fallback)", () => {
