@@ -4,7 +4,7 @@
 // Exit codes are a contract, ported from `scripts/collie-ctl.sh`:
 //   0  success
 //   1  operational failure — something we tried, that failed
-//   2  usage error — unknown verb, bad argument (scripts/collie-ctl.sh:878)
+//   2  usage error — unknown verb, bad argument (the pre-shim collie-ctl.sh)
 // Diagnostics go to stderr; machine-readable output (`url`, `version`) to stdout, undecorated.
 
 // The pack verbs add three codes on top, because M4/07 asks for outcomes a script can branch on:

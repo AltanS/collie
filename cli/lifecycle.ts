@@ -42,7 +42,7 @@ export interface LifecycleDeps extends ServeDeps {
   /**
    * Publish the front door — `cmdServe` in production (wired in cli/main.ts). It stays a seam
    * because what `start` is asserted on here is its TOLERANCE of a front door that won't come up
-   * (scripts/collie-ctl.sh:431-434), which has nothing to say about serve-status fixtures.
+   * (the pre-shim collie-ctl.sh), which has nothing to say about serve-status fixtures.
    * `uninstall`, whose relationship to `unserve` is the opposite — it aborts — calls it directly.
    */
   serve: () => Promise<number>;
@@ -55,7 +55,7 @@ const TIERS: readonly Tier[] = ["systemd", "launchd", "unsupervised"];
 /**
  * Which supervisor runs the bridge. `systemctl --user show-environment` succeeding — not merely
  * `systemctl` existing — is the gate, because a container or a machine with no user instance has
- * the binary and no bus (scripts/collie-ctl.sh:100). launchd is gated on Darwin too: the
+ * the binary and no bus (the pre-shim collie-ctl.sh). launchd is gated on Darwin too: the
  * `gui/<uid>` domain is Darwin-only.
  *
  * `COLLIE_SUPERVISOR` pins the answer. The shell had no such knob because its tests could redefine
@@ -94,7 +94,7 @@ export const logFilePath = (configDir: string, instance: string | null = null): 
 /**
  * Is `commandLine` one of our own bridges? The pidfile outlives its process (SIGKILL, a panic, a
  * reboot) and pids get recycled, so a kill has to be justified by the process table — and this also
- * runs on `start`, where a wrong guess kills a bystander (scripts/collie-ctl.sh:118-122).
+ * runs on `start`, where a wrong guess kills a bystander (the pre-shim collie-ctl.sh).
  *
  * The shell matched `bridge/index.ts`, the tail of its `ExecStart`. That string does not appear in
  * the compiled binary's command line, so the predicate moves in lockstep with `ExecStart`: the
@@ -301,7 +301,7 @@ export function cmdStop(deps: LifecycleDeps): number {
 }
 
 /**
- * The inverse of `start`, and NO MORE (scripts/collie-ctl.sh:455-477): stop + disable the service,
+ * The inverse of `start`, and NO MORE (the pre-shim collie-ctl.sh): stop + disable the service,
  * remove the service definition, remove Collie's own tailscale serve mapping, drop the pidfile.
  *
  * It deliberately keeps `${CONFIG_DIR}/.env` and the checkout — an operator uninstalling the
@@ -400,7 +400,7 @@ export function cmdLogs(deps: LifecycleDeps, args: readonly string[]): number {
 /**
  * The process the supervisor watches. The shell `exec`'d Bun here, because launchd watches the pid
  * it spawned — a wrapper would make `KeepAlive` guard the wrapper and a crashed bridge look alive
- * (scripts/collie-ctl.sh:362-364). In the binary that means the bridge runs IN THIS PROCESS after
+ * (the pre-shim collie-ctl.sh). In the binary that means the bridge runs IN THIS PROCESS after
  * argv dispatch: no child, nothing to outlive it.
  *
  * The plist carries paths only, so the merged `.env` is applied here — this is where a

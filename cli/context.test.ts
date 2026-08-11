@@ -16,7 +16,7 @@ import {
 } from "./context.ts";
 
 // Ported behaviour, so these tests are written against the shell they replace: the config-dir
-// precedence of scripts/collie-ctl.sh:23-39 and the three-way version of :191-200. If the binary and
+// precedence of the pre-shim collie-ctl.sh and its three-way version string. If the binary and
 // the script disagree here, a setting applied one way is silently ignored the other — the exact bug
 // the precedence comment records.
 
@@ -118,7 +118,7 @@ describe("parseEnvFile", () => {
 
   test("ignores anything that is not an assignment — a .env is parsed, never executed", () => {
     // The whole point of not `source`ing: a function defined here used to shadow the real `bun`
-    // and poison every later lookup (scripts/collie-ctl.sh:83-97).
+    // and poison every later lookup (the pre-shim collie-ctl.sh).
     const parsed = parseEnvFile('bun() { echo nope; }\nrm -rf /\nCOLLIE_PORT=9000\n');
     expect(parsed).toEqual({ COLLIE_PORT: "9000" });
   });

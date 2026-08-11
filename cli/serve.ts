@@ -4,7 +4,7 @@ import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 import { tailnetName } from "./tailnet.ts";
 
-// The single managed front door, ported from `scripts/collie-ctl.sh:560-830`. ADR 0001 is the whole
+// The single managed front door, ported from the pre-shim `collie-ctl.sh`. ADR 0001 is the whole
 // point of this module: Collie manages exactly ONE `tailscale serve` mapping, records it, and only
 // ever tears down a mapping still matching that record. The failure mode a bug here produces is not
 // a broken Collie — it is a stranger's service silently unpublished.
@@ -104,7 +104,7 @@ const hasRoot = (handlers: object): boolean => Object.prototype.hasOwnProperty.c
 
 /**
  * What currently owns the root mount we recorded: `absent`, or `<protocol>|proxy:<target>`. This is
- * the evidence teardown checks before removing anything (`scripts/collie-ctl.sh:583-614`).
+ * the evidence teardown checks before removing anything (the pre-shim `collie-ctl.sh`).
  */
 export function fingerprintRoot(status: ServeStatus, hostPort: string, port: number): string {
   const handlers = status.Web?.[hostPort]?.Handlers ?? {};
@@ -123,7 +123,7 @@ export type Availability = "free" | "adoptable" | "occupied" | "protocol-mismatc
 /**
  * May we publish a root mount on `port`? `tailscale serve --bg … /` silently REPLACES an existing
  * root handler, so without this a Collie start could unpublish an unrelated service that got there
- * first (`scripts/collie-ctl.sh:709-782`).
+ * first (the pre-shim `collie-ctl.sh`).
  *
  * "Don't own" is decided by where the mount points, not by our ownership file: every install
  * predating ownership tracking has Collie's own root mount and NO record of it, so a pure file

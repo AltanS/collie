@@ -60,8 +60,8 @@ a fork PR does carry a release commit, cherry-pick the functional commits with `
 Doc-only changes (`*.md`) don't need a bump. This is enforced two ways, but **you are the first
 line — do it as part of the change, not after**:
 
-- `scripts/check-version.sh` runs inside `scripts/collie-ctl.sh build` (a release can't build while
-  versions disagree).
+- `scripts/check-version.sh` runs inside `collie build` (a release can't build while versions
+  disagree).
 - A **git pre-commit hook** (`scripts/git-hooks/pre-commit`, activate once with
   `scripts/install-hooks.sh`) blocks commits where functional code changed but the version didn't.
   Escape hatch for a single commit: `SKIP_VERSION_CHECK=1 git commit …`.
@@ -77,11 +77,17 @@ a doc-only change and needs no version bump.)
 page and shows the command to run. Pushing a `v*` tag auto-creates that GitHub Release (with the
 commands) via `.github/workflows/release.yml`. **Always express user-facing update/restart
 instructions as Herdr plugin actions** — `herdr plugin action invoke update --plugin herdr.collie`
-(or `restart`) — never `collie-ctl.sh …` / `systemctl … collie`, which depend on the caller's cwd and
+(or `restart`) — never `bin/collie …` / `systemctl … collie`, which depend on the caller's cwd and
 the unit name; the Herdr action runs from anywhere.
 
 ## Build / run (operational facts that are easy to forget)
 
+- **Every verb is spelled `bin/collie <verb>`** and implemented once, in `cli/`.
+  `scripts/collie-ctl.sh <verb>` is a bootstrap shim that compiles the binary when the checkout has
+  none and `exec`s it — it implements nothing, and its path is frozen because Herdr <0.8.0 invokes
+  the action set cached at install time
+  ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)). Teach the binary; don't
+  add logic to the shim.
 - **There are two checkout shapes, and `update` handles both.** `herdr plugin install` does not clone
   — it leaves a **detached, shallow** checkout, so `git pull` cannot run there; a linked clone sits on
   a branch. One predicate (`git symbolic-ref -q HEAD`) picks the strategy, and the same predicate
@@ -102,7 +108,8 @@ the unit name; the Herdr action runs from anywhere.
 - **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
   browser); backend `bun run test` at the root — Bun's own runner over every pure-logic module in
   `bridge/` (access checks, state engine, config, journal adapters, notifications, uploads, …) plus
-  `scripts/collie-ctl.test.sh`, which exercises the ctl lifecycle in a sandboxed HOME.
+  `scripts/collie-cli.test.sh`, which drives every verb of the compiled binary in a sandboxed HOME,
+  and `scripts/collie-ctl.test.sh`, which pins the shim's delegation and bootstrap.
   A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
   every push — override once with `SKIP_TESTS=1 git push`. The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
@@ -200,8 +207,9 @@ conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-or
 identity/device gates · strict CSP. A socket call can type into a real terminal — treat the bridge as
 remote shell access.
 
-**Collie manages exactly one front door: `tailscale serve`** — `collie-ctl.sh` publishes it, records
-the mapping in `tailscale-managed-handler`, and only ever tears down a mapping matching that record.
+**Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,
+records the mapping in `tailscale-managed-handler`, and only ever tears down a mapping matching that
+record.
 Every other tunnel (NetBird, ZeroTier, Cloudflare Tunnel) is `COLLIE_SKIP_SERVE=1` + README Variant
 E: the operator owns the ingress, Collie publishes nothing. **Don't add a second managed front
 door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).

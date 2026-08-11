@@ -5,7 +5,7 @@ import { bridgeUrl, tailnetInboundBlocked } from "./tailnet.ts";
 import { renderQr } from "../scripts/qr.ts";
 
 // `qr` — scan your way onto the bridge instead of typing a MagicDNS name on a phone keyboard.
-// Ported from `cmd_qr` (scripts/collie-ctl.sh:905-933), which is where it lived until the plugin's
+// Ported from `cmd_qr` (the pre-shim collie-ctl.sh), which is where it lived until the plugin's
 // actions became a shim over this binary.
 //
 // Opt-in as its own verb rather than part of `start`: a scannable QR is ~16 rows even in the compact

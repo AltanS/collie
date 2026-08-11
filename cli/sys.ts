@@ -197,7 +197,7 @@ export const realFiles: Files = {
 // ── Readiness ────────────────────────────────────────────────────────────────
 // "Is the bridge up?" is a TCP connect to the loopback port, never a `systemctl is-active` reading:
 // the unit goes active the moment the process starts, seconds before it binds, and the banner would
-// then claim a bridge the phone can't reach (scripts/collie-ctl.sh:203-216).
+// then claim a bridge the phone can't reach (the pre-shim collie-ctl.sh).
 
 export function tcpProbe(port: number, timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {

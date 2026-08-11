@@ -5,7 +5,7 @@ import { EXIT } from "./io.ts";
 import type { Exec } from "./sys.ts";
 
 // `update`, `_apply-update` and the checkout logic behind them, ported from
-// `scripts/collie-ctl.sh:478-563`. ADR 0006 is this module's specification: Collie is a link-mode
+// the pre-shim `collie-ctl.sh`. ADR 0006 is this module's specification: Collie is a link-mode
 // Herdr plugin, so the checkout on disk IS the plugin, and it arrives in one of TWO shapes —
 //
 //   `git clone` + `herdr plugin link`   → a normal clone, ON A BRANCH, full history

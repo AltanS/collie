@@ -5,7 +5,7 @@ import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 
-// `build` and the lazy `ensure_build`, ported from `scripts/collie-ctl.sh:136-174`. The five ordered
+// `build` and the lazy `ensure_build`, ported from the pre-shim `collie-ctl.sh`. The five ordered
 // steps and their reasons come along with the code, because every one of them is a production
 // incident someone already paid for:
 //
@@ -146,7 +146,7 @@ export function cmdBuild(deps: BuildDeps): number {
 }
 
 /**
- * The lazy first build (`scripts/collie-ctl.sh:169-174`): `start` builds the UI when `web/dist` is
+ * The lazy first build (the pre-shim `collie-ctl.sh`): `start` builds the UI when `web/dist` is
  * missing, and WARNS rather than fails if it can't — the API runs, the UI 503s. `herdr-plugin.toml`
  * records why it has to exist at all: Herdr runs `[[build]]` only on `plugin install`, never on
  * `plugin link`.

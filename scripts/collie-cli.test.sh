@@ -4,7 +4,7 @@
 #
 # Herdr spawns plugin actions with no login shell: no PATH worth the name, no HOME exported, nothing
 # sourced. `update` once pulled a new commit and then failed its build across four invocations for
-# exactly that reason (scripts/collie-ctl.sh:52-81), and every version string reported the new
+# exactly that reason (the pre-shim collie-ctl.sh), and every version string reported the new
 # release while the served bundle stayed behind. So "runs under `env -i`" is the binary's primary
 # contract, and it is asserted here rather than asserted in prose.
 set -euo pipefail
@@ -190,7 +190,7 @@ assert_contains "$(cat "${TMP_ROOT}/err")" "the version gate failed"
 
 # ── Config dir ───────────────────────────────────────────────────────────────
 # A legacy ~/.config/collie/.env that is no longer the resolved dir must say so, or config silently
-# stops applying (scripts/collie-ctl.sh:35-39).
+# stops applying (the pre-shim collie-ctl.sh).
 : > "$CALLS"   # the exit-code probes above ran with a PATH, so they could reach the fake `herdr`
 mkdir -p "${HOME_DIR}/.config/collie"
 printf 'COLLIE_PORT=9999\n' > "${HOME_DIR}/.config/collie/.env"
@@ -203,7 +203,7 @@ assert_eq "$(cat "$CALLS")" ""
 
 # ── The .env is parsed, never executed ───────────────────────────────────────
 # The shell had to `source` it, so a `bun()` defined in there shadowed the real binary and poisoned
-# every later lookup (scripts/collie-ctl.sh:83-97). Parsing removes the hazard; prove it.
+# every later lookup (the pre-shim collie-ctl.sh). Parsing removes the hazard; prove it.
 cat > "${CONFIG_DIR}/.env" <<EOF
 COLLIE_PORT=9999
 bun() { touch "${TMP_ROOT}/PWNED"; }
@@ -309,7 +309,7 @@ assert_contains "$STDOUT" "✓ Collie is running"
 assert_contains "$STDOUT" "service   systemd --user (collie) · active"
 assert_contains "$STDOUT" "local     http://127.0.0.1:${PORT}"
 assert_contains "$STDOUT" "tailnet   https://host.example"
-# A front door that won't come up must not abort `start` (scripts/collie-ctl.sh:431-434). This
+# A front door that won't come up must not abort `start` (the pre-shim collie-ctl.sh). This
 # lifecycle fake answers `serve status --json` with prose, so the publish gate refuses rather than
 # overwriting a root it can't reason about — and `start` still reached the banner and exited 0.
 assert_contains "$STDERR" "the tailnet front door did not come up"
