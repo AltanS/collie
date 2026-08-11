@@ -13,7 +13,14 @@ export type PushSubscription = { endpoint: string; keys: { p256dh: string; auth:
 // default TTL and NO collapse key, so an offline device replays every queued herd update on reconnect.
 //   • `topic` is a collapse key — the push service keeps only the LATEST message per device with this
 //     topic, so a reconnecting phone gets one current summary instead of a burst of stale ones. Must
-//     match [A-Za-z0-9_-] and be ≤32 chars ("collie-herd" is valid).
+//     match [A-Za-z0-9_-] and be ≤32 chars ("collie-herd" is valid) — and, for Apple, must also be a
+//     LENGTH BASE64 CAN PRODUCE: never ≡ 1 (mod 4). RFC 8030 §5.4 only calls the topic URL-safe
+//     base64; Apple enforces that by decoding it, while FCM and Mozilla treat it as opaque. A
+//     13-character topic decodes nowhere (base64 turns 3 bytes into 4 chars, so a trailing group of
+//     one is impossible) and APNs answers 400 `{"reason":"BadWebPushTopic"}` for every endpoint.
+//     Measured, not inferred: "collie-update" (13) and "collie-herdab" (13) both fail, while
+//     "collie-updat" (12), "collie-herd" (11) and "collie-updates" (14) all succeed — so it is the
+//     arithmetic, not a length cap and not the wording. `topicIsSendable` pins this below.
 //   • `TTL` (seconds) bounds how long the service holds an undelivered message: 6h is long enough to
 //     reach a briefly-offline phone but short enough that a day-old "needs you" doesn't resurface.
 //   • `urgency: "high"` is load-bearing on Android, and its absence was a silent alert-eater:
@@ -30,8 +37,17 @@ const SEND_OPTIONS = { TTL: 21_600, topic: "collie-herd", urgency: "high" } as c
 // Update-available pushes ride their OWN collapse topic (and a longer TTL). The `topic` — NOT the
 // client-side `tag` — is the push service's collapse key: sharing "collie-herd" would make an offline
 // device's queued herd summary and an update push silently overwrite each other. 3-day TTL, since an
-// update stays relevant far longer than a transient "needs you".
-const UPDATE_SEND_OPTIONS = { TTL: 259_200, topic: "collie-update" } as const;
+// update stays relevant far longer than a transient "needs you". The trailing "s" is not a typo:
+// "collie-update" is 13 characters, which Apple refuses outright — see the base64 note above.
+const UPDATE_SEND_OPTIONS = { TTL: 259_200, topic: "collie-updates" } as const;
+
+/** Whether a collapse topic is one every push service will accept: RFC 8030's alphabet and 32-char
+ *  ceiling, plus the length base64 can actually produce (Apple decodes it; ≡ 1 mod 4 is impossible).
+ *  Exported for the test that guards the constants above — a topic edited for tidiness would
+ *  otherwise break Apple delivery silently, since nothing surfaces it but the push service's log. */
+export function topicIsSendable(topic: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(topic) && topic.length <= 32 && topic.length % 4 !== 1;
+}
 
 // How many consecutive same-origin-witnessed failures retire a subscription (see broadcast()).
 // Broadcasts are event-driven — several in an active hour — so five clears a stale device within a
