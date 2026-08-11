@@ -360,6 +360,10 @@ Its narrow provider contract is `POST /audio/transcriptions` with a model/file a
 returning `{ "text": "…" }`. Collie puts that text into the ordinary editable draft and waits for you to
 press the existing **Send** button. It never auto-submits text to Herdr.
 
+Compatible browsers make a best-effort attempt to keep the screen awake only during active foreground recording;
+browser, OS, or manual-lock policy may override it, and hiding or closing still cancels recording with no background
+guarantee.
+
 ```dotenv
 # Official OpenAI: uncomment and fill this (the default base URL is https://api.openai.com/v1).
 COLLIE_TRANSCRIPTION_API_KEY=your_openai_api_key

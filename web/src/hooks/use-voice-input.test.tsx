@@ -75,6 +75,7 @@ function VoiceHarness({ enabled = true, session }: { enabled?: boolean; session?
 describe("useVoiceInput", () => {
   const originalRecorder = Object.getOwnPropertyDescriptor(globalThis, "MediaRecorder");
   const originalMediaDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  const originalWakeLock = Object.getOwnPropertyDescriptor(navigator, "wakeLock");
 
   beforeEach(() => {
     MockMediaRecorder.instances = [];
@@ -94,6 +95,8 @@ describe("useVoiceInput", () => {
     else delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
     if (originalMediaDevices) Object.defineProperty(navigator, "mediaDevices", originalMediaDevices);
     else delete (navigator as { mediaDevices?: unknown }).mediaDevices;
+    if (originalWakeLock) Object.defineProperty(navigator, "wakeLock", originalWakeLock);
+    else delete (navigator as unknown as { wakeLock?: unknown }).wakeLock;
   });
 
   it("prefers browser-supported WebM and rejects a browser with neither accepted container", () => {
@@ -110,6 +113,11 @@ describe("useVoiceInput", () => {
       value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
     });
     vi.mocked(transcribeAudio).mockResolvedValue({ ok: true, text: "five minute clip" });
+    const wakeLock = { release: vi.fn().mockResolvedValue(undefined) };
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request: vi.fn().mockResolvedValue(wakeLock) },
+    });
     render(<VoiceHarness />);
 
     await act(async () => {
@@ -131,6 +139,7 @@ describe("useVoiceInput", () => {
 
     expect(stop).toHaveBeenCalledTimes(1);
     expect(track.stop).toHaveBeenCalledTimes(1);
+    expect(wakeLock.release).toHaveBeenCalledTimes(1);
     expect(vi.mocked(transcribeAudio)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(transcribeAudio).mock.calls[0]?.[2]).toBe(MAX_VOICE_DURATION_MS);
     expect(document.body.dataset.transcript).toBe("five minute clip");
@@ -213,6 +222,98 @@ describe("useVoiceInput", () => {
     expect(track.stop).toHaveBeenCalledTimes(1);
     expect(vi.mocked(transcribeAudio)).toHaveBeenCalledTimes(1);
     expect(screen.getByText("idle")).toBeInTheDocument();
+  });
+
+  it("requests a screen wake lock only while recording and releases it before transcription", async () => {
+    const user = userEvent.setup();
+    const { stream } = streamWithTrack();
+    const wakeLock = { release: vi.fn().mockResolvedValue(undefined) };
+    const request = vi.fn().mockResolvedValue(wakeLock);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request },
+    });
+    vi.mocked(transcribeAudio).mockReturnValue(new Promise(() => {}));
+    render(<VoiceHarness />);
+
+    await user.click(screen.getByRole("button", { name: "start" }));
+    await screen.findByText("recording");
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith("screen");
+    expect(wakeLock.release).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "stop" }));
+    await screen.findByText("transcribing");
+    expect(wakeLock.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps unsupported and rejected wake lock requests nonfatal", async () => {
+    const user = userEvent.setup();
+    const first = streamWithTrack();
+    const second = streamWithTrack();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValueOnce(first.stream).mockResolvedValueOnce(second.stream),
+      },
+    });
+    delete (navigator as unknown as { wakeLock?: unknown }).wakeLock;
+    const view = render(<VoiceHarness />);
+
+    await user.click(screen.getByRole("button", { name: "start" }));
+    await screen.findByText("recording");
+    expect(document.body.dataset.error).toBe("");
+    await user.click(screen.getByRole("button", { name: "cancel" }));
+
+    const request = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.defineProperty(navigator, "wakeLock", { configurable: true, value: { request } });
+    await user.click(screen.getByRole("button", { name: "start" }));
+    await screen.findByText("recording");
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(request).toHaveBeenCalledWith("screen");
+    expect(document.body.dataset.error).toBe("");
+    expect(screen.getByText("recording")).toBeInTheDocument();
+    view.unmount();
+  });
+
+  it("releases a wake lock that resolves after cancellation", async () => {
+    const user = userEvent.setup();
+    const { stream } = streamWithTrack();
+    const wakeLock = { release: vi.fn().mockResolvedValue(undefined) };
+    let resolveWakeLock!: (value: typeof wakeLock) => void;
+    const request = vi.fn().mockReturnValue(
+      new Promise<typeof wakeLock>((resolve) => {
+        resolveWakeLock = resolve;
+      }),
+    );
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request },
+    });
+    render(<VoiceHarness />);
+
+    await user.click(screen.getByRole("button", { name: "start" }));
+    await screen.findByText("recording");
+    expect(request).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "cancel" }));
+
+    await act(async () => {
+      resolveWakeLock(wakeLock);
+      await Promise.resolve();
+    });
+
+    expect(wakeLock.release).toHaveBeenCalledTimes(1);
   });
 
   it("cancels an in-flight transcription, aborts its request, and ignores a late response", async () => {
@@ -300,20 +401,27 @@ describe("useVoiceInput", () => {
   it("cancels and releases microphone tracks when the page becomes hidden without uploading", async () => {
     const user = userEvent.setup();
     const { stream, track } = streamWithTrack();
+    const wakeLock = { release: vi.fn().mockResolvedValue(undefined) };
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
     });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request: vi.fn().mockResolvedValue(wakeLock) },
+    });
     const visibilityState = Object.getOwnPropertyDescriptor(document, "visibilityState");
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
     try {
       render(<VoiceHarness />);
       await user.click(screen.getByRole("button", { name: "start" }));
       await screen.findByText("recording");
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
 
       act(() => document.dispatchEvent(new Event("visibilitychange")));
 
       expect(track.stop).toHaveBeenCalledTimes(1);
+      expect(wakeLock.release).toHaveBeenCalledTimes(1);
       expect(MockMediaRecorder.instances[0]?.state).toBe("inactive");
       expect(vi.mocked(transcribeAudio)).not.toHaveBeenCalled();
       expect(screen.getByText("idle")).toBeInTheDocument();
@@ -345,9 +453,14 @@ describe("useVoiceInput", () => {
   it("cancels recording and releases microphone tracks on unmount without uploading", async () => {
     const user = userEvent.setup();
     const { stream, track } = streamWithTrack();
+    const wakeLock = { release: vi.fn().mockResolvedValue(undefined) };
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request: vi.fn().mockResolvedValue(wakeLock) },
     });
     const view = render(<VoiceHarness />);
 
@@ -356,6 +469,7 @@ describe("useVoiceInput", () => {
     view.unmount();
 
     expect(track.stop).toHaveBeenCalledTimes(1);
+    expect(wakeLock.release).toHaveBeenCalledTimes(1);
     expect(MockMediaRecorder.instances[0]?.state).toBe("inactive");
     expect(vi.mocked(transcribeAudio)).not.toHaveBeenCalled();
   });

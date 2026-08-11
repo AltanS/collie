@@ -69,6 +69,7 @@ export function useVoiceInput({
   const startedAtRef = useRef(0);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const onTranscriptRef = useRef(onTranscript);
   const onErrorRef = useRef(onError);
   onTranscriptRef.current = onTranscript;
@@ -89,6 +90,30 @@ export function useVoiceInput({
     stopTimerRef.current = null;
   };
 
+  const releaseWakeLock = () => {
+    const wakeLock = wakeLockRef.current;
+    wakeLockRef.current = null;
+    if (wakeLock) void wakeLock.release().catch(() => {});
+  };
+
+  const acquireWakeLock = (controller: AbortController, scope: VoiceScope) => {
+    if (!navigator.wakeLock || document.visibilityState !== "visible") return;
+    try {
+      void navigator.wakeLock
+        .request("screen")
+        .then((wakeLock) => {
+          if (!isCurrentOperation(controller, scope) || phaseRef.current !== "recording") {
+            void wakeLock.release().catch(() => {});
+            return;
+          }
+          wakeLockRef.current = wakeLock;
+        })
+        .catch(() => {});
+    } catch {
+      // Wake Lock support is best-effort and must not alter the voice lifecycle.
+    }
+  };
+
   const stopTracks = () => {
     for (const track of streamRef.current?.getTracks() ?? []) track.stop();
     streamRef.current = null;
@@ -105,6 +130,7 @@ export function useVoiceInput({
   /** Release every imperative voice resource after invalidating its operation. */
   const teardownResources = (publish: boolean) => {
     clearRecordingTimers();
+    releaseWakeLock();
     chunksRef.current = [];
     bytesRef.current = 0;
     const recorder = recorderRef.current;
@@ -186,6 +212,7 @@ export function useVoiceInput({
     // Switch UI immediately so no draft/edit action can race the completed recording while the
     // browser delivers its final dataavailable/stop events.
     setVoicePhase("transcribing");
+    releaseWakeLock();
     try {
       recorder.stop();
     } catch {
@@ -233,6 +260,7 @@ export function useVoiceInput({
       recorder.onerror = () => failOperation(controller, scope, "Voice recording failed");
       recorder.onstop = () => {
         if (!isCurrentOperation(controller, scope)) return;
+        releaseWakeLock();
         recorderRef.current = null;
         clearRecordingTimers();
         stopTracks();
@@ -254,6 +282,7 @@ export function useVoiceInput({
       startedAtRef.current = Date.now();
       recorder.start(1000);
       setVoicePhase("recording");
+      acquireWakeLock(controller, scope);
       elapsedTimerRef.current = setInterval(() => {
         if (isCurrentOperation(controller, scope)) {
           setElapsedMs(Math.min(Date.now() - startedAtRef.current, MAX_VOICE_DURATION_MS));
