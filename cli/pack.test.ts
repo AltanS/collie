@@ -15,7 +15,7 @@ import {
   type TrustStoreData,
   type TrustStoreIo,
 } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles } from "./fakes.ts";
+import { capture, context, fakeExec, fakeFiles, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdJoin,
@@ -594,6 +594,95 @@ describe("collie pack status", () => {
     await cmdPackStatus(h.deps, []);
     expect(text(h.io)).toContain("unpinned");
     expect(text(h.io)).toContain("certificate or a secret this member no longer holds");
+  });
+
+  // ── Version skew (§7.1) ───────────────────────────────────────────────────
+  // A build version is a fact about a running process, not a contract: a difference refuses nothing,
+  // and `pack status` is the one place it is rendered. `incompatible` stays §7's protocol mismatch.
+
+  /** Give this checkout a version to compare against — the same file `collie version` reads. */
+  function withVersion(h: Harness, version: string): Harness {
+    h.files.write(`${ROOT}/herdr-plugin.toml`, `id = "herdr.collie"\nversion = "${version}"\n`);
+    return h;
+  }
+
+  test("a member on this build's version renders quietly — no finding, no noise", async () => {
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 1, member: "nas", version: "1.0.0-alpha.12" }, 200, "nas"),
+      ]),
+      "1.0.0-alpha.12",
+    );
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("version 1.0.0-alpha.12");
+    expect(rendered).not.toContain("warn:");
+    expect(rendered).not.toContain("INCOMPATIBLE");
+  });
+
+  test("a skewed member is a `warn:` naming BOTH versions and the remedy — and stays reachable", async () => {
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 1, member: "nas", version: "1.0.0-alpha.11" }, 200, "nas"),
+      ]),
+      "1.0.0-alpha.12",
+    );
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("version 1.0.0-alpha.11 — warn: this machine runs 1.0.0-alpha.12");
+    expect(rendered).toContain("Update the older machine");
+    // Skew refuses nothing: the link is reachable and the member is NOT the incompatible state,
+    // which §7 reserves for a protocol mismatch.
+    expect(rendered).toContain("reachable");
+    expect(rendered).not.toContain("INCOMPATIBLE");
+  });
+
+  test("a member answering without the field renders as pre-amendment, never as `unknown`", async () => {
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 1, member: "nas" }, 200, "nas"),
+      ]),
+      "1.0.0-alpha.12",
+    );
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("version pre-1.0.0-alpha.12 (not reported)");
+    expect(rendered).not.toContain("version unknown");
+    expect(rendered).toContain("reachable");
+  });
+
+  test("a protocol mismatch is still INCOMPATIBLE, and no version line dresses it up (§7)", async () => {
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ error: "pack protocol mismatch", code: "protocol_mismatch", expected: 1, received: 2 }, 409, "nas"),
+      ]),
+      "1.0.0-alpha.12",
+    );
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("INCOMPATIBLE");
+    expect(rendered).not.toContain("    version ");
+  });
+
+  test("on a PEER, the lead's row carries the same version rendering", async () => {
+    const h = withVersion(
+      harness(peerStore(), [jsonReply({ protocol: 1, member: "desk", version: "1.0.0-alpha.11" }, 200, "desk")]),
+      "1.0.0-alpha.12",
+    );
+    await cmdPackStatus(h.deps, []);
+    expect(text(h.io)).toContain("version 1.0.0-alpha.11 — warn: this machine runs 1.0.0-alpha.12");
+  });
+
+  test("a checkout with no version of its own names the peer's and warns about nobody", async () => {
+    // `ours` is `unknown` — not a version, so there is no older machine to name. Report what the
+    // member said and stay quiet rather than warn about a skew we cannot state the other half of.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+      jsonReply({ protocol: 1, member: "nas", version: "1.0.0-alpha.12" }, 200, "nas"),
+    ]);
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("version 1.0.0-alpha.12");
+    expect(rendered).not.toContain("warn:");
   });
 
   test("`--no-probe` dials nobody", async () => {

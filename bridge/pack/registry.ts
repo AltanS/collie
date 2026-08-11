@@ -61,6 +61,15 @@ export function selectHostFrom(url: URL): HostSelector {
   return selectHost(url.searchParams.get(HOST_PARAM));
 }
 
+/**
+ * What a `hello` observed about a member, folded in beside reachability. Absent from a `record()`
+ * call means "this call learned nothing about the version" — see {@link PackRegistry.record}.
+ */
+export interface PeerObservation {
+  /** The reported version, or `null` when the member answered without the optional field (§7.1). */
+  readonly version: string | null;
+}
+
 /** How the lead currently sees a member (§10.2). `reachable` until a call says otherwise. */
 export type PeerHealth = "reachable" | PeerFailure["state"];
 
@@ -72,6 +81,19 @@ export interface PeerState {
   readonly lastSeenAt: number | null;
   /** The failure reason, verbatim, for the operator. `null` while reachable. */
   readonly reason: string | null;
+  /**
+   * The version this member last reported over `hello` (§5), or `null` when it has reported none —
+   * never polled, or a build older than the 2026-08-12 amendment (§7.1).
+   *
+   * **In memory only, and deliberately so.** A version describes a *process*, and a restart is
+   * exactly what changes it, so a persisted one would survive the update it is meant to report. It
+   * is dropped by `prune()` and `disposeAll()` with the rest of the state — no `TrustedMember`
+   * field, and `TRUST_STORE_VERSION` stays `1`.
+   *
+   * It is an observation and nothing else: no route branches on it, and a difference refuses
+   * nothing (§7.1 — the protocol integer is the only thing that refuses).
+   */
+  readonly version: string | null;
 }
 
 /** The local session registry, narrowed to what host resolution needs (and what a fake can be). */
@@ -141,7 +163,15 @@ export class PackRegistry {
 
   /** The lead's belief about one member. Unknown members read as never-seen, never as reachable. */
   state(memberId: string): PeerState {
-    return this.peers.get(memberId) ?? { memberId, health: "unreachable", lastSeenAt: null, reason: "never polled" };
+    return (
+      this.peers.get(memberId) ?? {
+        memberId,
+        health: "unreachable",
+        lastSeenAt: null,
+        reason: "never polled",
+        version: null,
+      }
+    );
   }
 
   /** Every peer's state, member-id ordered — the stable order the `servers` array will render in. */
@@ -159,12 +189,19 @@ export class PackRegistry {
    * timestamp on failure would render "stale since never", and a triage list that flickers is worse
    * than one that is honestly stale.
    */
-  record(memberId: string, outcome: PeerOutcome<unknown>): PeerState {
+  record(memberId: string, outcome: PeerOutcome<unknown>, observed?: PeerObservation): PeerState {
     const previous = this.peers.get(memberId);
+    // An OBSERVATION is authoritative, including its `null`: only `hello` carries a version (§5), so
+    // most calls pass none and the last one heard stands — but a member that came back on an older
+    // build and reported nothing must read as reporting nothing, not as its remembered version.
+    // Absent-means-closed (§7.1) applies to the wire field; here it is "observed nothing" vs
+    // "observed absence", and only the second overwrites.
+    const version = observed !== undefined ? observed.version : (previous?.version ?? null);
     const next: PeerState = outcome.ok
-      ? { memberId, health: "reachable", lastSeenAt: outcome.receivedAt, reason: null }
+      ? { memberId, health: "reachable", lastSeenAt: outcome.receivedAt, reason: null, version }
       : {
           memberId,
+          version,
           // `refused` (§14.3's 403) is a CLI-only outcome — no route the lead's sweep calls answers
           // one — and health has three values by §10.2. Anything that is not a version skew reads as
           // unreachable here, which is the honest projection: the phone's answer is the same.

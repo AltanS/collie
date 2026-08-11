@@ -36,6 +36,7 @@ import {
   UpdateStateStore,
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
+import { collieVersionBare } from "./version.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -133,6 +134,13 @@ const bridgeDir = join(rootDir, "bridge");
 const currentVersion = (
   JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as { version: string }
 ).version;
+
+// What this process answers `GET /pack/v1/hello` with (PACK_PROTOCOL.md §5, §7.1). Resolved ONCE,
+// here, by the same rule `collie version` uses (`bridge/version.ts`, shared with `cli/context.ts`)
+// so one machine never reports two different versions — and never per request, since the answer
+// cannot change without a restart. Bare: no `(manifest; web not built)` parenthetical on the wire,
+// or a machine with an unbuilt bundle would read as skewed against every peer including itself.
+const packVersion = collieVersionBare(rootDir);
 
 const updateStore = new UpdateStateStore(cfg);
 await updateStore.load();
@@ -411,6 +419,7 @@ const server = startServer({
             store: trustStore,
             audit,
             transportPinned,
+            version: packVersion,
             onMembershipChange: packStoreChanged,
             ...surface,
           }),

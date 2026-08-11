@@ -119,6 +119,34 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     expect(res.headers.get("x-pack-member")).toBe("desk");
   });
 
+  test("this build reports its own version, threaded in at boot (§5, §7.1)", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      // Resolved ONCE by whoever constructs the router (bridge/index.ts) — never read per request.
+      version: "1.0.0-alpha.12",
+    });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({ protocol: 1, member: "desk", version: "1.0.0-alpha.12" });
+  });
+
+  test("a router built without a version simply omits the field — absent, never empty (§7.1)", async () => {
+    // The optional field's own absent-means-closed rule, applied to the responder: nothing sends
+    // `"version": null` or `""`, because a prober reads absence as "older than the amendment" and a
+    // present-but-meaningless value would be a claim.
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    const body = (await res.json()) as Record<string, unknown>;
+    expect("version" in body).toBe(false);
+  });
+
   test("without a pinned certificate it is 401 — the unwired default admits nobody", async () => {
     const h = harness(leadStore({ peers: [nas] }));
     const handler = createPackRouter({ store: h.store, audit: h.audit });

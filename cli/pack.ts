@@ -36,6 +36,7 @@ import {
   packTimeoutBudget,
   PeerClient,
   sweepPeers,
+  type HelloResult,
   type PackFetch,
   type PackLink,
   type PeerOutcome,
@@ -47,7 +48,7 @@ import { PACK_ENROLL_PATH } from "../bridge/pack/router.ts";
 import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/staleness.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
-import type { CliContext } from "./context.ts";
+import { collieVersionBare, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 import { tailnetName } from "./tailnet.ts";
@@ -662,8 +663,12 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   }
 
   const probes = bare.has("no-probe")
-    ? new Map<string, PeerOutcome<unknown>>()
+    ? new Map<string, PeerOutcome<HelloResult>>()
     : await probeMembers(deps, data, members);
+  // This build's own version, resolved once for the whole roster by the same rule `collie version`
+  // uses (`bridge/version.ts`) — the bridge answers `hello` with that exact string, so the two sides
+  // of every comparison below are the same kind of thing.
+  const ours = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
 
   deps.io.out("");
   deps.io.out("members:");
@@ -696,6 +701,7 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     }
     if (outcome.ok) {
       deps.io.out(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`);
+      for (const line of versionLines(outcome.value.version, ours)) deps.io.out(line);
       // First successful contact clears the provisional marker: one-time and self-healing. The
       // bridge's own sweep could also stamp this later; today `pack status` is the clearer.
       if (m.contactedAt === null) {
@@ -763,15 +769,53 @@ function reportDrift(deps: PackDeps, data: TrustStoreData): void {
   deps.io.out("  it is the process that is behind, and every membership verb restarts on its own machine.");
 }
 
-/** `hello` against every member, concurrently — one budget for the sweep, not N (§10.1). */
+/**
+ * The first Collie version that reports its own version over `hello` (PACK_PROTOCOL.md §5, amended
+ * 2026-08-12). A member that answers without the field is older than this and is rendered as such —
+ * honestly, and never as `unknown`-shaped noise (§7.1).
+ *
+ * It names the version this amendment SHIPS in, which is why it is a literal and not read from the
+ * manifest: it is a fact about the protocol's history, fixed forever once released, while the
+ * manifest moves with every release.
+ */
+const VERSION_REPORTED_SINCE = "1.0.0-alpha.12";
+
+/**
+ * How a member's reported version renders (§7.1). Skew is an **observation**: it refuses nothing,
+ * degrades nothing and is never the `incompatible` state — that one stays reserved for §7's protocol
+ * mismatch, which is a wire contract rather than a build number.
+ *
+ * Same version ⇒ one quiet line. Different ⇒ a `warn:` naming BOTH versions and the remedy. Absent
+ * ⇒ pre-amendment, stated plainly: the member is behind, not broken, and cannot say so itself.
+ */
+function versionLines(reported: string | null, ours: string): string[] {
+  if (reported === null) return [`    version pre-${VERSION_REPORTED_SINCE} (not reported)`];
+  if (reported === ours) return [`    version ${reported}`];
+  // `unknown` is this checkout answering "no build stamp and no manifest" — it is not a version, so
+  // there is no older machine to name. Report theirs and stay quiet rather than warn about a skew
+  // whose other half we cannot state.
+  if (ours === "unknown") return [`    version ${reported}`];
+  return [
+    `    version ${reported} — warn: this machine runs ${ours}`,
+    "            Build skew refuses nothing (§7.1) — the link keeps working. Update the older machine.",
+  ];
+}
+
+/**
+ * `hello` against every member, concurrently — one budget for the sweep, not N (§10.1).
+ *
+ * Typed on {@link HelloResult} rather than `unknown`: the reported version is the point of the probe
+ * for `pack status` (§7.1), and erasing it here would leave the renderer casting a body the client
+ * has already parsed.
+ */
 function probeMembers(
   deps: PackDeps,
   data: TrustStoreData,
   members: readonly TrustedMember[],
-): Promise<Map<string, PeerOutcome<unknown>>> {
+): Promise<Map<string, PeerOutcome<HelloResult>>> {
   const secret = data.pack?.secret ?? "";
   const client = clientFor(deps, data, secret);
-  return sweepPeers<PeerOutcome<unknown>>(
+  return sweepPeers<PeerOutcome<HelloResult>>(
     members.filter((m) => m.status === "enrolled").map(linkOf),
     (link) => client.hello(link),
   );
