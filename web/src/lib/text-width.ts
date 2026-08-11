@@ -194,4 +194,18 @@ export function displayWidth(text: string): number {
   return width;
 }
 
+// There is deliberately NO companion "error bar" function here, and one must not be re-added. A round
+// of this adapter shipped `widthUncertainty(text)` — a per-cluster count of the glyphs this table
+// resolves by default rather than by evidence — so a detector could compare two measured widths
+// "within the measurement's own error". It cannot be built from these tables, because the tables have
+// no notion of a grapheme cluster: `clusterWidth` scores a cluster by its BASE code point, while the
+// width tables a TUI actually links against (wcwidth/wcswidth, go-runewidth, Rust unicode-width) sum
+// a cluster's code points independently. `👨‍💻` is 2 here and 4 there; `👨‍👩‍👧‍👦` is 2 here and 8 there;
+// a keycap (`1` + VS16 + U+20E3) short-circuits on its ASCII base. Every one of those scored as
+// CERTAIN — the bar read zero exactly where the error was largest — while `🗑`, `▶` and every arrow
+// scored as doubtful and donated slack a comparison had no business spending. A width measured over
+// one string is useful (harness/claude/markers.ts uses it for a border's minimum length, which is a
+// claim about ONE row); a width compared against a width some other renderer chose over DIFFERENT
+// content is not, at any tolerance. See harness/omp/chrome.ts for the failure that bought.
+
 export { WIDE_RANGES, COMBINING_RANGES };
