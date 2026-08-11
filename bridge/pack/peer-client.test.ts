@@ -196,6 +196,31 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     expect(outcome.ok === false && outcome.reason).toContain("HTTP 401");
   });
 
+  test("a 403 with a `code` is REFUSED — an answer, not a failure to reach (§14.3)", async () => {
+    // The state exists so `collie promote` can tell "the lead said no" from "the lead is gone".
+    // Collapsing it into `unreachable` is what used to aim the operator at `--force`.
+    const { fetch } = replying(
+      { error: 'this lead has not approved "nas" to take over — …', code: "handover_not_approved" },
+      { status: 403 },
+    );
+    const outcome = await client(fetch).json(laptop, "lead");
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) throw new Error("unreachable");
+    if (outcome.state !== "refused") throw new Error(`expected refused, got ${outcome.state}`);
+    // Verbatim: the far side's sentence names the verb to run and the window, so it is not paraphrased.
+    expect(outcome.reason).toBe('this lead has not approved "nas" to take over — …');
+    expect(outcome.code).toBe("handover_not_approved");
+    expect(outcome.status).toBe(403);
+  });
+
+  test("a bare 403 with no `code` stays unreachable — only what the protocol defined is an answer", async () => {
+    // A fronting proxy's own 403 must never masquerade as a considered refusal from a member.
+    const { fetch } = replying({ error: "Forbidden" }, { status: 403 });
+    const outcome = await client(fetch).json(laptop, "lead");
+    expect(outcome.ok === false && outcome.state).toBe("unreachable");
+    expect(outcome.ok === false && outcome.reason).toContain("HTTP 403");
+  });
+
   test("a peer's 409 is INCOMPATIBLE and carries the reason verbatim, with both versions", async () => {
     const { fetch } = replying(
       { error: "pack protocol mismatch", code: "protocol_mismatch", expected: 2, received: 1 },

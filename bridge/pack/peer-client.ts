@@ -88,6 +88,21 @@ export type PeerFailure =
       readonly reason: string;
       readonly expected: number;
       readonly received: number | null;
+    }
+  /**
+   * The far side is there, admitted us, and **said no** — §14.3's `403` with a machine-readable
+   * `code` (today: an unapproved promotion).
+   *
+   * Its own state because collapsing it into `unreachable` is how `collie promote` came to aim the
+   * operator at `--force`, the destructive remedy, for what is actually a missing consent on the
+   * lead. A refusal is an *answer*: the verb prints it verbatim and stops, and nothing retries it.
+   */
+  | {
+      readonly state: "refused";
+      /** The far side's own `error` string, surfaced verbatim — never paraphrased. */
+      readonly reason: string;
+      readonly code: string;
+      readonly status: number;
     };
 
 /**
@@ -362,6 +377,15 @@ export class PeerClient {
         received: mismatch.received,
       });
     }
+    if (mode === "consumed" && res.status === 403) {
+      // An honest post-admission refusal (§14.3), if it carries a `code`. A bare 403 without one is
+      // left to the rule below: this branch classifies only what the protocol defined, so a fronting
+      // proxy's own 403 never masquerades as a considered answer from a member.
+      const refusal = await readRefusal(res);
+      if (refusal !== null) {
+        return this.fail({ state: "refused", reason: refusal.error, code: refusal.code, status: res.status });
+      }
+    }
     if (mode === "consumed" && !res.ok) {
       // Includes 401 — an auth failure is `unreachable`, per §10.2's table, and not a distinct state:
       // a rotated secret and a pulled cable both mean "the lead cannot see this member right now".
@@ -403,6 +427,24 @@ export async function sweepPeers<T>(
 function errorReason(err: unknown): string {
   if (err instanceof Error) return err.message === "" ? err.name : err.message;
   return "request failed";
+}
+
+/**
+ * Read a `403` body as §14.3's refusal — `{ error, code }` — or `null` when it is not one.
+ *
+ * Both fields are required: the `code` is what makes this a refusal the protocol defined rather than
+ * an opaque 403 from something in front of the member, and the `error` is the sentence the operator
+ * will read verbatim. Anything else falls through to the ordinary "HTTP 403 ⇒ unreachable" rule.
+ */
+async function readRefusal(res: Response): Promise<{ error: string; code: string } | null> {
+  try {
+    const body = (await res.json()) as Record<string, unknown> | null;
+    const error = typeof body?.error === "string" ? body.error : null;
+    const code = typeof body?.code === "string" ? body.code : null;
+    return error === null || code === null || code === "" ? null : { error, code };
+  } catch {
+    return null;
+  }
 }
 
 /** Read a `409` body for §7's `expected`/`received`, tolerating a peer that sends neither. */

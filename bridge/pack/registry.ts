@@ -165,7 +165,10 @@ export class PackRegistry {
       ? { memberId, health: "reachable", lastSeenAt: outcome.receivedAt, reason: null }
       : {
           memberId,
-          health: outcome.state,
+          // `refused` (§14.3's 403) is a CLI-only outcome — no route the lead's sweep calls answers
+          // one — and health has three values by §10.2. Anything that is not a version skew reads as
+          // unreachable here, which is the honest projection: the phone's answer is the same.
+          health: outcome.state === "incompatible" ? "incompatible" : "unreachable",
           lastSeenAt: previous?.lastSeenAt ?? null,
           reason: outcome.reason,
         };

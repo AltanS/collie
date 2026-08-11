@@ -7,6 +7,7 @@ import { EXIT } from "../../cli/io.ts";
 import {
   cmdJoin,
   cmdLeave,
+  cmdPackApprovePromote,
   cmdPackInvite,
   cmdPackRotate,
   cmdPackStatus,
@@ -595,8 +596,28 @@ describe("rotation", () => {
 });
 
 describe("promotion", () => {
+  test("an UNAPPROVED promotion is refused by the real lead, and nothing moves (§14, ADR 0014)", async () => {
+    // The whole of gate 1, end to end: a §8.6-signed self-claim from a genuinely enrolled member,
+    // over real pinned TLS, against a real lead — refused, because no operator armed a consent there.
+    const refused = await verb(peer, (d) => cmdPromote(d, ["--address", `127.0.0.1:${peer.port}`]));
+    expect(refused.code).toBe(EXIT.REFUSED);
+    expect(refused.err).toContain("has not approved");
+    expect(refused.err).toContain("approve-promote");
+    // …and it does NOT aim the operator at the destructive remedy for a missing consent.
+    expect(refused.err).not.toContain("--force");
+    expect(lead.store()!.lead).toBeNull();
+    expect(peer.store()!.lead).not.toBeNull();
+  }, 60_000);
+
   test("`collie promote` on the peer demotes the lead and moves the crown", async () => {
     const oldLeadId = lead.store()!.self.memberId;
+    // Step one, on the machine being taken from: consent, which restarts the lead's bridge so the
+    // process that fields the claim has actually read it (§14.1 — the `loaded` latch is why).
+    const peerId = peer.store()!.self.memberId;
+    const approved = await verb(lead, (d) => cmdPackApprovePromote(d, [peerId]));
+    expect(approved.code).toBe(EXIT.OK);
+    expect(lead.store()!.pendingHandover).toMatchObject({ memberId: peerId });
+
     const promoted = await verb(peer, (d) => cmdPromote(d, ["--address", `127.0.0.1:${peer.port}`]));
     expect(promoted.code).toBe(EXIT.OK);
     expect(promoted.out).toContain("stepped down");
@@ -610,6 +631,8 @@ describe("promotion", () => {
     expect(demoted.peers).toEqual([]);
     expect(newLead.pack!.packId).toBe(demoted.pack!.packId);
     expect(newLead.pack!.secret).toBe(demoted.pack!.secret);
+    // Single-use: the consent was spent in the same write as the demotion.
+    expect(demoted.pendingHandover).toBeNull();
   }, 60_000);
 
   test("the listeners swapped roles: the new lead unpins, the demoted machine pins", () => {

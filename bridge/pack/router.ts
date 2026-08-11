@@ -19,12 +19,14 @@ import {
   consumeInvite,
   demoteSelf,
   enrollPeer,
+  isDemotionRefused,
   isLeading,
   parseEnrollRequest,
   parseRosterEntry,
   recordSignedRequest,
   removeMember,
   PACK_PROTOCOL_VERSION,
+  type DemotionRefused,
 } from "./enrollment.ts";
 import { randomToken, type RandomSource } from "./identity.ts";
 import {
@@ -77,6 +79,15 @@ export const PACK_SECRET_PATH = "/pack/v1/secret";
 export const PACK_LEAD_PATH = "/pack/v1/lead";
 /** `POST` — the caller removes ITSELF from this collie's roster (§8.4, `collie leave`). */
 export const PACK_LEAVE_PATH = "/pack/v1/leave";
+
+/**
+ * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
+ *
+ * It exists so `collie promote` can tell "the lead said no" from "the lead did not answer" without
+ * parsing prose — the difference between an operator running one more verb on the lead and an
+ * operator reaching for `--force`, which strands every peer (§14.4).
+ */
+export const HANDOVER_NOT_APPROVED = "handover_not_approved";
 
 /**
  * The routes a caller may authenticate with a §8.6 signature — deliberately a closed set.
@@ -381,6 +392,29 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
   }
 
   /**
+   * §14.3's refusal: **403, and free to say why**. The caller passed both factors and §8.6, so
+   * §8.1's uniform-401 rule does not apply — that rule exists to tell an *unauthenticated* caller
+   * nothing. This is one status up from `badRequest` because the caller is *admitted but not
+   * permitted*: §5's "admitted and allowed to do this are different questions", answered on the wire.
+   *
+   * **Byte-identical for every clause.** No approval at all, an approval naming somebody else, and a
+   * fingerprint that does not match the pinned member all produce this exact body: who *is* approved
+   * is the operator's business on the lead, not a fact the wire owes an unsuccessful claimant. The
+   * only variable is the claimant's own id, which it obviously already knows.
+   */
+  function handoverNotApproved(self: string, claimant: string): Response {
+    return new Response(
+      JSON.stringify({
+        error:
+          `this lead has not approved "${claimant}" to take over — run \`collie pack approve-promote ${claimant}\` ` +
+          "here, then re-run `collie promote` on that machine within 10 minutes",
+        code: HANDOVER_NOT_APPROVED,
+      }),
+      { status: 403, headers: packResponseHeaders(self) },
+    );
+  }
+
+  /**
    * `POST /pack/v1/secret` — the peer side of rotation (§8.4).
    *
    * **Only this collie's own lead may rotate it.** A pack secret is pack-wide, so without that check
@@ -440,9 +474,33 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     if (data === null) return refuse(PACK_LEAD_PATH, "not-a-pack-member");
 
     if (isLeading(data)) {
-      const handover = await commitPackChange(deps.store, deps.audit, (current) =>
-        current === null ? null : demoteSelf(current, claim, now()),
-      );
+      // The demotion is gated on a live operator approval minted HERE (§14, ADR 0014) — the claim
+      // authenticates a member, never an operator's will. The check runs INSIDE the single serialised
+      // store write, so reading the approval and spending it cannot be split by an expiry or a race.
+      // A box rather than a bare `let`, so the refusal survives the closure with its type intact:
+      // TypeScript's flow analysis does not follow an assignment made inside a callback.
+      const gate: { refused: DemotionRefused | null } = { refused: null };
+      const handover = await commitPackChange(deps.store, deps.audit, (current) => {
+        if (current === null) return null;
+        const outcome = demoteSelf(current, claim, from, now());
+        if (isDemotionRefused(outcome)) {
+          // Carried out, not written: a refusal must add NO store write. The replay floor for this
+          // membership route already committed before this handler ran (§8.6) and gate 1 must not
+          // compound it — so the transition returns "no change" and `update` writes nothing.
+          gate.refused = outcome;
+          return null;
+        }
+        return outcome;
+      });
+      if (gate.refused !== null) {
+        // Audited with the failing clause, on the machine being taken from — the audit log is this
+        // operator's own record (§12), so it may say what the wire deliberately does not.
+        deps.audit?.record({
+          action: "pack.lead.refused",
+          detail: { member: claim.memberId, clause: gate.refused.clause },
+        });
+        return handoverNotApproved(self, claim.memberId);
+      }
       if (handover === null) return badRequest(self, "not the lead of this pack");
       // Demoted on disk, still a lead in memory: this process keeps its lead-mode listener — and
       // pins nothing — until it restarts (§14's note). Nothing here restarts it: the supervision

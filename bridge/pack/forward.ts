@@ -246,7 +246,10 @@ export function classifyWriteFailure(failure: PeerFailure, memberId: string): Re
   if (failure.state === "incompatible") {
     return forwardError("host_incompatible", `host ${memberId} refused: ${failure.reason}`, 503, { host: memberId });
   }
-  if (failure.attempted === false) {
+  // `attempted` lives on `unreachable` alone — the other states both imply a round trip. (A `refused`
+  // cannot reach here at all: forwarding dials `proxy`, which passes a status through rather than
+  // classifying it, so §14.3's 403 is not a shape this path produces.)
+  if (failure.state === "unreachable" && failure.attempted === false) {
     return forwardError("host_unreachable", `host ${memberId} is unreachable: ${failure.reason}`, 503, {
       host: memberId,
     });
@@ -355,7 +358,13 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
       : classifyReadFailure(outcome, deps.link.memberId);
     // The lead's log records that it forwarded and what it learned — including "unknown", which is
     // the single most important line in this file to be able to find afterwards.
-    record(outcome.state === "incompatible" ? "incompatible" : outcome.attempted === false ? "refused" : "unknown");
+    record(
+      outcome.state === "incompatible"
+        ? "incompatible"
+        : outcome.state === "unreachable" && outcome.attempted === false
+          ? "refused"
+          : "unknown",
+    );
     return response;
   }
 

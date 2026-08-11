@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import {
   createTrustStore,
+  HANDOVER_TTL_MS,
   PACK_PROTOCOL_VERSION,
   selfIdentity,
   type EnrollResponse,
@@ -20,6 +21,7 @@ import {
   cmdJoin,
   cmdLeave,
   cmdPack,
+  cmdPackApprovePromote,
   cmdPackInvite,
   cmdPackRemove,
   cmdPackRotate,
@@ -763,6 +765,94 @@ describe("collie pack remove", () => {
   });
 });
 
+// ── pack approve-promote ─────────────────────────────────────────────────────
+
+describe("collie pack approve-promote — consent on the lead (§14.1)", () => {
+  const leadWithNas = () => leadStore({ peers: [member({ memberId: "nas" })] });
+
+  test("it arms a ten-minute consent, names the next step, and RESTARTS the bridge", async () => {
+    const h = harness(leadWithNas());
+    expect(await cmdPackApprovePromote(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.data()!.pendingHandover).toEqual({ memberId: "nas", createdAt: T0, expiresAt: T0 + HANDOVER_TTL_MS });
+    const rendered = text(h.io);
+    expect(rendered).toContain('approved "nas"');
+    expect(rendered).toContain("ten minutes");
+    expect(rendered).toContain('run `collie promote` on "nas" within 10 minutes');
+    // The restart is load-bearing: the bridge reads its trust store once per process, so an approval
+    // it never re-read would refuse the promotion forever.
+    expect(h.restarts).toHaveLength(1);
+    // Consent is local: nothing is sent to the member it names.
+    expect(h.requests).toEqual([]);
+    expect(h.audit.map((l) => l.action)).toContain("pack.handover.approve");
+  });
+
+  test("a peer has nothing to hand over, and a store with no pack has no handover at all", async () => {
+    const onPeer = harness(peerStore());
+    expect(await cmdPackApprovePromote(onPeer.deps, ["desk"])).toBe(EXIT.STATE);
+    expect(text(onPeer.io)).toContain("approved on the lead");
+    const solo = harness(null);
+    expect(await cmdPackApprovePromote(solo.deps, ["nas"])).toBe(EXIT.STATE);
+    expect(onPeer.restarts).toEqual([]);
+  });
+
+  test("a member id this lead does not pin is a typo, not a consent", async () => {
+    const h = harness(leadWithNas());
+    expect(await cmdPackApprovePromote(h.deps, ["ghost"])).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain('no enrolled member "ghost"');
+    expect(h.data()!.pendingHandover ?? null).toBeNull();
+    expect(h.restarts).toEqual([]);
+  });
+
+  test("no member id at all is a usage error, not an approval of nobody", async () => {
+    const h = harness(leadWithNas());
+    expect(await cmdPackApprovePromote(h.deps, [])).toBe(EXIT.USAGE);
+  });
+
+  test("`--cancel` is BARE — it clears the approval and never swallows the next token", async () => {
+    const h = harness(leadWithNas());
+    await cmdPackApprovePromote(h.deps, ["nas"]);
+    expect(await cmdPackApprovePromote(h.deps, ["--cancel"])).toBe(EXIT.OK);
+    expect(h.data()!.pendingHandover).toBeNull();
+    expect(text(h.io)).toContain('cancelled the handover approval for "nas"');
+    // The bridge must FORGET it, which is the same mechanism as holding it: a restart.
+    expect(h.restarts).toHaveLength(2);
+    expect(h.audit.map((l) => l.action)).toContain("pack.handover.cancel");
+  });
+
+  test("`--cancel` with nothing armed exits cleanly — the operator asked for this state", async () => {
+    const h = harness(leadWithNas());
+    expect(await cmdPackApprovePromote(h.deps, ["--cancel"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("nothing was armed");
+    expect(h.restarts).toEqual([]);
+  });
+
+  test("`pack status` shows a live approval on the lead, and never on a peer", async () => {
+    const armed = harness(
+      leadStore({
+        peers: [member({ memberId: "nas" })],
+        pendingHandover: { memberId: "nas", createdAt: T0, expiresAt: T0 + HANDOVER_TTL_MS },
+      }),
+    );
+    await cmdPackStatus(armed.deps, ["--no-probe"]);
+    expect(text(armed.io)).toContain("handover approved: nas — expires in 10m");
+
+    // Expired reads as absent — the window is a read, not a sweep.
+    const stale = harness(
+      leadStore({
+        peers: [member({ memberId: "nas" })],
+        pendingHandover: { memberId: "nas", createdAt: T0 - HANDOVER_TTL_MS, expiresAt: T0 },
+      }),
+    );
+    await cmdPackStatus(stale.deps, ["--no-probe"]);
+    expect(text(stale.io)).not.toContain("handover approved");
+
+    // A peer cannot hold one: an approval is consent to demote THIS machine.
+    const onPeer = harness(peerStore({ pendingHandover: { memberId: "x", createdAt: T0, expiresAt: T0 + 1000 } }));
+    await cmdPackStatus(onPeer.deps, ["--no-probe"]);
+    expect(text(onPeer.io)).not.toContain("handover approved");
+  });
+});
+
 // ── promote ──────────────────────────────────────────────────────────────────
 
 describe("collie promote", () => {
@@ -773,6 +863,29 @@ describe("collie promote", () => {
     expect(text(h.io)).toContain("--force");
     expect(h.data()!.lead).not.toBeNull();
     expect(h.serves).toEqual([]);
+  });
+
+  test("an UNAPPROVED promotion surfaces the lead's refusal verbatim and never mentions --force", async () => {
+    // §14.3: the lead is reachable and said no. Aiming the operator at `--force` here would strand
+    // every peer to work around a consent they can mint in one verb on the machine they are at.
+    const refusal =
+      'this lead has not approved "laptop" to take over — run `collie pack approve-promote laptop` here, ' +
+      "then re-run `collie promote` on that machine within 10 minutes";
+    const h = harness(peerStore(), [jsonReply({ error: refusal, code: "handover_not_approved" }, 403, "desk")]);
+    expect(await cmdPromote(h.deps, [])).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain(refusal);
+    expect(text(h.io)).not.toContain("--force");
+    // Nothing moved here either: still a peer, still pinning its lead.
+    expect(h.data()!.lead).not.toBeNull();
+    expect(h.serves).toEqual([]);
+  });
+
+  test("a refusal beats --force — a lead that answers is a lead that is reachable", async () => {
+    const h = harness(peerStore(), [
+      jsonReply({ error: "this lead has not approved …", code: "handover_not_approved" }, 403, "desk"),
+    ]);
+    expect(await cmdPromote(h.deps, ["--force"])).toBe(EXIT.REFUSED);
+    expect(h.data()!.lead).not.toBeNull();
   });
 
   test("tells the demoted machine's operator to restart it, then unserve — in that order", async () => {
@@ -893,7 +1006,7 @@ describe("collie pack", () => {
     const h = harness(leadStore());
     expect(await cmdPack(h.deps, ["nonsense"])).toBe(EXIT.USAGE);
     expect(text(h.io)).toContain("unknown pack subcommand `nonsense`");
-    for (const sub of ["invite", "status", "rotate", "remove"]) expect(text(h.io)).toContain(sub);
+    for (const sub of ["invite", "status", "rotate", "remove", "approve-promote"]) expect(text(h.io)).toContain(sub);
   });
 
   test("no subcommand is usage without accusing anyone of typing something", async () => {
@@ -906,5 +1019,7 @@ describe("collie pack", () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdPack(h.deps, ["status", "--no-probe"])).toBe(EXIT.OK);
     expect(text(h.io)).toContain("mode   lead");
+    expect(await cmdPack(h.deps, ["approve-promote", "nas"])).toBe(EXIT.OK);
+    expect(h.data()!.pendingHandover).toMatchObject({ memberId: "nas" });
   });
 });
