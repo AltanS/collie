@@ -39,7 +39,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { containedRealpath, MAX_TRANSCRIPT_BYTES } from "./files.ts";
+import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -322,16 +322,27 @@ function isoFrom(time: unknown, fallback: unknown): string {
  * because one database backs every session on the machine.
  */
 export class OpencodeTranscriptSource implements TranscriptSource {
-  constructor(private readonly root: string) {}
+  private readonly roots: string[];
+
+  /** One data dir or several (a second `XDG_DATA_HOME`), each holding its own `opencode.db`. */
+  constructor(roots: string | readonly string[]) {
+    this.roots = rootList(roots);
+  }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
     if (ref.kind !== "id" || !isOpencodeSessionId(ref.value)) return null;
-    const real = await containedRealpath(join(this.root, DB_FILE), this.root);
-    if (real === null) return null; // no database, or the root is symlinked somewhere it shouldn't be
-    const found = withDb(real, (db) =>
-      db.query<{ id: string }, [string]>("select id from session where id = ?").get(ref.value),
-    );
-    return found ? opencodeKey(real, ref.value) : null;
+    for (const root of this.roots) {
+      // Null here is "no database, or this root's opencode.db is symlinked out of it" — either way
+      // the root has nothing it may serve, and the next one is asked on its own terms.
+      const real = await containedRealpath(join(root, DB_FILE), root);
+      if (real === null) continue;
+      const found = withDb(real, (db) =>
+        db.query<{ id: string }, [string]>("select id from session where id = ?").get(ref.value),
+      );
+      // The session id is unique across databases, so the first database holding it is the right one.
+      if (found) return opencodeKey(real, ref.value);
+    }
+    return null;
   }
 
   /**
@@ -364,10 +375,10 @@ export class OpencodeTranscriptSource implements TranscriptSource {
 }
 
 /** OpenCode's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function opencodeJournal(root: string): JournalAdapter {
+export function opencodeJournal(roots: string | readonly string[]): JournalAdapter {
   return {
     agent: "opencode",
-    source: new OpencodeTranscriptSource(root),
+    source: new OpencodeTranscriptSource(roots),
     parse: parseOpencodeTranscript,
   };
 }
