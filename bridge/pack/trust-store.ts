@@ -128,6 +128,24 @@ export interface PendingInvite {
   readonly label: string | null;
 }
 
+/**
+ * The operator's consent, on the lead, for ONE named member to take the crown (§14.1).
+ *
+ * **Not a secret and not a token.** The claim it authorises is already signature-authenticated
+ * against a pinned certificate (§8.6), so consent only has to name *who* may take over — a leaked
+ * trust store yields nothing spendable from this field, and nothing new crosses the wire.
+ *
+ * Ten minutes, single-use, at most one live at a time (minting replaces any prior), and swept lazily
+ * exactly as an invite is: expired reads as absent, and the next write of this field drops it.
+ */
+export interface PendingHandover {
+  /** Who may take over. The whole content of the consent. */
+  readonly memberId: string;
+  readonly createdAt: number;
+  /** `createdAt` + 10 minutes (`HANDOVER_TTL_MS`). Past it, this record reads as absent. */
+  readonly expiresAt: number;
+}
+
 /** The whole file. */
 export interface TrustStoreData {
   readonly version: number;
@@ -138,6 +156,16 @@ export interface TrustStoreData {
   /** Peers this collie leads. */
   readonly peers: readonly TrustedMember[];
   readonly invites: readonly PendingInvite[];
+  /**
+   * The live handover approval, when the operator has armed one here (§14.1). Sibling to `invites`
+   * because it is the same kind of thing: short-lived, single-use, minted by an operator verb.
+   *
+   * **OPTIONAL, and absent means CLOSED.** A store written before this field existed has no approval,
+   * so an unamended lead upgrades into *refusing* a promotion rather than accepting one — the
+   * fail-closed reading has to hold through the parser as well as through the transition, which is
+   * why {@link parseTrustStore}'s whitelist names it in both the validator and the result.
+   */
+  readonly pendingHandover?: PendingHandover | null;
 }
 
 /**
@@ -187,6 +215,12 @@ function isInvite(value: unknown): value is PendingInvite {
     typeof i.expiresAt === "number" &&
     (i.label === null || typeof i.label === "string")
   );
+}
+
+function isHandover(value: unknown): value is PendingHandover {
+  if (value === null || typeof value !== "object") return false;
+  const h = value as Record<string, unknown>;
+  return isMemberId(h.memberId) && typeof h.createdAt === "number" && typeof h.expiresAt === "number";
 }
 
 /**
@@ -245,6 +279,10 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   if (d.lead !== null && d.lead !== undefined && !isMember(d.lead)) return null;
   if (!Array.isArray(d.peers) || !d.peers.every(isMember)) return null;
   if (!Array.isArray(d.invites) || !d.invites.every(isInvite)) return null;
+  // Same strictness the roster gets: a malformed approval invalidates the WHOLE store rather than
+  // being read around. Absent or `null` is the ordinary, fail-closed case — no live approval.
+  const handover = d.pendingHandover;
+  if (handover !== null && handover !== undefined && !isHandover(handover)) return null;
 
   return {
     version: TRUST_STORE_VERSION,
@@ -259,6 +297,11 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
     lead: (d.lead as TrustedMember | undefined) ?? null,
     peers: d.peers,
     invites: d.invites,
+    // THE WHITELIST IS THE TRAP: this literal is the store, so a field validated above and left out
+    // here vanishes on every load→save round trip — and an approval that cannot survive a read is an
+    // approval the demotion can never find (§14.1). Absent stays absent rather than becoming an
+    // explicit `null`, so a pre-amendment store round-trips to the same bytes it arrived as.
+    ...(handover === undefined ? {} : { pendingHandover: handover }),
   };
 }
 
