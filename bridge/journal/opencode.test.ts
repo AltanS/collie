@@ -404,3 +404,54 @@ describe("OpencodeTranscriptSource", () => {
     });
   });
 });
+
+// OpenCode with more than one data dir: each holds its own opencode.db, so a session is looked up in
+// each in turn (the multi-home case of issue #92). The virtual key already carries the database path,
+// so stat/load need no change — only resolve had to learn to ask more than one database.
+describe("OpencodeTranscriptSource — several data dirs", () => {
+  const OTHER_SID = "ses_0396aa19cffeJrZCPOT6zG8Bm8";
+
+  async function fixture() {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-roots-")));
+    const first = join(base, "first");
+    const second = join(base, "second");
+    await mkdir(first, { recursive: true });
+    await mkdir(second, { recursive: true });
+    for (const [dir, id] of [
+      [first, SID],
+      [second, OTHER_SID],
+    ] as const) {
+      const db = new Database(join(dir, "opencode.db"));
+      db.run("create table session (id text primary key, parent_id text, time_updated integer)");
+      db.run("insert into session values (?, null, 1)", [id]);
+      db.close();
+    }
+    return { base, first, second };
+  }
+
+  test("resolves a session from whichever database holds it", async () => {
+    const { base, first, second } = await fixture();
+    const src = new OpencodeTranscriptSource([first, second]);
+    expect(await src.resolve({ kind: "id", value: SID })).toBe(`${join(first, "opencode.db")}#${SID}`);
+    expect(await src.resolve({ kind: "id", value: OTHER_SID })).toBe(
+      `${join(second, "opencode.db")}#${OTHER_SID}`,
+    );
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a data dir with no database is skipped, not fatal", async () => {
+    const { base, second } = await fixture();
+    const src = new OpencodeTranscriptSource([join(base, "nothing-here"), second]);
+    expect(await src.resolve({ kind: "id", value: OTHER_SID })).toBe(
+      `${join(second, "opencode.db")}#${OTHER_SID}`,
+    );
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a single root string behaves exactly as before", async () => {
+    const { base, first } = await fixture();
+    const src = new OpencodeTranscriptSource(first);
+    expect(await src.resolve({ kind: "id", value: OTHER_SID })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
+});
