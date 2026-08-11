@@ -173,6 +173,28 @@ the same handlers. There is no second handler set, no second semantic, and no He
 `?session=` is accepted on every session-scoped pack route with today's exact semantics (absent →
 primary). It is the peer's *own* session registry that resolves it.
 
+**`hello`'s response body** is the one place both versions cross a link — the wire contract and the
+answering build:
+
+```json
+{ "protocol": 1,
+  "member": "peer-7f3a2c",
+  "version": "1.0.0-alpha.11" }
+```
+
+- `protocol` and `member` are **REQUIRED** (`bridge/pack/router.ts`, the `PACK_HELLO_PATH` branch; a
+  reply missing either is `hello: malformed response body`, `bridge/pack/peer-client.ts`).
+- `version` is **OPTIONAL**, added 2026-08-12: the answering build's own version string, exactly what
+  `collie version` prints (`cli/context.ts`'s `collieVersion` — `1.0.0-alpha.11`, or
+  `1.0.0-alpha.11+ab12cd3` when a build stamp is present). **An absent field means "a build older
+  than this amendment", never an error** (§7.1). The request side gains nothing: every direction that
+  needs a version already dials `hello` — the lead sweeps its peers on its poll (§10.1), and a peer's
+  `collie pack status` probes its lead — so the field rides an exchange that already happens.
+
+`hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
+become a place to learn something an unadmitted caller wants; a version is admissible there for the
+same reason `member` is — it is already knowable to anyone who has cleared both factors.
+
 **Deliberately not on the pack surface**, because they are properties of the collie the phone talks to
 rather than of a herd: `POST /api/subscribe` (`:303`), `POST /api/notifications/snooze` (`:318`),
 `GET|POST /api/notifications/prefs` (`:340`), `POST /api/update/check` (`:367`). Push subscriptions
@@ -260,6 +282,68 @@ and peer are separately updated machines, so skew is the steady state, not an ed
 - **An incompatible peer is a distinct state from an unreachable one** (§10). It is not retried on the
   poll cadence, its sessions are shown from last-good state marked incompatible, and the reason string
   is surfaced verbatim in the UI and in `collie pack status`.
+
+### 7.1 Version skew inside a protocol version
+
+Two version numbers ride a pack link and they are **not the same kind of thing**. `X-Pack-Protocol`
+is a *contract*: it says which grammar the bytes are in. A Collie build version (`1.0.0-alpha.11`) is
+a *fact about a running process*: it says how new the code answering is. Lead and peer are separately
+updated machines, so build skew is the steady state (§7), and this section is the class rule for it.
+
+- **The protocol integer is the ONLY thing that refuses.** §7's exact-1 window guards actual wire
+  incompatibility, and `admission.ts` enforces it before a handler runs. **A build-version difference
+  refuses nothing**: no route behaves differently, no response degrades, no code path branches on it.
+  A pack that goes dark because two machines disagree on an alpha number has traded an annoyance for
+  an outage.
+
+  The fork worth naming, because it will be re-proposed: *shouldn't a skewed member be refused, to be
+  safe?* No. Refusing is only the safe move when the alternative is a **wrong answer**, and inside one
+  protocol version there is no wrong answer to prevent — which is true only because of the next rule,
+  and stops being true the moment that rule is broken.
+
+- **Every addition inside a protocol version MUST be additive-optional, with absent-means-closed
+  semantics.** A new field is optional on the wire; a member that does not send it is read as *not
+  claiming the thing*, never as *claiming it permissively*. Concretely: an absent field never grants,
+  never approves, never widens, and never makes an older member's silence read as consent. §14.6's
+  approval field is one instance (no approval field ⇒ no live approval ⇒ refuse); `hello`'s `version`
+  is another (absent ⇒ "older than this amendment", rendered as such). An addition that **cannot** be
+  expressed this way is a version-2 change and takes `X-Pack-Protocol` with it — it does not get to
+  ship inside `1` with a compatibility claim nobody tested.
+
+  This is what makes a member running older code **behind, not incompatible**: it declines new
+  optional fields, and declining is a closed reading, so there is nothing a newer member must refuse
+  it over.
+
+- **Skew is an observation, and it is rendered.** `collie pack status` compares each member's reported
+  version against this build's and marks a difference as a `warn:`-class finding naming **both**
+  versions and the remedy — update the older machine. A member that answers `hello` without the field
+  renders honestly as pre-amendment (e.g. `version pre-1.0.0-alpha.12 (not reported)`), never as
+  `unknown`-shaped noise and never as an error. The `incompatible` state stays reserved for §7's
+  protocol mismatch; nothing here produces it.
+
+- **The observed version is NOT persisted.** It lives in the lead's in-memory health registry beside
+  reachability (`PeerState`, `bridge/pack/registry.ts`) and is discarded on shutdown and on `prune()`
+  exactly as reachability is. A version describes a *process*, and the process is what a restart
+  changes: a persisted version would survive the update it is meant to report and state a falsehood
+  with the authority of the trust store. **No `TrustedMember` field, and `TRUST_STORE_VERSION` stays
+  `1`** (§14.6's reasoning for not bumping it applies unchanged).
+
+- **Where the responder gets the string.** The CLI already has it (`collieVersion()`, from
+  `web/dist/build-info.json` falling back to `herdr-plugin.toml`). **The bridge does not** — it reads
+  only the bundle's build *id* (`bridge/server.ts`'s `buildId()`), which is not a version. The
+  implementation MUST therefore thread the version into `PackRouterDeps` **at boot**, resolved once by
+  whoever constructs the router (`bridge/index.ts`), using the same rule the CLI uses so the two never
+  print different strings for one machine. It MUST NOT read the manifest per request: a per-request
+  disk read on the pack's most frequent route, to answer a question whose answer cannot change without
+  a restart, is a cost with no truth behind it.
+
+**Compatibility of this amendment**, in §14.6's terms: an **additive optional response field**, no new
+route and no new object. An old member answering a new prober omits it and is rendered as
+pre-amendment. A new member answering an old prober sends a sibling the old parser ignores — verified:
+`PeerClient.hello` reads `body.member` and `body.protocol` by name off a `Record<string, unknown>` and
+passes unknown keys over without inspection. **`PACK_PROTOCOL_VERSION` stays `1`. No trust-store
+change, no migration, no re-enrollment.** Adoption is per machine and needs no coordination: each side
+starts reporting when it is updated, and until then the other side says so.
 
 ---
 
@@ -1034,7 +1118,8 @@ The change is **additive**: one optional trust-store field, no new wire object.
   (≤ `1.0.0-alpha.9`) simply accepts the unattested claim as it does today; the improvement is
   realized once that lead is updated, and no peer needs the new build for it to hold.
 - **Migration is "update the lead".** No state change, no re-enrollment, no rotation.
-- The **general** policy for a version-skewed pack is not settled here — see §17.
+- The **class rule** this amendment is an instance of — additive-optional, absent-means-closed, and
+  build skew never refusing — is §7.1.
 
 ### 14.7 Not built, deliberately
 
@@ -1112,10 +1197,13 @@ Named here so v1's shape does not foreclose them, and so nobody mistakes a reser
   Settled by [ADR 0012](./.adr/0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md);
   `collie` / `lead` / `peer` / `pack` are the words *this* document
   uses and they must stay greppable.
-- **The general policy for a version-skewed pack.** §7 negotiates the wire version and §14.6 states
-  how *that* amendment behaves across a skew, but there is no rule for the class: which additions may
-  land inside version `1` at all, and how a member decides that a peer running an older build is
-  merely behind rather than a downgrade being forced on it. A pre-beta gate item of its own.
+- ~~**The general policy for a version-skewed pack.**~~ **Closed 2026-08-12 by §7.1** ("Version skew
+  inside a protocol version"), which states the class rule this item asked for: the protocol integer
+  is the only thing that refuses, every addition inside a protocol version MUST be additive-optional
+  with absent-means-closed semantics — which is what makes an older build *behind* rather than a
+  downgrade being forced on anyone — and a build-version difference is an observation `collie pack
+  status` renders, never a refusal. `hello` carries the observed version as an optional response
+  field (§5); §14.6 is now an instance of the rule rather than a statement of its own.
 - **Concrete default values** marked as defaults above (`COLLIE_PACK_TIMEOUT_MS = 1200`, the 10-minute
   token lifetime, the 10-minute handover-approval window, the 10-year
   certificate lifetime, the `3 × pollMs` / 15 s staleness threshold) are
