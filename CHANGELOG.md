@@ -6,6 +6,18 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.10] - 2026-08-11
+
+### Security
+
+- **F2 closed** — the lead demotes only against a live operator approval minted on itself: `collie pack approve-promote <member>` (ten minutes, single-use, `--cancel`, restarts the bridge so the running process holds it); an unapproved `POST /pack/v1/lead` gets an honest 403 (`handover_not_approved`), byte-identical whoever is approved, and the demotion additionally requires the claim's fingerprint to match the pinned member's so consent binds the certificate, not just the id (a5f043c)
+- **F2** — `collie promote` now surfaces the lead's refusal verbatim and exits without suggesting `--force`; a refusal is proof the lead is reachable, and `--force` stays reserved for a machine known gone (a5f043c)
+- **F2 spec** — ADR 0014 + `PACK_PROTOCOL.md` §14 rewrite (promotion is a confirm on the receiver); the peer-side signed handover is relocated to §16 reserved — a peer pins exactly its lead, so the branch it would guard is transport-unreachable in v1 (6d770f1)
+
+### Added
+
+- `pendingHandover` trust-store field (optional, absent = no live approval, fail-closed; `TRUST_STORE_VERSION` stays 1) and a `pack status` line showing a live approval and its remaining window (f232b1f, a5f043c)
+
 ## [1.0.0-alpha.9] - 2026-08-10
 
 ### Security
