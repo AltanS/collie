@@ -143,7 +143,7 @@ export const COMMANDS: readonly Command[] = [
     "typecheck both sides, compile the binary and build the PWA (staged, atomic swap)",
     cmdBuild,
   ),
-  // Invoked directly, `serve` also prints where to point a phone (scripts/collie-ctl.sh:871) —
+  // Invoked directly, `serve` also prints where to point a phone (the pre-shim collie-ctl.sh) —
   // `start` does not, because its banner already carries the URL.
   lifecycleCommand("serve", "publish the single managed `tailscale serve` front door", (deps) => {
     const code = cmdServe(deps);

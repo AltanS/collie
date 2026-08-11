@@ -5,7 +5,7 @@ import { isAbsolute, join } from "node:path";
 // be no PATH at all.
 //
 // Herdr spawns plugin actions with no login shell: nothing sourced a profile, so PATH is minimal or
-// absent and `command -v` finds nothing (scripts/collie-ctl.sh:52-81 — the bug that burned four
+// absent and `command -v` finds nothing (the pre-shim collie-ctl.sh — the bug that burned four
 // `update` invocations). So PATH is a hint, not the mechanism: we search it when it is there and
 // then fall back to an explicit list of absolute directories.
 //

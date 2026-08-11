@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { fallbackDirs, findIn, searchDirs } from "./tools.ts";
 
 // The whole reason this module exists: Herdr spawns plugin actions with no login shell, so PATH may
-// be minimal or absent (scripts/collie-ctl.sh:52-81). PATH is a hint here, never the mechanism.
+// be minimal or absent (the pre-shim collie-ctl.sh). PATH is a hint here, never the mechanism.
 
 const HOME = "/home/tester";
 

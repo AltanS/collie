@@ -12,7 +12,7 @@ export const PLUGIN_ID = "herdr.collie";
  * Everything a verb needs about *where things are*, resolved exactly once and passed down. No verb
  * module reads `process.env` on its own — a single resolution is what keeps the two entry points
  * (Herdr action vs a direct call) from reading different `.env` files, which is the bug
- * `scripts/collie-ctl.sh:17-22` records.
+ * the pre-shim `collie-ctl.sh` recorded.
  */
 export interface CliContext {
   /** The Collie checkout. */
@@ -46,7 +46,7 @@ export type ServeMode = "https" | "http";
 // ── .env ─────────────────────────────────────────────────────────────────────
 // Parsed in process, never `source`d. The shell had to `. "${CONFIG_DIR}/.env"`, which executes it:
 // a `bun()` function defined in there would shadow the real binary and poison every later lookup
-// (the hazard scripts/collie-ctl.sh:83-97 works around). Parsing removes the hazard outright — a
+// (the hazard the pre-shim collie-ctl.sh worked around). Parsing removes the hazard outright — a
 // `.env` can now only set variables.
 
 /**
@@ -101,7 +101,7 @@ export interface ConfigDirResult {
 
 /**
  * Injected env → Herdr CLI → Herdr's conventional path (only if it has a `.env`) → `~/.config/collie`.
- * Mirrors `scripts/collie-ctl.sh:23-39` including the legacy-`.env`-ignored note, so config applied
+ * Mirrors the pre-shim `collie-ctl.sh` including the legacy-`.env`-ignored note, so config applied
  * one way is never silently dropped the other.
  */
 export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
@@ -129,7 +129,7 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
 /**
  * What Collie is actually serving: the built bundle's stamp (`web/dist/build-info.json`, the same id
  * the PWA footer and `/api/config` report), else the manifest version tagged as unbuilt, else
- * `unknown`. Ported from `collie_version()` (`scripts/collie-ctl.sh:191-200`) output for output —
+ * `unknown`. Ported from `collie_version()` (the pre-shim `collie-ctl.sh`) output for output —
  * this is authoritative in a way Herdr's link-time registry value is not.
  */
 export function collieVersionFrom(buildInfo: string | null, manifest: string | null): string {

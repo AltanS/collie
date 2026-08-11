@@ -2,7 +2,7 @@ import type { ServeMode } from "./context.ts";
 import type { Exec } from "./sys.ts";
 
 // `tailscale status --json` → this host's name. The shell piped that JSON through an inline
-// interpreter one-liner (scripts/collie-ctl.sh:176-179) — exactly the runtime interpreter
+// interpreter one-liner (the pre-shim collie-ctl.sh) — exactly the runtime interpreter
 // dependency the compiled binary exists to remove — so the parse moves in-process.
 
 /** `Self.DNSName` with its trailing dot stripped, or null when the JSON says nothing useful. */
@@ -72,7 +72,7 @@ export function packetFilterDeniesAll(netmapJson: string): boolean {
  * Bounded through `timeout(1)` where it exists, because a diagnostic must never hold its caller
  * hostage: a wedged tailscaled (daemon alive, socket accepting, LocalAPI not answering) would
  * otherwise block indefinitely. Stock macOS ships no `timeout`, so there it stays unbounded rather
- * than gaining a dependency for a nice-to-have (scripts/collie-ctl.sh:235-251).
+ * than gaining a dependency for a nice-to-have (the pre-shim collie-ctl.sh).
  */
 export function tailnetInboundBlocked(exec: Exec): boolean {
   const tailscale = exec.which("tailscale");

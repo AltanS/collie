@@ -165,7 +165,7 @@ describe("start, on systemd", () => {
   });
 
   test("a failing front door prints the note and still reaches the banner, exit 0", async () => {
-    // scripts/collie-ctl.sh:431-434 — the bridge is already up on loopback and the banner is what
+    // The pre-shim collie-ctl.sh — the bridge is already up on loopback and the banner is what
     // the README's troubleshooting flow tells people to read.
     const h = harness({ serve: () => Promise.resolve(EXIT.FAIL) });
     expect(await cmdStart(h.deps)).toBe(EXIT.OK);
@@ -174,7 +174,7 @@ describe("start, on systemd", () => {
   });
 
   test("builds the UI lazily on first run, and a failed build only warns", async () => {
-    // scripts/collie-ctl.sh:169-174 — Herdr runs `[[build]]` on `plugin install` and never on
+    // The pre-shim collie-ctl.sh — Herdr runs `[[build]]` on `plugin install` and never on
     // `plugin link`, so `start` is where an unbuilt checkout gets its UI. It warns rather than
     // fails: the API runs and the UI 503s, which is legible where a refused `start` is not.
     const h = harness();
