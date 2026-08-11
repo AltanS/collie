@@ -112,6 +112,104 @@ All sandbox-generated (a scratch pane driven through the bridge) except `claude-
 which is a real pane working on this repo. Every `blocked` fixture's menu sits at the **buffer
 tail** — the invariant T2's detector leans on.
 
+## omp corpus (captured 2026-08-11, oh-my-pi `omp` v17.2.12, three sandbox panes)
+
+The second adapter's corpus (`web/src/lib/harness/omp/`). omp inverts Claude's composer layout — the
+statusline is painted INTO the box's top border, the draft's LAST fragment sits ON the bottom border
+with earlier fragments stacked above it, and autocomplete renders BELOW the box — so none of Claude's
+chrome constants transfer and every one of these captures had to be re-derived.
+
+That adapter is **Tier 1**: it strips chrome and re-surfaces the statusline and a stranded draft, and
+it up-levels **nothing**. So every row below is a capture the adapter must leave as a raw block, and
+all twenty are asserted that way (`harness/omp.test.ts`). Nine carry a live composer, eleven are
+modals the reply pre-flight has to refuse.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--fresh-idle.txt` | Fresh session: welcome tips scrollback, `✔ New session started`, an EMPTY composer. omp paints no placeholder in an empty box — there is no `INPUT_PLACEHOLDERS` analogue to write | `idle` |
+| `omp--working.txt` | Mid-turn: `⠸ Working… ⟦esc⟧` braille spinner above an empty composer | `working` |
+| `omp--done.txt` | Completed turn, and the `◀ N` variant: omp splices a transcript-scroll indicator into the SAME border it paints the statusline into. Pinned as a known limitation of `extractStatusLines` (the trim stops at the `1` segment) | `idle` |
+| `omp--done--tool-result.txt` | Completed turn ending in a boxed tool result (`╰───╯`, corner-to-corner) plus a `※ recap:` line. The negative control for the composer-bottom literal: this box closes with no gutter | `idle` |
+| `omp--draft-single.txt` | A stranded draft that fits one row, written into the bottom border: `╰─ list the files in this repo ─╯` | `idle` |
+| `omp--draft-wrapped.txt` | A 355-char draft soft-wrapped over three rows — two `│  …  │` continuations ABOVE the bottom border, which carries the tail (`hand`). Regression fixture for the fold direction | `idle` |
+| `omp--menu-dismissed.txt` | The welcome panel (a 100-cell `╭───┴───╮` box) plus an MCP failure notice above an empty composer. Negative control: a second, narrower box on screen must not be spliced into the composer's geometry | `idle` |
+| `omp--slash-palette.txt` | `/` typed: the autocomplete renders BELOW the box, at the box's own width, with one wrapped entry (3 rows) — a `skill:…` row, which omp assembles from the capturing machine and which is therefore NOT an omp built-in. `extractInputDraft` reads `"/"` | `idle` |
+| `omp--slash-palette--filtered.txt` | `/new` typed: five palette rows below the box, all omp built-ins — but note they are everything omp fuzzy-matched for `new`, an accident of one search rather than a curated set. One of three sources for `lib/agent-commands.ts`'s `omp` catalog (collie draws its own palette for an omp pane, because the chrome strip takes omp's); the other two are the tip line and this table — see below | `idle` |
+| `omp--select-menu.txt` | The `ask` tool's single-choice dialog (`╭─ Ask ─╮` box, `❯ ○ Red` rows, an `○ Other (type your own)` free-text escape). **Declined** — a different widget whose `handleInput` is unread, and whose escape row would strand a phone user in a free-text input | `blocked` |
+| `omp--select-menu-moved.txt` | The same dialog with the pointer moved | `blocked` |
+| `omp--select-multi.txt` | The `ask` tool's multi-select (`☐ Cheese` rows under a `toppings / Submit` chip row). **Declined** — same reasons, plus omp never numbers its options, so the shared multi-select model's `String(o.n)` walk has nothing to read | `blocked` |
+| `omp--select-multi-checked.txt` | The same dialog mid-selection (`☑ Cheese`) | `blocked` |
+| `omp--select-multi-review.txt` | Its review screen — whose body is `1. toppings: Cheese, Olives`, a NUMBERED SUMMARY rather than a numbered menu. The exact digit trap [`.adr/0009`](../../../../.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md) exists for | `blocked` |
+| `omp--menu-model.txt` | `/model`: a two-pane provider/model picker, footer `Enter assign roles · ↑/↓ providers · → models · type to search · Esc close`. **Declined** — `parseKeyHintFooter` returns `[]` for it (omp writes `<key> <verb>`, not `<key> to <verb>`) | `idle` |
+| `omp--menu-model-moved.txt` | The same picker with the selection moved | `idle` |
+| `omp--menu-settings.txt` | `/settings`: a tabbed panel. **Declined** — its footer is the ONE omp footer `parseKeyHintFooter` parses, and it yields only `{Jump sections, [Tab]}` + `{Close, [Escape]}`, because `menuKeyFor` rejects the compound tokens (`Enter/Space`, `←/→`, `Type`) its real actions are named with. A modal whose only button is "Jump sections" is worse than the raw mirror | `idle` |
+| `omp--menu-settings-moved.txt` | The same panel with the selection moved | `idle` |
+| `omp--menu-resume.txt` | `/resume`: the session picker. **Declined** — `parseKeyHintFooter` returns `[]` for its footer too, and the footer is worth reading before writing any omp grammar: `[Del/⌫ delete · Enter select · Tab all projects · Esc cancel]` names `Del`, which is neither on `menuKeyFor`'s whitelist nor a key `pane.send_keys` accepts | `idle` |
+| `omp--menu-resume-moved.txt` | The same picker with the selection moved | `idle` |
+
+**No picker's confirm key was ever pressed.** Every dialog here was driven onto the screen, captured,
+and dismissed with `Escape`.
+
+**This corpus is also the whole provenance of omp's slash catalog** (`lib/agent-commands.ts`), because
+omp ships no command reference to read. A command may only enter that catalog on one of three
+warrants, and each row there is marked with which:
+
+1. **A palette row** — a line of omp's own `/` autocomplete in the two captures above.
+2. **omp's own tip line** — `` Tip: `/shake` rips heavy tool results out of context to reclaim tokens
+   without a full /compact `` , printed above the composer in 8 of these 20 captures. It names
+   `/shake` and `/compact` outright and is where both of their descriptions come from.
+3. **This table** — a command it records as having been TYPED to produce a fixture (`/model`,
+   `/settings`, `/resume`). That the command was run and its screen captured is stronger evidence
+   that it exists than a palette row is; it is weaker on what the command *does*, so those rows are
+   described by the screen and nothing further.
+
+If you extend the catalog, extend this list first. A command with no warrant here is a guess, and the
+catalog types itself into a live shell.
+
+**Sanitized in place, length-preserving — no capture here is raw.** Everything identifying was
+rewritten to a fabricated equivalent of the SAME byte length, ASCII for ASCII, so every row's column
+alignment and display width survives byte-for-byte. Two classes were replaced, across all 20 files at
+once:
+
+- **Environment.** The cwd reads `…abc-0123456789ab/scratchpad/omp-sandbox`; MCP servers read `alfa` /
+  `Sample Hub` / `example-cli` / `sandcastle` / `diagram-validator` / `skyline` / `pear` / `spinner`;
+  session titles are sandbox prompts and the palette entry reads `skill:sample-doc-tool` over an
+  `example.test` URL.
+- **Vendor account state.** omp prints the provider a session runs on (the welcome panel's centred
+  line) and, in `/model`, marks with `●` which providers the user is signed into above the `○`
+  catalogue of the rest. Every name in that `●` column — and every `<provider>/<model>` row it feeds
+  in the right pane — was replaced, so both panes stay in sync: `amazon-bedrock`→`example-vendor`,
+  `cursor`→`vendor`, `bedrock-mantle`→`example-mantle`, `google`→`sample`, `llama.cpp`→`local-rig`,
+  `lm-studio`→`local-lab`, `ollama`→`native`. **Count on yours, not on this list** — the hit counts are
+  a property of one capture session, not of omp. `google` and `ollama` match only when NOT
+  followed by `-`: the hyphenated `google-vertex` / `google-gemini-cli` / `google-antigravity` /
+  `ollama-cloud` rows live in the `○` column, which is omp's shipped catalogue — the same on every
+  install, so it is not user data and stays verbatim. `Cursor` also survives inside `/settings`' own
+  `Show Hardware Cursor` label, which is a terminal setting, not the vendor.
+
+What the pass deliberately keeps is the SHAPE the detectors read — seven configured providers, their
+model counts, the `●`/`○` split, every column boundary. **Redo this before `git add`, not after.** The
+whole-corpus check is that `amazon-bedrock|bedrock-mantle|cursor|llama\.cpp|lm-studio` returns only
+the two `Show Hardware Cursor` lines, and that `/Users/`, `/home/`, an email, a
+`sk-`/`ghp_`/`AKIA`-shaped string and a session UUID each return nothing.
+
+**⚠ Line endings vary per fixture and must NOT be normalised.** Each capture is either **all-CRLF or
+all-LF** — never mixed, never a lone `\r`, and none ends in a trailing newline — so a file's CRLF
+count always equals its `wc -l`, one FEWER than the rows it draws (27 CRLFs ⇒ 28 rows). The counts
+below are that `wc -l`, i.e. what `grep -c` reports. Twelve are all-CRLF: `menu-dismissed` 27, `select-menu` and
+`select-menu-moved` 55, `menu-model*` / `menu-resume*` / `menu-settings*` 56, `select-multi*` 58. The
+other eight — `fresh-idle`, `working`, `done`, `done--tool-result`, `draft-single`, `draft-wrapped`,
+`slash-palette` and `slash-palette--filtered` — are all-LF with **zero**. The alternate screen is a
+good guess at which is which but not a rule: `omp--menu-dismissed.txt` paints an ordinary inline
+screen and is still all-CRLF, so re-measure rather than infer (`grep -c $'\r' <file>`). Any edit must
+be made in **binary mode**; a text-mode Python pass silently strips `\r` and changes every byte count.
+
+Two more things a future omp detector must not assume. omp's pickers run on the **alternate screen**,
+so `pane.read source=recent` returns exactly `viewport_rows` lines with no scrollback — "there is
+transcript above the dialog" is not available as corroborating evidence the way it is for Claude. And
+omp's `agent_status` stays `idle` while a picker is up; only the `ask` tool flips it to `blocked`.
+**Nothing may gate on `blocked`.**
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in
