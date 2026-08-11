@@ -142,7 +142,10 @@ bridge binds the write to it).
   detection (raw-only on foreign + neutral buffers), tail-anchoring (a dialog lifts only
   at the tail), the menu contract above (for any fixture that lifts one), the dialog-model contract
   (for every kind you up-level: signature non-empty, text-sensitive, and its comparators agreeing —
-  a perturbed screen must fail the committing comparison), and key-grammar validity (every emittable keystroke passes `isValidHerdrKey` — the
+  a perturbed screen must fail the committing comparison), the composer-region pairing (if you supply
+  the optional `composerPrompt` — the on-screen row a destructive write is bound to via
+  `expected_prompt` — it must name a region on exactly the screens your `composerReady` approves), and
+  key-grammar validity (every emittable keystroke passes `isValidHerdrKey` — the
   verified `pane.send_keys` grammar: single-digit only, `ctrl+c` not `C-c`, no
   `PageUp`/`Home`/`End`/`Delete`).
 - **Safety gate — the capability fence.** The live enforcement is

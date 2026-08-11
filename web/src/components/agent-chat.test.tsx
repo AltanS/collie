@@ -330,10 +330,11 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
   });
 });
 
-// The block grammars are provably scoped to Claude Code (spec T8): a non-Claude pane gets the plain
-// raw mirror — no prompt-select buttons, no chrome stripping, no re-surfaced status strip — because
-// running Claude-tuned matchers on an unverified TUI could mis-lift or mis-strip its output.
-describe("AgentChat — block-grammar scoping (Claude-only)", () => {
+// The block grammars are provably scoped to the pane's own adapter (spec T8): an agent with no
+// adapter gets the plain raw mirror — no prompt-select buttons, no chrome stripping, no re-surfaced
+// status strip — because running Claude-tuned matchers on an unverified TUI could mis-lift or
+// mis-strip its output. codex is such an agent; omp has an adapter but lifts no dialog kind at all.
+describe("AgentChat — block-grammar scoping (an agent with no adapter)", () => {
   // A codex agent sharing the Claude fixture's ids, so only the agent kind differs from the default.
   const codexAgent = { ...fixtureAgents[0]!, agent: "codex" };
 
