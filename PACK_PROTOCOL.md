@@ -193,7 +193,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 |---|---|---|---|
 | `POST` | `/pack/v1/enroll` | a joining machine | The exchange of §8.2. Admitted by the **token**, not by the two factors — the joining peer holds neither yet. |
 | `POST` | `/pack/v1/secret` | the lead | Hands a peer the rotated pack secret (§8.4). Refused unless the caller is *this collie's own lead*: the secret is pack-wide, so any other admitted member accepting one could lock the lead out of its own pack. Authenticated by the **outgoing** secret and carrying the incoming one — there is no instant in which both are accepted. |
-| `POST` | `/pack/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the pack secret. A member may only claim leadership **for itself**. |
+| `POST` | `/pack/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the pack secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/pack/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
 
 Everything except `enroll` sits behind the same two factors as the rest of the prefix, and each
@@ -477,28 +477,44 @@ Stated plainly, because a pack link is remote shell access to a second machine.
   attacker-influenceable and rendered as React text nodes under a strict CSP
   (`bridge/server.ts:77-80`, `ARCHITECTURE.md` §6).
 
-  **It also reaches past "its own machine" through the promotion path (amended 2026-08-08).**
-  `POST /pack/v1/lead` (§14) accepts a signature-verified self-claim from **any** enrolled member with
-  **no operator consent required on the receiving lead** — the wire cannot tell an operator-run
-  `collie promote` from a compromised peer running the same verb (`bridge/pack/router.ts`, `newLead`).
-  The signature authenticates *which member* is claiming, not *that an operator willed it*. Two
-  consequences follow, and neither is contained by "its own terminals":
-    - **(a) Denial of service against the pack.** The claim forces a leadership change no operator
-      consented to: the current lead demotes itself on disk and hands the claimant the **full roster** —
-      every member's certificate and address (`demoteSelf`, `router.ts:~449`) — and the front door moves.
-    - **(b) The former lead's terminals.** After the demoted lead's **next restart** it comes back a
-      peer that pins the claimant as *its* lead, at which point the attacker drives the **former lead's**
-      panes, journal and uploads — the reach §8.5 otherwise reserves to a compromised *lead*, now had
-      from a single compromised *peer*.
-  **Containment, stated honestly.** This is **not** silent full-pack capture. Pinning is per-member, so
-  the other peers keep following the old lead and will not adopt the claimant without a manual re-join
-  (a peer re-pins only a lead it is told to — `adoptLead` — never one that merely announced itself). So
-  from one compromised peer the attacker gets pack-wide **denial** plus the **old lead's machine** — well
-  beyond "its own machine's terminals", and short of the whole pack, which still needs operator error. **A
-  mitigation is identified and deferred:** requiring operator consent *on the old lead* to demote it —
-  *promote as a confirm on the receiver, not a command from the claimant* — closes this. It is specified
-  separately and **is not shipped today**, so this bullet describes the protocol as it currently stands,
-  not a fix that exists.
+  **The promotion path used to reach past "its own machine". It is closed; the attack is kept here
+  because the closure is only legible against it (F2, amended 2026-08-08, closed 2026-08-11).**
+  Until this amendment, `POST /pack/v1/lead` (§14) accepted a signature-verified **self-claim** from
+  **any** enrolled member with **no operator consent on the receiving lead** — the wire could not tell
+  an operator-run `collie promote` from a compromised peer running the same verb
+  (`bridge/pack/router.ts`, `newLead`). The signature authenticates *which member* is claiming, never
+  *that an operator willed it*. Two consequences followed, and neither was contained by "its own
+  terminals":
+    - **(a) Denial of service against the pack.** The claim forced a leadership change no operator
+      consented to: the current lead demoted itself on disk and handed the claimant the **full roster** —
+      every member's certificate and address (`demoteSelf`, `router.ts:~449`) — and the front door moved.
+    - **(b) The former lead's terminals.** The demoted lead is pinned to the claimant in that same
+      write, so after its **next restart** it comes back a peer of the attacker, which then drives the
+      **former lead's** panes, journal and uploads — the reach this section otherwise reserves to a
+      compromised *lead*, had from a single compromised *peer*.
+
+  **What closes it (§14, [ADR 0014](./.adr/0014-promote-is-a-confirm-on-the-lead.md)): promotion is a
+  confirm on the receiver, not a command from the claimant.** The demotion needs the old lead's
+  operator. `newLead()` on a leading collie demotes only if a **live handover approval** — minted on
+  that machine by `collie pack approve-promote <member>`, ten minutes, single-use — names the
+  claimant *and* matches the pinned member's fingerprint, and consumes it in the same committed
+  transition. An unapproved claim is refused (§14), so (a) and (b) both require an operator at the
+  keyboard of the machine being taken from. The approval is **not a secret**: the claim is already
+  signature-authenticated (§8.6), so consent only has to name *who* may take over.
+
+  **The peer branch was never the reachable hole, and the transport already closes it.** A peer
+  re-pins a new lead only from a claim its listener let through, and a peer's listener pins
+  `ca: [<its lead's certificate>] · requestCert · rejectUnauthorized` (§8.1's 2026-08-07 amendment)
+  while its roster holds exactly one member — so the only caller that reaches a peer's adopt branch is
+  the peer's own currently-pinned lead's self-claim, which a re-pin already collapses to a no-op. A
+  promoted *new* lead is refused at the TLS handshake, not by the route. There is no live peer-re-pin
+  path in v1's topology for a signature to close; the route-level rule a broader topology would need
+  is reserved, not built (§16).
+  **The residual, stated plainly.** A compromised peer can still spend an approval the operator armed
+  for it inside that ten-minute window, and can still deny service to itself. A compromised **lead**
+  is unchanged — see the next bullet; nothing here constrains the machine that holds the keys to
+  everything. And `--force` (§14) strands every peer: a promoted lead a peer does not pin is refused
+  at that peer's handshake, and re-enrollment is the recovery path §14 and §8.4 already name.
 - **A compromised lead** reaches **everything, on every member**. This is total, and it is inherent:
   the lead holds the pack secret and a pinned link to every peer, and its whole job is driving
   terminals. **The lead is a lateral-movement hub by construction.** Naming it is the mitigation
@@ -798,11 +814,178 @@ The path is **phone → lead → owning peer's disk**.
 **`collie promote` is a deliberate operator action, run on the peer that is to become lead.
 Transparent failover is a non-goal.**
 
-- It **refuses if the current lead is unreachable, unless `--force`.** A clean handover has to reach
-  the old lead to demote it and hand over the roster; promoting without that leaves the old lead still
-  believing it is the lead. A pack with two leads has two front doors and two rosters, and `--force`
-  is the operator explicitly accepting that risk for a machine they know is gone — after which the old
-  lead must be `collie leave`-d or re-`join`-ed before it is ever powered back on into the pack.
+**Promotion is a confirm on the receiver, not a command from the claimant** (amended 2026-08-11,
+closes F2 — [ADR 0014](./.adr/0014-promote-is-a-confirm-on-the-lead.md)). A signature proves *which
+member is speaking* (§8.6); it cannot prove *that an operator willed it*. So the crown moves in **two
+steps on two machines**, and each step is refused without the one before it:
+
+1. on the **current lead**, `collie pack approve-promote <member-id>` — a ten-minute, single-use
+   consent naming who may take over, which **restarts the lead's bridge** so the running process
+   holds the approval (§14.1);
+2. on the **peer**, `collie promote` inside that window — which demotes the lead and takes its roster.
+
+Touching both machines is the design, not friction: consent run on the lead is what proves the
+operator controls the machine that is about to lose its terminals, its roster and its front door.
+
+### 14.1 The approval — `collie pack approve-promote <member-id>` (on the lead)
+
+Mints a **pending handover approval** and **restarts the lead's bridge** so the running process holds
+it. The approval is persisted in the trust store beside the pack's other state:
+
+```ts
+/** The operator's consent, on the lead, for ONE named member to take the crown (§14). */
+interface PendingHandover {
+  readonly memberId: string;   // who may take over. The whole content of the consent.
+  readonly createdAt: number;
+  readonly expiresAt: number;  // createdAt + 10 minutes
+}
+```
+
+It sits at the **top level of the trust store, sibling to `invites`** — `pendingHandover?:
+PendingHandover | null`. `parseTrustStore` builds its result from an explicit field **whitelist**
+(`trust-store.ts`), so the field must be added in **both** the validator and the returned result
+literal, or the approval is silently dropped on every read and gate 1 is permanently closed. Absent ⇒
+no live approval ⇒ refuse: the fail-closed reading holds through that parser.
+
+- **The mint restarts the lead's bridge, and this is load-bearing, not incidental.** The bridge reads
+  its trust store **at most once per process** (`trust-store.ts`, the `loaded` latch), so an approval
+  a CLI writes to the store on disk is invisible to the already-running bridge — the promotion would
+  then refuse forever. `approve-promote` therefore mints **and** restarts (`applyLocally`, exactly as
+  every other membership verb does — "a membership change takes effect through the restart every
+  membership verb performs", §8.1's 2026-08-07 amendment), so the process that later fields the claim
+  has already read the approval. The honest cost: the restart drops the lead's live pack links and the
+  phone's connection for a moment — but it happens **at approve-time**, before the operator walks to
+  the peer, so the `promote` itself runs against a bridge that already holds the consent. It also
+  closes the rebuilt-but-not-restarted skew trap for this verb, because the restart re-execs the
+  current binary.
+- **Ten minutes**, the same window and the same reasoning as an enrollment token (§8.2, `INVITE_TTL_MS`):
+  long enough to walk to the other machine, short enough that an armed approval is not a standing
+  capability.
+- **Single-use.** Consumed in the same committed transition as the demotion — never before it, so a
+  demotion that fails to persist does not burn the consent, and never after, so one approval cannot
+  demote twice.
+- **At most one live at a time. Minting replaces any prior.** A store is not a queue, and two live
+  approvals would mean the operator had armed a race they cannot observe.
+- **Swept lazily**, exactly as invites are: an expired approval is read as absent, and the next write
+  drops it.
+- **It is not a secret and carries no token.** The claim is already signature-authenticated against a
+  pinned certificate (§8.6), so consent only has to name *who* may take over. **No new secret material
+  crosses the wire**, and a leaked trust store yields nothing spendable from this field.
+- **`collie pack approve-promote --cancel`** clears the live approval — and, like the mint, restarts,
+  so the bridge forgets it. `--cancel` parses as a **bare** flag (`bareFlags: ["cancel"]`) so it
+  consumes no following token; with nothing armed it exits cleanly (`EXIT.OK`, "nothing was armed").
+  TTL and replacement are the only other ways an approval ends; the operator who armed it and changed
+  their mind should not have to wait the window out.
+- **Validation.** It refuses when this machine is **not leading** (`EXIT.STATE`) and refuses a member
+  id **not in the current roster** (`EXIT.STATE`) — an approval naming nobody the lead pins is a typo,
+  not a consent. On success it prints who is approved, the ten-minute window, and the exact next step
+  (*now run `collie promote` on `<member>` within 10 minutes*). It registers in `PACK_SUBCOMMANDS` and
+  the help block.
+- `collie pack status` shows a live approval as its own line — `handover approved: <member-id> —
+  expires in Nm` — in the same spirit as §8.4's per-member secret column; a swept (expired) approval
+  reads as absent. On a **peer**, where no approval can exist, it shows nothing.
+- **Absent field = no live approval, never a default-open reading.** A trust store written before this
+  field existed has no approval, so an unamended lead upgrades into *refusing* rather than accepting.
+
+Audited as `pack.handover.approve` and `pack.handover.cancel`; the consumption is recorded inside the
+existing `pack.demote` line, which now names the approval it spent.
+
+### 14.2 What each recipient requires
+
+`POST /pack/v1/lead` is still one route with two roles (§5). Only the **lead** role gains a
+requirement; the peer role is unchanged.
+
+| Recipient | Was | Now also requires |
+|---|---|---|
+| the **old lead** (`isLeading`) | a §8.6-signed self-claim | a **live approval naming the claimant**, whose **fingerprint equals the pinned member's** (§14.1), consumed with the demotion |
+| a **peer** | a §8.6-signed self-claim from the lead it pins | *unchanged* — a peer adopts only its own pinned lead's self-claim, and the transport already refuses anyone else |
+
+Both requirements are *in addition to* everything §8.1/§8.6 already demand — the two factors, the
+signature, and the rule that a member may only claim leadership **for itself**. Neither replaces them.
+
+**Consent must name the certificate, not just the member id.** `newLead` today checks only that the
+claimed member id is the admitted one, and then pins the **claim's** certificate — so an approved
+member could pin any certificate under their id, including a key they do not hold, which the old lead
+would then trust. The demotion therefore additionally requires `claim.fingerprint` to equal the
+fingerprint of the **admitted, pinned** member (`from.fingerprint`). Because `parseRosterEntry`
+already enforces `fingerprint === sha256(certPem)`, matching the fingerprint binds the certificate:
+"consent names who may take over" is only true if the key that takes over is the one already pinned.
+
+**The authorization has an error channel of its own.** The pure demotion transition returns a
+**discriminated refusal**, not a bare `null`: `not-leading` (the receiver is a peer, not the lead of
+this pack) maps to the existing `400`, and `not-approved` (no live approval names this claimant, or
+its fingerprint does not match) maps to §14.3's `403`. A bare `null` — today's "no change" — can only
+be the `400`, so the honest `403` needs the discriminant. Reading the approval and demoting are **one
+committed transition**: one `next`, the approval consumed in the same write as the role flip, one
+audit line naming the approval spent. Because the check runs inside the single serialised
+`TrustStore.update` write, there is no pre-read/expiry race — and the refusal path must **not** add a
+further store write, since the replay-floor commit for membership routes already wrote before the
+handler ran (§8.6); gate 1 must not compound it.
+
+The **peer branch is untouched.** A peer still adopts only a self-claim from the lead it currently
+pins, and its listener refuses any other caller at the TLS handshake (§8.1). A pack of three or more
+machines re-joins its non-old-lead peers against the new lead (§14.5); there is no peer-side
+attestation to carry, and none is needed while a peer pins exactly one lead. The route-level rule a
+broader topology would want is reserved (§16).
+
+### 14.3 On the wire
+
+**An unapproved claim, at the lead** — `403`, and free to say why: the caller passed both factors and
+§8.6, so §8.1's uniform-401 rule does not apply (it exists to tell an *unauthenticated* caller
+nothing). This is the post-admission honest-error family, one status up from `badRequest` because the
+caller is *admitted but not permitted* — §5's "admitted and allowed to do this are different
+questions", answered on the wire. It carries a machine-readable `code`.
+
+```json
+{ "error": "this lead has not approved \"nas\" to take over — run `collie pack approve-promote nas` here, then re-run `collie promote` on that machine within 10 minutes",
+  "code": "handover_not_approved" }
+```
+
+An approval that names a **different** member — or one whose fingerprint does not match the pinned
+member's — produces the byte-identical response. The claimant is not told who *is* approved; that is
+the operator's business on the lead, not a fact the wire owes an unsuccessful claimant.
+
+**`collie promote` must surface this refusal honestly, and must not point at `--force`.** The
+peer-client today collapses every non-2xx that is not 401/409 into `unreachable` and discards the
+body, after which `promote` prints "the current lead did not answer … re-run with `--force`" —
+aiming the operator at the destructive remedy for what is actually an *un-approved* promotion. So the
+client gains a distinct **`refused`** outcome that carries the body: on a `403` bearing a `code`,
+`promote` surfaces the lead's message **verbatim**, exits `EXIT.REFUSED`, and **suppresses the
+`--force` suggestion**. `--force` is correct only for genuine unreachability, never for a refusal.
+
+**A successful demotion** answers with the roster it always did — `{ demoted, roster }`, unchanged
+from before this amendment:
+
+```json
+{ "demoted": "desk",
+  "roster": [
+    { "memberId": "nas", "fingerprint": "9f2c…", "certPem": "-----BEGIN CERTIFICATE-----\n…", "address": "https://nas.example:8787" }
+  ] }
+```
+
+The new lead pins the roster it is handed and starts leading. **No signed object travels with the
+response**: the demotion is authorised on the lead by the lead's operator, and in v1 there is no third
+machine that must be convinced of it — a peer learns a new lead only by re-joining (§14.5, §16).
+
+### 14.4 `--force` strands every peer, and says so
+
+`--force` is for an old lead the operator knows is gone. Promoting past a **reachable** lead is
+refused — that would give the pack two front doors and two rosters — so `--force` is the operator
+explicitly accepting the risk for a machine they know is down. It sweeps **nobody**: a peer pins its
+*current* lead at the handshake (§8.1's 2026-08-07 amendment), so a promoted lead a peer does not yet
+pin is refused at that peer's TLS handshake regardless. `collie promote --force` therefore **skips the
+peer sweep entirely** and prints the re-join for every member instead. (In the shipped code the forced
+path already carries an empty roster, so the sweep had nobody to dial — the promise now matches.)
+
+This is accepted rather than worked around. §15 already declares transparent failover a non-goal, and
+§8.4 imposes the identical rule on a peer that misses a rotation. Re-enrollment is the recovery path
+for every remaining member: `collie join` against the new lead with a fresh token.
+
+`--force` still leaves the old lead believing it leads, so it must be `collie leave`-d or re-`join`-ed
+before it is ever powered back on into the pack.
+
+### 14.5 Unchanged by this amendment
+
 - The pack identity, the pack secret and existing pinned certificates are **reused** — promotion is a
   role change, not a re-enrollment. What changes is which member holds the front door and which
   address the others dial.
@@ -816,7 +999,10 @@ Transparent failover is a non-goal.**
 - **Only the old lead is reachable by the promotion itself** (added 2026-08-07). Every other peer pins
   its *current* lead at the handshake, so the new lead's connection is refused until that peer
   re-joins. With two members this changes nothing. With three or more, the peers that are not the old
-  lead fall under the re-enrollment rule below — for a second reason, on top of unreachability.
+  lead fall under the re-enrollment rule below. This handshake refusal is the **only** thing between a
+  promoted lead and a peer in v1 — there is no application-layer peer-side rule, because a peer pins
+  exactly one lead and a route-level adoption rule is needed only once that stops being true (reserved
+  — §16, ADR 0014).
 - Every remaining peer must be told the new lead's address. Reachable peers are updated by the
   promotion itself; **a peer that is unreachable during promotion must be re-enrolled** (`collie join`
   against the new lead, fresh token) — the same rule rotation uses (§8.4), for the same reason.
@@ -829,6 +1015,37 @@ Transparent failover is a non-goal.**
 - **Nothing else follows the crown.** Push subscriptions, the audit log, outstanding notification tags
   and activity ledgers are host-local by rule (§2) and stay on the old lead. The phone re-subscribes
   against the new one. `promote` enumerates this in its own output.
+
+### 14.6 Compatibility
+
+The change is **additive**: one optional trust-store field, no new wire object.
+
+- **`PACK_PROTOCOL_VERSION` stays `1`.** The approval is a body/field addition, not a new route or a
+  changed shape, and §7's window is exact-1 (`admission.ts`) — bumping it would take **every** route
+  down between differently-updated members in order to close a hole in one, trading a
+  denial-of-service for the escalation.
+- **`TRUST_STORE_VERSION` stays `1`.** The field is read as optional, and `parseTrustStore` refuses an
+  **unknown** store version — so bumping it would make an updated bridge reject its own pre-amendment
+  store. Do not bump it.
+- **Absent means closed, never open.** No approval field ⇒ no live approval ⇒ an unapproved claim is
+  refused. A pre-spec store upgrades into refusing.
+- **Updating the lead closes F2 for the whole pack.** The gate lives entirely on the machine being
+  demoted, so a pack realizes the fix the moment its **lead** is updated. A pre-spec lead
+  (≤ `1.0.0-alpha.9`) simply accepts the unattested claim as it does today; the improvement is
+  realized once that lead is updated, and no peer needs the new build for it to hold.
+- **Migration is "update the lead".** No state change, no re-enrollment, no rotation.
+- The **general** policy for a version-skewed pack is not settled here — see §17.
+
+### 14.7 Not built, deliberately
+
+- **No claim-then-confirm.** There is no pending-inbound claim on the lead, no polling by the peer,
+  and no waiting state anywhere. The operator's second machine is what carries the consent.
+- **No quorum.** No countersigned roster generation, no threshold of members agreeing. This protocol
+  has two roles and frequently two members (ADR 0014's alternatives).
+- **No revocation channel for an approval** beyond TTL, replacement and `--cancel`. Nothing is sent to
+  anybody when one is armed or cleared; it is local state on the lead.
+- **No change to who may INITIATE a promotion.** Any enrolled member may still ask. Only *execution*
+  is gated — which is what makes the refusal a legible operator error rather than a permission model.
 
 > **Note, added 2026-08-07 — the demoted machine needs a restart, and `promote` says so first.**
 >
@@ -878,6 +1095,14 @@ Named here so v1's shape does not foreclose them, and so nobody mistakes a reser
 - **A non-Herdr peer.** The seam exists (§2, [ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md))
   but **nothing in v1 exercises it** — no peer fronts anything but Herdr, so the seam is a promise,
   not a verified property.
+- **A route-level rule letting a peer adopt a lead it does not already pin.** Needed only once a peer
+  can pin more than its single lead — roaming, multiple leads, a mesh — where the transport stops
+  being the whole answer. It would reuse §8.6's signing primitives as a **signed handover** from the
+  outgoing lead over a canonical string binding the new lead's pack id, member id, fingerprint,
+  address and a timestamp — field-count-disjoint from §8.6's request string, which has fewer
+  LF-separated fields, so the two never verify as one another under a shared key. v1 has no such
+  topology: a peer learns a new lead only by re-joining (§14.5), and the transport already refuses a
+  claim from any member a peer does not pin, so the rule is unbuilt.
 
 ---
 
@@ -887,8 +1112,13 @@ Named here so v1's shape does not foreclose them, and so nobody mistakes a reser
   Settled by [ADR 0012](./.adr/0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md);
   `collie` / `lead` / `peer` / `pack` are the words *this* document
   uses and they must stay greppable.
+- **The general policy for a version-skewed pack.** §7 negotiates the wire version and §14.6 states
+  how *that* amendment behaves across a skew, but there is no rule for the class: which additions may
+  land inside version `1` at all, and how a member decides that a peer running an older build is
+  merely behind rather than a downgrade being forced on it. A pre-beta gate item of its own.
 - **Concrete default values** marked as defaults above (`COLLIE_PACK_TIMEOUT_MS = 1200`, the 10-minute
-  token lifetime, the 10-year certificate lifetime, the `3 × pollMs` / 15 s staleness threshold) are
+  token lifetime, the 10-minute handover-approval window, the 10-year
+  certificate lifetime, the `3 × pollMs` / 15 s staleness threshold) are
   starting points chosen to be consistent with today's cadence, not measured ones. M4 may move them;
   the *shapes* — a budget below the poll interval, a short single-use token, pinning-not-expiry, a
   threshold above one missed poll — are the contract.
