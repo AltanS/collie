@@ -187,9 +187,14 @@ answering build:
 - `version` is **OPTIONAL**, added 2026-08-12: the answering build's own version string, exactly what
   `collie version` prints (`cli/context.ts`'s `collieVersion` — `1.0.0-alpha.11`, or
   `1.0.0-alpha.11+ab12cd3` when a build stamp is present). **An absent field means "a build older
-  than this amendment", never an error** (§7.1). The request side gains nothing: every direction that
-  needs a version already dials `hello` — the lead sweeps its peers on its poll (§10.1), and a peer's
-  `collie pack status` probes its lead — so the field rides an exchange that already happens.
+  than this amendment", never an error** (§7.1). The request side gains nothing: the surface that
+  renders skew already dials `hello` in both directions — `collie pack status` probes every member on
+  a lead and probes the lead on a peer — so the field rides an exchange that already happens *there*.
+  The lead's poll (§10.1) deliberately does **not** dial `hello` — it dials `snapshot`, and gains no
+  version leg: N extra round trips per poll to re-learn a fact that changes only on restart would be
+  §10.1's budget spent on nothing. If the running bridge ever needs the version continuously (rather
+  than at probe time), the road is an additive-optional field on `snapshot`'s response, per §7.1's
+  class rule — not a second dial.
 
 `hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
 become a place to learn something an unadmitted caller wants; a version is admissible there for the
