@@ -6,6 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.11] - 2026-08-11
+
+### Added
+
+- `collie qr` — the QR verb is now in the binary, with the tailnet-ACL probe it needs; `collie-ctl.sh qr` keeps working via delegation (15c559e)
+
+### Changed
+
+- **M6/01** — `scripts/collie-ctl.sh` is now a 106-line bootstrap shim: it resolves Bun, builds `bin/collie` from source when absent, and execs it — the CLI is the single implementation of every lifecycle verb. Manifest command strings, action ids and every `collie-ctl.sh <verb>` spelling are byte-identical (frozen per ADR 0006), so nothing operator-facing changes; the script's ignorance of `COLLIE_INSTANCE` goes away with the duplicated logic (9bb86b8, 8268659)
+- The shim no longer sources `.env` for Bun resolution — a `BUN_INSTALL` set only there must move to the environment; the CLI still reads `.env` for everything else (9bb86b8)
+
 ## [1.0.0-alpha.10] - 2026-08-11
 
 ### Security
