@@ -20,7 +20,9 @@
 // detection matches, which is Tier 2 and needs the full bar — a dated corpus, a choreography notes
 // file, a green conformance run, and maintainer live-verification against a real pane. omp's
 // tool-approval dialog is a genuine Tier-2 candidate and is deliberately NOT in this contribution; it
-// is a separate, later one that must clear that bar on its own, live-verification included.
+// is a separate, later one that must clear that bar on its own, live-verification included. It is
+// also NOT IN THE CORPUS — no capture of it exists here, which is why nothing below claims it as
+// tested.
 //
 // What ships here is the read-only layer (chrome.ts), and it is not cosmetic: the statusline omp paints
 // into its composer's top border, a stranded draft, and — the reason this layer is worth its own PR —
@@ -36,16 +38,46 @@
 // rather than blocking a send, and the user's deliberate `force` retry skips the pre-flight — in both
 // cases type-then-verify is still what stands between the send and the submit key.
 //
-// Every omp screen therefore stays RAW — the tool-approval dialog, the Ask-tool dialogs, `/model`,
-// `/settings`, `/resume`, the slash palette. Each is either out of scope above, or a widget whose
-// `handleInput` we have not read, or one whose options include a free-text row that would strand a
-// phone user, and the fail-closed contract says a detector returns null on anything it does not
-// confidently recognise. The conformance suite (harness/omp.test.ts) pins that declining as an
-// assertion over all 20 captures, not as an accident.
+// Every omp screen therefore stays RAW, and it is worth being exact about how much of that is TESTED
+// versus STRUCTURAL, because the two are not the same guarantee:
+//
+//   - STRUCTURAL, for every screen omp can draw: `ompBuildBlocks` returns one `raw` block
+//     unconditionally. There is no detector to mis-fire, so no screen — captured or not — can be
+//     up-levelled. That covers the tool-approval dialog by construction.
+//   - TESTED, for the twenty screens in this corpus: nine composer states, six picker screens
+//     (`/model`, `/settings`, `/resume`, each with a moved-selection twin) and five Ask-tool screens.
+//     harness/omp.test.ts asserts raw-only over all twenty and `composerReady === false` over the
+//     eleven modals, so the declining is a test result rather than an accident. Each is declined
+//     because it is out of scope above, or a widget whose `handleInput` we have not read, or one
+//     whose options include a free-text row that would strand a phone user — the fail-closed
+//     contract says a detector returns null on anything it does not confidently recognise.
+//   - NEITHER, and the honest gap: omp's TOOL-APPROVAL dialog is not in the corpus. That `hasComposer`
+//     would answer `false` on one is INFERRED from the eleven modals that are captured, and nothing
+//     here measures it. The inference is at least about a rule the scanner really has: all eleven are
+//     BOXES drawn at column 0, and `locateComposer` declines any composer with a box under it, so an
+//     approval dialog drawn the way all eleven are is refused by that rule rather than by luck. What
+//     is unmeasured is the premise — whether omp draws that screen as a box at all. It is the screen
+//     where a wrong `true` would be worst, so capturing it is the first thing the Tier-2 contribution
+//     owes, ahead of any grammar.
+//
+// One more limit worth stating where the tier is claimed, because it is the adapter's sharpest edge:
+// the whole composer lift hangs off ONE literal, the `╰─ … ─╯` bottom border with its one-space
+// gutters. The census behind that is real — once per composer capture, nowhere in the other 49 — but
+// it is a measurement of omp 17.2.12's renderer, not a proof about it. omp already draws a two-row
+// full-width box at column 0 whose text lives in the TOP border (`╭─── ✘ Error: … ───╮`), so a widget
+// that ever labelled its BOTTOM border the way the composer does would be read as a composer. What
+// bounds the damage is that it can only mislead while it is the LAST box on screen: with any of omp's
+// modals under it the box rule declines the whole shape, which is the case that mattered.
 
 import type { Block, StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
-import { extractInputDraft, extractStatusLines, hasComposer, stripChrome } from "./chrome";
+import {
+  composerPrompt,
+  extractInputDraft,
+  extractStatusLines,
+  hasComposer,
+  stripChrome,
+} from "./chrome";
 
 /**
  * omp's block pipeline: one raw block with the composer chrome stripped off the tail. There is no
@@ -75,6 +107,10 @@ export const ompAdapter: HarnessAdapter = {
   // The reply path's pre-flight. omp's composer is exactly what `hasComposer` finds, and its absence
   // is exactly the condition under which typing would land in a modal instead.
   composerReady: hasComposer,
+  // …and the region that pre-flight's verdict is bound to on the wire. omp's `╰─ … ─╯` sits at the
+  // tail on seven of the nine composer captures and behind at most five palette rows on the other
+  // two, so it is well inside the tail window the bridge accepts a binding within.
+  composerPrompt,
   // `draftCarriesSend` / `draftIsOpaque` are deliberately ABSENT, which is the documented default:
   // omp echoes typed text back verbatim (see the draft-single / draft-wrapped captures) and has no
   // paste-collapse token of its own, so the reply guard's generic literal-substring match already sees

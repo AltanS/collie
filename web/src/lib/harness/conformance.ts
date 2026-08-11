@@ -357,6 +357,32 @@ export function describeAdapterConformance(
       }
     });
 
+    // `composerPrompt` is the region a DESTRUCTIVE write gets bound to (harness/types.ts): the reply
+    // path hands it to the caller's pre-clear sweep, which passes it as `expected_prompt` so the
+    // bridge can 409 a burst aimed at a screen that moved. Its whole value is that it describes the
+    // same screen `composerReady` just approved — an adapter that named a region for a screen it
+    // refuses would hand out a binding to a pane the pre-flight will not type into, and one that
+    // named none for a screen it approves silently downgrades the sweep to an unbound write. Both are
+    // caught by requiring the two to agree, on every cohort.
+    describe("composerPrompt agrees with composerReady", () => {
+      const all = [...ownFixtures, ...foreignFixtures, ...neutralFixtures];
+      if (!adapter.composerPrompt || !adapter.composerReady) {
+        it.todo("adapter supplies no composerPrompt/composerReady pair");
+      } else {
+        const prompt = adapter.composerPrompt.bind(adapter);
+        const ready = adapter.composerReady.bind(adapter);
+        for (const name of all) {
+          it(`${name}: a region exists exactly when the composer is ready`, () => {
+            const lines = loadLines(name);
+            const region = prompt(lines);
+            expect(region === null).toBe(!ready(lines));
+            // A region the bridge cannot find on screen binds nothing at all.
+            if (region !== null) expect(region.trim().length).toBeGreaterThan(0);
+          });
+        }
+      }
+    });
+
     describe("tail-anchoring (a dialog lifts only at the buffer tail)", () => {
       if (ownFixtures.length === 0) it.todo("no own dialog fixtures supplied");
 
