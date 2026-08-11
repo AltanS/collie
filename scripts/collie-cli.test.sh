@@ -9,6 +9,30 @@
 # contract, and it is asserted here rather than asserted in prose.
 set -euo pipefail
 
+# "Touch nothing real" has to include the CALLER'S OWN REPOSITORY, and that took a corrupted checkout
+# to notice (it cost scripts/collie-ctl.test.sh the same lesson, and moved here with the git work).
+# Git exports `GIT_DIR` (and friends) into every hook it runs, and a hook is exactly where this suite
+# runs — pre-push. An exported `GIT_DIR` overrides discovery for every git command in the process
+# tree, `-C` included, so `git -C "$sandbox" init` does not create a sandbox repo at all: it silently
+# RE-INITIALISES the caller's repo. From a linked worktree, where `GIT_DIR` points at
+# `.git/worktrees/<name>` and there is no work tree to infer, that re-init writes `bare = true` into
+# the shared config — and the developer's checkout stops working entirely until someone finds it by
+# hand. The `update` section below stages real throwaway repos, so this suite needs the guard.
+#
+# `${!GIT_@}` is every name beginning `GIT_`, deliberately broader than the two that cause this:
+# GIT_INDEX_FILE, GIT_CONFIG*, GIT_OBJECT_DIRECTORY and the rest leak state just as happily.
+unset "${!GIT_@}" 2>/dev/null || true
+
+# Probe mode for the regression test in the `update` section, which re-enters this script with a
+# hostile `GIT_DIR` exported. It has to run the REAL line above rather than a copy of the idiom — a
+# guard tested only through a duplicate of itself is not tested at all — so the probe sits here,
+# immediately after it and before anything expensive, and does the one thing that used to reach out
+# and wreck the caller's repo.
+if [ -n "${COLLIE_HERMETIC_PROBE:-}" ]; then
+  git -C "$COLLIE_HERMETIC_PROBE" init -q
+  exit 0
+fi
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${ROOT}/bin/collie"
 TMP_ROOT="$(mktemp -d)"
@@ -105,8 +129,9 @@ run_stripped "$BIN" version || fail "\`collie version\` failed under env -i (rc=
 [ -n "$STDOUT" ] || fail "\`collie version\` printed nothing"
 assert_eq "$(printf '%s\n' "$STDOUT" | wc -l | tr -d ' ')" "1"
 
-# Parity with the shell it replaces. A different answer here means the two entry points disagree
-# about what is running — the class of bug the config-dir precedence comment records.
+# The two entry points must agree about what is running — the class of bug the config-dir precedence
+# comment records. Since M6/01 they agree by construction: `collie-ctl.sh` is a shim that `exec`s
+# this very binary, and running it here proves that delegation end to end.
 assert_eq "$STDOUT" "$(bash "${ROOT}/scripts/collie-ctl.sh" version)"
 
 # COLLIE_PLUGIN_ROOT is the explicit escape hatch for a binary outside its checkout — and the way
@@ -147,7 +172,7 @@ env -i "$BIN" --help >"${TMP_ROOT}/out" 2>&1
 rc=$?
 set -e
 assert_eq "$rc" "0"
-for verb in start stop restart uninstall update build serve unserve status url version push-test logs \
+for verb in start stop restart uninstall update build serve unserve status url qr version push-test logs \
            join leave pack promote reconnect; do
   assert_contains "$(cat "${TMP_ROOT}/out")" "$verb"
 done
@@ -322,6 +347,52 @@ printf 'one\ntwo\nthree\n' > "${L_CONFIG}/collie.log"
 cli COLLIE_SUPERVISOR=unsupervised "$BIN" logs 2 || fail "\`collie logs\` failed off systemd"
 assert_eq "$STDOUT" "$(printf 'two\nthree')"
 rm -f "${L_CONFIG}/collie.log"
+
+# ── qr ──────────────────────────────────────────────────────────────────────
+# Carried from scripts/collie-ctl.test.sh's `test_qr_subcommand`: which URL `qr` decides to encode,
+# and when it refuses. The drawing is decode-tested in scripts/qr.test.ts and the decision is
+# unit-tested in cli/qr.test.ts; what only this file can prove is that the renderer's lazily
+# imported `qrcode-terminal` survives `bun build --compile` and runs with no environment at all.
+#
+# Each case restages a real EXECUTABLE `tailscale` rather than a shell function: the netmap probe
+# runs the CLI through `timeout`, which execs a binary and would never see a function.
+stage_tailscale() { printf '%s\n' '#!/bin/sh' "$1" > "${L_BIN}/tailscale"; chmod +x "${L_BIN}/tailscale"; }
+TAILSCALE_FAKE="$(cat "${L_BIN}/tailscale")"
+
+stage_tailscale 'if [ "$1" = status ]; then echo "{\"Self\":{\"DNSName\":\"host.example.\"}}"; fi; exit 0'
+cli "$BIN" qr || fail "\`collie qr\` failed on the tailnet path: ${STDERR}"
+assert_contains "$STDOUT" "https://host.example"
+assert_contains "$STDOUT" "█"
+assert_eq "$STDERR" ""
+
+# Variant C/E with a public URL: still a phone-typeable URL, so still worth a QR.
+cli COLLIE_SKIP_SERVE=1 COLLIE_PUBLIC_URL=https://collie.example.com "$BIN" qr \
+  || fail "\`collie qr\` failed on the reverse-proxy path"
+assert_contains "$STDOUT" "https://collie.example.com"
+assert_contains "$STDOUT" "█"
+
+# Variant C/E without one: Collie doesn't know the ingress, so there is nothing true to encode.
+cli COLLIE_SKIP_SERVE=1 "$BIN" qr && fail "qr invented a URL under COLLIE_SKIP_SERVE=1"
+assert_contains "$STDERR" "COLLIE_PUBLIC_URL is unset"
+
+# A front door nothing can reach still gets its QR — the code is fine, the tailnet policy isn't —
+# but the warning has to reach stderr, or the operator scans a dead end and blames the code.
+stage_tailscale 'if [ "$1" = debug ]; then echo "{\"PacketFilter\":[]}"; exit 0; fi
+if [ "$1" = status ]; then echo "{\"Self\":{\"DNSName\":\"host.example.\"}}"; fi
+exit 0'
+cli "$BIN" qr || fail "qr refused to draw for a blocked tailnet"
+assert_contains "$STDERR" "admits no peer"
+assert_contains "$STDOUT" "█"
+assert_contains "$STDOUT" "https://host.example"
+
+# Tailscale present but with no name to give (logged out, or the daemon is down): refuse rather than
+# encode the loopback placeholder, which would send a phone to its OWN localhost.
+stage_tailscale 'echo "{}"; exit 0'
+cli "$BIN" qr && fail "qr encoded a URL with no tailnet name available"
+assert_contains "$STDERR" "tailnet front door isn't up"
+
+printf '%s\n' "$TAILSCALE_FAKE" > "${L_BIN}/tailscale"
+chmod +x "${L_BIN}/tailscale"
 
 # ── launchd ─────────────────────────────────────────────────────────────────
 # The plist must never carry a config value: .env is mode 600 and may hold COLLIE_VAPID_PRIVATE
@@ -1018,6 +1089,31 @@ case "$(cat "$U_CALLS")" in
   *_apply-update*) fail "a checkout that could not advance still tried to rebuild" ;;
 esac
 
+# The suite must not damage the repository it is run FROM. Git hands every hook a `GIT_DIR`, this
+# suite runs from pre-push, and an exported `GIT_DIR` beats `-C` for every git command in the tree —
+# so `git -C "$sandbox" init` re-initialised the caller's repo instead. From a linked worktree that
+# wrote `bare = true` into the shared config and left the developer's checkout unusable. Stage the
+# exact shape (a repo with a linked worktree) and re-enter the suite pointed at it.
+VICTIM="${U_DIR}/victim"
+PROBE="${U_DIR}/probe"
+mkdir -p "$VICTIM" "$PROBE"
+git_q -C "$VICTIM" init -q
+printf 'x\n' > "${VICTIM}/f"
+git_q -C "$VICTIM" add -A
+git_q -C "$VICTIM" commit -qm first
+git_q -C "$VICTIM" worktree add -q "${U_DIR}/victim-wt" -b side
+COLLIE_HERMETIC_PROBE="$PROBE" \
+  GIT_DIR="${VICTIM}/.git/worktrees/victim-wt" \
+  GIT_INDEX_FILE="${VICTIM}/.git/worktrees/victim-wt/index" \
+  bash "${ROOT}/scripts/collie-cli.test.sh"
+# The init landed where it was aimed…
+[ -d "${PROBE}/.git" ] || fail "an inherited GIT_DIR redirected \`git -C … init\` away from its target"
+# …and the caller's repo is untouched. `git init` writes `bare = false`, so `false` is the healthy
+# baseline here; the corruption flipped it to `true`.
+assert_eq "$(git -C "$VICTIM" config --get core.bare)" "false"
+git -C "$VICTIM" status --porcelain > /dev/null 2>&1 ||
+  fail "the suite corrupted the repository it was run from"
+
 # ── _apply-update ────────────────────────────────────────────────────────────
 # The second half, run from the freshly fetched code: build → restart → refresh the registry.
 : > "$U_HERDR"
@@ -1099,4 +1195,5 @@ echo "✓ collie CLI front door: ownership record, both refusal directions, adop
 echo "✓ collie CLI two instances: COLLIE_INSTANCE refusals, two units, two records, uninstall isolation"
 echo "✓ collie CLI build: five ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
 echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull re-exec, the managed re-link refusal"
+echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny-all warning"
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"

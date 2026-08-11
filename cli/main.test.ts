@@ -16,7 +16,9 @@ import {
 // `collie-ctl.sh`, so the verb table and the 0/1/2 exit codes are pinned here rather than left to
 // whatever the last edit happened to leave behind.
 
-// The shell's dispatch (scripts/collie-ctl.sh:862-879), in its order.
+// Every verb the shell dispatched, in its order, before M6/01 reduced `scripts/collie-ctl.sh` to a
+// bootstrap shim that `exec`s this binary. A `collie-ctl.sh <verb>` spelling — a README recipe, a
+// <0.8.0 Herdr install's cached action set (ADR 0006) — still lands on exactly this table.
 const SHELL_VERBS = [
   "start",
   "stop",
@@ -30,6 +32,7 @@ const SHELL_VERBS = [
   "unserve",
   "status",
   "url",
+  "qr",
   "version",
   "push-test",
   "logs",
@@ -153,6 +156,8 @@ describe("exit codes", () => {
       "logs",
       "push-test",
       "url",
+      // `qr` shells out to `tailscale` to decide which URL is worth encoding.
+      "qr",
       // Every pack verb writes the trust store, dials another machine, or restarts the service —
       // and `pack` with no subcommand would still resolve a real context and a real audit path. All
       // of them are covered in cli/pack.test.ts against fakes.

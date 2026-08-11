@@ -24,6 +24,7 @@ import {
   type PackDeps,
 } from "./pack.ts";
 import { cmdPushTest } from "./push.ts";
+import { cmdQr } from "./qr.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realExec, realFiles, waitReady } from "./sys.ts";
 import { bridgeUrl } from "./tailnet.ts";
@@ -108,8 +109,9 @@ function lifecycleCommand(
   return { name, summary, internal, run: (args, io) => body(lifecycleDeps(io), args) };
 }
 
-// Declaration order is the order of the usage line — the shell's dispatch order
-// (scripts/collie-ctl.sh:862-879), so the two read the same.
+// Declaration order is the order of the usage line, and it is the order `scripts/collie-ctl.sh`
+// dispatched in before M6/01 turned that script into a bootstrap shim — so muscle memory carried
+// over from `collie-ctl.sh <verb>` still finds every verb where it was.
 export const COMMANDS: readonly Command[] = [
   lifecycleCommand("start", "start the bridge service (and publish the front door)", cmdStart),
   lifecycleCommand("stop", "stop the bridge service", cmdStop),
@@ -152,6 +154,7 @@ export const COMMANDS: readonly Command[] = [
   lifecycleCommand("unserve", "tear down the front door we published", cmdUnserve),
   lifecycleCommand("status", "is it running, and on what URLs", cmdStatus),
   lifecycleCommand("url", "print the bridge URL", cmdUrl),
+  lifecycleCommand("qr", "print the bridge URL as a scannable QR code", (deps) => cmdQr(deps)),
   {
     name: "version",
     summary: "print the version actually being served",

@@ -38,3 +38,50 @@ export function tailnetName(exec: Exec): string | null {
 export function bridgeUrl(exec: Exec, mode: ServeMode, port: number): string {
   return bridgeUrlFrom(tailnetName(exec), mode, port);
 }
+
+// ── Is anyone allowed in? ────────────────────────────────────────────────────
+// The tailnet URL is a promise that ANOTHER device can open it, and nothing local can falsify that:
+// the readiness probe dials 127.0.0.1, and loopback never touches the tailnet packet filter. So a
+// node whose ACLs grant it nothing passes every local signal — serve mapping present, cert valid,
+// `curl https://<name>/` from the same host returns 200 — while no other device can reach it, and
+// the failure reads as "server down" (`tailscale ping` still SUCCEEDS: disco pings bypass ACLs).
+//
+// The packet filter is this node's inbound ACL, so an empty one means deny-all. Note the asymmetry
+// and don't let the wording drift past it: empty proves unreachable, but non-empty proves nothing
+// (a filter can grant some peer some port and still not grant your phone :443). A smoke alarm, not
+// a reachability proof.
+
+/**
+ * `tailscale debug netmap` → is this node's inbound packet filter empty (deny-all)? Anything that
+ * is not a definite yes is a no, because a false "your ACLs are broken" is worse than silence.
+ */
+export function packetFilterDeniesAll(netmapJson: string): boolean {
+  try {
+    const filter = (JSON.parse(netmapJson) as { PacketFilter?: unknown }).PacketFilter;
+    return Array.isArray(filter) && filter.length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * {@link packetFilterDeniesAll} over a live netmap. Best-effort by construction: `debug netmap` is
+ * an UNDOCUMENTED surface with no stability guarantee, so no CLI, a non-zero exit, unparseable JSON
+ * and a missing key all read as "can't tell" — false.
+ *
+ * Bounded through `timeout(1)` where it exists, because a diagnostic must never hold its caller
+ * hostage: a wedged tailscaled (daemon alive, socket accepting, LocalAPI not answering) would
+ * otherwise block indefinitely. Stock macOS ships no `timeout`, so there it stays unbounded rather
+ * than gaining a dependency for a nice-to-have (scripts/collie-ctl.sh:235-251).
+ */
+export function tailnetInboundBlocked(exec: Exec): boolean {
+  const tailscale = exec.which("tailscale");
+  if (tailscale === null) return false;
+  const bounded = exec.which("timeout");
+  const r =
+    bounded === null
+      ? exec.capture("tailscale", ["debug", "netmap"])
+      : exec.capture("timeout", ["3", tailscale, "debug", "netmap"]);
+  if (!r.found || r.code !== 0) return false;
+  return packetFilterDeniesAll(r.stdout);
+}
