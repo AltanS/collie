@@ -7,10 +7,15 @@ import {
   acceptEnrollment,
   adoptLead,
   adoptSecret,
+  approvePromotion,
+  cancelPromotion,
   commitPackChange,
   demoteSelf,
+  HANDOVER_TTL_MS,
   identityMinter,
+  isDemotionRefused,
   isLeading,
+  liveHandover,
   parseRoster,
   promoteSelf,
   rosterEntryOf,
@@ -521,11 +526,21 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
     expect(adoptLead(peerStore(), { ...claim, memberId: "laptop" }, T0)).toBeNull();
   });
 
-  test("the old lead steps down and hands over every enrolled peer except the new lead", () => {
-    const store = leadStore({
+  /** The claimant as the lead pins it — what the router hands `demoteSelf` as `from`. */
+  const pinnedNas = { memberId: "nas", fingerprint: fp("nas") };
+  /** A lead's store with a live approval armed on it. */
+  const armed = (store: TrustStoreData, memberId = "nas", at = T0): TrustStoreData => ({
+    ...store,
+    pendingHandover: { memberId, createdAt: at, expiresAt: at + HANDOVER_TTL_MS },
+  });
+  const leadWithPeers = (): TrustStoreData =>
+    leadStore({
       peers: [member({ memberId: "laptop" }), member({ memberId: "nas" }), member({ memberId: "old", status: "unenrolled" })],
     });
-    const change = demoteSelf(store, claim, T0 + 1)!;
+
+  test("the old lead steps down and hands over every enrolled peer except the new lead", () => {
+    const change = demoteSelf(armed(leadWithPeers()), claim, pinnedNas, T0 + 1);
+    if (change === null || isDemotionRefused(change)) throw new Error("expected a demotion");
     expect(change.result.roster.map((r) => r.memberId)).toEqual(["laptop"]);
     expect(change.next.lead).toMatchObject({ memberId: "nas", role: "lead" });
     expect(change.next.peers).toEqual([]);
@@ -533,9 +548,52 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
     expect(JSON.stringify(change.result.roster)).not.toContain(PACK.secret);
   });
 
-  test("a peer asked to demote refuses — it has no roster to hand over", () => {
-    expect(demoteSelf(peerStore(), claim, T0)).toBeNull();
-    expect(demoteSelf(leadStore(), claim, T0)).toBeNull();
+  test("the approval is SPENT in the same transition, and the audit line names it", () => {
+    const change = demoteSelf(armed(leadWithPeers()), claim, pinnedNas, T0 + 1);
+    if (change === null || isDemotionRefused(change)) throw new Error("expected a demotion");
+    // One `next`: the role flip and the consumption land in one write, or neither does.
+    expect(change.next.pendingHandover).toBeNull();
+    expect(liveHandover(change.next, T0 + 1)).toBeNull();
+    expect(change.audit.action).toBe("pack.demote");
+    expect(change.audit.detail).toMatchObject({ lead: "nas", approvedAt: new Date(T0).toISOString() });
+  });
+
+  test("no approval at all is a REFUSAL, not a bare `null` — and writes nothing", () => {
+    const refused = demoteSelf(leadWithPeers(), claim, pinnedNas, T0);
+    expect(isDemotionRefused(refused)).toBe(true);
+    expect(refused).toEqual({ refused: "not-approved", clause: "no-approval" });
+  });
+
+  test("an approval naming a DIFFERENT member does not consent to this one", () => {
+    const refused = demoteSelf(armed(leadWithPeers(), "laptop"), claim, pinnedNas, T0);
+    expect(refused).toEqual({ refused: "not-approved", clause: "other-member" });
+  });
+
+  test("an EXPIRED approval reads as absent — the window is a read, not a sweep", () => {
+    const store = armed(leadWithPeers());
+    expect(liveHandover(store, T0 + HANDOVER_TTL_MS)).toBeNull();
+    expect(demoteSelf(store, claim, pinnedNas, T0 + HANDOVER_TTL_MS)).toEqual({
+      refused: "not-approved",
+      clause: "no-approval",
+    });
+  });
+
+  test("consent names the CERTIFICATE, not just the id — a fingerprint mismatch is refused", () => {
+    // The approved member claiming the crown under a key the lead has not pinned. Without this
+    // clause the old lead would pin whatever certificate the claim carried, including one whose key
+    // the claimant does not hold.
+    const impostor = { ...claim, fingerprint: fp("laptop"), certPem: material("laptop").certPem };
+    expect(demoteSelf(armed(leadWithPeers()), impostor, pinnedNas, T0)).toEqual({
+      refused: "not-approved",
+      clause: "fingerprint",
+    });
+  });
+
+  test("a peer asked to demote refuses with `null` — it has no roster to hand over", () => {
+    // `null` keeps meaning "not leading / a self-claim", which is the 400 the router already emits.
+    // It must NOT become the 403: that one says "admitted but not permitted", which a peer is not.
+    expect(demoteSelf(armed(peerStore()), claim, pinnedNas, T0)).toBeNull();
+    expect(demoteSelf(armed(leadStore()), claim, pinnedNas, T0)).toBeNull();
   });
 
   test("promoteSelf takes the roster it is GIVEN, so --force is the same code with an empty list", () => {
@@ -565,6 +623,54 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
       T0,
     )!;
     expect(change.next.peers).toEqual([]);
+  });
+});
+
+describe("the handover approval (§14.1) — consent minted on the lead", () => {
+  const roster = () => leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "old", status: "unenrolled" })] });
+
+  test("a lead arms a ten-minute, single-use consent naming one member", () => {
+    const change = approvePromotion(roster(), "nas", T0)!;
+    expect(change.result).toEqual({ memberId: "nas", createdAt: T0, expiresAt: T0 + HANDOVER_TTL_MS });
+    expect(change.next.pendingHandover).toEqual(change.result);
+    expect(change.audit.action).toBe("pack.handover.approve");
+    // The window is the invite's, for the invite's reason (§14.1).
+    expect(HANDOVER_TTL_MS).toBe(10 * 60 * 1000);
+  });
+
+  test("minting REPLACES any prior — a store is not a queue", () => {
+    const first = approvePromotion(roster(), "nas", T0)!;
+    const second = approvePromotion(first.next, "nas", T0 + 5)!;
+    expect(second.next.pendingHandover).toEqual({ memberId: "nas", createdAt: T0 + 5, expiresAt: T0 + 5 + HANDOVER_TTL_MS });
+  });
+
+  test("it refuses a member id this lead does not pin, and an `unenrolled` tombstone", () => {
+    expect(approvePromotion(roster(), "ghost", T0)).toBeNull();
+    expect(approvePromotion(roster(), "old", T0)).toBeNull();
+  });
+
+  test("only a LEAD may approve — consent is the machine being taken from", () => {
+    expect(approvePromotion(peerStore(), "desk", T0)).toBeNull();
+    expect(approvePromotion(leadStore(), "nas", T0)).toBeNull();
+  });
+
+  test("cancelling clears a live approval; with nothing armed it writes nothing", () => {
+    const armed = approvePromotion(roster(), "nas", T0)!.next;
+    const cancelled = cancelPromotion(armed, T0 + 1)!;
+    expect(cancelled.next.pendingHandover).toBeNull();
+    expect(cancelled.result.memberId).toBe("nas");
+    expect(cancelled.audit.action).toBe("pack.handover.cancel");
+    expect(cancelPromotion(roster(), T0)).toBeNull();
+    // An expired approval is already absent, so cancelling one is not a state change.
+    expect(cancelPromotion(armed, T0 + HANDOVER_TTL_MS)).toBeNull();
+  });
+
+  test("`liveHandover` reads absent, null and expired all as no consent — fail closed", () => {
+    expect(liveHandover(roster(), T0)).toBeNull();
+    expect(liveHandover({ ...roster(), pendingHandover: null }, T0)).toBeNull();
+    const armed = approvePromotion(roster(), "nas", T0)!.next;
+    expect(liveHandover(armed, T0 + HANDOVER_TTL_MS - 1)).not.toBeNull();
+    expect(liveHandover(armed, T0 + HANDOVER_TTL_MS)).toBeNull();
   });
 });
 

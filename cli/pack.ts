@@ -4,10 +4,13 @@ import { join } from "node:path";
 import type { AuditLog } from "../bridge/audit.ts";
 import {
   acceptEnrollment,
+  approvePromotion,
+  cancelPromotion,
   commitPackChange,
   dropMembersBehind,
   isLeading,
   leavePack,
+  liveHandover,
   markSecretDelivered,
   mintInvite,
   parseEnrollResponse,
@@ -155,7 +158,10 @@ const linkOf = (member: TrustedMember): PackLink => ({
 /** One line naming why a member did not answer. Never contains a secret — nothing here holds one. */
 function failureLine(outcome: PeerOutcome<unknown>): string {
   if (outcome.ok) return "ok";
-  return outcome.state === "incompatible" ? `incompatible — ${outcome.reason}` : `unreachable — ${outcome.reason}`;
+  if (outcome.state === "incompatible") return `incompatible — ${outcome.reason}`;
+  // A refusal is an ANSWER, not a failure to reach — the far side is there and said no (§14.3).
+  if (outcome.state === "refused") return `refused — ${outcome.reason}`;
+  return `unreachable — ${outcome.reason}`;
 }
 
 /**
@@ -639,6 +645,14 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   deps.io.out(`bind   ${bindShown}${bindNote}`);
   deps.io.out(`secret generation ${data.pack.secretGeneration}, rotated ${new Date(data.pack.rotatedAt).toISOString()}`);
   if (conflict !== null) deps.io.out(`⚠ ${conflict}`);
+  // A live handover approval is state an operator must be able to see they left armed (§14.1) — in
+  // the same spirit as §8.4's per-member secret column. Expired reads as absent, and a peer shows
+  // nothing because no approval can exist there: it is consent to demote *this* machine.
+  const approval = data.lead === null ? liveHandover(data, deps.now()) : null;
+  if (approval !== null) {
+    const minutes = Math.max(1, Math.ceil((approval.expiresAt - deps.now()) / 60_000));
+    deps.io.out(`handover approved: ${approval.memberId} — expires in ${minutes}m`);
+  }
   reportDrift(deps, data);
 
   const members = data.lead === null ? data.peers : [data.lead, ...data.peers];
@@ -856,6 +870,83 @@ export async function cmdPackRemove(deps: PackDeps, args: readonly string[]): Pr
   return EXIT.OK;
 }
 
+// ── pack approve-promote (on the lead) ───────────────────────────────────────
+
+/**
+ * `collie pack approve-promote <member-id>` — the operator's consent, on the machine being taken
+ * from, for ONE named member to take the crown (§14.1, ADR 0014).
+ *
+ * Promotion is a **confirm on the receiver**, not a command from the claimant: a §8.6 signature
+ * proves which member is speaking, never that an operator willed it. So the crown moves in two steps
+ * on two machines, and this is the first. Touching both machines is the design — consent run here is
+ * what proves the operator controls the machine that is about to lose its terminals, its roster and
+ * its front door.
+ *
+ * **It restarts the bridge, and that is load-bearing rather than incidental.** The trust store is
+ * read at most once per process, so an approval this verb writes to disk would be invisible to the
+ * already-running bridge and the promotion would refuse forever. The restart happens at approve-time,
+ * before the operator walks to the peer, so the `promote` itself meets a process that already holds
+ * the consent. Same for `--cancel`: the bridge must *forget* it, which is the same mechanism.
+ */
+export async function cmdPackApprovePromote(deps: PackDeps, args: readonly string[]): Promise<number> {
+  // `cancel` is a BARE flag. Anything else and `--cancel` would swallow the following token as its
+  // value — which, on a verb whose one argument is a member id, silently approves nobody.
+  const { positional, bare } = parsePackArgs(args, ["force", "cancel"]);
+  const cancelling = bare.has("cancel");
+  const data = await deps.store.load();
+  if (data === null || data.pack === null) {
+    deps.io.err("error: this collie is not in a pack — there is no handover to approve.");
+    return EXIT.STATE;
+  }
+  if (data.lead !== null) {
+    deps.io.err(`error: this collie is a peer of "${data.lead.memberId}" — a handover is approved on the lead,`);
+    deps.io.err("       which is the machine that would be demoted by it.");
+    return EXIT.STATE;
+  }
+
+  if (cancelling) {
+    const cancelled = await commitPackChange(deps.store, deps.audit, (current) =>
+      current === null ? null : cancelPromotion(current, deps.now()),
+    );
+    if (cancelled === null) {
+      // Not an error: the operator asked for "no live approval" and that is the state. An expired one
+      // reads as absent here for the same reason it does on the demotion path.
+      deps.io.out("nothing was armed — this lead has no live handover approval to cancel.");
+      return EXIT.OK;
+    }
+    deps.io.out(`✓ cancelled the handover approval for "${cancelled.memberId}" — nobody may take over now.`);
+    deps.io.out("  Nothing was sent anywhere: the approval was local consent on this machine.");
+    await applyLocally(deps, "the running bridge forgets the approval");
+    return EXIT.OK;
+  }
+
+  const memberId = positional[0];
+  if (memberId === undefined) {
+    deps.io.err("usage: collie pack approve-promote <member-id>   # consent, on the lead, for 10 minutes");
+    deps.io.err("       collie pack approve-promote --cancel      # clear a live approval");
+    return EXIT.USAGE;
+  }
+
+  const approved = await commitPackChange(deps.store, deps.audit, (current) =>
+    current === null ? null : approvePromotion(current, memberId, deps.now()),
+  );
+  if (approved === null) {
+    // An approval naming nobody this lead pins is a typo, not a consent (§14.1).
+    deps.io.err(`error: no enrolled member "${memberId}" in this roster — \`collie pack status\` lists them.`);
+    return EXIT.STATE;
+  }
+
+  deps.io.out(`✓ approved "${approved.memberId}" to take over as lead — single-use, ten minutes.`);
+  deps.io.out(`  expires ${new Date(approved.expiresAt).toISOString()}`);
+  deps.io.out(`  Now run \`collie promote\` on "${approved.memberId}" within 10 minutes. Until it does, nothing`);
+  deps.io.out("  has changed here: this is consent, not a handover.");
+  deps.io.out("  Nothing was sent to it and no secret is involved — the claim is already signed against a");
+  deps.io.out(`  pinned certificate, so consent only has to name who may take over.`);
+  deps.io.out("  Changed your mind? `collie pack approve-promote --cancel`.");
+  await applyLocally(deps, "the running bridge holds the approval");
+  return EXIT.OK;
+}
+
 // ── promote (on the peer becoming lead) ──────────────────────────────────────
 
 /**
@@ -900,7 +991,17 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
     body: JSON.stringify({ lead: claim }),
   });
 
+  // THE LEAD SAID NO — §14.3, and it is not a reachability problem. Checked before `--force`,
+  // because a refusal is proof the old lead is *there*: forcing past a reachable lead is what §14
+  // refuses outright, and `--force` is only ever for a machine the operator knows is gone. The
+  // lead's own sentence is printed verbatim (it names the verb to run and the window), and the
+  // `--force` suggestion is deliberately absent — aiming an operator at the destructive remedy for a
+  // missing consent is the exact failure this outcome exists to end.
   let roster: RosterEntry[] = [];
+  if (!handover.ok && handover.state === "refused") {
+    deps.io.err(`error: ${handover.reason}`);
+    return EXIT.REFUSED;
+  }
   if (handover.ok) {
     const body = handover.value as Record<string, unknown> | null;
     roster = parseRoster(body?.roster) ?? [];
@@ -1026,7 +1127,7 @@ export async function cmdReconnect(deps: PackDeps, args: readonly string[]): Pro
 // ── `collie pack <sub>` dispatch ─────────────────────────────────────────────
 
 /** The `pack` sub-verbs, in the order the help prints them. */
-export const PACK_SUBCOMMANDS = ["invite", "status", "rotate", "remove"] as const;
+export const PACK_SUBCOMMANDS = ["invite", "status", "rotate", "remove", "approve-promote"] as const;
 
 export function packUsage(): string {
   return `usage: collie pack {${PACK_SUBCOMMANDS.join("|")}}`;
@@ -1043,6 +1144,8 @@ export async function cmdPack(deps: PackDeps, args: readonly string[]): Promise<
       return cmdPackRotate(deps);
     case "remove":
       return cmdPackRemove(deps, rest);
+    case "approve-promote":
+      return cmdPackApprovePromote(deps, rest);
     default:
       if (sub !== undefined && sub !== "" && sub !== "help") {
         deps.io.err(`error: unknown pack subcommand \`${sub}\``);
@@ -1052,6 +1155,8 @@ export async function cmdPack(deps: PackDeps, args: readonly string[]): Promise<
       deps.io.err("  status   mode, members, reachability, secret pickup and why a link is refused");
       deps.io.err("  rotate   reissue the pack secret and hand it to every reachable peer");
       deps.io.err("  remove   unpin and forget a member (on the lead)");
+      deps.io.err("  approve-promote  consent, on the lead, for one member to take over (10 minutes,");
+      deps.io.err("                   single-use); `--cancel` clears it");
       return EXIT.USAGE;
   }
 }

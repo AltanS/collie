@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import type { SnapshotResponse } from "../types.ts";
-import { mintInvite, type EnrollResponse } from "./enrollment.ts";
+import { HANDOVER_TTL_MS, mintInvite, type EnrollResponse } from "./enrollment.ts";
 import { counterRandom, fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
 import {
   createPackRouter,
@@ -679,10 +679,19 @@ describe("POST /pack/v1/secret — the peer side of rotation (§8.4)", () => {
 describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
   const claim = { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" };
 
+  /** A lead's store with the operator's consent for `memberId` armed on it (§14.1). */
+  const approving = (memberId: string, over: Partial<TrustStoreData> = {}): TrustStoreData =>
+    leadStore({
+      peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })],
+      pendingHandover: { memberId, createdAt: T0, expiresAt: T0 + HANDOVER_TTL_MS },
+      ...over,
+    });
+
   test("the old lead demotes itself and answers with its roster", async () => {
     // A NEW lead ("nas") claiming the crown travels peer → lead — the old lead ("desk") cannot pin a
-    // client certificate, so "nas" proves itself with a §8.6 signature instead.
-    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    // client certificate, so "nas" proves itself with a §8.6 signature instead. And a signature is
+    // not consent (§14): the operator armed an approval on this machine first.
+    const h = harness(approving("nas"));
     const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
     const res = (await call(handler, PACK_LEAD_PATH, signedPost("nas", PACK_LEAD_PATH, { lead: claim }, T0)))!;
     expect(res.status).toBe(200);
@@ -694,6 +703,63 @@ describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
     expect(h.data().peers).toEqual([]);
     // A role change, not a re-enrollment: the pack identity and secret are untouched.
     expect(h.data().pack).toEqual(PACK);
+    // The consent was spent in the same write as the role flip — one approval cannot demote twice.
+    expect(h.data().pendingHandover).toBeNull();
+  });
+
+  test("an UNAPPROVED claim is refused 403, and the store is not written at all", async () => {
+    // The F2 case, closed: a §8.6-signed self-claim from an enrolled member, with no operator at the
+    // keyboard of the machine being taken from.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    // One write happens before the handler runs, and only one: §8.6's replay floor for this signed
+    // membership call. Gate 1 must not compound it — a refusal adds no second write.
+    const before = h.writes();
+    const res = (await call(handler, PACK_LEAD_PATH, signedPost("nas", PACK_LEAD_PATH, { lead: claim }, T0)))!;
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error:
+        'this lead has not approved "nas" to take over — run `collie pack approve-promote nas` here, then ' +
+        "re-run `collie promote` on that machine within 10 minutes",
+      code: "handover_not_approved",
+    });
+    expect(h.writes()).toBe(before + 1);
+    // Nothing moved: still the lead, still holding its roster.
+    expect(h.data().lead).toBeNull();
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas", "laptop"]);
+    expect(h.lines.map((l) => l.action)).toContain("pack.lead.refused");
+  });
+
+  test("the refusal is BYTE-IDENTICAL whether nobody or somebody else is approved", async () => {
+    // The claimant is never told who *is* approved — that is the operator's business on the lead.
+    const bodies: string[] = [];
+    for (const store of [
+      leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }),
+      approving("laptop"),
+      // …and an approval for the right member that has aged out of its window.
+      approving("nas", { pendingHandover: { memberId: "nas", createdAt: T0 - HANDOVER_TTL_MS, expiresAt: T0 } }),
+    ]) {
+      const h = harness(store);
+      const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+      const res = (await call(handler, PACK_LEAD_PATH, signedPost("nas", PACK_LEAD_PATH, { lead: claim }, T0)))!;
+      expect(res.status).toBe(403);
+      bodies.push(await res.text());
+    }
+    expect(new Set(bodies).size).toBe(1);
+  });
+
+  test("consent names the certificate: an approved member claiming under another key is refused", async () => {
+    // "nas" is approved and signs as itself, but claims a fingerprint the lead has not pinned for it.
+    // Without this clause the old lead would pin whatever certificate the claim carried.
+    const h = harness(approving("nas"));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const impostor = { ...claim, fingerprint: fp("laptop"), certPem: material("laptop").certPem };
+    const res = (await call(handler, PACK_LEAD_PATH, signedPost("nas", PACK_LEAD_PATH, { lead: impostor }, T0)))!;
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe("handover_not_approved");
+    expect(h.data().lead).toBeNull();
+    // The consent is NOT spent by a refusal — the operator's ten minutes are still theirs.
+    expect(h.data().pendingHandover).toMatchObject({ memberId: "nas" });
   });
 
   test("a peer re-pins the new lead and answers with an empty roster — it has no peers", async () => {
@@ -815,7 +881,13 @@ describe("onMembershipChange", () => {
   });
 
   test("a demotion fires it — the process is still a lead in every way but the store", async () => {
-    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const h = harness(
+      leadStore({
+        peers: [member({ memberId: "nas" })],
+        // The operator's consent, armed here first — a demotion has no other way to happen (§14).
+        pendingHandover: { memberId: "nas", createdAt: T0, expiresAt: T0 + HANDOVER_TTL_MS },
+      }),
+    );
     let fired = 0;
     const handler = createPackRouter({
       store: h.store,

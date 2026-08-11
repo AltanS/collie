@@ -13,6 +13,7 @@ import {
 import {
   TRUST_STORE_VERSION,
   type PackIdentity,
+  type PendingHandover,
   type PendingInvite,
   type SelfIdentity,
   type TrustStore,
@@ -33,6 +34,13 @@ import {
 
 /** Enrollment tokens live 10 minutes (PACK_PROTOCOL.md §8.2). Long enough to paste, short enough. */
 export const INVITE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * A handover approval lives 10 minutes (§14.1) — the invite's window, for the invite's reason: long
+ * enough to walk to the other machine, short enough that an armed approval is not a standing
+ * capability. Its own constant because the two windows are the same *number*, not the same *fact*.
+ */
+export const HANDOVER_TTL_MS = 10 * 60 * 1000;
 
 /** The protocol version this build speaks. Exact-1 window (§7) — there is no range until there is a v2. */
 export const PACK_PROTOCOL_VERSION = 1;
@@ -631,6 +639,90 @@ export function adoptLead(data: TrustStoreData, lead: RosterEntry, now: number):
   };
 }
 
+// ── The handover approval (on the lead, §14.1) ───────────────────────────────
+//
+// A promotion is a CONFIRM ON THE RECEIVER, not a command from the claimant (ADR 0014). A §8.6
+// signature proves which member is speaking; it cannot prove that an operator willed it. These three
+// functions are the missing half: consent minted on the machine that is about to lose its terminals,
+// its roster and its front door, and spent in the same committed transition as the demotion.
+
+/**
+ * Read the live approval, or `null`.
+ *
+ * **Expiry is a read, not a sweep** — exactly how an invite is treated. An approval past its window
+ * is absent to every caller from that instant, whether or not anything has written since, so the
+ * fail-closed answer never waits on a write to become true.
+ */
+export function liveHandover(data: TrustStoreData, now: number): PendingHandover | null {
+  const pending = data.pendingHandover;
+  if (pending === null || pending === undefined) return null;
+  return pending.expiresAt > now ? pending : null;
+}
+
+/**
+ * `collie pack approve-promote <member>` — arm the ten-minute, single-use consent (§14.1).
+ *
+ * Refuses (`null`) unless this collie leads and `memberId` is an **enrolled** member of its own
+ * roster: an approval naming nobody this lead pins is a typo, not a consent.
+ *
+ * **At most one live at a time; minting replaces any prior.** A store is not a queue, and two live
+ * approvals would mean the operator had armed a race they cannot observe.
+ */
+export function approvePromotion(
+  data: TrustStoreData,
+  memberId: string,
+  now: number,
+): PackChange<PendingHandover> | null {
+  if (data.pack === null || !isLeading(data)) return null;
+  if (!data.peers.some((p) => p.memberId === memberId && p.status === "enrolled")) return null;
+  const approval: PendingHandover = { memberId, createdAt: now, expiresAt: now + HANDOVER_TTL_MS };
+  return {
+    next: { ...data, pendingHandover: approval },
+    result: approval,
+    audit: {
+      action: "pack.handover.approve",
+      detail: { member: memberId, expiresAt: new Date(approval.expiresAt).toISOString() },
+    },
+  };
+}
+
+/**
+ * `collie pack approve-promote --cancel` — the operator armed it and changed their mind (§14.1).
+ *
+ * `null` — nothing to write — when nothing is armed, which includes an approval that has already
+ * expired: expired reads as absent everywhere, so cancelling one is not a state change to record.
+ */
+export function cancelPromotion(data: TrustStoreData, now: number): PackChange<PendingHandover> | null {
+  const approval = liveHandover(data, now);
+  if (approval === null) return null;
+  return {
+    next: { ...data, pendingHandover: null },
+    result: approval,
+    audit: { action: "pack.handover.cancel", detail: { member: approval.memberId } },
+  };
+}
+
+/**
+ * Why a demotion was refused, when the refusal is not simply "this collie does not lead".
+ *
+ * A **discriminated** refusal rather than `demoteSelf`'s bare `null`, because the two have different
+ * answers on the wire (§14.2): `null` is "not leading / a self-claim" and keeps its existing `400`,
+ * while this one is *admitted but not permitted* and is §14.3's `403`. `clause` never crosses the
+ * wire — the response is byte-identical for every clause, so a claimant is never told who **is**
+ * approved — but it is exactly what the demoted machine's own audit line should say.
+ */
+export interface DemotionRefused {
+  readonly refused: "not-approved";
+  readonly clause: "no-approval" | "other-member" | "fingerprint";
+}
+
+/** Narrow {@link demoteSelf}'s return: `true` when it refused rather than changed or declined. */
+export function isDemotionRefused(
+  outcome: PackChange<{ roster: RosterEntry[] }> | DemotionRefused | null,
+): outcome is DemotionRefused {
+  return outcome !== null && "refused" in outcome;
+}
+
 /**
  * Old lead side: step down for `newLead` and hand back the roster (§14).
  *
@@ -641,14 +733,35 @@ export function adoptLead(data: TrustStoreData, lead: RosterEntry, now: number):
  *
  * Refuses (`null`) unless this collie really is the lead. A peer that is asked to demote has nothing
  * to hand over, and answering as though it did would let one peer's promotion rewrite another's.
+ *
+ * **And it demotes only against a live operator approval** (§14, ADR 0014). Three clauses, all of
+ * them {@link DemotionRefused}:
+ *   • an approval must be live here — a signature says *who* is speaking, never that an operator
+ *     agreed, and without this clause one compromised peer takes the pack (§8.5's F2);
+ *   • it must name **this** claimant — an approval for someone else is not consent for this one;
+ *   • the claim's fingerprint must equal the **pinned** member's (`from`). `parseRosterEntry` already
+ *     enforces `fingerprint === sha256(certPem)`, so matching the fingerprint binds the certificate:
+ *     "consent names who may take over" is only true if the key that takes over is the one already
+ *     pinned. Without it an approved member could pin any key at all under their id.
+ *
+ * **The approval is consumed HERE, in the same transition as the role flip** — never before it, so a
+ * demotion that fails to persist does not burn the consent, and never after, so one approval cannot
+ * demote twice. That is also why there is no pre-read/expiry race: the read and the write are one
+ * serialised `TrustStore.update`.
  */
 export function demoteSelf(
   data: TrustStoreData,
   newLead: RosterEntry,
+  /** The **admitted, pinned** member the claim arrived from — the router's `verdict.member`. */
+  from: Pick<TrustedMember, "memberId" | "fingerprint">,
   now: number,
-): PackChange<{ roster: RosterEntry[] }> | null {
+): PackChange<{ roster: RosterEntry[] }> | DemotionRefused | null {
   if (data.pack === null || !isLeading(data)) return null;
   if (newLead.memberId === data.self.memberId) return null;
+  const approval = liveHandover(data, now);
+  if (approval === null) return { refused: "not-approved", clause: "no-approval" };
+  if (approval.memberId !== newLead.memberId) return { refused: "not-approved", clause: "other-member" };
+  if (newLead.fingerprint !== from.fingerprint) return { refused: "not-approved", clause: "fingerprint" };
   const roster = data.peers
     .filter((p) => p.status === "enrolled" && p.memberId !== newLead.memberId)
     .map(rosterEntryOf);
@@ -657,9 +770,20 @@ export function demoteSelf(
       ...data,
       lead: memberFrom(newLead, "lead", data.pack.secretGeneration, now),
       peers: [],
+      // Spent. The consent and the role flip land in one write, or neither does.
+      pendingHandover: null,
     },
     result: { roster },
-    audit: { action: "pack.demote", detail: { lead: newLead.memberId, handed: roster.map((r) => r.memberId) } },
+    audit: {
+      action: "pack.demote",
+      detail: {
+        lead: newLead.memberId,
+        handed: roster.map((r) => r.memberId),
+        // The consent this demotion spent — "who agreed to this, and when" is answerable from the
+        // demoted machine's own log rather than inferred from a leadership change (ADR 0014).
+        approvedAt: new Date(approval.createdAt).toISOString(),
+      },
+    },
   };
 }
 
