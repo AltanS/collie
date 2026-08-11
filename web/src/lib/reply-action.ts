@@ -198,6 +198,13 @@ export interface GuardedReplyArgs {
    * that has since put a dialog up, and the sweep then fires into that dialog — the exact
    * keystrokes-into-a-modal failure #34 is about, just upstream of where #34 was fixed.
    *
+   * For an adapter that lifts NO interactive kind that fail-fast is not merely stale, it is inert:
+   * `dialogPresent` is `buildBlocks(...).some(b => b.kind !== "raw")`, so an adapter whose
+   * `buildBlocks` returns one `raw` block by construction can never make it true. Verified live
+   * against an omp pane with a full-screen picker up: `dialogPresent === false`. There is no window
+   * to widen or narrow there — `composerReady` is the ONLY gate on such a pane, which is why this
+   * hook keys on it rather than on the caller having already checked something.
+   *
    * The name is the contract: this runs ONLY on the branch where `composerReady` answered true about
    * a pane read moments ago. `force`, a read that threw, an adapter with no `composerReady`, no
    * adapter at all — none of them reaches it, and neither will whatever path is added next, because
