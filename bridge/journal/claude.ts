@@ -26,7 +26,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { containedRealpath, exists, head, loadTail, statFile } from "./files.ts";
+import { containedRealpath, exists, head, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -263,11 +263,23 @@ export function conversationRoot(text: string): string | null {
  * reported cwd drifts as the agent works — a subdirectory cwd would derive a directory that doesn't
  * exist. Session uuids are globally unique, so scanning the project dirs for `<uuid>.jsonl` is both
  * correct and cheap (measured: ~14 ms across 306 logs, and the hit is then cached).
+ *
+ * MORE THAN ONE ROOT is normal here: `CLAUDE_CONFIG_DIR` gives each Claude profile its own projects
+ * tree, and a herd can hold panes from several (issue #92). The roots are searched IN ORDER and the
+ * first one holding the uuid wins — and that is not a heuristic, it is the same global uniqueness the
+ * scan already relies on: two roots cannot disagree about who a uuid belongs to. No profile detection
+ * exists or is needed. The root that produced a hit is remembered with it, because everything after
+ * resolution (continuation-following, and the containment check that guards it) must stay inside THAT
+ * root rather than whichever root happened to be configured first.
  */
 export class ClaudeTranscriptSource implements TranscriptSource {
-  private readonly pathCache = new Map<string, string>();
+  private readonly pathCache = new Map<string, { path: string; root: string }>();
 
-  constructor(private readonly root: string) {}
+  private readonly roots: string[];
+
+  constructor(roots: string | readonly string[]) {
+    this.roots = rootList(roots);
+  }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
     // Claude always reports an id. A path-kind ref for this agent is not something we've ever seen,
@@ -282,24 +294,32 @@ export class ClaudeTranscriptSource implements TranscriptSource {
       // which never changes. Continuation-following must still run on every call, because the
       // conversation rotates into a new file WHILE the bridge is up: caching its result would pin the
       // answer to whatever was true at the first request and go stale minutes later.
-      if (await exists(cached)) return this.followContinuation(cached);
+      if (await exists(cached.path)) return this.followContinuation(cached.path, cached.root);
       this.pathCache.delete(sessionId);
     }
 
-    let dirs: string[];
-    try {
-      dirs = await readdir(this.root);
-    } catch {
-      return null; // no ~/.claude/projects at all — feature simply has nothing to serve
-    }
     const file = `${sessionId}.jsonl`;
-    for (const dir of dirs) {
-      const candidate = join(this.root, dir, file);
-      if (!(await exists(candidate))) continue;
-      const real = await containedRealpath(candidate, this.root);
-      if (real === null) return null;
-      this.pathCache.set(sessionId, real);
-      return this.followContinuation(real);
+    for (const root of this.roots) {
+      let dirs: string[];
+      try {
+        dirs = await readdir(root);
+      } catch {
+        continue; // this projects dir doesn't exist — a profile that isn't on this machine
+      }
+      for (const dir of dirs) {
+        const candidate = join(root, dir, file);
+        if (!(await exists(candidate))) continue;
+        const real = await containedRealpath(candidate, root);
+        if (real === null) {
+          // A log by this name exists here but points out of this root, so it is not this root's to
+          // serve — and we do not go on to accept it under a sibling root either (files.ts header).
+          // Abandoning the root rather than the whole search is the only multi-root difference: a
+          // planted symlink in one profile can't blank the history of the others.
+          break;
+        }
+        this.pathCache.set(sessionId, { path: real, root });
+        return this.followContinuation(real, root);
+      }
     }
     return null;
   }
@@ -321,7 +341,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    * recently than the pane's own session would win. That needs a per-pane session id Herdr doesn't
    * expose; showing the freshest branch of the right conversation beats showing a stale one.
    */
-  private async followContinuation(path: string): Promise<string> {
+  private async followContinuation(path: string, root: string): Promise<string> {
     const dir = dirname(path);
     let self: { root: string | null; size: number; mtimeMs: number };
     try {
@@ -350,7 +370,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
         // path `resolve` already validated, but a sibling INSIDE it can still be a symlink out of the
         // root — and anything that writes into the projects tree can plant one. Following it would
         // read a file the journal never owned, which is exactly what files.ts promises it can't.
-        const real = await containedRealpath(candidate, this.root);
+        const real = await containedRealpath(candidate, root);
         if (real === null) continue;
         if (conversationRoot(await head(real)) !== self.root) continue;
         best = { path: real, size: st.size, mtimeMs: st.mtimeMs };
@@ -366,11 +386,16 @@ export class ClaudeTranscriptSource implements TranscriptSource {
   load = loadTail;
 }
 
-/** Claude's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function claudeJournal(root: string): JournalAdapter {
+/**
+ * Claude's journal adapter. `agent` matches the Herdr snapshot's `agent` string.
+ *
+ * `roots` is one projects directory or several (one per `CLAUDE_CONFIG_DIR` profile), searched in
+ * order.
+ */
+export function claudeJournal(roots: string | readonly string[]): JournalAdapter {
   return {
     agent: "claude",
-    source: new ClaudeTranscriptSource(root),
+    source: new ClaudeTranscriptSource(roots),
     parse: (text) => parseClaudeTranscript(text),
   };
 }

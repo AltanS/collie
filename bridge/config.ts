@@ -43,6 +43,19 @@ function envList(name: string): string[] {
 }
 
 /**
+ * A journal root setting: a list of directories, or `fallback` when unset.
+ *
+ * Comma-separated, like every other list Collie reads ({@link envList}) — deliberately NOT `PATH`'s
+ * separator, which is `:` on Unix and `;` on Windows and would make the same setting mean different
+ * things on the two platforms this bridge supports. One path stays one path, so an existing value
+ * parses to exactly what it always meant.
+ */
+function envRoots(name: string, fallback: string): string[] {
+  const list = envList(name);
+  return list.length > 0 ? list : [fallback];
+}
+
+/**
  * Read a boolean env var. Empty/unset → `fallback`. `off`/`0`/`false`/`no` → false; `on`/`1`/`true`/
  * `yes` → true (case-insensitive); anything else falls back with a warning. Used for feature toggles
  * that default on, where a typo silently flipping the feature would be surprising.
@@ -115,9 +128,10 @@ export interface Config {
    */
   transcript: boolean;
   /**
-   * Where each harness keeps its session logs. Every read is confined to the matching root after
-   * symlink resolution, so these double as the security boundary for a feature that touches the
-   * filesystem — override only to relocate a non-default agent home, never from a request.
+   * Where each harness keeps its session logs — one directory or several, searched in order. Every
+   * read is confined to the root it was found under, after symlink resolution, so these double as the
+   * security boundary for a feature that touches the filesystem — override only to relocate (or add)
+   * a non-default agent home, never from a request.
    */
   journalRoots: JournalRoots;
   /** Key sequence sent to submit a reply after the text (agent-dependent; see HERDR_API.md). */
@@ -216,20 +230,26 @@ export function loadConfig(): Config {
     transcript: envBool("COLLIE_TRANSCRIPT", true),
     journalRoots: {
       // COLLIE_TRANSCRIPT_ROOT predates the per-harness split and meant Claude's root, so it keeps
-      // meaning exactly that — an existing deployment's env keeps working untouched.
-      claude: process.env.COLLIE_TRANSCRIPT_ROOT ?? join(homedir(), ".claude", "projects"),
+      // meaning exactly that — an existing deployment's env keeps working untouched. It takes SEVERAL
+      // roots (comma-separated) because `CLAUDE_CONFIG_DIR` gives each Claude profile its own
+      // projects tree, and a herd routinely mixes them (issue #92); one value is still one root.
+      claude: envRoots("COLLIE_TRANSCRIPT_ROOT", join(homedir(), ".claude", "projects")),
       // Each harness's own home var is honoured first, so relocating the agent relocates its journal
-      // without a second Collie setting to keep in sync.
-      codex:
-        process.env.COLLIE_CODEX_ROOT ??
+      // without a second Collie setting to keep in sync. The Collie override takes a list too — the
+      // multi-home case isn't Claude's alone, and one setting shouldn't behave differently per agent.
+      codex: envRoots(
+        "COLLIE_CODEX_ROOT",
         join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "sessions"),
-      pi:
-        process.env.COLLIE_PI_ROOT ??
+      ),
+      pi: envRoots(
+        "COLLIE_PI_ROOT",
         join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "sessions"),
+      ),
       // OpenCode keeps one SQLite database at the top of its XDG data dir, not per-session files.
-      opencode:
-        process.env.COLLIE_OPENCODE_ROOT ??
+      opencode: envRoots(
+        "COLLIE_OPENCODE_ROOT",
         join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "opencode"),
+      ),
     },
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",

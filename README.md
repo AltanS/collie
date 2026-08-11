@@ -23,6 +23,8 @@ ships none of its own.
 - **Send an image** from your camera roll
 - **Find in output** — search a pane, don't eyeball it
 - **Conversation history** the terminal can't scroll back to — read from the agent's own session log
+  (several agent homes? list them all in `COLLIE_TRANSCRIPT_ROOT`, comma-separated — see
+  [`.env.example`](./.env.example))
 - **Easily switch between Herdr sessions**
 
 - **In the works** — more than one machine under a single URL: one Collie leads, the others join it

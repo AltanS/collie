@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
-import { codexCursor, codexToolOutput, isCodexSessionId, parseCodexTranscript } from "./codex.ts";
+import {
+  codexCursor,
+  codexToolOutput,
+  CodexTranscriptSource,
+  isCodexSessionId,
+  parseCodexTranscript,
+} from "./codex.ts";
 
 // Row builders mirroring the verified on-disk shape (codex rollout logs, cli 0.32.0, 2026-07-29).
 // `{timestamp,type,payload}` are the only top-level keys — note the absence of any per-row id, which
@@ -214,5 +222,58 @@ describe("codexCursor", () => {
     codexCursor("filler", seen);
     // "a" is the third row here but the first anywhere else; its cursor must not encode that.
     expect(codexCursor("a", seen)).toBe(codexCursor("a", new Map()));
+  });
+});
+
+// The fs half. Codex's resolve is a targeted walk of date-partitioned directories, and it now walks
+// EACH configured sessions root in turn (a second CODEX_HOME is the same multi-home case Claude's
+// CLAUDE_CONFIG_DIR raised — issue #92). Real files, because containment runs on realpaths.
+describe("CodexTranscriptSource — several sessions roots", () => {
+  const A = "11111111-aaaa-bbbb-cccc-222222222222";
+  const B = "33333333-dddd-eeee-ffff-444444444444";
+
+  /**
+   * base/a/2026/08/11/rollout-…-<A>.jsonl   the first home's log
+   * base/b/2026/08/11/rollout-…-<B>.jsonl   the second home's log
+   * base/outside.jsonl                      a file neither root may reach
+   */
+  async function fixture() {
+    const created = `${tmpdir()}/collie-codex-roots-${Math.floor(performance.now() * 1000)}`;
+    await mkdir(created, { recursive: true });
+    const base = await realpath(created);
+    const a = `${base}/a`;
+    const b = `${base}/b`;
+    await mkdir(`${a}/2026/08/11`, { recursive: true });
+    await mkdir(`${b}/2026/08/11`, { recursive: true });
+    await Bun.write(`${a}/2026/08/11/rollout-2026-08-11T09-00-00-${A}.jsonl`, "{}\n");
+    await Bun.write(`${b}/2026/08/11/rollout-2026-08-11T10-00-00-${B}.jsonl`, "{}\n");
+    await Bun.write(`${base}/outside.jsonl`, "{}\n");
+    return { base, a, b };
+  }
+
+  test("a single root string behaves exactly as before", async () => {
+    const { base, a } = await fixture();
+    const src = new CodexTranscriptSource(a);
+    expect(await src.resolve({ kind: "id", value: A })).toEndWith(`${A}.jsonl`);
+    expect(await src.resolve({ kind: "id", value: B })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("finds a session under whichever root holds it", async () => {
+    const { base, a, b } = await fixture();
+    const src = new CodexTranscriptSource([a, b]);
+    expect(await src.resolve({ kind: "id", value: A })).toEndWith(`${A}.jsonl`);
+    expect(await src.resolve({ kind: "id", value: B })).toEndWith(`${B}.jsonl`);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a rollout symlinked out of its root is refused, and the next root still answers", async () => {
+    const { base, a, b } = await fixture();
+    await symlink(`${base}/outside.jsonl`, `${a}/2026/08/11/rollout-2026-08-11T11-00-00-${B}.jsonl`);
+    const src = new CodexTranscriptSource([a, b]);
+    expect(await src.resolve({ kind: "id", value: B })).toBe(
+      `${b}/2026/08/11/rollout-2026-08-11T10-00-00-${B}.jsonl`,
+    );
+    await rm(base, { recursive: true, force: true });
   });
 });
