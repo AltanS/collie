@@ -38,7 +38,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
-import { splitLines, type Block, type StyledLine } from "../blocks";
+import { lineText, splitLines, type Block, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
 import {
   DIALOG_CONTRACT,
@@ -74,6 +74,33 @@ function loadLines(name: string): StyledLine[] {
 // synthesise the trailing output that pushes a dialog off the buffer tail.
 function textLine(text: string): StyledLine {
   return { segments: [{ text, style: {}, muted: false }] };
+}
+
+// `DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts, plus the two steps of the matcher this
+// suite has to reproduce to check an adapter against it. Mirrored rather than imported: nothing in
+// web/ imports bridge code (wire types are mirrored the same way). Both sides work on ALREADY-parsed
+// text here, so the bridge's SGR strip has nothing left to do — what remains is its rstrip and its
+// "blank rows are not rows" rule, which is the counting the tail window is expressed in.
+const BRIDGE_PROMPT_TAIL_LINES = 6;
+
+function normalizeRegion(text: string): string[] {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""))
+    .filter((line) => line.length > 0);
+}
+
+/** Index in `fresh` of the LAST line of the LAST occurrence of `expected`, or -1. */
+function lastMatchEnd(fresh: string[], expected: string[]): number {
+  if (expected.length === 0) return -1;
+  let end = -1;
+  for (let start = 0; start <= fresh.length - expected.length; start++) {
+    if (expected.every((line, offset) => fresh[start + offset] === line)) {
+      end = start + expected.length - 1;
+    }
+  }
+  return end;
 }
 
 // A couple of lines of ordinary agent output to append below a dialog. They must be NON-blank (a
@@ -378,6 +405,33 @@ export function describeAdapterConformance(
             expect(region === null).toBe(!ready(lines));
             // A region the bridge cannot find on screen binds nothing at all.
             if (region !== null) expect(region.trim().length).toBeGreaterThan(0);
+          });
+        }
+
+        // The other half of "the bridge can actually use this": `verifyExpectedPrompt`
+        // (bridge/prompt-binding.ts) accepts a binding only when the match ENDS within the last
+        // DEFAULT_PROMPT_TAIL_LINES (6) NON-BLANK rows of the fresh read. A region an adapter names
+        // with more than that beneath it can never verify, so every destructive sweep on that screen
+        // 409s ("The input box changed while clearing it") with nothing actually wrong — fail-closed,
+        // but a permanent refusal the user cannot act on. omp shipped one row of margin here (its
+        // slash palette is painted BELOW the box); this leg is what stops the next adapter repeating
+        // it. An adapter that cannot fit the window must return null and take an unbound write.
+        for (const name of all) {
+          it(`${name}: a named region ends inside the bridge's ${BRIDGE_PROMPT_TAIL_LINES}-row tail window`, () => {
+            const lines = loadLines(name);
+            const region = prompt(lines);
+            if (region === null) return;
+            // Both sides normalized the way the bridge normalizes: trailing whitespace off, blank
+            // rows dropped entirely (bridge/prompt-binding.ts `normalizePromptRegion`).
+            const fresh = normalizeRegion(lines.map(lineText).join("\n"));
+            const expected = normalizeRegion(region);
+            const matchEnd = lastMatchEnd(fresh, expected);
+            expect(matchEnd, `${name}: the named region is not on its own screen`).toBeGreaterThan(-1);
+            expect(
+              fresh.length - 1 - matchEnd,
+              `${name}: ${fresh.length - 1 - matchEnd} non-blank rows sit below the named region — ` +
+                `the bridge can only bind within the last ${BRIDGE_PROMPT_TAIL_LINES}`,
+            ).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
           });
         }
       }
