@@ -27,14 +27,27 @@ import type { PeerState } from "./registry.ts";
 // pure/injectable enough for `bun test`).
 
 const LINK: PackLink = { memberId: "laptop", address: "laptop.example:8787" };
-const REACHABLE: PeerState = { memberId: "laptop", health: "reachable", lastSeenAt: 1_754_000_000_000, reason: null };
+const REACHABLE: PeerState = {
+  memberId: "laptop",
+  health: "reachable",
+  lastSeenAt: 1_754_000_000_000,
+  reason: null,
+  version: "1.0.0-alpha.12",
+};
 const DEAD: PeerState = {
   memberId: "laptop",
   health: "unreachable",
   lastSeenAt: 1_753_999_000_000,
   reason: "connection refused",
+  version: null,
 };
-const SKEWED: PeerState = { memberId: "laptop", health: "incompatible", lastSeenAt: null, reason: "peer speaks 2" };
+const SKEWED: PeerState = {
+  memberId: "laptop",
+  health: "incompatible",
+  lastSeenAt: null,
+  reason: "peer speaks 2",
+  version: null,
+};
 
 /** Records every dial, so "was this attempted?" and "was it retried?" are assertable facts. */
 function transportOf(answer: (init: RequestInit) => PeerOutcome<Response>) {

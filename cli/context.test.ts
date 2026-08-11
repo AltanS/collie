@@ -3,8 +3,13 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// The version resolver itself lives in `bridge/version.ts` (the bridge answers `hello` with it and
+// cannot import from `cli/`); `collieVersion*` are re-exported from here, so these cases exercise
+// one implementation either way.
+import { bareVersionFrom } from "../bridge/version.ts";
 import {
   collieVersion,
+  collieVersionBare,
   collieVersionFrom,
   deriveSettings,
   parseEnvFile,
@@ -167,6 +172,21 @@ describe("version", () => {
     mkdirSync(join(root, "web", "dist"), { recursive: true });
     writeFileSync(join(root, "web", "dist", "build-info.json"), BUILD_INFO);
     expect(collieVersion(root)).toBe("0.24.2+f76be58");
+  });
+
+  test("the BARE spelling is the wire's: a version and never a parenthetical (§7.1)", () => {
+    // What `hello` answers with. A parenthetical would make a machine with an unbuilt bundle read as
+    // skewed against every peer — including one running the identical release.
+    expect(bareVersionFrom(BUILD_INFO, MANIFEST)).toBe("0.24.2+f76be58");
+    expect(bareVersionFrom(null, MANIFEST)).toBe("0.24.2");
+    expect(bareVersionFrom(null, null)).toBe("unknown");
+  });
+
+  test("both spellings name the same version off the same checkout — one resolver, two decorations", () => {
+    const root = mkdtempSync(join(tmpdir(), "collie-version-bare-"));
+    writeFileSync(join(root, "herdr-plugin.toml"), MANIFEST);
+    expect(collieVersion(root)).toBe("0.24.2 (manifest; web not built)");
+    expect(collieVersionBare(root)).toBe("0.24.2");
   });
 
   test("an empty directory is `unknown`, not a thrown ENOENT", () => {

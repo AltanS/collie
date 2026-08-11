@@ -126,46 +126,13 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
 
 // ── Version ──────────────────────────────────────────────────────────────────
 
-/**
- * What Collie is actually serving: the built bundle's stamp (`web/dist/build-info.json`, the same id
- * the PWA footer and `/api/config` report), else the manifest version tagged as unbuilt, else
- * `unknown`. Ported from `collie_version()` (the pre-shim `collie-ctl.sh`) output for output —
- * this is authoritative in a way Herdr's link-time registry value is not.
- */
-export function collieVersionFrom(buildInfo: string | null, manifest: string | null): string {
-  if (buildInfo !== null) {
-    const stamp = readBuildInfo(buildInfo);
-    if (stamp !== null) return stamp;
-  }
-  const v = manifest === null ? null : /^version[ \t]*=[ \t]*"([^"]*)"/m.exec(manifest)?.[1];
-  return v ? `${v} (manifest; web not built)` : "unknown";
-}
+// Re-exported, not defined here. The resolver moved to `bridge/version.ts` when `hello` had to
+// answer with this machine's version (PACK_PROTOCOL.md §7.1): the bridge cannot import from `cli/`,
+// and two implementations that agree today are not the guarantee the spec asks for. Every existing
+// caller keeps importing it from here.
+export { collieVersion, collieVersionBare, collieVersionFrom } from "../bridge/version.ts";
 
-function readBuildInfo(text: string): string | null {
-  let version: string | undefined;
-  let sha: string | undefined;
-  try {
-    const data = JSON.parse(text) as { version?: unknown; sha?: unknown };
-    if (typeof data.version === "string") version = data.version;
-    if (typeof data.sha === "string") sha = data.sha;
-  } catch {
-    // The shell read this file with `sed`, so a truncated write still yielded a version. Keep that
-    // tolerance rather than falling all the way back to the manifest on a half-written stamp.
-    version = /"version"[ \t]*:[ \t]*"([^"]*)"/.exec(text)?.[1];
-    sha = /"sha"[ \t]*:[ \t]*"([^"]*)"/.exec(text)?.[1];
-  }
-  if (!version) return null;
-  return sha ? `${version}+${sha}` : version;
-}
-
-/** Read the two files {@link collieVersionFrom} judges. Missing/unreadable reads as absent. */
-export function collieVersion(root: string, read: (p: string) => string | null = readIfPresent): string {
-  return collieVersionFrom(
-    read(join(root, "web", "dist", "build-info.json")),
-    read(join(root, "herdr-plugin.toml")),
-  );
-}
-
+/** File contents, or `null` when missing/unreadable. */
 function readIfPresent(p: string): string | null {
   try {
     return readFileSync(p, "utf8");

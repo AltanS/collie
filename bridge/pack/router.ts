@@ -160,6 +160,19 @@ export interface PackRouterDeps {
    * notification, never a control: it takes nothing and it is not awaited.
    */
   readonly onMembershipChange?: () => void;
+  /**
+   * This build's own version string, for `hello` (§5, §7.1) — bare, as `collie version` names it
+   * without its parenthetical (`bridge/version.ts`'s `collieVersionBare`).
+   *
+   * **Threaded in once, at boot, by whoever constructs the router** (`bridge/index.ts`). It is not
+   * read per request: the answer cannot change without a restart, and `hello` is the pack's most
+   * frequent route, so a per-request disk read would be a cost with no truth behind it.
+   *
+   * Absent ⇒ the field is simply omitted from the response, which the other side reads as
+   * "older than this amendment" (§7.1's absent-means-closed). Optional so a test constructing a
+   * router for some other route need not care; the boot path always supplies it.
+   */
+  readonly version?: string;
   readonly now?: () => number;
   readonly random?: RandomSource;
 }
@@ -284,7 +297,15 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     if (pathname === PACK_HELLO_PATH && req.method === "GET") {
       // Liveness + version + member id (§5). Nothing else: `hello` is what an admitted lead uses to
       // confirm a link, so it must not become a place to learn anything an unadmitted caller wants.
-      return new Response(JSON.stringify({ protocol: PACK_PROTOCOL_VERSION, member: verdict.self }), {
+      // A version is admissible here for the same reason `member` is — it is already knowable to
+      // anyone who has cleared both factors.
+      //
+      // `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1) and it is additive: an
+      // older parser reads `protocol` and `member` by name and passes the sibling over untouched, so
+      // this build answering an older prober costs nothing and needs no coordination.
+      const hello: Record<string, unknown> = { protocol: PACK_PROTOCOL_VERSION, member: verdict.self };
+      if (deps.version !== undefined) hello.version = deps.version;
+      return new Response(JSON.stringify(hello), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
       });

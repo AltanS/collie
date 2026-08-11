@@ -25,6 +25,7 @@ import { PACK_HELLO_PATH, PACK_LEAVE_PATH } from "./router.ts";
 import { bodyDigest, canonicalRequest, signRequest, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
 import { peerListenerTls, type PackRequestInit } from "./transport.ts";
 import { parseTrustStore, TrustStore, TRUST_STORE_FILENAME, type TrustStoreData } from "./trust-store.ts";
+import { collieVersionBare } from "../version.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE TWO-INSTANCE INTEGRATION HARNESS (spec M4/08).
@@ -419,7 +420,14 @@ describe("the TLS factor is enforced at the handshake", () => {
   test("the pinned lead is admitted, and gets the uniform 401 with the wrong secret", async () => {
     const ok = await dialAsLead(PACK_HELLO_PATH, {});
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toMatchObject({ protocol: PACK_PROTOCOL_VERSION });
+    // Two version numbers, and they are not the same kind of thing (§7.1): `protocol` is the wire
+    // contract, `version` is a fact about the process answering. The second is threaded into the
+    // router at boot from THIS checkout, so a real child bridge reports exactly what `collie version`
+    // would print here — one machine, one string.
+    expect(await ok.json()).toMatchObject({
+      protocol: PACK_PROTOCOL_VERSION,
+      version: collieVersionBare(join(import.meta.dir, "..", "..")),
+    });
 
     const refused = await dialAsLead(PACK_HELLO_PATH, {}, "not-the-secret");
     expect(refused.status).toBe(401);

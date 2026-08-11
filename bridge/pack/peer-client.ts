@@ -114,6 +114,14 @@ export type PeerOutcome<T> =
   | { readonly ok: true; readonly value: T; readonly status: number; readonly member: string | null; readonly receivedAt: number }
   | (PeerFailure & { readonly ok: false; readonly receivedAt: number });
 
+/** What a `hello` reports about the member that answered it (§5). */
+export interface HelloResult {
+  readonly protocol: number;
+  readonly member: string;
+  /** The answering build's own version, or `null` when it did not report one — §7.1's pre-amendment. */
+  readonly version: string | null;
+}
+
 export interface PeerClientDeps {
   /** The lead's own member id — sent as `X-Pack-Member` (informational only, §6). */
   readonly self: string;
@@ -200,7 +208,7 @@ export class PeerClient {
   }
 
   /** `GET /pack/v1/hello` — liveness, version and the peer's member id (§5). */
-  async hello(link: PackLink): Promise<PeerOutcome<{ protocol: number; member: string }>> {
+  async hello(link: PackLink): Promise<PeerOutcome<HelloResult>> {
     const outcome = await this.json(link, "hello");
     if (!outcome.ok) return outcome;
     const body = outcome.value as Record<string, unknown> | null;
@@ -209,7 +217,13 @@ export class PeerClient {
     if (member === null || protocol === null) {
       return this.fail({ state: "unreachable", reason: "hello: malformed response body" });
     }
-    return { ...outcome, value: { protocol, member } };
+    // `version` is OPTIONAL (§5, amended 2026-08-12) and read with absent-means-closed semantics
+    // (§7.1): absent means "a build older than this amendment", NEVER an error and never a reason to
+    // refuse — the protocol integer is the only thing that refuses. Anything that is not a string is
+    // absent too: a malformed sibling on an otherwise well-formed body is one member reporting
+    // nothing, not a broken link, and it must not turn a reachable peer unreachable.
+    const version = typeof body?.version === "string" && body.version !== "" ? body.version : null;
+    return { ...outcome, value: { protocol, member, version } };
   }
 
   /** `GET /pack/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business. */

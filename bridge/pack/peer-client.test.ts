@@ -156,7 +156,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     const outcome = await client(fetch).hello(laptop);
     expect(outcome).toEqual({
       ok: true,
-      value: { protocol: 1, member: "laptop" },
+      value: { protocol: 1, member: "laptop", version: null },
       status: 200,
       member: "laptop",
       receivedAt: 1_000, // the injected lead clock — never a header from the peer (§6)
@@ -259,6 +259,42 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     const outcome = await client(fetch).snapshot(laptop);
     expect(outcome.ok === false && outcome.state).toBe("unreachable");
     expect(outcome.ok === false && outcome.reason).toContain("malformed response body");
+  });
+
+  test("`hello`'s optional version is read when the peer reports one (§5)", async () => {
+    const { fetch } = replying({ protocol: 1, member: "laptop", version: "1.0.0-alpha.12" });
+    const outcome = await client(fetch).hello(laptop);
+    expect(outcome.ok && outcome.value.version).toBe("1.0.0-alpha.12");
+  });
+
+  test("an absent version is `null` and NOTHING else — a build older than the amendment (§7.1)", async () => {
+    // Absent-means-closed: the member is read as claiming no version, never as an error and never as
+    // a reason to refuse. Reachability is untouched — the protocol integer is the only thing that
+    // refuses, and this reply's protocol matched.
+    const { fetch } = replying({ protocol: 1, member: "laptop" });
+    const outcome = await client(fetch).hello(laptop);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok && outcome.value.version).toBeNull();
+  });
+
+  test("a version that is not a usable string reads as absent, never as a failure (§7.1)", async () => {
+    for (const version of [7, null, true, "", { v: "1.0.0" }, ["1.0.0"]]) {
+      const { fetch } = replying({ protocol: 1, member: "laptop", version });
+      const outcome = await client(fetch).hello(laptop);
+      expect(outcome.ok).toBe(true);
+      expect(outcome.ok && outcome.value.version).toBeNull();
+    }
+  });
+
+  test("an old parser ignores a new sibling — this amendment's compatibility claim (§7.1)", async () => {
+    // The claim §7.1 makes for every addition inside protocol 1: it is additive-optional, so a NEWER
+    // member's reply is read by an OLDER one without incident. `hello` reads `protocol` and `member`
+    // by name off a Record and passes unknown keys over without inspecting them — this pins that,
+    // with `version` standing in for whatever the next optional field turns out to be.
+    const { fetch } = replying({ protocol: 1, member: "laptop", version: "9.9.9", futureField: { any: "shape" } });
+    const outcome = await client(fetch).hello(laptop);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok && outcome.value.member).toBe("laptop");
   });
 
   test("an unusable stored address fails as unreachable without dialling anything", async () => {
