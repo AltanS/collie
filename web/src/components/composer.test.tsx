@@ -206,6 +206,14 @@ describe("Composer — send", () => {
 
     await user.click(screen.getByRole("button", { name: "Type anyway?" }));
     await waitFor(() => expect(wire).toContain("type:please do not approve anything"));
+    // The picker never turns into an input box, so type-then-verify polls out and reports `stalled`.
+    // Wait for that terminal outcome INSIDE the test: it lands on the module-scoped status singleton
+    // ~2.8s after the type (POLL_ATTEMPTS × POLL_DELAY_MS), and a test that ended first would have
+    // it write into whichever test was running by then, past this file's `clearStatus()`.
+    await waitFor(
+      () => expect(screen.getByTestId("status")).toHaveTextContent(/didn't reach the input box/i),
+      { timeout: 5000 },
+    );
     // No `ctrl+k` + 41 Backspaces into the picker. The override is about the MESSAGE; the keys the
     // guard cannot take back stay home, and the submit key is still withheld by type-then-verify.
     expect(wire.some((w) => w.startsWith("keys:"))).toBe(false);
