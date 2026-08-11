@@ -81,7 +81,22 @@ function refFor(agent: string, path: string): AgentSessionRef | null {
  * rows in `<root>/opencode.db`, which no amount of directory walking will find. Both branches stay
  * read-only and content-free, as this script's header promises: the sqlite branch selects ids only.
  */
-async function candidateRefs(agent: string, root: string): Promise<{ refs: AgentSessionRef[]; total: number }> {
+async function candidateRefs(
+  agent: string,
+  roots: readonly string[],
+): Promise<{ refs: AgentSessionRef[]; total: number }> {
+  // A harness can have several roots (one per profile home — see config.ts). Probe them all: the
+  // point of this script is to catch a root whose logs the adapter can't read, and the second root is
+  // exactly where that now happens.
+  const perRoot = await Promise.all(roots.map((root) => candidateRefsUnder(agent, root)));
+  const refs = perRoot.flatMap((r) => r.refs).slice(0, MAX_CANDIDATES);
+  return { refs, total: perRoot.reduce((n, r) => n + r.total, 0) };
+}
+
+async function candidateRefsUnder(
+  agent: string,
+  root: string,
+): Promise<{ refs: AgentSessionRef[]; total: number }> {
   if (agent === "opencode") {
     let db: Database;
     try {
@@ -131,11 +146,11 @@ function summarise(entries: TranscriptEntry[]): string {
   return `${entries.length} turns (${byRole}), ${parts} parts, ${results} tool results`;
 }
 
-async function probe(adapter: JournalAdapter, root: string): Promise<"ok" | "empty" | "fail"> {
+async function probe(adapter: JournalAdapter, roots: readonly string[]): Promise<"ok" | "empty" | "fail"> {
   const label = adapter.agent.padEnd(8);
-  const { refs, total } = await candidateRefs(adapter.agent, root);
+  const { refs, total } = await candidateRefs(adapter.agent, roots);
   if (refs.length === 0) {
-    console.log(`${label} — no logs found under ${root} (harness not installed here?)`);
+    console.log(`${label} — no logs found under ${roots.join(", ")} (harness not installed here?)`);
     return "empty";
   }
 
@@ -176,11 +191,11 @@ const cfg = loadConfig();
 const registry = buildJournalRegistry(cfg.journalRoots);
 // Keyed lookup rather than a cast: JournalRoots is a closed shape on purpose (adding a harness
 // should be a type error here until its root is wired), so widen it explicitly.
-const roots = new Map<string, string>(Object.entries(cfg.journalRoots));
+const roots = new Map<string, readonly string[]>(Object.entries(cfg.journalRoots));
 
 console.log("journal adapters — probing real logs\n");
 const results = await Promise.all(
-  Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? "")),
+  Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? [])),
 );
 const failed = results.filter((r) => r === "fail").length;
 const ok = results.filter((r) => r === "ok").length;
