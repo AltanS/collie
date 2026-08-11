@@ -6,6 +6,18 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.12] - 2026-08-12
+
+### Added
+
+- **Version-skew policy (§7.1, closes §17's last open item)** — `hello`'s response carries the answering build's version (optional, additive; absent = pre-amendment, rendered honestly); `pack status` shows each member's version and warns on skew naming both versions and the remedy; the protocol integer alone refuses — build skew never does (0119635, 453a323)
+- `bridge/version.ts` — one version resolver shared by CLI and bridge (bare string on the wire, printed form for humans), threaded into the pack router once at boot (453a323)
+
+### Changed
+
+- Docs teach `bin/collie <verb>` as the operator spelling; `collie-ctl.sh` survives as the bootstrap shim it now is, explained once (c08f8f9)
+- ADR 0015 — `pack add` will push the lead's own commit over the operator's SSH (own transport, git bundle, no new wire surface); spec groundwork, no behavior yet (d4a1ad4)
+
 ## [1.0.0-alpha.11] - 2026-08-11
 
 ### Added
