@@ -84,6 +84,20 @@ describe("commandsFor", () => {
     expect(commandsFor(null)).toEqual([]);
   });
 
+  // The catalog is a plain object, so these agent strings index straight into Object.prototype. A
+  // truthy lookup handed the inherited FUNCTION back as if it were a command array, and
+  // command-palette.tsx calls .filter on what it gets — so a pane whose agent Herdr reported as
+  // "constructor" took the whole palette down with a TypeError. Same hardening quick-replies.ts and
+  // adapterFor() already carry.
+  it("returns [] for an agent that spells an inherited Object.prototype member", () => {
+    for (const agent of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      const cmds = commandsFor(agent);
+      expect(Array.isArray(cmds)).toBe(true);
+      expect(cmds).toEqual([]);
+      expect(() => cmds.filter((c) => c.common)).not.toThrow();
+    }
+  });
+
   it.each(["claude", "codex", "pi", "opencode", "omp"])(
     "exposes for '%s' a 'common' subset that is a proper, non-empty subset of all commands",
     (agent) => {
