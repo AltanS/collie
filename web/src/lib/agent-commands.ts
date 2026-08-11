@@ -230,11 +230,17 @@ const CATALOG: Record<string, readonly AgentCommand[]> = {
 /**
  * Commands for a Herdr-detected agent (`pane.agent`, e.g. "claude" / "codex"). Returns [] for
  * unknown/absent agents — the UI then hides the command button.
+ *
+ * `Object.hasOwn`, not a truthy index: `CATALOG` is a plain object, so an agent string that spells
+ * an inherited `Object.prototype` member ("constructor", "toString", "valueOf", …) indexes to that
+ * member — a FUNCTION — which is truthy and would be handed back as if it were a command array.
+ * command-palette.tsx then calls `.filter` on it and throws, taking the palette down. Same hardening
+ * quick-replies.ts applies to its twin lookup, and adapterFor() to the registry.
  */
 export function commandsFor(agent: string | undefined | null): readonly AgentCommand[] {
   if (!agent) return [];
   const key = agent.toLowerCase().trim();
-  if (CATALOG[key]) return CATALOG[key];
+  if (Object.hasOwn(CATALOG, key)) return CATALOG[key];
   // Tolerate variants like "claude-code" / "opencode-dev".
   if (key.startsWith("claude")) return CLAUDE;
   if (key.startsWith("codex")) return CODEX;
