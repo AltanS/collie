@@ -880,6 +880,10 @@ What that means in practice:
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
   (an explicit `\\.\pipe\…` value is passed through untouched).
 
+**Want the lifecycle too?** The bridge has spoken Windows' named pipe since 0.15.0; a
+community-maintained Task Scheduler setup (start/stop/update, no supported-tree guarantees) lives in
+[`contrib/windows/`](./contrib/windows/README.md).
+
 **Is it actually working?** The bridge logs `[events] stream up` on start — the event stream works
 over the pipe, so Windows gets the same live updates as Linux, not degraded polling.
 
