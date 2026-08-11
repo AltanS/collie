@@ -19,13 +19,13 @@
 // input untouched when the shape doesn't fully match. Pure; no pane access, no network.
 
 import type { StyledLine } from "../../blocks";
-import { displayWidth } from "../../text-width";
 import {
   composerBottomText,
   composerContText,
   isBlank,
   isComposerTop,
   lineText,
+  opensBox,
   rstrip,
 } from "./markers";
 
@@ -34,22 +34,28 @@ import {
 // it as chrome.
 //
 // 64 is chosen to be UNREACHABLE by a real palette rather than to be tight. omp renders the palette
-// into the viewport, so its true ceiling is the pane's own height, and the tallest capture in this
-// corpus is 59 rows (omp--select-multi*.txt); anything at or under that must not trip the cap. The
-// observed palettes are far smaller — 3 rows (one wrapped entry) and 5 rows (five commands) — but
-// sizing the constant to what was observed is the mistake to avoid here, because being too LOW is not
-// the safe direction:
+// into the viewport (its rows carry a scrollbar column, so the list is a window onto a longer one),
+// which makes its true ceiling the pane's own height; the tallest capture in this corpus is 59 rows
+// (omp--select-multi*.txt). What is actually OBSERVED below a bottom border is far smaller — 5 rows
+// (`omp--slash-palette--filtered.txt`), 3 rows (`omp--slash-palette.txt`), and 0 in the other seven
+// composer captures — but sizing the constant to what was observed is the mistake to avoid here,
+// because being too LOW is not the safe direction:
 //
 //   too low  ⇒ locateComposer returns null on a perfectly ordinary screen ⇒ stripChrome leaves omp's
 //              composer duplicated in the mirror AND `composerReady` answers false, so the reply
 //              pre-flight refuses the send with "a menu or dialog is probably up" when none is.
-//   too high ⇒ costs nothing on its own. The cap is defence in depth, not the guard: every row
-//              between the candidate bottom border and the tail must ALSO be non-blank and match the
-//              box's display width exactly (see step (a)), and ragged real transcript fails that on
-//              the first row. The cap only stops the *search* from walking a 10,000-line scrollback.
+//   too high ⇒ the run below the bottom border is claimed as composer chrome and cut from the mirror
+//              with the box, so this bounds how much a TORN frame (a composer scrolled up with real
+//              transcript beneath it — a shape no capture in the corpus shows) can cost.
 //
-// So: raise this without ceremony if a taller pane is ever seen; lower it only with a capture that
-// shows the width check failing to hold the line on its own.
+// Being generous here is only defensible because the cap is NOT what separates a composer from a
+// modal — `opensBox` is (see step (a)). The distance from the bottom border to the tail was never the
+// interesting quantity: what makes a screen unsafe to type into is another of omp's boxes sitting in
+// front of the composer, and that is now a glyph predicate on every row of the run rather than an
+// arithmetic bound on how many of them there are. Read this constant as the bound on how much TORN
+// TRANSCRIPT the strip may eat, which is the cosmetic cost it really governs — raise it without
+// ceremony if a taller palette is ever seen, and lower it only with a capture that shows the run being
+// over-claimed in a way that matters.
 const MAX_SUGGESTION_ROWS = 64;
 
 // A long draft WRAPS onto continuation rows ABOVE the bottom border. Same defense-in-depth role — and
@@ -63,6 +69,43 @@ const MAX_SUGGESTION_ROWS = 64;
 // walk, and the cap is the only budget.
 const MAX_DRAFT_ROWS = 100;
 
+// WHY THERE IS NO WIDTH COMPARISON ANYWHERE IN THIS FILE — and why one must not come back.
+//
+// The obvious way to pin a box is to require its rows to measure the same: omp pads every row of the
+// composer out to the terminal's column count, so on screen they are a perfect rectangle. This
+// scanner shipped that twice — first as `displayWidth(a) === displayWidth(b)`, then as an equality
+// slackened by a per-cluster "error bar" (`widthUncertainty`, since deleted). Both are unsound, for
+// one reason: omp padded those rows with ITS width table, we re-measure with OURS, and the two rows
+// carry DIFFERENT content — the user's statusline template on the top border, their draft tail on the
+// bottom one — so the comparison only ever held when both tables happened to agree about both
+// strings. text-width.ts is documented as an approximation of `wcwidth`; a detector may not depend on
+// that approximation being exact.
+//
+// The error is also unbounded from inside. `displayWidth` walks Intl.Segmenter grapheme clusters and
+// scores each by its BASE code point; every width table a TUI actually links against (wcwidth,
+// go-runewidth, Rust unicode-width) sums a cluster's code points independently. `👨‍💻` is 2 for us and
+// 4 for them, `👨‍👩‍👧‍👦` 2 against 8, and a keycap (`1` + VS16 + U+20E3) is 1 against 2. The error bar
+// was built from these same range tables, so it could not see any of that and scored all three as
+// CERTAIN — it read ZERO exactly where the divergence was largest — while `🗑`, `▶` and every arrow
+// scored as doubtful and donated slack the check had no business spending (forty arrows typed into a
+// message bought the TOP border forty columns of drift).
+//
+// The failure it buys is total and permanent, and it is the one MAX_SUGGESTION_ROWS' comment names as
+// the unsafe direction: one ZWJ emoji in a user's statusline template, or typed into their own
+// message, and locateComposer returns null on EVERY frame — no statusline strip, no draft chip,
+// `composerReady` false forever, and every reply refused with "the input box isn't on screen" while no
+// dialog exists.
+//
+// Against that, the check was never what discriminated. Across the whole 58-capture corpus the
+// `╰─ … ─╯` bottom border occurs exactly ONCE in each of the 9 composer captures and NOWHERE else:
+// zero occurrences in the 11 modal captures (`/model`, `/settings`, resume, select, multi-select),
+// zero in the welcome panel, zero in the 38 Claude captures. Every other box omp draws closes
+// corner-to-corner (`╰────╯`). And omp paints its pickers at the composer's own 189 cells, so width
+// could not have separated them even in principle — the corpus measures 189/189 on all 9 composer
+// captures too, i.e. the exact check was never observed failing OR discriminating. What pins the shape
+// is the literal, the contiguous `│  …  │` run above it, the `╭─…─╮` directly above that run, the tail
+// anchor, and the two caps — every one of them a claim about glyphs both renderers agree on.
+
 /** The composer box located at the buffer's tail. Every index is into the ORIGINAL `lines` array. */
 export interface ComposerBox {
   /** The TOP border row. It IS omp's statusline: the powerline fields are painted into the border. */
@@ -73,20 +116,19 @@ export interface ComposerBox {
   bottom: number;
   /** EXCLUSIVE end of the autocomplete run painted BELOW the box (`bottom + 1` when there is none). */
   suggestEnd: number;
-  /** The box's display width in CELLS, derived from the box itself — never a constant. Every row of
-   *  the box is checked against it, which is what stops a lookalike row from a different panel (omp
-   *  draws several, all narrower) from being spliced into this one. */
-  width: number;
 }
 
 /**
  * Locate omp's composer box at the tail of `lines`, or null. Bottom-up, four steps, each of which can
  * only ever REJECT — there is no branch that widens the claim.
  *
- *     ╭── <statusline> ───╮      (c) top border, at the box's own width
- *     │  <draft row…>     │      (b) 0..MAX_DRAFT_ROWS continuation rows, at the box's own width
- *     ╰─ <draft tail> ────╯      (a) the bottom border — the anchor everything else is measured from
- *     ❯ <palette row…>           (a) 0..MAX_SUGGESTION_ROWS rows below it, at the box's own width
+ *     ╭── <statusline> ───╮      (c) top border, DIRECTLY above the run (b) pinned
+ *     │  <draft row…>     │      (b) 0..MAX_DRAFT_ROWS contiguous gutter rows
+ *     ╰─ <draft tail> ────╯      (a) the bottom border — the anchor everything else hangs off
+ *     ❯ <palette row…>           (a) 0..MAX_SUGGESTION_ROWS non-blank, non-BOX rows, up to the tail
+ *
+ * Every gate is a glyph predicate or an adjacency; none is a measurement. See the block above for why
+ * the width equalities that used to co-sign (b) and (c) are gone and must stay gone.
  */
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
@@ -94,11 +136,38 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   while (end >= 0 && isBlank(texts[end]!)) end--;
   if (end < 0) return null;
 
-  // (a) The bottom border, and the autocomplete run (if any) omp painted below it. The run is matched
-  //     POSITIONALLY — nothing here reads a palette row's content, because those rows are model- and
-  //     user-authored text. What makes that safe is the width equality: omp draws the palette at the
-  //     box's own width, so a row of a DIFFERENT width is ordinary output that has scrolled the box
-  //     up, and claiming it would strip the user's transcript off the mirror.
+  // (a) The bottom border, and the autocomplete run (if any) omp painted below it. Nothing here reads
+  //     a palette row's CONTENT, because those rows are model- and user-authored text (they carry
+  //     `skill:…` entries assembled from the user's own machine); the run is bounded by having to be
+  //     CONTIGUOUS non-blank rows running to the tail, none of them a box, plus the cap.
+  //
+  //     THE BOX RULE IS THE TAIL ANCHOR, and it is the load-bearing half of this step. Without it the
+  //     claim being made is only "a composer bottom border exists somewhere in the last 64 rows",
+  //     which is not the claim `composerReady` needs: what it must answer is whether the composer has
+  //     the KEYBOARD, and a modal that took it is drawn IN FRONT of the composer, i.e. below it in the
+  //     buffer. omp draws every one of those — the six pickers, the five Ask screens, the welcome
+  //     panel, the tool-result box, the `╭─── ✘ Error: … ───╮` banner — as a box starting at column 0,
+  //     so `opensBox` on the run says "something else owns this screen" without having to recognise
+  //     any of them individually (omp's tool-approval dialog is not in the corpus; it is a box too if
+  //     it is drawn like the eleven that are — see index.ts, which is honest that this is inferred).
+  //     Before this rule, a single blank row was the entire difference between the two verdicts: with
+  //     omp's usual blank separator above a dialog the walk stopped and the answer was null, and
+  //     without it the dialog's own rows passed as "palette" and the pre-flight armed the composer's
+  //     destructive pre-clear sweep against a live modal. That blank is a row omp happens to paint,
+  //     not a claim anything checked.
+  //
+  //     Each row used to have to measure the box's own width too. On a capture — where every row is
+  //     padded out with spaces — that is the claim "this row reaches the terminal's right edge", which
+  //     holds of the palette only because omp happens to paint a scrollbar column at its edge (8 rows
+  //     across 2 captures), and fails outright the moment a `skill:` description carries a glyph our
+  //     table and omp's disagree about. Both of those are FALSE NULLS, i.e. the permanent block. What
+  //     the check bought was narrower: on a torn frame (a composer scrolled up with real transcript
+  //     beneath it — a shape no capture in this corpus shows) the strip now takes up to
+  //     MAX_SUGGESTION_ROWS of that transcript off the mirror along with the box. That residue is
+  //     cosmetic and bounded, and — now that the box rule above rejects the run outright when a widget
+  //     is drawn into it — the rows it can still swallow are plain transcript, never a modal the user
+  //     needs to see. A width equality would not have bought any of this back: omp paints its pickers
+  //     at the composer's own 189 cells, so it could never have told the two apart.
   let bottom = -1;
   if (composerBottomText(texts[end]!) !== null) {
     bottom = end;
@@ -111,33 +180,48 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
     }
     if (bottom < 0) return null;
     for (let row = bottom + 1; row <= end; row++) {
+      // A blank row means the box is not what this run hangs off — omp pads every row of its own
+      // chrome to the full terminal width, so a blank INSIDE the run is a shape it cannot draw.
       if (isBlank(texts[row]!)) return null;
-      if (displayWidth(texts[row]!) !== displayWidth(texts[bottom]!)) return null;
+      // A box row means something is drawn IN FRONT of the composer, so the composer does not have
+      // the keyboard even though its border is on screen. Decline the whole shape rather than treat
+      // that box as autocomplete: `hasComposer` false is the fail-closed answer the contract asks
+      // for, and it also keeps the modal on the raw mirror where the user can actually see it.
+      if (opensBox(texts[row]!)) return null;
     }
   }
-  const width = displayWidth(texts[bottom]!);
   const suggestEnd = end + 1;
 
-  // (b) Continuation rows of a wrapped draft, walking up from the bottom border. Every row must BOTH
-  //     carry the two-space gutter and match the box's width — the gutter alone is a shape several of
-  //     omp's other panels also draw.
+  // (b) Continuation rows of a wrapped draft, walking up from the bottom border. The two-space gutter
+  //     is the whole predicate, and it is not asked to carry the claim alone: the walk starts on a row
+  //     already established as the composer's bottom border, is capped, and terminates on a row step
+  //     (c) has to accept. A gutter row that stops the walk early would strand `i` mid-box and fail
+  //     (c) on a composer that is plainly there, so nothing here may depend on the row's CONTENT —
+  //     which is the user's own draft text, emoji and all.
   let i = bottom - 1;
-  while (
-    i >= 0 &&
-    bottom - i <= MAX_DRAFT_ROWS &&
-    composerContText(texts[i]!) !== null &&
-    displayWidth(texts[i]!) === width
-  ) {
+  while (i >= 0 && bottom - i <= MAX_DRAFT_ROWS && composerContText(texts[i]!) !== null) {
     i--;
   }
 
   // (c) The top border — the LAST anchor checked, which is what pays for `isComposerTop` being loose
   //     (see markers.ts). By now the bottom border, the continuation walk and the cap have pinned the
-  //     rest of the shape, and the width equality closes it: omp's welcome panel and its pickers all
-  //     open with `╭─…─╮` too, at 100 cells against this box's 189.
-  if (i < 0 || !isComposerTop(texts[i]!) || displayWidth(texts[i]!) !== width) return null;
+  //     rest of the shape, and this row closes it by being a `╭─…─╮` DIRECTLY above the run they
+  //     pinned. Its WIDTH is deliberately not checked: this is the row omp paints the user's
+  //     configurable statusline into, so any equality here is a demand that our table agree with their
+  //     terminal on their template. A `╭─…─╮` of a different width sitting immediately above a
+  //     `╰─ … ─╯` is therefore accepted as the top border — the most a torn frame can cost is a wrong
+  //     statusline row and a few extra rows trimmed off the mirror. No modal capture in the corpus can
+  //     even reach this line: none of them draws a `╰─ … ─╯` for step (a) to anchor on, and step (a)
+  //     now also refuses any shape with one of omp's boxes UNDER it. What this step does NOT prove is
+  //     that the two-row shape belongs to the composer specifically — `╭─…─╮` is drawn by at least
+  //     seven omp widgets, so the discrimination rests entirely on the bottom border's one-space
+  //     gutter, which across all 58 captures occurs once per composer capture and nowhere else. That
+  //     census is the evidence, and it is a claim about omp 17.2.12's renderer rather than a proof:
+  //     a widget that ever writes a label INTO its bottom border the way the composer does would be
+  //     indistinguishable here. index.ts records it as a known limit of the Tier-1 lift.
+  if (i < 0 || !isComposerTop(texts[i]!)) return null;
 
-  return { top: i, firstDraftRow: i + 1, bottom, suggestEnd, width };
+  return { top: i, firstDraftRow: i + 1, bottom, suggestEnd };
 }
 
 /**
@@ -160,9 +244,11 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
   const texts = lines.map((l) => rstrip(lineText(l)));
   let end = lines.length; // exclusive bound of the kept range
 
-  // 1. Drop a trailing run of blank lines.
+  // 1. Drop a trailing run of blank lines. The empty buffer takes the SAME-REFERENCE exit the tail
+  //    return below takes, and for the same reason: nothing was removed from `[]`, so a caller
+  //    testing `result === lines` must see "no chrome" rather than a fresh array that says otherwise.
   while (end > 0 && isBlank(texts[end - 1]!)) end--;
-  if (end === 0) return lines.slice(0, 0);
+  if (end === 0) return lines.length === 0 ? lines : lines.slice(0, 0);
 
   // 2. Peel the composer off the tail if the full shape is present. Only then; otherwise the
   //    blank-trim above is the sole (safe) change.
@@ -269,8 +355,38 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
  * replying from their phone while one of omp's modals held the keyboard therefore fired the submit
  * key at THAT modal — the text is swallowed and the key confirms whatever row the modal had
  * highlighted. A definite `false` here is what makes the reply pre-flight refuse before a byte is
- * typed, and every capture in this corpus with a modal on screen answers `false` (chrome.test.ts).
+ * typed, and all ELEVEN captures in this corpus with a modal on screen answer `false`
+ * (chrome.test.ts) — six pickers and five Ask-tool screens. omp's tool-approval dialog is NOT among
+ * them: it was never captured, so its answer here is inferred from those eleven, not measured.
+ *
+ * "On screen at the tail" is meant strictly, and step (a)'s box rule is what makes it true: a composer
+ * border with one of omp's boxes painted UNDER it answers `false`, because whatever that box is has
+ * the keyboard. Without that rule this would only have said "a composer border exists somewhere in the
+ * last 64 rows", which a dialog stacked straight onto the composer satisfies.
  */
 export function hasComposer(lines: StyledLine[]): boolean {
   return locateComposer(lines) !== null;
+}
+
+/**
+ * The composer's OWN prompt row, verbatim as it sits on screen (trailing padding dropped), or null
+ * when there is no composer at the tail. This is the `expected_prompt` the reply path binds its
+ * destructive pre-clear sweep to: the bridge re-reads the pane and 409s the write when this exact line
+ * is no longer near the tail, so the burst cannot land on a screen that moved between the pre-flight's
+ * read and the keys (lib/reply-action.ts; bridge/server.ts `checkPromptBinding`).
+ *
+ * The `╰─ … ─╯` row is the right region for that job twice over. It is the most distinctive line omp
+ * draws — the census behind `composerBottomText` is that it appears once per composer capture and
+ * nowhere else in 58 — and it is literally the line the sweep is about to erase, carrying the tail of
+ * the very draft those Backspaces are counted against. So a binding failure is not a proxy for
+ * "something changed"; it is exactly "the line I am about to clear is not the line I read".
+ *
+ * Text, not a model: the bridge compares normalized plain rows, and anything cleverer here would be a
+ * claim about content this adapter deliberately does not read.
+ */
+export function composerPrompt(lines: StyledLine[]): string | null {
+  const box = locateComposer(lines);
+  if (box === null) return null;
+  const row = rstrip(lineText(lines[box.bottom]!));
+  return row.length === 0 ? null : row;
 }

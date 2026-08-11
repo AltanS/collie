@@ -121,8 +121,21 @@ chrome constants transfer and every one of these captures had to be re-derived.
 
 That adapter is **Tier 1**: it strips chrome and re-surfaces the statusline and a stranded draft, and
 it up-levels **nothing**. So every row below is a capture the adapter must leave as a raw block, and
-all twenty are asserted that way (`harness/omp.test.ts`). Nine carry a live composer, eleven are
-modals the reply pre-flight has to refuse.
+all twenty are asserted that way (`harness/omp.test.ts`). Nine carry a live composer; the other
+eleven are modals the reply pre-flight has to refuse, and they are **six picker screens** (`/model`,
+`/settings` and `/resume`, each with a moved-selection twin) plus **five `ask`-tool screens**.
+
+**What this corpus does not contain: omp's tool-approval dialog.** No capture of it exists here, so
+nothing below pins `composerReady` on the one screen where a wrong `true` would be worst — a reply
+typed at a live approval prompt, with the submit key answering it. Two things stand in for a capture
+today, and neither is a substitute for one: `ompBuildBlocks` returns a `raw` block *unconditionally*,
+so an approval screen cannot be up-levelled whether or not anyone has seen it; and the pre-flight's
+`false` on such a screen is **inferred** from the eleven modals that were captured. The inference now
+rests on something the scanner actually tests rather than on a property of the captures: every one of
+those eleven is a **box drawn at column 0**, and `locateComposer` refuses any composer with a box
+under it (`opensBox`, omp/chrome.ts step (a)), so an approval dialog drawn the way all eleven are is
+declined by the same rule. What remains uncaptured is whether omp draws that one as a box at all.
+Capturing it is the first thing the later Tier-2 contribution owes, ahead of any grammar.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|

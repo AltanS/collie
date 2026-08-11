@@ -28,10 +28,11 @@ const allClaudeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
   .sort();
 
-// Every omp screen this adapter DECLINES — which is every screen it has. These are NOT "neutral
-// output" in the plain sense: eleven of them are live modals with the keyboard, and the conformance
-// assertion (raw-only) is exactly the promise worth pinning, because it is a promise about a screen
-// where being wrong would type a keystroke. One reason per line.
+// Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
+// can draw (omp's tool-approval dialog, in particular, was never captured; see omp/index.ts). These
+// are NOT "neutral output" in the plain sense: eleven of them are live modals with the keyboard, and
+// the conformance assertion (raw-only) is exactly the promise worth pinning, because it is a promise
+// about a screen where being wrong would type a keystroke. One reason per line.
 const DECLINED = [
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -130,6 +131,23 @@ describe("ompBuildBlocks emits nothing but raw", () => {
     const blocks = ompAdapter.buildBlocks(fixtureLines(name));
     expect(blocks.length).toBeGreaterThan(0);
     expect(blocks.map((b) => b.kind)).toEqual(blocks.map(() => "raw"));
+  });
+
+  // The Tier-1 claim is about the whole adapter object, not only its pipeline: every surface it
+  // exposes must be a pure reader over StyledLine[], so nothing here can ORIGINATE a keystroke. This
+  // is the whole list, spelled out — adding a key is how an adapter accidentally goes hot, so make it
+  // a deliberate edit with a reason attached.
+  it("exposes only read-only surfaces — no dialog, menu or wizard hook", () => {
+    expect(Object.keys(ompAdapter).sort()).toEqual(
+      [
+        "agent", // the registry key
+        "buildBlocks", // raw-only, asserted above
+        "composerPrompt", // the row a destructive write BINDS to; it sends nothing itself
+        "composerReady", // the pre-flight's refusal
+        "extractInputDraft", // the stranded-draft preview + the type-then-verify half
+        "extractStatusLines", // the statusline the strip peels off the mirror
+      ].sort(),
+    );
   });
 });
 
