@@ -6,14 +6,23 @@ description = "Mobile web UI to monitor and reply to your agent herd, served ove
 platforms = ["linux", "macos"]
 
 # This plugin is a thin launcher. The actual bridge runs as a systemd --user service so it
-# outlives Herdr restarts (see ARCHITECTURE.md §3). The actions below shell out to
-# scripts/collie-ctl.sh, which gets HERDR_SOCKET_PATH / HERDR_PLUGIN_CONFIG_DIR injected.
+# outlives Herdr restarts (see ARCHITECTURE.md §3). Every action below runs
+# scripts/collie-ctl.sh, which since M6/01 implements nothing: it resolves Bun, builds bin/collie
+# if the checkout has none, and `exec`s that binary with the same argv. The CLI (cli/) is the ONE
+# implementation of every verb. Herdr injects HERDR_SOCKET_PATH / HERDR_PLUGIN_CONFIG_DIR into
+# these invocations and nothing else — no login shell — which the shim and the binary both expect.
+#
+# The command strings are FROZEN, byte for byte. On Herdr <0.8.0 a managed install invokes the
+# action set cached at install time, so `bash scripts/collie-ctl.sh <verb>` must keep resolving
+# there (ADR 0006) — and every README recipe spells the verbs that way too. Pointing an action
+# straight at bin/collie would break both for no gain: the shim already `exec`s it.
 
 # Build the web UI at install time. Herdr runs [[build]] steps ONLY on `herdr plugin install`
 # (GitHub) — NOT on `herdr plugin link` (local dev), which instead builds lazily on first `start`
-# (collie-ctl.sh's ensure_build). Delegating to `collie-ctl.sh build` keeps a single build
-# definition (version gate → cd web && bun install && bun run build) shared with the `update` action.
-# Still needs Bun on PATH — building the frontend is the one unavoidable Bun step.
+# (cli/build.ts's ensureBuild). This is the bootstrap exception and stays a bash entry: it is the
+# step that PRODUCES bin/collie, so it cannot invoke it — the shim builds from source with Bun and
+# `collie build` then installs both trees, typechecks, compiles the binary and builds the PWA.
+# Still needs Bun on PATH — building is the one unavoidable Bun step.
 [[build]]
 command = ["bash", "scripts/collie-ctl.sh", "build"]
 platforms = ["linux", "macos"]
@@ -38,7 +47,7 @@ command = ["bash", "scripts/collie-ctl.sh", "restart"]
 
 # Full teardown: stops + disables the service, removes the systemd --user unit, and resets
 # tailscale serve. Leaves the .env and the checkout (so `start` can bring it right back). See
-# scripts/collie-ctl.sh → cmd_uninstall.
+# cli/lifecycle.ts → cmdUninstall.
 [[actions]]
 id = "uninstall"
 title = "Uninstall web bridge (remove service)"
@@ -46,7 +55,7 @@ contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "uninstall"]
 
 # Link-mode plugins ARE their on-disk git checkout (Herdr has no native `plugin update`), so this
-# action pulls + rebuilds + restarts in one step. See scripts/collie-ctl.sh → cmd_update.
+# action pulls + rebuilds + restarts in one step. See cli/update.ts → cmdUpdate.
 [[actions]]
 id = "update"
 title = "Update plugin"
