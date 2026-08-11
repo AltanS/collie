@@ -1,4 +1,4 @@
-// The pluggable detection seam. Each supported agent (Claude today; codex/opencode/… tomorrow)
+// The pluggable detection seam. Each supported agent (Claude and omp today; codex/opencode/… tomorrow)
 // contributes ONE HarnessAdapter: its own block-building pipeline plus the two chrome re-surfacing
 // probes (the statusline the mirror strips, and a stranded input-box draft). The registry
 // (registry.ts) maps a Herdr snapshot `agent` string to its adapter; everything not in the registry
