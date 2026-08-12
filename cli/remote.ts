@@ -911,6 +911,10 @@ async function enrollLeg(
     if (enrolled.code === EXIT.REFUSED) return EXIT.REFUSED;
     if (enrolled.code === EXIT.UNREACHABLE) {
       deps.io.err(`       ${o.host} could not reach ${leadAddress}. That is the lead's ingress, not the peer's.`);
+      deps.io.err(
+        "       If that address is not dialable from there (reverse proxy, tailnet ACL), re-run with " +
+          "--address <an-address-the-peer-CAN-dial>.",
+      );
       return EXIT.UNREACHABLE;
     }
     if (enrolled.code === EXIT.STATE) return EXIT.STATE;

@@ -675,6 +675,9 @@ describe("the join's outcome", () => {
     const h = harness({ answers: { enroll: { code: EXIT.UNREACHABLE, stderr: "error: could not reach desk" } } });
     expect(await run(h)).toBe(EXIT.UNREACHABLE);
     expect(text(h.io)).toContain("That is the lead's ingress, not the peer's");
+    // The escape hatch: an address the peer itself cannot dial (reverse proxy, one-way tailnet ACL)
+    // is recoverable by re-running with an address the PEER can reach, not the lead's own view of itself.
+    expect(text(h.io)).toContain("--address <an-address-the-peer-CAN-dial>");
   });
 
   test("joined but still provisional is FAIL, and names `collie doctor` on the remote", async () => {

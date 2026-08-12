@@ -433,6 +433,54 @@ describe("collie join", () => {
     expect(h.data()!.pack).toBeNull();
   });
 
+  test("an unreachable lead does not hang forever — the dial has a bounded budget", async () => {
+    // The join dial's own `setTimeout` is stubbed to fire on the next tick rather than after the real
+    // 15s budget, so this test proves the abort wiring without actually waiting out the timeout. The
+    // fake fetch mimics a socket that never resolves on its own — exactly what an unreachable lead
+    // looks like — and only settles (by rejecting) once the passed-in signal aborts.
+    // Deferred to the next macrotask (real 0ms), not fired synchronously: firing synchronously would
+    // abort before `deps.fetch` below has even registered its `abort` listener, since `cmdJoin` starts
+    // the timer BEFORE calling `fetch`.
+    const realSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: () => void) => realSetTimeout(fn, 0)) as typeof setTimeout;
+    let sawSignal = false;
+    try {
+      const h = harness(null, [], {
+        fetch: (_url, init) => {
+          sawSignal = init.signal instanceof AbortSignal;
+          return new Promise((_resolve, reject) => {
+            const signal = init.signal as AbortSignal;
+            signal.addEventListener("abort", () => {
+              const err = new Error("The operation was aborted");
+              err.name = "AbortError";
+              reject(err);
+            });
+          });
+        },
+      });
+      expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.UNREACHABLE);
+      expect(sawSignal).toBe(true);
+      expect(text(h.io)).toContain("could not reach desk.ts.net");
+      expect(text(h.io)).toContain("timed out after 15s");
+      // Never the raw, unhelpful AbortError text.
+      expect(text(h.io)).not.toContain("The operation was aborted");
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+  });
+
+  test("the happy path's dial carries an abort signal too, not only the unreachable one", async () => {
+    let sawSignal = false;
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")], {
+      fetch: (_url, init) => {
+        sawSignal = init.signal instanceof AbortSignal;
+        return Promise.resolve(jsonReply(ENROLLED, 200, "desk"));
+      },
+    });
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
+    expect(sawSignal).toBe(true);
+  });
+
   test("a version-skewed lead is refused, naming the fix", async () => {
     const h = harness(null, [new Response("{}", { status: 409 })]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
