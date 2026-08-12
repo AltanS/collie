@@ -85,6 +85,19 @@ export function isFreeTextLabel(label: string): boolean {
   return /^type something\b/i.test(label) || /^tell claude what to change\b/i.test(label);
 }
 
+// The plan-approval input row's own hint sub-line. Claude emits it from a STATIC `description` field,
+// so it survives the one thing the label does not: the moment the user types, the label stops being
+// the placeholder and becomes their words, `isFreeTextLabel` stops matching, and the row would
+// otherwise be up-levelled into a live `keys:["4"]` button carrying someone's half-written sentence.
+// The description is what identifies the row in BOTH the empty and typed states.
+const FREE_TEXT_HINT = /^shift\+tab to approve with this feedback\b/i;
+function isFreeTextDescription(description: string | undefined): boolean {
+  return description !== undefined && FREE_TEXT_HINT.test(description.trim());
+}
+
+// The `❯` pointer as a LEADING glyph on a row (see multi-select.ts's `pointerAt`, same shape).
+const POINTER_ROW = /^\s*❯/;
+
 // A multiSelect checkbox prefix on an option label: "[ ] Cheese" (unchecked) / "[✔] Mushrooms"
 // (checked; ✔ ✓ x X all count as checked). Its PRESENCE is the discriminator that separates a
 // multiSelect dialog from a single-choice one — the prompt-select/wizard grammars leave a checkbox
@@ -187,7 +200,6 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   const options: PromptOption[] = [];
   for (let r = 0; r < menu.length; r++) {
     const row = menu[r]!;
-    if (isFreeTextLabel(row.label)) continue;
     const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : fi;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
@@ -195,9 +207,22 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
       if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t)) continue;
       desc.push(t.trim());
     }
+    const description = desc.length ? desc.join(" ") : undefined;
+    // Free-text INPUT rows are answered by typing, not a keystroke, so they are never buttons. The
+    // label alone is not enough to spot one: it is the placeholder only while the box is EMPTY.
+    // Hence the description too — collected above this check for exactly that reason.
+    if (isFreeTextLabel(row.label) || isFreeTextDescription(description)) {
+      // …and while the `❯` pointer SITS on that row, the input has focus and the dialog routes every
+      // digit into the field as text rather than answering. Measured on Claude Code 2.1.228: from
+      // this state `send_keys ["3"]` leaves the plan unapproved and turns the row into `❯ 4. 3`.
+      // Buttons here cannot fire, so we bail to the raw mirror + keys pad rather than render three
+      // that look identical to working ones and silently type into someone else's sentence.
+      if (POINTER_ROW.test(texts[row.index]!)) return null;
+      continue;
+    }
     options.push({
       label: row.label,
-      description: desc.length ? desc.join(" ") : undefined,
+      description,
       keys: family === "select" ? [String(row.n), "Enter"] : [String(row.n)],
     });
   }

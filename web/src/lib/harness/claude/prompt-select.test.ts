@@ -95,6 +95,43 @@ describe("detectPromptSelect — the five blocked-state fixtures", () => {
   });
 });
 
+describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in both its states", () => {
+  // Row 4 of the plan dialog is not an option. It is an inline text input, and
+  // "Tell Claude what to change" is its PLACEHOLDER — which is all `isFreeTextLabel` ever matched.
+  // The placeholder only holds while the box is empty; type into it and the label becomes the user's
+  // own words. Its `shift+tab to approve with this feedback` sub-line comes from a static description
+  // field and survives both states, so the DESCRIPTION is what identifies the row.
+  // Choreography verified against Claude Code 2.1.228 (see PLAN_FEEDBACK_NOTES.md).
+
+  it("drops the row once it carries typed text — the label is now the user's own sentence", () => {
+    // Reachable state: focus the input (`4`), type, then arrow off it. The text persists on the row
+    // while the pointer sits elsewhere, so the digits still answer normally — but the label now reads
+    // "use a guard clause instead". Upstream 0.28.0 returned FOUR options here, the fourth being
+    // { label: "use a guard clause instead", keys: ["4"] }: a live button on the phone carrying
+    // whatever half-written sentence the desktop user had left in the box.
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--feedback-typed.txt"));
+    expect(model).not.toBeNull();
+    expect(model!.family).toBe("plan");
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "Yes, clear context (4% used) and use auto mode",
+      "Yes, and use auto mode",
+      "Yes, manually approve edits",
+    ]);
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+  });
+
+  it("bails entirely while the input has FOCUS — every digit would be swallowed as text", () => {
+    // `❯` on the input row means the field has focus, and the dialog then routes digits into it as
+    // characters instead of answering. Measured on 2.1.228: from this state `send_keys ["3"]` leaves
+    // the plan unapproved and rewrites the row as `❯ 4. 3`. The remaining rows would otherwise render
+    // as buttons indistinguishable from working ones, so the whole dialog falls to the raw mirror —
+    // the same "bail rather than emit a keystroke that can't fire" rule as the >9-option ceiling.
+    const lines = fixtureLines("claude--plan-approval--feedback-focused.txt");
+    expect(detectPromptSelect(lines)).toBeNull();
+    expect(detectPromptSelectRegion(lines)).toBeNull();
+  });
+});
+
 describe("detectPromptSelect — numbered dialog body above the menu (suffix extraction)", () => {
   it("plan approval whose plan lists numbered steps still detects the real menu", () => {
     // The plan body carries "1. Title / 2. … / 4. Context / 5. TODO stub" and the option-scan window
