@@ -40,6 +40,8 @@ interface Harness {
   io: ReturnType<typeof capture>;
   exec: FakeExec;
   files: FakeFiles;
+  /** Every `(port, host)` pair the banner's readiness probe was called with. */
+  readyCalls: Array<{ port: number; host: string }>;
 }
 
 type HarnessOptions = Partial<
@@ -60,18 +62,22 @@ function harness(over: HarnessOptions = {}): Harness {
   // The binary exists unless a test deliberately removes it — every other test would otherwise be
   // asserting the "no binary" guard by accident.
   const files = fakeFiles({ [BINARY]: "", ...(over.files ?? {}) });
+  const readyCalls: Array<{ port: number; host: string }> = [];
   const deps: LifecycleDeps = {
     ctx: context(over.env, over.instance === undefined ? {} : { instance: over.instance }),
     io,
     exec,
     files,
-    ready: () => Promise.resolve(over.ready ?? true),
+    ready: (port, host) => {
+      readyCalls.push({ port, host });
+      return Promise.resolve(over.ready ?? true);
+    },
     sleep: () => Promise.resolve(),
     uid: () => 501,
     platform: over.platform ?? "linux",
     serve: over.serve ?? (() => Promise.resolve(EXIT.OK)),
   };
-  return { deps, io, exec, files };
+  return { deps, io, exec, files, readyCalls };
 }
 
 /** The scripted answer that makes `systemctl --user show-environment` fail — no user systemd. */
@@ -308,6 +314,23 @@ describe("the status banner", () => {
     const cold = (await statusBanner(harness({ ready: false }).deps)).join("\n");
     expect(cold).toContain("⚠ Collie isn't answering on :8787 yet");
     expect(cold).toContain("check 'collie logs'");
+  });
+
+  test("probes loopback by default — the bridge's own resolved bind (bridge/config.ts)", async () => {
+    const h = harness({ ready: true });
+    await statusBanner(h.deps);
+    expect(h.readyCalls).toEqual([{ port: 8787, host: "127.0.0.1" }]);
+  });
+
+  test("COLLIE_HOST set: probes that address, not loopback, and names it in the warning", async () => {
+    const h = harness({ ready: true, env: { COLLIE_HOST: "100.64.0.8" } });
+    await statusBanner(h.deps);
+    expect(h.readyCalls).toEqual([{ port: 8787, host: "100.64.0.8" }]);
+
+    const cold = harness({ ready: false, env: { COLLIE_HOST: "100.64.0.8" } });
+    const lines = (await statusBanner(cold.deps)).join("\n");
+    expect(cold.readyCalls).toEqual([{ port: 8787, host: "100.64.0.8" }]);
+    expect(lines).toContain("⚠ Collie isn't answering on 100.64.0.8:8787 yet");
   });
 
   test("reads the unit's state, not merely that a unit exists", () => {

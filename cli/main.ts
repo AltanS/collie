@@ -56,7 +56,7 @@ export function lifecycleDeps(io: Io): LifecycleDeps {
     io,
     exec: realExec(ctx.env, ctx.home),
     files: realFiles,
-    ready: (port) => waitReady(port),
+    ready: (port, host) => waitReady(port, host),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     uid: () => process.getuid?.() ?? 0,
     platform: process.platform,

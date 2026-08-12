@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { defaultSocketPath, envBool, loadConfig } from "./config.ts";
+import { defaultSocketPath, envBool, loadConfig, resolveBridgeHost } from "./config.ts";
 
 // loadConfig is the deployment contract — env vars in, a resolved Config out. Pure (just reads
 // process.env + homedir), so we drive it by mutating the environment and restoring it after.
@@ -265,6 +265,22 @@ describe("defaultSocketPath", () => {
     expect(defaultSocketPath("win32", {}, "C:\\Users\\u")).toBe(
       join("C:\\Users\\u", "AppData", "Roaming", "herdr", "herdr.sock"),
     );
+  });
+});
+
+// Also the source `cli/doctor.ts`'s bind check and `cli/lifecycle.ts`'s readiness probe read, so a
+// peer's COLLIE_HOST resolves identically wherever it's asked.
+describe("resolveBridgeHost", () => {
+  test("absent COLLIE_HOST resolves to loopback", () => {
+    expect(resolveBridgeHost({})).toBe("127.0.0.1");
+  });
+
+  test("an explicit COLLIE_HOST is used verbatim — a peer's tailnet address, say", () => {
+    expect(resolveBridgeHost({ COLLIE_HOST: "100.64.0.8" })).toBe("100.64.0.8");
+  });
+
+  test("explicitly empty is passed through, not defaulted — the wildcard-bind case", () => {
+    expect(resolveBridgeHost({ COLLIE_HOST: "" })).toBe("");
   });
 });
 
