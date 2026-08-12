@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.13] - 2026-08-12
+
+### Added
+
+- **`collie doctor`** — one read-only pass over the traps that fail silently: bind/ACL/front-door/web-dist/herdr-socket/clock locally, drift/rotation/reachability/version-skew in a pack; every finding names the fixing verb, warnings exit 0, `--json` for scripts (27e756b)
+- A member probe's success now carries the far side's HTTP `Date` (transport metadata, not a wire field) — doctor's clock check reads it against §8.6's ±5m signature window (1dc6c72)
+
 ## [1.0.0-alpha.12] - 2026-08-12
 
 ### Added
