@@ -94,6 +94,76 @@ describe("the legacy .env note", () => {
   });
 });
 
+// A named instance may only ever land on a dir the operator made for it. The alternative is the
+// 2026-08-12 incident: `COLLIE_INSTANCE=v1 collie pack add` resolved the DEFAULT instance's config
+// dir, and a pack verb read and then MUTATED the live stable instance's trust store.
+describe("config dir for a named instance", () => {
+  const V1 = join(HOME, ".config", "herdr", "plugins", "config", `${PLUGIN_ID}-v1`);
+
+  function resolveV1(opts: { env?: Record<string, string | undefined>; files?: string[] }) {
+    const files = new Set(opts.files ?? []);
+    let asks = 0;
+    const r = resolveConfigDir({
+      env: { COLLIE_INSTANCE: "v1", COLLIE_PORT: "8788", ...opts.env },
+      home: HOME,
+      fileExists: (p) => files.has(p),
+      askHerdr: () => {
+        asks += 1;
+        return "/from-herdr";
+      },
+    });
+    return { ...r, asks };
+  }
+
+  test("its own suffixed conventional dir wins, and Herdr is never asked", () => {
+    const r = resolveV1({ files: [join(V1, ".env"), join(CONVENTIONAL, ".env")] });
+    expect(r.dir).toBe(V1);
+    expect(r.asks).toBe(0);
+  });
+
+  test("no suffixed dir refuses, naming the path it wanted", () => {
+    let err: unknown;
+    try {
+      resolveV1({ files: [join(CONVENTIONAL, ".env"), join(LEGACY, ".env")] });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(Error);
+    const message = (err as Error).message;
+    expect(message).toContain(join(V1, ".env"));
+    expect(message).toContain('COLLIE_INSTANCE="v1"');
+    // The two dirs it must never silently borrow.
+    expect(message).not.toContain(join(CONVENTIONAL, ".env"));
+    expect(message).not.toContain(join(LEGACY, ".env"));
+  });
+
+  test("an injected config dir still wins, unchanged", () => {
+    const r = resolveV1({ env: { HERDR_PLUGIN_CONFIG_DIR: "/injected" } });
+    expect(r.dir).toBe("/injected");
+    expect(r.asks).toBe(0);
+  });
+
+  test("a legacy .env draws no note — it belongs to the host's first Collie", () => {
+    expect(resolveV1({ files: [join(V1, ".env"), join(LEGACY, ".env")] }).note).toBeNull();
+  });
+
+  test("an unusable instance name falls through, leaving the refusal to resolveInstance", () => {
+    // Single-sourced: `resolveConfigDir` does not duplicate the shape check's error.
+    expect(resolve({ env: { COLLIE_INSTANCE: "V 1" }, herdr: "/from-herdr" }).dir).toBe(
+      "/from-herdr",
+    );
+    expect(() => resolveInstance({ COLLIE_INSTANCE: "V 1", COLLIE_PORT: "8788" })).toThrow(
+      /not a usable instance name/,
+    );
+  });
+
+  test("an empty instance is no instance", () => {
+    expect(resolve({ env: { COLLIE_INSTANCE: "  " }, herdr: "/from-herdr" }).dir).toBe(
+      "/from-herdr",
+    );
+  });
+});
+
 describe("parseEnvFile", () => {
   test("reads plain assignments, comments and blanks", () => {
     expect(parseEnvFile("# a comment\n\nCOLLIE_PORT=9000\n  COLLIE_SERVE_MODE=http\n")).toEqual({

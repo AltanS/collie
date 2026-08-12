@@ -717,6 +717,13 @@ assert_contains "$STDERR" "explicit COLLIE_PORT"
 run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
   COLLIE_INSTANCE="V 1" COLLIE_PORT=9999 "$BIN" status && fail "an unusable instance name was accepted"
 assert_contains "$STDERR" "not a usable instance name"
+# …and the third: a named instance with no config dir of its own. It refuses legibly rather than
+# resolving the DEFAULT instance's config (and therefore its state dir and its pack trust store) —
+# the 2026-08-12 incident. `HERDR_PLUGIN_CONFIG_DIR` is deliberately absent here.
+run_stripped HOME="$L_HOME" PATH="$L_BIN" \
+  COLLIE_INSTANCE=v1 COLLIE_PORT=9999 "$BIN" status && fail "an instance with no config dir was accepted"
+assert_contains "$STDERR" "Refusing to fall back to another instance's config"
+assert_contains "$STDERR" "herdr.collie-v1/.env"
 
 # A second readiness listener, so v1's banner does not pay the probe's full budget (as for $PORT).
 V1_PORT="$(pick_port 48790 48890 48990)"
