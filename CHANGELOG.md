@@ -6,6 +6,16 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.15] - 2026-08-12
+
+### Fixed
+
+- A hand-typed `collie join` on a default-configured peer no longer records a portless callback address the lead would dial forever at :443 — a derived pack-listener address now always carries this instance's own port; lead/front-door addresses and explicit `--address` values are untouched, and records minted before the fix are repaired with `collie reconnect` (3459297)
+
+### Changed
+
+- Docs retire "bridge" as vocabulary for the instance — "a collie" is the participant, "bridge" stays the component (ADR 0012's landing rule) (2122f08)
+
 ## [1.0.0-alpha.14] - 2026-08-12
 
 ### Added
