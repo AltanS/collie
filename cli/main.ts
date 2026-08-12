@@ -1,5 +1,6 @@
 import { cmdBuild } from "./build.ts";
 import { collieVersion, loadContext } from "./context.ts";
+import { cmdDoctor, doctorDeps } from "./doctor.ts";
 import { EXIT, type Io, realIo } from "./io.ts";
 import {
   cmdExecBridge,
@@ -175,6 +176,16 @@ export const COMMANDS: readonly Command[] = [
   lifecycleCommand("logs", "tail the service log (default 50 lines)", (deps, args) =>
     cmdLogs(deps, args),
   ),
+  // Read-only by contract (cli/doctor.ts), so its deps are the lifecycle seams with every mutating
+  // one left out — no service manager, no front door, no store write.
+  {
+    name: "doctor",
+    summary: "check this install for the traps that fail silently",
+    run: (args, io) => {
+      const deps = lifecycleDeps(io);
+      return cmdDoctor(doctorDeps({ ctx: deps.ctx, io, exec: deps.exec, files: deps.files }), args);
+    },
+  },
   // ── The pack (M4/07) ───────────────────────────────────────────────────────
   // The only way a machine enters or leaves a pack. Every one of them resolves its seams through
   // `packVerbDeps`, so the dispatcher stays a table and `cli/pack.ts` owns the behaviour.

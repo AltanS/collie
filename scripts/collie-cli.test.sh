@@ -173,7 +173,7 @@ rc=$?
 set -e
 assert_eq "$rc" "0"
 for verb in start stop restart uninstall update build serve unserve status url qr version push-test logs \
-           join leave pack promote reconnect; do
+           doctor join leave pack promote reconnect; do
   assert_contains "$(cat "${TMP_ROOT}/out")" "$verb"
 done
 
@@ -1189,6 +1189,38 @@ assert_contains "$(cat "${TMP_ROOT}/err")" "not in a pack"
 # No pack verb above shelled out to anything — no systemctl, no tailscale, no herdr.
 assert_eq "$(cat "$PACK_CALLS")" ""
 
+# ── doctor ───────────────────────────────────────────────────────────────────
+# Read-only by contract, so it is the one diagnostic this file may actually RUN. Pointed at an empty
+# checkout so the verdict is deterministic (no `web/dist` ⇒ one error ⇒ exit 1), and asserted to have
+# written nothing: not the state dir, not the config dir. It DOES shell out to `tailscale`, which is
+# why it runs after the "no pack verb shelled out" assertion above.
+DOCTOR_STATE="${TMP_ROOT}/doctor-state"
+mkdir -p "$DOCTOR_STATE"
+set +e
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$DOCTOR_STATE" \
+  COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" PATH="$BIN_DIR" "$BIN" doctor --json \
+  >"${TMP_ROOT}/doctor.json" 2>"${TMP_ROOT}/err"
+rc=$?
+set -e
+# Any error-severity finding exits 1; warnings alone would have exited 0.
+assert_eq "$rc" "1"
+DOCTOR_JSON="$(cat "${TMP_ROOT}/doctor.json")"
+# stdout is the array and nothing else — a script reads it directly.
+case "$DOCTOR_JSON" in "["*) ;; *) fail "doctor --json did not print an array: $DOCTOR_JSON" ;; esac
+assert_contains "$DOCTOR_JSON" '"check": "web-dist"'
+assert_contains "$DOCTOR_JSON" '"status": "error"'
+assert_contains "$DOCTOR_JSON" '"check": "restart-pending"'
+[ -z "$(ls -A "$DOCTOR_STATE")" ] || fail "\`collie doctor\` wrote into the state dir"
+
+# The human form is one line per check, and every non-✓ line carries its remedy arrow.
+rc=0
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$DOCTOR_STATE" \
+  COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" PATH="$BIN_DIR" "$BIN" doctor || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDOUT" "error:"
+assert_contains "$STDOUT" "collie build"
+assert_contains "$STDOUT" "pack: none"
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
@@ -1197,3 +1229,4 @@ echo "✓ collie CLI build: five ordered steps, rename-not-rewrite, a failed bui
 echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull re-exec, the managed re-link refusal"
 echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny-all warning"
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
+echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one line per check"
