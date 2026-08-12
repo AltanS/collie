@@ -30,6 +30,8 @@ pane over capturing real work sessions.
 | `claude--permission-bash.txt` | Bash permission: command + explanation, "This command requires approval", "Do you want to proceed?", scoped don't-ask-again option, "… · ctrl+e to explain" | `blocked` |
 | `claude--plan-approval.txt` | ExitPlanMode: plan text, "…ready to execute. Would you like to proceed?", 4 options with hint sub-lines, "ctrl+g to edit in nano · <plan path>" footer | `blocked` |
 | `claude--plan-approval--numbered-body.txt` | Plan approval whose plan BODY lists numbered steps ("1. Title / 2. … / 5. TODO stub") inside the option-scan window: the menu is the trailing `1,2,3,4` suffix, body rows drop out (regression fixture for the body-list bug) | `blocked` |
+| `claude--plan-approval--feedback-focused.txt` | Plan approval with the **feedback input FOCUSED** (`❯` on `4. Tell Claude what to change`, box empty). Claude routes every digit into that field as text while it has focus, so no answer row can be pressed — prompt-select **declines the whole dialog** rather than lift buttons that cannot fire (choreography in [`PLAN_FEEDBACK_NOTES.md`](../../lib/grammar/PLAN_FEEDBACK_NOTES.md)) | `blocked` |
+| `claude--plan-approval--feedback-typed.txt` | The same dialog after typing into that input and arrowing OFF it: row 4 reads `use a guard clause instead` — the user's own words as the label — with `❯` back on row 3. The digits answer normally here, and only the row's static `shift+tab to approve with this feedback` description keeps it from being up-levelled into a live `keys:["4"]` button carrying that sentence | `blocked` |
 | `claude--select-multiselect-single.txt` | **Single-question multiSelect** AskUserQuestion: checkbox `[ ]` options under a `←  ☐ Toppings  ✔ Submit  →` stepper, "Enter to select · ↑/↓ · Esc" footer. Lifted to a `multi-select` block — the verified interaction is **DIGIT N toggles option N** (pointer-independent); the closed-loop Submit macro walks the pointer to Submit and confirms | `blocked` |
 | `claude--select-multiselect-checked.txt` | Same dialog **mid-selection**: some boxes `[✔]` (Mushrooms, Olives), the stepper's question chip flipped to `☒` (answered). Exercises the checked-glyph lift (`[✔]`/`[x]`/`[✓]` → `checked: true`; terminal is source of truth) | `blocked` |
 | `claude--select-multiselect-review.txt` | The multiSelect **review/confirm** screen: `←  ☐ Toppings  ✔ Submit  →` stepper, "Ready to submit your answers?" over `❯ 1. Submit answers / 2. Cancel`, with a `⚠ You have not answered all questions` line (`incomplete`). Lifts the `review` phase (submit = key `1`, cancel = key `2`) | `blocked` |
@@ -234,3 +236,8 @@ omp's `agent_status` stays `idle` while a picker is up; only the `ask` tool flip
 - **Menus are heterogeneous**: pointer rows (`❯ N.`), plain numbered rows, description sub-lines,
   and free-text escape rows ("Type something.", "Tell Claude what to change") all occur; footers
   are the most stable discriminator ("Enter to select/confirm", "Esc to cancel").
+- **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is
+  empty. Type into the plan dialog's row 4 and the label becomes the user's own sentence. Its
+  static `shift+tab to approve with this feedback` description is what identifies it in both
+  states — and `❯` sitting on it means the field has focus, where every digit is swallowed as
+  text rather than answering ([`PLAN_FEEDBACK_NOTES.md`](../../lib/grammar/PLAN_FEEDBACK_NOTES.md)).
