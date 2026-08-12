@@ -991,18 +991,21 @@ describe("Composer — blocked pre-flight override", () => {
       padOmp("╰─ ", draft, " ─╯", " "),
     ].join("\n");
 
-  function serveOmpPicker(calls: string[]) {
+  function serveOmpPicker(calls: string[], paneId = "w1:p1") {
     let typed = "";
+    let probes = 0;
+    const panePath = `/api/pane/${encodeURIComponent(paneId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
     server.use(
-      http.get(/\/api\/pane\/[^/]+$/, () =>
-        HttpResponse.json({
-          paneId: "w1:p1",
+      http.get(new RegExp(`${panePath}$`), () => {
+        probes += 1;
+        return HttpResponse.json({
+          paneId,
           text: typed ? ompComposer(typed) : OMP_PICKER,
           truncated: false,
           revision: 1,
-        }),
-      ),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        });
+      }),
+      http.post(new RegExp(`${panePath}/reply$`), async ({ request }) => {
         const body = (await request.json()) as { text: string; submit?: boolean };
         if (body.submit) calls.push("submit");
         else {
@@ -1012,6 +1015,7 @@ describe("Composer — blocked pre-flight override", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
+    return () => probes;
   }
 
   it("retries a blocked palette command from an empty voice composer", async () => {
@@ -1061,6 +1065,53 @@ describe("Composer — blocked pre-flight override", () => {
     await user.click(screen.getByRole("button", { name: "Type anyway?" }));
     await waitFor(() => expect(calls).toEqual(["type:/branch", "submit"]));
     expect(box).toHaveValue("unrelated draft");
+    expect(props.onSent).toHaveBeenCalledOnce();
+  });
+
+  it("retries a retained typed draft without clearing edits made before the override", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveOmpPicker(calls);
+    const props = renderComposerWithStatus({ agent: "omp" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "first draft");
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("button", { name: "Type anyway?" });
+
+    await user.clear(box);
+    await user.type(box, "newer draft");
+    expect(drafts.loadDraft(undefined, "w1:p1")).toBe("newer draft");
+
+    await user.click(screen.getByRole("button", { name: "Type anyway?" }));
+    await waitFor(() => expect(calls).toEqual(["type:first draft", "submit"]));
+    expect(box).toHaveValue("newer draft");
+    expect(drafts.loadDraft(undefined, "w1:p1")).toBe("newer draft");
+    expect(props.onSent).toHaveBeenCalledOnce();
+  });
+
+  it("replaces an armed override with the latest blocked palette command", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    const paneId = "w1:force-replace";
+    const probes = serveOmpPicker(calls, paneId);
+    const props = renderComposerWithStatus({ paneId, agent: "omp", transcriptionEnabled: true });
+
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.click(screen.getByText("/branch"));
+    await waitFor(() => expect(probes()).toBe(1));
+    expect(screen.getByRole("button", { name: "Type anyway?" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.click(screen.getByText("/fork"));
+    await waitFor(() => expect(probes()).toBe(2));
+    expect(screen.getByTestId("status")).toHaveTextContent(/Tap Send again to type anyway/i);
+    expect(screen.getByRole("button", { name: "Type anyway?" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Record voice" })).not.toBeInTheDocument();
+    expect(calls).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Type anyway?" }));
+    await waitFor(() => expect(calls).toEqual(["type:/fork", "submit"]));
     expect(props.onSent).toHaveBeenCalledOnce();
   });
 

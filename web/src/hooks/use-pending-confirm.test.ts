@@ -30,13 +30,31 @@ describe("usePendingConfirm", () => {
   it("retains an armed payload and clears it with the pending state", () => {
     const { result } = renderHook(() => usePendingConfirm<{ text: string }>(3000));
     act(() => {
-      result.current.confirm("force", { text: "/branch" });
+      result.current.arm("force", { text: "/branch" });
     });
     expect(result.current.payload).toEqual({ text: "/branch" });
 
     act(() => vi.advanceTimersByTime(3000));
     expect(result.current.pending).toBeNull();
     expect(result.current.payload).toBeNull();
+  });
+
+  it("replaces an armed payload without treating a new attempt as confirmation", () => {
+    const { result } = renderHook(() => usePendingConfirm<{ text: string }>());
+    act(() => {
+      result.current.arm("force", { text: "/branch" });
+      result.current.arm("force", { text: "/fork" });
+    });
+
+    expect(result.current.pending).toBe("force");
+    expect(result.current.payload).toEqual({ text: "/fork" });
+
+    let confirmed: boolean | undefined;
+    act(() => {
+      confirmed = result.current.confirm("force");
+    });
+    expect(confirmed).toBe(true);
+    expect(result.current.pending).toBeNull();
   });
 
   it("auto-disarms after the timeout", () => {

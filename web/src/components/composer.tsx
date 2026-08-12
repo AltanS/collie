@@ -91,7 +91,8 @@ type ComposerDrawer = "quick" | "cmd" | "keys" | "display" | null;
 /** The exact send attempt that a blocked pre-flight lets the user deliberately retry. */
 interface ForcedSend {
   text: string;
-  isDraft: boolean;
+  /** The exact phone draft this attempt may clear, or null for palette/Quick sends. */
+  draft: string | null;
 }
 
 // The Controls row's "on" look, authored once so an open dock and an armed mode can never drift
@@ -422,9 +423,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   // Resolves true only on a VERIFIED send (the text was seen in the pane's input box before the
-  // submit key went out). The quick-reply grid consumes the verdict to drive its own ✓ and to decide
-  // whether to close its dock, so every early return below has to answer honestly.
-  async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
+  // submit key went out). `draft` is the exact phone-owned value this attempt may clear: editing the
+  // composer while a guarded send is pending gives the newer draft its own ownership. The quick-reply
+  // grid consumes the verdict to drive its own ✓ and to decide whether to close its dock, so every
+  // early return below has to answer honestly.
+  async function send(value: string, draft: string | null, force = false): Promise<boolean> {
     const t = value.trim();
     if (!t || locked || sending || voiceBusy) return false;
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
@@ -516,9 +519,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         },
       });
       if (res.status === "sent") {
-        // Phone-owned input — cleared once the reply is on its way. Via updateInput, so the stored
-        // draft goes with it (an empty value removes the key).
-        if (isDraft) updateInput("");
+        // Clear only the exact phone draft this attempt owns. A user can edit while a blocked
+        // attempt is awaiting its deliberate override; that newer persisted draft must survive.
+        if (draft !== null && inputValueRef.current === draft) updateInput("");
         // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
         // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
         lastSentRef.current = { text: t, at: Date.now() };
@@ -549,7 +552,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // but the adapter can only report what it can see, so the user gets a deliberate override —
         // the same two-tap shape as the destructive-send confirm. The second tap skips the pre-flight
         // ONLY; the type-then-verify guard still runs, so Enter is never fired blind either way.
-        forceConfirm.confirm("force", { text: t, isDraft });
+        // Latest blocked attempt wins. This is a new send attempt, not the user's second-tap
+        // confirmation, so it replaces any armed payload and restarts the override window.
+        forceConfirm.arm("force", { text: t, draft });
         setStatus(`${res.error} Tap Send again to type anyway.`, "error");
         return false;
       } else {
@@ -579,7 +584,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (forceConfirm.pending === "force") {
       const forced = forceConfirm.payload;
       forceConfirm.reset();
-      if (forced !== null) void send(forced.text, forced.isDraft, true);
+      if (forced !== null) void send(forced.text, forced.draft, true);
       return;
     }
     const reason = isDestructiveInput(input);
@@ -588,7 +593,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return;
     }
     sendConfirm.reset();
-    send(input, true);
+    void send(input, input);
   }
   const confirmingSend = sendConfirm.pending === "send";
   const forcingSend = forceConfirm.pending === "force" && forceConfirm.payload !== null;
@@ -758,7 +763,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {drawer === "quick" && (
           <ComposerDock title="Quick" onClose={closeDrawer}>
             <QuickActionsContent
-              onSend={(t) => send(t, false)}
+              onSend={(t) => send(t, null)}
               onClose={closeDrawer}
               agent={agent}
               isShell={isShell}
@@ -1045,7 +1050,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onClose={closeDrawer}
         agent={agent}
         onInsert={insertCommand}
-        onSubmit={(t) => send(t, false)}
+        onSubmit={(t) => void send(t, null)}
       />
     </>
   );

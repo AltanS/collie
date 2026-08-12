@@ -19,27 +19,36 @@ export function usePendingConfirm<T = never>(timeoutMs = 3000) {
     setPayload(null);
   }, [clearTimer]);
 
-  // Returns true when `id` was already armed (this is the confirming second tap) — the caller should
-  // proceed. On the first tap it arms `id`, starts the disarm timer, and returns false.
-  const confirm = useCallback(
-    (id: string, nextPayload?: T): boolean => {
-      if (pending === id) {
-        reset();
-        return true;
-      }
+  // Arm (or replace) a pending action. Callers that discover a new guarded attempt while one is
+  // already armed must use this rather than treating the attempt as the user's confirming second tap.
+  const arm = useCallback(
+    (id: string, nextPayload: T | null = null) => {
       clearTimer();
       setPending(id);
-      setPayload(nextPayload ?? null);
+      setPayload(nextPayload);
       timer.current = setTimeout(() => {
         setPending(null);
         setPayload(null);
       }, timeoutMs);
+    },
+    [clearTimer, timeoutMs],
+  );
+
+  // Returns true when `id` was already armed (this is the confirming second tap) — the caller should
+  // proceed. On the first tap it arms `id`, starts the disarm timer, and returns false.
+  const confirm = useCallback(
+    (id: string): boolean => {
+      if (pending === id) {
+        reset();
+        return true;
+      }
+      arm(id);
       return false;
     },
-    [pending, clearTimer, reset, timeoutMs],
+    [pending, arm, reset],
   );
 
   useEffect(() => clearTimer, [clearTimer]);
 
-  return { pending, payload, confirm, reset };
+  return { pending, payload, arm, confirm, reset };
 }
