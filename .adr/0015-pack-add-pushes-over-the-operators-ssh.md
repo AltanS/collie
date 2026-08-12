@@ -117,7 +117,7 @@ warning naming the verb that fixes it, nonzero exit on any error-severity findin
 by an ADR of its own — it closes off no road — but it is the reason `pack add` can stay narrow: a
 diagnostic surface that names the loopback bind, the deny-all ACL (`cli/tailnet.ts`
 `tailnetInboundBlocked`, currently read only by `qr`), clock skew against §8.6's ±5-minute window and
-a rebuilt-but-not-restarted bridge is the thing that makes hand-rolled enrollments survivable, so
+a rebuilt-but-not-restarted collie is the thing that makes hand-rolled enrollments survivable, so
 `pack add` does not have to grow into a repair tool.
 
 ## Consequences
