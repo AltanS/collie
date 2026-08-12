@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.14] - 2026-08-12
+
+### Added
+
+- **`collie pack add <ssh-host>`** — probe, install, configure, enroll a peer over one multiplexed SSH connection (ADR 0015): pushes the lead's own commit as a `git bundle`, writes the peer's bind from a value read off that machine, and pipes the invite token over stdin only; the last line reports whether the member is non-provisional after first contact (42114c0)
+
 ## [1.0.0-alpha.13] - 2026-08-12
 
 ### Added
