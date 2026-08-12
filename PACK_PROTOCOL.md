@@ -1064,7 +1064,10 @@ explicitly accepting the risk for a machine they know is down. It sweeps **nobod
 *current* lead at the handshake (§8.1's 2026-08-07 amendment), so a promoted lead a peer does not yet
 pin is refused at that peer's TLS handshake regardless. `collie promote --force` therefore **skips the
 peer sweep entirely** and prints the re-join for every member instead. (In the shipped code the forced
-path already carries an empty roster, so the sweep had nobody to dial — the promise now matches.)
+path already carries an empty roster, so the sweep had nobody to dial — the promise now matches.
+2026-08-12: the *unforced* path's sweep is gone too, for the reason above — it could never land, and a
+column of ✗ lines misread as a partial failure is worse than the plain instruction; §14.5 states the
+re-enrollment rule both paths now print.)
 
 This is accepted rather than worked around. §15 already declares transparent failover a non-goal, and
 §8.4 imposes the identical rule on a peer that misses a rotation. Re-enrollment is the recovery path
@@ -1092,9 +1095,25 @@ before it is ever powered back on into the pack.
   promoted lead and a peer in v1 — there is no application-layer peer-side rule, because a peer pins
   exactly one lead and a route-level adoption rule is needed only once that stops being true (reserved
   — §16, ADR 0014).
-- Every remaining peer must be told the new lead's address. Reachable peers are updated by the
-  promotion itself; **a peer that is unreachable during promotion must be re-enrolled** (`collie join`
-  against the new lead, fresh token) — the same rule rotation uses (§8.4), for the same reason.
+- **Every remaining peer re-enrolls; the promotion updates none of them** (corrected 2026-08-12 — an
+  earlier draft said reachable peers are updated by the promotion itself, which the previous bullet's
+  handshake rule makes impossible: each peer pins its *current* lead's certificate, so the new lead's
+  dial is refused at TLS before any application code runs, reachable or not). `collie join` against
+  the new lead with a fresh token, for every peer that is not the old lead — the same rule rotation
+  uses (§8.4), for the same reason. With two members there are no such peers and nothing to do.
+- **The demoted lead's roster entry names an address the demotion itself retires** (added 2026-08-12).
+  The new lead carries the old lead into its roster at the address it always dialed it at — the old
+  lead's **front door**, which the hand-over's own next step (`collie unserve` there) tears down. And
+  a machine that led from behind a front door typically binds loopback, so it has no dialable pack
+  listener until its operator sets `COLLIE_HOST` and restarts (§4 — an address is a fact about the
+  dialler's network; nothing in the protocol can conjure one for a machine that never had it). The
+  repair is two existing verbs, and `promote` MUST print them as steps: on the demoted machine, set
+  `COLLIE_HOST` to an address the new lead can dial, then `collie restart` (the same `.env` change
+  every peer makes — §8.2); on the new lead, `collie reconnect <old-lead> <host:port>`. Until then
+  `pack status` and `collie doctor` here show that member unreachable, and `doctor` there names the
+  loopback bind (both by design — the state is visible, not silent). No wire field is added for this:
+  a bind is not a name, so nothing the demotion reply could carry is trustworthy as a dialling
+  address (§7.1's class rule would permit the field; §4's addressing rule is why it would be wrong).
 - **The phone re-points manually.** The front-door URL is bound to a node; nothing rewrites a
   bookmark. This is stated as an operator step, not hidden.
 - **The old lead's front door is torn down by the old lead.** Collie tears down only a mapping its own
