@@ -43,6 +43,10 @@ const SHELL_VERBS = [
 // and this one is "the binary grew exactly these".
 const PACK_VERBS = ["join", "leave", "pack", "promote", "reconnect"];
 
+// The diagnostic verbs (M7/02). No shell ancestor either, and they sit between the two groups above
+// because that is where they are declared — the usage line's order is the table's order.
+const DIAGNOSTIC_VERBS = ["doctor"];
+
 function capture(): Io & { stdout: string[]; stderr: string[] } {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -51,7 +55,7 @@ function capture(): Io & { stdout: string[]; stderr: string[] } {
 
 describe("the verb table", () => {
   test("covers every verb the shell dispatches, plus help", () => {
-    expect(COMMANDS.map((c) => c.name)).toEqual([...SHELL_VERBS, ...PACK_VERBS, "help"]);
+    expect(COMMANDS.map((c) => c.name)).toEqual([...SHELL_VERBS, ...DIAGNOSTIC_VERBS, ...PACK_VERBS, "help"]);
   });
 
   test("hides exactly the shell's internal verbs from the usage line", () => {
@@ -162,6 +166,9 @@ describe("exit codes", () => {
       // and `pack` with no subcommand would still resolve a real context and a real audit path. All
       // of them are covered in cli/pack.test.ts against fakes.
       ...PACK_VERBS,
+      // `doctor` writes nothing, but it is not runnable here either: it shells out to `tailscale`
+      // and would dial this host's real pack members. cli/doctor.test.ts drives it against fakes.
+      ...DIAGNOSTIC_VERBS,
     ];
     const readOnly = ["version", "help"];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();
