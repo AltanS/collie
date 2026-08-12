@@ -120,6 +120,12 @@ export type DriftDeps = Pick<PackDeps, "ctx" | "io" | "files">;
 
 const CONTENT_TYPE = { "content-type": "application/json" } as const;
 
+// Fixed and generous, not `timeoutFor`'s poll-clamped ~1.5s member budget: an enrollment dial crosses
+// operator-owned ingress — reverse proxies, tunnels, WAN — that a same-pack member dial never does,
+// and it runs once interactively (never on a poll loop), so seconds of patience are cheap here and a
+// poll-scale budget would produce false UNREACHABLEs against a lead that is merely slow to answer.
+const JOIN_DIAL_TIMEOUT_MS = 15_000;
+
 // ── Shared plumbing ──────────────────────────────────────────────────────────
 
 /** The pack timeout budget for a one-shot verb: the default, clamped by the poll interval as usual. */
@@ -492,6 +498,8 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   }
 
   let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), JOIN_DIAL_TIMEOUT_MS);
   try {
     res = await deps.fetch(url, {
       method: "POST",
@@ -510,9 +518,15 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
         address: mine,
         label: flags.label ?? null,
       }),
+      signal: controller.signal,
     });
   } catch (err) {
-    deps.io.err(`error: could not reach ${address} — ${err instanceof Error ? err.message : String(err)}`);
+    const reason = controller.signal.aborted
+      ? `timed out after ${JOIN_DIAL_TIMEOUT_MS / 1000}s`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    deps.io.err(`error: could not reach ${address} — ${reason}`);
     deps.io.err("       The lead owns nothing about reachability: check the address, the tunnel, the port.");
     if (!/^https?:\/\//i.test(address)) {
       deps.io.err("       No scheme was given, so https:// was assumed. If the lead really is plaintext http://, say");
@@ -520,6 +534,8 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
       deps.io.err("       clear (see the http:// refusal).");
     }
     return EXIT.UNREACHABLE;
+  } finally {
+    clearTimeout(timer);
   }
 
   if (res.status === 401) {
