@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -9,7 +11,7 @@ import { fp, leadStore, material, member, PACK, T0 } from "../bridge/pack/fixtur
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { capture, context, fakeExec, fakeFiles, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
-import { cmdPack } from "./pack.ts";
+import { cmdPack, type PackDeps } from "./pack.ts";
 import {
   cmdPackAdd,
   composeStdin,
@@ -17,6 +19,7 @@ import {
   enrollScript,
   installScript,
   membershipScript,
+  packAddDeps,
   parseMembership,
   parseProbe,
   probeScript,
@@ -26,6 +29,7 @@ import {
   type PackAddDeps,
   type RemoteResult,
 } from "./remote.ts";
+import { realExec } from "./sys.ts";
 
 // `collie pack add` against fakes for every seam. **NOTHING here spawns `ssh` or reaches a network**:
 // the transport is a function that records `(script, stdin)` pairs and answers from a table, the
@@ -695,5 +699,75 @@ describe("dispatch", () => {
 
   test("the pack it joins is the one this lead already leads", () => {
     expect(PACK.packId).toBe("pack-1");
+  });
+});
+
+// ── `packAddDeps().gitBundle` against a REAL git ─────────────────────────────
+// The fakes above stub `gitBundle` entirely, which is exactly how the field bug (a bare commit sha
+// is not a REF, so `git bundle create - <sha>` refuses with "Refusing to create empty bundle")
+// survived. This suite spawns a real `git` against a throwaway repo instead.
+
+/** A repo-scoped env with no `PATH` surprises and no inherited `GIT_*` — see collie-cli.test.sh. */
+function gitEnv(): Record<string, string | undefined> {
+  return { PATH: process.env.PATH };
+}
+
+function minimalPackDeps(root: string): PackDeps {
+  const storeIo: TrustStoreIo = { read: async () => null, write: async () => {} };
+  return {
+    ctx: context(gitEnv(), { root }),
+    io: capture(),
+    exec: realExec(gitEnv(), root),
+    files: fakeFiles(),
+    store: new TrustStore("/state", storeIo),
+    audit: null,
+    fetch: () => Promise.reject(new Error("not used by gitBundle")),
+    now: () => T0,
+    random: () => "r",
+    mintIdentity: () => Promise.reject(new Error("not used by gitBundle")),
+    readStdin: () => Promise.resolve(""),
+    restart: () => Promise.resolve(EXIT.OK),
+    serve: () => Promise.resolve(EXIT.OK),
+    unserve: () => EXIT.OK,
+    clearNotifications: () => Promise.resolve(),
+  };
+}
+
+describe("packAddDeps().gitBundle, against a real repo", () => {
+  test("bundles HEAD when the commit given is still HEAD, and refuses when it has moved", async () => {
+    const root = mkdtempSync(join(tmpdir(), "collie-gitbundle-"));
+    try {
+      const env = gitEnv();
+      const git = (...args: string[]) =>
+        execFileSync("git", ["-C", root, ...args], { env, encoding: "utf8" });
+      git("init", "-q");
+      git("config", "user.email", "test@example.com");
+      git("config", "user.name", "Test");
+      writeFileSync(join(root, "file.txt"), "one\n");
+      git("add", "file.txt");
+      git("commit", "-q", "-m", "first");
+      const first = git("rev-parse", "HEAD").trim();
+
+      writeFileSync(join(root, "file.txt"), "two\n");
+      git("add", "file.txt");
+      git("commit", "-q", "-m", "second");
+      const second = git("rev-parse", "HEAD").trim();
+
+      const staleDeps = minimalPackDeps(root);
+      const staleBundle = await packAddDeps(staleDeps).gitBundle(first);
+      expect(staleBundle).toBeNull();
+
+      const freshDeps = minimalPackDeps(root);
+      const encoded = await packAddDeps(freshDeps).gitBundle(second);
+      if (encoded === null) {
+        throw new Error(`gitBundle returned null; stderr: ${(freshDeps.io as ReturnType<typeof capture>).stderr.join("\n")}`);
+      }
+      const bundlePath = join(root, "bundle.out");
+      writeFileSync(bundlePath, Buffer.from(encoded, "base64"));
+      // `bundle verify` exits 0 (throws on non-zero) — the bundle is well-formed and self-contained.
+      expect(() => execFileSync("git", ["-C", root, "bundle", "verify", bundlePath], { env })).not.toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
