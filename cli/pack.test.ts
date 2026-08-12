@@ -31,6 +31,7 @@ import {
   enrollUrl,
   parsePackArgs,
   readToken,
+  selfAddress,
 } from "./pack.ts";
 import type { PackAddDeps } from "./remote.ts";
 
@@ -242,6 +243,65 @@ describe("readToken — §8.3, and the warning that makes it real", () => {
   });
 });
 
+describe("selfAddress — the port is explicit exactly where the dial needs it", () => {
+  test("a peer's pack listener carries this instance's port; the lead's front door does not", () => {
+    const h = harness(null);
+    // The trap this closes: a bare host dials :443 (`enrollUrl`/`packUrl` assume https), and a peer
+    // publishes no front door — its listener is COLLIE_HOST:COLLIE_PORT and nothing else (§3).
+    expect(selfAddress(h.deps, undefined, "pack-listener")).toBe("laptop.tail.ts.net:8787");
+    // The lead's is the published ingress, which really is on :443 — `pack add` and `pack invite`
+    // hand this string to a joiner, and it must keep dialling the front door.
+    expect(selfAddress(h.deps, undefined, "front-door")).toBe("laptop.tail.ts.net");
+  });
+
+  test("the appended port is the instance's own, not the default", () => {
+    const h = harness(null, [], { ctx: context({}, { port: 9000 }) });
+    expect(selfAddress(h.deps, undefined, "pack-listener")).toBe("laptop.tail.ts.net:9000");
+  });
+
+  test("http mode publishes no TLS front door, so both kinds are the bridge port", () => {
+    const h = harness(null, [], { ctx: context({}, { serveMode: "http" }) });
+    expect(selfAddress(h.deps, undefined, "pack-listener")).toBe("laptop.tail.ts.net:8787");
+    expect(selfAddress(h.deps, undefined, "front-door")).toBe("laptop.tail.ts.net:8787");
+  });
+
+  test("the derived peer address composes into a dialable URL rather than being mangled", () => {
+    const h = harness(null);
+    expect(enrollUrl(selfAddress(h.deps, undefined, "pack-listener")!)).toBe(
+      "https://laptop.tail.ts.net:8787/pack/v1/enroll",
+    );
+  });
+
+  test("the operator's --address is taken VERBATIM — reachability is theirs to own (§8.2)", () => {
+    const h = harness(null);
+    // Nothing is appended, re-scheme'd or re-bracketed: a value that already carries a port, a
+    // scheme, an IPv6 literal, or all three comes back exactly as typed, for either kind.
+    for (const given of [
+      "nas.example:1",
+      "nas.example",
+      "https://nas.example:8443",
+      "http://nas.example:8787",
+      "[fd7a:115c::1]:8787",
+      "https://[fd7a:115c::1]:8443",
+    ]) {
+      expect(selfAddress(h.deps, given, "pack-listener")).toBe(given);
+      expect(selfAddress(h.deps, given, "front-door")).toBe(given);
+    }
+  });
+
+  test("an empty --address is no address at all, and falls back to the derived one", () => {
+    // `parsePackArgs` gives a value-taking flag with nothing after it the empty string.
+    const h = harness(null);
+    expect(selfAddress(h.deps, "", "pack-listener")).toBe("laptop.tail.ts.net:8787");
+  });
+
+  test("no tailnet name is null for both kinds — never a localhost the far side would dial", () => {
+    const h = harness(null, [], { exec: fakeExec({ absent: ["tailscale"] }) });
+    expect(selfAddress(h.deps, undefined, "pack-listener")).toBeNull();
+    expect(selfAddress(h.deps, undefined, "front-door")).toBeNull();
+  });
+});
+
 describe("enrollUrl", () => {
   test("a bare host becomes an https enrollment URL", () => {
     expect(enrollUrl("desk.ts.net")).toBe("https://desk.ts.net/pack/v1/enroll");
@@ -323,7 +383,9 @@ describe("collie join", () => {
       token: "token-from-stdin",
       fingerprint: fp("fresh"),
       certPem: material("fresh").certPem,
-      address: "laptop.tail.ts.net",
+      // The joiner is becoming a PEER, so what it hands the lead is its own pack listener — host AND
+      // port. Portless, the lead would dial it at :443 forever (see the `selfAddress` suite above).
+      address: "laptop.tail.ts.net:8787",
       label: null,
     });
     // Nothing was handed to a subprocess: the token cannot appear in anyone's `ps`.
