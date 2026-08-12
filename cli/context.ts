@@ -103,12 +103,25 @@ export interface ConfigDirResult {
  * Injected env → Herdr CLI → Herdr's conventional path (only if it has a `.env`) → `~/.config/collie`.
  * Mirrors the pre-shim `collie-ctl.sh` including the legacy-`.env`-ignored note, so config applied
  * one way is never silently dropped the other.
+ *
+ * **A named instance short-circuits the middle of that chain.** `deps.env` is the PROCESS env, read
+ * before any `.env` merge, so a `COLLIE_INSTANCE` here is the operator's own — see the amendment at
+ * "The instance suffix" below for why it may only DISCOVER the suffixed conventional dir, and must
+ * refuse rather than resolve to another instance's files.
  */
 export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
   const legacy = join(deps.home, ".config", "collie");
+  const conventionalFor = (suffix: string): string =>
+    join(deps.home, ".config", "herdr", "plugins", "config", `${PLUGIN_ID}${suffix}`);
+  // Shape-checked, not resolved: an unusable value falls through to the pre-instance behaviour so
+  // that `resolveInstance` stays the single source of the "not a usable instance name" refusal.
+  const raw = deps.env.COLLIE_INSTANCE?.trim();
+  const instance = raw !== undefined && INSTANCE_PATTERN.test(raw) ? raw : null;
   const dir = pick();
   const note =
-    dir !== legacy && deps.fileExists(join(legacy, ".env"))
+    // Silent for a named instance: the legacy `.env` belongs to the host's first Collie, and telling
+    // a second instance to move it into its own dir would be advice to merge two configs.
+    instance === null && dir !== legacy && deps.fileExists(join(legacy, ".env"))
       ? `note: ignoring legacy ${join(legacy, ".env")} — config now lives in ${join(dir, ".env")} (move it there).`
       : null;
   return { dir, note };
@@ -116,9 +129,18 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
   function pick(): string {
     const injected = deps.env.HERDR_PLUGIN_CONFIG_DIR?.trim();
     if (injected) return injected;
+    if (instance !== null) {
+      // Not `askHerdr()`: herdr only knows the unsuffixed plugin's dir, which is another instance's.
+      const own = conventionalFor(instanceSuffix(instance));
+      if (deps.fileExists(join(own, ".env"))) return own;
+      throw new Error(
+        `COLLIE_INSTANCE="${instance}" but no config at ${join(own, ".env")} — create it, or pass ` +
+          "HERDR_PLUGIN_CONFIG_DIR explicitly. Refusing to fall back to another instance's config.",
+      );
+    }
     const asked = deps.askHerdr()?.trim();
     if (asked) return asked;
-    const conventional = join(deps.home, ".config", "herdr", "plugins", "config", PLUGIN_ID);
+    const conventional = conventionalFor("");
     if (deps.fileExists(join(conventional, ".env"))) return conventional;
     return legacy;
   }
@@ -167,9 +189,16 @@ export function deriveSettings(
 // ── The instance suffix ──────────────────────────────────────────────────────
 // Two Collies on one host — a stable one and a next-major one being shaken out beside it — need two
 // of everything the CLI names: a unit, a launchd label, a pidfile, a log, an ownership record. One
-// knob supplies the suffix for all of them, and NOTHING else: ports, config dirs and state dirs stay
-// explicitly configured, because a knob that also invented those would be inventing where a second
-// service writes.
+// knob supplies the suffix for all of them, and NOTHING else: ports and state dirs stay explicitly
+// configured, because a knob that INVENTS those would be inventing where a second service writes.
+//
+// Amended 2026-08-12: the config dir is DISCOVERED, not invented. When the process env names an
+// instance, `resolveConfigDir` looks for `<conventional>/herdr.collie-<instance>/.env` — a directory
+// the operator created — and, finding none, refuses the run instead of resolving anywhere else. It
+// never asks herdr (herdr only knows the unsuffixed plugin's dir) and never falls back to the
+// unsuffixed or legacy dir. The incident: `COLLIE_INSTANCE=v1 collie pack add` without an injected
+// HERDR_PLUGIN_CONFIG_DIR resolved the DEFAULT instance's config and state dirs, so a pack verb read
+// the wrong trust store and then minted a fresh self identity into the live stable instance's.
 
 /** The accepted shape of `COLLIE_INSTANCE`: it becomes a unit name, a filename and a launchd label. */
 export const INSTANCE_PATTERN = /^[a-z0-9-]{1,16}$/;
