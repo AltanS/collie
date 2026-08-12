@@ -1121,27 +1121,13 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
   );
   if (promoted === null) return EXIT.FAIL;
 
-  // Tell everyone else. The old lead already knows — it demoted itself in the call above.
+  // NOBODY ELSE IS SWEPT — §14.4/§14.5 (2026-08-12). A peer pins its CURRENT lead's certificate as
+  // the sole anchor of its listener (`peerListenerTls`, bridge/pack/transport.ts), so a dial from a
+  // lead it does not yet pin is refused at the TLS handshake before any route runs — reachable or
+  // not, forced or not. The sweep that used to stand here could never land; a column of ✗ lines read
+  // as a partial failure where the truth is uniform. Every remaining member re-joins instead, which
+  // is the numbered step below.
   const others = roster.filter((r) => r.memberId !== data.lead?.memberId);
-  const told = await sweepPeers(
-    others.map((r) => ({ memberId: r.memberId, address: r.address })),
-    (link) =>
-      client.json(link, "lead", undefined, {
-        method: "POST",
-        headers: CONTENT_TYPE,
-        body: JSON.stringify({ lead: claim }),
-      }),
-  );
-  const stranded: string[] = [];
-  for (const peer of others) {
-    const outcome = told.get(peer.memberId);
-    if (outcome?.ok === true) {
-      deps.io.out(`  ✓ ${peer.memberId} now dials this machine`);
-    } else {
-      stranded.push(peer.memberId);
-      deps.io.out(`  ✗ ${peer.memberId} — ${outcome === undefined ? "not dialled" : failureLine(outcome)}`);
-    }
-  }
 
   await applyLocally(deps, "lead mode");
   const served = await deps.serve();
@@ -1161,14 +1147,20 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
   deps.io.out("");
   deps.io.out("  1. Re-point your phone — the front-door URL is bound to a node, and nothing rewrites a");
   deps.io.out(`     bookmark. This machine: ${mine}`);
-  deps.io.out(`  2. On "${data.lead.memberId}": \`collie restart\`, then \`collie unserve\` — in that order.`);
-  deps.io.out("     It adopted the demotion on disk when it answered, but its PROCESS is still the lead it");
-  deps.io.out("     booted as: lead-mode listener, pinning nothing, until the restart. And only that machine");
-  deps.io.out("     can drop the front door (Collie removes only a mapping its own record matches); `restart`");
-  deps.io.out("     re-publishes on the way up, which is why `unserve` comes after it.");
-  if (stranded.length > 0) {
-    deps.io.out(`  3. Unreachable during promotion: ${stranded.join(", ")} — each must \`collie join\` this`);
-    deps.io.out("     machine with a fresh token. The same rule rotation uses, for the same reason.");
+  deps.io.out(`  2. On "${data.lead.memberId}": set \`COLLIE_HOST=<an address this machine can dial>\` in its .env, then`);
+  deps.io.out("     `collie restart`, then `collie unserve` — in that order. A lead behind a front door typically");
+  deps.io.out("     binds loopback; as a peer it must be dialable directly (§3), and only a restart moves the bind.");
+  deps.io.out("     It adopted the demotion on disk when it answered, but its PROCESS is still the lead it booted");
+  deps.io.out("     as: lead-mode listener, pinning nothing, until the restart. And only that machine can drop the");
+  deps.io.out("     front door (Collie removes only a mapping its own record matches); `restart` re-publishes on");
+  deps.io.out("     the way up, which is why `unserve` comes after it.");
+  deps.io.out(`  3. Here: \`collie reconnect ${data.lead.memberId} <host:port>\` — the roster records that machine at its`);
+  deps.io.out("     FRONT DOOR, which step 2 just retired. Until you re-point it, `collie pack status` and `collie");
+  deps.io.out("     doctor` here show it unreachable, and `doctor` there names the bind.");
+  if (others.length > 0) {
+    deps.io.out(`  4. Every other member — ${others.map((r) => r.memberId).join(", ")} — must \`collie join\` this machine with a`);
+    deps.io.out("     fresh token: each still pins the old lead's certificate at its own handshake, so nothing here");
+    deps.io.out("     can reach it. The same rule rotation uses (§8.4), for the same reason.");
   }
   return EXIT.OK;
 }
