@@ -50,6 +50,8 @@ import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/p
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+// Type-only, so it is erased: the runtime edge to `cli/remote.ts` is the dynamic import in `cmdPack`.
+import type { PackAddDeps } from "./remote.ts";
 import type { Exec, Files } from "./sys.ts";
 import { tailnetName } from "./tailnet.ts";
 
@@ -183,7 +185,7 @@ export function failureLine(outcome: PeerOutcome<unknown>): string {
  * `collie url` already prints. There is no third guess: an address we cannot state is an error the
  * operator fixes with a flag, not a `localhost` the far side would dial forever.
  */
-function selfAddress(deps: PackDeps, override: string | undefined): string | null {
+export function selfAddress(deps: PackDeps, override: string | undefined): string | null {
   if (override !== undefined && override !== "") return override;
   const name = tailnetName(deps.exec);
   if (name === null) return null;
@@ -271,8 +273,12 @@ export async function readToken(
  * and no roster (PACK_PROTOCOL.md §11). This is the ONLY call site of the minter in the codebase,
  * which is what makes "solo mints nothing" a structural fact rather than a promise: there is no other
  * path on which a key could come into existence.
+ *
+ * Exported for `pack add` (cli/remote.ts), which mints its invite through the same path — and must
+ * do so through THIS function rather than a second one, or "solo mints nothing" stops being
+ * structural.
  */
-async function ensureStore(deps: PackDeps, label: string | undefined): Promise<TrustStoreData | null> {
+export async function ensureStore(deps: PackDeps, label: string | undefined): Promise<TrustStoreData | null> {
   const existing = await deps.store.load();
   if (existing !== null) return existing;
   try {
@@ -1181,17 +1187,24 @@ export async function cmdReconnect(deps: PackDeps, args: readonly string[]): Pro
 // ── `collie pack <sub>` dispatch ─────────────────────────────────────────────
 
 /** The `pack` sub-verbs, in the order the help prints them. */
-export const PACK_SUBCOMMANDS = ["invite", "status", "rotate", "remove", "approve-promote"] as const;
+export const PACK_SUBCOMMANDS = ["invite", "add", "status", "rotate", "remove", "approve-promote"] as const;
 
 export function packUsage(): string {
   return `usage: collie pack {${PACK_SUBCOMMANDS.join("|")}}`;
 }
 
-export async function cmdPack(deps: PackDeps, args: readonly string[]): Promise<number> {
+export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
     case "invite":
       return cmdPackInvite(deps, rest);
+    // Imported at CALL time, not at module load: `cli/remote.ts` imports this module's `ensureStore`,
+    // `selfAddress` and `probeMembers`, so a static import here would close a cycle. Everything else
+    // in the switch is local, and `pack add` is the one verb that reaches another machine.
+    case "add": {
+      const { cmdPackAdd } = await import("./remote.ts");
+      return cmdPackAdd(deps, rest);
+    }
     case "status":
       return cmdPackStatus(deps, rest);
     case "rotate":
@@ -1206,6 +1219,7 @@ export async function cmdPack(deps: PackDeps, args: readonly string[]): Promise<
       }
       deps.io.err(packUsage());
       deps.io.err("  invite   mint a single-use, 10-minute enrollment token (on the lead)");
+      deps.io.err("  add      install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)");
       deps.io.err("  status   mode, members, reachability, secret pickup and why a link is refused");
       deps.io.err("  rotate   reissue the pack secret and hand it to every reachable peer");
       deps.io.err("  remove   unpin and forget a member (on the lead)");

@@ -22,9 +22,9 @@ import {
   packAudit,
   packDeps,
   PACK_SUBCOMMANDS,
-  type PackDeps,
 } from "./pack.ts";
 import { cmdPushTest } from "./push.ts";
+import { packAddDeps, type PackAddDeps } from "./remote.ts";
 import { cmdQr } from "./qr.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realExec, realFiles, waitReady } from "./sys.ts";
@@ -84,19 +84,23 @@ function updateDeps(io: Io): UpdateDeps {
  * is not complete until the running bridge has it: the trust store is read once per process, and mode,
  * push gate and roster are resolved at construction.
  */
-async function packVerbDeps(io: Io): Promise<PackDeps> {
+async function packVerbDeps(io: Io): Promise<PackAddDeps> {
   const deps = lifecycleDeps(io);
-  return packDeps(
-    {
-      ctx: deps.ctx,
-      io,
-      exec: deps.exec,
-      files: deps.files,
-      restart: () => cmdRestart(deps),
-      serve: () => Promise.resolve(cmdServe(deps)),
-      unserve: () => cmdUnserve(deps),
-    },
-    await packAudit(deps.ctx),
+  // `packAddDeps` layers the SSH transport, the two prompts and the bundle on top — `pack add` is
+  // the one verb that reaches another machine, and every one of those is a seam its tests replace.
+  return packAddDeps(
+    packDeps(
+      {
+        ctx: deps.ctx,
+        io,
+        exec: deps.exec,
+        files: deps.files,
+        restart: () => cmdRestart(deps),
+        serve: () => Promise.resolve(cmdServe(deps)),
+        unserve: () => cmdUnserve(deps),
+      },
+      await packAudit(deps.ctx),
+    ),
   );
 }
 

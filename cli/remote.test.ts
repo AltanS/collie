@@ -1,0 +1,699 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
+import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
+import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
+import { fp, leadStore, material, member, PACK, T0 } from "../bridge/pack/fixtures.ts";
+import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
+import { capture, context, fakeExec, fakeFiles, ROOT } from "./fakes.ts";
+import { EXIT } from "./io.ts";
+import { cmdPack } from "./pack.ts";
+import {
+  cmdPackAdd,
+  composeStdin,
+  configureScript,
+  enrollScript,
+  installScript,
+  membershipScript,
+  parseMembership,
+  parseProbe,
+  probeScript,
+  shq,
+  sshOptions,
+  STDIN_MARKER,
+  type PackAddDeps,
+  type RemoteResult,
+} from "./remote.ts";
+
+// `collie pack add` against fakes for every seam. **NOTHING here spawns `ssh` or reaches a network**:
+// the transport is a function that records `(script, stdin)` pairs and answers from a table, the
+// prompts are values, and the trust store is in memory. That is the same safety boundary
+// `cli/fakes.ts` draws for the lifecycle verbs and `cli/pack.test.ts` draws for the pack verbs — a
+// verb that installs software on another machine is exactly the one that must never be run for real
+// by a test suite.
+
+// ── The fake transport ───────────────────────────────────────────────────────
+
+type Leg = "probe" | "install" | "configure" | "membership" | "enroll";
+
+/** Which leg a script is, read off the script itself — so a test never depends on call ordering. */
+function legOf(script: string): Leg {
+  if (script.includes("collie-probe:")) return "probe";
+  if (script.includes("collie-install:")) return "install";
+  if (script.includes("collie-configure:")) return "configure";
+  if (script.includes("pack status --no-probe")) return "membership";
+  if (script.includes("'join'")) return "enroll";
+  throw new Error(`unrecognised leg script:\n${script}`);
+}
+
+interface Recorded {
+  leg: Leg;
+  script: string;
+  stdin: string | undefined;
+}
+
+const COMMIT = "abc123def4567890abc123def4567890abc123de";
+const VERSION = "1.2.3";
+const REMOTE_HOME = "/home/pat";
+const REMOTE_CHECKOUT = `${REMOTE_HOME}/.collie`;
+const TAILSCALE_JSON = JSON.stringify({ Self: { DNSName: "desk.tail.ts.net." } });
+
+const PROBE_DEFAULTS: Record<string, string> = {
+  home: REMOTE_HOME,
+  git: "/usr/bin/git",
+  bun: "/home/pat/.bun/bin/bun",
+  herdr: "/usr/local/bin/herdr",
+  configdir: "/home/pat/.config/herdr/plugins/config/herdr.collie",
+  envhost: "",
+  envport: "",
+  checkout: "",
+  commit: "",
+  branch: "",
+  dirty: "",
+  dirtyfiles: "",
+  version: "",
+  address: "100.64.0.9",
+  port: "free",
+};
+
+/** Leg 1's stdout, as the remote would print it. */
+function probeOut(over: Record<string, string> = {}): string {
+  const all = { ...PROBE_DEFAULTS, ...over };
+  const lines = Object.entries(all).map(([k, v]) => `collie-probe:${k}=${v}`);
+  return [...lines, "collie-probe:probe=ok", ""].join("\n");
+}
+
+const SOLO_STATUS = [
+  "mode: solo — this collie is not in a pack (no trust store, or an empty one).",
+  "  `collie pack invite` here makes it a lead; `collie join …` makes it a peer.",
+].join("\n");
+
+type LegAnswers = Partial<Record<Leg, Partial<RemoteResult>>>;
+
+interface Harness {
+  deps: PackAddDeps;
+  io: ReturnType<typeof capture>;
+  calls: Recorded[];
+  closed: number;
+  data(): TrustStoreData | null;
+  restarts: number;
+}
+
+interface HarnessOptions {
+  store?: TrustStoreData | null;
+  answers?: LegAnswers;
+  /** The whole result for a leg, bypassing the defaults — for `spawned:false` and ssh's own 255. */
+  confirm?: boolean | null;
+  prompt?: string | null;
+  /** What the lead's store looks like when it is re-read after the join. */
+  after?: TrustStoreData | null;
+  /** Answers `hello` in the final verdict. `false` = the member does not answer. */
+  reachable?: boolean;
+  flags?: string[];
+}
+
+function harness(opts: HarnessOptions = {}): Harness {
+  const initial = opts.store === undefined ? leadStore() : opts.store;
+  let contents = initial === null ? null : serializeTrustStore(initial);
+  const storeIo: TrustStoreIo = {
+    read: async () => contents,
+    write: async (_p, d) => {
+      contents = d;
+    },
+  };
+  const store = new TrustStore("/state", storeIo);
+  const out = capture();
+  const calls: Recorded[] = [];
+  const audit: AuditEntry[] = [];
+  let restarts = 0;
+  let closed = 0;
+
+  const exec = fakeExec({
+    answers: [
+      [`git -C ${ROOT} rev-parse HEAD`, { stdout: `${COMMIT}\n` }],
+      [`git -C ${ROOT} status --porcelain`, { stdout: "" }],
+      [`git -C ${ROOT} show ${COMMIT}:herdr-plugin.toml`, { stdout: `version = "${VERSION}"\n` }],
+      ["tailscale status --json", { stdout: TAILSCALE_JSON }],
+    ],
+  });
+
+  const deps: PackAddDeps = {
+    // The same reason `cli/pack.test.ts` sets this: the real `setTimeout` in `PeerClient` must never
+    // fire and report a fake peer as unreachable.
+    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000" }),
+    io: out,
+    exec,
+    files: fakeFiles(),
+    store,
+    audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), () => T0),
+    fetch: async () =>
+      opts.reachable === false
+        ? Promise.reject(new Error("connection refused"))
+        : new Response(JSON.stringify({ protocol: PACK_PROTOCOL_VERSION, member: "nas", version: VERSION }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
+              "x-pack-member": "nas",
+            },
+          }),
+    now: () => T0,
+    random: (() => {
+      let i = 0;
+      return () => `r${++i}`;
+    })(),
+    mintIdentity: () => Promise.resolve(material("fresh")),
+    readStdin: () => Promise.resolve(""),
+    restart: () => {
+      restarts += 1;
+      return Promise.resolve(EXIT.OK);
+    },
+    serve: () => Promise.resolve(EXIT.OK),
+    unserve: () => EXIT.OK,
+    clearNotifications: () => Promise.resolve(),
+    remote: () => ({
+      run: async (script, stdin) => {
+        const leg = legOf(script);
+        calls.push({ leg, script, stdin });
+        const canned = opts.answers?.[leg] ?? {};
+        const stdout =
+          leg === "probe"
+            ? probeOut()
+            : leg === "membership"
+              ? SOLO_STATUS
+              : leg === "install"
+                ? `collie-install:root=${REMOTE_CHECKOUT}\ncollie-install:version=${VERSION}`
+                : "";
+        const fallback: RemoteResult = { code: 0, stdout, stderr: "", spawned: true };
+        return { ...fallback, ...canned };
+      },
+      close: () => {
+        closed += 1;
+      },
+    }),
+    confirm: () => (opts.confirm === undefined ? true : opts.confirm),
+    prompt: () => opts.prompt ?? null,
+    gitBundle: () => Promise.resolve("QkFTRTY0LWJ1bmRsZQ=="),
+    reload: () =>
+      Promise.resolve(
+        opts.after === undefined
+          ? leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] })
+          : opts.after,
+      ),
+  };
+
+  return {
+    deps,
+    io: out,
+    calls,
+    get closed() {
+      return closed;
+    },
+    data: () => store.current(),
+    get restarts() {
+      return restarts;
+    },
+  };
+}
+
+const text = (io: ReturnType<typeof capture>): string => [...io.stdout, ...io.stderr].join("\n");
+const run = (h: Harness, args: string[] = ["nas.example"]): Promise<number> => cmdPackAdd(h.deps, args);
+
+// ── The generated scripts, pinned ────────────────────────────────────────────
+// A leg script is a program that runs on someone ELSE's machine. Pinning the text is what stops a
+// change to it landing invisibly; the rule tests below make "no `curl | sh`, no `PATH` assumption"
+// mechanically checkable rather than a promise in a comment.
+
+const GOLDEN: [file: string, script: string][] = [
+  ["leg1-probe.sh", probeScript({ path: null, port: 8787 })],
+  ["leg1-probe-path.sh", probeScript({ path: "/srv/collie", port: 9000 })],
+  ["leg2-install.sh", installScript({ root: "/home/pat/.collie", commit: "abc123", version: "1.2.3" })],
+  ["leg3-configure.sh", configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 8787, instance: null })],
+  [
+    "leg3-configure-instance.sh",
+    configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 9000, instance: "v1" }),
+  ],
+  ["leg4-membership.sh", membershipScript("/home/pat/.collie")],
+  [
+    "leg4-enroll.sh",
+    enrollScript({
+      root: "/home/pat/.collie",
+      leadAddress: "desk.tail.ts.net",
+      peerAddress: "100.1.2.3:8787",
+      label: "nas",
+    }),
+  ],
+];
+
+describe("the leg scripts", () => {
+  for (const [file, script] of GOLDEN) {
+    test(`${file} matches its golden file`, () => {
+      expect(script).toBe(readFileSync(join(import.meta.dir, "testdata", file), "utf8"));
+    });
+  }
+
+  test("nothing is piped into a shell, and nothing is fetched", () => {
+    for (const [file, script] of GOLDEN) {
+      expect(`${file}: ${script}`).not.toContain("curl");
+      expect(`${file}: ${script}`).not.toContain("wget");
+      expect(script).not.toMatch(/\|\s*(ba)?sh\b/);
+    }
+  });
+
+  test("no script assumes a tool is on PATH — every one is resolved or absolute", () => {
+    for (const [file, script] of GOLDEN) {
+      for (const line of script.split("\n")) {
+        // A line may NAME a tool as an argument (`collie_tool git`); it may never START with one.
+        expect(`${file}: ${line}`).not.toMatch(/^\s*(git|bun|herdr|tailscale|ss|netstat|collie)\b/);
+      }
+    }
+  });
+
+  test("tool resolution is `command -v` then fixed-path `[ -x ]`, as the shim does it", () => {
+    const probe = probeScript({ path: null, port: 8787 });
+    expect(probe).toContain('command -v "$_n"');
+    expect(probe).toContain('[ -x "$_c" ]');
+    expect(probe).toContain('"${BUN_INSTALL:-$HOME/.bun}/bin/$_n"');
+    // Only an ABSOLUTE answer from `command -v` is taken: it reports a shell function as a bare word.
+    expect(probe).toContain("/*) printf '%s' \"$_p\"; return 0 ;;");
+  });
+
+  test("the config root is asked for on the remote, never composed here", () => {
+    expect(probeScript({ path: null, port: 8787 })).toContain("plugin config-dir 'herdr.collie'");
+  });
+
+  test("remote writes are tmp → verify → rename", () => {
+    const install = installScript({ root: "/r", commit: "c", version: "v" });
+    expect(install).toContain('"$GIT" bundle verify "$WORK/bundle.part"');
+    expect(install).toContain('mv "$WORK/bundle.part" "$WORK/bundle"');
+    const configure = configureScript({ configDir: "/cfg", host: "h", port: 1, instance: null });
+    expect(configure).toContain('[ -s "$TMP" ]');
+    expect(configure).toContain('mv "$TMP" "$ENVFILE"');
+  });
+
+  test("the build is the shim's own bootstrap, not a second build path", () => {
+    expect(installScript({ root: "/r", commit: "c", version: "v" })).toContain(
+      '"$BUN" run cli/main.ts build',
+    );
+  });
+
+  test("configure preserves values Collie did not set, and publishes no front door", () => {
+    const script = configureScript({ configDir: "/cfg", host: "h", port: 1, instance: null });
+    expect(script).toContain("grep -v -E");
+    expect(script).not.toContain("tailscale");
+    expect(script).not.toContain("serve");
+  });
+
+  test("`--insecure` is never passed on the operator's behalf", () => {
+    for (const [, script] of GOLDEN) expect(script).not.toContain("insecure");
+  });
+
+  test("shq closes a single quote rather than trusting the value", () => {
+    expect(shq("a'b")).toBe(`'a'\\''b'`);
+    expect(shq("; rm -rf /")).toBe(`'; rm -rf /'`);
+  });
+});
+
+// ── The transport contract ───────────────────────────────────────────────────
+
+describe("the ssh options", () => {
+  test("one multiplexed control socket, batch mode, keepalives", () => {
+    const opts = sshOptions("/tmp/x/s").join(" ");
+    expect(opts).toContain("ControlMaster=auto");
+    expect(opts).toContain("ControlPath=/tmp/x/s");
+    expect(opts).toContain("ControlPersist=60");
+    expect(opts).toContain("BatchMode=yes");
+    expect(opts).toContain("ServerAliveInterval=15");
+    expect(opts).toContain("ServerAliveCountMax=4");
+  });
+
+  test("the host-key policy is never touched, in either direction", () => {
+    // The operator's `known_hosts` is ridden, never reimplemented (ADR 0015). A host whose key
+    // changed must fail the way `ssh` fails.
+    expect(sshOptions("/tmp/x/s").join(" ")).not.toContain("StrictHostKeyChecking");
+    expect(readFileSync(join(import.meta.dir, "remote.ts"), "utf8")).not.toContain("StrictHostKeyChecking");
+  });
+});
+
+describe("composeStdin", () => {
+  test("splices the payload in at the marker", () => {
+    expect(composeStdin(`a\n${STDIN_MARKER}\nb\n`, "PAYLOAD")).toBe("a\nPAYLOAD\nb\n");
+  });
+
+  test("a script with no marker may not be given a payload, and vice versa", () => {
+    expect(() => composeStdin("a\n", "P")).toThrow();
+    expect(() => composeStdin(`a\n${STDIN_MARKER}\n`, undefined)).toThrow();
+  });
+
+  test("a payload that could close the heredoc early is refused, not trusted", () => {
+    expect(() => composeStdin(`${STDIN_MARKER}\n`, "x\n__COLLIE_PAYLOAD__\nrm -rf /")).toThrow();
+  });
+});
+
+// ── Parsers ──────────────────────────────────────────────────────────────────
+
+describe("parseProbe", () => {
+  test("reads the fields and requires the end sentinel", () => {
+    const probe = parseProbe(probeOut({ checkout: "/x", commit: "deadbeef" }));
+    expect(probe?.checkout).toBe("/x");
+    expect(probe?.commit).toBe("deadbeef");
+    expect(probe?.home).toBe(REMOTE_HOME);
+  });
+
+  test("a half-finished answer is unparseable, not a probe that said no", () => {
+    expect(parseProbe("collie-probe:git=/usr/bin/git\n")).toBeNull();
+    expect(parseProbe("bash: line 1: syntax error")).toBeNull();
+  });
+
+  test("an absent field reads as empty, never as undefined", () => {
+    expect(parseProbe("collie-probe:probe=ok")?.address).toBe("");
+  });
+});
+
+describe("parseMembership", () => {
+  test("solo", () => {
+    expect(parseMembership(SOLO_STATUS)).toEqual({ packId: null, packName: null, memberId: null });
+  });
+
+  test("a member of a pack", () => {
+    const status = ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n");
+    expect(parseMembership(status)).toEqual({ packId: "pack-1", packName: "the herd", memberId: "nas" });
+  });
+
+  test("a shape this build cannot read fails rather than assuming solo", () => {
+    expect(parseMembership("who knows")).toBeNull();
+  });
+});
+
+// ── The verb ─────────────────────────────────────────────────────────────────
+
+describe("collie pack add", () => {
+  test("no host is a usage error", async () => {
+    const h = harness();
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a peer refuses: peers are added from the lead", async () => {
+    const h = harness({ store: leadStore({ lead: member({ memberId: "desk", role: "lead" }) }) });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("peers are added from the lead");
+  });
+
+  test("green-field: four legs, in order, and a non-provisional member at the end", async () => {
+    const h = harness();
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "configure", "membership", "enroll"]);
+    expect(text(h.io)).toContain('✓ "nas" is a member of "the herd"');
+    // The bind the lead will dial, written from a value READ off the remote (ADR 0015).
+    expect(h.calls[2]!.script).toContain("printf 'COLLIE_HOST=%s\\n' '100.64.0.9'");
+    expect(h.calls[4]!.script).toContain("'--address' '100.64.0.9:8787'");
+  });
+
+  test("the control socket is torn down on every exit path, including a failure", async () => {
+    const ok = harness();
+    await run(ok);
+    expect(ok.closed).toBe(1);
+    const bad = harness({ answers: { probe: { spawned: false, code: 127, stderr: "no ssh" } } });
+    await run(bad);
+    expect(bad.closed).toBe(1);
+  });
+
+  test("the minted token appears ONLY in stdin — never in a script, never in the transcript", async () => {
+    const h = harness();
+    expect(await run(h)).toBe(EXIT.OK);
+    const enroll = h.calls.find((c) => c.leg === "enroll")!;
+    const [token, fingerprint] = enroll.stdin!.split(".");
+    expect(fingerprint).toBe(fp("desk"));
+    expect(token).toBeTruthy();
+    for (const call of h.calls) {
+      expect(call.script).not.toContain(token!);
+      if (call.leg !== "enroll") expect(call.stdin ?? "").not.toContain(token!);
+    }
+    expect(text(h.io)).not.toContain(token!);
+  });
+
+  test("the lead is restarted so its running bridge can answer the invite", async () => {
+    const h = harness();
+    await run(h);
+    // Once for the invite, once so the new member takes effect. Both are the same reason the other
+    // pack verbs restart: the trust store is read once per process.
+    expect(h.restarts).toBe(2);
+  });
+});
+
+// ── Error families ───────────────────────────────────────────────────────────
+
+describe("the three error families", () => {
+  test("ssh never started is UNREACHABLE, and says so", async () => {
+    const h = harness({ answers: { probe: { spawned: false, code: 127, stderr: "no `ssh` on this machine" } } });
+    expect(await run(h)).toBe(EXIT.UNREACHABLE);
+    expect(text(h.io)).toContain("could not start ssh");
+  });
+
+  test("ssh's own 255 is UNREACHABLE", async () => {
+    const h = harness({ answers: { probe: { code: 255, stderr: "ssh: connect to host nas.example port 22: No route to host" } } });
+    expect(await run(h)).toBe(EXIT.UNREACHABLE);
+    expect(text(h.io)).toContain("No route to host");
+    expect(text(h.io)).not.toContain("ssh-add");
+  });
+
+  test("a publickey refusal adds the `ssh-add` hint — keyed off ssh's actual stderr", async () => {
+    const h = harness({
+      answers: { probe: { code: 255, stderr: "pat@nas.example: Permission denied (publickey,password)." } },
+    });
+    expect(await run(h)).toBe(EXIT.UNREACHABLE);
+    expect(text(h.io)).toContain("`ssh-add`");
+  });
+
+  test("an answer this build cannot read is FAIL, not a probe that said no", async () => {
+    const h = harness({ answers: { probe: { code: 0, stdout: "sh: 1: Syntax error" } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("something this build cannot read");
+  });
+
+  test("a missing prerequisite is FAIL with one install hint each", async () => {
+    for (const [tool, needle] of [
+      ["git", "no `git`"],
+      ["bun", "https://bun.sh"],
+      ["herdr", "discussion #67"],
+    ] as const) {
+      const h = harness({ answers: { probe: { stdout: probeOut({ [tool]: "" }) } } });
+      expect(await run(h)).toBe(EXIT.FAIL);
+      expect(text(h.io)).toContain(needle);
+      expect(h.calls).toHaveLength(1);
+    }
+  });
+
+  test("Herdr present but no config dir stops legibly, naming what was asked", async () => {
+    const h = harness({ answers: { probe: { stdout: probeOut({ configdir: "" }) } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("plugin config-dir herdr.collie");
+    expect(text(h.io)).toContain("never invents a path it did not observe");
+  });
+
+  test("a failed remote build is FAIL, and the checkout is left in place", async () => {
+    const h = harness({ answers: { install: { code: 24, stderr: "error: the build failed on this machine" } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("was left in place");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install"]);
+  });
+
+  test("a port collision stops before anything is installed", async () => {
+    const h = harness({ answers: { probe: { stdout: probeOut({ port: "busy" }) } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("--port");
+    expect(h.calls).toHaveLength(1);
+  });
+});
+
+// ── Prompts ──────────────────────────────────────────────────────────────────
+
+describe("prompts", () => {
+  const AT_ANOTHER_COMMIT = probeOut({
+    checkout: REMOTE_CHECKOUT,
+    commit: "0000000000000000000000000000000000000000",
+    dirty: "no",
+    version: "1.0.0",
+  });
+
+  test("y replaces the checkout", async () => {
+    const h = harness({ confirm: true, answers: { probe: { stdout: AT_ANOTHER_COMMIT } } });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toContain("install");
+  });
+
+  test("N stops with STATE and changes nothing", async () => {
+    const h = harness({ confirm: false, answers: { probe: { stdout: AT_ANOTHER_COMMIT } } });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
+  test("a non-interactive run aborts legibly, naming the question — never defaulting to yes", async () => {
+    const h = harness({ confirm: null, answers: { probe: { stdout: AT_ANOTHER_COMMIT } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("this run is not interactive, and it would have asked");
+    expect(text(h.io)).toContain("replace it with");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
+  test("a dirty remote checkout is REFUSED rather than prompted", async () => {
+    const h = harness({
+      confirm: true,
+      answers: {
+        probe: {
+          stdout: probeOut({
+            checkout: REMOTE_CHECKOUT,
+            commit: "0000000000000000000000000000000000000000",
+            dirty: "yes",
+            dirtyfiles: " M bridge/index.ts",
+          }),
+        },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("git stash");
+    expect(text(h.io)).toContain("will not");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
+  test("a disagreeing bind is a prompt; N is STATE", async () => {
+    const stdout = probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "127.0.0.1", envport: "8787" });
+    const yes = harness({ confirm: true, answers: { probe: { stdout } } });
+    expect(await run(yes)).toBe(EXIT.OK);
+    expect(yes.calls.map((c) => c.leg)).toEqual(["probe", "configure", "membership", "enroll"]);
+    const no = harness({ confirm: false, answers: { probe: { stdout } } });
+    expect(await run(no)).toBe(EXIT.STATE);
+    expect(text(no.io)).toContain("stays provisional forever");
+  });
+
+  test("no tailnet address and nobody to ask stops rather than guessing", async () => {
+    const h = harness({ prompt: null, answers: { probe: { stdout: probeOut({ address: "" }) } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("--peer-address");
+  });
+
+  test("no tailnet address, but the operator supplies one", async () => {
+    const h = harness({ prompt: "10.0.0.4", answers: { probe: { stdout: probeOut({ address: "" }) } } });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls[2]!.script).toContain("'10.0.0.4'");
+  });
+});
+
+// ── Idempotency ──────────────────────────────────────────────────────────────
+
+describe("re-running against the same host", () => {
+  test("already at the lead's commit skips the install entirely", async () => {
+    const h = harness({
+      answers: { probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, version: VERSION }) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).not.toContain("install");
+    expect(text(h.io)).toContain(`already at ${VERSION}`);
+  });
+
+  test("an already-correct bind is not rewritten", async () => {
+    const h = harness({
+      answers: {
+        probe: {
+          stdout: probeOut({
+            checkout: REMOTE_CHECKOUT,
+            commit: COMMIT,
+            envhost: "100.64.0.9",
+            envport: "8787",
+          }),
+        },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "membership", "enroll"]);
+    expect(text(h.io)).toContain("✓ bind       already 100.64.0.9:8787");
+  });
+
+  test("a busy port is this collie's OWN listener when a checkout is already configured for it", async () => {
+    const h = harness({
+      answers: {
+        probe: {
+          stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9", port: "busy" }),
+        },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("already carries this collie");
+    // An absent COLLIE_PORT is the default, not "unset" — so the bind is not rewritten either.
+    expect(h.calls.map((c) => c.leg)).not.toContain("configure");
+  });
+
+  test("already a member of THIS pack is a ✓ and exit OK — nothing is minted", async () => {
+    const h = harness({
+      answers: {
+        probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT }) },
+        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain('✓ already a member of "the herd" as "nas"');
+    expect(h.calls.map((c) => c.leg)).not.toContain("enroll");
+    expect(h.restarts).toBe(0);
+  });
+
+  test("a member of ANOTHER pack is STATE, naming `collie leave` there — never run for you", async () => {
+    const h = harness({
+      answers: {
+        probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT }) },
+        membership: { stdout: ["pack   someone else  (pack-99)", "mode   peer", "self   nas  abcd…"].join("\n") },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("`collie leave` THERE first");
+    expect(h.calls.map((c) => c.leg)).not.toContain("enroll");
+  });
+});
+
+// ── The last line ────────────────────────────────────────────────────────────
+
+describe("the join's outcome", () => {
+  test("a refused token is REFUSED — `collie join`'s own code, passed through", async () => {
+    const h = harness({ answers: { enroll: { code: EXIT.REFUSED, stderr: "error: the lead refused the token" } } });
+    expect(await run(h)).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("the lead refused the token");
+  });
+
+  test("a remote that cannot reach the lead is UNREACHABLE, and says whose ingress that is", async () => {
+    const h = harness({ answers: { enroll: { code: EXIT.UNREACHABLE, stderr: "error: could not reach desk" } } });
+    expect(await run(h)).toBe(EXIT.UNREACHABLE);
+    expect(text(h.io)).toContain("That is the lead's ingress, not the peer's");
+  });
+
+  test("joined but still provisional is FAIL, and names `collie doctor` on the remote", async () => {
+    const h = harness({ reachable: false });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("still PROVISIONAL");
+    expect(text(h.io)).toContain("collie doctor");
+  });
+
+  test("a join that reported success but left no member in the roster is FAIL", async () => {
+    const h = harness({ after: leadStore() });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("does not name a new member");
+  });
+});
+
+// ── Dispatch ─────────────────────────────────────────────────────────────────
+
+describe("dispatch", () => {
+  test("`collie pack add` routes here, and the help lists it", async () => {
+    const h = harness();
+    expect(await cmdPack(h.deps, ["add", "nas.example"])).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toContain("enroll");
+    const usage = harness();
+    await cmdPack(usage.deps, ["nonsense"]);
+    expect(text(usage.io)).toContain("add      install and enroll a peer over SSH");
+  });
+
+  test("the pack it joins is the one this lead already leads", () => {
+    expect(PACK.packId).toBe("pack-1");
+  });
+});
