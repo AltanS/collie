@@ -24,7 +24,8 @@ if printf '' | base64 -d >/dev/null 2>&1; then B64D="base64 -d"; else B64D="base
 $B64D > "$WORK/bundle.part" <<'__COLLIE_PAYLOAD__'
 #__COLLIE_STDIN__
 __COLLIE_PAYLOAD__
-"$GIT" bundle verify "$WORK/bundle.part" >/dev/null 2>&1 || { echo "error: the pushed bundle did not verify" >&2; exit 22; }
+"$GIT" init -q "$WORK/verify"
+VMSG=$("$GIT" -C "$WORK/verify" bundle verify "$WORK/bundle.part" 2>&1 >/dev/null) || { echo "error: the pushed bundle did not verify: $VMSG" >&2; exit 22; }
 mv "$WORK/bundle.part" "$WORK/bundle"
 if [ -d "$ROOT/.git" ]; then
   "$GIT" -C "$ROOT" fetch --no-tags --update-shallow "$WORK/bundle" HEAD

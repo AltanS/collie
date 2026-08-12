@@ -379,7 +379,11 @@ export function installScript(opts: {
     `$B64D > "$WORK/bundle.part" <<'${PAYLOAD_EOF}'`,
     STDIN_MARKER,
     PAYLOAD_EOF,
-    '"$GIT" bundle verify "$WORK/bundle.part" >/dev/null 2>&1 || { echo "error: the pushed bundle did not verify" >&2; exit 22; }',
+    // `git bundle verify` refuses to run outside a repository, and cwd here is the remote user's
+    // $HOME over `ssh host /bin/sh -s` — generally not one. A scratch repo gives it *a* repository;
+    // an empty one suffices only because the pushed bundle is complete (a bundle of HEAD, no prereqs).
+    '"$GIT" init -q "$WORK/verify"',
+    'VMSG=$("$GIT" -C "$WORK/verify" bundle verify "$WORK/bundle.part" 2>&1 >/dev/null) || { echo "error: the pushed bundle did not verify: $VMSG" >&2; exit 22; }',
     'mv "$WORK/bundle.part" "$WORK/bundle"',
     'if [ -d "$ROOT/.git" ]; then',
     '  "$GIT" -C "$ROOT" fetch --no-tags --update-shallow "$WORK/bundle" HEAD',

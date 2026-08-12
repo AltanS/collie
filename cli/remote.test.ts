@@ -290,7 +290,13 @@ describe("the leg scripts", () => {
 
   test("remote writes are tmp → verify → rename", () => {
     const install = installScript({ root: "/r", commit: "c", version: "v" });
-    expect(install).toContain('"$GIT" bundle verify "$WORK/bundle.part"');
+    // `git bundle verify` needs *a* repository, and cwd over ssh is $HOME — not one. A scratch repo
+    // under $WORK is init'd first, and verify runs `-C` into it rather than bare from cwd.
+    expect(install).toContain('"$GIT" init -q "$WORK/verify"');
+    expect(install).toContain('"$GIT" -C "$WORK/verify" bundle verify "$WORK/bundle.part"');
+    // The old bare-cwd verify swallowed stderr entirely; the new one captures it into the error.
+    expect(install).not.toContain('"$GIT" bundle verify "$WORK/bundle.part" >/dev/null 2>&1');
+    expect(install).toContain("did not verify: $VMSG");
     expect(install).toContain('mv "$WORK/bundle.part" "$WORK/bundle"');
     const configure = configureScript({ configDir: "/cfg", host: "h", port: 1, instance: null });
     expect(configure).toContain('[ -s "$TMP" ]');
@@ -768,6 +774,52 @@ describe("packAddDeps().gitBundle, against a real repo", () => {
       expect(() => execFileSync("git", ["-C", root, "bundle", "verify", bundlePath], { env })).not.toThrow();
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // Field bug: `git bundle verify` refuses outside a repository ("need a repository to verify a
+  // bundle"), and `installScript`'s leg runs over `ssh host /bin/sh -s`, whose cwd is the remote
+  // user's $HOME — not generally a repo. This pins that a bare `-C`-less verify from a non-repo cwd
+  // fails, and that `installScript`'s actual remedy — `git init -q` a scratch repo, then verify with
+  // `-C` into it — succeeds against the very same complete bundle.
+  test("bundle verify needs a repository; a scratch `git init` under $WORK supplies one", async () => {
+    const root = mkdtempSync(join(tmpdir(), "collie-gitbundle-src-"));
+    const nonRepoCwd = mkdtempSync(join(tmpdir(), "collie-gitbundle-nonrepo-"));
+    try {
+      const env = gitEnv();
+      const git = (...args: string[]) =>
+        execFileSync("git", ["-C", root, ...args], { env, encoding: "utf8" });
+      git("init", "-q");
+      git("config", "user.email", "test@example.com");
+      git("config", "user.name", "Test");
+      writeFileSync(join(root, "file.txt"), "one\n");
+      git("add", "file.txt");
+      git("commit", "-q", "-m", "first");
+      const head = git("rev-parse", "HEAD").trim();
+
+      const deps = minimalPackDeps(root);
+      const encoded = await packAddDeps(deps).gitBundle(head);
+      if (encoded === null) {
+        throw new Error(`gitBundle returned null; stderr: ${(deps.io as ReturnType<typeof capture>).stderr.join("\n")}`);
+      }
+      const bundlePath = join(nonRepoCwd, "bundle.part");
+      writeFileSync(bundlePath, Buffer.from(encoded, "base64"));
+
+      // Bare verify, run with cwd = a non-repo directory (as the field bug had it): refuses.
+      expect(() =>
+        execFileSync("git", ["bundle", "verify", bundlePath], { env, cwd: nonRepoCwd }),
+      ).toThrow(/need a repository/);
+
+      // installScript's remedy: init an empty scratch repo, verify `-C` into it. Succeeds, because
+      // the bundle pushed by `pack add` is complete (bundle of HEAD, no prerequisites).
+      const scratch = join(nonRepoCwd, "verify");
+      execFileSync("git", ["init", "-q", scratch], { env });
+      expect(() =>
+        execFileSync("git", ["-C", scratch, "bundle", "verify", bundlePath], { env }),
+      ).not.toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(nonRepoCwd, { recursive: true, force: true });
     }
   });
 });
