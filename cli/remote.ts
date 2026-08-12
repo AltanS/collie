@@ -1039,16 +1039,39 @@ export function packAddDeps(base: PackDeps): PackAddDeps {
     gitBundle: async (commit) => {
       const git = base.exec.which("git");
       if (git === null) return null;
-      const proc = Bun.spawn([git, "-C", base.ctx.root, "bundle", "create", "-", commit], {
+      const printErr = (stderr: string) => {
+        const line = stderr.split("\n").find((l) => l.trim() !== "");
+        if (line !== undefined) base.io.err(`       ${line.trim()}`);
+      };
+      // A bare commit sha is not a REF, and `git bundle create` refuses ("Refusing to create empty
+      // bundle") unless it can record at least one — so bundle HEAD, not the sha. That's only safe
+      // pinned to the exact commit if HEAD hasn't moved since the caller read it; the installer
+      // (installScript, below) still pins exactly: it checks out `$COMMIT` and re-verifies
+      // `rev-parse HEAD === $COMMIT` after the fact.
+      const headResult = base.exec.capture("git", ["-C", base.ctx.root, "rev-parse", "HEAD"]);
+      if (!headResult.found || headResult.code !== 0) {
+        printErr(headResult.stderr);
+        return null;
+      }
+      const head = headResult.stdout.trim();
+      if (head !== commit) {
+        base.io.err(`       HEAD moved to ${head.slice(0, 12)} since ${commit.slice(0, 12)} was read.`);
+        return null;
+      }
+      const proc = Bun.spawn([git, "-C", base.ctx.root, "bundle", "create", "-", "HEAD"], {
         stdout: "pipe",
-        stderr: "ignore",
+        stderr: "pipe",
         env: base.ctx.env as Record<string, string>,
       });
-      const [bytes, code] = await Promise.all([
+      const [bytes, stderr, code] = await Promise.all([
         new Response(proc.stdout).arrayBuffer(),
+        new Response(proc.stderr).text(),
         proc.exited,
       ]);
-      if (code !== 0 || bytes.byteLength === 0) return null;
+      if (code !== 0 || bytes.byteLength === 0) {
+        printErr(stderr);
+        return null;
+      }
       return Buffer.from(bytes).toString("base64").replace(/(.{76})/g, "$1\n");
     },
     reload: () => new TrustStore(base.ctx.stateDir).load(),
