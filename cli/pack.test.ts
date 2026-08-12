@@ -31,8 +31,8 @@ import {
   enrollUrl,
   parsePackArgs,
   readToken,
-  type PackDeps,
 } from "./pack.ts";
+import type { PackAddDeps } from "./remote.ts";
 
 // The pack verbs, against fakes for every seam. NOTHING here reaches a service manager, a tailnet, a
 // real trust store or a network: `restart`/`serve`/`unserve` are counters, the transport is a
@@ -42,7 +42,7 @@ import {
 const TAILSCALE_JSON = JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } });
 
 interface Harness {
-  deps: PackDeps;
+  deps: PackAddDeps;
   io: ReturnType<typeof capture>;
   exec: ReturnType<typeof fakeExec>;
   files: ReturnType<typeof fakeFiles>;
@@ -63,7 +63,7 @@ type Reply = Response | Error;
  * request in order, and an `Error` is a transport throw — the shape a peer that is simply not there
  * produces.
  */
-function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Partial<PackDeps> = {}): Harness {
+function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Partial<PackAddDeps> = {}): Harness {
   let contents = initial === null ? null : serializeTrustStore(initial);
   const io: TrustStoreIo = {
     read: async () => contents,
@@ -83,7 +83,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
   const cleared: string[][] = [];
   let n = 0;
 
-  const deps: PackDeps = {
+  const deps: PackAddDeps = {
     // `clientFor` races the fake fetch (which resolves as soon as the event loop turns) against a
     // REAL `setTimeout` sized from this env var (`packTimeoutBudget`, default ~1200ms here). Nothing
     // in this suite exercises that budget — every "unreachable" case throws synchronously instead —
@@ -138,6 +138,21 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
       cleared.push([...tags]);
       return Promise.resolve();
     },
+    // `pack add`'s own seams, present so `cmdPack` can be dispatched here and REFUSING, so nothing
+    // in this suite can reach another machine by accident. `cli/remote.test.ts` supplies real fakes.
+    remote: () => {
+      throw new Error("this suite must never open an ssh connection");
+    },
+    confirm: () => {
+      throw new Error("this suite must never prompt");
+    },
+    prompt: () => {
+      throw new Error("this suite must never prompt");
+    },
+    gitBundle: () => {
+      throw new Error("this suite must never bundle");
+    },
+    reload: () => store.load(),
     ...over,
   };
 
