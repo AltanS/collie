@@ -160,6 +160,8 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
       status: 200,
       member: "laptop",
       receivedAt: 1_000, // the injected lead clock — never a header from the peer (§6)
+      // The far side sent no HTTP `Date`, and an absent one is `null` rather than a guess.
+      date: null,
     });
   });
 

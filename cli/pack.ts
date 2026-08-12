@@ -106,6 +106,16 @@ export interface PackDeps {
   clearNotifications(tags: readonly string[]): Promise<void>;
 }
 
+/**
+ * The seams a member probe needs, and no more — `collie doctor` reuses {@link probeMembers} without
+ * being able to mutate anything (the store, the audit log and the lifecycle verbs are absent by
+ * construction, which is what makes its read-only contract structural rather than a promise).
+ */
+export type ProbeDeps = Pick<PackDeps, "ctx" | "fetch" | "now">;
+
+/** The seams the staleness comparison needs. Same reason as {@link ProbeDeps}. */
+export type DriftDeps = Pick<PackDeps, "ctx" | "io" | "files">;
+
 const CONTENT_TYPE = { "content-type": "application/json" } as const;
 
 // ── Shared plumbing ──────────────────────────────────────────────────────────
@@ -124,7 +134,7 @@ function timeoutFor(ctx: CliContext): number {
  * been handed it would refuse a request carrying it (§8.4 — no grace window, so the lead must dial
  * with the value the peer still holds).
  */
-function clientFor(deps: PackDeps, data: TrustStoreData, secret: string): PeerClient {
+function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
     secret: () => secret,
@@ -157,7 +167,7 @@ const linkOf = (member: TrustedMember): PackLink => ({
 });
 
 /** One line naming why a member did not answer. Never contains a secret — nothing here holds one. */
-function failureLine(outcome: PeerOutcome<unknown>): string {
+export function failureLine(outcome: PeerOutcome<unknown>): string {
   if (outcome.ok) return "ok";
   if (outcome.state === "incompatible") return `incompatible — ${outcome.reason}`;
   // A refusal is an ANSWER, not a failure to reach — the far side is there and said no (§14.3).
@@ -751,7 +761,7 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
  * running process for the store to be ahead of, and a `pack status` run before the first `start`
  * must not invent a warning.
  */
-function reportDrift(deps: PackDeps, data: TrustStoreData): void {
+export function reportDrift(deps: DriftDeps, data: TrustStoreData): void {
   const marker = parseMarker(deps.files.read(packRuntimePath(deps.ctx.stateDir)));
   const drift = rosterDrift(marker, data);
   if (drift === null || marker === null) return;
@@ -778,7 +788,7 @@ function reportDrift(deps: PackDeps, data: TrustStoreData): void {
  * manifest: it is a fact about the protocol's history, fixed forever once released, while the
  * manifest moves with every release.
  */
-const VERSION_REPORTED_SINCE = "1.0.0-alpha.12";
+export const VERSION_REPORTED_SINCE = "1.0.0-alpha.12";
 
 /**
  * How a member's reported version renders (§7.1). Skew is an **observation**: it refuses nothing,
@@ -808,8 +818,8 @@ function versionLines(reported: string | null, ours: string): string[] {
  * for `pack status` (§7.1), and erasing it here would leave the renderer casting a body the client
  * has already parsed.
  */
-function probeMembers(
-  deps: PackDeps,
+export function probeMembers(
+  deps: ProbeDeps,
   data: TrustStoreData,
   members: readonly TrustedMember[],
 ): Promise<Map<string, PeerOutcome<HelloResult>>> {

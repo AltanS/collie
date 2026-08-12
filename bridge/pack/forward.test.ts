@@ -60,7 +60,7 @@ function transportOf(answer: (init: RequestInit) => PeerOutcome<Response>) {
 }
 
 function ok(res: Response): PeerOutcome<Response> {
-  return { ok: true, value: res, status: res.status, member: "laptop", receivedAt: 1 };
+  return { ok: true, value: res, status: res.status, member: "laptop", receivedAt: 1, date: null };
 }
 
 function forward(req: Request, url: URL, deps: Partial<ForwardDeps> & { transport: ForwardTransport }) {

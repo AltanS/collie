@@ -111,7 +111,24 @@ export type PeerFailure =
  * header rides a pack response (§6, §10.2).
  */
 export type PeerOutcome<T> =
-  | { readonly ok: true; readonly value: T; readonly status: number; readonly member: string | null; readonly receivedAt: number }
+  | {
+      readonly ok: true;
+      readonly value: T;
+      readonly status: number;
+      readonly member: string | null;
+      readonly receivedAt: number;
+      /**
+       * The far side's HTTP `Date`, in epoch ms, or `null` when it sent none or an unparseable one.
+       *
+       * **Not a protocol field and not a freshness signal** — §6's "no timestamp header rides a pack
+       * response" is untouched, because nothing here adds one: `Date` is what every HTTP server
+       * already writes, and reading it costs no route, no field and no exchange. Its one consumer is
+       * `collie doctor`'s clock check, which compares it against `receivedAt` (this collie's own
+       * clock) to catch the skew that breaks §8.6 signatures as a uniform 401. Nothing on the poll
+       * path reads it, and it is never persisted.
+       */
+      readonly date: number | null;
+    }
   | (PeerFailure & { readonly ok: false; readonly receivedAt: number });
 
 /** What a `hello` reports about the member that answered it (§5). */
@@ -412,6 +429,7 @@ export class PeerClient {
       status: res.status,
       member: res.headers.get(MEMBER_HEADER),
       receivedAt: this.now(),
+      date: httpDate(res.headers.get("date")),
     };
   }
 
@@ -435,6 +453,16 @@ export async function sweepPeers<T>(
 ): Promise<Map<string, T>> {
   const results = await Promise.all(links.map(async (link) => [link.memberId, await run(link)] as const));
   return new Map(results);
+}
+
+/**
+ * An HTTP `Date` header as epoch ms. Tolerant by construction: absent, empty or unparseable all read
+ * as `null`, because a diagnostic that guesses a timestamp is worse than one that says it cannot tell.
+ */
+function httpDate(raw: string | null): number | null {
+  if (raw === null || raw.trim() === "") return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /** The reason string for a transport throw, with no secret and no stack in it. */

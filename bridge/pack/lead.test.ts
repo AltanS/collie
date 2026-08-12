@@ -39,7 +39,7 @@ const body = {
 };
 
 function ok(value: unknown, at = NOW): PeerOutcome<unknown> {
-  return { ok: true, value, status: 200, member: null, receivedAt: at };
+  return { ok: true, value, status: 200, member: null, receivedAt: at, date: null };
 }
 const down: PeerOutcome<unknown> = { ok: false, state: "unreachable", reason: "timed out", receivedAt: NOW };
 const skewed: PeerOutcome<unknown> = {
@@ -356,6 +356,7 @@ describe("forward — the lead's per-pane hop (M4/05)", () => {
           ok: true,
           value: new Response(`{"lines":["hi"]}`, { status: 200, headers: { etag: '"peer"' } }),
           status: 200,
+          date: null,
           member: "laptop",
           receivedAt: 1,
         };
