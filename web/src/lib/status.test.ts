@@ -48,6 +48,17 @@ describe("status channel", () => {
     expect(result.current).toBeNull();
   });
 
+  it("does not clear a newer status when targeting a stale message", () => {
+    const { result } = renderHook(() => useStatus());
+    let first!: { id: number };
+    act(() => {
+      first = setStatus("first", "error");
+      setStatus("newer operation", "error");
+      clearStatus(first.id);
+    });
+    expect(result.current?.text).toBe("newer operation");
+  });
+
   it("honours an explicit ttl of null (persist)", () => {
     const { result } = renderHook(() => useStatus());
     act(() => setStatus("sticky", "info", null));

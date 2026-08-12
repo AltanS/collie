@@ -25,10 +25,11 @@ function emit() {
  * Publish a transient status. Latest wins. Errors persist until dismissed (tap the bar); everything
  * else auto-clears. Pass an explicit `ttlMs` (or `null` to persist) to override the per-tone default.
  */
-export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: number | null): void {
+export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: number | null): StatusMessage {
   if (timer) clearTimeout(timer);
   timer = null;
-  current = { id: nextId++, text, tone };
+  const message = { id: nextId++, text, tone };
+  current = message;
   emit();
   const ttl = ttlMs === undefined ? (tone === "error" ? null : 2500) : ttlMs;
   if (ttl != null) {
@@ -38,9 +39,12 @@ export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: numbe
       emit();
     }, ttl);
   }
+  return message;
 }
 
-export function clearStatus(): void {
+/** Clear the latest status, or only a specific message when an id is supplied. */
+export function clearStatus(id?: number): void {
+  if (id !== undefined && current?.id !== id) return;
   if (timer) {
     clearTimeout(timer);
     timer = null;

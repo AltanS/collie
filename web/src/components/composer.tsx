@@ -6,7 +6,7 @@ import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Squar
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
-import { setStatus } from "@/lib/status";
+import { clearStatus, setStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
@@ -554,8 +554,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // ONLY; the type-then-verify guard still runs, so Enter is never fired blind either way.
         // Latest blocked attempt wins. This is a new send attempt, not the user's second-tap
         // confirmation, so it replaces any armed payload and restarts the override window.
-        forceConfirm.arm("force", { text: t, draft });
-        setStatus(`${res.error} Tap Send again to type anyway.`, "error");
+        const status = setStatus(`${res.error} Tap Send again to type anyway.`, "error");
+        forceConfirm.arm("force", { text: t, draft }, () => clearStatus(status.id));
         return false;
       } else {
         // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was

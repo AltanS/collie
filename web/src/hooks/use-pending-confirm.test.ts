@@ -57,6 +57,26 @@ describe("usePendingConfirm", () => {
     expect(result.current.pending).toBeNull();
   });
 
+  it("releases each armed cleanup when it is replaced, expires, or unmounts", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const third = vi.fn();
+    const { result, unmount } = renderHook(() => usePendingConfirm(3000));
+
+    act(() => {
+      result.current.arm("force", null, first);
+      result.current.arm("force", null, second);
+    });
+    expect(first).toHaveBeenCalledOnce();
+
+    act(() => vi.advanceTimersByTime(3000));
+    expect(second).toHaveBeenCalledOnce();
+
+    act(() => result.current.arm("force", null, third));
+    unmount();
+    expect(third).toHaveBeenCalledOnce();
+  });
+
   it("auto-disarms after the timeout", () => {
     const { result } = renderHook(() => usePendingConfirm(3000));
     act(() => {

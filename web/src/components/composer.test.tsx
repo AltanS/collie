@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { clearStatus, useStatus } from "@/lib/status";
+import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import * as drafts from "@/lib/drafts";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { server } from "@/test/setup";
@@ -1018,6 +1018,28 @@ describe("Composer — blocked pre-flight override", () => {
     return () => probes;
   }
 
+  /** Capture the ten-second arm timer so the component's expiry can be driven without blocking MSW. */
+  function captureOverrideExpiry() {
+    const nativeSetTimeout = globalThis.setTimeout;
+    let expiry: (() => void) | null = null;
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((handler, timeout, ...args) => {
+      if (timeout === 10_000) {
+        expiry = () => {
+          if (typeof handler === "function") handler(...args);
+        };
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      }
+      return nativeSetTimeout(handler, timeout, ...args);
+    });
+    return {
+      timeoutSpy,
+      expire: () => {
+        if (expiry === null) throw new Error("Override timeout was not armed");
+        expiry();
+      },
+    };
+  }
+
   it("retries a blocked palette command from an empty voice composer", async () => {
     const user = userEvent.setup();
     const calls: string[] = [];
@@ -1066,6 +1088,105 @@ describe("Composer — blocked pre-flight override", () => {
     await waitFor(() => expect(calls).toEqual(["type:/branch", "submit"]));
     expect(box).toHaveValue("unrelated draft");
     expect(props.onSent).toHaveBeenCalledOnce();
+  });
+
+  it("expires its override instruction with the empty voice composer control", async () => {
+    const { timeoutSpy, expire } = captureOverrideExpiry();
+    try {
+      const user = userEvent.setup();
+      const calls: string[] = [];
+      serveOmpPicker(calls);
+      renderComposerWithStatus({ agent: "omp", transcriptionEnabled: true });
+
+      await user.click(screen.getByRole("button", { name: "Agent" }));
+      await user.click(screen.getByText("/branch"));
+      await screen.findByRole("button", { name: "Type anyway?" });
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
+
+      act(expire);
+
+      expect(screen.getByTestId("status")).toBeEmptyDOMElement();
+      expect(screen.queryByRole("button", { name: "Type anyway?" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled();
+      expect(calls).toEqual([]);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it("does not clear a newer status when an override expires", async () => {
+    const { timeoutSpy, expire } = captureOverrideExpiry();
+    try {
+      const user = userEvent.setup();
+      const calls: string[] = [];
+      serveOmpPicker(calls);
+      renderComposerWithStatus({ agent: "omp", transcriptionEnabled: true });
+
+      await user.click(screen.getByRole("button", { name: "Agent" }));
+      await user.click(screen.getByText("/branch"));
+      await screen.findByRole("button", { name: "Type anyway?" });
+      act(() => setStatus("A newer operation", "error"));
+
+      act(expire);
+
+      expect(screen.getByTestId("status")).toHaveTextContent("A newer operation");
+      expect(screen.queryByRole("button", { name: "Type anyway?" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled();
+      expect(calls).toEqual([]);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it("removes its override instruction when navigating to an empty voice composer", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveOmpPicker(calls);
+
+    function Harness() {
+      const [navigated, setNavigated] = useState(false);
+      const paneId = navigated ? "w1:p2" : "w1:p1";
+      return (
+        <>
+          <StatusSentinel />
+          <button type="button" onClick={() => setNavigated(true)}>
+            Navigate
+          </button>
+          <Composer
+            key={paneId}
+            paneId={paneId}
+            agent={navigated ? "claude" : "omp"}
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            transcriptionEnabled
+            voice={idleVoice()}
+            dialogPresent={false}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            onSent={vi.fn()}
+          />
+        </>
+      );
+    }
+
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.click(screen.getByText("/branch"));
+    await screen.findByRole("button", { name: "Type anyway?" });
+    await user.click(screen.getByRole("button", { name: "Navigate" }));
+
+    expect(screen.getByTestId("status")).toBeEmptyDOMElement();
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled();
+    expect(calls).toEqual([]);
   });
 
   it("retries a retained typed draft without clearing edits made before the override", async () => {
