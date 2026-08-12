@@ -1054,15 +1054,21 @@ describe("collie promote", () => {
     expect(h.data()!.lead).not.toBeNull();
   });
 
-  test("tells the demoted machine's operator to restart it, then unserve — in that order", async () => {
+  test("prints the demoted lead's repair in order: COLLIE_HOST, restart, unserve, then reconnect here", async () => {
     const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster: [] }, 200, "desk")]);
     expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
     const rendered = text(h.io);
     // The old lead adopted the demotion on disk when it answered — and kept its lead-mode listener.
     expect(rendered).toContain("`collie restart`, then `collie unserve`");
     expect(rendered).toContain("still the lead it");
+    expect(rendered).toContain("COLLIE_HOST");
+    // §14.5 (2026-08-12): the roster names the old lead's front door, which step 2 tears down.
+    expect(rendered).toContain("collie reconnect desk <host:port>");
+    const at = (needle: string) => rendered.indexOf(needle);
+    expect(at("COLLIE_HOST")).toBeLessThan(at("collie restart"));
+    expect(at("collie restart")).toBeLessThan(at("collie unserve"));
     // `restart` re-publishes on the way up, which is the whole reason `unserve` comes second.
-    expect(rendered.indexOf("collie restart")).toBeLessThan(rendered.lastIndexOf("collie unserve"));
+    expect(at("collie unserve")).toBeLessThan(at("collie reconnect desk"));
   });
 
   test("--force promotes anyway and says the old lead may still believe it leads", async () => {
@@ -1074,7 +1080,7 @@ describe("collie promote", () => {
     expect(text(h.io)).toContain("re-join");
   });
 
-  test("a clean handover demotes the lead, adopts its roster, and tells every reachable member", async () => {
+  test("a clean handover demotes the lead, adopts its roster, and dials NOBODY else", async () => {
     const h = harness(peerStore(), [
       jsonReply(
         {
@@ -1084,7 +1090,6 @@ describe("collie promote", () => {
         200,
         "desk",
       ),
-      jsonReply({ lead: "laptop", applied: true }, 200, "nas"),
     ]);
     expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
     const data = h.data()!;
@@ -1093,8 +1098,11 @@ describe("collie promote", () => {
     // The role change reuses the pack identity and the pack secret — not a re-enrollment.
     expect(data.pack).toEqual(PACK);
     expect(data.self.memberId).toBe("laptop");
-    expect(h.requests[1]!.url).toBe("https://nas.example:1/pack/v1/lead");
-    expect(JSON.parse(h.requests[1]!.body)).toEqual({
+    // §14.4/§14.5 (2026-08-12): the old lead is the ONLY machine this verb talks to. "nas" pins the
+    // old lead's certificate at its own handshake, so a dial there is refused at TLS — the sweep that
+    // used to run here could never land, and its absence is the contract.
+    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/pack/v1/lead"]);
+    expect(JSON.parse(h.requests[0]!.body)).toEqual({
       lead: { memberId: "laptop", fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "laptop.tail.ts.net" },
     });
   });
@@ -1112,20 +1120,30 @@ describe("collie promote", () => {
     expect(rendered).toContain("collie unserve");
   });
 
-  test("a member unreachable during promotion is named, with the re-join rule", async () => {
-    const h = harness(peerStore(), [
-      jsonReply(
-        {
-          demoted: "desk",
-          roster: [{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:1" }],
-        },
-        200,
-        "desk",
-      ),
-      new Error("nope"),
-    ]);
+  test("every member but the old lead is listed for re-join — unconditionally, not on failure", async () => {
+    const roster = ["nas", "pi"].map((memberId) => ({
+      memberId,
+      fingerprint: fp(memberId),
+      certPem: material(memberId).certPem,
+      address: `${memberId}.example:1`,
+    }));
+    const h = harness(peerStore(), [jsonReply({ demoted: "desk", roster }, 200, "desk")]);
     await cmdPromote(h.deps, []);
-    expect(text(h.io)).toContain("Unreachable during promotion: nas");
+    const rendered = text(h.io);
+    expect(rendered).toContain("nas, pi");
+    expect(rendered).toContain("`collie join`");
+    // Nothing was attempted against them, so nothing may be reported as a per-peer outcome (§14.4).
+    expect(rendered).not.toContain("✓ nas");
+    expect(rendered).not.toContain("✗ nas");
+  });
+
+  test("--force names the same re-join rule with nobody left to sweep", async () => {
+    const h = harness(peerStore(), [new Error("host down")]);
+    expect(await cmdPromote(h.deps, ["--force"])).toBe(EXIT.OK);
+    // The forced path never got a roster, so the rule is stated for "every other member" by name of
+    // the rule rather than by list — the sweep is absent on both paths for the same §14.4 reason.
+    expect(text(h.io)).toContain("Every other member must re-join this machine with a fresh token");
+    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/pack/v1/lead"]);
   });
 
   test("a lead has no crown to take", async () => {
