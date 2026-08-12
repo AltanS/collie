@@ -63,7 +63,7 @@ a tap, switch between herds, and pick up a push notification the moment an agent
     <td align="center" width="50%"><img src="assets/keys.png" alt="The special-keys pad — arrows, Esc, Tab, Ctrl, Alt, Shift" width="250"><br><sub><b>Keys</b> — the special-keys pad, no chords to remember</sub></td>
   </tr>
   <tr>
-    <td align="center" width="50%"><img src="assets/session-switcher.png" alt="Session switcher" width="250"><br><sub><b>Session switcher</b> — one bridge, every herd</sub></td>
+    <td align="center" width="50%"><img src="assets/session-switcher.png" alt="Session switcher" width="250"><br><sub><b>Session switcher</b> — one collie, every herd</sub></td>
     <td align="center" width="50%"><img src="assets/settings.png" alt="Settings — notifications and diagnostics" width="250"><br><sub><b>Settings</b> — notifications, DND, diagnostics</sub></td>
   </tr>
 </table>
@@ -87,7 +87,7 @@ for it. Read the security note below either way.
 
 ## ⚠️ Security — read before you run it
 
-**Collie is remote shell access to your machine, by design.** One bridge call types arbitrary
+**Collie is remote shell access to your machine, by design.** One Collie API call types arbitrary
 keystrokes into a live terminal pane, so anyone who can reach the URL can read every pane (source,
 secrets, env, agent output) and run any command as your user. No sandbox, no command allow-list
 (that would defeat the purpose). Treat the URL like a root login.
@@ -109,7 +109,7 @@ Four sharp edges:
   ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)). Every write action (replies, keys, uploads, pane/tab
   create/close) is appended to `<state-dir>/audit.log`, so there is at least a trail — but a trail
   is not a gate.
-- **One bridge fronts _every_ session.** With `COLLIE_MULTI_SESSION` on (the default), the bridge
+- **One collie fronts _every_ session.** With `COLLIE_MULTI_SESSION` on (the default), it
   discovers and serves every named Herdr session under your config root — a private or sandbox
   session (e.g. `collie-demo`) is readable and drivable through the same URL as your primary, and the
   set is rescanned periodically. Set `COLLIE_MULTI_SESSION=0` to serve only the primary session.
@@ -131,10 +131,10 @@ It's built single-user and tailnet-only. The defenses:
   See [Deployment variants](#deployment-variants) for the proxy this requires.
 - **Same-origin gate + strict CSP**; pane output renders as React text nodes, never `innerHTML`.
 - **Optional Host allowlist** — set `COLLIE_PUBLIC_HOSTS` to the exact host(s) you serve on (e.g.
-  your MagicDNS name) and the bridge rejects any request addressed to another Host before the
+  your MagicDNS name) and Collie rejects any request addressed to another Host before the
   origin logic runs. **Strongly recommended, and effectively mandatory with
   `COLLIE_SERVE_MODE=http`** — without TLS, DNS rebinding can otherwise make a hostile page
-  same-origin with the bridge.
+  same-origin with Collie.
 
 > 🚫 **Never `tailscale funnel` this** — funnel exposes it to the public internet; `serve` keeps it
 > tailnet-only. There is no scenario where funneling Collie is correct.
@@ -149,7 +149,7 @@ On the **host** (the tailnet node your agents run on):
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
 | [**Herdr**](https://herdr.dev) ≥ 0.7.0 | The herd Collie mirrors; its CLI registers the plugin. |
-| [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, the bridge is `127.0.0.1`-only. |
+| [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
 
 Soft dependencies: **Node.js** (the `collie` CLI uses it to extract your MagicDNS name from
@@ -237,7 +237,7 @@ The `✓` is a real probe — Collie connected to the bridge's port and got an a
    pidfile in the config dir instead.)
 3. **A tailnet-only `tailscale serve` mapping** — `start` ran `tailscale serve --bg 8787`:
    HTTPS on the host's MagicDNS name, `:443 → 127.0.0.1:8787`. Tailscale terminates TLS (managed
-   cert, nothing to obtain or renew) and injects the identity header the bridge checks. Inspect
+   cert, nothing to obtain or renew) and injects the identity header Collie checks. Inspect
    with `tailscale serve status`; remove just this mapping with `bin/collie unserve`.
 
 `stop` merely pauses the service; `uninstall` reverses 2 + 3 and keeps your `.env` and the checkout.
@@ -282,9 +282,9 @@ $ bin/collie logs        # journal timestamps trimmed here
 [bridge] WARNING: COLLIE_PUBLIC_HOSTS is empty — Host-header validation is OFF (DNS rebinding not blocked). Set it to your MagicDNS name, especially under COLLIE_SERVE_MODE=http.
 ```
 
-**Both WARNINGs are expected on a fresh install** — that's the bridge telling you it's running
+**Both WARNINGs are expected on a fresh install** — that's Collie telling you it's running
 open-by-default on your tailnet. [Configure](#configure) closes both. (The loopback URL in the log
-is also correct: the bridge itself only ever binds `127.0.0.1` — `tailscale serve` is what makes it
+is also correct: Collie itself only ever binds `127.0.0.1` — `tailscale serve` is what makes it
 reachable.)
 
 On the phone: your agents are listed, and the footer build stamp (`v0.9.0 · debcff9 · …`) matches
@@ -304,7 +304,7 @@ The unit is `enable`d, so with lingering it starts at boot with your user manage
 `tailscale serve` mapping is persistent (`--bg`) and comes back on its own.
 
 **On macOS there's nothing to enable.** `start` installs a launchd agent
-(`~/Library/LaunchAgents/herdr.collie.plist`) with `RunAtLoad`, so the bridge comes back when you log
+(`~/Library/LaunchAgents/herdr.collie.plist`) with `RunAtLoad`, so Collie comes back when you log
 in and launchd restarts it if it exits abnormally. Inspect it with
 `launchctl print gui/$(id -u)/herdr.collie`. It's a *LaunchAgent*, not a daemon, so it starts at
 **login** rather than at boot — a Mac sitting at the login window is not serving Collie.
@@ -316,7 +316,7 @@ full control — that's exactly what the two startup WARNINGs are about. Close b
 
 ```bash
 # in your .env
-COLLIE_TRUSTED_USER=you@example.com           # your tailnet login — the bridge rejects anyone else
+COLLIE_TRUSTED_USER=you@example.com           # your tailnet login — Collie rejects anyone else
 COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net    # exact host(s) you serve on — blocks DNS rebinding
 ```
 
@@ -329,7 +329,7 @@ via a Herdr action:
 cp .env.example "$(herdr plugin config-dir herdr.collie)/.env"
 ```
 
-The bridge reads `.env` only at startup — after any edit, `bin/collie restart`. See
+Collie reads `.env` only at startup — after any edit, `bin/collie restart`. See
 [`.env.example`](./.env.example) for the full option list — commonly `COLLIE_PORT`, or
 `COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains; read by the CLI when it runs
 `tailscale serve`).
@@ -433,7 +433,7 @@ Collie registers these actions in `herdr-plugin.toml`; invoke any with
 
 ### Stop or uninstall
 
-Pause the bridge without removing anything (a later `start` brings it right back):
+Pause Collie without removing anything (a later `start` brings it right back):
 
 ```bash
 bin/collie stop      # or: herdr plugin action invoke stop --plugin herdr.collie
@@ -500,7 +500,7 @@ repo's pre-commit / pre-push checks.
 
 ## Deployment variants
 
-The bridge always binds **loopback only**; what changes between deployments is *what sits in front
+Collie always binds **loopback only**; what changes between deployments is *what sits in front
 of it* and *how a request proves who it is*. Five supported shapes — Tailscale by **person** (A),
 a co-located proxy by **device** (B), a reverse proxy as the sole front door (C), an **off-host**
 identity proxy reached over the tailnet (D), or any other mesh or tunnel
@@ -509,7 +509,7 @@ identity proxy reached over the tailnet (D), or any other mesh or tunnel
 ### Variant A — `tailscale serve` + person identity (default)
 
 The happy path from [Install](#install). `tailscale serve` terminates TLS on your MagicDNS name and
-injects `Tailscale-User-Login`; set `COLLIE_TRUSTED_USER` to your tailnet login and the bridge
+injects `Tailscale-User-Login`; set `COLLIE_TRUSTED_USER` to your tailnet login and Collie
 rejects anyone else.
 
 ```bash
@@ -544,11 +544,11 @@ boundary.
 
 Two consequences worth knowing before you turn this on:
 
-- **The bridge's own loopback URL becomes read-only.** `http://127.0.0.1:$COLLIE_PORT` bypasses your
+- **Collie's own loopback URL becomes read-only.** `http://127.0.0.1:$COLLIE_PORT` bypasses your
   proxy, so the PWA loaded from it sends no device header and shows its read-only state. Drive the
   herd through the proxied URL instead.
-- **To drive a pane from the host by hand**, send an allowlisted id yourself, against the loopback
-  bridge rather than the public URL (the proxy's mandatory override in point 2 below would replace
+- **To drive a pane from the host by hand**, send an allowlisted id yourself, against loopback
+  rather than the public URL (the proxy's mandatory override in point 2 below would replace
   your header): `curl -H 'X-Device-Id: my-laptop' http://127.0.0.1:$COLLIE_PORT/api/...`
 
 > ⚠️ **Do not enable `COLLIE_DEVICE_HEADER` on plain `tailscale serve`.** `tailscale serve` injects
@@ -563,10 +563,10 @@ Your fronting proxy **must**:
    stable per-device id is up to you; Collie treats it as opaque.
 2. **Set (override) the device header** on *every* upstream request — never merely add it, so any
    client-supplied copy is discarded. This override is what makes the header trustworthy.
-3. **Proxy to the bridge on loopback** (`127.0.0.1:$COLLIE_PORT`). The loopback bind is the trust
-   anchor — nothing but the proxy can reach the bridge to set the header.
+3. **Proxy to Collie on loopback** (`127.0.0.1:$COLLIE_PORT`). The loopback bind is the trust
+   anchor — nothing but the proxy can reach Collie to set the header.
 4. **Satisfy the same-origin gate.** Collie accepts a request when the browser's `Origin` host
-   equals the `Host` the bridge receives. So either **forward the public `Host` unchanged**, or — if
+   equals the `Host` Collie receives. So either **forward the public `Host` unchanged**, or — if
    your proxy rewrites Host — list the exact public origin in `COLLIE_ALLOWED_ORIGINS`. Otherwise
    every API call 403s `cross-origin rejected` (the page loads but stays empty).
 
@@ -599,8 +599,8 @@ Revoke a device by dropping its id from `COLLIE_DEVICE_ALLOWLIST` and restarting
 header. In that state nothing can drive a pane, including a hand-made `curl`; recovery is an `.env`
 edit plus a restart.
 
-This variant assumes the proxy is **on the same host**, reaching the bridge on loopback. If your
-proxy runs on a *different* node and its upstream is the bridge's own `tailscale serve` URL, the
+This variant assumes the proxy is **on the same host**, reaching Collie on loopback. If your
+proxy runs on a *different* node and its upstream is the host's own `tailscale serve` URL, the
 trust story changes — see [Variant D](#variant-d--off-host-identity-proxy-over-the-tailnet).
 
 ### Variant C — reverse proxy as the only front door (no Tailscale)
@@ -609,8 +609,8 @@ A reverse proxy (Caddy, Nginx, …) is the **sole ingress** — no Tailscale in 
 when the host isn't on a tailnet, or when you already run a TLS-terminating proxy with its own access
 control (SSO, mTLS, a VPN gateway) and want Collie behind it like any other upstream.
 
-Set `COLLIE_SKIP_SERVE=1` so `collie start` builds, starts and supervises the bridge but
-**never touches `tailscale serve`** — the proxy owns ingress. The bridge still binds loopback only;
+Set `COLLIE_SKIP_SERVE=1` so `collie start` builds, starts and supervises Collie but
+**never touches `tailscale serve`** — the proxy owns ingress. Collie still binds loopback only;
 your proxy reaches it on `127.0.0.1:$COLLIE_PORT`.
 
 The **four proxy requirements from
@@ -641,12 +641,12 @@ COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to 
 
 > ⚠️ **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only
 > `tailscale serve` injects — with no Tailscale in the path there is no injector, so the check has
-> nothing to compare against and every request passes it. It fails *open*, not closed, and the bridge
+> nothing to compare against and every request passes it. It fails *open*, not closed, and Collie
 > logs a startup warning saying so. **Per-device auth (`COLLIE_DEVICE_HEADER`) is the write gate**,
 > and the **proxy must provide TLS and its own access control** — anyone who reaches the proxy gets
 > read access to every pane. Give the proxy the same respect you'd give the tailnet.
 
-**Caching: respect the origin's `Cache-Control` — never blanket-cache.** The bridge marks hashed
+**Caching: respect the origin's `Cache-Control` — never blanket-cache.** Collie marks hashed
 assets (`/assets/*`) immutable and everything else (notably `/sw.js` and `index.html`) `no-cache`.
 A proxy cache that ignores this and holds onto `/sw.js` starves installed PWAs of updates
 indefinitely — clients keep running old code with no way to notice. If your proxy adds caching,
@@ -659,7 +659,7 @@ navigation it owns from the precached app shell without touching the network, an
 address bar to work around it. So a proxy page served anywhere Collie owns — including `/` — is
 invisible to the installed app, and a reload just re-renders the refused UI. `/auth/` (and anything
 beneath it) is the one path the service worker always passes through, so it is the only address that
-reaches you. When the bridge answers there itself, nothing claimed the path — that placeholder is
+reaches you. When Collie answers there itself, nothing claimed the path — that placeholder is
 your signal that the proxy rule is missing.
 
 ```caddyfile
@@ -675,7 +675,7 @@ collie.example.com {
 }
 ```
 
-Collie's refusal banner links to `/auth/` when the bridge or your proxy answers 401/403, so a
+Collie's refusal banner links to `/auth/` when Collie or your proxy answers 401/403, so a
 signed-out phone has a tappable way back in. A `?rd=`/`?next=` return-to parameter on the redirect is
 fine — the passthrough matches the query string too. If your flow lives at a path you can't move,
 redirect `/auth/` to it; the redirect is followed on the network side, where the service worker isn't
@@ -701,8 +701,8 @@ Choose this when you already run a **central ingress node** for your tailnet —
 layer, one wildcard cert, a row of services behind it — and you want Collie to be another entry in
 that table rather than a second auth stack configured on the agent host.
 
-The proxy is on a *different machine*, so it can't reach the bridge on loopback. The agent host
-publishes the bridge **tailnet-only** with `tailscale serve --http`, and the proxy's upstream is that
+The proxy is on a *different machine*, so it can't reach Collie on loopback. The agent host
+publishes Collie **tailnet-only** with `tailscale serve --http`, and the proxy's upstream is that
 tailnet URL:
 
 ```
@@ -713,7 +713,7 @@ tailnet URL:
                         host.your-tailnet.ts.net:8787     tailscale serve --http, tailnet-only
                             │
                             ▼
-                        127.0.0.1:8787                    the bridge
+                        127.0.0.1:8787                    Collie
 ```
 
 Plain HTTP on the middle hop is fine *because it rides the tailnet* — TLS terminates at the proxy.
@@ -724,10 +724,10 @@ The **four proxy requirements from
 [Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) apply**, except (3): proxy to
 the host's tailnet URL rather than `127.0.0.1`.
 
-> ⚠️ **A Tailscale ACL is mandatory in this variant.** The bridge's tailnet URL has to stay reachable
-> or the proxy couldn't reach it either, so there is a permanent second path to the bridge that skips
+> ⚠️ **A Tailscale ACL is mandatory in this variant.** Collie's tailnet URL has to stay reachable
+> or the proxy couldn't reach it either, so there is a permanent second path to Collie that skips
 > your forward-auth entirely — and **`tailscale serve` forwards a client-supplied device header
-> untouched** (verified: it arrives at the bridge unmodified). Your proxy's mandatory *override* only
+> untouched** (verified: it arrives at Collie unmodified). Your proxy's mandatory *override* only
 > protects the proxy path; on the direct path there is no override, so a tailnet peer who supplies an
 > allow-listed id gets full write access. Device ids are human-readable names, so treat them as
 > guessable, not secret. **Restrict who can reach the port at all.**
@@ -759,7 +759,7 @@ the host's tailnet URL rather than `127.0.0.1`.
 > ```yaml
 >   - action: accept
 >     src: ["my-phone", "my-laptop"]
->     dst: ["agent-host:1-8786", "agent-host:8788-65535"]   # everything EXCEPT the bridge
+>     dst: ["agent-host:1-8786", "agent-host:8788-65535"]   # everything EXCEPT Collie's port
 > ```
 >
 > Per-device auth is still required, and it does real work: since 0.15.0 a request arriving *without*
@@ -769,7 +769,7 @@ the host's tailnet URL rather than `127.0.0.1`.
 
 **Host and Origin are different values here** — the one place this trips people up. `tailscale serve`
 Host-routes on the host's own MagicDNS name, so the proxy generally must rewrite `Host` to the
-upstream (in Traefik, `pass_host_header: false`). The bridge then sees the *tailnet* Host while the
+upstream (in Traefik, `pass_host_header: false`). Collie then sees the *tailnet* Host while the
 browser's Origin is your *public* name, so the two settings take different values:
 
 ```bash
@@ -814,7 +814,7 @@ $ curl -s http://127.0.0.1:8787/api/snapshot | jq -c .device
 {"enforced":true,"device":null,"authorized":false}
 ```
 
-A header-less request must be read-only. **If it says `"authorized":true`, your bridge predates
+A header-less request must be read-only. **If it says `"authorized":true`, your collie predates
 0.15.0** — update before going further.
 
 > ⚠️ **Don't test reachability from the agent host.** A connection to your own tailnet IP is handled
@@ -841,7 +841,7 @@ COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for th
 
 Then point your tunnel at `127.0.0.1:$COLLIE_PORT` and start it however you start your other
 services. `netbird expose 8787`, a ZeroTier-routed reverse proxy and `cloudflared tunnel` all work
-this way. `collie start` will build, launch and supervise the bridge and publish nothing;
+this way. `collie start` will build, launch and supervise Collie and publish nothing;
 `unserve` and `uninstall` likewise leave your tunnel alone, exactly as under
 [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
 
@@ -853,7 +853,7 @@ Three things to get right, none of them Collie-specific:
    on every request, never merely added.
 2. **`COLLIE_TRUSTED_USER` does nothing here**, for the reason it does nothing behind a reverse proxy
    ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)): nothing injects
-   `Tailscale-User-Login`, so the check passes every request rather than blocking it, and the bridge
+   `Tailscale-User-Login`, so the check passes every request rather than blocking it, and Collie
    warns about that at startup. If your tunnel authenticates and injects a device identity, use
    `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` instead; if it authenticates but injects
    nothing, its own auth *is* the whole gate and anyone who passes it gets full Collie access.
@@ -936,7 +936,7 @@ pull into, and no install of that vintage could refresh itself. The fix ships in
 repairs, so it takes one reinstall to land:
 [Update to a new release](#update-to-a-new-release) has the three commands.
 
-**`start` prints `note: tailscale serve failed`.** The bridge itself is fine (still up on
+**`start` prints `note: tailscale serve failed`.** Collie itself is fine (still up on
 `127.0.0.1`) — only the tailnet ingress didn't come up, and Collie prints tailscale's own error
 right below the note. Usual causes: your user isn't the Tailscale operator
 (`sudo tailscale set --operator=$USER`), the node is logged out (`tailscale up`), or — on
@@ -967,7 +967,7 @@ up only when this node's filter admits *nothing* — which can equally mean no o
 the tailnet yet — and stays quiet whenever it can't tell.
 
 **Page loads but stays empty; API calls fail `403 cross-origin rejected`.** You're reaching Collie
-through an origin the bridge doesn't expect — a custom domain, or a proxy that rewrites `Host`.
+through an origin Collie doesn't expect — a custom domain, or a proxy that rewrites `Host`.
 Allow the exact public origin with `COLLIE_ALLOWED_ORIGINS` (see [Configure](#configure)), or make
 the proxy forward `Host` unchanged (Variant B, rule 4).
 
@@ -981,7 +981,7 @@ check you're actually logged in (not sitting at the login window) and that the a
 **Phone shows a stale UI after a rebuild.** A PWA's service-worker cache is per-origin, so reaching
 Collie at two origins (a custom domain *and* the raw `host:8787`) gives you two installs, each
 caching its own bundle. The footer **build stamp** (`vX.Y.Z · sha · time`) shows the bundle you're
-running; the bridge reports what it serves via the `X-Collie-Build` header and `/api/config`. On a
+running; Collie reports what it serves via the `X-Collie-Build` header and `/api/config`. On a
 mismatch, the footer offers **"new build — tap to update."** Otherwise reopen the PWA a couple times
 (the SW auto-updates) or clear that origin's site data. Best practice: **pick one HTTPS origin and
 stick to it.** (Over plain HTTP the SW can't register — always fresh, but no PWA features.)

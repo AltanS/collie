@@ -204,7 +204,7 @@ grammar, the probe catches on-disk format drift.
 
 Loopback bind only · exactly one hardened front door — `tailscale serve` (never `funnel`) or a
 conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate · optional
-identity/device gates · strict CSP. A socket call can type into a real terminal — treat the bridge as
+identity/device gates · strict CSP. A socket call can type into a real terminal — treat a collie as
 remote shell access.
 
 **Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,

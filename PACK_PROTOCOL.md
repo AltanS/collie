@@ -20,7 +20,7 @@ cited so a reviewer can check the extension is faithful.
 
 | Term | Meaning |
 |---|---|
-| **collie** | One Collie instance — one bridge process on one machine. Every pack member runs a full one. |
+| **collie** | One Collie instance — one server process on one machine. Every pack member runs a full one. |
 | **lead** | The one collie that holds the managed front door. The phone talks to the lead and to nothing else. |
 | **peer** | A collie with no front door, reached only by the lead over an authenticated pack link. |
 | **pack** | The lead plus its enrolled peers. One lead per pack, always. |
@@ -408,7 +408,7 @@ that something is listening.
 > change takes effect through the restart every membership verb already performs.
 >
 > **`COLLIE_PEER_BROWSER=1` and a pinned listener are mutually exclusive.** A browser cannot present
-> the lead's client certificate, so on a pinned peer that flag's surface is unreachable. The bridge
+> the lead's client certificate, so on a pinned peer that flag's surface is unreachable. The peer
 > warns and pins anyway — the pack's factor is not weakened for an opt-in convenience.
 >
 > **Promotion is bounded by this.** A peer pins its *current* lead, so a newly promoted member's
@@ -662,7 +662,7 @@ body to verify a signature there would pull a streamed upload (§13) into memory
   parking a captured request for later is what a future stamp buys.
 - **Replay: strictly monotonic per member.** A timestamp must be **greater than** the last one this
   collie admitted from that member; the floor is persisted (`TrustedMember.signedAt`), because a
-  counter that resets on restart is no counter and every membership verb restarts the bridge. The
+  counter that resets on restart is no counter and every membership verb restarts this collie. The
   floor moves **before** the request is handled. It is advanced only for the membership routes, which
   are the state-changing ones — a replayed `hello` changes nothing and is bounded by the skew window.
 - **A failure at any step is the uniform 401** of §8.1 — indistinguishable from a wrong secret, an
@@ -909,7 +909,7 @@ member is speaking* (§8.6); it cannot prove *that an operator willed it*. So th
 steps on two machines**, and each step is refused without the one before it:
 
 1. on the **current lead**, `collie pack approve-promote <member-id>` — a ten-minute, single-use
-   consent naming who may take over, which **restarts the lead's bridge** so the running process
+   consent naming who may take over, which **restarts the lead** so the running process
    holds the approval (§14.1);
 2. on the **peer**, `collie promote` inside that window — which demotes the lead and takes its roster.
 
@@ -918,7 +918,7 @@ operator controls the machine that is about to lose its terminals, its roster an
 
 ### 14.1 The approval — `collie pack approve-promote <member-id>` (on the lead)
 
-Mints a **pending handover approval** and **restarts the lead's bridge** so the running process holds
+Mints a **pending handover approval** and **restarts the lead** so the running process holds
 it. The approval is persisted in the trust store beside the pack's other state:
 
 ```ts
@@ -936,15 +936,15 @@ PendingHandover | null`. `parseTrustStore` builds its result from an explicit fi
 literal, or the approval is silently dropped on every read and gate 1 is permanently closed. Absent ⇒
 no live approval ⇒ refuse: the fail-closed reading holds through that parser.
 
-- **The mint restarts the lead's bridge, and this is load-bearing, not incidental.** The bridge reads
+- **The mint restarts the lead, and this is load-bearing, not incidental.** A collie reads
   its trust store **at most once per process** (`trust-store.ts`, the `loaded` latch), so an approval
-  a CLI writes to the store on disk is invisible to the already-running bridge — the promotion would
+  a CLI writes to the store on disk is invisible to the already-running collie — the promotion would
   then refuse forever. `approve-promote` therefore mints **and** restarts (`applyLocally`, exactly as
   every other membership verb does — "a membership change takes effect through the restart every
   membership verb performs", §8.1's 2026-08-07 amendment), so the process that later fields the claim
   has already read the approval. The honest cost: the restart drops the lead's live pack links and the
   phone's connection for a moment — but it happens **at approve-time**, before the operator walks to
-  the peer, so the `promote` itself runs against a bridge that already holds the consent. It also
+  the peer, so the `promote` itself runs against a lead that already holds the consent. It also
   closes the rebuilt-but-not-restarted skew trap for this verb, because the restart re-execs the
   current binary.
 - **Ten minutes**, the same window and the same reasoning as an enrollment token (§8.2, `INVITE_TTL_MS`):
@@ -961,7 +961,7 @@ no live approval ⇒ refuse: the fail-closed reading holds through that parser.
   pinned certificate (§8.6), so consent only has to name *who* may take over. **No new secret material
   crosses the wire**, and a leaked trust store yields nothing spendable from this field.
 - **`collie pack approve-promote --cancel`** clears the live approval — and, like the mint, restarts,
-  so the bridge forgets it. `--cancel` parses as a **bare** flag (`bareFlags: ["cancel"]`) so it
+  so the collie forgets it. `--cancel` parses as a **bare** flag (`bareFlags: ["cancel"]`) so it
   consumes no following token; with nothing armed it exits cleanly (`EXIT.OK`, "nothing was armed").
   TTL and replacement are the only other ways an approval ends; the operator who armed it and changed
   their mind should not have to wait the window out.
@@ -1114,7 +1114,7 @@ The change is **additive**: one optional trust-store field, no new wire object.
   down between differently-updated members in order to close a hole in one, trading a
   denial-of-service for the escalation.
 - **`TRUST_STORE_VERSION` stays `1`.** The field is read as optional, and `parseTrustStore` refuses an
-  **unknown** store version — so bumping it would make an updated bridge reject its own pre-amendment
+  **unknown** store version — so bumping it would make an updated collie reject its own pre-amendment
   store. Do not bump it.
 - **Absent means closed, never open.** No approval field ⇒ no live approval ⇒ an unapproved claim is
   refused. A pre-spec store upgrades into refusing.
@@ -1147,11 +1147,11 @@ The change is **additive**: one optional trust-store field, no new wire object.
 > same ordering `collie join` uses). Locally, the demoted machine says it too — in its own log, and in
 > `collie pack status`, which reports it as a `peer` on disk and a `lead` in memory (§8.2's note).
 >
-> **The demoted bridge does not restart itself.** Exiting so a supervisor restarts it would work under
+> **The demoted collie does not restart itself.** Exiting so a supervisor restarts it would work under
 > systemd (`Restart=on-failure`) and launchd (`KeepAlive`/`SuccessfulExit=false`) — and would take the
 > machine's Collie off the air entirely on the **unsupervised** tier, which nothing restarts and which
 > is reached exactly where an operator is least present (a Mac whose `gui/<uid>` bootstrap refused).
-> The bridge is launched identically on all three tiers and cannot tell which one it is under;
+> A collie is launched identically on all three tiers and cannot tell which one it is under;
 > supervision is the CLI's knowledge. A demotion is not a licence to end a process that may not come
 > back, so the honest v1 answer is the operator's restart, named in three places.
 

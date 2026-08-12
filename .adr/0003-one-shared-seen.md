@@ -45,8 +45,8 @@ doesn't notify for agents that were already blocked.
 - **A second device agrees with the first.** An alert cleared on the phone is cleared on the laptop.
   This is the whole point, and it's why per-device storage was rejected: the failure mode there is
   an alert you already dealt with still shouting at you somewhere else.
-- **Two people sharing one bridge share one "seen".** Accepted. Collie's threat model is a personal
-  tailnet with one operator; a bridge is remote shell access, not a multi-tenant service.
+- **Two people sharing one collie share one "seen".** Accepted. Collie's threat model is a personal
+  tailnet with one operator; a collie is remote shell access, not a multi-tenant service.
 - **Working in a pane at the desk does not clear its Collie alert.** This is the deliberate cost.
   Counting a Herdr focus would let a pane you merely clicked past silently clear an alert you never
   read — a false negative on the one thing the dashboard exists to surface. A false *positive* (an

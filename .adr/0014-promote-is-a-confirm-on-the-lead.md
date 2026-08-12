@@ -100,9 +100,9 @@ not a cost to be optimised away.
 
 Three mechanics keep the gate from leaking, each verified against the code as it stands:
 
-- **The approval survives into the process that consumes it — `approve-promote` restarts the lead's
-  bridge.** The bridge reads its trust store at most once per process (`trust-store.ts:329-341`,
-  `loaded` latch), so a CLI-minted approval would be invisible to the already-running bridge and the
+- **The approval survives into the process that consumes it — `approve-promote` restarts the lead.**
+  A collie reads its trust store at most once per process (`trust-store.ts:329-341`,
+  `loaded` latch), so a CLI-minted approval would be invisible to the already-running collie and the
   promotion would refuse forever. The verb therefore mints **and** restarts (`applyLocally`, as every
   membership verb does), so the process that later fields the claim has read the approval. The cost is
   honest — the restart drops the lead's live pack links and the phone's connection for a moment — but
@@ -141,10 +141,10 @@ the lead offline.
   then `collie promote` on the peer inside a ten-minute window. An operator who can only reach one of
   the two machines cannot promote cleanly; that is the same statement as "consent proves control of
   the machine being demoted", and it is the feature.
-- **`approve-promote` restarts the lead.** The approval must reach the running bridge (which reads its
+- **`approve-promote` restarts the lead.** The approval must reach the running collie (which reads its
   trust store once per process), so the verb restarts as every membership verb does — momentarily
   dropping the lead's live pack links and the phone's connection. It happens at approve-time, before
-  the operator crosses to the peer, so the `promote` itself runs against a bridge that already holds
+  the operator crosses to the peer, so the `promote` itself runs against a lead that already holds
   the consent.
 - **`--force` is now strictly worse than it was, and correctly so.** It previously appeared to keep
   reachable peers; it now cannot, and the output enumerates the re-joins. (In the shipped code it
@@ -155,7 +155,7 @@ the lead offline.
   reading — and it must be added to `parseTrustStore`'s whitelist in both the validator and the result
   literal or it is dropped on every read. `PACK_PROTOCOL_VERSION` and `TRUST_STORE_VERSION` both stay
   `1`: the change is additive, §7's exact-1 window would take **every** route down between skewed
-  members to close a hole in one, and a store-version bump would make an updated bridge reject its own
+  members to close a hole in one, and a store-version bump would make an updated collie reject its own
   pre-amendment store.
 - **Version skew closes on the lead's update.** The gate lives entirely on the machine being demoted,
   so a pack realizes the fix the moment its lead is updated; a pre-spec lead accepts the unattested
