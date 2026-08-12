@@ -63,9 +63,11 @@ export function resolvePackRuntime(
 /**
  * Does this bind address answer on *every* interface rather than one?
  *
- * Three values do: the IPv4 any-address `0.0.0.0`, the IPv6 any-address `::`, and an empty/absent
- * value (`Bun.serve` with no `hostname` binds all interfaces). Any concrete address — loopback, a
- * tailnet IP, a LAN IP, a hostname — is bounded and returns `false`.
+ * Three values do: the IPv4 any-address `0.0.0.0`, the IPv6 any-address `::`, and an explicitly
+ * EMPTY value (`Bun.serve` with no `hostname` binds all interfaces). An **absent** `COLLIE_HOST` is
+ * not one of them — `bridge/config.ts` resolves it to `127.0.0.1`, so the wildcard case is always
+ * something the operator typed. Any concrete address — loopback, a tailnet IP, a LAN IP, a hostname
+ * — is bounded and returns `false`.
  *
  * This is the predicate behind the peer's wildcard-bind warning. The bind never *gates* the pack
  * listener — pinned mutual TLS plus the pack secret do (PACK_PROTOCOL.md §3, ADR 0013) — but a

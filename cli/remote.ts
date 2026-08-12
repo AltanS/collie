@@ -861,7 +861,8 @@ async function enrollLeg(
     return EXIT.STATE;
   }
 
-  const leadAddress = selfAddress(deps, o.flags.address);
+  // What the far side will `collie join` — this lead's front door, the same string `pack invite` prints.
+  const leadAddress = selfAddress(deps, o.flags.address, "front-door");
   if (leadAddress === null) {
     deps.io.err("error: cannot work out an address this lead can be dialled at.");
     deps.io.err("       Pass one: `collie pack add <host> --address <this-lead-address>`.");

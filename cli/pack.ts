@@ -178,18 +178,48 @@ export function failureLine(outcome: PeerOutcome<unknown>): string {
 }
 
 /**
+ * Which surface the address being derived actually names — the two answer on different ports, so the
+ * caller has to say which one it is advertising rather than let one default be wrong half the time.
+ *
+ * - `"pack-listener"`: the `/pack/v1/*` prefix on this collie's OWN listener, `COLLIE_HOST:COLLIE_PORT`.
+ *   A peer publishes no front door (§3, ADR 0013), so this is the only thing that answers on it.
+ * - `"front-door"`: the one managed ingress a lead holds — `tailscale serve` on :443 in https mode
+ *   (ADR 0001), which is also the URL a phone opens.
+ */
+export type SelfAddressKind = "pack-listener" | "front-door";
+
+/**
  * This machine's address as another member will dial it (§8.2's negotiated column).
  *
  * The operator's `--address` wins, because reachability is theirs to own (§8.2: "whatever the operator
- * can reach" — a tailnet, a LAN, a tunnel). Otherwise it is this node's Tailscale name, which is what
- * `collie url` already prints. There is no third guess: an address we cannot state is an error the
- * operator fixes with a flag, not a `localhost` the far side would dial forever.
+ * can reach" — a tailnet, a LAN, a tunnel), and it is taken VERBATIM: scheme, brackets, port and all.
+ * Otherwise it is this node's Tailscale name, which is what `collie url` already prints. There is no
+ * third guess: an address we cannot state is an error the operator fixes with a flag, not a
+ * `localhost` the far side would dial forever.
+ *
+ * **A derived `pack-listener` address always carries an explicit port, and that is the whole reason
+ * `kind` exists.** A bare host dials :443 (`packUrl`/`enrollUrl` assume `https://`) — which is right
+ * for a lead, whose pack surface rides the front door, and silently wrong for a peer, whose listener
+ * is `COLLIE_PORT` and nothing else. Left portless, a hand-typed `collie join` on a default-configured
+ * machine hands the lead an address it will dial forever at a port nothing listens on, and the member
+ * simply stays provisional with no line naming the cause. So the peer direction appends this
+ * instance's own port — the same `COLLIE_PORT`/default the bridge binds — and the front-door direction
+ * keeps 443 implicit, because that is the port it is actually published on.
+ *
+ * Nothing here rewrites an address already stored on either side: a record minted before this
+ * distinction is repaired by `collie reconnect`, which is the verb for exactly that.
  */
-export function selfAddress(deps: PackDeps, override: string | undefined): string | null {
+export function selfAddress(
+  deps: PackDeps,
+  override: string | undefined,
+  kind: SelfAddressKind,
+): string | null {
   if (override !== undefined && override !== "") return override;
   const name = tailnetName(deps.exec);
   if (name === null) return null;
-  return deps.ctx.serveMode === "http" ? `${name}:${deps.ctx.port}` : name;
+  // http mode publishes no TLS front door at all, so both kinds are the bridge port there.
+  if (kind === "front-door" && deps.ctx.serveMode === "https") return name;
+  return `${name}:${deps.ctx.port}`;
 }
 
 /** The parsed flag set every pack verb shares: `--flag value` pairs plus bare positional arguments. */
@@ -359,7 +389,8 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
   );
   if (minted === null) return EXIT.FAIL;
 
-  const address = selfAddress(deps, flags.address);
+  // The lead's own address, for the joiner to dial: its front door, not its bridge port.
+  const address = selfAddress(deps, flags.address, "front-door");
   // The operator carries `<token>.<lead-fingerprint>` (§8.2): the token still authenticates the joiner
   // to the lead, and the fingerprint — this lead's OWN certificate hash, public material — lets `join`
   // authenticate the lead back. Only the printed string gains the suffix: the wire token stays exactly
@@ -432,7 +463,9 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
 
   const data = await ensureStore(deps, flags.label);
   if (data === null) return EXIT.FAIL;
-  const mine = selfAddress(deps, flags.address);
+  // Joining makes this machine a peer, and a peer is dialled on its own pack listener — never on a
+  // front door, because it is about to tear its own one down (§3).
+  const mine = selfAddress(deps, flags.address, "pack-listener");
   if (mine === null) {
     deps.io.err("error: cannot work out an address the lead can dial this machine at.");
     deps.io.err("       Pass one: `collie join <lead-address> - --address <host-the-lead-can-reach>`.");
@@ -1029,7 +1062,9 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
     deps.io.err("error: this collie is already the lead of this pack.");
     return EXIT.STATE;
   }
-  const mine = selfAddress(deps, flags.address);
+  // This machine is taking the crown, so what it advertises — to the pack AND to the phone below —
+  // is the front door it publishes at the end of this verb.
+  const mine = selfAddress(deps, flags.address, "front-door");
   if (mine === null) {
     deps.io.err("error: cannot work out the address the pack should dial this machine at.");
     deps.io.err("       Pass one: `collie promote --address <host-the-others-can-reach>`.");
