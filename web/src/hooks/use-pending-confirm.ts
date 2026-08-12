@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // Two-tap confirm for destructive actions (Kill, /clear, Ctrl-D, …): the first tap "arms" a target
 // keyed by a string id and auto-disarms after a timeout; the confirming second tap fires. Shared so
 // the nav footer, command palette, and key tray don't each re-implement the same pending+timer dance.
-export function usePendingConfirm(timeoutMs = 3000) {
+export function usePendingConfirm<T = never>(timeoutMs = 3000) {
   const [pending, setPending] = useState<string | null>(null);
+  const [payload, setPayload] = useState<T | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = useCallback(() => {
@@ -15,19 +16,24 @@ export function usePendingConfirm(timeoutMs = 3000) {
   const reset = useCallback(() => {
     clearTimer();
     setPending(null);
+    setPayload(null);
   }, [clearTimer]);
 
   // Returns true when `id` was already armed (this is the confirming second tap) — the caller should
   // proceed. On the first tap it arms `id`, starts the disarm timer, and returns false.
   const confirm = useCallback(
-    (id: string): boolean => {
+    (id: string, nextPayload?: T): boolean => {
       if (pending === id) {
         reset();
         return true;
       }
       clearTimer();
       setPending(id);
-      timer.current = setTimeout(() => setPending(null), timeoutMs);
+      setPayload(nextPayload ?? null);
+      timer.current = setTimeout(() => {
+        setPending(null);
+        setPayload(null);
+      }, timeoutMs);
       return false;
     },
     [pending, clearTimer, reset, timeoutMs],
@@ -35,5 +41,5 @@ export function usePendingConfirm(timeoutMs = 3000) {
 
   useEffect(() => clearTimer, [clearTimer]);
 
-  return { pending, confirm, reset };
+  return { pending, payload, confirm, reset };
 }

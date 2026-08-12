@@ -27,6 +27,18 @@ describe("usePendingConfirm", () => {
     expect(result.current.pending).toBeNull();
   });
 
+  it("retains an armed payload and clears it with the pending state", () => {
+    const { result } = renderHook(() => usePendingConfirm<{ text: string }>(3000));
+    act(() => {
+      result.current.confirm("force", { text: "/branch" });
+    });
+    expect(result.current.payload).toEqual({ text: "/branch" });
+
+    act(() => vi.advanceTimersByTime(3000));
+    expect(result.current.pending).toBeNull();
+    expect(result.current.payload).toBeNull();
+  });
+
   it("auto-disarms after the timeout", () => {
     const { result } = renderHook(() => usePendingConfirm(3000));
     act(() => {

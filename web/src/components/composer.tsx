@@ -88,6 +88,12 @@ interface ComposerProps {
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
 type ComposerDrawer = "quick" | "cmd" | "keys" | "display" | null;
 
+/** The exact send attempt that a blocked pre-flight lets the user deliberately retry. */
+interface ForcedSend {
+  text: string;
+  isDraft: boolean;
+}
+
 // The Controls row's "on" look, authored once so an open dock and an armed mode can never drift
 // apart. `hover:` is pinned to the same tint: without it, hovering an already-on control repaints it
 // with the ghost variant's hover background and it reads as switching off under the cursor.
@@ -251,8 +257,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Two-tap override for a `blocked` pre-flight ("the input box isn't on screen"). Separate from
   // sendConfirm so a destructive-command confirm and an override can't clobber each other, and given
   // a longer window than the 3s default: unlike "Really send?", this one asks you to read a sentence
-  // explaining WHY nothing was typed before deciding to overrule it.
-  const forceConfirm = usePendingConfirm(10_000);
+  // explaining WHY nothing was typed before deciding to overrule it. It owns the exact attempted
+  // payload too: a palette command is not the phone-owned draft and must never retry as one.
+  const forceConfirm = usePendingConfirm<ForcedSend>(10_000);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -542,7 +549,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // but the adapter can only report what it can see, so the user gets a deliberate override —
         // the same two-tap shape as the destructive-send confirm. The second tap skips the pre-flight
         // ONLY; the type-then-verify guard still runs, so Enter is never fired blind either way.
-        forceConfirm.confirm("force");
+        forceConfirm.confirm("force", { text: t, isDraft });
         setStatus(`${res.error} Tap Send again to type anyway.`, "error");
         return false;
       } else {
@@ -570,8 +577,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // An armed override takes precedence: this tap IS the deliberate "type anyway", so it skips the
     // destructive re-confirm (already answered on the tap that got blocked) and the pre-flight.
     if (forceConfirm.pending === "force") {
+      const forced = forceConfirm.payload;
       forceConfirm.reset();
-      send(input, true, true);
+      if (forced !== null) void send(forced.text, forced.isDraft, true);
       return;
     }
     const reason = isDestructiveInput(input);
@@ -583,7 +591,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     send(input, true);
   }
   const confirmingSend = sendConfirm.pending === "send";
-  const forcingSend = forceConfirm.pending === "force";
+  const forcingSend = forceConfirm.pending === "force" && forceConfirm.payload !== null;
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -975,6 +983,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               <Loader2 className="size-4 animate-spin" />
             </Button>
+          ) : !direct.active && forcingSend ? (
+            // The pre-flight refused and the user is being offered the override. Labelled for what it
+            // actually does — TYPE the retained attempted payload into whatever is on screen — not
+            // "send", because the submit key is still conditional on the verify step behind it.
+            <Button
+              variant="destructive"
+              className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
+              onClick={onSendClick}
+              disabled={locked || sending}
+              aria-label="Type anyway?"
+            >
+              Type anyway?
+            </Button>
           ) : !direct.active && transcriptionEnabled && input.trim().length === 0 ? (
             <Button
               size="icon"
@@ -984,19 +1005,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-label="Record voice"
             >
               <Mic className="size-4" />
-            </Button>
-          ) : !direct.active && forcingSend ? (
-            // The pre-flight refused and the user is being offered the override. Labelled for what it
-            // actually does — TYPE the text into whatever is on screen — not "send", because the
-            // submit key is still conditional on the verify step behind it.
-            <Button
-              variant="destructive"
-              className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
-              onClick={onSendClick}
-              disabled={locked || !input.trim() || sending}
-              aria-label="Type anyway?"
-            >
-              Type anyway?
             </Button>
           ) : !direct.active && confirmingSend ? (
             <Button

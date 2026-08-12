@@ -972,6 +972,98 @@ describe("Composer — blocked pre-flight override", () => {
     );
   }
 
+  // The first read is an omp picker; after the deliberate override types, the next live read has
+  // the command in omp's composer. This drives the palette → guarded send composition through its
+  // real pre-flight and verification phases rather than mocking either child in isolation.
+  const OMP_COLS = 189;
+  const padOmp = (open: string, body: string, close: string, filler: string) =>
+    open + body + filler.repeat(OMP_COLS - open.length - body.length - close.length) + close;
+  const OMP_PICKER = [
+    padOmp("╭──", " Select a model ", "╮", "─"),
+    padOmp("│ ", " ❯ 1. claude-opus  ", " │", " "),
+    padOmp("╰──", "", "──╯", "─"),
+  ].join("\n");
+  const ompComposer = (draft: string) =>
+    [
+      "transcript above the composer",
+      "",
+      padOmp("╭── ⬢ Auto > ⑂ master ", "", "╮", "─"),
+      padOmp("╰─ ", draft, " ─╯", " "),
+    ].join("\n");
+
+  function serveOmpPicker(calls: string[]) {
+    let typed = "";
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          text: typed ? ompComposer(typed) : OMP_PICKER,
+          truncated: false,
+          revision: 1,
+        }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string; submit?: boolean };
+        if (body.submit) calls.push("submit");
+        else {
+          typed = body.text;
+          calls.push(`type:${body.text}`);
+        }
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+  }
+
+  it("retries a blocked palette command from an empty voice composer", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveOmpPicker(calls);
+    const props = renderComposerWithStatus({ agent: "omp", transcriptionEnabled: true });
+
+    expect(screen.getByRole("button", { name: "Record voice" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.click(screen.getByText("/branch"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/Tap Send again to type anyway/i),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Agent commands" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Type anyway?" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Record voice" })).not.toBeInTheDocument();
+    expect(calls).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Type anyway?" }));
+    await waitFor(() => expect(calls).toEqual(["type:/branch", "submit"]));
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+    expect(props.onSent).toHaveBeenCalledOnce();
+  });
+
+  it("retries the palette command without replacing an unrelated composer draft", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveOmpPicker(calls);
+    const props = renderComposerWithStatus({ agent: "omp" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "unrelated draft");
+
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.click(screen.getByText("/branch"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/Tap Send again to type anyway/i),
+    );
+    expect(box).toHaveValue("unrelated draft");
+    expect(screen.getByRole("button", { name: "Type anyway?" })).toBeEnabled();
+    expect(calls).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Type anyway?" }));
+    await waitFor(() => expect(calls).toEqual(["type:/branch", "submit"]));
+    expect(box).toHaveValue("unrelated draft");
+    expect(props.onSent).toHaveBeenCalledOnce();
+  });
+
   it("keeps the draft, explains, and types nothing on the first tap", async () => {
     const user = userEvent.setup();
     const calls: string[] = [];
