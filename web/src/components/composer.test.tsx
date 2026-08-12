@@ -1018,6 +1018,110 @@ describe("Composer — blocked pre-flight override", () => {
     return () => probes;
   }
 
+  // The pre-flight is a round-trip, so leaving its owner must invalidate the result before the
+  // response decides anything. Drive every possible pre-flight verdict through the same window:
+  // blocked used to publish a stale override; ready and transport-error must not type or publish an
+  // error into the successor pane either.
+  it.each(["blocked", "ready", "error"] as const)(
+    "drops a deferred %s pre-flight after navigation", async (outcome) => {
+      const user = userEvent.setup();
+      const PANE_A = "w9:stale";
+      let announcePreflight!: () => void;
+      let releasePreflight!: () => void;
+      let resolvePreflightResponse!: () => void;
+      const preflightIssued = new Promise<void>((resolve) => {
+        announcePreflight = resolve;
+      });
+      const preflightHeld = new Promise<void>((resolve) => {
+        releasePreflight = resolve;
+      });
+      const preflightResponse = new Promise<void>((resolve) => {
+        resolvePreflightResponse = resolve;
+      });
+      const panePath = `/api/pane/${encodeURIComponent(PANE_A).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+      const replyCalls: string[] = [];
+      server.use(
+        http.get(new RegExp(`${panePath}$`), async () => {
+          announcePreflight();
+          await preflightHeld;
+          resolvePreflightResponse();
+          if (outcome === "error") return HttpResponse.error();
+          return HttpResponse.json({
+            paneId: PANE_A,
+            text: outcome === "blocked" ? OMP_PICKER : ompComposer(""),
+            truncated: false,
+            revision: 1,
+          });
+        }),
+        http.post(new RegExp(`${panePath}/reply$`), async ({ request }) => {
+          const body = (await request.json()) as { text: string };
+          replyCalls.push(body.text);
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+
+      function Harness() {
+        const [navigated, setNavigated] = useState(false);
+        const paneId = navigated ? "w9:current" : PANE_A;
+        return (
+          <>
+            <StatusSentinel />
+            <button type="button" onClick={() => setNavigated(true)}>
+              Navigate
+            </button>
+            <Composer
+              key={paneId}
+              paneId={paneId}
+              agent={navigated ? "claude" : "omp"}
+              isShell={false}
+              gone={false}
+              readOnly={false}
+              transcriptionEnabled
+              voice={idleVoice()}
+              dialogPresent={false}
+              text="pane output"
+              terminalDraft={null}
+              rawTerminalDraft={null}
+              prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+              setWrap={vi.fn()}
+              stepFontSize={vi.fn()}
+              setRawTerminal={vi.fn()}
+              onSent={vi.fn()}
+            />
+          </>
+        );
+      }
+
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+        render(<RouterProvider router={router} />);
+        await user.type(screen.getByPlaceholderText(/type a reply/i), "stale attempt");
+        await user.click(screen.getByRole("button", { name: "Send" }));
+        await preflightIssued;
+
+        await user.click(screen.getByRole("button", { name: "Navigate" }));
+        const currentDraft = screen.getByPlaceholderText(/type a reply/i);
+        await user.type(currentDraft, "current draft");
+        releasePreflight();
+        await preflightResponse;
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+
+        expect(replyCalls).toEqual([]);
+        expect(currentDraft).toHaveValue("current draft");
+        expect(drafts.loadDraft(undefined, PANE_A)).toBe("stale attempt");
+        expect(screen.getByTestId("status")).toBeEmptyDOMElement();
+        expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+        expect(screen.queryByRole("button", { name: "Type anyway?" })).not.toBeInTheDocument();
+        expect(consoleError).not.toHaveBeenCalledWith(expect.stringMatching(/unmounted component/i));
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
+
   /** Capture the ten-second arm timer so the component's expiry can be driven without blocking MSW. */
   function captureOverrideExpiry() {
     const nativeSetTimeout = globalThis.setTimeout;

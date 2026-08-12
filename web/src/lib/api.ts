@@ -343,6 +343,7 @@ export function sendReply(
   submit = true,
   session?: string,
   expectedPrompt?: string,
+  signal?: AbortSignal,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(
     withSession(`/api/pane/${encodeURIComponent(paneId)}/reply`, session),
@@ -353,6 +354,7 @@ export function sendReply(
         submit,
         ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
       }),
+      signal,
     },
     recoverPromptChanged,
   );
@@ -363,6 +365,7 @@ export function sendKeys(
   keys: string[],
   session?: string,
   expectedPrompt?: string,
+  signal?: AbortSignal,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(
     withSession(`/api/pane/${encodeURIComponent(paneId)}/keys`, session),
@@ -372,6 +375,7 @@ export function sendKeys(
         keys,
         ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
       }),
+      signal,
     },
     recoverPromptChanged,
   );

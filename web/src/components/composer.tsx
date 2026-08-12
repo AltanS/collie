@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
@@ -93,6 +93,16 @@ interface ForcedSend {
   text: string;
   /** The exact phone draft this attempt may clear, or null for palette/Quick sends. */
   draft: string | null;
+}
+
+interface SendScope {
+  paneId: string;
+  session: string | undefined;
+}
+
+interface SendOperation {
+  controller: AbortController;
+  scope: SendScope;
 }
 
 // The Controls row's "on" look, authored once so an open dock and an armed mode can never drift
@@ -202,6 +212,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setInput(restored);
   }, [session, paneId]);
   const [sending, setSending] = useState(false);
+  // State disables the controls after React renders; this ref closes the synchronous gap between a
+  // click and that render, so two write attempts can never share a guarded-send lifecycle.
+  const sendingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
   // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
@@ -261,6 +274,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // explaining WHY nothing was typed before deciding to overrule it. It owns the exact attempted
   // payload too: a palette command is not the phone-owned draft and must never retry as one.
   const forceConfirm = usePendingConfirm<ForcedSend>(10_000);
+  // A guarded send belongs to the Composer instance AND its pane/session scope. Its pre-flight is
+  // async, so cancelling the exact operation before a pane replacement or unmount stops a late
+  // verdict from arming controls, publishing status, or writing into whoever owns the next pane.
+  const sendScopeRef = useRef<SendScope>({ paneId, session });
+  const sendOperationRef = useRef<SendOperation | null>(null);
+  const isCurrentSend = (operation: SendOperation) =>
+    sendOperationRef.current === operation &&
+    sendScopeRef.current === operation.scope &&
+    !operation.controller.signal.aborted;
+
+  // AgentChat normally keys this component by pane, but Composer also supports an in-place pane
+  // change for its persisted-draft contract. Publish that scope in layout timing, before the next
+  // view can accept input, and make both a pending send and an armed override die with the old pane.
+  useLayoutEffect(() => {
+    const previousScope = sendScopeRef.current;
+    if (previousScope.paneId === paneId && previousScope.session === session) return;
+    sendScopeRef.current = { paneId, session };
+    const operation = sendOperationRef.current;
+    sendOperationRef.current = null;
+    operation?.controller.abort();
+    sendingRef.current = false;
+    setSending(false);
+    forceConfirm.reset();
+  }, [paneId, session, forceConfirm.reset]);
+
+  useLayoutEffect(
+    () => () => {
+      const operation = sendOperationRef.current;
+      sendOperationRef.current = null;
+      operation?.controller.abort();
+    },
+    [],
+  );
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -429,7 +475,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // early return below has to answer honestly.
   async function send(value: string, draft: string | null, force = false): Promise<boolean> {
     const t = value.trim();
-    if (!t || locked || sending || voiceBusy) return false;
+    if (!t || locked || sendingRef.current || voiceBusy) return false;
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
     // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
     // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
@@ -440,6 +486,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setStatus("A dialog is waiting — answer it first, then send.", "error");
       return false;
     }
+    const operation: SendOperation = {
+      controller: new AbortController(),
+      scope: sendScopeRef.current,
+    };
+    const previousOperation = sendOperationRef.current;
+    sendOperationRef.current = operation;
+    previousOperation?.controller.abort();
+    sendingRef.current = true;
     setSending(true);
     try {
       // Guarded: types the text, verifies it reached the input box, and only THEN sends the submit
@@ -450,6 +504,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         agent,
         session,
         force,
+        signal: operation.controller.signal,
         // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
         // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip
         // when there's no draft: a blind sweep races the TUI and Enter can fire before the PTY
@@ -470,6 +525,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // really did hold a draft — which is what it did anyway, since the same detector that could
         // not see the box cannot read our text back out of it either.
         onComposerSeen: async ({ promptRegion }) => {
+          if (!isCurrentSend(operation)) {
+            return { ok: false as const, error: "The pane changed before its input could be cleared" };
+          }
           if (effectiveRaw === null) return { ok: true as const, keysSent: false };
           // The props that lock this composer are a SNAPSHOT too, and `send()` read them before the
           // pre-flight's round-trip. A pane that died or a device that lost write access inside that
@@ -497,7 +555,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ["ctrl+k", ...Array(clearCount).fill("Backspace")],
             session,
             promptRegion ?? undefined,
+            operation.controller.signal,
           );
+          if (!isCurrentSend(operation)) {
+            return { ok: false as const, error: "The pane changed before its input could be cleared" };
+          }
           if (!clearRes.ok) {
             // A refused binding is the guard doing its job, not a transport failure — say so, because
             // the user's next move is to look at the pane rather than to retry into whatever is now
@@ -512,12 +574,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           }
           scheduleKeyRevalidate();
           await new Promise((resolve) => setTimeout(resolve, TUI_SETTLE_MS));
+          if (!isCurrentSend(operation)) {
+            return { ok: false as const, error: "The pane changed before its input could be cleared" };
+          }
           // `keysSent` — the burst plus this settle is exactly the window the guard re-reads across
           // before it types, so the message doesn't follow the keys into a dialog that opened inside
           // it.
           return { ok: true as const, keysSent: true };
         },
       });
+      if (!isCurrentSend(operation)) return false;
       if (res.status === "sent") {
         // Clear only the exact phone draft this attempt owns. A user can edit while a blocked
         // attempt is awaiting its deliberate override; that newer persisted draft must survive.
@@ -557,7 +623,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         const status = setStatus(`${res.error} Tap Send again to type anyway.`, "error");
         forceConfirm.arm("force", { text: t, draft }, () => clearStatus(status.id));
         return false;
-      } else {
+      } else if (res.status === "stalled" || res.status === "error") {
         // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
         // probably holding focus). "error" with textDelivered = the text is in the pane but the
         // submit failed. Either way the draft stays put: the user checks the pane rather than
@@ -566,11 +632,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         setStatus(res.error, "error");
         return false;
       }
+      return false; // cancelled — the operation's owner is already gone
     } catch (e) {
+      if (!isCurrentSend(operation)) return false;
       setStatus(e instanceof Error ? e.message : String(e), "error");
       return false;
     } finally {
-      setSending(false);
+      if (sendOperationRef.current === operation) {
+        sendOperationRef.current = null;
+        sendingRef.current = false;
+        setSending(false);
+      }
     }
   }
 
