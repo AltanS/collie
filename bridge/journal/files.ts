@@ -9,6 +9,15 @@
 //  - EVERY resolved path is re-checked for containment AFTER symlink resolution, so a log or project
 //    directory symlinked out of the root cannot become a way to read arbitrary files;
 //  - reads are byte-capped, so a pathological log can't balloon the bridge's memory.
+//
+// A harness may have MORE THAN ONE root (Claude Code's `CLAUDE_CONFIG_DIR` gives a profile its own
+// projects tree — see config.ts), which changes nothing about the rule, only how often it is applied:
+// a resolved path must lie inside THE ROOT IT WAS RESOLVED THROUGH. For a path an adapter BUILT from
+// a root, that is the building root and no other — a candidate that symlinks out of it is skipped
+// even if it happens to land inside a sibling root, because the name we followed was that root's. For
+// a free-form path ref (pi reports one), no root built it, so any configured root may contain it and
+// each is tried in turn ({@link containedRealpathIn}). Both are the same sentence: containment is
+// checked per root, never against a union of them.
 // A journal is exactly as sensitive as the pane mirror Collie already serves (it is the same
 // conversation), but it reaches further back — `COLLIE_TRANSCRIPT=off` disables the feature wholesale.
 
@@ -41,6 +50,39 @@ export async function containedRealpath(candidate: string, root: string): Promis
   const realRoot = await realpath(root).catch(() => null);
   if (real === null || realRoot === null) return null;
   return real === realRoot || real.startsWith(realRoot + sep) ? real : null;
+}
+
+/**
+ * Normalise an adapter's root configuration to the list it searches, in order.
+ *
+ * Adapters accept a bare string as well as a list purely so a caller with one root (every test
+ * fixture, and every deployment that never set a second one) stays unchanged. Empty entries are
+ * dropped rather than searched: `""` would resolve relative to the bridge's cwd, which is nobody's
+ * journal.
+ */
+export function rootList(roots: string | readonly string[]): string[] {
+  const list = typeof roots === "string" ? [roots] : [...roots];
+  return list.map((r) => r.trim()).filter((r) => r !== "");
+}
+
+/**
+ * First root that really contains `candidate`, or null.
+ *
+ * ONLY for a path an adapter did not build — a session ref that arrived as a path (pi). Since no root
+ * derived the name, the question is simply "does this file live in a journal we serve", and each root
+ * answers for itself; the check per root is the same {@link containedRealpath} as everywhere else.
+ * Never use this on a path built from a root: there the building root is the only one that may
+ * contain it (see the header).
+ */
+export async function containedRealpathIn(
+  candidate: string,
+  roots: readonly string[],
+): Promise<string | null> {
+  for (const root of roots) {
+    const real = await containedRealpath(candidate, root);
+    if (real !== null) return real;
+  }
+  return null;
 }
 
 /** Size + mtime, or null when the file is gone. The store's cache-validity probe (see types.ts). */

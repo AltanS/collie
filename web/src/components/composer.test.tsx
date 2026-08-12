@@ -229,6 +229,105 @@ describe("Composer — send", () => {
     expect(props.onSent).not.toHaveBeenCalled();
   });
 
+  // The same #34 failure one step upstream. `dialogPresent` and the stranded draft are both derived
+  // from the mirror's snapshot, which lags the live pane by a poll while following and is FROZEN
+  // while the user has scrolled back or opened find — so both can say "composer, with a draft on the
+  // ❯ line" about a pane that has since put a dialog up. The pre-clear sweep is ctrl+k plus a run of
+  // Backspaces; fired at that dialog it is keystrokes into a modal, which is exactly what must never
+  // happen. Nothing destructive may go out until something has read the LIVE pane.
+  it("does not sweep the terminal line when the live pane no longer shows a composer", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      // The live pane: a dialog owns it, and there is no input box anywhere on screen.
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          text: "Do you want to proceed?\n❯ 1. Yes\n  2. No",
+          truncated: false,
+          revision: 2,
+        }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+        calls.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      replyHandler(() => calls.push("reply")),
+    );
+    // What the composer still believes, from the stale mirror: no dialog, and a draft to sweep.
+    const props = renderComposerWithStatus({ dialogPresent: false, rawTerminalDraft: "leftover" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "please do not approve anything");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/input box isn't on screen/i),
+    );
+    expect(calls).toEqual([]); // no sweep, no reply — the pre-flight ran first and refused
+    expect(box).toHaveValue("please do not approve anything");
+    expect(props.onSent).not.toHaveBeenCalled();
+  });
+
+  // The override tap, end to end, on an omp pane. omp lifts no interactive block kind at all, so
+  // `dialogPresent` is STRUCTURALLY false for it and the reply pre-flight is the only guard there is —
+  // which makes this the pane where the force path matters most. `force` is armed by a `blocked`
+  // outcome, i.e. by the app having just PROVEN a dialog owns the keyboard, and the retry used to make
+  // the destructive sweep the first thing on the wire, into that dialog.
+  it("the `Type anyway?` retry types into the pane but never sweeps it", async () => {
+    const user = userEvent.setup();
+    const wire: string[] = [];
+    const COLS = 189;
+    const pad = (open: string, body: string, close: string, filler: string) =>
+      open + body + filler.repeat(COLS - open.length - body.length - close.length) + close;
+    // omp with a `/model` picker up: no `╰─ … ─╯` anywhere, so `composerReady` is false.
+    const ompModal = [
+      pad("╭──", " Select a model ", "╮", "─"),
+      pad("│ ", " ❯ 1. claude-opus  ", " │", " "),
+      pad("╰──", "", "──╯", "─"),
+    ].join("\n");
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ paneId: "w1:p1", text: ompModal, truncated: false, revision: 2 }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        const body = (await request.json()) as { keys: string[] };
+        wire.push(`keys:${body.keys[0]}×${body.keys.length}`);
+        return HttpResponse.json({ ok: true });
+      }),
+      replyHandler(
+        (text) => wire.push(`type:${text}`),
+        () => wire.push("submit"),
+      ),
+    );
+    // The frozen mirror still shows a stranded draft on the ❯ line — what arms the sweep.
+    renderComposerWithStatus({ agent: "omp", rawTerminalDraft: "leftover" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "please do not approve anything");
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/Tap Send again to type anyway/i),
+    );
+    expect(wire).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Type anyway?" }));
+    await waitFor(() => expect(wire).toContain("type:please do not approve anything"));
+    // The picker never turns into an input box, so type-then-verify polls out and reports `stalled`.
+    // Wait for that terminal outcome INSIDE the test: it lands on the module-scoped status singleton
+    // ~2.8s after the type (POLL_ATTEMPTS × POLL_DELAY_MS), and a test that ended first would have
+    // it write into whichever test was running by then, past this file's `clearStatus()`.
+    await waitFor(
+      () => expect(screen.getByTestId("status")).toHaveTextContent(/didn't reach the input box/i),
+      { timeout: 5000 },
+    );
+    // No `ctrl+k` + 41 Backspaces into the picker. The override is about the MESSAGE; the keys the
+    // guard cannot take back stay home, and the submit key is still withheld by type-then-verify.
+    expect(wire.some((w) => w.startsWith("keys:"))).toBe(false);
+    expect(wire).not.toContain("submit");
+    expect(box).toHaveValue("please do not approve anything");
+  }, 15000);
+
   it("sends non-destructive input on the first tap and clears the draft", async () => {
     const user = userEvent.setup();
     const props = renderComposer();
@@ -270,6 +369,190 @@ describe("Composer — send", () => {
     // Draft length + the 32-Backspace overshoot (mid-poll-gap host typing margin) + the ctrl+k.
     expect(sentKeys).toHaveLength([..."leftover"].length + 33);
     expect(sentKeys!.slice(1).every((k) => k === "Backspace")).toBe(true);
+  });
+
+  // The burst is the only destructive keystroke path in the app not bound to the screen that
+  // authorised it. Ordering ("the read happens first") is not a freshness bound: the read's answer
+  // describes the pane at the moment the BRIDGE snapshotted it, and the keys go out when the answer
+  // arrives — a whole round-trip later, capped only by GET_TIMEOUT_MS. `expected_prompt` gives the
+  // bridge the last word: it re-reads the pane immediately before send_keys and 409s if the row has
+  // gone, which is the same mitigation lib/dialog-guard.ts gives every dialog tap.
+  describe("the pre-clear burst is bound to the screen that authorised it", () => {
+    const COLS = 189;
+    const pad = (open: string, body: string, close: string, filler: string) =>
+      open + body + filler.repeat(Math.max(0, COLS - open.length - body.length - close.length)) + close;
+    const ompComposer = (draft: string) =>
+      [
+        "transcript above the composer",
+        "",
+        pad("╭── ⬢ Auto > ⑂ master ", "", "╮", "─"),
+        pad("╰─ ", draft, " ─╯", " "),
+      ].join("\n");
+    const promptRow = (draft: string) => ompComposer(draft).split("\n")[3]!.replace(/\s+$/, "");
+
+    it("sends the composer's own `╰─ … ─╯` row as expected_prompt", async () => {
+      const user = userEvent.setup();
+      const wire: string[] = [];
+      let bound: string | undefined;
+      server.use(
+        http.get(/\/api\/pane\/[^/]+$/, () =>
+          HttpResponse.json({
+            paneId: "w1:p1",
+            text: ompComposer("new message"), // the composer echoes our text back, so the send lands
+            truncated: false,
+            revision: 2,
+          }),
+        ),
+        http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+          const body = (await request.json()) as { expected_prompt?: string };
+          bound = body.expected_prompt;
+          wire.push("keys");
+          return HttpResponse.json({ ok: true });
+        }),
+        replyHandler(
+          (text) => wire.push(`type:${text}`),
+          () => wire.push("submit"),
+        ),
+      );
+      renderComposer({ agent: "omp", rawTerminalDraft: "leftover" });
+
+      await user.type(screen.getByPlaceholderText(/type a reply/i), "new message");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => expect(wire).toContain("submit"));
+      expect(wire).toEqual(["keys", "type:new message", "submit"]);
+      // Verbatim, and the row the Backspaces are aimed at — not a paraphrase of the screen.
+      expect(bound).toBe(promptRow("new message"));
+    }, 15000);
+
+    it("abandons the send with nothing typed when the bridge refuses the binding", async () => {
+      const user = userEvent.setup();
+      const wire: string[] = [];
+      server.use(
+        http.get(/\/api\/pane\/[^/]+$/, () =>
+          HttpResponse.json({
+            paneId: "w1:p1",
+            text: ompComposer("leftover"),
+            truncated: false,
+            revision: 2,
+          }),
+        ),
+        // What the bridge answers when its own re-read no longer finds the bound row: the composer
+        // left the screen between the pre-flight and the keys, so the burst would have landed on
+        // whatever replaced it.
+        http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+          wire.push("keys-refused");
+          return HttpResponse.json(
+            { ok: false, error: "prompt changed", code: "prompt_changed" },
+            { status: 409 },
+          );
+        }),
+        replyHandler(
+          (text) => wire.push(`type:${text}`),
+          () => wire.push("submit"),
+        ),
+      );
+      const props = renderComposerWithStatus({ agent: "omp", rawTerminalDraft: "leftover" });
+      const box = screen.getByPlaceholderText(/type a reply/i);
+
+      await user.type(box, "please do not approve anything");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent(/input box changed while clearing/i),
+      );
+      // The refusal aborts the whole send: no reply text follows the keys onto a screen that moved.
+      expect(wire).toEqual(["keys-refused"]);
+      expect(box).toHaveValue("please do not approve anything");
+      expect(props.onSent).not.toHaveBeenCalled();
+    }, 15000);
+
+    it("does not sweep a pane that went read-only while the pre-flight was in flight", async () => {
+      // `send()` checks `locked` once, before the pre-flight's round-trip. The burst goes out on the
+      // far side of it and — unlike every other key this component sends — does not go through
+      // `pressKeys`, which has its own check. A pane that died in that window used to get it anyway.
+      const user = userEvent.setup();
+      const wire: string[] = [];
+      // The pre-flight's read is held open until the test says so, so the window this is about — the
+      // one between "a read saw the composer" and "the burst goes out" — is the test's to control
+      // rather than a race against the scheduler.
+      let announcePreflight!: () => void;
+      let releasePreflight!: () => void;
+      const preflightIssued = new Promise<void>((resolve) => {
+        announcePreflight = resolve;
+      });
+      const preflightHeld = new Promise<void>((resolve) => {
+        releasePreflight = resolve;
+      });
+      // A pane id of this test's own, so a poll still in flight from an earlier test cannot be the
+      // read this one holds open (they all use w1:p1 and fall through to the default handler).
+      const PANE = "w9:p9";
+      server.use(
+        http.get(/\/api\/pane\/w9%3Ap9$/, async () => {
+          announcePreflight();
+          await preflightHeld;
+          return HttpResponse.json({
+            paneId: PANE,
+            text: ompComposer("leftover"),
+            truncated: false,
+            revision: 2,
+          });
+        }),
+        http.post(/\/api\/pane\/w9%3Ap9\/keys$/, () => {
+          wire.push("keys");
+          return HttpResponse.json({ ok: true });
+        }),
+        http.post(/\/api\/pane\/w9%3Ap9\/reply$/, async ({ request }) => {
+          const body = (await request.json()) as { text: string; submit?: boolean };
+          recordReply(body);
+          wire.push(body.submit ? "submit" : `type:${body.text}`);
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+
+      let setLocked: ((v: boolean) => void) | null = null;
+      function Harness() {
+        const [gone, setGone] = useState(false);
+        setLocked = setGone;
+        return (
+          <>
+            <StatusSentinel />
+            <Composer
+              paneId={PANE}
+              agent="omp"
+              isShell={false}
+              gone={gone}
+              readOnly={false}
+              transcriptionEnabled={false}
+              voice={idleVoice()}
+              dialogPresent={false}
+              text="pane output"
+              terminalDraft={null}
+              rawTerminalDraft="leftover"
+              prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+              setWrap={vi.fn()}
+              stepFontSize={vi.fn()}
+              setRawTerminal={vi.fn()}
+              onSent={vi.fn()}
+            />
+          </>
+        );
+      }
+      const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+      render(<RouterProvider router={router} />);
+
+      await user.type(screen.getByPlaceholderText(/type a reply/i), "please do not approve anything");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+      await preflightIssued;
+      act(() => setLocked?.(true)); // the pane died while the read was still in flight
+      releasePreflight(); // …and only now does the read's "yes, a composer" come back
+
+      await waitFor(() =>
+        expect(screen.getByTestId("status")).toHaveTextContent(/no longer writable/i),
+      );
+      expect(wire).toEqual([]); // no burst, and no reply behind it
+      expect(screen.getByPlaceholderText(/pane is gone/i)).toBeTruthy();
+    }, 15000);
   });
 
   it("does not call keys before reply when terminalDraft is null", async () => {

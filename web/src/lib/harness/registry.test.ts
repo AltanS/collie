@@ -7,11 +7,15 @@ import { adapterFor, hasBlockGrammar } from "./registry";
 // pinning directly — this re-homes the old grammar/agents predicate test onto the registry, which
 // now derives the predicate from adapterFor().
 describe("hasBlockGrammar", () => {
-  it("is true only for Claude Code", () => {
+  // "Registered", not "verified": in HARNESS_CONTRIBUTING.md "verified" is a term of art meaning
+  // live-verified against a real pane, which is the Tier-2 bar. Claude has cleared it; omp has not
+  // and does not claim to. What this predicate actually answers is "does an adapter exist".
+  it("is true for every registered adapter", () => {
     expect(hasBlockGrammar("claude")).toBe(true);
+    expect(hasBlockGrammar("omp")).toBe(true);
   });
 
-  it("is false for every non-Claude agent (unverified TUI ⇒ raw mirror)", () => {
+  it("is false for every unregistered agent (no adapter ⇒ raw mirror)", () => {
     for (const agent of ["codex", "opencode", "pi", "shell", "unknown"]) {
       expect(hasBlockGrammar(agent)).toBe(false);
     }

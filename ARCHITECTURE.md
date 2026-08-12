@@ -163,7 +163,11 @@ app. Closing this needs the server-side blocking-message capture described above
   `/api/pane/:id/history`), a separate source from the mirror with different fidelity: turns and
   their text, not a replay of the screen. Each harness writes a different log in a different place,
   so this is a **per-agent adapter** (`bridge/journal/registry.ts` maps the pane's `agent` to one);
-  a harness with no adapter simply has no journal. The client fetches the whole conversation in one request
+  a harness with no adapter simply has no journal. A harness can have **several roots** — one machine
+  routinely holds more than one agent home (`CLAUDE_CONFIG_DIR` per Claude profile), so each
+  `COLLIE_*_ROOT` takes a comma-separated list, searched in order until a root holds the session id;
+  ids are globally unique, so that's a lookup, not a preference. Containment is checked **per root**,
+  never against their union. The client fetches the whole conversation in one request
   and renders a window that grows upward, which is what lets find-in-history and jump-to-user-turn
   work across turns you haven't scrolled to. Rationale and the measured numbers are commented at the
   top of `web/src/routes/history.tsx`.

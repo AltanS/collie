@@ -25,7 +25,7 @@ function testConfig(): Config {
     notifyDelayMs: 30_000,
     readLines: 200,
     transcript: false,
-    journalRoots: { claude: "/tmp/claude", codex: "/tmp/codex", pi: "/tmp/pi", opencode: "/tmp/opencode" },
+    journalRoots: { claude: ["/tmp/claude"], codex: ["/tmp/codex"], pi: ["/tmp/pi"], opencode: ["/tmp/opencode"] },
     submitKeys: ["Enter"],
     trustedUser: "",
     deviceHeader: "",

@@ -6,7 +6,7 @@ import { adapterFor, buildJournalRegistry, journalAgents } from "./registry.ts";
 // two properties that keep it from rotting: keys come from the adapters themselves, and a hostile
 // agent name can't resolve to something that isn't an adapter.
 
-const roots = { claude: "/c", codex: "/x", pi: "/p", opencode: "/o" };
+const roots = { claude: ["/c"], codex: ["/x"], pi: ["/p"], opencode: ["/o"] };
 
 describe("buildJournalRegistry", () => {
   test("serves the four verified harnesses", () => {

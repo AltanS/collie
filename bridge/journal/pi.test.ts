@@ -215,3 +215,57 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
     await rm(base, { recursive: true, force: true });
   });
 });
+
+// pi with more than one sessions root (a second PI_CODING_AGENT_DIR) — the same multi-home case
+// CLAUDE_CONFIG_DIR raised for Claude (issue #92). pi is the interesting one because its ref is
+// usually a free-form PATH: no root built that name, so every configured root is asked whether the
+// file is its own, and the union of the roots is exactly the readable area — nothing wider.
+describe("PiTranscriptSource — several sessions roots", () => {
+  const A = "019f4665-7df0-7540-a64f-7068335f21af";
+  const B = "019f4665-7df0-7540-a64f-7068335f21b0";
+
+  async function fixture() {
+    const created = `${tmpdir()}/collie-pi-roots-${Math.floor(performance.now() * 1000)}`;
+    await mkdir(created, { recursive: true });
+    const base = await realpath(created);
+    const first = `${base}/first`;
+    const second = `${base}/second`;
+    await mkdir(`${first}/--repo--`, { recursive: true });
+    await mkdir(`${second}/--side--`, { recursive: true });
+    const logA = `${first}/--repo--/2026-08-11T09-00-00-000Z_${A}.jsonl`;
+    const logB = `${second}/--side--/2026-08-11T10-00-00-000Z_${B}.jsonl`;
+    await Bun.write(logA, speech("a", "user", "one"));
+    await Bun.write(logB, speech("b", "user", "two"));
+    const outside = `${base}/outside.jsonl`;
+    await Bun.write(outside, speech("z", "user", "secrets"));
+    return { base, first, second, logA, logB, outside };
+  }
+
+  test("a single root string still refuses the other root's log", async () => {
+    const { base, first, logB } = await fixture();
+    const src = new PiTranscriptSource(first);
+    expect(await src.resolve({ kind: "path", value: logB })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a path ref resolves under whichever configured root really contains it", async () => {
+    const { base, first, second, logA, logB } = await fixture();
+    const src = new PiTranscriptSource([first, second]);
+    expect(await src.resolve({ kind: "path", value: logA })).toBe(logA);
+    expect(await src.resolve({ kind: "path", value: logB })).toBe(logB);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a path outside EVERY root is still refused", async () => {
+    const { base, first, second, outside } = await fixture();
+    const src = new PiTranscriptSource([first, second]);
+    expect(await src.resolve({ kind: "path", value: outside })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("the id fallback scans every root", async () => {
+    const { base, first, second, logB } = await fixture();
+    expect(await new PiTranscriptSource([first, second]).resolve({ kind: "id", value: B })).toBe(logB);
+    await rm(base, { recursive: true, force: true });
+  });
+});
