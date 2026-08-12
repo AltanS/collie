@@ -199,9 +199,15 @@ export const realFiles: Files = {
 // the unit goes active the moment the process starts, seconds before it binds, and the banner would
 // then claim a bridge the phone can't reach (the pre-shim collie-ctl.sh).
 
-export function tcpProbe(port: number, timeoutMs = 500): Promise<boolean> {
+/**
+ * `host` defaults to loopback, but a caller MUST pass the bridge's actual resolved bind
+ * (`resolveBridgeHost` in `bridge/config.ts`) when `COLLIE_HOST` sets one — a peer bound to a
+ * tailnet address never answers on 127.0.0.1, and probing loopback there reports "down" against a
+ * bridge that is in fact up.
+ */
+export function tcpProbe(port: number, host = "127.0.0.1", timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = connect({ host: "127.0.0.1", port });
+    const socket = connect({ host, port });
     let settled = false;
     const done = (ok: boolean): void => {
       if (settled) return;
@@ -217,9 +223,14 @@ export function tcpProbe(port: number, timeoutMs = 500): Promise<boolean> {
 }
 
 /** Poll {@link tcpProbe} for ~5s — the same budget as the shell's 25 × 0.2s. */
-export async function waitReady(port: number, attempts = 25, delayMs = 200): Promise<boolean> {
+export async function waitReady(
+  port: number,
+  host = "127.0.0.1",
+  attempts = 25,
+  delayMs = 200,
+): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
-    if (await tcpProbe(port)) return true;
+    if (await tcpProbe(port, host)) return true;
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return false;

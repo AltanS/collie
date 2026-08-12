@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { resolveBridgeHost } from "../bridge/config.ts";
 import { bindIsWildcard } from "../bridge/pack/config.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
 import type { HelloResult, PackFetch, PeerOutcome } from "../bridge/pack/peer-client.ts";
@@ -216,11 +217,12 @@ function bindCheck(deps: DoctorDeps, mode: string): Finding {
 }
 
 /**
- * `COLLIE_HOST` as the BRIDGE resolves it (`bridge/config.ts`: absent ⇒ loopback, explicitly empty ⇒
- * every interface), which is also how `pack status` prints it. Resolving it differently here would
- * make `doctor` warn about a bind the process never had.
+ * `COLLIE_HOST` as the BRIDGE resolves it (`resolveBridgeHost` in `bridge/config.ts`: absent ⇒
+ * loopback, explicitly empty ⇒ every interface), which is also how `pack status` prints it and how
+ * the `collie start`/`status` banner probes readiness. Resolving it differently here would make
+ * `doctor` warn about a bind the process never had.
  */
-const resolvedBind = (deps: DoctorDeps): string => deps.ctx.env.COLLIE_HOST ?? "127.0.0.1";
+const resolvedBind = (deps: DoctorDeps): string => resolveBridgeHost(deps.ctx.env);
 
 /** The operator's own decision, reported back — never a failure (ADR 0013's posture). */
 function bindWildcard(deps: DoctorDeps): Finding {

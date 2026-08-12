@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { resolveBridgeHost } from "../bridge/config.ts";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -35,7 +36,7 @@ export interface LifecycleDeps extends ServeDeps {
   exec: Exec;
   files: Files;
   /** Readiness with the full ~5s budget. Injected so tests don't pay for it. */
-  ready: (port: number) => Promise<boolean>;
+  ready: (port: number, host: string) => Promise<boolean>;
   sleep: (ms: number) => Promise<void>;
   uid: () => number;
   platform: NodeJS.Platform;
@@ -452,10 +453,16 @@ export function serviceDescription(deps: LifecycleDeps): string {
 export async function statusBanner(deps: LifecycleDeps): Promise<string[]> {
   const version = collieVersion(deps.ctx.root);
   const lines: string[] = [""];
+  // The bridge binds `resolveBridgeHost`, not always loopback (a peer sets COLLIE_HOST to its
+  // tailnet address — the documented Variant-E shape). Probing 127.0.0.1 there would find nothing
+  // home and print "isn't answering" against a bridge that is in fact up; probe — and, in the
+  // warning, name — whatever address it actually bound.
+  const host = resolveBridgeHost(deps.ctx.env);
+  const probedAddress = host === "127.0.0.1" ? `:${deps.ctx.port}` : `${host}:${deps.ctx.port}`;
   lines.push(
-    (await deps.ready(deps.ctx.port))
+    (await deps.ready(deps.ctx.port, host))
       ? `  ✓ Collie is running  ·  v${version}`
-      : `  ⚠ Collie isn't answering on :${deps.ctx.port} yet (v${version}) — check 'collie logs'`,
+      : `  ⚠ Collie isn't answering on ${probedAddress} yet (v${version}) — check 'collie logs'`,
   );
   // Only a suffixed instance says so — a solo host's banner is unchanged, and on a host running two
   // this is the line that says WHICH Collie answered (the unit name on the next line agrees).

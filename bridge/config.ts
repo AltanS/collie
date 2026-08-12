@@ -194,6 +194,17 @@ export interface Config {
 export const DEFAULT_PORT = 8787;
 
 /**
+ * The address the bridge actually binds: an absent `COLLIE_HOST` resolves to loopback, anything set
+ * is used verbatim (empty string included — that's the wildcard-bind case `bindIsWildcard` names).
+ * Pure and exported for the same reason as {@link resolveStateDir}: `cli/doctor.ts`'s bind check and
+ * the `collie start`/`status` banner's readiness probe (`cli/lifecycle.ts`) both need the bridge's
+ * real bind from their own merged `.env`, not a re-derived guess that could drift from this one.
+ */
+export function resolveBridgeHost(env: Record<string, string | undefined> = process.env): string {
+  return env.COLLIE_HOST ?? "127.0.0.1";
+}
+
+/**
  * herdr's default socket location: `~/.config/herdr/herdr.sock` on Unix, `%APPDATA%\herdr\herdr.sock`
  * on Windows (the Windows beta keeps its config root under AppData\Roaming). Pure so both branches
  * are unit-testable on any platform.
@@ -235,7 +246,7 @@ export function loadConfig(): Config {
     socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),
     dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto"),
     port: envInt("COLLIE_PORT", DEFAULT_PORT, { min: 1, max: 65535 }),
-    host: process.env.COLLIE_HOST ?? "127.0.0.1",
+    host: resolveBridgeHost(),
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }),
     pollIdleMs: envInt("COLLIE_POLL_IDLE_MS", 12_000, { min: 1000 }),
     notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }),
