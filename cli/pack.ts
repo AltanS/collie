@@ -484,7 +484,7 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
     `    collie join ${address ?? "<this-lead-address>"} -    # then paste the whole token on stdin`,
   );
   deps.io.out("  Passing it as an argument instead leaves it in `ps` output for every local uid.");
-  await applyLocally(deps, "the bridge can answer this invite");
+  await applyLocally(deps, "the freshly minted invite");
   return EXIT.OK;
 }
 
@@ -1111,7 +1111,7 @@ export async function cmdPackApprovePromote(deps: PackDeps, args: readonly strin
     }
     deps.io.out(`✓ cancelled the handover approval for "${cancelled.memberId}" — nobody may take over now.`);
     deps.io.out("  Nothing was sent anywhere: the approval was local consent on this machine.");
-    await applyLocally(deps, "the running bridge forgets the approval");
+    await applyLocally(deps, "the withdrawal");
     return EXIT.OK;
   }
 
@@ -1138,7 +1138,7 @@ export async function cmdPackApprovePromote(deps: PackDeps, args: readonly strin
   deps.io.out("  Nothing was sent to it and no secret is involved — the claim is already signed against a");
   deps.io.out(`  pinned certificate, so consent only has to name who may take over.`);
   deps.io.out("  Changed your mind? `collie pack approve-promote --cancel`.");
-  await applyLocally(deps, "the running bridge holds the approval");
+  await applyLocally(deps, "the approval");
   return EXIT.OK;
 }
 
