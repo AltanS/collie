@@ -540,6 +540,90 @@ By hand: frontend (`web/`) → `bin/collie build` (live, no restart — served f
 (`bridge/`) → `systemctl --user restart collie`. Run `scripts/install-hooks.sh` once to enable the
 repo's pre-commit / pre-push checks.
 
+### Migrating from 0.x
+
+The last 0.x release is **0.28.0**. Going from there to 1.0 is the command you already have:
+
+```bash
+herdr plugin action invoke update --plugin herdr.collie   # or, in the checkout: bin/collie update
+```
+
+No reinstall, no re-link, no config edit, no manual `bun install`.
+
+**One thing to do first: if `BUN_INSTALL` lives only in your `.env`, move it to the environment.**
+1.0's shim no longer sources `.env` to find Bun. Left in `.env` it fails at the worst possible
+moment — the next `update`, invoked as a Herdr action, which gets no login shell. Export it from
+your shell profile (or the service environment) before you update.
+
+**A solo install has nothing else to do.** Same routes, same snapshot bytes, same config keys — no
+key was removed, renamed, or made required. `bridge/solo-baseline.test.ts` pins that as a compiled
+assertion, not a promise.
+
+**Running a pack?** Four things to know, in this order:
+
+- **Update the lead first.** A peer still on the old build is *behind*, never `incompatible` — it
+  shows in `collie pack status` as a `warn:`-class version finding naming both versions and the
+  remedy ([PACK_PROTOCOL §7.1](./PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)).
+- `collie join` now refuses an `http://` lead without `--insecure`.
+- Invite tokens minted before the `<token>.<lead-fingerprint>` format fail closed — reissue with
+  `collie pack invite`.
+- Member records minted before the portless-callback fix need `collie reconnect`.
+
+#### Side by side, if the herd is real
+
+If you lead a pack you depend on, run 1.0 as a **second instance** and cut over when you're happy;
+everyone else should just update in place. A second instance is its own config dir at
+`~/.config/herdr/plugins/config/herdr.collie-<name>/.env`, containing at minimum:
+
+```bash
+COLLIE_INSTANCE=<name>        # required — [a-z0-9-], max 16 chars
+COLLIE_PORT=8788              # required for a named instance; no default is inferred
+COLLIE_STATE_DIR=/home/you/.local/state/collie-<name>   # the state dir is NOT instance-suffixed
+```
+
+plus its own front door. A named instance reads *only* that file: if it's missing, the instance
+**refuses to run** rather than falling back to another instance's config. That refusal is the
+feature — a named instance that silently resolved the default config would mint a fresh identity
+into your live install's state.
+
+#### Rolling back
+
+Check out the last 0.x tag in the same checkout and rebuild. A Herdr-managed checkout is shallow
+*and* tagless, so fetch the tag first:
+
+```bash
+git fetch --depth 1 origin tag v0.28.0
+git checkout --detach --force v0.28.0
+rm -f bin/collie    # 1.0's binary otherwise survives the rollback
+```
+
+Then rebuild in the checkout with `bash scripts/collie-ctl.sh build` — after that checkout it is 0.x's
+own script again — and restart with the Herdr `restart` action. **Don't invoke the `update` action
+while rolled back**: it advances the checkout and snaps you straight back to 1.0. Leave the four 1.0 state files
+alone — `pack-trust.json`, `pack-runtime.json`, `paired-devices.json` and `pairing-pending.json` are
+inert to 0.x, which never opens them.
+
+> **Rollback drops the pairing gate.** 0.x has no bearer path at all, so a paired phone's credential
+> is simply ignored and writes fall back to the 0.x gates. If `COLLIE_DEVICE_HEADER` isn't
+> configured, that is **full write access for any same-origin request**. If you paired devices
+> *instead of* configuring the header gate, configure it before you roll back — or accept that
+> consequence knowingly.
+
+#### Verify it worked
+
+The footer build stamp — or `bin/collie version` — reads `1.0.0…`. Here's the tail of a real
+Herdr-managed upgrade; the interesting part is the hand-off, where 0.x's shell `exec`s the path it
+froze and lands on the 1.0 shim, which builds its own binary on the way through:
+
+```
+updating Collie (Herdr-managed checkout: fetch + detach onto origin HEAD)…
+→ now at 9b8e453 Merge remote-tracking branch 'origin/main' into v1
+first run — building the collie binary…
+…
+note: Herdr-managed install — registry left alone (re-linking would block `herdr plugin install`)
+✓ update complete
+```
+
 ## Deployment variants
 
 Collie always binds **loopback only**; what changes between deployments is *what sits in front
