@@ -20,12 +20,17 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/qrcode-terminal": "^0.12.2",
+    "@types/react": "^19.2.18",
     "@types/web-push": "^3.6.4",
+    "ink-testing-library": "^4.0.0",
     "jsqr": "^1.4.0",
     "typescript": "^5"
   },
   "dependencies": {
-    "qrcode-terminal": "^0.12.0"
+    "commander": "^15.0.0",
+    "ink": "^7.1.1",
+    "qrcode-terminal": "^0.12.0",
+    "react": "^19.2.8"
   },
   "optionalDependencies": {
     "web-push": "^3.6.7"

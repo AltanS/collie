@@ -1,3 +1,5 @@
+import { Command as Program, CommanderError } from "commander";
+
 import { cmdBuild } from "./build.ts";
 import { collieVersion, loadContext } from "./context.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
@@ -17,6 +19,11 @@ import {
   cmdJoin,
   cmdLeave,
   cmdPack,
+  cmdPackApprovePromote,
+  cmdPackInvite,
+  cmdPackRemove,
+  cmdPackRotate,
+  cmdPackStatus,
   cmdPromote,
   cmdReconnect,
   packAudit,
@@ -24,8 +31,9 @@ import {
   PACK_SUBCOMMANDS,
 } from "./pack.ts";
 import { cmdPushTest } from "./push.ts";
-import { packAddDeps, type PackAddDeps } from "./remote.ts";
 import { cmdQr } from "./qr.ts";
+import { renderInputs, takePlainFlag, wantsRich } from "./render.ts";
+import { cmdPackAdd, packAddDeps, type PackAddDeps } from "./remote.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realExec, realFiles, waitReady } from "./sys.ts";
 import { bridgeUrl } from "./tailnet.ts";
@@ -33,15 +41,52 @@ import { cmdApplyUpdate, cmdUpdate, type UpdateDeps } from "./update.ts";
 
 // The `collie` binary: argv in, exit code out. This module owns ONLY the dispatch — every verb's
 // behaviour lives in its own module under `cli/`, taking the resolved context as an argument.
+//
+// ── COMMANDER PARSES; THE TABLE STILL DECLARES ───────────────────────────────
+// `commander` owns argv → verb, the subcommand tree and the usage errors. It does NOT own the verb
+// list: {@link COMMANDS} is still the single declaration, in the order the usage line prints, and
+// the program is built from it. That keeps two things true that a hand-written `program.command(…)`
+// wall would quietly break — the usage line can't drift from the table, and a verb can't be added
+// without a summary.
+//
+// Everything about the grammar is byte-for-byte what the hand-rolled dispatcher did, because the
+// spellings are a contract: a README recipe, muscle memory from `collie-ctl.sh <verb>`, and a
+// <0.8.0 Herdr install's cached action set (ADR 0006) all land on this table. So commander is
+// configured to never exit the process itself (`exitOverride`), never write to the real streams
+// (`configureOutput` → the {@link Io} seam), and never print its own help text (`configureHelp`) —
+// the exit-code families of `cli/io.ts` and the help layout below are what callers already parse.
 
 export { EXIT, realIo, type Io };
+
+/**
+ * One invocation's presentation decision, resolved once in {@link run} and handed to every verb.
+ *
+ * `rich` is the answer to "did this land on a terminal a TTY view is worth drawing on?" — see
+ * `cli/render.ts` for why it is decided here rather than at each point of output.
+ */
+export interface Session {
+  readonly io: Io;
+  readonly rich: boolean;
+}
 
 export interface Command {
   readonly name: string;
   readonly summary: string;
   /** Internal verbs are dispatchable but stay out of the usage line, as in the shell. */
   readonly internal?: boolean;
-  run(args: readonly string[], io: Io): number | Promise<number>;
+  /**
+   * A verb that owns a subcommand tree declares it here, and commander builds real child commands
+   * from it. The parent's own `run` stays the fallback — it is what answers a bare `collie pack`
+   * and an unknown subcommand, with the usage block those two have always printed.
+   */
+  readonly subcommands?: readonly Subcommand[];
+  run(args: readonly string[], session: Session): number | Promise<number>;
+}
+
+export interface Subcommand {
+  readonly name: string;
+  readonly summary: string;
+  run(args: readonly string[], session: Session): number | Promise<number>;
 }
 
 /**
@@ -111,7 +156,16 @@ function lifecycleCommand(
   body: (deps: LifecycleDeps, args: readonly string[]) => number | Promise<number>,
   internal = false,
 ): Command {
-  return { name, summary, internal, run: (args, io) => body(lifecycleDeps(io), args) };
+  return { name, summary, internal, run: (args, s) => body(lifecycleDeps(s.io), args) };
+}
+
+/** A `pack` sub-verb whose body takes the pack dependency set. */
+function packSubcommand(
+  name: (typeof PACK_SUBCOMMANDS)[number],
+  summary: string,
+  body: (deps: PackAddDeps, args: readonly string[]) => number | Promise<number>,
+): Subcommand {
+  return { name, summary, run: async (args, s) => body(await packVerbDeps(s.io), args) };
 }
 
 // Declaration order is the order of the usage line, and it is the order `scripts/collie-ctl.sh`
@@ -129,13 +183,13 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "update",
     summary: "advance the checkout, rebuild, restart",
-    run: (_args, io) => cmdUpdate(updateDeps(io)),
+    run: (_args, s) => cmdUpdate(updateDeps(s.io)),
   },
   {
     name: "_apply-update",
     summary: "internal: the second half of `update`, run post-pull",
     internal: true,
-    run: (_args, io) => cmdApplyUpdate(updateDeps(io)),
+    run: (_args, s) => cmdApplyUpdate(updateDeps(s.io)),
   },
   lifecycleCommand(
     "_exec-bridge",
@@ -163,18 +217,18 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "version",
     summary: "print the version actually being served",
-    run(_args, io) {
-      const ctx = loadContext(io.err);
-      io.out(collieVersion(ctx.root));
+    run(_args, s) {
+      const ctx = loadContext(s.io.err);
+      s.io.out(collieVersion(ctx.root));
       return EXIT.OK;
     },
   },
   {
     name: "push-test",
     summary: "send a one-off Web Push to every subscribed device",
-    run: (args, io) => {
-      const ctx = loadContext(io.err);
-      return cmdPushTest({ ctx, io, files: realFiles }, args);
+    run: (args, s) => {
+      const ctx = loadContext(s.io.err);
+      return cmdPushTest({ ctx, io: s.io, files: realFiles }, args);
     },
   },
   lifecycleCommand("logs", "tail the service log (default 50 lines)", (deps, args) =>
@@ -185,9 +239,12 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "doctor",
     summary: "check this install for the traps that fail silently",
-    run: (args, io) => {
-      const deps = lifecycleDeps(io);
-      return cmdDoctor(doctorDeps({ ctx: deps.ctx, io, exec: deps.exec, files: deps.files }), args);
+    run: (args, s) => {
+      const deps = lifecycleDeps(s.io);
+      return cmdDoctor(
+        doctorDeps({ ctx: deps.ctx, io: s.io, exec: deps.exec, files: deps.files }),
+        args,
+      );
     },
   },
   // ── The pack (M4/07) ───────────────────────────────────────────────────────
@@ -196,38 +253,52 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "join",
     summary: "join a pack: `join <lead-address> <token|-|@file>` (run on the joining machine)",
-    run: async (args, io) => cmdJoin(await packVerbDeps(io), args),
+    run: async (args, s) => cmdJoin(await packVerbDeps(s.io), args),
   },
   {
     name: "leave",
     summary: "leave the pack — drops the pack secret and every pin on this machine",
-    run: async (_args, io) => cmdLeave(await packVerbDeps(io)),
+    run: async (_args, s) => cmdLeave(await packVerbDeps(s.io)),
   },
   {
     name: "pack",
     summary: `pack administration: ${PACK_SUBCOMMANDS.join(", ")}`,
-    run: async (args, io) => cmdPack(await packVerbDeps(io), args),
+    // The tree commander builds. Order is `PACK_SUBCOMMANDS`' order, which is the order
+    // `cli/pack.ts`'s own usage block prints — the two are pinned to each other in cli/main.test.ts.
+    subcommands: [
+      packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
+      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd),
+      packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus),
+      packSubcommand("rotate", "reissue the pack secret and hand it to every reachable peer", (deps) =>
+        cmdPackRotate(deps),
+      ),
+      packSubcommand("remove", "unpin and forget a member (on the lead)", cmdPackRemove),
+      packSubcommand(
+        "approve-promote",
+        "consent, on the lead, for one member to take over (10 minutes, single-use)",
+        cmdPackApprovePromote,
+      ),
+    ],
+    // Reached only when no subcommand matched — a bare `collie pack`, or a misspelt one. `cmdPack`
+    // owns that message, and has since before commander: it names every sub-verb with its own
+    // one-line summary, which is more than an "unknown command" line would say.
+    run: async (args, s) => cmdPack(await packVerbDeps(s.io), args),
   },
   {
     name: "promote",
     summary: "make THIS machine the lead (run on the peer taking over; --force if the lead is gone)",
-    run: async (args, io) => cmdPromote(await packVerbDeps(io), args),
+    run: async (args, s) => cmdPromote(await packVerbDeps(s.io), args),
   },
   {
     name: "reconnect",
     summary: "a member moved: re-point at its new address without re-enrolling anything",
-    run: async (args, io) => cmdReconnect(await packVerbDeps(io), args),
+    run: async (args, s) => cmdReconnect(await packVerbDeps(s.io), args),
   },
   {
     name: "help",
     summary: "print this help",
-    run(_args, io) {
-      io.out(usageLine());
-      io.out("");
-      for (const c of COMMANDS) {
-        if (c.internal === true) continue;
-        io.out(`  ${c.name.padEnd(12)} ${c.summary}`);
-      }
+    run(_args, s) {
+      for (const line of helpText()) s.io.out(line);
       return EXIT.OK;
     },
   },
@@ -246,49 +317,125 @@ export function usageLine(commands: readonly Command[] = COMMANDS): string {
   return `usage: collie {${names.join("|")}}`;
 }
 
-export type Parsed =
-  | { kind: "verb"; name: string; args: string[] }
-  | { kind: "help" }
-  | { kind: "unknown"; name: string };
+/**
+ * The help body, as lines. Commander is told to print exactly this instead of its own layout
+ * (`configureHelp({ formatHelp })`), so `collie help`, `collie -h` and `collie --help` are one text
+ * with one exit code, and the shape a script may already be grepping does not move.
+ */
+export function helpText(commands: readonly Command[] = COMMANDS): string[] {
+  const lines = [usageLine(commands), ""];
+  for (const c of commands) {
+    if (c.internal === true) continue;
+    lines.push(`  ${c.name.padEnd(12)} ${c.summary}`);
+  }
+  lines.push("");
+  lines.push(`  ${"--plain".padEnd(12)} never draw the terminal view — print the lines a pipe would get`);
+  return lines;
+}
+
+/** Feed a commander write (one string, possibly multi-line, usually newline-terminated) to `Io`. */
+function emit(sink: (line: string) => void, chunk: string): void {
+  const lines = chunk.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  for (const line of lines) sink(line);
+}
 
 /**
- * argv (already sliced past the executable) → what to do. `help` / `-h` / `--help` is help; an
- * empty argv and an unrecognised verb are both usage errors, as in the shell's `case`.
+ * Build the commander program for one invocation. The exit code is not commander's to decide, so
+ * every action stashes its verb's return value here and {@link run} reads it back out.
  */
-export function parseArgv(argv: readonly string[], commands: readonly Command[] = COMMANDS): Parsed {
-  const first = argv[0];
-  if (first === undefined || first === "") return { kind: "unknown", name: "" };
-  if (first === "help" || first === "-h" || first === "--help") return { kind: "help" };
-  if (findCommand(first, commands) === undefined) return { kind: "unknown", name: first };
-  return { kind: "verb", name: first, args: argv.slice(1) };
+function buildProgram(
+  session: Session,
+  commands: readonly Command[],
+  setCode: (code: number) => void,
+): Program {
+  const program = new Program();
+  program
+    .name("collie")
+    // Nothing in this process may `process.exit()` — the binary's exit code is `run`'s return value,
+    // and a library that exits behind our back would take the 3/4/5 pack codes with it.
+    .exitOverride()
+    .configureOutput({
+      writeOut: (chunk) => emit(session.io.out, chunk),
+      writeErr: (chunk) => emit(session.io.err, chunk),
+      // Commander's own error prose never reaches the user: every usage error this CLI can produce
+      // is written by the code that knows what the operator was reaching for.
+      outputError: () => {},
+    })
+    // The root's help is this file's `helpText`; a subcommand keeps commander's own layout, which
+    // nothing has ever pinned.
+    .configureHelp({ formatHelp: (cmd) => (cmd === program ? `${helpText(commands).join("\n")}\n` : "") })
+    // An unrecognised verb is not commander's error to report — it falls through to the root action
+    // below, which names it in the words the shell dispatcher used.
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
+    .argument("[verb...]")
+    .action((verb: string[]) => {
+      const name = verb[0];
+      if (name !== undefined && name !== "") session.io.err(`error: unknown command \`${name}\``);
+      session.io.err(usageLine(commands));
+      setCode(EXIT.USAGE);
+    });
+
+  for (const c of commands) {
+    const leaf = program
+      .command(c.name, { hidden: c.internal === true })
+      .description(c.summary)
+      // Every verb still receives its argv verbatim: the flag grammars live in the verbs (and are
+      // pinned there, against fake deps), so commander forwards rather than re-parses. `-h` is off
+      // for the same reason — today `collie logs --help` is a `logs` argument, not a help request.
+      .allowUnknownOption(true)
+      .allowExcessArguments(true)
+      .helpOption(false)
+      .argument("[args...]");
+    if (c.subcommands === undefined) {
+      leaf.action(async (args: string[]) => setCode(await c.run(args, session)));
+      continue;
+    }
+    // A parent with children: commander matches a child by name, and anything else — including
+    // nothing at all — reaches the parent's own action.
+    leaf.action(async (args: string[]) => setCode(await c.run(args, session)));
+    for (const sub of c.subcommands) {
+      leaf
+        .command(sub.name)
+        .description(sub.summary)
+        .allowUnknownOption(true)
+        .allowExcessArguments(true)
+        .helpOption(false)
+        .argument("[args...]")
+        .action(async (args: string[]) => setCode(await sub.run(args, session)));
+    }
+  }
+  return program;
 }
 
 export async function run(
   argv: readonly string[],
   io: Io,
   commands: readonly Command[] = COMMANDS,
+  isTTY = false,
 ): Promise<number> {
-  const parsed = parseArgv(argv, commands);
-  if (parsed.kind === "unknown") {
-    if (parsed.name !== "") io.err(`error: unknown command \`${parsed.name}\``);
-    io.err(usageLine(commands));
-    return EXIT.USAGE;
-  }
-  const name = parsed.kind === "help" ? "help" : parsed.name;
-  const args = parsed.kind === "help" ? [] : parsed.args;
-  const command = findCommand(name, commands);
-  if (command === undefined) {
-    io.err(usageLine(commands));
-    return EXIT.USAGE;
-  }
+  const { plain, rest } = takePlainFlag(argv);
+  const session: Session = { io, rich: wantsRich(renderInputs(process.env, isTTY, plain)) };
+  let code: number = EXIT.OK;
+  const program = buildProgram(session, commands, (c) => {
+    code = c;
+  });
   try {
-    return await command.run(args, io);
+    await program.parseAsync(rest, { from: "user" });
+    return code;
   } catch (err) {
+    if (err instanceof CommanderError) {
+      // Help is output, not a diagnostic: commander has already written it through `writeOut`.
+      if (err.code === "commander.helpDisplayed" || err.code === "commander.help") return EXIT.OK;
+      io.err(usageLine(commands));
+      return EXIT.USAGE;
+    }
     io.err(`error: ${err instanceof Error ? err.message : String(err)}`);
     return EXIT.FAIL;
   }
 }
 
 if (import.meta.main) {
-  process.exitCode = await run(process.argv.slice(2), realIo);
+  process.exitCode = await run(process.argv.slice(2), realIo, COMMANDS, process.stdout.isTTY === true);
 }

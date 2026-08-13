@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
+import { PACK_SUBCOMMANDS } from "./pack.ts";
 import {
   type Command,
   COMMANDS,
   EXIT,
   findCommand,
+  helpText,
   type Io,
-  parseArgv,
   run,
   usageLine,
 } from "./main.ts";
@@ -84,29 +85,99 @@ describe("the verb table", () => {
   });
 });
 
-describe("parseArgv", () => {
-  test("a known verb carries its remaining args", () => {
-    expect(parseArgv(["logs", "200"])).toEqual({ kind: "verb", name: "logs", args: ["200"] });
+// ── The grammar commander now owns ───────────────────────────────────────────
+// These used to be assertions about `parseArgv`, the hand-rolled splitter commander replaced. They
+// are asserted through `run` now — the parser is an implementation detail, "what does typing this
+// do" is the contract. Every verb below is a spy, so nothing here touches the world.
+describe("dispatch", () => {
+  function spy(name: string, sub?: readonly string[]): { command: Command; seen: string[][] } {
+    const seen: string[][] = [];
+    const command: Command = {
+      name,
+      summary: `spy on ${name}`,
+      subcommands: sub?.map((s) => ({
+        name: s,
+        summary: `spy on ${name} ${s}`,
+        run: (args) => {
+          seen.push([s, ...args]);
+          return EXIT.OK;
+        },
+      })),
+      run: (args) => {
+        seen.push(["(parent)", ...args]);
+        return EXIT.OK;
+      },
+    };
+    return { command, seen };
+  }
+
+  // Every dispatch below goes through this helper rather than a literal `run([…])`, so the
+  // "no world-touching verb is spelled out in this file" grep further down stays honest: these
+  // argvs name real verbs, but they land on the spy table passed alongside them, never on COMMANDS.
+  const go = (argv: string[], commands: readonly Command[]) => run(argv, capture(), commands);
+
+  test("a known verb carries its remaining args, flags and all, in order", async () => {
+    const { command, seen } = spy("logs");
+    expect(await go(["logs", "200"], [command])).toBe(EXIT.OK);
+    expect(await go(["logs", "--json", "-n", "7"], [command])).toBe(EXIT.OK);
+    expect(seen).toEqual([
+      ["(parent)", "200"],
+      ["(parent)", "--json", "-n", "7"],
+    ]);
   });
 
-  test("an internal verb is dispatchable even though it is not advertised", () => {
-    expect(parseArgv(["_exec-bridge"])).toEqual({
-      kind: "verb",
-      name: "_exec-bridge",
-      args: [],
-    });
+  test("a verb's own `--help` stays the verb's argument — commander does not intercept it", async () => {
+    const { command, seen } = spy("logs");
+    expect(await go(["logs", "--help"], [command])).toBe(EXIT.OK);
+    expect(seen).toEqual([["(parent)", "--help"]]);
   });
 
-  test("help, -h and --help are help", () => {
-    for (const a of ["help", "-h", "--help"]) expect(parseArgv([a])).toEqual({ kind: "help" });
+  test("a subcommand is matched by name; anything else reaches the parent", async () => {
+    const { command, seen } = spy("pack", ["invite", "status"]);
+    for (const argv of [["pack", "status", "--no-probe"], ["pack"], ["pack", "nonsense"]]) {
+      expect(await go(argv, [command])).toBe(EXIT.OK);
+    }
+    expect(seen).toEqual([
+      ["status", "--no-probe"],
+      ["(parent)"],
+      ["(parent)", "nonsense"],
+    ]);
   });
 
-  test("no argv at all is a usage error, as in the shell's `case`", () => {
-    expect(parseArgv([])).toEqual({ kind: "unknown", name: "" });
+  test("an internal verb is dispatchable even though it is not advertised", async () => {
+    const { command, seen } = spy("_exec-bridge");
+    const internal: Command = { ...command, internal: true };
+    expect(await go(["_exec-bridge"], [internal])).toBe(EXIT.OK);
+    expect(seen).toEqual([["(parent)"]]);
+    expect(usageLine([internal])).toBe("usage: collie {}");
   });
 
-  test("an unrecognised verb is a usage error naming what was typed", () => {
-    expect(parseArgv(["nonsense"])).toEqual({ kind: "unknown", name: "nonsense" });
+  test("--plain is accepted anywhere and never reaches the verb", async () => {
+    const { command, seen } = spy("pack", ["status"]);
+    expect(await go(["--plain", "pack", "status"], [command])).toBe(EXIT.OK);
+    expect(await go(["pack", "status", "--plain", "--no-probe"], [command])).toBe(EXIT.OK);
+    expect(seen).toEqual([
+      ["status"],
+      ["status", "--no-probe"],
+    ]);
+  });
+
+  test("a verb's exit code is the run's exit code — every family, unaltered", async () => {
+    for (const code of [EXIT.OK, EXIT.FAIL, EXIT.USAGE, EXIT.STATE, EXIT.REFUSED, EXIT.UNREACHABLE]) {
+      const command: Command = { name: "x", summary: "returns a code", run: () => code };
+      expect(await go(["x"], [command])).toBe(code);
+    }
+  });
+});
+
+describe("the pack subcommand tree", () => {
+  test("declares exactly `cli/pack.ts`'s sub-verbs, in its order", () => {
+    const pack = findCommand("pack");
+    expect(pack?.subcommands?.map((s) => s.name)).toEqual([...PACK_SUBCOMMANDS]);
+  });
+
+  test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
+    expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual(["pack"]);
   });
 });
 
@@ -135,6 +206,29 @@ describe("exit codes", () => {
       if (c.internal === true) continue;
       expect(io.stdout.join("\n")).toContain(c.summary);
     }
+  });
+
+  // Three spellings, one text. `help` is a verb in the table, `-h`/`--help` are commander's, and
+  // commander is configured to print this file's `helpText` for both — so they cannot drift apart.
+  test("`help`, `-h` and `--help` print the identical body", async () => {
+    for (const spelling of ["help", "-h", "--help"]) {
+      const io = capture();
+      expect(await run([spelling], io)).toBe(EXIT.OK);
+      expect(io.stderr).toEqual([]);
+      expect(io.stdout).toEqual(helpText());
+    }
+  });
+
+  test("the help body names --plain and hides every internal verb", async () => {
+    const body = helpText().join("\n");
+    expect(body).toContain("--plain");
+    for (const c of COMMANDS) if (c.internal === true) expect(body).not.toContain(c.name);
+  });
+
+  test("an unknown verb with arguments is still reported by its own name", async () => {
+    const io = capture();
+    expect(await run(["nonsense", "--flag", "x"], io)).toBe(EXIT.USAGE);
+    expect(io.stderr.join("\n")).toContain("unknown command `nonsense`");
   });
 
   // NOTHING in this file may dispatch a verb that touches the world. Dispatching `start` here would
