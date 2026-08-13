@@ -807,10 +807,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
           />
         )}
-        {/* Which machine this reply is about to be typed into, immediately above the input and Send.
-            A host named only in a header read once at the top of a scroll is not named where the
-            mistake happens (milestone constraint). Renders nothing unless the pack has >1 machine. */}
-        <HostChip host={writeHost} variant="target" className="mb-1 self-start" />
         {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
             deliberately NOT only on the button and textarea — see the component. */}
         {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
