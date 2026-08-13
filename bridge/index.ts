@@ -9,6 +9,7 @@ import { EventPoker } from "./event-poker.ts";
 import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
+import { filePairingIo, PairingStore } from "./pairing.ts";
 import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
 import { dialTls, peerListenerTls } from "./pack/transport.ts";
 import { PackLead } from "./pack/lead.ts";
@@ -114,6 +115,12 @@ await snooze.load();
 
 const notifyPrefs = new NotifyPrefsStore(cfg);
 await notifyPrefs.load();
+
+// Device pairing (bridge/pairing.ts). Constructed unconditionally and holding no state of its own:
+// it re-reads `<stateDir>/paired-devices.json` per request (cached on mtime), so `collie pair` and
+// `collie devices revoke` land on the RUNNING service without the restart every other backend change
+// needs. An empty registry — the state every existing install starts in — enforces nothing.
+const pairing = new PairingStore(filePairingIo(cfg.stateDir));
 
 // When each pane last moved, and when you last looked at it — the two numbers the dashboard sorts
 // and triages by (see activity.ts). Process-global and keyed by session name, because pane ids are
@@ -404,6 +411,7 @@ const server = startServer({
   audit,
   activity,
   pack,
+  pairing,
   packLead,
   peerNotifier,
   // Registered on the EXISTENCE of a trust store, not on the mode: a lead answering its very first

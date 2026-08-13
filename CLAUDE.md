@@ -207,6 +207,12 @@ conforming reverse proxy per README Variant C (`COLLIE_SKIP_SERVE=1`) · same-or
 identity/device gates · strict CSP. A socket call can type into a real terminal — treat a collie as
 remote shell access.
 
+**Two device gates guard writes, independently, and compose by AND.** `COLLIE_DEVICE_HEADER` trusts
+a name a proxy injects; **pairing** (`bridge/pairing.ts`, `collie pair` / `collie devices`) requires a
+bearer credential the device holds, and is on exactly when the registry is non-empty. Reads stay
+ungated by both. Neither applies to `/pack/v1/*`, which has its own two factors. The reasoning sits in
+`bridge/pairing.ts`'s header; don't collapse the two gates into one.
+
 **Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,
 records the mapping in `tailscale-managed-handler`, and only ever tears down a mapping matching that
 record.

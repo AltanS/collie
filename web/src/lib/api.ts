@@ -3,15 +3,18 @@
 
 import { trackBusy } from "./busy";
 import { markLive } from "./connection-health";
+import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import type {
   ActionResponse,
   BridgeConfig,
   CreateResponse,
+  DevicesResponse,
   NotifyPrefs,
   PaneHistoryResponse,
   PaneReadResponse,
+  PairFailure,
   SnapshotResponse,
   UpdateInfo,
   UploadResponse,
@@ -144,6 +147,22 @@ function promptChangedResponse(detail: string): ActionResponse | null {
   return null;
 }
 
+/**
+ * Read the pairing gate's verdict off a finished request, at the one place every request passes.
+ *
+ * Only a WRITE can discover that this device is unpaired — reads are ungated — so the refusal latch
+ * is set here, from the bridge's own 403 body, and cleared by the opposite proof: a mutation that
+ * actually went through. GETs say nothing either way and are ignored on both counts.
+ */
+function notePairing(method: string, status: number, detail?: string): void {
+  if (method === "GET") return;
+  if (status === 403 && detail?.trim() === NOT_PAIRED_BODY) {
+    markNotPaired();
+    return;
+  }
+  if (status >= 200 && status < 300) clearNotPaired();
+}
+
 // Capture the bridge's build id off any response that carries it. Every poll (snapshot/pane) — and
 // config + mutations — funnels through the two fetch sites below, so the store stays current for
 // free, powering the no-service-worker self-updater (lib/self-update.ts). Absent header (older
@@ -169,16 +188,22 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
     headers: {
       "content-type": "application/json",
       [XHR_HEADER]: XHR_HEADER_VALUE,
+      // The device credential, injected once for every JSON request rather than plumbed per call.
+      // Absent header when this device holds no token — which is exactly right for a bridge with
+      // nothing paired, and for the bootstrap POST /api/pair that mints the first one.
+      ...authHeader(),
       ...init?.headers,
     },
   });
   captureBuild(res);
   if (!res.ok) {
     const detail = await errorDetail(res);
+    notePairing(method, res.status, detail);
     const recovered = recover?.(res.status, detail);
     if (recovered !== null && recovered !== undefined) return recovered;
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status);
   }
+  notePairing(method, res.status);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -245,6 +270,9 @@ export async function fetchPane(
   const headers: Record<string, string> = {
     "x-collie-seen": "1",
     [XHR_HEADER]: XHR_HEADER_VALUE,
+    // A read needs no token, but the bridge stamps `lastSeenAt` off whatever it resolves — so a
+    // paired device's polls are what keep its "last seen" honest. Same injection point as `doReq`.
+    ...authHeader(),
   };
   if (cached) headers["if-none-match"] = cached.etag;
 
@@ -447,6 +475,62 @@ export function checkForUpdates(): Promise<UpdateInfo> {
   return req<UpdateInfo>("/api/update/check", { method: "POST" });
 }
 
+// ── Device pairing ───────────────────────────────────────────────────────────────────────────────
+
+/** A successful claim (the token, returned exactly once) or the bridge's named reason for refusing. */
+export type PairResult =
+  | { ok: true; token: string; label: string }
+  | { ok: false; reason: PairFailure };
+
+/**
+ * A refused claim is a NORMAL answer, not a transport failure — the operator mistyped a code, or
+ * never minted one — so it is recovered into a value the pairing card can render a sentence for,
+ * exactly like the reply/keys 409. Anything other than a well-formed 400 still throws.
+ */
+const recoverPairFailure: Recover<{ ok: false; reason: PairFailure }> = (status, detail) => {
+  if (status !== 400) return null;
+  try {
+    const body = JSON.parse(detail) as { error?: unknown };
+    if (typeof body.error === "string") return { ok: false, reason: body.error as PairFailure };
+  } catch {
+    // A non-JSON 400 body falls through to the usual ApiError.
+  }
+  return null;
+};
+
+/**
+ * Claim the code `bin/collie pair` printed on the host and enrol this device under `label`.
+ *
+ * The bootstrap: same-origin gated like every other POST, but deliberately gated by NEITHER the
+ * pairing nor the device-header check — it is the one door an unpaired phone can walk through. The
+ * token in the reply exists exactly once; store it (lib/pairing.ts) or lose it.
+ */
+export async function pairDevice(code: string, label: string): Promise<PairResult> {
+  const res = await req<{ token: string; label: string } | { ok: false; reason: PairFailure }>(
+    "/api/pair",
+    { method: "POST", body: JSON.stringify({ code, label }) },
+    recoverPairFailure,
+  );
+  return "token" in res ? { ok: true, token: res.token, label: res.label } : res;
+}
+
+/** The paired-device registry. Read-level, so an unpaired device may ask (and learn it is unpaired). */
+export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
+  return req<DevicesResponse>("/api/devices", { signal });
+}
+
+/**
+ * Revoke a paired device by label, returning the registry as it now stands. WRITE-level, so it needs
+ * this device's own token — including when the label being revoked IS this device, which is allowed
+ * and self-unpairs (the caller drops the local token afterwards).
+ */
+export function revokeDevice(label: string): Promise<DevicesResponse> {
+  return req<DevicesResponse>("/api/devices/revoke", {
+    method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
 /**
  * Upload an image; the bridge saves it to a host file and returns the path to reference in a
  * message. Uses multipart/form-data (NOT the JSON `req` helper — the browser sets the boundary).
@@ -462,12 +546,15 @@ export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<
         body: fd,
         // No content-type: the browser sets the multipart boundary. The XHR marker still applies —
         // an upload refused by a lapsed proxy session must surface as a status, not a redirect.
-        headers: { [XHR_HEADER]: XHR_HEADER_VALUE },
+        headers: { [XHR_HEADER]: XHR_HEADER_VALUE, ...authHeader() },
         signal: withTimeout(undefined, UPLOAD_TIMEOUT_MS),
       });
       if (!res.ok) {
-        throw new ApiError(`upload → ${res.status} ${await errorDetail(res)}`, res.status);
+        const detail = await errorDetail(res);
+        notePairing("POST", res.status, detail);
+        throw new ApiError(`upload → ${res.status} ${detail}`, res.status);
       }
+      notePairing("POST", res.status);
       return (await res.json()) as UploadResponse;
     })(),
   );

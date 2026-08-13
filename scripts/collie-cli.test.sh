@@ -173,7 +173,7 @@ rc=$?
 set -e
 assert_eq "$rc" "0"
 for verb in start stop restart uninstall update build serve unserve status url qr version push-test logs \
-           doctor join leave pack promote reconnect; do
+           doctor pair devices join leave pack promote reconnect; do
   assert_contains "$(cat "${TMP_ROOT}/out")" "$verb"
 done
 
@@ -1228,6 +1228,103 @@ assert_contains "$STDOUT" "error:"
 assert_contains "$STDOUT" "collie build"
 assert_contains "$STDOUT" "pack: none"
 
+# ── Device pairing ───────────────────────────────────────────────────────────
+# `pair` and `devices` are the only verbs that write a CREDENTIAL to disk, and they are the two an
+# operator runs from wherever they happen to be — including a Herdr action, with no login shell. So
+# what this section proves is what `bun test` cannot: that under `env -i` the code really lands in the
+# state dir the BRIDGE resolves (`HERDR_PLUGIN_STATE_DIR`), owner-only, with no restart and no tool
+# call anywhere in the path.
+PAIR_STATE="${TMP_ROOT}/pair-state"
+mkdir -p "$PAIR_STATE"
+# `CALLS` has been re-used as a plain string by the sections above, so — as in the pack section — the
+# fake tools log is named by its path here: the one baked into the fakes at the top of this file.
+PAIR_CALLS="${TMP_ROOT}/calls"
+: > "$PAIR_CALLS"
+pair_env() {
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PAIR_STATE" \
+    PATH="$BIN_DIR" "$BIN" "$@"
+}
+
+# Nothing paired yet: `devices list` says so in the words that matter — pairing is NOT enforced — and
+# materialises no file by asking the question.
+pair_env devices list || fail "\`collie devices list\` failed on an unpaired machine: ${STDERR}"
+assert_contains "$STDOUT" "no devices paired"
+assert_contains "$STDOUT" "not enforced"
+[ -z "$(ls -A "$PAIR_STATE")" ] || fail "\`devices list\` wrote into the state dir with nothing paired"
+
+# `pair` mints the code and writes the pending file the bridge reads at request time.
+pair_env pair || fail "\`collie pair\` failed under env -i: ${STDERR}"
+PENDING="${PAIR_STATE}/pairing-pending.json"
+[ -f "$PENDING" ] || fail "\`collie pair\` wrote no ${PENDING}"
+CODE="$(printf '%s\n' "$STDOUT" | head -n1)"
+assert_eq "${#CODE}" "8"
+assert_contains "$STDOUT" "single-use"
+assert_contains "$STDOUT" "Settings"
+# The code itself is never persisted — only its hash — so the file must not contain it.
+case "$(cat "$PENDING")" in
+  *"$CODE"*) fail "the pending file contains the code in the clear" ;;
+esac
+assert_contains "$(cat "$PENDING")" '"codeHash"'
+# Owner-only, and so is the directory it had to create.
+assert_eq "$(stat -c '%a' "$PENDING" 2>/dev/null || stat -f '%Lp' "$PENDING")" "600"
+
+# A second `pair` invalidates the first code, and says so.
+FIRST_CODE="$CODE"
+pair_env pair || fail "a second \`collie pair\` failed: ${STDERR}"
+assert_contains "$STDOUT" "earlier \`collie pair\`"
+[ "$(printf '%s\n' "$STDOUT" | head -n1)" != "$FIRST_CODE" ] || fail "\`collie pair\` minted the same code twice"
+
+# `devices list` reads a registry the bridge (not this CLI) wrote, and revoke drops one entry.
+cat > "${PAIR_STATE}/paired-devices.json" <<'EOF'
+{"devices":[
+  {"label":"pixel","tokenHash":"1111111111111111111111111111111111111111111111111111111111111111",
+   "createdAt":1700000000000,"lastSeenAt":1700000600000},
+  {"label":"ipad","tokenHash":"2222222222222222222222222222222222222222222222222222222222222222",
+   "createdAt":1700000000000,"lastSeenAt":0}
+]}
+EOF
+pair_env devices list || fail "\`collie devices list\` failed with a registry: ${STDERR}"
+assert_contains "$STDOUT" "pixel"
+assert_contains "$STDOUT" "ipad"
+assert_contains "$STDOUT" "never"
+# No token hash is ever printed.
+case "$STDOUT" in
+  *1111111111111111111111111111111111111111111111111111111111111111*)
+    fail "\`devices list\` printed a token hash" ;;
+esac
+
+pair_env devices revoke pixel || fail "\`collie devices revoke\` failed: ${STDERR}"
+assert_contains "$STDOUT" "no restart"
+case "$(cat "${PAIR_STATE}/paired-devices.json")" in
+  *pixel*) fail "the revoked device is still in the registry" ;;
+esac
+assert_contains "$(cat "${PAIR_STATE}/paired-devices.json")" "ipad"
+
+# An unknown label is an operational failure (1) that names what does exist — not a silent success.
+set +e
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PAIR_STATE" \
+  PATH="$BIN_DIR" "$BIN" devices revoke pixel >/dev/null 2>"${TMP_ROOT}/err"
+rc=$?
+set -e
+assert_eq "$rc" "1"
+assert_contains "$(cat "${TMP_ROOT}/err")" "no paired device labelled \`pixel\`"
+assert_contains "$(cat "${TMP_ROOT}/err")" "ipad"
+
+# Bare `devices`, a misspelt sub-verb, and a revoke with no label are usage errors (2).
+for args in "devices" "devices nonsense" "devices revoke"; do
+  set +e
+  # shellcheck disable=SC2086
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PAIR_STATE" \
+    PATH="$BIN_DIR" "$BIN" $args >/dev/null 2>"${TMP_ROOT}/err"
+  rc=$?
+  set -e
+  assert_eq "$rc" "2"
+done
+assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie devices revoke <label>"
+
+# Not one of them shelled out to anything: no systemctl, no tailscale, no herdr.
+assert_eq "$(cat "$PAIR_CALLS")" ""
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
@@ -1237,3 +1334,4 @@ echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull r
 echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny-all warning"
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
 echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one line per check"
+echo "✓ collie CLI pairing: 0600 pending file with no code in it, re-mint, list/revoke, exit codes"

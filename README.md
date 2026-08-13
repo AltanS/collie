@@ -30,7 +30,7 @@ ships none of its own.
 ## Contents
 
 - [Demo](#demo)
-- [Security — read first](#%EF%B8%8F-security--read-before-you-run-it)
+- [Security — read first](#%EF%B8%8F-security--read-before-you-run-it) · [Pair a device](#pair-a-device--the-write-credential)
 - [Requirements](#requirements)
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
@@ -124,6 +124,12 @@ It's built single-user and tailnet-only. The defenses:
 - **Optional identity gate** — set `COLLIE_TRUSTED_USER` to reject any tailnet login but yours. It
   rejects a *mismatching* `Tailscale-User-Login` and passes an absent one, so it narrows who is
   trusted under `tailscale serve` (which always injects it) rather than mandating the header.
+- **Optional device pairing** — a credential the *device itself* holds. Run `collie pair` on the
+  host, type the code into Collie's Settings screen on the phone, and that phone gets a bearer token;
+  from then on **every device must be paired to drive an agent**. It needs no proxy, no header and no
+  identity provider, and you revoke a lost phone by name (`collie devices revoke <label>`) instead of
+  by editing an allowlist. Off until you pair something. See
+  [Pair a device](#pair-a-device--the-write-credential).
 - **Optional per-device gate** — behind a proxy that injects a device-identity header, set
   `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST` so only allowlisted devices can drive agents;
   any other device is read-only, and so is a request that arrives without the header at all. Off by
@@ -140,6 +146,38 @@ It's built single-user and tailnet-only. The defenses:
 > tailnet-only. There is no scenario where funneling Collie is correct.
 
 Narrow the blast radius with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, no warranty.
+
+### Pair a device — the write credential
+
+The two device gates answer different questions, and you can run either, both, or neither:
+
+| | asks | trusts | revoke by |
+| --- | --- | --- | --- |
+| `COLLIE_DEVICE_HEADER` | *is this device on the operator's list?* | your proxy, to inject a name it sanitised | editing `COLLIE_DEVICE_ALLOWLIST`, then restarting |
+| **pairing** | *does this device hold a credential I issued?* | nothing on the network | `collie devices revoke <label>` — live |
+
+Pairing costs no infrastructure, so it is the one to reach for on a plain `tailscale serve` setup,
+where there is no proxy to inject a header in the first place. Both are **write** gates: reads stay
+open to anything that clears the same-origin gate either way.
+
+```bash
+bin/collie pair          # on the host — prints an 8-character code, good for 10 minutes
+```
+
+Open Collie on the phone → **Settings** → **Paired devices** → enter the code and a name for the
+device. The phone stores the token it gets back; the bridge stores only its hash, and the token is
+shown exactly once. Nothing needs restarting — the running service picks up a pairing (and a
+revocation) on the next request.
+
+```bash
+bin/collie devices list             # what holds a credential, and when each was last seen
+bin/collie devices revoke old-phone # effective immediately, no restart
+```
+
+**Pairing the first device turns the requirement on for every device**, so pair the phone you are
+holding first. Revoking the last one turns it back off — there is no state in which you are locked
+out of your own bridge. A wrong code is worth five attempts before the code is destroyed and you have
+to run `collie pair` again.
 
 ## Requirements
 
@@ -393,6 +431,8 @@ as `invoke <cmd>`). The ones you'll actually use:
 | **Version** — the running version (`0.x.y+sha`) | `collie version` | `invoke version` |
 | **Update** — advance the checkout + rebuild + restart | `collie update` | `invoke update` |
 | **Uninstall** — remove the service; keep `.env` + checkout | `collie uninstall` | `invoke uninstall` |
+| **Pair** — mint a code so a phone can be [paired](#pair-a-device--the-write-credential) | `collie pair` | — (CLI only) |
+| **Devices** — list / revoke paired devices | `collie devices list` · `collie devices revoke <label>` | — (CLI only) |
 | **Logs** — tail the journal / log file | `collie logs` | — (CLI only) |
 
 `start` and `status` end with the **Collie is running** banner — annotated line by line in

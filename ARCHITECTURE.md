@@ -217,6 +217,15 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   read-only, so reaching the port is no longer sufficient to write. Device ids are names your proxy
   asserts, not secrets — treat them as guessable and keep the front door and its ACL as the real
   containment.
+  **Device pairing (`bridge/pairing.ts`) is the second, independent write factor**, and the one that
+  needs no proxy at all: `collie pair` mints a one-time code out of band (the operator's own
+  terminal), the phone trades it at `POST /api/pair` for a 256-bit bearer token, and the bridge keeps
+  only its SHA-256. It is enforced exactly when the registry is non-empty, so an install that never
+  pairs anything is unchanged, and revocation (`collie devices revoke`) lands on the running service
+  without a restart because the registry is re-read per request. The two gates compose by AND —
+  neither weakens or replaces the other — and neither touches `/pack/v1/*`, whose two factors are its
+  own. Where the header gate answers *is this device on the operator's list*, pairing answers *does
+  this device hold a credential I issued*: a claim no proxy, DNS name or tailnet identity can forge.
 - **`pane.read` output renders safely** — it's attacker-influenceable (filenames, agent output,
   fetched web content). Never `innerHTML`; it renders as React text nodes under a **strict CSP**
   (`default-src 'self'`), so an escaping miss can't run injected script that calls back into the

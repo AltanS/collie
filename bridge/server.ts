@@ -21,6 +21,13 @@ import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
+import {
+  bearerToken,
+  normalizeLabel,
+  toDeviceWire,
+  type ClaimFailure,
+  type PairingStore,
+} from "./pairing.ts";
 import { modeForWire } from "./pack/mode.ts";
 import type { PackRuntime } from "./pack/config.ts";
 import type { PackLead } from "./pack/lead.ts";
@@ -233,8 +240,21 @@ export function startServer(opts: {
    * Structurally typed, not the class: this file needs "fan a pref change, list the live slots".
    */
   peerNotifier?: { applyPrefs(): void; tags(): string[] };
+  /**
+   * Device pairing (bridge/pairing.ts). Always supplied by index.ts — it is not an opt-in feature
+   * flag: the store reads its own registry off disk, and an empty registry means "nothing paired",
+   * which enforces nothing. Optional here only so the existing tests can build a server without it.
+   *
+   * It is deliberately NOT threaded into the pack surface. `/pack/v1/*` is admitted by pinned mutual
+   * TLS plus the pack secret and shares nothing with a browser credential (PACK_PROTOCOL.md §6,
+   * ADR 0013) — a lead does not hold one of this collie's pairing tokens and must never need one.
+   */
+  pairing?: PairingStore;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, pack } = opts;
+  const pairing = opts.pairing;
+  /** Who the requester is, across both device gates — see {@link requestDevice}. */
+  const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairing);
   const packLead = opts.packLead;
   const peerNotifier = opts.peerNotifier;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
@@ -502,14 +522,14 @@ export function startServer(opts: {
             // the other machine's disk.
             return secure(
               await packLead!.forward(req, url, resolved, {
-                device: deviceAuth(req, cfg).device,
+                device: whois(req).device,
                 audit: (entry) =>
                   audit.record({
                     action: entry.action,
                     host: entry.host,
                     ...(entry.paneId === undefined ? {} : { paneId: entry.paneId }),
                     ...(entry.session === undefined ? {} : { session: entry.session }),
-                    device: deviceAuth(req, cfg).device,
+                    device: whois(req).device,
                     detail: { forwarded: entry.outcome },
                   }),
               }),
@@ -524,7 +544,7 @@ export function startServer(opts: {
       if (pathname === "/api/snapshot") {
         const gate = checkAccess(req, cfg);
         if (!gate.ok) return text(gate.reason, 403);
-        const device = deviceAuth(req, cfg);
+        const device = whois(req);
         const body = localSnapshot(sessionName, device.enforced ? device : null);
         if (!body) return unknownSession();
         // The ONE place the lead re-serialises (§9.2). With no pack this is the identity function's
@@ -545,8 +565,8 @@ export function startServer(opts: {
       // gate — which is the one thing a pack caller never has, because a peer has no peers (§4).
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
-        gate: (level) => guard(req, cfg, level),
-        device: () => deviceAuth(req, cfg).device,
+        gate: (level) => guard(req, cfg, level, pairing),
+        device: () => whois(req).device,
         audit,
       });
       if (sessionRouted) return sessionRouted;
@@ -559,7 +579,7 @@ export function startServer(opts: {
         // still read the build id. The client only ever calls this same-origin, and a refusal can't
         // be mistaken for an outage: ConnectionBanner short-circuits to AuthErrorBanner before its
         // red-state probe runs. Noted in #32.
-        const denied = guard(req, cfg, "read");
+        const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         return json(
           bridgeConfigBody({
@@ -574,7 +594,7 @@ export function startServer(opts: {
       if (pathname === "/api/subscribe" && req.method === "POST") {
         // Read-level: registering for push isn't terminal-driving, so a read-only device may still
         // subscribe to notifications.
-        const denied = guard(req, cfg, "read");
+        const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         let body: unknown;
         try {
@@ -588,7 +608,7 @@ export function startServer(opts: {
       }
       if (pathname === "/api/notifications/snooze" && req.method === "POST") {
         // Managing your own notification quiet-hours isn't terminal-driving — read-level, like subscribe.
-        const denied = guard(req, cfg, "read");
+        const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         let body: unknown;
         try {
@@ -617,12 +637,12 @@ export function startServer(opts: {
         // Which agent statuses push (bridge-wide). Read-level like snooze — managing your own
         // notification preferences isn't terminal-driving.
         if (req.method === "GET") {
-          const denied = guard(req, cfg, "read");
+          const denied = guard(req, cfg, "read", pairing);
           if (denied) return denied;
           return json(notifyPrefs.current(), req.headers.get("accept-encoding"));
         }
         if (req.method === "POST") {
-          const denied = guard(req, cfg, "read");
+          const denied = guard(req, cfg, "read", pairing);
           if (denied) return denied;
           let body: unknown;
           try {
@@ -646,10 +666,82 @@ export function startServer(opts: {
         // Force an immediate upstream check (the "check for updates" button), instead of waiting for
         // the periodic timer. Read-level — checking a version isn't terminal-driving — and idempotent
         // (the monitor de-dupes concurrent checks). Returns the fresh status the client revalidates on.
-        const denied = guard(req, cfg, "read");
+        const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         await updateMonitor.checkRelease();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
+      }
+
+      // ── Device pairing (bridge/pairing.ts) ───────────────────────────────
+      if (pathname === "/api/pair" && req.method === "POST") {
+        if (!pairing) return text("pairing unavailable", 503);
+        // THE BOOTSTRAP, and the one write-shaped route that is deliberately not write-gated: a
+        // device that has never paired holds no token, so gating this on one would make pairing
+        // unreachable. It is not ungoverned — `checkAccess(…, "write")` still demands a same-origin
+        // `Origin` (so no cross-site page can drive it), and the credential it hands out is worthless
+        // without a code the operator read off their own terminal in the last ten minutes, behind a
+        // five-attempt counter. The header device gate is skipped for the same reason and with the
+        // same reasoning: it answers "is this device allowlisted", which is the question pairing
+        // exists to stop asking.
+        const gate = checkAccess(req, cfg, "write");
+        if (!gate.ok) return text(gate.reason, 403);
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+        }
+        const parsed = parsePairRequest(body);
+        if (!parsed) return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+        const claimed = await pairing.claim(parsed.code, parsed.label);
+        if (!claimed.ok) {
+          // Every failure is one status and one machine-readable reason; the client turns the reason
+          // into the sentence that says what to do next. No timing or count is leaked back — the
+          // attempts remaining are the operator's business, on the operator's terminal.
+          return jsonError(claimed.reason satisfies ClaimFailure, 400, req.headers.get("accept-encoding"));
+        }
+        audit.record({ action: "pair", device: parsed.label, detail: { label: parsed.label } });
+        // The ONLY time this token exists outside the requesting device. Nothing stores it here.
+        return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/devices" && req.method === "GET") {
+        if (!pairing) return text("pairing unavailable", 503);
+        // Read-level, so an unpaired device can still see whether pairing is on and which devices
+        // hold credentials. Labels are the operator's own names for their own phones; the token
+        // hashes never reach this shape (see toDeviceWire).
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
+        return json(
+          { enforced: pairing.enforced(), current, devices: toDeviceWire(pairing.registry(), current) },
+          req.headers.get("accept-encoding"),
+        );
+      }
+      if (pathname === "/api/devices/revoke" && req.method === "POST") {
+        if (!pairing) return text("pairing unavailable", 503);
+        // A write: revoking is exactly as consequential as typing into a terminal, so it needs a
+        // paired device (and the header gate, if configured). Revoking YOURSELF is allowed — that is
+        // how a device un-pairs — and it is the last device leaving that switches enforcement back
+        // off, which is the only way this feature can't strand an operator.
+        const denied = guard(req, cfg, "write", pairing);
+        if (denied) return denied;
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+        }
+        const label = normalizeLabel((body as { label?: unknown }).label);
+        if (label === null) return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+        if (!(await pairing.revoke(label))) {
+          return jsonError("unknown device", 404, req.headers.get("accept-encoding"));
+        }
+        audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
+        const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
+        return json(
+          { enforced: pairing.enforced(), current, devices: toDeviceWire(pairing.registry(), current) },
+          req.headers.get("accept-encoding"),
+        );
       }
 
       // ── Reserved for a fronting proxy's sign-in page ─────────────────────
@@ -1458,13 +1550,58 @@ export function isHostAllowed(host: string, cfg: Config): boolean {
  * Exported for tests: {@link deviceAuth} being correct in isolation proves nothing if this wiring
  * regresses, and the write/read asymmetry below is exactly what a device gate stands or falls on.
  */
-export function guard(req: Request, cfg: Config, level: "read" | "write"): Response | null {
+export function guard(
+  req: Request,
+  cfg: Config,
+  level: "read" | "write",
+  pairing?: PairingGate,
+): Response | null {
   const gate = checkAccess(req, cfg, level);
   if (!gate.ok) return text(gate.reason, 403);
-  if (level === "write" && !deviceAuth(req, cfg).authorized) {
-    return text("device not authorised", 403);
+  if (level !== "write") return null;
+  if (!deviceAuth(req, cfg).authorized) return text("device not authorised", 403);
+  // The second, independent write factor. Distinct refusal text on purpose: "not authorised" is the
+  // operator's proxy allowlist, "not paired" is this device's own missing credential, and the two
+  // are fixed in completely different places.
+  if (pairing !== undefined && pairing.enforced() && pairing.resolve(bearerToken(req.headers)) === null) {
+    return text("device not paired", 403);
   }
   return null;
+}
+
+/**
+ * The bridge's dependency on {@link PairingStore}, structurally: two synchronous questions asked on
+ * the request path. Named here rather than importing the class so the gate wiring below states
+ * exactly what it needs — and so a test can pass a two-line object.
+ */
+export interface PairingGate {
+  /** Whether a bearer token is required for writes (i.e. at least one device is paired). */
+  enforced(): boolean;
+  /** The device this token belongs to, or null. */
+  resolve(token: string | null): { label: string } | null;
+}
+
+/**
+ * Who this request is, across BOTH device gates — the value that lands in the audit log and in the
+ * snapshot's `device` field.
+ *
+ * A pairing label is preferred over the header name because it is the stronger claim: the label was
+ * chosen by someone holding a code the operator read off a terminal, whereas the header is whatever
+ * the proxy asserts. When pairing is off this returns exactly what {@link deviceAuth} always did, so
+ * a deployment that never pairs anything sees no change at all — including the `device` field's
+ * absence from the snapshot.
+ */
+export function requestDevice(req: Request, cfg: Config, pairing?: PairingGate): DeviceAuth {
+  const header = deviceAuth(req, cfg);
+  if (pairing === undefined || !pairing.enforced()) return header;
+  const paired = pairing.resolve(bearerToken(req.headers));
+  return {
+    enforced: true,
+    device: paired?.label ?? header.device,
+    // Both gates apply, so authorisation is their conjunction — an allowlisted header on an unpaired
+    // device is still read-only, and vice versa.
+    authorized: header.authorized && paired !== null,
+  };
 }
 
 /**
@@ -1533,6 +1670,22 @@ function jsonError(message: string, status: number, _acceptEncoding: string | nu
 
 function text(body: string, status: number): Response {
   return secure(new Response(body, { status }));
+}
+
+/**
+ * Validate an untrusted `/api/pair` body. Both fields must be present strings; the label is bounded
+ * and flattened by {@link normalizeLabel} (it is echoed into the audit log and the UI), and the code
+ * is only length-bounded here — its actual verification is a constant-time hash compare, and telling
+ * a caller "that isn't even code-shaped" would be a free oracle. Pure + exported because the handler
+ * lives inside `Bun.serve`, which `bun test` cannot stand up (CLAUDE.md).
+ */
+export function parsePairRequest(v: unknown): { code: string; label: string } | null {
+  if (typeof v !== "object" || v === null) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.code !== "string" || o.code.length === 0 || o.code.length > 64) return null;
+  const label = normalizeLabel(o.label);
+  if (label === null) return null;
+  return { code: o.code, label };
 }
 
 /**

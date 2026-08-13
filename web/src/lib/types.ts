@@ -130,6 +130,40 @@ export function isReadOnly(device: DeviceAuth | undefined): boolean {
   return !!device && device.enforced && !device.authorized;
 }
 
+// ── Device pairing (mirrors bridge/pairing.ts) ───────────────────────────────────────────────────
+// The OTHER write gate: a bearer credential this device holds, independent of the header-based
+// DeviceAuth above and composing with it by AND. See lib/pairing.ts for the client-side store.
+
+/** One paired device, as `GET /api/devices` reports it. The token itself never leaves the bridge. */
+export interface PairedDeviceWire {
+  label: string;
+  createdAt: number;
+  lastSeenAt: number;
+  /** True for the device making the request — i.e. the one you're reading this on. */
+  current: boolean;
+}
+
+/** The body of `GET /api/devices` and `POST /api/devices/revoke`. */
+export interface DevicesResponse {
+  /**
+   * Whether a bearer token is required for writes. Not a setting — it is simply "at least one device
+   * is paired", so pairing nobody leaves Collie exactly as it was.
+   */
+  enforced: boolean;
+  /** The label this request's token authenticated as, or null when it authenticated as nobody. */
+  current: string | null;
+  devices: PairedDeviceWire[];
+}
+
+/** Why a `POST /api/pair` claim was rejected (the `error` field of its 400 body). */
+export type PairFailure =
+  | "no-pending"
+  | "expired"
+  | "exhausted"
+  | "bad-code"
+  | "duplicate-label"
+  | "bad-request";
+
 /**
  * One entry in the snapshot's session registry — a named Herdr session the bridge is fanning out.
  * Order is primary-first, then alphabetical. An unreachable session (crashed / stale socket) reports

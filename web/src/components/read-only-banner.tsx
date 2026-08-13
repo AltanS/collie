@@ -1,13 +1,21 @@
-import { Lock } from "lucide-react";
+import type { ReactNode } from "react";
+import { KeyRound, Lock } from "lucide-react";
 
+import { usePairing } from "@/lib/pairing";
 import { isReadOnly } from "@/lib/types";
 import type { DeviceAuth } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// Shown when the bridge enforces per-device auth and this device isn't on the allowlist: the UI
-// drops to read-only (the backend rejects every terminal-driving action anyway). Renders nothing
-// when the feature is off, the device is authorised, or the state isn't known yet — so it costs
-// nothing on a normal single-user deployment. `device` comes from the snapshot (HomeData.device).
+// The app's "you can look, but you can't type" strip, covering BOTH write gates — they are
+// independent on the bridge and compose by AND, so either one alone puts this device in the same
+// place, and one strip is the honest surface for it. Renders nothing when neither gate refuses, so
+// it still costs nothing on a normal single-user deployment.
+//
+//   · Header gate (`device`, from the snapshot): a fronting proxy asserts who this device is and the
+//     bridge doesn't have it allowlisted. Nothing on the phone can fix it.
+//   · Pairing gate (lib/pairing.ts): this device holds no bearer token, or the one it holds was
+//     rejected. Fixable right here, which is why this variant names the remedy. It is LATCHED off a
+//     real refusal rather than polled, because reads are ungated — a poll can never discover it.
 export function ReadOnlyBanner({
   device,
   className,
@@ -15,7 +23,33 @@ export function ReadOnlyBanner({
   device: DeviceAuth | undefined;
   className?: string;
 }) {
+  const { refused } = usePairing();
+
+  if (refused) {
+    return (
+      <Strip className={className} icon={<KeyRound className="size-3.5 shrink-0" />}>
+        Not paired — pair this device in Settings to type into agents.
+      </Strip>
+    );
+  }
   if (!isReadOnly(device)) return null;
+  return (
+    <Strip className={className} icon={<Lock className="size-3.5 shrink-0" />}>
+      Read-only — this device isn’t authorised to type into agents
+      {device?.device ? ` (${device.device})` : ""}.
+    </Strip>
+  );
+}
+
+function Strip({
+  icon,
+  children,
+  className,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <div
       role="status"
@@ -24,11 +58,8 @@ export function ReadOnlyBanner({
         className,
       )}
     >
-      <Lock className="size-3.5 shrink-0" />
-      <span>
-        Read-only — this device isn’t authorised to type into agents
-        {device?.device ? ` (${device.device})` : ""}.
-      </span>
+      {icon}
+      <span>{children}</span>
     </div>
   );
 }
