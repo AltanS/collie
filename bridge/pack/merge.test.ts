@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { computeEtag } from "../http-cache.ts";
 import type { PaneWire, SessionSummary, SnapshotResponse } from "../types.ts";
 import {
+  leadLabel,
   MAX_PEER_PANES,
   MAX_PEER_SESSIONS,
   mergeSnapshot,
@@ -67,6 +68,22 @@ const peerBody: PeerSnapshotBody = {
 };
 
 const SELF = { id: "desk", name: "the herd" };
+
+// ── The lead's own roster label (§9.2: "operator-chosen label", never the pack's name) ──────────
+
+describe("leadLabel — the lead's servers[].name is a machine label, not the pack's name", () => {
+  test("a bare short hostname passes through unchanged", () => {
+    expect(leadLabel("minibuch", "desk")).toBe("minibuch");
+  });
+
+  test("an FQDN is truncated to its first label", () => {
+    expect(leadLabel("minibuch.tailnetxyz.ts.net", "desk")).toBe("minibuch");
+  });
+
+  test("an empty hostname() falls back to the member id", () => {
+    expect(leadLabel("", "desk")).toBe("desk");
+  });
+});
 
 // ── The three states of §10.2 ────────────────────────────────────────────────
 

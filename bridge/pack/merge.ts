@@ -79,6 +79,21 @@ export function parsePeerSnapshot(value: unknown): PeerSnapshotBody | null {
   };
 }
 
+/**
+ * `servers[].name` for the lead's own entry (§9.2: "operator-chosen label"). A peer is labelled by
+ * its `join` member id (`lead.ts`), so the lead's own entry must be a machine label too — never the
+ * PACK's name, which is not a member of the roster and would collide visually with every peer's
+ * per-machine label (the bug this function fixes).
+ *
+ * A bare short hostname: everything before the first `.`, so a peer's FQDN doesn't leak the local
+ * domain into a label the operator reads as "which machine". An empty `hostname()` (containers, some
+ * minimal images) falls back to the member id — still unique, just not as legible.
+ */
+export function leadLabel(hostname: string, memberId: string): string {
+  const short = hostname.split(".")[0];
+  return short !== undefined && short !== "" ? short : memberId;
+}
+
 /** What the lead knows about one peer at merge time: its health, and its last-good body. */
 export interface PeerContribution {
   /** From the registry — the single owner of "what the lead believes about peer X" (M4/03). */
