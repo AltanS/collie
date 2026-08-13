@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { renderInputs, takePlainFlag, wantsRich } from "./render.ts";
+import { plainAdd, projectAdd, renderInputs, takePlainFlag, wantsRich, type AddEvent } from "./render.ts";
 
 // The whole point of this seam is that the plain path is what runs unless three things are all true
 // at once. Every suite in `cli/` and both shell suites depend on that: they capture output from a
@@ -63,5 +63,133 @@ describe("takePlainFlag", () => {
       rest: ["join", "--label", "--plainly"],
     });
     expect(takePlainFlag(["--plain=1"])).toEqual({ plain: false, rest: ["--plain=1"] });
+  });
+});
+
+// ── `pack add`'s two readers ─────────────────────────────────────────────────
+// One event stream, two renderings. The plain one is pinned to the byte, because `cli/remote.test.ts`
+// and `scripts/collie-cli.test.sh` are goldens of it and an operator's scripts read it; the
+// projection is pinned to its structure, because that is what `cli/ui/pack-add.tsx` draws.
+
+describe("plainAdd", () => {
+  const lines = (...events: AddEvent[]): { out: string[]; err: string[] } => {
+    const out: string[] = [];
+    const err: string[] = [];
+    for (const event of events) plainAdd({ out: (l) => out.push(l), err: (l) => err.push(l) }, event);
+    return { out, err };
+  };
+
+  test("the ✓ rows keep their columns — including the one `git`/`bun` have always been short", () => {
+    const { out } = lines(
+      { kind: "fact", name: "git", value: "/usr/bin/git" },
+      { kind: "fact", name: "herdr", value: "/usr/local/bin/herdr" },
+      { kind: "fact", name: "config", value: "/cfg" },
+      { kind: "fact", name: "address", value: "1.2.3.4:8787 (what this lead will dial)" },
+      { kind: "fact", name: "port", value: "8787 free" },
+      { kind: "leg-done", leg: "install", ok: true, detail: "1.2.3 at /root" },
+      { kind: "leg-done", leg: "configure", ok: true, detail: "already 1.2.3.4:8787" },
+      { kind: "leg-done", leg: "enroll", ok: true, detail: "nas answered the invite" },
+    );
+    expect(out).toEqual([
+      "✓ git       /usr/bin/git",
+      "✓ herdr      /usr/local/bin/herdr",
+      "✓ config     /cfg",
+      "✓ address    1.2.3.4:8787 (what this lead will dial)",
+      "✓ port       8787 free",
+      "✓ install    1.2.3 at /root",
+      "✓ bind       already 1.2.3.4:8787",
+      "✓ enrolled   nas answered the invite",
+    ]);
+  });
+
+  test("only the events that ever had a line print one, and each keeps its stream", () => {
+    const { out, err } = lines(
+      { kind: "title", host: "nas" },
+      { kind: "leg-start", leg: "probe", text: "probing nas…" },
+      { kind: "leg-start", leg: "install", text: "" },
+      { kind: "line", text: "warn: no ss there", tone: "warn", stream: "out" },
+      { kind: "line", text: "error: it failed", tone: "error", stream: "err" },
+      { kind: "restart-begin", label: "bridge restarted (collie) · 1.2.3" },
+      { kind: "restart-end", ok: true },
+      { kind: "leg-done", leg: "probe", ok: true, detail: "ready" },
+      { kind: "leg-done", leg: "install", ok: false, detail: "" },
+      { kind: "verdict", ok: false, text: "pack add did not finish (exit 1)" },
+      { kind: "verdict", ok: true, text: '"nas" is a member of "home"' },
+    );
+    // The title, a silent leg-start, both restart brackets, the probe's own done, a failed leg and a
+    // failed verdict are all silent — the `error:` lines are the failure's report, as they always were.
+    expect(out).toEqual(["probing nas…", "warn: no ss there", '✓ "nas" is a member of "home"']);
+    expect(err).toEqual(["error: it failed"]);
+  });
+});
+
+describe("projectAdd", () => {
+  const START: AddEvent[] = [
+    { kind: "title", host: "nas" },
+    { kind: "leg-start", leg: "probe", text: "probing nas…" },
+    { kind: "fact", name: "git", value: "/usr/bin/git" },
+  ];
+
+  test("legs are all four, in order, and carry what was said while each was running", () => {
+    const view = projectAdd([
+      ...START,
+      { kind: "leg-done", leg: "probe", ok: true, detail: "nas is ready" },
+      { kind: "leg-start", leg: "install", text: "" },
+      { kind: "line", text: "  pushing abc123…", tone: "info", stream: "out" },
+    ]);
+    expect(view.host).toBe("nas");
+    expect(view.facts).toEqual([{ name: "git", value: "/usr/bin/git" }]);
+    expect(view.legs.map((l) => [l.leg, l.status])).toEqual([
+      ["probe", "done"],
+      ["install", "active"],
+      ["configure", "pending"],
+      ["enroll", "pending"],
+    ]);
+    expect(view.legs[0]!.detail).toBe("nas is ready");
+    expect(view.legs[1]!.notes).toEqual([{ text: "  pushing abc123…", tone: "info" }]);
+  });
+
+  test("a restart that worked is one row; the block it printed is not shown at all", () => {
+    const view = projectAdd([
+      ...START,
+      { kind: "restart-begin", label: "bridge restarted (collie-v1) · 1.0.0+abc" },
+      { kind: "line", text: "bridge stopped", tone: "info", stream: "out" },
+      { kind: "line", text: "│ Collie is running │", tone: "info", stream: "out" },
+      { kind: "restart-end", ok: true },
+    ]);
+    expect(view.legs[0]!.notes).toEqual([
+      { text: "↻ bridge restarted (collie-v1) · 1.0.0+abc", tone: "info" },
+    ]);
+  });
+
+  test("a restart that failed keeps every line it printed — there it IS the diagnosis", () => {
+    const view = projectAdd([
+      ...START,
+      { kind: "restart-begin", label: "bridge restarted (collie) · 1.0.0" },
+      { kind: "line", text: "error: could not start the bridge", tone: "error", stream: "err" },
+      { kind: "restart-end", ok: false },
+    ]);
+    expect(view.legs[0]!.notes).toEqual([
+      { text: "error: could not start the bridge", tone: "warn" },
+      { text: "↻ bridge restarted (collie) · 1.0.0 — the restart failed", tone: "error" },
+    ]);
+  });
+
+  test("a failing verdict marks the leg that was still spinning — a leg never spins forever", () => {
+    const view = projectAdd([
+      ...START,
+      { kind: "leg-done", leg: "probe", ok: true, detail: "" },
+      { kind: "leg-start", leg: "install", text: "" },
+      { kind: "line", text: "error: the install failed", tone: "error", stream: "err" },
+      { kind: "verdict", ok: false, text: "pack add did not finish (exit 1)" },
+    ]);
+    expect(view.legs[1]!.status).toBe("failed");
+    expect(view.verdict).toEqual({ ok: false, text: "pack add did not finish (exit 1)" });
+  });
+
+  test("anything said before the first leg — a usage error — still has somewhere to land", () => {
+    const view = projectAdd([{ kind: "line", text: "usage: collie pack add <ssh-host>", tone: "error", stream: "err" }]);
+    expect(view.preamble).toEqual([{ text: "usage: collie pack add <ssh-host>", tone: "error" }]);
+    expect(view.legs.every((l) => l.status === "pending")).toBe(true);
   });
 });

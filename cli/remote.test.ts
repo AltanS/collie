@@ -799,11 +799,11 @@ describe("packAddDeps().gitBundle, against a real repo", () => {
       const second = git("rev-parse", "HEAD").trim();
 
       const staleDeps = minimalPackDeps(root);
-      const staleBundle = await packAddDeps(staleDeps).gitBundle(first);
+      const staleBundle = await packAddDeps(staleDeps).gitBundle(first, staleDeps.io);
       expect(staleBundle).toBeNull();
 
       const freshDeps = minimalPackDeps(root);
-      const encoded = await packAddDeps(freshDeps).gitBundle(second);
+      const encoded = await packAddDeps(freshDeps).gitBundle(second, freshDeps.io);
       if (encoded === null) {
         throw new Error(`gitBundle returned null; stderr: ${(freshDeps.io as ReturnType<typeof capture>).stderr.join("\n")}`);
       }
@@ -837,7 +837,7 @@ describe("packAddDeps().gitBundle, against a real repo", () => {
       const head = git("rev-parse", "HEAD").trim();
 
       const deps = minimalPackDeps(root);
-      const encoded = await packAddDeps(deps).gitBundle(head);
+      const encoded = await packAddDeps(deps).gitBundle(head, deps.io);
       if (encoded === null) {
         throw new Error(`gitBundle returned null; stderr: ${(deps.io as ReturnType<typeof capture>).stderr.join("\n")}`);
       }

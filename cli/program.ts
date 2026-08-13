@@ -121,7 +121,7 @@ async function packVerbDeps(io: Io, ui: Ui | null = null): Promise<PackAddDeps> 
         ui,
         exec: deps.exec,
         files: deps.files,
-        restart: () => cmdRestart(deps),
+        restart: (into?: Io) => cmdRestart(into === undefined ? deps : { ...deps, io: into }),
         serve: () => Promise.resolve(cmdServe(deps)),
         unserve: () => cmdUnserve(deps),
       },
@@ -261,7 +261,7 @@ export const COMMANDS: readonly Command[] = [
     // `cli/pack.ts`'s own usage block prints — the two are pinned to each other in cli/main.test.ts.
     subcommands: [
       packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
-      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd),
+      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd, true),
       packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus, true),
       packSubcommand("rotate", "reissue the pack secret and hand it to every reachable peer", (deps) =>
         cmdPackRotate(deps),
