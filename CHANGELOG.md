@@ -6,6 +6,19 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-alpha.16] - 2026-08-13
+
+### Added
+
+- **Device pairing** — `collie pair` mints a one-time code, the phone spends it in Settings for a bearer token, and from then on every write needs it; enforced exactly while at least one device is paired, so an install that pairs nothing is unchanged (1b4d502)
+- `collie devices list` / `collie devices revoke <label>` — revocation lands on the running service without a restart (1b4d502)
+- `POST /api/pair`, `GET /api/devices`, `POST /api/devices/revoke`, and a paired-devices section in Settings (1b4d502)
+
+### Changed
+
+- A write refused for want of pairing answers `403 device not paired`, distinct from the header gate's `device not authorised`; the two gates stay independent and compose by AND (1b4d502)
+- Audit lines and the snapshot's `device` field prefer the pairing label over the proxy-asserted header name (1b4d502)
+
 ## [1.0.0-alpha.15] - 2026-08-12
 
 ### Fixed
