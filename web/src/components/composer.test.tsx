@@ -56,6 +56,23 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
   return props;
 }
 
+/**
+ * Wait for a send that can never verify to reach its terminal `stalled` outcome.
+ *
+ * A reply handler that doesn't `recordReply` leaves the fake pane's input line empty, so the
+ * type-then-verify guard polls POLL_ATTEMPTS × POLL_DELAY_MS (~2.8s) and only then reports. That
+ * report is a `setStatus` on a MODULE-SCOPED singleton, which outlives the test that started it: a
+ * test that returns first hands its stall to whichever test is running ~2.8s later, past this file's
+ * `clearStatus()`, where it reads as that test's own failure. Every test that fires a send it never
+ * lets verify ends with this. Needs a status sentinel in the render (`renderComposerWithStatus`).
+ */
+async function awaitTerminalStall() {
+  await waitFor(
+    () => expect(screen.getByTestId("status")).toHaveTextContent(/didn't reach the input box/i),
+    { timeout: 5000 },
+  );
+}
+
 function StatusSentinel() {
   const status = useStatus();
   return <div data-testid="status">{status?.text ?? ""}</div>;
@@ -251,7 +268,7 @@ describe("Composer — send", () => {
     );
     // The pre-clear keys on the RAW line (the actual current "❯" content), independent of whether the
     // draft ever stabilised into a visible preview — a stranded raw draft is still swept before send.
-    renderComposer({ terminalDraft: null, rawTerminalDraft: "leftover" });
+    renderComposerWithStatus({ terminalDraft: null, rawTerminalDraft: "leftover" });
     const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "new message");
@@ -262,7 +279,8 @@ describe("Composer — send", () => {
     // Draft length + the 32-Backspace overshoot (mid-poll-gap host typing margin) + the ctrl+k.
     expect(sentKeys).toHaveLength([..."leftover"].length + 33);
     expect(sentKeys!.slice(1).every((k) => k === "Backspace")).toBe(true);
-  });
+    await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
+  }, 15000);
 
   // The burst is the only destructive keystroke path in the app not bound to the screen that
   // authorised it. Ordering ("the read happens first") is not a freshness bound: the read's answer
@@ -459,14 +477,15 @@ describe("Composer — send", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
-    renderComposer({ terminalDraft: null });
+    renderComposerWithStatus({ terminalDraft: null });
     const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "hello");
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(callOrder).toEqual(["reply"]));
-  });
+    await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
+  }, 15000);
 
   it("sequential sends with no stranded draft do not call keys before reply", async () => {
     const user = userEvent.setup();
@@ -896,7 +915,8 @@ describe("Composer — blocked pre-flight override", () => {
     await waitFor(() => expect(calls).toContain("type"));
     expect(calls).not.toContain("submit");
     expect(box).toHaveValue("use fable please");
-  });
+    await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
+  }, 15000);
 });
 
 describe("Composer — destructive-input confirm", () => {
