@@ -1,6 +1,7 @@
 import { Box, render, Text } from "ink";
 import React from "react";
 
+import { createAddSurface } from "./pack-add.tsx";
 import type { DoctorView, StatusView, TonedLine, Ui, UiFinding } from "../render.ts";
 
 // The terminal view. NOTHING outside this directory imports ink — `cli/render.ts`'s `loadUi()` is
@@ -9,9 +10,9 @@ import type { DoctorView, StatusView, TonedLine, Ui, UiFinding } from "../render
 // (see `cli/render.ts` for why that is structural rather than a formatting flag).
 //
 // ── ONE-SHOT, NOT AN APP ─────────────────────────────────────────────────────
-// Every surface here draws once and unmounts immediately: they are `console.log` with a layout
-// engine, not a TUI. Nothing stays mounted, nothing handles input, and nothing renders while a verb
-// is still working — see `cli/render.ts` for the rule, and for the `pack add` spinner that broke it.
+// Every surface in THIS file draws once and unmounts immediately: they are `console.log` with a
+// layout engine, not a TUI. The one exception lives in `./pack-add.tsx`, which stays mounted for a
+// whole verb — and may, because it owns every byte written while it is up (`cli/render.ts`).
 
 /** Draw a component once, wait for ink to flush it, and let go of the terminal. */
 async function once(node: React.ReactElement): Promise<void> {
@@ -149,5 +150,8 @@ export function createUi(): Ui {
     doctor: (view) => once(<Doctor view={view} />),
     status: (view) => once(<Status view={view} />),
     packMembers: (lines) => once(<Members lines={lines} />),
+    // The one surface that is NOT one-shot. It keeps the terminal for the length of the verb and is
+    // allowed to, because it owns every byte written while it is up (`cli/render.ts`).
+    packAdd: () => createAddSurface(),
   };
 }

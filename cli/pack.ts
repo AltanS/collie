@@ -99,8 +99,14 @@ export interface PackDeps {
   readonly mintIdentity: IdentityMinter;
   /** Reads stdin to EOF, for a token given as `-`. */
   readStdin(): Promise<string>;
-  /** `collie restart` — how a membership change reaches the running bridge. */
-  restart(): Promise<number>;
+  /**
+   * `collie restart` — how a membership change reaches the running bridge.
+   *
+   * The optional `io` is where the nested verb's own output goes. Only `pack add` passes it, and
+   * only because its ink surface must be the sole writer while it is mounted (`cli/render.ts`);
+   * every other caller omits it and the restart writes where it always did.
+   */
+  restart(io?: Io): Promise<number>;
   /** `collie serve` — the new lead publishes the one managed front door (ADR 0001). */
   serve(): Promise<number>;
   /** `collie unserve` — a peer publishes nothing (§3), so joining tears our own mapping down. */
@@ -1372,7 +1378,7 @@ export function packDeps(
     ui?: Ui | null;
     exec: Exec;
     files: Files;
-    restart: () => Promise<number>;
+    restart: (io?: Io) => Promise<number>;
     serve: () => Promise<number>;
     unserve: () => number;
   },

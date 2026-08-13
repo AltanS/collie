@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import { commitPackChange, mintInvite } from "../bridge/pack/enrollment.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
-import { INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
-import { EXIT } from "./io.ts";
+import { collieVersion, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
+import { EXIT, type Io } from "./io.ts";
 import { ensureStore, parsePackArgs, probeMembers, resolveSelfAddress, type PackDeps } from "./pack.ts";
+import { plainAdd, type AddEvent } from "./render.ts";
 import { findTool } from "./tools.ts";
+import { unitName } from "./unit.ts";
 
 // `collie pack add <ssh-host>` — probe, install, configure, enroll a peer over ONE multiplexed SSH
 // connection (M7/01, ADR 0015).
@@ -532,18 +534,38 @@ export function enrollScript(opts: {
 export interface PackAddDeps extends PackDeps {
   /** The ONE thing in `cli/` that spawns ssh, injected so no test ever does. */
   remote(host: string): RemoteRunner;
-  /** Bun's `confirm()`, behind a seam. `null` means "nobody is there to ask". */
-  confirm(question: string): boolean | null;
-  /** Bun's `prompt()`, behind a seam. `null` means "nobody is there to ask". */
-  prompt(question: string): string | null;
-  /** `git bundle create - <commit>`, base64-encoded. `null` when git refused. */
-  gitBundle(commit: string): Promise<string | null>;
+  /**
+   * The `[y/N]`, behind a seam. `null` means "nobody is there to ask".
+   *
+   * A promise is allowed because the rich path answers it INSIDE the ink app — a keypress, not a
+   * blocking read — while the plain path is still Bun's synchronous `confirm()`. Both spellings are
+   * assignable, so a test can keep handing over a plain boolean.
+   */
+  confirm(question: string): boolean | null | Promise<boolean | null>;
+  /** The free-text ask, behind the same seam and for the same reason. */
+  prompt(question: string): string | null | Promise<string | null>;
+  /**
+   * `git bundle create - <commit>`, base64-encoded. `null` when git refused.
+   *
+   * It is handed the `Io` to complain through rather than closing over one: on the rich path the
+   * verb's writer is the surface, and a seam that had captured the process's own `Io` would print
+   * git's stderr straight through the middle of a frame.
+   */
+  gitBundle(commit: string, io: Io): Promise<string | null>;
   /**
    * Re-read the trust store from disk. The lead's enrollment is written by its RUNNING BRIDGE, in
    * another process, so this process's cached copy cannot see it (`TrustStore.load` reads once).
    */
   reload(): Promise<TrustStoreData | null>;
+  /**
+   * Where every line this verb says goes as STRUCTURE (`cli/render.ts`). Absent ⇒ the plain replay,
+   * which is what every existing caller and every golden gets.
+   */
+  emit?(event: AddEvent): void;
 }
+
+/** `PackAddDeps` after {@link cmdPackAdd} has resolved the sink — the shape every step below takes. */
+type Wired = PackAddDeps & { emit(event: AddEvent): void };
 
 const USAGE = [
   "usage: collie pack add <ssh-host> [--path <remote-checkout>] [--port <n>]",
@@ -552,8 +574,8 @@ const USAGE = [
 ];
 
 /** Prompt copy shared by the abort path, so the non-interactive message names the real question. */
-function ask(deps: PackAddDeps, question: string): boolean | "aborted" {
-  const answer = deps.confirm(question);
+async function ask(deps: Wired, question: string): Promise<boolean | "aborted"> {
+  const answer = await deps.confirm(question);
   if (answer === null) {
     deps.io.err(`error: this run is not interactive, and it would have asked: ${question}`);
     deps.io.err("       Nothing was changed. Re-run from a terminal, or resolve it on that machine first.");
@@ -571,12 +593,44 @@ function ask(deps: PackAddDeps, question: string): boolean | "aborted" {
  * unreadable answer, or a member that is still provisional at the final check.
  */
 export async function cmdPackAdd(deps: PackAddDeps, args: readonly string[]): Promise<number> {
+  const surface = deps.ui?.packAdd?.() ?? null;
+  if (surface === null) {
+    // The plain path is unchanged in every byte: the events are replayed as the lines they always
+    // were, in the order they were emitted, through the same `Io`.
+    return await packAddRun({ ...deps, emit: deps.emit ?? ((event) => plainAdd(deps.io, event)) }, args);
+  }
+  // The rich path. `io`, `confirm` and `prompt` are ALL replaced for the length of the run — that is
+  // the whole of the "one writer" rule (`cli/render.ts`), and it is why nothing below needs to know
+  // which renderer it is talking to.
+  const wired: Wired = {
+    ...deps,
+    io: surface.io,
+    emit: surface.emit,
+    confirm: surface.confirm,
+    prompt: surface.prompt,
+  };
+  let code: number = EXIT.FAIL;
+  try {
+    code = await packAddRun(wired, args);
+    return code;
+  } finally {
+    // The last frame, always: a red verdict is the failure's headline, and the `error:` lines that
+    // explain it are already on screen under the leg that failed.
+    if (code !== EXIT.OK) {
+      wired.emit({ kind: "verdict", ok: false, text: `pack add did not finish (exit ${code})` });
+    }
+    await surface.close();
+  }
+}
+
+async function packAddRun(deps: Wired, args: readonly string[]): Promise<number> {
   const { positional, flags } = parsePackArgs(args);
   const host = positional[0];
   if (host === undefined || host === "") {
     for (const line of USAGE) deps.io.err(line);
     return EXIT.USAGE;
   }
+  deps.emit({ kind: "title", host });
   const port = parsePort(flags.port);
   if (port === null) {
     deps.io.err(`error: --port ${flags.port} is not a port number.`);
@@ -613,11 +667,11 @@ interface AddOptions {
   readonly flags: Readonly<Record<string, string>>;
 }
 
-async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOptions): Promise<number> {
+async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): Promise<number> {
   const { host, port, flags } = opts;
 
   // ── Leg 1 — probe ──────────────────────────────────────────────────────────
-  deps.io.out(`probing ${host}…`);
+  deps.emit({ kind: "leg-start", leg: "probe", text: `probing ${host}…` });
   const probed = await runner.run(probeScript({ path: flags.path ?? null, port }));
   const transport = transportFailure(deps, host, probed);
   if (transport !== null) return transport;
@@ -640,7 +694,7 @@ async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOpti
       deps.io.err(`error: no \`${tool}\` on ${host} — ${hint}`);
       return EXIT.FAIL;
     }
-    deps.io.out(`✓ ${tool}       ${path}`);
+    deps.emit({ kind: "fact", name: tool, value: path });
   }
   if (probe.herdr === "") {
     // Not a bug and not an unimplemented feature: Collie is a Herdr plugin, and a Collie with no
@@ -650,7 +704,7 @@ async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOpti
     deps.io.err("       (A standalone Collie is discussion #67 — not yet, and not a bug.)");
     return EXIT.FAIL;
   }
-  deps.io.out(`✓ herdr      ${probe.herdr}`);
+  deps.emit({ kind: "fact", name: "herdr", value: probe.herdr });
 
   const configDir = probe.configdir;
   if (configDir === "") {
@@ -660,13 +714,13 @@ async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOpti
     deps.io.err("       Run that by hand there. `pack add` never invents a path it did not observe.");
     return EXIT.FAIL;
   }
-  deps.io.out(`✓ config     ${configDir}`);
+  deps.emit({ kind: "fact", name: "config", value: configDir });
 
   // The address the lead will dial. Read off the remote; asked only when it cannot answer.
-  const peerHost = resolvePeerHost(deps, probe, flags["peer-address"]);
+  const peerHost = await resolvePeerHost(deps, probe, flags["peer-address"]);
   if (peerHost === null) return EXIT.FAIL;
   const peerAddress = `${peerHost}:${port}`;
-  deps.io.out(`✓ address    ${peerAddress} (what this lead will dial)`);
+  deps.emit({ kind: "fact", name: "address", value: `${peerAddress} (what this lead will dial)` });
 
   // The install target: the checkout leg 1 FOUND, else `.collie` under the `$HOME` it reported. Even
   // the green-field path is anchored to an observed value rather than a guessed one.
@@ -679,11 +733,22 @@ async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOpti
     deps.io.err("       this host has configured. Choose another with `--port <n>`.");
     return EXIT.FAIL;
   }
-  deps.io.out(
-    probe.port === "unknown"
-      ? `warn: could not probe port ${port} on ${host} (no \`ss\`/\`netstat\` there) — a collision would surface at first start`
-      : `✓ port       ${port} ${probe.port === "busy" ? "already carries this collie" : "free"}`,
-  );
+  if (probe.port === "unknown") {
+    deps.emit({
+      kind: "line",
+      // On stdout, not stderr, and it always has been: it is a caveat on a step that SUCCEEDED.
+      stream: "out",
+      tone: "warn",
+      text: `warn: could not probe port ${port} on ${host} (no \`ss\`/\`netstat\` there) — a collision would surface at first start`,
+    });
+  } else {
+    deps.emit({
+      kind: "fact",
+      name: "port",
+      value: `${port} ${probe.port === "busy" ? "already carries this collie" : "free"}`,
+    });
+  }
+  deps.emit({ kind: "leg-done", leg: "probe", ok: true, detail: `${host} is ready` });
 
   // ── Leg 2 — install ────────────────────────────────────────────────────────
   const commit = gitOut(deps, ["rev-parse", "HEAD"]);
@@ -701,14 +766,21 @@ async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOpti
     deps.io.err(`      not shipped. ${host} will run ${version} at ${commit.slice(0, 12)}.`);
   }
 
+  deps.emit({ kind: "leg-start", leg: "install", text: "" });
   if (probe.commit === commit) {
-    deps.io.out(`✓ install    already at ${probe.version || version} (${commit.slice(0, 12)}) — nothing sent`);
+    deps.emit({
+      kind: "leg-done",
+      leg: "install",
+      ok: true,
+      detail: `already at ${probe.version || version} (${commit.slice(0, 12)}) — nothing sent`,
+    });
   } else {
     const blocked = await installLeg(deps, runner, { host, root, commit, version, probe });
     if (blocked !== null) return blocked;
   }
 
   // ── Leg 3 — configure ──────────────────────────────────────────────────────
+  deps.emit({ kind: "leg-start", leg: "configure", text: "" });
   const configured = await configureLeg(deps, runner, {
     host,
     configDir,
@@ -720,12 +792,13 @@ async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOpti
   if (configured !== null) return configured;
 
   // ── Leg 4 — enroll ─────────────────────────────────────────────────────────
+  deps.emit({ kind: "leg-start", leg: "enroll", text: "" });
   return await enrollLeg(deps, runner, { host, root, peerAddress, flags });
 }
 
 /** Leg 2, as its own step: the prompts, the bundle push and the post-install version check. */
 async function installLeg(
-  deps: PackAddDeps,
+  deps: Wired,
   runner: RemoteRunner,
   o: {
     host: string;
@@ -747,7 +820,7 @@ async function installLeg(
       deps.io.err("       discard work it did not create.");
       return EXIT.STATE;
     }
-    const answer = ask(
+    const answer = await ask(
       deps,
       `${o.host} has Collie ${probe.version || "(unbuilt)"} at ${probe.commit.slice(0, 12) || "?"}; replace it with ${o.version} (${o.commit.slice(0, 12)})?`,
     );
@@ -763,12 +836,17 @@ async function installLeg(
     }
   }
 
-  const bundle = await deps.gitBundle(o.commit);
+  const bundle = await deps.gitBundle(o.commit, deps.io);
   if (bundle === null) {
     deps.io.err(`error: could not bundle ${o.commit.slice(0, 12)} from ${deps.ctx.root}.`);
     return EXIT.FAIL;
   }
-  deps.io.out(`  pushing ${o.commit.slice(0, 12)} (${Math.round(bundle.length / 1024)} KiB base64) to ${o.root}…`);
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: "info",
+    text: `  pushing ${o.commit.slice(0, 12)} (${Math.round(bundle.length / 1024)} KiB base64) to ${o.root}…`,
+  });
   const installed = await runner.run(
     installScript({ root: o.root, commit: o.commit, version: o.version }),
     bundle,
@@ -785,17 +863,21 @@ async function installLeg(
     deps.io.err(`error: the install on ${o.host} reported nothing this build can read.`);
     return EXIT.FAIL;
   }
-  deps.io.out(`✓ install    ${built[1]!.trim()} at ${o.root}`);
+  deps.emit({ kind: "leg-done", leg: "install", ok: true, detail: `${built[1]!.trim()} at ${o.root}` });
   if (probe.checkout === "") {
-    deps.io.out(`  This checkout is not registered with Herdr there. To get its plugin actions:`);
-    deps.io.out(`    herdr plugin link "${o.root}"   # on ${o.host}`);
+    for (const text of [
+      `  This checkout is not registered with Herdr there. To get its plugin actions:`,
+      `    herdr plugin link "${o.root}"   # on ${o.host}`,
+    ]) {
+      deps.emit({ kind: "line", stream: "out", tone: "info", text });
+    }
   }
   return null;
 }
 
 /** Leg 3, as its own step: skip, prompt, or write the peer's `.env`. */
 async function configureLeg(
-  deps: PackAddDeps,
+  deps: Wired,
   runner: RemoteRunner,
   o: {
     host: string;
@@ -808,12 +890,12 @@ async function configureLeg(
 ): Promise<number | null> {
   const { probe } = o;
   if (probe.envhost === o.peerHost && configuredPort(probe) === o.port) {
-    deps.io.out(`✓ bind       already ${o.peerHost}:${o.port}`);
+    deps.emit({ kind: "leg-done", leg: "configure", ok: true, detail: `already ${o.peerHost}:${o.port}` });
     return null;
   }
   if (probe.envhost !== "" || probe.envport !== "") {
     const current = `${probe.envhost || "(unset)"}:${probe.envport || "(unset)"}`;
-    const answer = ask(deps, `${o.host} is configured to bind ${current}; change it to ${o.peerHost}:${o.port}?`);
+    const answer = await ask(deps, `${o.host} is configured to bind ${current}; change it to ${o.peerHost}:${o.port}?`);
     if (answer === "aborted") return EXIT.FAIL;
     if (!answer) {
       deps.io.err("error: left alone — the bind was not changed, and nothing was enrolled.");
@@ -830,15 +912,25 @@ async function configureLeg(
     deps.io.err(`error: could not write the peer's .env — ${firstLine(written.stderr)}`);
     return EXIT.FAIL;
   }
-  deps.io.out(`✓ bind       ${o.peerHost}:${o.port} written to ${o.configDir}/.env`);
+  deps.emit({
+    kind: "leg-done",
+    leg: "configure",
+    ok: true,
+    detail: `${o.peerHost}:${o.port} written to ${o.configDir}/.env`,
+  });
   // ADR 0013: a peer publishes nothing. Said out loud, because the absence of a step is invisible.
-  deps.io.out("  No front door was published there — a peer publishes none (ADR 0013).");
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: "info",
+    text: "  No front door was published there — a peer publishes none (ADR 0013).",
+  });
   return null;
 }
 
 /** Leg 4, as its own step: the membership pre-check, the invite, the join, and the final verdict. */
 async function enrollLeg(
-  deps: PackAddDeps,
+  deps: Wired,
   runner: RemoteRunner,
   o: { host: string; root: string; peerAddress: string; flags: Readonly<Record<string, string>> },
 ): Promise<number> {
@@ -859,7 +951,11 @@ async function enrollLeg(
   if (data === null) return EXIT.FAIL;
   if (membership.packId !== null) {
     if (data.pack !== null && membership.packId === data.pack.packId) {
-      deps.io.out(`✓ already a member of "${membership.packName}" as "${membership.memberId}"`);
+      deps.emit({
+        kind: "verdict",
+        ok: true,
+        text: `already a member of "${membership.packName}" as "${membership.memberId}"`,
+      });
       return EXIT.OK;
     }
     deps.io.err(`error: ${o.host} is already a member of pack "${membership.packName}" (${membership.packId}).`);
@@ -879,7 +975,14 @@ async function enrollLeg(
   // Named once, because it is the string the peer will dial forever and the operator did not type it
   // on this command line — a config value silently steering an enrollment is exactly what the
   // `--address`-only era made hard to see.
-  if (lead.source === "public-url") deps.io.out(`  lead address ${leadAddress} (from COLLIE_PUBLIC_URL)`);
+  if (lead.source === "public-url") {
+    deps.emit({
+      kind: "line",
+      stream: "out",
+      tone: "info",
+      text: `  lead address ${leadAddress} (from COLLIE_PUBLIC_URL)`,
+    });
+  }
 
   const before = new Set(data.peers.map((p) => p.memberId));
   const minted = await commitPackChange(deps.store, deps.audit, (current) =>
@@ -893,8 +996,13 @@ async function enrollLeg(
         }),
   );
   if (minted === null) return EXIT.FAIL;
-  deps.io.out("  minted a single-use, ten-minute invite; restarting the bridge so it can answer it…");
-  if ((await deps.restart()) !== EXIT.OK) {
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: "info",
+    text: "  minted a single-use, ten-minute invite; restarting the bridge so it can answer it…",
+  });
+  if ((await restartBridge(deps)) !== EXIT.OK) {
     deps.io.err("warn: the restart failed — the invite IS minted, but the running bridge still holds the");
     deps.io.err("      previous store and will refuse it. Run `collie restart` here, then re-run.");
   }
@@ -928,10 +1036,15 @@ async function enrollLeg(
     if (enrolled.code === EXIT.STATE) return EXIT.STATE;
     return EXIT.FAIL;
   }
-  deps.io.out(`✓ enrolled   ${o.host} answered the invite`);
+  deps.emit({ kind: "leg-done", leg: "enroll", ok: true, detail: `${o.host} answered the invite` });
 
-  deps.io.out("  restarting the bridge so the new member takes effect…");
-  await deps.restart();
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: "info",
+    text: "  restarting the bridge so the new member takes effect…",
+  });
+  await restartBridge(deps);
   return verdict(deps, before, o.host);
 }
 
@@ -943,7 +1056,7 @@ async function enrollLeg(
  * member was enrolled AND has been reached at the address it named. A join that returned 0 into a
  * peer the lead cannot dial is the trap this whole verb exists to close, so it fails here.
  */
-async function verdict(deps: PackAddDeps, before: ReadonlySet<string>, host: string): Promise<number> {
+async function verdict(deps: Wired, before: ReadonlySet<string>, host: string): Promise<number> {
   const fresh = await deps.reload();
   const added: TrustedMember | undefined = fresh?.peers.find((p) => !before.has(p.memberId));
   if (fresh === null || fresh.pack === null || added === undefined) {
@@ -954,7 +1067,11 @@ async function verdict(deps: PackAddDeps, before: ReadonlySet<string>, host: str
   const probes = await probeMembers(deps, fresh, [added]);
   const outcome = probes.get(added.memberId);
   if (outcome?.ok === true) {
-    deps.io.out(`✓ "${added.memberId}" is a member of "${fresh.pack.name}" and answered at ${added.address}`);
+    deps.emit({
+      kind: "verdict",
+      ok: true,
+      text: `"${added.memberId}" is a member of "${fresh.pack.name}" and answered at ${added.address}`,
+    });
     return EXIT.OK;
   }
   deps.io.err(`error: "${added.memberId}" enrolled, but this lead cannot reach it at ${added.address} — the`);
@@ -970,7 +1087,7 @@ async function verdict(deps: PackAddDeps, before: ReadonlySet<string>, host: str
  * `spawned` and ssh's own 255 — and the agent hint comes from ssh's ACTUAL stderr, never guessed
  * from an exit code, because 255 has a dozen causes and only one of them is a key.
  */
-function transportFailure(deps: PackAddDeps, host: string, r: RemoteResult): number | null {
+function transportFailure(deps: Wired, host: string, r: RemoteResult): number | null {
   if (!r.spawned) {
     deps.io.err(`error: could not start ssh — ${r.stderr.trim() || "it did not run"}.`);
     deps.io.err("       `pack add` rides your own ssh: install it, or run the four steps by hand.");
@@ -983,6 +1100,23 @@ function transportFailure(deps: PackAddDeps, host: string, r: RemoteResult): num
     deps.io.err(`       ~/.ssh/config for ${host}) and re-run. Collie never touches your ssh configuration.`);
   }
   return EXIT.UNREACHABLE;
+}
+
+/**
+ * A nested `collie restart`, bracketed.
+ *
+ * The restart is a whole verb with its own output — two lifecycle lines, the serve config, and the
+ * boxed "Collie is running" banner, printed TWICE in one `pack add`. It writes through `deps.io`,
+ * which on the rich path is the surface, so the bytes are already contained; the brackets are what
+ * let the view collapse the block to one row, and keep it when the restart FAILED.
+ */
+async function restartBridge(deps: Wired): Promise<number> {
+  const unit = unitName(deps.ctx.instance);
+  const version = collieVersion(deps.ctx.root, (p) => deps.files.read(p));
+  deps.emit({ kind: "restart-begin", label: `bridge restarted (${unit}) · ${version}` });
+  const code = await deps.restart(deps.io);
+  deps.emit({ kind: "restart-end", ok: code === EXIT.OK });
+  return code;
 }
 
 const firstLine = (text: string): string =>
@@ -1008,10 +1142,14 @@ const errorLine = (text: string): string => {
 };
 
 /** The address the lead will dial, read off the remote — or asked for, never guessed. */
-function resolvePeerHost(deps: PackAddDeps, probe: Probe, override: string | undefined): string | null {
+async function resolvePeerHost(
+  deps: Wired,
+  probe: Probe,
+  override: string | undefined,
+): Promise<string | null> {
   if (override !== undefined && override !== "") return override;
   if (probe.address !== "") return probe.address;
-  const answered = deps.prompt(
+  const answered = await deps.prompt(
     "This host has no tailnet address. What address should this lead dial it at?",
   );
   if (answered === null) {
@@ -1044,7 +1182,7 @@ function parsePort(raw: string | undefined): number | null {
 }
 
 /** `git -C <root> …`, trimmed. `null` when git is absent or said no. */
-function gitOut(deps: PackAddDeps, args: readonly string[]): string | null {
+function gitOut(deps: Wired, args: readonly string[]): string | null {
   const r = deps.exec.capture("git", ["-C", deps.ctx.root, ...args]);
   return r.found && r.code === 0 ? r.stdout.trim() : null;
 }
@@ -1054,7 +1192,7 @@ function gitOut(deps: PackAddDeps, args: readonly string[]): string | null {
  * bundle ships the commit, so a dirty manifest would have the install verify against a version the
  * far machine was never given.
  */
-function manifestVersionAt(deps: PackAddDeps, commit: string): string | null {
+function manifestVersionAt(deps: Wired, commit: string): string | null {
   const manifest = gitOut(deps, ["show", `${commit}:herdr-plugin.toml`]);
   if (manifest === null) return null;
   return /^version[ \t]*=[ \t]*"([^"]*)"/m.exec(manifest)?.[1] ?? null;
@@ -1071,12 +1209,12 @@ export function packAddDeps(base: PackDeps): PackAddDeps {
     // than read EOF as "yes".
     confirm: (question) => (process.stdin.isTTY === true ? confirm(question) : null),
     prompt: (question) => (process.stdin.isTTY === true ? prompt(question) : null),
-    gitBundle: async (commit) => {
+    gitBundle: async (commit, io) => {
       const git = base.exec.which("git");
       if (git === null) return null;
       const printErr = (stderr: string) => {
         const line = stderr.split("\n").find((l) => l.trim() !== "");
-        if (line !== undefined) base.io.err(`       ${line.trim()}`);
+        if (line !== undefined) io.err(`       ${line.trim()}`);
       };
       // A bare commit sha is not a REF, and `git bundle create` refuses ("Refusing to create empty
       // bundle") unless it can record at least one — so bundle HEAD, not the sha. That's only safe
@@ -1090,7 +1228,7 @@ export function packAddDeps(base: PackDeps): PackAddDeps {
       }
       const head = headResult.stdout.trim();
       if (head !== commit) {
-        base.io.err(`       HEAD moved to ${head.slice(0, 12)} since ${commit.slice(0, 12)} was read.`);
+        io.err(`       HEAD moved to ${head.slice(0, 12)} since ${commit.slice(0, 12)} was read.`);
         return null;
       }
       const proc = Bun.spawn([git, "-C", base.ctx.root, "bundle", "create", "-", "HEAD"], {
