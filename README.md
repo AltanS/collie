@@ -636,7 +636,8 @@ COLLIE_PUBLIC_HOSTS=collie.example.com              # Host allowlist — blocks 
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
 COLLIE_DEVICE_HEADER=X-Device-Id                    # the header your proxy injects…
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to drive; others → read-only
-# COLLIE_PUBLIC_URL=https://collie.example.com      # optional — shown in the `collie status` banner
+# COLLIE_PUBLIC_URL=https://collie.example.com      # optional — status banner, `collie qr`, and the
+                                                    # address a lead hands joining machines (pack)
 ```
 
 > ⚠️ **`COLLIE_TRUSTED_USER` does nothing here.** It gates on `Tailscale-User-Login`, which only

@@ -7,7 +7,7 @@ import { commitPackChange, mintInvite } from "../bridge/pack/enrollment.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
 import { EXIT } from "./io.ts";
-import { ensureStore, parsePackArgs, probeMembers, selfAddress, type PackDeps } from "./pack.ts";
+import { ensureStore, parsePackArgs, probeMembers, resolveSelfAddress, type PackDeps } from "./pack.ts";
 import { findTool } from "./tools.ts";
 
 // `collie pack add <ssh-host>` — probe, install, configure, enroll a peer over ONE multiplexed SSH
@@ -866,12 +866,17 @@ async function enrollLeg(
   }
 
   // What the far side will `collie join` — this lead's front door, the same string `pack invite` prints.
-  const leadAddress = selfAddress(deps, o.flags.address, "front-door");
-  if (leadAddress === null) {
+  const lead = resolveSelfAddress(deps, o.flags.address, "front-door");
+  if (lead === null) {
     deps.io.err("error: cannot work out an address this lead can be dialled at.");
     deps.io.err("       Pass one: `collie pack add <host> --address <this-lead-address>`.");
     return EXIT.FAIL;
   }
+  const leadAddress = lead.address;
+  // Named once, because it is the string the peer will dial forever and the operator did not type it
+  // on this command line — a config value silently steering an enrollment is exactly what the
+  // `--address`-only era made hard to see.
+  if (lead.source === "public-url") deps.io.out(`  lead address ${leadAddress} (from COLLIE_PUBLIC_URL)`);
 
   const before = new Set(data.peers.map((p) => p.memberId));
   const minted = await commitPackChange(deps.store, deps.audit, (current) =>

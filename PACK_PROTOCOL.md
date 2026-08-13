@@ -442,6 +442,17 @@ Run **on the peer**, once.
 someone else's overlay, an SSH tunnel. Collie owns authentication; **the operator owns reachability**.
 There is no discovery, no enumeration, and no overlay-network integration — ever.
 
+> **Note, added 2026-08-13 — what a lead advertises when the operator does not say.** The address a
+> lead hands a joiner (`collie pack invite`, `collie pack add`, `collie promote`) is resolved in this
+> order: an explicit `--address`, taken verbatim; then `COLLIE_PUBLIC_URL`, reduced to its origin
+> (scheme + host + port — the pack link mounts at `/pack/v1/*` off it, so a path is dropped with a
+> warning, and a value that does not parse warns and falls through); then this node's Tailscale name.
+> A machine whose real ingress is a reverse proxy (README Variant C/E) therefore states that ingress
+> once in config instead of on every invite — a derived tailnet name is silently undialable from a
+> peer under a one-way tailnet ACL, and nothing in the enrollment names that as the cause. **A peer's
+> own listener address is never taken from `COLLIE_PUBLIC_URL`**: a peer publishes no front door (§3,
+> ADR 0013), and a public URL is a front door by definition.
+
 > **Amended 2026-08-07 — what actually authenticates an enrollment, stated rather than implied.**
 >
 > **The token and the payload. Not the transport. Trust-on-first-use, at the moment of `join`.**
