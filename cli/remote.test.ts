@@ -521,6 +521,32 @@ describe("the three error families", () => {
     expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install"]);
   });
 
+  test("the quoted line is the install script's own verdict, not git's first warning", async () => {
+    // The field shape: `git fetch` warns harmlessly on the way in, and the build dies further down.
+    // Quoting the first line said "updateshallow is ignored", which is not why anything failed.
+    const h = harness({
+      answers: {
+        install: {
+          code: 24,
+          stderr: [
+            'warning: option "updateshallow" is ignored for a bundle',
+            "error: Cannot find package 'commander' from '/home/pat/.collie/cli/main.ts'",
+            "error: the build failed on this machine",
+          ].join("\n"),
+        },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("the install failed on nas.example — error: the build failed on this machine");
+    expect(text(h.io)).not.toContain("updateshallow");
+  });
+
+  test("a leg that died before its own verdict is still quoted", async () => {
+    const h = harness({ answers: { install: { code: 2, stderr: "sh: line 12: syntax error near unexpected token" } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("syntax error near unexpected token");
+  });
+
   test("a port collision stops before anything is installed", async () => {
     const h = harness({ answers: { probe: { stdout: probeOut({ port: "busy" }) } } });
     expect(await run(h)).toBe(EXIT.FAIL);

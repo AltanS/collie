@@ -776,7 +776,7 @@ async function installLeg(
   const transport = transportFailure(deps, o.host, installed);
   if (transport !== null) return transport;
   if (installed.code !== 0) {
-    deps.io.err(`error: the install failed on ${o.host} — ${firstLine(installed.stderr)}`);
+    deps.io.err(`error: the install failed on ${o.host} — ${errorLine(installed.stderr)}`);
     deps.io.err(`       The checkout at ${o.root} was left in place; nothing was configured or enrolled.`);
     return EXIT.FAIL;
   }
@@ -987,6 +987,25 @@ function transportFailure(deps: PackAddDeps, host: string, r: RemoteResult): num
 
 const firstLine = (text: string): string =>
   text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "(it said nothing)";
+
+/**
+ * The line to quote from a leg script's stderr: its OWN verdict.
+ *
+ * Every leg script ends its failing branch with an `error: …` line and a distinct exit code, so that
+ * line is the diagnosis — and it is the LAST such line, because a step that fails may print one on
+ * the way out of a nested command too. Taking the first non-empty line instead quotes whatever the
+ * remote's tools said first, which is not the same thing and in the field was actively misleading:
+ * a `pack add` install died with git's harmless `warning: option "updateshallow" is ignored…` in
+ * front of it, hiding the build failure the script had already named.
+ *
+ * Falls back to {@link firstLine} when nothing on stderr is one of ours — a script that died before
+ * reaching its own verdict (a shell syntax error, an OOM kill) still gets quoted rather than
+ * swallowed.
+ */
+const errorLine = (text: string): string => {
+  const own = text.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("error:"));
+  return own.length === 0 ? firstLine(text) : own[own.length - 1]!;
+};
 
 /** The address the lead will dial, read off the remote — or asked for, never guessed. */
 function resolvePeerHost(deps: PackAddDeps, probe: Probe, override: string | undefined): string | null {
