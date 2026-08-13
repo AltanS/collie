@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 
 import type { DoctorView, StatusView, TonedLine } from "../render.ts";
-import { Doctor, Legs, Members, Status } from "./index.tsx";
+import { Doctor, Members, Status } from "./index.tsx";
 
 // The components, drawn into a string. These do NOT pin the layout — a box-drawing character or a
 // column width is not a contract, and asserting one would make every visual tweak a test edit. What
@@ -84,24 +84,5 @@ describe("the pack members block", () => {
     ];
     const frame = plain(render(<Members lines={lines} />).lastFrame());
     for (const l of lines) expect(frame).toContain(l.text);
-  });
-});
-
-describe("the pack add legs", () => {
-  test("a running leg spins, a finished one carries its verdict", async () => {
-    let publish: (legs: { name: string; outcome: "running" | "ok" | "failed" }[]) => void = () => {};
-    const view = render(<Legs subscribe={(fn) => (publish = fn)} />);
-    publish([
-      { name: "probe", outcome: "ok" },
-      { name: "install", outcome: "failed" },
-      { name: "configure", outcome: "running" },
-    ]);
-    // `subscribe` is handed over in an effect and the update it delivers is a state change, so the
-    // frame under test is the one after React has committed it — not the one render() returned.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const frame = plain(view.lastFrame());
-    expect(frame).toContain("✓ probe");
-    expect(frame).toContain("✗ install");
-    expect(frame).toMatch(/configure…/);
   });
 });

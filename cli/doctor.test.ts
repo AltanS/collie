@@ -81,9 +81,6 @@ function fakeUi(): { ui: Ui; views: DoctorView[] } {
       doctor: async (view) => void views.push(view),
       status: async () => {},
       packMembers: async () => {},
-      legs: () => {
-        throw new Error("doctor has no legs");
-      },
     },
   };
 }

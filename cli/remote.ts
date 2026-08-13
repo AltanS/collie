@@ -7,7 +7,6 @@ import { commitPackChange, mintInvite } from "../bridge/pack/enrollment.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
 import { EXIT } from "./io.ts";
-import type { LegRun } from "./render.ts";
 import { ensureStore, parsePackArgs, probeMembers, resolveSelfAddress, type PackDeps } from "./pack.ts";
 import { findTool } from "./tools.ts";
 
@@ -596,16 +595,14 @@ export async function cmdPackAdd(deps: PackAddDeps, args: readonly string[]): Pr
   }
 
   const runner = deps.remote(host);
-  // The live leg display, on a terminal only. Every informational line below still goes through
-  // `Io`; ink patches `console` so those land ABOVE the spinner rather than through it, which is
-  // what makes the rich run the plain run plus a status line, never minus one.
-  const legs = deps.ui?.legs() ?? null;
+  // `pack add` prints its progress as plain lines and nothing else — it streams for the length of a
+  // four-leg SSH pipeline and asks two questions on stdin in the middle of it, which is the shape
+  // ink cannot share a terminal with (`cli/render.ts`).
   try {
-    return await addOverSsh({ ...deps, legs }, runner, { host, port, instance, flags });
+    return await addOverSsh(deps, runner, { host, port, instance, flags });
   } finally {
     // Every exit path, including a throw: the control socket is a live authenticated channel.
     runner.close();
-    await legs?.close();
   }
 }
 
@@ -616,18 +613,10 @@ interface AddOptions {
   readonly flags: Readonly<Record<string, string>>;
 }
 
-type AddDeps = PackAddDeps & { readonly legs: LegRun | null };
-
-async function addOverSsh(deps: AddDeps, runner: RemoteRunner, opts: AddOptions): Promise<number> {
+async function addOverSsh(deps: PackAddDeps, runner: RemoteRunner, opts: AddOptions): Promise<number> {
   const { host, port, flags } = opts;
 
-  // Each `leg` call brackets one of the four steps below. `end(false)` is never called explicitly:
-  // a leg that returns early leaves its entry open, and `LegRun.close()` marks whatever is still
-  // running as failed — so a step can never be reported successful by forgetting to fail it.
-  const leg = deps.legs;
-
   // ── Leg 1 — probe ──────────────────────────────────────────────────────────
-  leg?.begin("probe");
   deps.io.out(`probing ${host}…`);
   const probed = await runner.run(probeScript({ path: flags.path ?? null, port }));
   const transport = transportFailure(deps, host, probed);
@@ -697,8 +686,6 @@ async function addOverSsh(deps: AddDeps, runner: RemoteRunner, opts: AddOptions)
   );
 
   // ── Leg 2 — install ────────────────────────────────────────────────────────
-  leg?.end(true);
-  leg?.begin("install");
   const commit = gitOut(deps, ["rev-parse", "HEAD"]);
   if (commit === null) {
     deps.io.err(`error: cannot read this checkout's commit — ${deps.ctx.root} is not a git checkout.`);
@@ -722,8 +709,6 @@ async function addOverSsh(deps: AddDeps, runner: RemoteRunner, opts: AddOptions)
   }
 
   // ── Leg 3 — configure ──────────────────────────────────────────────────────
-  leg?.end(true);
-  leg?.begin("configure");
   const configured = await configureLeg(deps, runner, {
     host,
     configDir,
@@ -735,11 +720,7 @@ async function addOverSsh(deps: AddDeps, runner: RemoteRunner, opts: AddOptions)
   if (configured !== null) return configured;
 
   // ── Leg 4 — enroll ─────────────────────────────────────────────────────────
-  leg?.end(true);
-  leg?.begin("enroll");
-  const enrolled = await enrollLeg(deps, runner, { host, root, peerAddress, flags });
-  leg?.end(enrolled === EXIT.OK);
-  return enrolled;
+  return await enrollLeg(deps, runner, { host, root, peerAddress, flags });
 }
 
 /** Leg 2, as its own step: the prompts, the bundle push and the post-install version check. */
