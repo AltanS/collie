@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 
 import { ActivityLedger } from "./activity.ts";
@@ -13,6 +14,7 @@ import { filePairingIo, PairingStore } from "./pairing.ts";
 import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
 import { dialTls, peerListenerTls } from "./pack/transport.ts";
 import { PackLead } from "./pack/lead.ts";
+import { leadLabel } from "./pack/merge.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
@@ -386,7 +388,10 @@ const packLead = (() => {
     // The per-pane forward (§5, §9.1). `proxy`, not `raw`: the peer's own status codes — its 304
     // above all — are the answer, and flattening them would cost the conditional-GET win end to end.
     proxy: (link, route, params, init) => client.proxy(link, route, params, init),
-    self: { id: data.self.memberId, name: data.pack?.name ?? data.self.memberId },
+    // servers[].name is an operator-facing MACHINE label (§9.2), same as every peer's `join` label —
+    // never the pack's name, which is not a roster member and would collide visually with the peers'
+    // per-machine labels. See leadLabel's doc for the hostname/fallback rule.
+    self: { id: data.self.memberId, name: leadLabel(hostname(), data.self.memberId) },
     // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
     // pushed through the same coordinator machinery a local session uses (M4/06).
     onPeerSnapshot: (memberId, body) => peerNotifier?.observe(memberId, body),
