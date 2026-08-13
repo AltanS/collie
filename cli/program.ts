@@ -122,7 +122,11 @@ async function packVerbDeps(io: Io, ui: Ui | null = null): Promise<PackAddDeps> 
         exec: deps.exec,
         files: deps.files,
         restart: (into?: Io) => cmdRestart(into === undefined ? deps : { ...deps, io: into }),
-        serve: () => Promise.resolve(cmdServe(deps)),
+        // Threaded exactly like `restart`: `cmdStart` (reached through `restart` on the rich `pack
+        // add` path) calls this with the SAME swapped `io` it was given, so a serve republish that
+        // happens mid-restart lands on the surface's held-chatter `Io` instead of escaping to the
+        // real terminal (the bug this comment used to have no fix for — see cli/lifecycle.ts).
+        serve: (into?: Io) => Promise.resolve(cmdServe(into === undefined ? deps : { ...deps, io: into })),
         unserve: () => cmdUnserve(deps),
       },
       await packAudit(deps.ctx),

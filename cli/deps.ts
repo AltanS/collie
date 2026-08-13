@@ -29,8 +29,10 @@ export function lifecycleDeps(io: Io, ui: Ui | null = null): LifecycleDeps {
     uid: () => process.getuid?.() ?? 0,
     platform: process.platform,
     // The front door, over the same resolved context. `start` calls this and tolerates its failure;
-    // `collie serve` is the same function plus the `open:` line.
-    serve: () => Promise.resolve(cmdServe(deps)),
+    // `collie serve` is the same function plus the `open:` line. `into` mirrors `restart`'s optional
+    // `io` (see `LifecycleDeps.serve`) — unused on this plain path, where `start` always passes back
+    // the same `io` this object already closes over.
+    serve: (into) => Promise.resolve(cmdServe(into === undefined ? deps : { ...deps, io: into })),
   };
   return deps;
 }
