@@ -663,8 +663,10 @@ describe("Composer — destructive-input confirm", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(
       "Destructive: sudo (runs as root) on workshop — tap Send again to confirm",
     );
-    // And the host is legible right where the tap happens, not only in a header.
-    expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
+    // The status line above Send already names the machine ("… on workshop", asserted above) — the
+    // pane-view header is the single machine indicator now, so no standalone chip renders above the
+    // input to duplicate it.
+    expect(screen.queryByLabelText("Sends to host: workshop")).not.toBeInTheDocument();
   });
 
   it("does not arm the confirm for innocent input", async () => {
