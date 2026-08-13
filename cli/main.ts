@@ -32,7 +32,7 @@ import {
 } from "./pack.ts";
 import { cmdPushTest } from "./push.ts";
 import { cmdQr } from "./qr.ts";
-import { renderInputs, takePlainFlag, wantsRich } from "./render.ts";
+import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
 import { cmdPackAdd, packAddDeps, type PackAddDeps } from "./remote.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realExec, realFiles, waitReady } from "./sys.ts";
@@ -66,7 +66,12 @@ export { EXIT, realIo, type Io };
  */
 export interface Session {
   readonly io: Io;
-  readonly rich: boolean;
+  /**
+   * The terminal renderer, or `null`. Lazy and memoised, and called ONLY by the four verbs that
+   * have a surface — resolving it is what pulls react, ink and yoga into the process, and a piped
+   * or plain `collie url` must not pay for a UI it will never draw.
+   */
+  ui(): Promise<Ui | null>;
 }
 
 export interface Command {
@@ -94,11 +99,12 @@ export interface Subcommand {
  * filesystem seams, and the clock. Real implementations here; `cli/lifecycle.test.ts` supplies
  * fakes for the same interfaces.
  */
-export function lifecycleDeps(io: Io): LifecycleDeps {
+export function lifecycleDeps(io: Io, ui: Ui | null = null): LifecycleDeps {
   const ctx = loadContext(io.err);
   const deps: LifecycleDeps = {
     ctx,
     io,
+    ui,
     exec: realExec(ctx.env, ctx.home),
     files: realFiles,
     ready: (port, host) => waitReady(port, host),
@@ -129,7 +135,7 @@ function updateDeps(io: Io): UpdateDeps {
  * is not complete until the running bridge has it: the trust store is read once per process, and mode,
  * push gate and roster are resolved at construction.
  */
-async function packVerbDeps(io: Io): Promise<PackAddDeps> {
+async function packVerbDeps(io: Io, ui: Ui | null = null): Promise<PackAddDeps> {
   const deps = lifecycleDeps(io);
   // `packAddDeps` layers the SSH transport, the two prompts and the bundle on top — `pack add` is
   // the one verb that reaches another machine, and every one of those is a seam its tests replace.
@@ -138,6 +144,7 @@ async function packVerbDeps(io: Io): Promise<PackAddDeps> {
       {
         ctx: deps.ctx,
         io,
+        ui,
         exec: deps.exec,
         files: deps.files,
         restart: () => cmdRestart(deps),
@@ -154,25 +161,38 @@ function lifecycleCommand(
   name: string,
   summary: string,
   body: (deps: LifecycleDeps, args: readonly string[]) => number | Promise<number>,
-  internal = false,
+  opts: { internal?: boolean; rich?: boolean } = {},
 ): Command {
-  return { name, summary, internal, run: (args, s) => body(lifecycleDeps(s.io), args) };
+  return {
+    name,
+    summary,
+    internal: opts.internal === true,
+    // `rich` is what marks a verb as having a terminal surface. Without it the renderer is never
+    // even loaded — see `Session.ui`.
+    run: async (args, s) => body(lifecycleDeps(s.io, opts.rich === true ? await s.ui() : null), args),
+  };
 }
 
-/** A `pack` sub-verb whose body takes the pack dependency set. */
+/** A `pack` sub-verb whose body takes the pack dependency set; `rich` marks a surface in `cli/ui/`. */
 function packSubcommand(
   name: (typeof PACK_SUBCOMMANDS)[number],
   summary: string,
   body: (deps: PackAddDeps, args: readonly string[]) => number | Promise<number>,
+  rich = false,
 ): Subcommand {
-  return { name, summary, run: async (args, s) => body(await packVerbDeps(s.io), args) };
+  return {
+    name,
+    summary,
+    run: async (args, s) => body(await packVerbDeps(s.io, rich ? await s.ui() : null), args),
+  };
 }
 
 // Declaration order is the order of the usage line, and it is the order `scripts/collie-ctl.sh`
 // dispatched in before M6/01 turned that script into a bootstrap shim — so muscle memory carried
 // over from `collie-ctl.sh <verb>` still finds every verb where it was.
 export const COMMANDS: readonly Command[] = [
-  lifecycleCommand("start", "start the bridge service (and publish the front door)", cmdStart),
+  // `start` and `status` share one banner (`statusBanner`), so they share its surface too.
+  lifecycleCommand("start", "start the bridge service (and publish the front door)", cmdStart, { rich: true }),
   lifecycleCommand("stop", "stop the bridge service", cmdStop),
   lifecycleCommand("restart", "stop then start", cmdRestart),
   lifecycleCommand(
@@ -195,7 +215,7 @@ export const COMMANDS: readonly Command[] = [
     "_exec-bridge",
     "internal: the process the supervisor watches",
     cmdExecBridge,
-    true,
+    { internal: true },
   ),
   lifecycleCommand(
     "build",
@@ -211,7 +231,7 @@ export const COMMANDS: readonly Command[] = [
     return EXIT.OK;
   }),
   lifecycleCommand("unserve", "tear down the front door we published", cmdUnserve),
-  lifecycleCommand("status", "is it running, and on what URLs", cmdStatus),
+  lifecycleCommand("status", "is it running, and on what URLs", cmdStatus, { rich: true }),
   lifecycleCommand("url", "print the bridge URL", cmdUrl),
   lifecycleCommand("qr", "print the bridge URL as a scannable QR code", (deps) => cmdQr(deps)),
   {
@@ -239,10 +259,10 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "doctor",
     summary: "check this install for the traps that fail silently",
-    run: (args, s) => {
+    run: async (args, s) => {
       const deps = lifecycleDeps(s.io);
       return cmdDoctor(
-        doctorDeps({ ctx: deps.ctx, io: s.io, exec: deps.exec, files: deps.files }),
+        doctorDeps({ ctx: deps.ctx, io: s.io, exec: deps.exec, files: deps.files, ui: await s.ui() }),
         args,
       );
     },
@@ -267,8 +287,8 @@ export const COMMANDS: readonly Command[] = [
     // `cli/pack.ts`'s own usage block prints — the two are pinned to each other in cli/main.test.ts.
     subcommands: [
       packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
-      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd),
-      packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus),
+      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd, true),
+      packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus, true),
       packSubcommand("rotate", "reissue the pack secret and hand it to every reachable peer", (deps) =>
         cmdPackRotate(deps),
       ),
@@ -416,7 +436,16 @@ export async function run(
   isTTY = false,
 ): Promise<number> {
   const { plain, rest } = takePlainFlag(argv);
-  const session: Session = { io, rich: wantsRich(renderInputs(process.env, isTTY, plain)) };
+  const rich = wantsRich(renderInputs(process.env, isTTY, plain));
+  let loaded: Ui | null = null;
+  const session: Session = {
+    io,
+    async ui() {
+      if (!rich) return null;
+      loaded ??= await loadUi();
+      return loaded;
+    },
+  };
   let code: number = EXIT.OK;
   const program = buildProgram(session, commands, (c) => {
     code = c;

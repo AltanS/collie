@@ -12,7 +12,12 @@
     "noUnusedParameters": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react-jsx",
+    // ink's reconciler imports `react-devtools-core` inside a branch it never takes, and the
+    // bundler resolves it anyway — see cli/ui/devtools-stub.ts for why the fix is an alias and not
+    // `--external`. Bun's bundler honours this map, so the compiled binary and `bunx tsc` agree.
+    "paths": { "react-devtools-core": ["./cli/ui/devtools-stub.ts"] }
   },
   "include": ["bridge", "cli", "scripts/**/*.ts"]
 }

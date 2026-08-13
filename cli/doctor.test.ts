@@ -5,6 +5,7 @@ import { leadStore, member, PACK, peerStore, T0 } from "../bridge/pack/fixtures.
 import { markerFor } from "../bridge/pack/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { cmdDoctor, type DoctorDeps, type Finding } from "./doctor.ts";
+import type { DoctorView, Ui } from "./render.ts";
 import { capture, context, CONFIG, fakeExec, fakeFiles, ROOT, STATE, type Scripted } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 
@@ -68,6 +69,25 @@ interface Harness {
  * Build a harness. `initial` is the trust store on disk (`null` = never enrolled), `replies` answers
  * each `hello` in order, and `over` replaces any seam or the seeded filesystem.
  */
+/**
+ * A recording stand-in for the terminal renderer. Its presence is the whole of the seam: `doctor`
+ * hands it the findings it would otherwise have formatted, and prints nothing itself.
+ */
+function fakeUi(): { ui: Ui; views: DoctorView[] } {
+  const views: DoctorView[] = [];
+  return {
+    views,
+    ui: {
+      doctor: async (view) => void views.push(view),
+      status: async () => {},
+      packMembers: async () => {},
+      legs: () => {
+        throw new Error("doctor has no legs");
+      },
+    },
+  };
+}
+
 function harness(
   initial: TrustStoreData | null,
   replies: (Response | Error)[] = [],
@@ -531,3 +551,35 @@ describe("collie doctor — the pack checks", () => {
     expect(byCheck.get("member-versions")?.detail).toContain("1.0.0-alpha.12");
   });
 });
+
+// ── The terminal seam ────────────────────────────────────────────────────────
+// Everything above this line runs with no `ui`, which is the point: absent is the default, and the
+// plain lines every assertion in this file pins are what a pipe, a test and `--plain` all get.
+describe("the terminal renderer", () => {
+  test("with a `ui`, the findings go to it and nothing is printed", async () => {
+    const { ui, views } = fakeUi();
+    const h = harness(null);
+    expect(await cmdDoctor({ ...h.deps, ui }, [])).toBe(EXIT.OK);
+    expect(h.io.stdout).toEqual([]);
+    expect(views).toHaveLength(1);
+    // The same findings, not a re-derived summary of them.
+    expect(views[0]!.local.map((f) => f.check)).toEqual((await plainFindings()).map((f) => f.check));
+    expect(views[0]!.pack).toEqual([]);
+    expect(views[0]!.packNote[0]).toContain("not in a pack");
+  });
+
+  test("`--json` outranks the renderer — a script's stdout is never a drawing", async () => {
+    const { ui, views } = fakeUi();
+    const h = harness(null);
+    expect(await cmdDoctor({ ...h.deps, ui }, ["--json"])).toBe(EXIT.OK);
+    expect(views).toEqual([]);
+    expect(JSON.parse(h.io.stdout.join("\n"))).toBeArray();
+  });
+});
+
+/** The findings an equivalent plain run reports, read back out of `--json`. */
+async function plainFindings(): Promise<Finding[]> {
+  const fresh = harness(null);
+  await cmdDoctor(fresh.deps, ["--json"]);
+  return JSON.parse(fresh.io.stdout.join("\n")) as Finding[];
+}

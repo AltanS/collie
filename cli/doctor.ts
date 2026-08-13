@@ -8,6 +8,7 @@ import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/stalen
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import type { Ui } from "./render.ts";
 import { failureLine, parsePackArgs, probeMembers, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
@@ -63,6 +64,11 @@ export interface DoctorDeps {
   /** The injected transport — the `hello` probe, and no other call. */
   readonly fetch: PackFetch;
   readonly now: () => number;
+  /**
+   * The terminal renderer, when this run landed on one (`cli/render.ts`). Absent — which is what
+   * every test and every piped run sees — means the plain lines below, unchanged.
+   */
+  readonly ui?: Ui | null;
 }
 
 const ok = (check: string, detail: string): Finding => ({ check, status: "ok", detail, remedy: null });
@@ -122,21 +128,39 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // stdout and nothing else: the whole point of `--json` is that a script can read it.
     deps.io.out(JSON.stringify(findings, null, 2));
   } else {
-    render(deps, data, mode, local, pack);
+    await render(deps, data, mode, local, pack);
   }
   return findings.some((f) => f.status === "error") ? EXIT.FAIL : EXIT.OK;
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
 
-function render(
+async function render(
   deps: DoctorDeps,
   data: TrustStoreData | null,
   mode: string,
   local: readonly Finding[],
   pack: readonly Finding[],
-): void {
-  deps.io.out(`collie doctor — ${collieVersionBare(deps.ctx.root, (p) => deps.files.read(p))} · mode ${mode}`);
+): Promise<void> {
+  const heading = `collie doctor — ${collieVersionBare(deps.ctx.root, (p) => deps.files.read(p))} · mode ${mode}`;
+  const packNote = [
+    "pack: none — this collie is not in a pack.",
+    "  `collie pack invite` here makes it a lead; `collie join …` makes it a peer.",
+  ];
+  // One findings list, two renderings. The terminal gets the columns laid out and the statuses
+  // coloured; everything else gets exactly the lines below, which are what `--json`'s human twin has
+  // always printed and what scripts/collie-cli.test.sh greps.
+  if (deps.ui != null) {
+    await deps.ui.doctor({
+      heading,
+      local,
+      packTitle: pack.length === 0 ? "pack:" : `pack: ${data?.pack?.name ?? "?"}`,
+      pack,
+      packNote: pack.length === 0 ? packNote : [],
+    });
+    return;
+  }
+  deps.io.out(heading);
   deps.io.out("");
   deps.io.out("local:");
   for (const f of local) deps.io.out(line(f));
@@ -144,8 +168,7 @@ function render(
   if (pack.length === 0) {
     // One line, exactly as `pack status` does — never a column of padded `skipped` pack checks,
     // which would train an operator to skim past the ones that mean something.
-    deps.io.out("pack: none — this collie is not in a pack.");
-    deps.io.out("  `collie pack invite` here makes it a lead; `collie join …` makes it a peer.");
+    for (const n of packNote) deps.io.out(n);
     return;
   }
   deps.io.out(`pack: ${data?.pack?.name ?? "?"}`);
@@ -592,6 +615,7 @@ export function doctorDeps(base: {
   io: Io;
   exec: Exec;
   files: Files;
+  ui?: Ui | null;
 }): DoctorDeps {
   return {
     ...base,

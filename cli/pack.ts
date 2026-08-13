@@ -50,6 +50,7 @@ import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/p
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import type { Tone, TonedLine, Ui } from "./render.ts";
 // Type-only, so it is erased: the runtime edge to `cli/remote.ts` is the dynamic import in `cmdPack`.
 import type { PackAddDeps } from "./remote.ts";
 import type { Exec, Files } from "./sys.ts";
@@ -106,6 +107,8 @@ export interface PackDeps {
   unserve(): number;
   /** Push a `clear` to every subscribed device for these notification slots. Best effort. */
   clearNotifications(tags: readonly string[]): Promise<void>;
+  /** The terminal renderer, when this run landed on one (`cli/render.ts`). Absent ⇒ plain lines. */
+  readonly ui?: Ui | null;
 }
 
 /**
@@ -804,19 +807,32 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   // of every comparison below are the same kind of thing.
   const ours = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
 
-  deps.io.out("");
-  deps.io.out("members:");
+  // ── The roster, in one voice ───────────────────────────────────────────────
+  // Every line below is emitted through `emit`, which either prints it (the plain path, byte for
+  // byte what it always was) or banks it with a tone for `cli/ui/` to colour. The lines are FORMED
+  // once, here, rather than modelled and re-derived: this surface is deliberately wordy — a
+  // provisional member gets three lines of explanation, a bare 401 gets four — and a second
+  // formatter would be a second place for that prose to drift. Colour is what the terminal adds.
+  const banked: TonedLine[] = [];
+  const emit = (text: string, tone: Tone = "plain"): void => {
+    if (deps.ui != null) banked.push({ text, tone });
+    else deps.io.out(text);
+  };
+
+  emit("");
+  emit("members:", "dim");
   for (const m of members) {
     const behind = m.status === "enrolled" && m.secretGeneration !== data.pack.secretGeneration;
-    deps.io.out(`  ${m.memberId}  (${m.role})  ${m.address}`);
-    deps.io.out(`    pinned  ${m.fingerprint.slice(0, 16)}…  enrolled ${new Date(m.enrolledAt).toISOString()}`);
-    deps.io.out(
+    emit(`  ${m.memberId}  (${m.role})  ${m.address}`, "plain");
+    emit(`    pinned  ${m.fingerprint.slice(0, 16)}…  enrolled ${new Date(m.enrolledAt).toISOString()}`, "dim");
+    emit(
       `    secret  generation ${m.secretGeneration}` +
         (behind ? " — HAS NOT picked up the current secret" : " — current"),
+      behind ? "warn" : "dim",
     );
     if (m.status === "unenrolled") {
-      deps.io.out("    status  unenrolled — dropped by a rotation it was offline for (§8.4).");
-      deps.io.out(`            Recovery is deliberate: \`collie pack invite\` here, \`collie join\` there.`);
+      emit("    status  unenrolled — dropped by a rotation it was offline for (§8.4).", "warn");
+      emit(`            Recovery is deliberate: \`collie pack invite\` here, \`collie join\` there.`, "dim");
       continue;
     }
     const outcome = probes.get(m.memberId);
@@ -825,17 +841,17 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     // and must never read as provisional. A number is a real contact time. Suppressed when this very
     // probe succeeded: a member reachable right now is not half-finished (it is stamped just below).
     if (m.contactedAt === null && outcome?.ok !== true) {
-      deps.io.out("    status  provisional — enrolled but never once reachable; a half-finished join looks exactly");
-      deps.io.out(`            like this (§8.2). If you did not complete a join for "${m.memberId}", clear it:`);
-      deps.io.out(`            \`collie pack remove ${m.memberId}\`.`);
+      emit("    status  provisional — enrolled but never once reachable; a half-finished join looks exactly", "warn");
+      emit(`            like this (§8.2). If you did not complete a join for "${m.memberId}", clear it:`, "dim");
+      emit(`            \`collie pack remove ${m.memberId}\`.`, "dim");
     }
     if (outcome === undefined) {
-      deps.io.out("    link    not probed (--no-probe)");
+      emit("    link    not probed (--no-probe)", "dim");
       continue;
     }
     if (outcome.ok) {
-      deps.io.out(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`);
-      for (const line of versionLines(outcome.value.version, ours)) deps.io.out(line);
+      emit(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`, "good");
+      for (const line of versionLines(outcome.value.version, ours)) emit(line, "dim");
       // First successful contact clears the provisional marker: one-time and self-healing. The
       // bridge's own sweep could also stamp this later; today `pack status` is the clearer.
       if (m.contactedAt === null) {
@@ -858,17 +874,18 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
       continue;
     }
     if (outcome.state === "incompatible") {
-      deps.io.out(`    link    INCOMPATIBLE · ${outcome.reason}`);
-      deps.io.out("            Version skew is not retried on the poll cadence — update the older machine.");
+      emit(`    link    INCOMPATIBLE · ${outcome.reason}`, "bad");
+      emit("            Version skew is not retried on the poll cadence — update the older machine.", "dim");
       continue;
     }
-    deps.io.out(`    link    unreachable · ${outcome.reason}`);
+    emit(`    link    unreachable · ${outcome.reason}`, "bad");
     if (outcome.reason.includes("unauthorized")) {
-      deps.io.out("            A bare 401 is deliberately one answer for two causes (§8.1): an unpinned");
-      deps.io.out("            certificate or a secret this member no longer holds. The local column above");
-      deps.io.out("            says which is likelier — a member a generation behind is the secret.");
+      emit("            A bare 401 is deliberately one answer for two causes (§8.1): an unpinned", "dim");
+      emit("            certificate or a secret this member no longer holds. The local column above", "dim");
+      emit("            says which is likelier — a member a generation behind is the secret.", "dim");
     }
   }
+  if (deps.ui != null) await deps.ui.packMembers(banked);
   return EXIT.OK;
 }
 
@@ -1352,6 +1369,7 @@ export function packDeps(
   base: {
     ctx: CliContext;
     io: Io;
+    ui?: Ui | null;
     exec: Exec;
     files: Files;
     restart: () => Promise<number>;

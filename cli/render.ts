@@ -52,3 +52,73 @@ export function takePlainFlag(argv: readonly string[]): { plain: boolean; rest: 
   const rest = argv.filter((a) => a !== "--plain");
   return { plain: rest.length !== argv.length, rest };
 }
+
+// ── What a rich surface is handed ────────────────────────────────────────────
+// These are the models, and they live HERE rather than in `cli/ui/` so a verb can describe what it
+// wants drawn without importing ink. A plain run never loads a line of React: `loadUi` is the only
+// path to `cli/ui/`, and it is only called when {@link wantsRich} said yes.
+//
+// Every model is derived from the same data the plain lines are formatted from, in the same place,
+// so the two renderings cannot describe different worlds — the plain formatter and the ink component
+// are two readers of one value, not two writers of one screen.
+
+/** How a line reads, not what colour it is — `cli/ui/` decides that. */
+export type Tone = "plain" | "dim" | "good" | "warn" | "bad";
+
+/** A pre-formatted line that already contains its own indentation, plus how it should read. */
+export interface TonedLine {
+  readonly text: string;
+  readonly tone: Tone;
+}
+
+/** Structurally `cli/doctor.ts`'s `Finding`, restated so this module depends on nothing. */
+export interface UiFinding {
+  readonly check: string;
+  readonly status: "ok" | "warn" | "error" | "skipped";
+  readonly detail: string;
+  readonly remedy: string | null;
+}
+
+/** `collie doctor`, as a table. `pack` empty means `packNote` is the whole pack section. */
+export interface DoctorView {
+  readonly heading: string;
+  readonly local: readonly UiFinding[];
+  readonly packTitle: string;
+  readonly pack: readonly UiFinding[];
+  readonly packNote: readonly string[];
+}
+
+/** The `status` / `start` banner: one verdict and a label-value block. */
+export interface StatusView {
+  readonly running: boolean;
+  readonly headline: string;
+  readonly rows: readonly { readonly label: string; readonly value: string }[];
+}
+
+/**
+ * A live `pack add` run. One leg is in flight at a time; `begin` opens it, `end` closes it with a
+ * verdict, and `close` tears the render down. Informational output keeps going through `Io` —
+ * ink patches `console` so those lines land above the spinner instead of through it.
+ */
+export interface LegRun {
+  begin(name: string): void;
+  end(ok: boolean): void;
+  close(): Promise<void>;
+}
+
+/** The rich renderer. Absent (`null`) is the normal case: every verb's plain branch is the default. */
+export interface Ui {
+  doctor(view: DoctorView): Promise<void>;
+  status(view: StatusView): Promise<void>;
+  packMembers(lines: readonly TonedLine[]): Promise<void>;
+  legs(): LegRun;
+}
+
+/**
+ * Load the ink renderer. Dynamic on purpose: `import` is where react, ink and yoga's layout engine
+ * get pulled in, and a piped `collie url` should not pay for a UI it will not draw.
+ */
+export async function loadUi(): Promise<Ui> {
+  const { createUi } = await import("./ui/index.tsx");
+  return createUi();
+}
