@@ -4,6 +4,7 @@ import { resolveBridgeHost } from "../bridge/config.ts";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { bridgeUrl } from "./tailnet.ts";
@@ -47,6 +48,8 @@ export interface LifecycleDeps extends ServeDeps {
    * `uninstall`, whose relationship to `unserve` is the opposite — it aborts — calls it directly.
    */
   serve: () => Promise<number>;
+  /** The terminal renderer, when this run landed on one (`cli/render.ts`). Absent ⇒ plain lines. */
+  ui?: Ui | null;
 }
 
 export type Tier = "systemd" | "launchd" | "unsupervised";
@@ -451,40 +454,70 @@ export function serviceDescription(deps: LifecycleDeps): string {
  * `start` (post-launch confirmation) and `status` (on demand) so the two can never disagree.
  */
 export async function statusBanner(deps: LifecycleDeps): Promise<string[]> {
+  return bannerLines(await statusView(deps));
+}
+
+/**
+ * The banner as a value: one verdict and a label/value block. Both renderings read this — the plain
+ * lines below, and the boxed terminal view in `cli/ui/` — so "is it up", the instance, the service
+ * and the URLs can never say two different things depending on where you looked.
+ */
+export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
   const version = collieVersion(deps.ctx.root);
-  const lines: string[] = [""];
   // The bridge binds `resolveBridgeHost`, not always loopback (a peer sets COLLIE_HOST to its
   // tailnet address — the documented Variant-E shape). Probing 127.0.0.1 there would find nothing
   // home and print "isn't answering" against a bridge that is in fact up; probe — and, in the
   // warning, name — whatever address it actually bound.
   const host = resolveBridgeHost(deps.ctx.env);
   const probedAddress = host === "127.0.0.1" ? `:${deps.ctx.port}` : `${host}:${deps.ctx.port}`;
-  lines.push(
-    (await deps.ready(deps.ctx.port, host))
-      ? `  ✓ Collie is running  ·  v${version}`
-      : `  ⚠ Collie isn't answering on ${probedAddress} yet (v${version}) — check 'collie logs'`,
-  );
+  const running = await deps.ready(deps.ctx.port, host);
+  const rows: { label: string; value: string }[] = [];
   // Only a suffixed instance says so — a solo host's banner is unchanged, and on a host running two
   // this is the line that says WHICH Collie answered (the unit name on the next line agrees).
-  if (deps.ctx.instance !== null) lines.push(`    instance  ${deps.ctx.instance}`);
-  lines.push(`    service   ${serviceDescription(deps)}`);
-  lines.push(`    local     http://127.0.0.1:${deps.ctx.port}`);
+  if (deps.ctx.instance !== null) rows.push({ label: "instance", value: deps.ctx.instance });
+  rows.push({ label: "service", value: serviceDescription(deps) });
+  rows.push({ label: "local", value: `http://127.0.0.1:${deps.ctx.port}` });
   if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
     const url = deps.ctx.env.COLLIE_PUBLIC_URL?.trim();
-    lines.push(
-      url
-        ? `    proxy     ${url}`
-        : "    proxy     (COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)",
-    );
+    rows.push({
+      label: "proxy",
+      value: url
+        ? url
+        : "(COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)",
+    });
   } else {
-    lines.push(`    tailnet   ${bridgeUrl(deps.exec, deps.ctx.serveMode, deps.ctx.port)}`);
+    rows.push({ label: "tailnet", value: bridgeUrl(deps.exec, deps.ctx.serveMode, deps.ctx.port) });
   }
-  lines.push("");
-  return lines;
+  return {
+    running,
+    headline: running
+      ? `✓ Collie is running  ·  v${version}`
+      : `⚠ Collie isn't answering on ${probedAddress} yet (v${version}) — check 'collie logs'`,
+    rows,
+  };
+}
+
+/**
+ * The plain banner, byte for byte what it has always been: a blank line, the verdict indented two,
+ * each row indented four with its label padded to ten, a blank line. Pinned in
+ * `cli/lifecycle.test.ts` and grepped by `scripts/collie-cli.test.sh`.
+ */
+export function bannerLines(view: StatusView): string[] {
+  return [
+    "",
+    `  ${view.headline}`,
+    ...view.rows.map((r) => `    ${r.label.padEnd(10)}${r.value}`),
+    "",
+  ];
 }
 
 async function printStatusBanner(deps: LifecycleDeps): Promise<void> {
-  for (const line of await statusBanner(deps)) deps.io.out(line);
+  const view = await statusView(deps);
+  if (deps.ui != null) {
+    await deps.ui.status(view);
+    return;
+  }
+  for (const line of bannerLines(view)) deps.io.out(line);
 }
 
 function stringEnv(env: Record<string, string | undefined>): Record<string, string> {
