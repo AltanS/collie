@@ -31,6 +31,14 @@ import {
   packDeps,
   PACK_SUBCOMMANDS,
 } from "./pack.ts";
+import {
+  cmdDevices,
+  cmdDevicesList,
+  cmdDevicesRevoke,
+  cmdPair,
+  DEVICES_SUBCOMMANDS,
+  type PairingDeps,
+} from "./pairing.ts";
 import { cmdPushTest } from "./push.ts";
 import { cmdQr } from "./qr.ts";
 import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
@@ -132,6 +140,15 @@ async function packVerbDeps(io: Io, ui: Ui | null = null): Promise<PackAddDeps> 
       await packAudit(deps.ctx),
     ),
   );
+}
+
+/**
+ * The pairing verbs' seams: the resolved context (for `stateDir` — the SAME directory the bridge
+ * resolves, which is the whole reason an enrolment made here is visible to the running service), the
+ * output seam, and the filesystem. No service manager and no network: neither verb has either.
+ */
+function pairingDeps(io: Io): PairingDeps {
+  return { ctx: loadContext(io.err), io, files: realFiles };
 }
 
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
@@ -244,6 +261,33 @@ export const COMMANDS: readonly Command[] = [
         args,
       );
     },
+  },
+  // ── Device pairing ─────────────────────────────────────────────────────────
+  // The operator's terminal is the out-of-band channel enrolment bootstraps from — see the header of
+  // `cli/pairing.ts`. Both verbs touch only the two files under the state dir, which the bridge
+  // re-reads per request, so neither restarts anything.
+  {
+    name: "pair",
+    summary: "mint a one-time code for a phone to pair with (enter it in Collie's Settings)",
+    run: (_args, s) => cmdPair(pairingDeps(s.io)),
+  },
+  {
+    name: "devices",
+    summary: `paired devices: ${DEVICES_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "list",
+        summary: "the paired devices, with when each was paired and last seen",
+        run: (_args, s) => cmdDevicesList(pairingDeps(s.io)),
+      },
+      {
+        name: "revoke",
+        summary: "drop one device by label: `devices revoke <label>`",
+        run: (args, s) => cmdDevicesRevoke(pairingDeps(s.io), args),
+      },
+    ],
+    // Bare or misspelt lands here, and `cmdDevices` owns that message — as `cmdPack` does.
+    run: (args, s) => cmdDevices(pairingDeps(s.io), args),
   },
   // ── The pack (M4/07) ───────────────────────────────────────────────────────
   // The only way a machine enters or leaves a pack. Every one of them resolves its seams through

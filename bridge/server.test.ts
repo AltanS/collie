@@ -15,7 +15,9 @@ import {
   keysPane,
   normalizeTabLabel,
   paneReadResponse,
+  parsePairRequest,
   replyPane,
+  requestDevice,
   resolveStaticPath,
   sendReplySteps,
   startupWarnings,
@@ -746,6 +748,168 @@ describe("guard applies the device gate to writes only", () => {
       device: "phone",
       authorized: false,
     });
+  });
+});
+
+// ── Device pairing composed into the write gate (bridge/pairing.ts) ────────────────────────────
+// The pairing module is exhaustively covered in bridge/pairing.test.ts. What is pinned HERE is the
+// wiring — which is where a security feature actually lives: that an empty registry changes nothing,
+// that a non-empty one gates writes and not reads, that the two device gates compose by AND rather
+// than either replacing the other, and that attribution prefers the label.
+describe("guard — the pairing gate composes with the header gate", () => {
+  const HDR = "x-device-id";
+  /** A minimal PairingGate: `labels` are the paired tokens, keyed by token. */
+  const gateOf = (tokens: Record<string, string>) => ({
+    enforced: () => Object.keys(tokens).length > 0,
+    resolve: (token: string | null) =>
+      token !== null && tokens[token] !== undefined ? { label: tokens[token]! } : null,
+  });
+  const paired = gateOf({ "tok-phone": "phone" });
+  const nothingPaired = gateOf({});
+
+  const write = (c: Config, headers: Record<string, string>, gate?: ReturnType<typeof gateOf>) =>
+    guard(req({ host: "collie.ts.net", origin: "https://collie.ts.net", ...headers }), c, "write", gate);
+  const read = (c: Config, headers: Record<string, string>, gate?: ReturnType<typeof gateOf>) =>
+    guard(req({ host: "collie.ts.net", ...headers }), c, "read", gate);
+
+  test("an empty registry enforces nothing — the feature is off until something is paired", () => {
+    expect(write(cfg(), {}, nothingPaired)).toBeNull();
+    // …and so is passing no gate at all, which is what every pre-pairing call site did.
+    expect(write(cfg(), {})).toBeNull();
+  });
+
+  test("a non-empty registry refuses a write with no bearer token", async () => {
+    const denied = write(cfg(), {}, paired);
+    expect(denied).not.toBeNull();
+    expect(denied!.status).toBe(403);
+    expect(await denied!.text()).toBe("device not paired");
+  });
+
+  test("a wrong or malformed bearer token is refused", () => {
+    expect(write(cfg(), { authorization: "Bearer wrong" }, paired)!.status).toBe(403);
+    expect(write(cfg(), { authorization: "Basic tok-phone" }, paired)!.status).toBe(403);
+    expect(write(cfg(), { authorization: "tok-phone" }, paired)!.status).toBe(403);
+  });
+
+  test("a valid bearer token proceeds", () => {
+    expect(write(cfg(), { authorization: "Bearer tok-phone" }, paired)).toBeNull();
+    expect(write(cfg(), { authorization: "bearer  tok-phone " }, paired)).toBeNull();
+  });
+
+  test("reads are unaffected — parity with the header gate, which is also write-only", () => {
+    expect(read(cfg(), {}, paired)).toBeNull();
+    expect(read(cfg(), { authorization: "Bearer wrong" }, paired)).toBeNull();
+  });
+
+  test("the two gates compose by AND: each refuses independently of the other", async () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    // Header ok, not paired → the pairing refusal.
+    const noToken = write(c, { "x-device-id": "phone" }, paired)!;
+    expect(await noToken.text()).toBe("device not paired");
+    // Paired, header missing → the header refusal, which is checked first and names itself.
+    const noHeader = write(c, { authorization: "Bearer tok-phone" }, paired)!;
+    expect(await noHeader.text()).toBe("device not authorised");
+    // Both satisfied → through.
+    expect(write(c, { "x-device-id": "phone", authorization: "Bearer tok-phone" }, paired)).toBeNull();
+  });
+
+  test("the header gate is untouched when nothing is paired", async () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    expect((await write(c, {}, nothingPaired)!.text())).toBe("device not authorised");
+    expect(write(c, { "x-device-id": "phone" }, nothingPaired)).toBeNull();
+  });
+
+  test("the same-origin gate still runs first — a token is no substitute for an Origin", () => {
+    const denied = guard(
+      req({ host: "collie.ts.net", authorization: "Bearer tok-phone" }),
+      cfg(),
+      "write",
+      paired,
+    );
+    expect(denied).not.toBeNull();
+    expect(denied!.status).toBe(403);
+  });
+});
+
+describe("requestDevice — attribution across both gates", () => {
+  const HDR = "x-device-id";
+  const gateOf = (tokens: Record<string, string>) => ({
+    enforced: () => Object.keys(tokens).length > 0,
+    resolve: (token: string | null) =>
+      token !== null && tokens[token] !== undefined ? { label: tokens[token]! } : null,
+  });
+  const paired = gateOf({ "tok-phone": "phone" });
+
+  test("with nothing paired it is exactly deviceAuth — an unpaired deployment sees no change", () => {
+    for (const c of [cfg(), cfg({ deviceHeader: HDR, deviceAllowlist: ["desk"] })]) {
+      const cases: Record<string, string>[] = [{ host: "h" }, { host: "h", "x-device-id": "desk" }];
+      for (const headers of cases) {
+        expect(requestDevice(req(headers), c, gateOf({}))).toEqual(deviceAuth(req(headers), c));
+        expect(requestDevice(req(headers), c)).toEqual(deviceAuth(req(headers), c));
+      }
+    }
+  });
+
+  test("a token's label wins over the header name", () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["desk"] });
+    expect(requestDevice(req({ host: "h", "x-device-id": "desk", authorization: "Bearer tok-phone" }), c, paired)).toEqual(
+      { enforced: true, device: "phone", authorized: true },
+    );
+  });
+
+  test("without a token the header name still attributes, but is not authorised", () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["desk"] });
+    expect(requestDevice(req({ host: "h", "x-device-id": "desk" }), c, paired)).toEqual({
+      enforced: true,
+      device: "desk",
+      authorized: false,
+    });
+  });
+
+  test("pairing alone reports enforcement even with no header gate configured", () => {
+    expect(requestDevice(req({ host: "h", authorization: "Bearer tok-phone" }), cfg(), paired)).toEqual({
+      enforced: true,
+      device: "phone",
+      authorized: true,
+    });
+    expect(requestDevice(req({ host: "h" }), cfg(), paired)).toEqual({
+      enforced: true,
+      device: null,
+      authorized: false,
+    });
+  });
+
+  test("a paired device that the header gate refuses is not authorised", () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["desk"] });
+    expect(
+      requestDevice(req({ host: "h", "x-device-id": "intruder", authorization: "Bearer tok-phone" }), c, paired),
+    ).toEqual({ enforced: true, device: "phone", authorized: false });
+  });
+});
+
+describe("parsePairRequest — the bootstrap body", () => {
+  test("both fields, with the label normalised", () => {
+    expect(parsePairRequest({ code: "abcd-2345", label: "  Pixel 9 " })).toEqual({
+      code: "abcd-2345",
+      label: "Pixel 9",
+    });
+  });
+
+  test("a missing, empty or oversized field is refused", () => {
+    expect(parsePairRequest(null)).toBeNull();
+    expect(parsePairRequest("code")).toBeNull();
+    expect(parsePairRequest({ code: "abcd2345" })).toBeNull();
+    expect(parsePairRequest({ label: "phone" })).toBeNull();
+    expect(parsePairRequest({ code: "", label: "phone" })).toBeNull();
+    expect(parsePairRequest({ code: "abcd2345", label: "   " })).toBeNull();
+    expect(parsePairRequest({ code: "x".repeat(65), label: "phone" })).toBeNull();
+    expect(parsePairRequest({ code: "abcd2345", label: "x".repeat(49) })).toBeNull();
+    expect(parsePairRequest({ code: 12345678, label: "phone" })).toBeNull();
+  });
+
+  test("the code is passed through unjudged — shape-checking it would be a free oracle", () => {
+    // Not code-shaped at all, but it is the hash compare's job to say so, in constant time.
+    expect(parsePairRequest({ code: "!!!!", label: "phone" })?.code).toBe("!!!!");
   });
 });
 

@@ -42,6 +42,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
+import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
 import type {
   MenuModel,
@@ -125,9 +126,12 @@ export function AgentChat({
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
   const grammarsOn = !prefs.rawTerminal;
   const isShell = agent?.kind === "shell";
-  // This device isn't allowlisted to type into agents: the backend rejects every write, so the
-  // composer drops to read-only (and shows a banner). The mirror still polls (reading is fine).
-  const readOnly = isReadOnly(device);
+  // This device may not type into agents: the backend rejects every write, so the composer drops to
+  // read-only (and shows a banner). The mirror still polls (reading is fine). Either write gate puts
+  // us here — the proxy-asserted allowlist, or a missing/rejected pairing credential — and the
+  // ReadOnlyBanner names which.
+  const { refused: notPaired } = usePairing();
+  const readOnly = isReadOnly(device) || notPaired;
   // TIER 2: is the machine THIS pane lives on still answering the lead? Read off the pane's own host
   // — never the ambient scope — because the pane row is what carries the truth about where it lives;
   // `scope.host` is the fallback for a pane the snapshot has already dropped (an absent `?h=` is the

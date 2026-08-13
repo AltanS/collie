@@ -469,8 +469,13 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       "/api/config",
+      // Device pairing (bridge/pairing.ts) — a SOLO feature that legitimately extends this list.
+      // It is named here, not exempted: the guard's job is that a route arrives on purpose.
+      "/api/devices",
+      "/api/devices/revoke",
       "/api/notifications/prefs",
       "/api/notifications/snooze",
+      "/api/pair",
       "/api/snapshot",
       "/api/subscribe",
       "/api/tab",
@@ -603,6 +608,10 @@ const STATE_DIR_ENTRIES = [
   "activity.json",
   "audit.log",
   "notify-prefs.json",
+  // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
+  // never does keeps writing exactly the six entries above it.
+  "paired-devices.json",
+  "pairing-pending.json",
   "push-subscriptions.json",
   "snooze.json",
   "update-state.json",

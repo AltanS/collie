@@ -6,6 +6,7 @@ import { setStatus } from "@/lib/status";
 import { panePath } from "@/lib/nav";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
+import { usePairing } from "@/lib/pairing";
 import type { Scope } from "@/lib/scope";
 
 // Shared "create a tab/space, then jump into its fresh shell" flow, used by the home space view and
@@ -26,7 +27,14 @@ export function useSpaceActions() {
   // returned callbacks stay stable across revalidations.
   const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
   const readOnlyRef = useRef(false);
-  readOnlyRef.current = isReadOnly(root?.device);
+  // Either write gate refusing is the same answer here: the create would 403 anyway. The notice
+  // names the pairing gate first where it applies, because that one is fixable from this phone.
+  const { refused: notPaired } = usePairing();
+  readOnlyRef.current = isReadOnly(root?.device) || notPaired;
+  const blockedTextRef = useRef("");
+  blockedTextRef.current = notPaired
+    ? "Not paired — pair this device in Settings"
+    : "Read-only — device not authorised";
   // The scope (machine + named session) the new tab/space must be created in, and navigated into.
   // Read via a ref so the returned callbacks stay stable across revalidations, like readOnly above.
   const scopeRef = useRef<Scope | undefined>(undefined);
@@ -60,7 +68,7 @@ export function useSpaceActions() {
 
   const newTab = useCallback(
     async (workspaceId: string) => {
-      if (readOnlyRef.current) return setStatus("Read-only — device not authorised", "error");
+      if (readOnlyRef.current) return setStatus(blockedTextRef.current, "error");
       try {
         open(await api.createTab(workspaceId, {}, scopeRef.current), "tab");
       } catch (e) {
@@ -72,7 +80,7 @@ export function useSpaceActions() {
 
   const newSpace = useCallback(
     async (opts: { label?: string; cwd?: string } = {}) => {
-      if (readOnlyRef.current) return setStatus("Read-only — device not authorised", "error");
+      if (readOnlyRef.current) return setStatus(blockedTextRef.current, "error");
       try {
         open(await api.createWorkspace(opts, scopeRef.current), "space");
       } catch (e) {

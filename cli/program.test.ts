@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 import { PACK_SUBCOMMANDS } from "./pack.ts";
+import { DEVICES_SUBCOMMANDS } from "./pairing.ts";
 import {
   type Command,
   COMMANDS,
@@ -48,6 +49,10 @@ const PACK_VERBS = ["join", "leave", "pack", "promote", "reconnect"];
 // because that is where they are declared — the usage line's order is the table's order.
 const DIAGNOSTIC_VERBS = ["doctor"];
 
+// The device-pairing verbs. Declared between the diagnostics and the pack, because that is where
+// they sit in the table, and grouped separately for the same reason as the two above.
+const PAIRING_VERBS = ["pair", "devices"];
+
 function capture(): Io & { stdout: string[]; stderr: string[] } {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -56,7 +61,13 @@ function capture(): Io & { stdout: string[]; stderr: string[] } {
 
 describe("the verb table", () => {
   test("covers every verb the shell dispatches, plus help", () => {
-    expect(COMMANDS.map((c) => c.name)).toEqual([...SHELL_VERBS, ...DIAGNOSTIC_VERBS, ...PACK_VERBS, "help"]);
+    expect(COMMANDS.map((c) => c.name)).toEqual([
+      ...SHELL_VERBS,
+      ...DIAGNOSTIC_VERBS,
+      ...PAIRING_VERBS,
+      ...PACK_VERBS,
+      "help",
+    ]);
   });
 
   test("hides exactly the shell's internal verbs from the usage line", () => {
@@ -170,14 +181,22 @@ describe("dispatch", () => {
   });
 });
 
-describe("the pack subcommand tree", () => {
-  test("declares exactly `cli/pack.ts`'s sub-verbs, in its order", () => {
+describe("the subcommand trees", () => {
+  test("`pack` declares exactly `cli/pack.ts`'s sub-verbs, in its order", () => {
     const pack = findCommand("pack");
     expect(pack?.subcommands?.map((s) => s.name)).toEqual([...PACK_SUBCOMMANDS]);
   });
 
+  test("`devices` declares exactly `cli/pairing.ts`'s sub-verbs, in its order", () => {
+    const devices = findCommand("devices");
+    expect(devices?.subcommands?.map((s) => s.name)).toEqual([...DEVICES_SUBCOMMANDS]);
+  });
+
   test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
-    expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual(["pack"]);
+    expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual([
+      "devices",
+      "pack",
+    ]);
   });
 });
 
@@ -263,6 +282,9 @@ describe("exit codes", () => {
       // `doctor` writes nothing, but it is not runnable here either: it shells out to `tailscale`
       // and would dial this host's real pack members. cli/doctor.test.ts drives it against fakes.
       ...DIAGNOSTIC_VERBS,
+      // `pair` writes a pending pairing into the developer's own state dir, and `devices` resolves
+      // that same real dir before it decides anything. cli/pairing.test.ts drives both against fakes.
+      ...PAIRING_VERBS,
     ];
     const readOnly = ["version", "help"];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();

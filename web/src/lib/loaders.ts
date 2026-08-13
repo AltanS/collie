@@ -13,13 +13,15 @@
 // no flag, no race — and because a navigation aborts any in-flight revalidation, the nav is instant
 // even while a poll's doomed fetch is still hanging.
 
-import { fetchHistory, fetchPane, fetchSnapshot, isApiErrorStatus } from "@/lib/api";
+import { fetchDevices, fetchHistory, fetchPane, fetchSnapshot, isApiErrorStatus } from "@/lib/api";
 import { isLostLatched } from "@/lib/connection-health";
+import { clearNotPaired, markNotPaired } from "@/lib/pairing";
 import { internScope, paneScopeKey, type Scope, scopeFromUrl, scopeKey } from "@/lib/scope";
 import type {
   AgentView,
   BridgeStatus,
   DeviceAuth,
+  PairedDeviceWire,
   PaneHistoryResponse,
   PaneReadResponse,
   ServerSummary,
@@ -362,6 +364,40 @@ export async function paneLoader({
     rememberAuthError(scope, isAuthError(e));
     // Genuine network / server failure: show stale text flagged as degraded.
     return stalePane(paneId, scope, lines);
+  }
+}
+
+// ── Paired devices (the Settings registry) ────────────────────────────────────
+//
+// The settings route's loader. Unlike the snapshot this is NOT a live signal anything else depends
+// on — it exists so the pairing card renders from route data (and so a revoke/pair is just
+// `revalidator.revalidate()`, like every other mutation in the app). It rides the poll while
+// Settings is open, which is what keeps a device revoked from another phone disappearing from the
+// list here.
+
+export interface DevicesData {
+  /** Whether writes require a bearer token — i.e. whether anything at all is paired. */
+  enforced: boolean;
+  /** The label THIS device's token authenticated as, or null (unpaired, or its token was revoked). */
+  current: string | null;
+  devices: PairedDeviceWire[];
+  /** True when the fetch failed — the lists below are then empty rather than authoritative. */
+  error: boolean;
+}
+
+export async function devicesLoader({ request }: { request?: Request } = {}): Promise<DevicesData> {
+  try {
+    const res = await fetchDevices(request?.signal);
+    // This read is the ONLY thing that can positively clear (or set) the refusal latch without a
+    // write: it is the one endpoint that reports back who our token authenticated as. Enforcement
+    // off means there is nothing to be unpaired from.
+    if (!res.enforced || res.current !== null) clearNotPaired();
+    else markNotPaired();
+    return { enforced: res.enforced, current: res.current, devices: res.devices, error: false };
+  } catch (e) {
+    if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
+    // A failed read says nothing about pairing, so the latch is left exactly as it was.
+    return { enforced: false, current: null, devices: [], error: true };
   }
 }
 

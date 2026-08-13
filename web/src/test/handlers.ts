@@ -273,6 +273,18 @@ export const handlers = [
     const patch = (await request.json()) as Record<string, boolean>;
     return HttpResponse.json({ blocked: true, done: false, updates: true, ...patch });
   }),
+  // Device pairing. The default world has NOTHING paired — writes are ungated, exactly like a
+  // fresh install — so every pre-existing test keeps asserting the unpaired-and-unenforced bridge,
+  // and a test that wants pairing on overrides these two.
+  http.get("/api/devices", () =>
+    HttpResponse.json({ enforced: false, current: null, devices: [] }),
+  ),
+  http.post("/api/devices/revoke", () =>
+    HttpResponse.json({ enforced: false, current: null, devices: [] }),
+  ),
+  http.post("/api/pair", () =>
+    HttpResponse.json({ error: "no-pending" }, { status: 400 }),
+  ),
   http.post("/api/update/check", () =>
     HttpResponse.json({
       current: "0.11.0",

@@ -18,6 +18,7 @@ import { leadHost, paneScope } from "@/lib/hosts";
 import type { AgentView } from "@/lib/types";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
+import { usePairing } from "@/lib/pairing";
 
 // Space detail route: one space's tabs + panes, with the space/tab strips for in-space navigation.
 // Shares the root snapshot (no own loader), reading :spaceId from the URL — a deep-linkable,
@@ -30,6 +31,8 @@ export function SpaceRoute() {
   const revalidator = useRevalidator();
   const { newTab, newSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  // Either write gate refusing locks the tab strip's rename/close the same way (see ReadOnlyBanner).
+  const { refused: notPaired } = usePairing();
 
   // Tab selection is ephemeral view state (no deep-link need). Reset it when the space changes:
   // navigating /space/a → /space/b does NOT remount this route (same element, new param), so without
@@ -106,7 +109,7 @@ export function SpaceRoute() {
               onSelect={switchTab}
               onNewTab={newTab}
               scope={data.scope}
-              readOnly={isReadOnly(data.device)}
+              readOnly={isReadOnly(data.device) || notPaired}
               onRenamed={() => revalidator.revalidate()}
               // Closing the tab you're filtered to would strand you on an empty view — fall back to
               // "All" (setTab(null)) in that case; either way revalidate so it drops out of the strip.

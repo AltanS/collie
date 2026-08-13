@@ -5,6 +5,7 @@ import { setupServer } from "msw/node";
 
 import { handlers, resetTypedDraft } from "./handlers";
 import { __resetConnectionHealth } from "@/lib/connection-health";
+import { __resetPairing } from "@/lib/pairing";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`.
 export const server = setupServer(...handlers);
@@ -15,6 +16,9 @@ beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));
 // anchor as an escalated outage. Fake-timer escalation suites re-pin AFTER vi.useFakeTimers() so the
 // anchor equals the frozen clock exactly.
 beforeEach(() => __resetConnectionHealth());
+// The pairing refusal latch is module-scoped too: one test's 403 "device not paired" would otherwise
+// leave every later test's composer read-only. (The token itself rides localStorage, cleared below.)
+beforeEach(() => __resetPairing());
 // Persisted state (composer drafts, prefs) must not leak between cases — a draft saved by one test
 // would be restored into the next test's freshly-mounted composer.
 beforeEach(() => {
