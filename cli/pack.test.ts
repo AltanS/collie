@@ -295,6 +295,48 @@ describe("selfAddress — the port is explicit exactly where the dial needs it",
     expect(selfAddress(h.deps, "", "pack-listener")).toBe("laptop.tail.ts.net:8787");
   });
 
+  test("COLLIE_PUBLIC_URL is the front door's configured truth, in both serve modes", () => {
+    // The field failure this closes: behind a reverse proxy the derived tailnet name is correct and
+    // undialable from the peer (one-way ACL), and the operator has to remember --address every time.
+    const env = { COLLIE_PUBLIC_URL: "https://collie.example.com" };
+    const https = harness(null, [], { ctx: context(env) });
+    expect(selfAddress(https.deps, undefined, "front-door")).toBe("https://collie.example.com");
+    const http = harness(null, [], { ctx: context(env, { serveMode: "http" }) });
+    expect(selfAddress(http.deps, undefined, "front-door")).toBe("https://collie.example.com");
+    // Its own port survives, because an origin is scheme + host + PORT.
+    const ported = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com:8443" }) });
+    expect(selfAddress(ported.deps, undefined, "front-door")).toBe("https://collie.example.com:8443");
+    expect(text(https.io)).toBe("");
+  });
+
+  test("--address still beats COLLIE_PUBLIC_URL — the flag is the operator overruling their own config", () => {
+    const h = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com" }) });
+    expect(selfAddress(h.deps, "nas.example:8443", "front-door")).toBe("nas.example:8443");
+  });
+
+  test("a pack listener NEVER takes a public URL — a peer publishes no front door (§3, ADR 0013)", () => {
+    const h = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com" }) });
+    expect(selfAddress(h.deps, undefined, "pack-listener")).toBe("laptop.tail.ts.net:8787");
+    expect(text(h.io)).toBe("");
+  });
+
+  test("an unparseable COLLIE_PUBLIC_URL warns and falls through — a banner variable can't break enrollment", () => {
+    const h = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "collie.example.com" }) });
+    expect(selfAddress(h.deps, undefined, "front-door")).toBe("laptop.tail.ts.net");
+    expect(text(h.io)).toContain("is not a URL");
+  });
+
+  test("a path on COLLIE_PUBLIC_URL is dropped, loudly — the pack link mounts off the origin", () => {
+    const h = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com/collie/" }) });
+    expect(selfAddress(h.deps, undefined, "front-door")).toBe("https://collie.example.com");
+    expect(text(h.io)).toContain("is dropped");
+  });
+
+  test("an http:// public URL passes through — `join`'s plaintext refusal owns that risk downstream", () => {
+    const h = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "http://collie.example.com:8787" }) });
+    expect(selfAddress(h.deps, undefined, "front-door")).toBe("http://collie.example.com:8787");
+  });
+
   test("no tailnet name is null for both kinds — never a localhost the far side would dial", () => {
     const h = harness(null, [], { exec: fakeExec({ absent: ["tailscale"] }) });
     expect(selfAddress(h.deps, undefined, "pack-listener")).toBeNull();

@@ -199,9 +199,27 @@ export type SelfAddressKind = "pack-listener" | "front-door";
  *
  * The operator's `--address` wins, because reachability is theirs to own (§8.2: "whatever the operator
  * can reach" — a tailnet, a LAN, a tunnel), and it is taken VERBATIM: scheme, brackets, port and all.
- * Otherwise it is this node's Tailscale name, which is what `collie url` already prints. There is no
- * third guess: an address we cannot state is an error the operator fixes with a flag, not a
- * `localhost` the far side would dial forever.
+ * Then, for a `front-door` address only, `COLLIE_PUBLIC_URL`. Otherwise it is this node's Tailscale
+ * name, which is what `collie url` already prints. There is no further guess: an address we cannot
+ * state is an error the operator fixes with a flag, not a `localhost` the far side would dial forever.
+ *
+ * **`COLLIE_PUBLIC_URL` is the front door's configured truth, and it is consulted here (amended
+ * 2026-08-13).** It used to feed only the QR and the status banner, on the reasoning that a
+ * Variant-C/E operator's lever was `--address`. The field says otherwise: a lead behind a reverse
+ * proxy derives its tailnet name here, and a one-way tailnet ACL makes that name perfectly correct
+ * and silently undialable *from the peer* — `collie join` hangs, and nothing names the cause. The
+ * remedy was a flag the operator had to remember on every `pack invite`/`pack add`, and forgot four
+ * times in five. Which ingress a machine actually publishes is per-INSTALLATION truth, so it belongs
+ * in config, next to the URL the phone already opens. Only the ORIGIN is used (scheme + host + port):
+ * the pack link mounts at `/pack/v1/*` off the origin, so a path is dropped with a warning, and a
+ * value that does not parse as a URL warns and falls through to the derivation rather than aborting
+ * the verb — a malformed banner variable must not be able to break enrollment.
+ *
+ * **The `pack-listener` kind never consults it**, and that is not an oversight: a peer is dialled on
+ * its own listener (`COLLIE_HOST:COLLIE_PORT`) and publishes no front door at all (§3, ADR 0013). A
+ * public URL is a front door by definition, so pointing a lead at one for the listener kind would
+ * aim it at whatever answers that proxy — never this peer's `/pack/v1/*`. The QR and the status
+ * banner are unchanged; this adds a reader, it moves nothing.
  *
  * **A derived `pack-listener` address always carries an explicit port, and that is the whole reason
  * `kind` exists.** A bare host dials :443 (`packUrl`/`enrollUrl` assume `https://`) — which is right
@@ -220,12 +238,63 @@ export function selfAddress(
   override: string | undefined,
   kind: SelfAddressKind,
 ): string | null {
-  if (override !== undefined && override !== "") return override;
+  return resolveSelfAddress(deps, override, kind)?.address ?? null;
+}
+
+/** Where a derived address came from — what a verb needs to tell the operator which lever spoke. */
+export type SelfAddressSource = "flag" | "public-url" | "derived";
+
+/** {@link selfAddress}, with the source retained so an interactive verb can name it once. */
+export interface ResolvedSelfAddress {
+  readonly address: string;
+  readonly source: SelfAddressSource;
+}
+
+/**
+ * {@link selfAddress}'s whole body — see its doc for the precedence and why it is that order.
+ *
+ * Warnings about `COLLIE_PUBLIC_URL` are emitted HERE, so they are printed once per resolution rather
+ * than once per reader.
+ */
+export function resolveSelfAddress(
+  deps: PackDeps,
+  override: string | undefined,
+  kind: SelfAddressKind,
+): ResolvedSelfAddress | null {
+  if (override !== undefined && override !== "") return { address: override, source: "flag" };
+  if (kind === "front-door") {
+    const configured = publicFrontDoor(deps);
+    if (configured !== null) return { address: configured, source: "public-url" };
+  }
   const name = tailnetName(deps.exec);
   if (name === null) return null;
   // http mode publishes no TLS front door at all, so both kinds are the bridge port there.
-  if (kind === "front-door" && deps.ctx.serveMode === "https") return name;
-  return `${name}:${deps.ctx.port}`;
+  if (kind === "front-door" && deps.ctx.serveMode === "https") return { address: name, source: "derived" };
+  return { address: `${name}:${deps.ctx.port}`, source: "derived" };
+}
+
+/**
+ * `COLLIE_PUBLIC_URL` as an origin, or `null` with the reason already on stderr.
+ *
+ * An `http://` origin passes through untouched: `join`'s plaintext refusal (and its `--insecure`
+ * escape) already owns that risk at the one point where a secret would actually cross the wire, and
+ * a second refusal here would only fail the verb earlier with a worse sentence.
+ */
+function publicFrontDoor(deps: PackDeps): string | null {
+  const raw = deps.ctx.env.COLLIE_PUBLIC_URL?.trim();
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    deps.io.err(`warn: COLLIE_PUBLIC_URL="${raw}" is not a URL — ignoring it and using this node's tailnet name.`);
+    return null;
+  }
+  if (url.pathname !== "" && url.pathname !== "/") {
+    deps.io.err(`warn: COLLIE_PUBLIC_URL's path ("${url.pathname}") is dropped — the pack link mounts at`);
+    deps.io.err(`      /pack/v1/* off the origin, so ${url.origin} is what members are given.`);
+  }
+  return url.origin;
 }
 
 /** The parsed flag set every pack verb shares: `--flag value` pairs plus bare positional arguments. */

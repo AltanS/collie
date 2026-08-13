@@ -116,6 +116,8 @@ interface HarnessOptions {
   /** Answers `hello` in the final verdict. `false` = the member does not answer. */
   reachable?: boolean;
   flags?: string[];
+  /** Extra resolved env — `COLLIE_PUBLIC_URL` is the one that steers the lead's own address. */
+  env?: Record<string, string>;
 }
 
 function harness(opts: HarnessOptions = {}): Harness {
@@ -146,7 +148,7 @@ function harness(opts: HarnessOptions = {}): Harness {
   const deps: PackAddDeps = {
     // The same reason `cli/pack.test.ts` sets this: the real `setTimeout` in `PeerClient` must never
     // fire and report a fake peer as unreachable.
-    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000" }),
+    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000", ...opts.env }),
     io: out,
     exec,
     files: fakeFiles(),
@@ -420,6 +422,14 @@ describe("collie pack add", () => {
     // The bind the lead will dial, written from a value READ off the remote (ADR 0015).
     expect(h.calls[2]!.script).toContain("printf 'COLLIE_HOST=%s\\n' '100.64.0.9'");
     expect(h.calls[4]!.script).toContain("'--address' '100.64.0.9:8787'");
+  });
+
+  test("a COLLIE_PUBLIC_URL lead address is used, and named once so it is not a silent steer", async () => {
+    const h = harness({ env: { COLLIE_PUBLIC_URL: "https://collie.example.com" } });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("lead address https://collie.example.com (from COLLIE_PUBLIC_URL)");
+    // …and it is what the peer is actually told to dial, not just what was printed.
+    expect(h.calls.find((c) => c.leg === "enroll")!.script).toContain("'https://collie.example.com'");
   });
 
   test("the control socket is torn down on every exit path, including a failure", async () => {
