@@ -1,306 +1,126 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 
-import { PACK_SUBCOMMANDS } from "./pack.ts";
-import {
-  type Command,
-  COMMANDS,
-  EXIT,
-  findCommand,
-  helpText,
-  type Io,
-  run,
-  usageLine,
-} from "./main.ts";
+import { BOOTSTRAP_VERBS, bootstrapVerb, loadFailure } from "./main.ts";
+import { COMMANDS } from "./program.ts";
 
-// The dispatch surface is a contract with the plugin manifest and with anyone's muscle memory from
-// `collie-ctl.sh`, so the verb table and the 0/1/2 exit codes are pinned here rather than left to
-// whatever the last edit happened to leave behind.
+// ── THE REGRESSION PIN ───────────────────────────────────────────────────────
+// `collie build` is what runs `bun install`, so everything that reaches it has to run with no
+// dependencies installed at all: `scripts/collie-ctl.sh` builds the binary from source on a fresh
+// `herdr plugin install` checkout, and `pack add`'s install leg runs the same from-source build on a
+// checkout `git fetch` has just advanced past its `node_modules`. That invariant was live but
+// unpinned, and a top-level `import { Command } from "commander"` in this module's ancestor broke it
+// in the field: every such install died with `Cannot find package 'commander'` before a line of
+// Collie ran.
+//
+// So the invariant is asserted structurally rather than by executing a build in a sandbox: walk the
+// STATIC import graph from `cli/main.ts` and require every specifier in it to be a builtin or a
+// repo-relative file. Dynamic `import()` edges are deliberately not followed — being behind one is
+// exactly what makes a package (commander, ink, react, web-push, qrcode-terminal) safe to depend on
+// here, because the specifier is only resolved if that branch runs.
 
-// Every verb the shell dispatched, in its order, before M6/01 reduced `scripts/collie-ctl.sh` to a
-// bootstrap shim that `exec`s this binary. A `collie-ctl.sh <verb>` spelling — a README recipe, a
-// <0.8.0 Herdr install's cached action set (ADR 0006) — still lands on exactly this table.
-const SHELL_VERBS = [
-  "start",
-  "stop",
-  "restart",
-  "uninstall",
-  "update",
-  "_apply-update",
-  "_exec-bridge",
-  "build",
-  "serve",
-  "unserve",
-  "status",
-  "url",
-  "qr",
-  "version",
-  "push-test",
-  "logs",
-];
+const CLI = import.meta.dir;
+const REPO = resolve(CLI, "..");
 
-// The pack verbs (M4/07). They have no shell ancestor — `collie-ctl.sh` never knew about federation
-// — so they are listed separately: the assertion above is "the port kept every verb the shell had",
-// and this one is "the binary grew exactly these".
-const PACK_VERBS = ["join", "leave", "pack", "promote", "reconnect"];
-
-// The diagnostic verbs (M7/02). No shell ancestor either, and they sit between the two groups above
-// because that is where they are declared — the usage line's order is the table's order.
-const DIAGNOSTIC_VERBS = ["doctor"];
-
-function capture(): Io & { stdout: string[]; stderr: string[] } {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-  return { stdout, stderr, out: (l) => stdout.push(l), err: (l) => stderr.push(l) };
+/** Resolve a relative specifier to a file on disk, tolerating an extensionless one. */
+function resolveFile(from: string, spec: string): string | null {
+  const base = resolve(dirname(from), spec);
+  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`]) {
+    if (existsSync(candidate) && !candidate.endsWith("/")) return candidate;
+  }
+  return null;
 }
 
-describe("the verb table", () => {
-  test("covers every verb the shell dispatches, plus help", () => {
-    expect(COMMANDS.map((c) => c.name)).toEqual([...SHELL_VERBS, ...DIAGNOSTIC_VERBS, ...PACK_VERBS, "help"]);
-  });
+interface Closure {
+  /** Every repo file reachable from the entry point through static imports. */
+  readonly files: readonly string[];
+  /** `<importer> -> <specifier>` for every static import of something that is not a repo file. */
+  readonly packages: readonly string[];
+  /** A relative specifier that resolved to nothing on disk — a broken edge, reported as one. */
+  readonly unresolved: readonly string[];
+}
 
-  test("hides exactly the shell's internal verbs from the usage line", () => {
-    expect(COMMANDS.filter((c) => c.internal === true).map((c) => c.name)).toEqual([
-      "_apply-update",
-      "_exec-bridge",
-    ]);
-  });
-
-  test("the usage line names every public verb", () => {
-    const line = usageLine();
-    for (const c of COMMANDS) {
-      if (c.internal === true) continue;
-      expect(line).toContain(c.name);
+function staticClosure(entry: string): Closure {
+  const transpiler = new Bun.Transpiler({ loader: "tsx" });
+  const files = new Set<string>();
+  const packages = new Set<string>();
+  const unresolved = new Set<string>();
+  const walk = (file: string): void => {
+    if (files.has(file)) return;
+    files.add(file);
+    for (const imported of transpiler.scanImports(readFileSync(file, "utf8"))) {
+      // `scanImports` reports dynamic imports too; only the static ones cost a resolution at load.
+      if (imported.kind !== "import-statement") continue;
+      const spec = imported.path;
+      if (spec.startsWith("node:") || spec.startsWith("bun:")) continue;
+      if (!spec.startsWith(".")) {
+        packages.add(`${relative(REPO, file)} -> ${spec}`);
+        continue;
+      }
+      const target = resolveFile(file, spec);
+      if (target === null) unresolved.add(`${relative(REPO, file)} -> ${spec}`);
+      else walk(target);
     }
-    expect(line.startsWith("usage: collie {")).toBe(true);
+  };
+  walk(entry);
+  return {
+    files: [...files].map((f) => relative(REPO, f)),
+    packages: [...packages],
+    unresolved: [...unresolved],
+  };
+}
+
+describe("the bare-checkout bootstrap", () => {
+  const closure = staticClosure(resolve(CLI, "main.ts"));
+
+  test("nothing on the path to `build` is a package — builtins and repo files only", () => {
+    // If this fails, the named import is the one to move behind a dynamic `import()`. Do not
+    // "fix" it by installing the dependency: the checkouts this protects have no node_modules.
+    expect(closure.packages).toEqual([]);
   });
 
-  test("no verb name is duplicated", () => {
+  test("every relative import in that closure resolves to a file", () => {
+    expect(closure.unresolved).toEqual([]);
+  });
+
+  test("the closure really does reach the build and update implementations", () => {
+    // Without this the assertion above would pass just as happily on an empty entry point.
+    expect(closure.files).toContain("cli/build.ts");
+    expect(closure.files).toContain("cli/update.ts");
+    expect(closure.files).toContain("cli/lifecycle.ts");
+  });
+
+  test("the verb table is NOT in it — commander stays behind the dynamic import", () => {
+    expect(closure.files).not.toContain("cli/program.ts");
+  });
+
+  test("every bootstrap verb is still declared in the table it bypasses", () => {
     const names = COMMANDS.map((c) => c.name);
-    expect(new Set(names).size).toBe(names.length);
-  });
-
-  test("every verb has a summary", () => {
-    for (const c of COMMANDS) expect(c.summary.length).toBeGreaterThan(0);
+    for (const verb of BOOTSTRAP_VERBS) expect(names).toContain(verb);
   });
 });
 
-// ── The grammar commander now owns ───────────────────────────────────────────
-// These used to be assertions about `parseArgv`, the hand-rolled splitter commander replaced. They
-// are asserted through `run` now — the parser is an implementation detail, "what does typing this
-// do" is the contract. Every verb below is a spy, so nothing here touches the world.
-describe("dispatch", () => {
-  function spy(name: string, sub?: readonly string[]): { command: Command; seen: string[][] } {
-    const seen: string[][] = [];
-    const command: Command = {
-      name,
-      summary: `spy on ${name}`,
-      subcommands: sub?.map((s) => ({
-        name: s,
-        summary: `spy on ${name} ${s}`,
-        run: (args) => {
-          seen.push([s, ...args]);
-          return EXIT.OK;
-        },
-      })),
-      run: (args) => {
-        seen.push(["(parent)", ...args]);
-        return EXIT.OK;
-      },
-    };
-    return { command, seen };
-  }
-
-  // Every dispatch below goes through this helper rather than a literal `run([…])`, so the
-  // "no world-touching verb is spelled out in this file" grep further down stays honest: these
-  // argvs name real verbs, but they land on the spy table passed alongside them, never on COMMANDS.
-  const go = (argv: string[], commands: readonly Command[]) => run(argv, capture(), commands);
-
-  test("a known verb carries its remaining args, flags and all, in order", async () => {
-    const { command, seen } = spy("logs");
-    expect(await go(["logs", "200"], [command])).toBe(EXIT.OK);
-    expect(await go(["logs", "--json", "-n", "7"], [command])).toBe(EXIT.OK);
-    expect(seen).toEqual([
-      ["(parent)", "200"],
-      ["(parent)", "--json", "-n", "7"],
-    ]);
+describe("the pre-dispatch", () => {
+  test("routes the build verb, wherever `--plain` sits", () => {
+    expect(bootstrapVerb(["build"])).toBe("build");
+    expect(bootstrapVerb(["--plain", "build"])).toBe("build");
+    expect(bootstrapVerb(["build", "--plain"])).toBe("build");
+    expect(bootstrapVerb(["_apply-update"])).toBe("_apply-update");
   });
 
-  test("a verb's own `--help` stays the verb's argument — commander does not intercept it", async () => {
-    const { command, seen } = spy("logs");
-    expect(await go(["logs", "--help"], [command])).toBe(EXIT.OK);
-    expect(seen).toEqual([["(parent)", "--help"]]);
-  });
-
-  test("a subcommand is matched by name; anything else reaches the parent", async () => {
-    const { command, seen } = spy("pack", ["invite", "status"]);
-    for (const argv of [["pack", "status", "--no-probe"], ["pack"], ["pack", "nonsense"]]) {
-      expect(await go(argv, [command])).toBe(EXIT.OK);
-    }
-    expect(seen).toEqual([
-      ["status", "--no-probe"],
-      ["(parent)"],
-      ["(parent)", "nonsense"],
-    ]);
-  });
-
-  test("an internal verb is dispatchable even though it is not advertised", async () => {
-    const { command, seen } = spy("_exec-bridge");
-    const internal: Command = { ...command, internal: true };
-    expect(await go(["_exec-bridge"], [internal])).toBe(EXIT.OK);
-    expect(seen).toEqual([["(parent)"]]);
-    expect(usageLine([internal])).toBe("usage: collie {}");
-  });
-
-  test("--plain is accepted anywhere and never reaches the verb", async () => {
-    const { command, seen } = spy("pack", ["status"]);
-    expect(await go(["--plain", "pack", "status"], [command])).toBe(EXIT.OK);
-    expect(await go(["pack", "status", "--plain", "--no-probe"], [command])).toBe(EXIT.OK);
-    expect(seen).toEqual([
-      ["status"],
-      ["status", "--no-probe"],
-    ]);
-  });
-
-  test("a verb's exit code is the run's exit code — every family, unaltered", async () => {
-    for (const code of [EXIT.OK, EXIT.FAIL, EXIT.USAGE, EXIT.STATE, EXIT.REFUSED, EXIT.UNREACHABLE]) {
-      const command: Command = { name: "x", summary: "returns a code", run: () => code };
-      expect(await go(["x"], [command])).toBe(code);
-    }
-  });
-});
-
-describe("the pack subcommand tree", () => {
-  test("declares exactly `cli/pack.ts`'s sub-verbs, in its order", () => {
-    const pack = findCommand("pack");
-    expect(pack?.subcommands?.map((s) => s.name)).toEqual([...PACK_SUBCOMMANDS]);
-  });
-
-  test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
-    expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual(["pack"]);
-  });
-});
-
-describe("exit codes", () => {
-  test("an unknown verb exits 2 with the usage line on stderr", async () => {
-    const io = capture();
-    expect(await run(["nonsense"], io)).toBe(EXIT.USAGE);
-    expect(io.stdout).toEqual([]);
-    expect(io.stderr.join("\n")).toContain("unknown command `nonsense`");
-    expect(io.stderr.join("\n")).toContain(usageLine());
-  });
-
-  test("no verb exits 2 with usage but does not accuse the user of typing something", async () => {
-    const io = capture();
-    expect(await run([], io)).toBe(EXIT.USAGE);
-    expect(io.stderr.join("\n")).not.toContain("unknown command");
-    expect(io.stderr.join("\n")).toContain(usageLine());
-  });
-
-  test("help exits 0 on stdout — it is output, not a diagnostic", async () => {
-    const io = capture();
-    expect(await run(["--help"], io)).toBe(EXIT.OK);
-    expect(io.stderr).toEqual([]);
-    expect(io.stdout.join("\n")).toContain(usageLine());
-    for (const c of COMMANDS) {
-      if (c.internal === true) continue;
-      expect(io.stdout.join("\n")).toContain(c.summary);
+  test("routes nothing else — every other verb is the table's", () => {
+    for (const argv of [[], ["status"], ["--plain"], ["pack", "add", "nas"], ["buildx"], [""]]) {
+      expect(bootstrapVerb(argv)).toBeNull();
     }
   });
 
-  // Three spellings, one text. `help` is a verb in the table, `-h`/`--help` are commander's, and
-  // commander is configured to print this file's `helpText` for both — so they cannot drift apart.
-  test("`help`, `-h` and `--help` print the identical body", async () => {
-    for (const spelling of ["help", "-h", "--help"]) {
-      const io = capture();
-      expect(await run([spelling], io)).toBe(EXIT.OK);
-      expect(io.stderr).toEqual([]);
-      expect(io.stdout).toEqual(helpText());
-    }
-  });
-
-  test("the help body names --plain and hides every internal verb", async () => {
-    const body = helpText().join("\n");
-    expect(body).toContain("--plain");
-    for (const c of COMMANDS) if (c.internal === true) expect(body).not.toContain(c.name);
-  });
-
-  test("an unknown verb with arguments is still reported by its own name", async () => {
-    const io = capture();
-    expect(await run(["nonsense", "--flag", "x"], io)).toBe(EXIT.USAGE);
-    expect(io.stderr.join("\n")).toContain("unknown command `nonsense`");
-  });
-
-  // NOTHING in this file may dispatch a verb that touches the world. Dispatching `start` here would
-  // write a unit into the developer's own ~/.config and `enable --now` it; dispatching `build` did
-  // exactly this once during M3/04 and rebuilt the DEPLOYMENT HOST's live bundle from a dirty tree.
-  // Those verbs are covered in their own suites against fakes, and end to end in
-  // scripts/collie-cli.test.sh against a scratch PATH and a throwaway $HOME.
-  //
-  // `version` and `help` are the only verbs this file may run: they read, they never write.
-  test("every verb is dispatchable, and only the two read-only ones may be run here", () => {
-    const worldTouching = [
-      "start",
-      "stop",
-      "restart",
-      "uninstall",
-      "update",
-      "_apply-update",
-      "_exec-bridge",
-      "build",
-      "serve",
-      "unserve",
-      "status",
-      "logs",
-      "push-test",
-      "url",
-      // `qr` shells out to `tailscale` to decide which URL is worth encoding.
-      "qr",
-      // Every pack verb writes the trust store, dials another machine, or restarts the service —
-      // and `pack` with no subcommand would still resolve a real context and a real audit path. All
-      // of them are covered in cli/pack.test.ts against fakes.
-      ...PACK_VERBS,
-      // `doctor` writes nothing, but it is not runnable here either: it shells out to `tailscale`
-      // and would dial this host's real pack members. cli/doctor.test.ts drives it against fakes.
-      ...DIAGNOSTIC_VERBS,
-    ];
-    const readOnly = ["version", "help"];
-    for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();
-    expect([...worldTouching, ...readOnly].length).toBe(COMMANDS.length);
-    // The grep stops at the verb's closing quote, NOT at the `"]` that used to follow it: a verb
-    // dispatched WITH arguments — a comma where the bracket was — slipped straight through the
-    // narrower form. (Which is also why this comment cannot spell one out; it would match itself.)
-    const source = readFileSync(new URL("./main.test.ts", import.meta.url), "utf8");
-    for (const name of worldTouching) expect(source).not.toContain(`run(["${name}"`);
-  });
-
-  test("a verb that throws becomes an operational failure, not a stack trace", async () => {
-    const io = capture();
-    const boom: Command = {
-      name: "boom",
-      summary: "explodes",
-      run() {
-        throw new Error("kaboom");
-      },
-    };
-    expect(await run(["boom"], io, [boom])).toBe(EXIT.FAIL);
-    expect(io.stderr.join("\n")).toContain("kaboom");
-    expect(io.stderr.join("\n")).not.toContain("at ");
-  });
-
-  test("version prints one undecorated line to stdout and exits 0", async () => {
-    const io = capture();
-    expect(await run(["version"], io)).toBe(EXIT.OK);
-    expect(io.stdout).toHaveLength(1);
-    expect(io.stdout[0]!.trim()).toBe(io.stdout[0]!);
-    expect(io.stdout[0]).not.toBe("");
-  });
-});
-
-describe("findCommand", () => {
-  test("resolves by exact name only — no prefixes, no aliases", () => {
-    expect(findCommand("version")?.name).toBe("version");
-    expect(findCommand("vers")).toBeUndefined();
-    expect(findCommand("VERSION")).toBeUndefined();
+  test("a missing dependency tree is one legible line, not a module-resolution stack", () => {
+    const err = new Error(`Cannot find package 'commander' from '${REPO}/cli/program.ts'`);
+    expect(loadFailure(err)).toBe(
+      "error: dependencies are not installed — run `collie build` (or bun install) first",
+    );
+    // Anything else still says what it was, rather than being mislabelled as a missing install.
+    expect(loadFailure(new Error("boom"))).toBe("error: boom");
   });
 });
