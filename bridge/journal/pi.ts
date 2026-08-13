@@ -22,7 +22,14 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { containedRealpath, exists, loadTail, statFile } from "./files.ts";
+import {
+  containedRealpath,
+  containedRealpathIn,
+  exists,
+  loadTail,
+  rootList,
+  statFile,
+} from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -164,14 +171,21 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
 export class PiTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, string>();
 
-  constructor(private readonly root: string) {}
+  private readonly roots: string[];
+
+  /** One sessions directory or several (a second `PI_CODING_AGENT_DIR`), searched in order. */
+  constructor(roots: string | readonly string[]) {
+    this.roots = rootList(roots);
+  }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
     if (ref.kind === "path") {
-      // No shape validation is possible on a free-form path — containment IS the validation.
+      // No shape validation is possible on a free-form path — containment IS the validation. No root
+      // built this name, so every configured root is asked whether the file is its own; the first
+      // that really contains it answers (files.ts header).
       if (!ref.value.endsWith(".jsonl")) return null;
       if (!(await exists(ref.value))) return null;
-      return containedRealpath(ref.value, this.root);
+      return containedRealpathIn(ref.value, this.roots);
     }
 
     if (!isPiSessionId(ref.value)) return null;
@@ -183,25 +197,33 @@ export class PiTranscriptSource implements TranscriptSource {
     }
 
     const suffix = `_${sessionId.toLowerCase()}.jsonl`;
+    for (const root of this.roots) {
+      const hit = await this.findUnder(root, suffix);
+      if (hit === null) continue; // absent here, or present but not this root's to serve
+      this.pathCache.set(sessionId, hit);
+      return hit;
+    }
+    return null;
+  }
+
+  /** The log whose name ends in `suffix` under one sessions root, contained by that root. */
+  private async findUnder(root: string, suffix: string): Promise<string | null> {
     let dirs: string[];
     try {
-      dirs = await readdir(this.root);
+      dirs = await readdir(root);
     } catch {
       return null; // no sessions root at all — nothing to serve
     }
     for (const dir of dirs) {
       let names: string[];
       try {
-        names = await readdir(join(this.root, dir));
+        names = await readdir(join(root, dir));
       } catch {
         continue;
       }
       const hit = names.find((n) => n.toLowerCase().endsWith(suffix));
       if (hit === undefined) continue;
-      const real = await containedRealpath(join(this.root, dir, hit), this.root);
-      if (real === null) return null;
-      this.pathCache.set(sessionId, real);
-      return real;
+      return containedRealpath(join(root, dir, hit), root);
     }
     return null;
   }
@@ -212,10 +234,10 @@ export class PiTranscriptSource implements TranscriptSource {
 }
 
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function piJournal(root: string): JournalAdapter {
+export function piJournal(roots: string | readonly string[]): JournalAdapter {
   return {
     agent: "pi",
-    source: new PiTranscriptSource(root),
+    source: new PiTranscriptSource(roots),
     parse: parsePiTranscript,
   };
 }

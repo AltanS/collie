@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Push } from "./push.ts";
+import { Push, topicIsSendable } from "./push.ts";
 import type { PushSender, PushSubscription } from "./push.ts";
 import { loadConfig } from "./config.ts";
 
@@ -287,7 +287,7 @@ describe("Push — per-message collapse topic (update must not share the herd sl
 
     // No `urgency` — an update notice is NOT worth punching through Android's power-saving the way a
     // waiting agent is. The absence is the decision; `toEqual` pins it.
-    expect(sends[0]!.options).toEqual({ topic: "collie-update", TTL: 259_200 });
+    expect(sends[0]!.options).toEqual({ topic: "collie-updates", TTL: 259_200 });
     expect(JSON.parse(sends[0]!.payload).data.target).toBe("settings");
   });
 
@@ -341,5 +341,40 @@ describe("Push — per-message collapse topic (update must not share the herd sl
     // A deferred retraction is as bad as a deferred alert — it strands handled work on the lock
     // screen — so a clear is high-urgency too.
     expect(sends[0]!.options.urgency).toBe("high");
+  });
+
+  // Apple decodes the RFC 8030 `Topic` and refuses a length base64 cannot produce (≡ 1 mod 4), where
+  // FCM and Mozilla treat it as opaque. So a topic shortened for tidiness can break Apple delivery
+  // while every other service keeps working, and nothing surfaces it but that service's 400 —
+  // "collie-update" (13) shipped that way from 0.11.0. Assert the topics the code ACTUALLY emits: a
+  // guard that restated the constants would still pass after someone edited one, which is the only
+  // failure it exists to catch.
+  test("every topic the bridge emits is a shape all push services accept", async () => {
+    const cfg = await tempCfg();
+    const { sender, sends } = capturing();
+    const push = new Push(cfg, sender);
+    enable(push, [sub("a")]);
+
+    await push.send({ type: "update", tag: "collie:update", title: "t", body: "b", target: "settings" });
+    await push.send({ title: "claude needs you", body: "…", tag: "collie:herd", paneId: "w1:p1" });
+    await push.send({ type: "clear", tag: "collie:herd" });
+
+    expect(sends.length).toBe(3);
+    for (const { options } of sends) expect(topicIsSendable(options.topic)).toBe(true);
+  });
+
+  test("topicIsSendable rejects the lengths base64 cannot produce — the Apple trap", () => {
+    expect(topicIsSendable("collie-update")).toBe(false); // 13 ≡ 1 (mod 4) — the shipped bug
+    expect(topicIsSendable("collie-herdab")).toBe(false); // 13 too, unrelated wording, fails alike
+    expect(topicIsSendable("collie-update-xyz")).toBe(false); // 17 ≡ 1 (mod 4)
+    expect(topicIsSendable("a")).toBe(false); // 1 ≡ 1 (mod 4)
+  });
+
+  test("topicIsSendable still enforces RFC 8030's alphabet and ceiling", () => {
+    expect(topicIsSendable("collie herd")).toBe(false); // space
+    expect(topicIsSendable("collie.herd")).toBe(false); // dot is not URL-safe base64
+    expect(topicIsSendable("")).toBe(false);
+    expect(topicIsSendable("a".repeat(33))).toBe(false); // over the 32-char ceiling
+    expect(topicIsSendable("a".repeat(32))).toBe(true); // exactly 32, and 32 ≡ 0
   });
 });

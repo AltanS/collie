@@ -23,6 +23,8 @@ ships none of its own.
 - **Send an image** from your camera roll
 - **Find in output** — search a pane, don't eyeball it
 - **Conversation history** the terminal can't scroll back to — read from the agent's own session log
+  (several agent homes? list them all in `COLLIE_TRANSCRIPT_ROOT`, comma-separated — see
+  [`.env.example`](./.env.example))
 - **Easily switch between Herdr sessions**
 
 - **In the works** — more than one machine under a single URL: one Collie leads, the others join it
@@ -927,6 +929,10 @@ What that means in practice:
 - **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
   (an explicit `\\.\pipe\…` value is passed through untouched).
+
+**Want the lifecycle too?** The bridge has spoken Windows' named pipe since 0.15.0; a
+community-maintained Task Scheduler setup (start/stop/update, no supported-tree guarantees) lives in
+[`contrib/windows/`](./contrib/windows/README.md).
 
 **Is it actually working?** The bridge logs `[events] stream up` on start — the event stream works
 over the pipe, so Windows gets the same live updates as Linux, not degraded polling.

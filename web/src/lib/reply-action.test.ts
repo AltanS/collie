@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
+import * as registry from "./harness/registry";
 import { draftCarriesSend, sendGuardedReply } from "./reply-action";
 
 // The regression suite for #34: a free-text reply must never fire the submit key until the text is
@@ -220,7 +221,7 @@ describe("sendGuardedReply", () => {
     expect(calls).toEqual([]);
   });
 
-  it("#34: force skips the pre-flight but still never sends the submit key blind", async () => {
+  it("#34: force overrides the pre-flight's refusal but still never sends the submit key blind", async () => {
     const calls = harness(() => paneWithDialog);
 
     const out = await sendGuardedReply({
@@ -363,5 +364,304 @@ describe("sendGuardedReply", () => {
 
     expect(out.status).toBe("error");
     expect(out).toMatchObject({ textDelivered: true });
+  });
+});
+
+// The destructive pre-type work — composer.tsx's `ctrl+k` + N×Backspace sweep of a stranded input
+// line — is the one thing this module sends that NOTHING downstream can withhold. Once those keys are
+// on the wire they have landed in whatever owns the keyboard; the type-then-verify guard below only
+// ever protects the submit key. So the sweep gets a stricter rule than the message does: it runs only
+// where a live read has POSITIVELY SEEN the composer, and it is enforced by the pre-flight handing
+// back a runner on that one branch rather than by any condition at the call site. These are the paths
+// that used to skip the read and sweep anyway.
+describe("onComposerSeen — destructive pre-type work needs positive evidence", () => {
+  /** The composer's callback shape, recording rather than sending. */
+  function sweep(log: string[]) {
+    return async () => {
+      log.push("sweep");
+      return { ok: true as const, keysSent: true };
+    };
+  }
+
+  it("runs after the pre-flight's read and before the first byte typed", async () => {
+    const log: string[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        log.push("read");
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: paneWithDraft("ship it please"),
+          truncated: false,
+          revision: 1,
+        });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { submit?: boolean };
+        log.push(body.submit ? "submit" : "type");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "claude",
+      onComposerSeen: sweep(log),
+      ...instant,
+    });
+
+    expect(out.status).toBe("sent");
+    // read → sweep → (the re-confirming read the sweep's own `keysSent` asks for) → type → submit.
+    expect(log.slice(0, 4)).toEqual(["read", "sweep", "read", "type"]);
+  });
+
+  it("force: overrides the refusal, and does NOT sweep the screen that just refused", async () => {
+    // `force` is armed by composer.tsx exactly when a pre-flight answered `blocked` — the one moment
+    // the app has proof a dialog owns the keyboard. The retry used to make the burst the first thing
+    // on the wire, into that dialog.
+    const log: string[] = [];
+    const calls = harness(() => paneWithDialog);
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do not approve anything",
+      agent: "claude",
+      force: true,
+      onComposerSeen: sweep(log),
+      ...instant,
+    });
+
+    expect(log).toEqual([]);
+    expect(out.status).toBe("stalled");
+    expect(calls.some((c) => c.submit)).toBe(false);
+  });
+
+  it("a pre-flight read that throws fails open for the message and closed for the keys", async () => {
+    // Falling through on a transient blip is right for the text — the submit key is still withheld
+    // until the text is seen. It was never right for keys nothing downstream can take back.
+    const log: string[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.error()),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () => HttpResponse.json({ ok: true })),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do not approve anything",
+      agent: "claude",
+      onComposerSeen: sweep(log),
+      ...instant,
+    });
+
+    expect(log).toEqual([]);
+    expect(out.status).toBe("stalled");
+  });
+
+  it("an adapter with no composerReady never sweeps", async () => {
+    // Registered (so the legacy one-shot path is off) but with no pre-flight to order anything
+    // behind. "Keeps today's behaviour exactly" used to include the unordered burst; it no longer
+    // does, and the text-then-verify guard is unchanged.
+    const log: string[] = [];
+    const real = registry.adapterFor("claude")!;
+    const spy = vi.spyOn(registry, "adapterFor").mockReturnValue({ ...real, composerReady: undefined });
+    try {
+      const calls = harness(() => paneWithDialog);
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "please do not approve anything",
+        agent: "claude",
+        onComposerSeen: sweep(log),
+        ...instant,
+      });
+      expect(log).toEqual([]);
+      expect(out.status).toBe("stalled");
+      expect(calls.some((c) => c.submit)).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("re-confirms the composer between the keys and the message", async () => {
+    // The ordering fix moved the sweep BETWEEN the pre-flight and the type, which widened the gap the
+    // pre-flight's evidence has to cover by a key-burst RPC plus the caller's TUI settle. A dialog
+    // that opens inside that window would otherwise be handed the reply — the very outcome the
+    // ordering exists to prevent, one step later.
+    const log: string[] = [];
+    let reads = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads += 1;
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: reads === 1 ? paneWithDraft("") : paneWithDialog,
+          truncated: false,
+          revision: reads,
+        });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { submit?: boolean };
+        log.push(body.submit ? "submit" : "type");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do not approve anything",
+      agent: "claude",
+      onComposerSeen: sweep(log),
+      ...instant,
+    });
+
+    expect(log).toEqual(["sweep"]); // the sweep was authorised; the message was not
+    expect(out.status).toBe("blocked");
+    expect(out).toMatchObject({ error: expect.stringMatching(/while its input line was being cleared/i) });
+  });
+
+  it("skips the re-confirming read when the caller put nothing on the wire", async () => {
+    // The common send: no stranded draft, so the callback sends no keys and the pre-flight's read is
+    // still the freshest thing there is. Paying for a second read there would be pure latency.
+    let reads = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads += 1;
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: paneWithDraft("ship it please"),
+          truncated: false,
+          revision: 1,
+        });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () => HttpResponse.json({ ok: true })),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "claude",
+      onComposerSeen: async () => ({ ok: true as const, keysSent: false }),
+      ...instant,
+    });
+
+    expect(out.status).toBe("sent");
+    expect(reads).toBe(2); // the pre-flight and the verification poll — no re-confirm in between
+  });
+
+  it("aborts with nothing typed when the pre-type work fails or throws", async () => {
+    const calls = harness(() => paneWithDraft(""));
+
+    expect(
+      await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "ship it please",
+        agent: "claude",
+        onComposerSeen: async () => ({ ok: false as const, error: "Couldn't clear the terminal input" }),
+        ...instant,
+      }),
+    ).toEqual({ status: "error", error: "Couldn't clear the terminal input" });
+
+    expect(
+      await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "ship it please",
+        agent: "claude",
+        onComposerSeen: async () => {
+          throw new Error("network down");
+        },
+        ...instant,
+      }),
+    ).toEqual({ status: "error", error: "network down" });
+
+    expect(calls).toEqual([]);
+  });
+});
+
+// Ordering is not a freshness bound. `runPreType` existing proves a read SAW the composer; it cannot
+// prove the composer is still there when the keys land, because the read's answer describes the pane
+// at the moment the bridge snapshotted it and the burst goes out a whole round-trip later (capped
+// only by GET_TIMEOUT_MS). Every other keystroke path in the app already solves this the same way:
+// bind the write to the region it was authorised against and let the bridge re-read and 409. So the
+// pre-flight hands its evidence forward, not just its permission.
+describe("the pre-type work is handed the region its keys must be bound to", () => {
+  const ompPane = (draft: string, below: string[] = []): string => {
+    const width = 120;
+    const fill = (open: string, body: string, close: string, filler: string): string =>
+      open + body + filler.repeat(Math.max(0, width - open.length - body.length - close.length)) + close;
+    return [
+      " ✔ New session started",
+      "",
+      fill("╭── ", "⬢ Auto > ⑂ master ", "╮", "─"),
+      fill("╰─ ", draft, " ─╯", " "),
+      ...below,
+    ].join("\n");
+  };
+
+  it("passes omp's own `╰─ … ─╯` row, verbatim, from the screen the pre-flight read", async () => {
+    let seenRegion: string | null | undefined;
+    harness(() => ompPane("leftover draft"));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "omp",
+      onComposerSeen: async ({ promptRegion }) => {
+        seenRegion = promptRegion;
+        return { ok: true as const, keysSent: false };
+      },
+      ...instant,
+    });
+
+    // The reply itself stalls here (the fake screen never echoes our text back), which is beside the
+    // point: what is pinned is that the region reached the caller at all, and that it is the exact
+    // line the sweep is about to erase rather than a paraphrase of it.
+    expect(out.status).toBe("stalled");
+    expect(seenRegion).toContain("leftover draft");
+    expect(seenRegion!.startsWith("╰─ ")).toBe(true);
+    expect(seenRegion!.endsWith("─╯")).toBe(true);
+    // Verbatim minus trailing padding — the bridge compares normalized rows, and a region we had
+    // reshaped would not match the row it is meant to pin.
+    expect(seenRegion).toBe(ompPane("leftover draft").split("\n")[3]!.replace(/\s+$/, ""));
+  });
+
+  it("passes null when the adapter cannot name a region, so the write stays unbound", async () => {
+    // Claude's adapter has no `composerPrompt`: its prompt line sits above a statusline run and a
+    // footer, i.e. too far from the tail for the bridge's binding window. Absence is the documented
+    // default and keeps that path exactly as it was.
+    let seenRegion: string | null | undefined = "unset";
+    harness(() => paneWithDraft("ship it please"));
+
+    await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "claude",
+      onComposerSeen: async ({ promptRegion }) => {
+        seenRegion = promptRegion;
+        return { ok: true as const, keysSent: false };
+      },
+      ...instant,
+    });
+
+    expect(seenRegion).toBeNull();
+  });
+
+  it("never hands out a region for a screen it refused", async () => {
+    // The runner is the permission and the region is the evidence; neither may exist without a live
+    // read having positively seen the composer. A modal screen produces no runner at all.
+    const log: string[] = [];
+    harness(() => "╭─ Ask ─────╮\n│ Pick one  │\n╰───────────╯");
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do not approve anything",
+      agent: "omp",
+      onComposerSeen: async ({ promptRegion }) => {
+        log.push(String(promptRegion));
+        return { ok: true as const, keysSent: true };
+      },
+      ...instant,
+    });
+
+    expect(out.status).toBe("blocked");
+    expect(log).toEqual([]);
   });
 });
