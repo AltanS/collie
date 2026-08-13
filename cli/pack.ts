@@ -107,8 +107,12 @@ export interface PackDeps {
    * every other caller omits it and the restart writes where it always did.
    */
   restart(io?: Io): Promise<number>;
-  /** `collie serve` — the new lead publishes the one managed front door (ADR 0001). */
-  serve(): Promise<number>;
+  /**
+   * `collie serve` — the new lead publishes the one managed front door (ADR 0001). The optional
+   * `io` is `restart`'s: `serve` can run mid-restart (`cmdStart` calls it), so it must accept the
+   * same held-chatter `Io` `restart` was given rather than defaulting back to this run's own.
+   */
+  serve(io?: Io): Promise<number>;
   /** `collie unserve` — a peer publishes nothing (§3), so joining tears our own mapping down. */
   unserve(): number;
   /** Push a `clear` to every subscribed device for these notification slots. Best effort. */
@@ -1379,7 +1383,7 @@ export function packDeps(
     exec: Exec;
     files: Files;
     restart: (io?: Io) => Promise<number>;
-    serve: () => Promise<number>;
+    serve: (io?: Io) => Promise<number>;
     unserve: () => number;
   },
   audit: AuditLog | null,

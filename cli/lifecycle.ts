@@ -46,8 +46,14 @@ export interface LifecycleDeps extends ServeDeps {
    * because what `start` is asserted on here is its TOLERANCE of a front door that won't come up
    * (the pre-shim collie-ctl.sh), which has nothing to say about serve-status fixtures.
    * `uninstall`, whose relationship to `unserve` is the opposite — it aborts — calls it directly.
+   *
+   * The optional `io` mirrors `restart`'s: on the rich `pack add` path this whole call happens
+   * INSIDE the restart bracket (`cmdRestart` → `cmdStart` → here), so the teardown/republish lines
+   * `cmdServe` prints must land on the same held-chatter `Io` as the rest of that restart, not on
+   * whatever `Io` this seam was originally built with. `start` passes its own `deps.io` — a no-op
+   * off the rich path, since there `io` and `deps.io` are the same object.
    */
-  serve: () => Promise<number>;
+  serve: (io?: Io) => Promise<number>;
   /** The terminal renderer, when this run landed on one (`cli/render.ts`). Absent ⇒ plain lines. */
   ui?: Ui | null;
 }
@@ -277,7 +283,7 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
   // A front door that won't come up must not abort `start`. The bridge is already running on
   // loopback, and the banner is what the README's troubleshooting flow tells people to read.
   // `serve` reports its own reason.
-  if ((await deps.serve()) !== EXIT.OK) {
+  if ((await deps.serve(deps.io)) !== EXIT.OK) {
     deps.io.err(
       `note: the tailnet front door did not come up; the bridge is still on 127.0.0.1:${deps.ctx.port}`,
     );

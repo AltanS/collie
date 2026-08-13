@@ -79,11 +79,28 @@ interface RichHarness {
   closes: number;
 }
 
+/**
+ * The two lines a real `cmdServe` prints while `restart` republishes the front door
+ * (`cli/serve.ts`'s `stopTailscaleServe` + `cmdServe`) — this is the field-found leak
+ * (2026-08-13): they escaped past the surface because `cli/program.ts` wired `serve` as a closure
+ * over the run's ORIGINAL `Io` instead of threading the `io` `restart` was actually given, so a
+ * republish mid-restart bypassed the surface no matter how faithfully `restart` itself behaved.
+ * The fake below models the coupling `cmdStart` has for real (`serve` runs INSIDE `restart`, on
+ * whatever `Io` `restart` received) so that coupling is exercised here too, not just asserted by
+ * type.
+ */
+const serveChatter = (port: number): readonly string[] => [
+  `tailscale serve: removed Collie's managed http:${port} mapping`,
+  `tailscale serve (http) → tailnet :${port} -> 127.0.0.1:${port}`,
+];
+
 function harness(opts: {
   probe?: Record<string, string>;
   answers?: Partial<Record<Leg, Partial<RemoteResult>>>;
   reachable?: boolean;
   io?: Io;
+  /** Which of the two `pack add` restarts (both inside the `enroll` leg) fails, if any. */
+  restartFails?: "first" | "second";
 }): RichHarness {
   const store = createAddStore();
   const surface: AddSurface = {
@@ -146,9 +163,18 @@ function harness(opts: {
     })(),
     mintIdentity: () => Promise.resolve(material("fresh")),
     readStdin: () => Promise.resolve(""),
-    restart: () => {
+    // `cmdRestart` really does run `serve` mid-restart, on the SAME `io` `restart` itself was given
+    // (`cli/lifecycle.ts`'s `cmdStart` → `deps.serve(deps.io)`) — never a fallback to the run's own
+    // `deps.io`, which is what leaked. Omitting `io` here would be exactly that regression, so a
+    // missing `io` throws through `forbiddenIo()` instead of quietly falling back to one.
+    restart: (io?: Io) => {
       state.restarts += 1;
-      return Promise.resolve(EXIT.OK);
+      const target = io ?? forbiddenIo();
+      for (const line of serveChatter(8788)) target.out(line);
+      const failed =
+        (opts.restartFails === "first" && state.restarts === 1) ||
+        (opts.restartFails === "second" && state.restarts === 2);
+      return Promise.resolve(failed ? EXIT.FAIL : EXIT.OK);
     },
     serve: () => Promise.resolve(EXIT.OK),
     unserve: () => EXIT.OK,
@@ -236,11 +262,50 @@ describe("pack add, drawn", () => {
       expect(h.restarts).toBe(2);
       expect(frame.match(/↻ bridge restarted \(collie\)/g)?.length).toBe(2);
       expect(frame).not.toContain("Collie is running");
+      // The serve republish chatter (`cmdServe`, run mid-restart) is held exactly like the two
+      // lifecycle lines and the banner — dropped on a successful restart, never shown raw. This is
+      // the field-found leak: those lines used to bypass the surface entirely (cli/program.ts wired
+      // `serve` off the wrong `Io`), so their absence here — condensed into the `↻` rows above,
+      // rather than printed as their own lines — is the regression check.
+      for (const line of serveChatter(8788)) expect(frame).not.toContain(line);
       // The verdict is the last thing on screen.
       expect(frame.trimEnd().endsWith('"nas" is a member of "the herd" and answered at 100.64.0.9:8787')).toBe(true);
       // A spinner never survives the run.
       expect(frame).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
       expect(h.closes).toBe(1);
+    } finally {
+      app.unmount();
+    }
+  });
+
+  test("a failed restart still surfaces the serve republish chatter — held, then flushed, never raw", async () => {
+    // `restartFails: "first"` fails the invite-mint restart, which `enrollLeg` tolerates (warns and
+    // carries on) rather than aborting the run — so this exercises the flush-on-failure branch of
+    // `projectAdd`'s restart window without derailing the rest of the flow.
+    const h = harness({
+      probe: { checkout: REMOTE_CHECKOUT, commit: "0".repeat(40), version: "1.0.0", dirty: "no" },
+      restartFails: "first",
+    });
+    const app = render(<PackAdd store={h.store} />);
+    try {
+      const run = cmdPackAdd(h.deps, ["nas.example"]);
+      await waitFor(() => h.store.state().question !== null, "the replace question");
+      app.stdin.write("y");
+      expect(await run).toBe(EXIT.OK);
+      await waitFor(() => plainText(app.lastFrame()).includes("is a member of"), "the verdict frame");
+
+      const frame = plainText(app.lastFrame());
+      // One restart row reports the failure; the other (the second, which succeeded) is still
+      // condensed away.
+      // (No local manifest is faked here, so the label's version reads "unknown" — irrelevant to
+      // what this test is checking.)
+      expect(frame).toContain("↻ bridge restarted (collie) · unknown — the restart failed");
+      expect(frame.match(/↻ bridge restarted \(collie\)/g)?.length).toBe(2);
+      // The held chatter from the FAILED restart is flushed onto the leg — proof it went through the
+      // surface (it can only appear here at all via `emit`), not that it silently escaped raw before
+      // the app ever mounted.
+      for (const line of serveChatter(8788)) expect(frame).toContain(line);
+      expect(h.restarts).toBe(2);
     } finally {
       app.unmount();
     }

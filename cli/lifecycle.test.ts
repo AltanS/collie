@@ -13,7 +13,7 @@ import {
   ROOT,
   type Scripted,
 } from "./fakes.ts";
-import { EXIT } from "./io.ts";
+import { EXIT, type Io } from "./io.ts";
 import {
   cmdLogs,
   cmdStart,
@@ -52,7 +52,7 @@ type HarnessOptions = Partial<
     /** The `COLLIE_INSTANCE` suffix this Collie was resolved with. Absent = the solo instance. */
     instance: string | null;
     files: Record<string, string>;
-    serve: () => Promise<number>;
+    serve: (io?: Io) => Promise<number>;
   }
 >;
 
@@ -177,6 +177,26 @@ describe("start, on systemd", () => {
     expect(await cmdStart(h.deps)).toBe(EXIT.OK);
     expect(h.io.stderr.join("\n")).toContain("the tailnet front door did not come up");
     expect(h.io.stdout.join("\n")).toContain("✓ Collie is running");
+  });
+
+  test("hands `serve` the CURRENT `deps.io`, not whatever `io` this deps object was originally built with", async () => {
+    // The seam `cli/program.ts`'s `restart: (into?: Io) => …` and `serve: (into?: Io) => …` rely on:
+    // a nested restart swaps `io` on a COPY of the deps object (`{ ...deps, io: into }`), and
+    // `cmdStart` must read `serve`'s argument off THAT copy's `deps.io`, never off a `serve` closure
+    // that captured the original. A field-found leak (2026-08-13) shipped because `cli/program.ts`'s
+    // `serve` closure ignored the swap — this pins the contract at the one place a fix has to hold:
+    // `cmdStart` actually passing `deps.io` through.
+    const seen: { io: Io | null } = { io: null };
+    const h = harness({
+      serve: (io?: Io) => {
+        seen.io = io ?? null;
+        return Promise.resolve(EXIT.OK);
+      },
+    });
+    const swapped = capture();
+    expect(await cmdStart({ ...h.deps, io: swapped })).toBe(EXIT.OK);
+    expect(seen.io).toBe(swapped);
+    expect(seen.io).not.toBe(h.deps.io);
   });
 
   test("builds the UI lazily on first run, and a failed build only warns", async () => {
