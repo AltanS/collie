@@ -74,7 +74,7 @@ export { EXIT, realIo, type Io };
 export interface Session {
   readonly io: Io;
   /**
-   * The terminal renderer, or `null`. Lazy and memoised, and called ONLY by the four verbs that
+   * The terminal renderer, or `null`. Lazy and memoised, and called ONLY by the three verbs that
    * have a surface — resolving it is what pulls react, ink and yoga into the process, and a piped
    * or plain `collie url` must not pay for a UI it will never draw.
    */
@@ -261,7 +261,7 @@ export const COMMANDS: readonly Command[] = [
     // `cli/pack.ts`'s own usage block prints — the two are pinned to each other in cli/main.test.ts.
     subcommands: [
       packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
-      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd, true),
+      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd),
       packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus, true),
       packSubcommand("rotate", "reissue the pack secret and hand it to every reachable peer", (deps) =>
         cmdPackRotate(deps),

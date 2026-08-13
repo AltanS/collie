@@ -95,23 +95,25 @@ export interface StatusView {
   readonly rows: readonly { readonly label: string; readonly value: string }[];
 }
 
-/**
- * A live `pack add` run. One leg is in flight at a time; `begin` opens it, `end` closes it with a
- * verdict, and `close` tears the render down. Informational output keeps going through `Io` —
- * ink patches `console` so those lines land above the spinner instead of through it.
- */
-export interface LegRun {
-  begin(name: string): void;
-  end(ok: boolean): void;
-  close(): Promise<void>;
-}
+// ── WHICH VERBS GET A SURFACE ────────────────────────────────────────────────
+// **A verb that streams progress or prompts on stdin never gets an ink surface. Ink is for a verb
+// that renders a finished model once.** The three below (`doctor`, `status`/`start`, `pack status`)
+// each compute an answer and then draw it; nothing is printed while they are still working, and
+// nothing is read from stdin while a frame is on screen.
+//
+// `pack add` had a live leg spinner and it is gone, because it is the other kind of verb: it streams
+// informational lines for the whole of a four-leg SSH pipeline and asks two questions on Bun's
+// `confirm()`/`prompt()` in the middle of it. Ink owns the bottom of the terminal for as long as it
+// is mounted, and the field report was every way that can go wrong at once — leg lines out of order,
+// the `[y/N]` prompt clobbered mid-render, and ✓/spinner statuses landing AFTER the error verdict
+// they were supposed to precede. `console` patching moves the tearing around; it does not fix it,
+// because the prompts do not go through `console` at all. So `pack add` is plain, always.
 
 /** The rich renderer. Absent (`null`) is the normal case: every verb's plain branch is the default. */
 export interface Ui {
   doctor(view: DoctorView): Promise<void>;
   status(view: StatusView): Promise<void>;
   packMembers(lines: readonly TonedLine[]): Promise<void>;
-  legs(): LegRun;
 }
 
 /**

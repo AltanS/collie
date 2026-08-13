@@ -1,7 +1,7 @@
 import { Box, render, Text } from "ink";
-import React, { useEffect, useState } from "react";
+import React from "react";
 
-import type { DoctorView, LegRun, StatusView, TonedLine, Ui, UiFinding } from "../render.ts";
+import type { DoctorView, StatusView, TonedLine, Ui, UiFinding } from "../render.ts";
 
 // The terminal view. NOTHING outside this directory imports ink — `cli/render.ts`'s `loadUi()` is
 // the only door, and it is only opened when stdout is a terminal, `CI` is unset and `--plain` was
@@ -9,10 +9,9 @@ import type { DoctorView, LegRun, StatusView, TonedLine, Ui, UiFinding } from ".
 // (see `cli/render.ts` for why that is structural rather than a formatting flag).
 //
 // ── ONE-SHOT, NOT AN APP ─────────────────────────────────────────────────────
-// Three of the four surfaces draw once and unmount immediately: they are `console.log` with a layout
-// engine, not a TUI. Only `pack add` stays mounted, because a spinner needs frames. There is no
-// input handling anywhere in here — the two prompts `pack add` asks stay on Bun's own `confirm()`
-// and `prompt()`. Raw-mode input interleaved with a four-leg SSH pipeline is risk without payoff.
+// Every surface here draws once and unmounts immediately: they are `console.log` with a layout
+// engine, not a TUI. Nothing stays mounted, nothing handles input, and nothing renders while a verb
+// is still working — see `cli/render.ts` for the rule, and for the `pack add` spinner that broke it.
 
 /** Draw a component once, wait for ink to flush it, and let go of the terminal. */
 async function once(node: React.ReactElement): Promise<void> {
@@ -143,73 +142,6 @@ export function Members({ lines }: { lines: readonly TonedLine[] }): React.React
   );
 }
 
-// ── pack add: the leg pipeline ───────────────────────────────────────────────
-// The only surface that stays mounted. `patchConsole` is ON here: every informational line the plain
-// path prints still goes through `Io` → `console.log`, and ink lifts those above the live area
-// instead of letting them tear through the spinner. So the rich run is the plain run plus a status
-// line, never the plain run minus something.
-
-const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-interface LegState {
-  readonly name: string;
-  readonly outcome: "running" | "ok" | "failed";
-}
-
-export function Legs({ subscribe }: { subscribe: (fn: (legs: readonly LegState[]) => void) => void }): React.ReactElement {
-  const [legs, setLegs] = useState<readonly LegState[]>([]);
-  const [frame, setFrame] = useState(0);
-  useEffect(() => subscribe(setLegs), [subscribe]);
-  useEffect(() => {
-    const running = legs.some((l) => l.outcome === "running");
-    if (!running) return;
-    const timer = setInterval(() => setFrame((f) => f + 1), 80);
-    return () => clearInterval(timer);
-  }, [legs]);
-  return (
-    <Box flexDirection="column">
-      {legs.map((l) => {
-        if (l.outcome === "running") {
-          return (
-            <Text key={l.name} color="cyan">
-              {FRAMES[frame % FRAMES.length]} {l.name}…
-            </Text>
-          );
-        }
-        return (
-          <Text key={l.name} color={l.outcome === "ok" ? "green" : "red"}>
-            {l.outcome === "ok" ? "✓" : "✗"} {l.name}
-          </Text>
-        );
-      })}
-    </Box>
-  );
-}
-
-function legRun(): LegRun {
-  let legs: LegState[] = [];
-  let publish: (legs: readonly LegState[]) => void = () => {};
-  const instance = render(<Legs subscribe={(fn) => (publish = fn)} />, { patchConsole: true });
-  return {
-    begin(name) {
-      legs = [...legs, { name, outcome: "running" }];
-      publish(legs);
-    },
-    end(ok) {
-      legs = legs.map((l, i) => (i === legs.length - 1 ? { ...l, outcome: ok ? "ok" : "failed" } : l));
-      publish(legs);
-    },
-    async close() {
-      // Any leg still open when the run ends failed on a path that returned early — mark it, so the
-      // last thing on screen is never a spinner frozen mid-frame.
-      legs = legs.map((l) => (l.outcome === "running" ? { ...l, outcome: "failed" } : l));
-      publish(legs);
-      instance.unmount();
-      await instance.waitUntilExit();
-    },
-  };
-}
-
 // Exported for `cli/ui/index.test.tsx` only — nothing outside this directory renders them, and
 // `createUi` below is the whole of the interface `cli/render.ts` knows about.
 export function createUi(): Ui {
@@ -217,6 +149,5 @@ export function createUi(): Ui {
     doctor: (view) => once(<Doctor view={view} />),
     status: (view) => once(<Status view={view} />),
     packMembers: (lines) => once(<Members lines={lines} />),
-    legs: legRun,
   };
 }
