@@ -387,8 +387,9 @@ export function AgentChat({
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
   // Same shape as handlePromptAction — the guard re-derives the wizard from a FRESH read and only
   // a clean match sends the single keystroke (incremental round-trip; grammar/WIZARD_NOTES.md).
-  // gate: claude-only (see hasBlockGrammar) — wizard blocks only ever exist for a Claude pane
-  // (buildBlocks gates on ctx.agent), so this handler can't fire for other agents.
+  // gate: Claude's adapter is the only one that emits `wizard` (buildBlocks routes through the pane's
+  // adapter — see harness/registry.ts), so this handler cannot fire for any other agent. omp has an
+  // adapter now and still never lifts this kind; it is Tier 1 and emits raw only.
   const handleWizardAction = useCallback(
     async (keys: string[], wizard: WizardModel) => {
       const refusal = refuseWrite();
@@ -424,7 +425,8 @@ export function AgentChat({
   // Same guard-first shape as the two handlers above, but the choreography behind an intent is
   // MULTI-step (digit→verify→Enter; n→verify→type→Escape — see lib/preview-action.ts and
   // grammar/NOTES_NOTES.md), so the handler dispatches on the intent kind.
-  // gate: claude-only (see hasBlockGrammar) — preview blocks only ever exist for a Claude pane.
+  // gate: Claude's adapter is the only one that emits `preview-select` — no other registered adapter
+  // lifts this kind, so this handler cannot fire for another agent.
   const handlePreviewAction = useCallback(
     async (action: PreviewBlockAction, preview: PreviewSelectModel) => {
       const refusal = refuseWrite();
@@ -468,8 +470,8 @@ export function AgentChat({
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
   // review screen's confirm/cancel). Same guard-first shape as the wizard handler — the guard
   // re-derives the dialog from a FRESH read; toggle sends one digit, Submit drives the closed-loop
-  // Down→Up→verify→Enter macro (see lib/multi-select-action.ts). gate: claude-only (multi-select
-  // blocks only ever exist for a Claude pane, buildBlocks gates on ctx.agent).
+  // Down→Up→verify→Enter macro (see lib/multi-select-action.ts). gate: Claude's adapter is the only
+  // one that emits `multi-select`, so this handler cannot fire for another agent.
   const handleMultiSelectAction = useCallback(
     async (action: MultiSelectIntent, multi: MultiSelectModel) => {
       const refusal = refuseWrite();
@@ -504,7 +506,8 @@ export function AgentChat({
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
   // shape as the handlers above; the arrow taps pass `nav`, which swaps the guard's signature check
   // for an identity-only one (moving the highlight is the tap's own effect — see lib/menu-action.ts).
-  // gate: claude-only (menu blocks only ever exist for a Claude pane).
+  // gate: Claude's adapter is the only one that emits `menu` — omp's modals deliberately stay raw
+  // (harness/omp/index.ts), so this handler cannot fire for another agent.
   const handleMenuAction = useCallback(
     async (action: MenuBlockAction, menu: MenuModel) => {
       const refusal = refuseWrite();

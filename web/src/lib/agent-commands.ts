@@ -5,6 +5,10 @@
 // the UI sends `/command` (+ submit key) for no-arg commands, or inserts `/command ` into the
 // composer for the user to complete when the command takes an argument.
 //
+// `omp` is the one catalog sourced from CAPTURES rather than docs — see its section for the two rules
+// that follow from that, both of which apply to any future palette-sourced agent: only what a capture
+// actually shows, and nothing the capturing user's own machine contributed.
+//
 // To regenerate: re-run the per-agent doc-fetch agents (see CHANGELOG) and replace the arrays.
 
 export interface AgentCommand {
@@ -160,25 +164,90 @@ const OPENCODE: readonly AgentCommand[] = [
   { command: "/exit", description: "Quit opencode (alias /quit, /q)", takesArg: false, argHint: "", common: false, dangerous: true },
 ];
 
+// ── omp (oh-my-pi) ───────────────────────────────────────────────────────────
+// The corpus-sourced catalog. omp publishes no command reference we can read, so every row here is
+// vouched for by web/src/fixtures/panes/omp--*.txt rather than by a doc page.
+//
+// Two rules come with sourcing a public catalog from somebody's terminal:
+//
+//   1. ONLY WHAT THE CORPUS VOUCHES FOR — and the corpus speaks in exactly three ways, each marked
+//      per row below. A command supported by none of them is a guess that would type itself into a
+//      live shell on the strength of nothing, so it does not ship.
+//        (a) A PALETTE ROW: omp's own `/` autocomplete, with omp's own one-line summary, rewritten
+//            only where that summary reports LIVE STATE rather than what the command does.
+//        (b) omp's OWN TIP LINE, which names commands outright in prose ("without a full /compact")
+//            and is present in 8 of the 20 captures.
+//        (c) THE CAPTURE LOG: a command the corpus README records as having been TYPED to produce a
+//            fixture, whose screen is therefore in the corpus. Stronger evidence that the command
+//            exists than a palette row, since it was run; weaker on what it does, so those rows are
+//            described by the screen the capture shows and nothing more.
+//      What this list is NOT is a mirror of one palette screen. The five palette rows are simply
+//      everything omp fuzzy-matched for the string "new" before the unfiltered capture ran off the
+//      bottom of the pane — an accident of one search, not a curated set — which is why (b) and (c)
+//      are read too rather than left on the floor.
+//   2. NOTHING FROM THE CAPTURING MACHINE. omp's palette mixes in rows assembled from the user's own
+//      install — its `skill:…` entries are the ones in this corpus — and those are neither omp
+//      built-ins nor anything another user would have. They must never reach a shipped catalog.
+//
+// This catalog is also what keeps the omp harness adapter's chrome strip honest: it peels omp's own
+// palette off the mirror (harness/omp/chrome.ts), and `commandsFor` returning [] is what would leave
+// an omp user with no palette at all, since composer.tsx renders the button only when it is non-empty.
+const OMP: readonly AgentCommand[] = [
+  // (a) Palette rows — omp--slash-palette--filtered.txt, verbatim names and summaries.
+  { command: "/new", description: "Start a new session", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/branch", description: "Create a new branch from a previous message", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/fork", description: "Create a new fork from a previous message", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/drop", description: "Delete the current session and start a new one", takesArg: false, argHint: "", common: false, dangerous: true },
+  // The capture's own summary for this one reads "Plan review: plan mode inactive" — omp prints the
+  // command's LIVE availability there, not what it does. Described by what the row says it needs.
+  { command: "/plan-review", description: "Review the current plan; needs plan mode active", takesArg: false, argHint: "", common: false, dangerous: false },
+
+  // (b) omp's own tip line, printed above the composer in 8 of the 20 captures: "`/shake` rips heavy
+  //     tool results out of context to reclaim tokens without a full /compact — `/shake images` drops
+  //     just images". That one sentence names both commands and gives /shake its description and its
+  //     optional argument; /compact it names only as the fuller operation /shake avoids.
+  { command: "/compact", description: "Compact the whole conversation to reclaim context", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/shake", description: "Drop heavy tool results from context without a full compact", takesArg: true, argHint: "[images]", common: true, dangerous: false },
+
+  // (c) The capture log — each of these was typed to produce a fixture, so its screen is in the
+  //     corpus and the command demonstrably exists. All three open a MODAL, and this adapter
+  //     up-levels none of omp's modals: from a phone they land the user on the raw mirror, to be
+  //     driven with the special-keys pad and dismissed with Escape, and `composerReady` refuses
+  //     free-text sends until it is. Useful, but not what to surface first — hence `common: false`.
+  { command: "/model", description: "Open the provider/model picker", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/settings", description: "Open the settings panel", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/resume", description: "Open the session picker", takesArg: false, argHint: "", common: false, dangerous: false },
+];
+
 const CATALOG: Record<string, readonly AgentCommand[]> = {
   claude: CLAUDE,
   codex: CODEX,
   pi: PI,
   opencode: OPENCODE,
+  omp: OMP,
 };
 
 /**
  * Commands for a Herdr-detected agent (`pane.agent`, e.g. "claude" / "codex"). Returns [] for
  * unknown/absent agents — the UI then hides the command button.
+ *
+ * `Object.hasOwn`, not a truthy index: `CATALOG` is a plain object, so an agent string that spells
+ * an inherited `Object.prototype` member ("constructor", "toString", "valueOf", …) indexes to that
+ * member — a FUNCTION — which is truthy and would be handed back as if it were a command array.
+ * command-palette.tsx then calls `.filter` on it and throws, taking the palette down. Same hardening
+ * quick-replies.ts applies to its twin lookup, and adapterFor() to the registry.
  */
 export function commandsFor(agent: string | undefined | null): readonly AgentCommand[] {
   if (!agent) return [];
   const key = agent.toLowerCase().trim();
-  if (CATALOG[key]) return CATALOG[key];
+  if (Object.hasOwn(CATALOG, key)) return CATALOG[key];
   // Tolerate variants like "claude-code" / "opencode-dev".
   if (key.startsWith("claude")) return CLAUDE;
   if (key.startsWith("codex")) return CODEX;
   if (key.startsWith("opencode")) return OPENCODE;
   if (key === "pi" || key.startsWith("pi-") || key.startsWith("pi.")) return PI;
+  // `omp` is its own prefix — no other agent string in this file starts with it, and it must NOT be
+  // reached by the `pi` rules above: oh-my-pi ships a different command set from pi.dev's.
+  if (key.startsWith("omp")) return OMP;
   return [];
 }

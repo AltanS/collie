@@ -20,7 +20,7 @@
 import { fetchPane, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
-import { adapterFor } from "./harness";
+import { adapterFor, type HarnessAdapter } from "./harness";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
 import type { Scope } from "./scope";
 
@@ -28,9 +28,12 @@ export type ReplyOutcome =
   /** Text was verified in the input box and the submit key went through. */
   | { status: "sent" }
   /**
-   * The PRE-FLIGHT refused: the adapter could not see an input box on screen, so NOTHING was typed
-   * and no key was sent. Distinct from `stalled`, which is reported only after the text has already
-   * gone into the pane. The caller keeps the draft and may offer a deliberate override (`force`).
+   * The PRE-FLIGHT refused: a live read could not see an input box on screen, so NO REPLY TEXT was
+   * typed and no submit key was sent. Distinct from `stalled`, which is reported only after the text
+   * has already gone into the pane. The caller keeps the draft and may offer a deliberate override
+   * (`force`). The caller's `onComposerSeen` work may have run before a re-confirming refusal — but
+   * only ever on the path where a live read had just seen the composer, which is the invariant that
+   * whole callback exists to enforce.
    */
   | { status: "blocked"; error: string }
   /** Text never reached the input box — NO submit key was sent. The caller MUST keep the draft. */
@@ -175,13 +178,71 @@ export interface GuardedReplyArgs {
   /** Test seam for the poll pacing. */
   sleep?: Sleep;
   /**
-   * Skip the PRE-FLIGHT and type anyway — the user's deliberate second tap after a `blocked`
-   * outcome (a mis-detected screen, an adapter that can't see a box it really has). It skips ONLY
-   * the pre-flight: the type-then-verify guard below still runs, so the submit key is never fired
-   * blind even under an override.
+   * Override the PRE-FLIGHT'S REFUSAL and type anyway — the user's deliberate second tap after a
+   * `blocked` outcome (a mis-detected screen, an adapter that can't see a box it really has). The
+   * live read still happens; `force` only stops a definite `false` from refusing the send. The
+   * type-then-verify guard below still runs, so the submit key is never fired blind either way, and
+   * `onComposerSeen` still does not run — a screen that just answered "no composer" is the last
+   * place destructive keys may go.
    */
   force?: boolean;
+  /**
+   * Work the caller needs done once a live read has POSITIVELY SEEN the composer, and before the
+   * first byte of the reply is typed. Exists for exactly one caller and one reason: composer.tsx's
+   * pre-clear sweep (`ctrl+k` + a run of Backspaces that wipes a stranded draft off the input line so
+   * `pane.send_text` doesn't append to it) is DESTRUCTIVE, and it used to run in the composer before
+   * `sendGuardedReply` was called at all — i.e. before anything had looked at the live pane.
+   *
+   * That ordering is the whole bug. The composer decides to sweep from `display`, which is a
+   * SNAPSHOT: a poll behind while the mirror follows the tail, and frozen outright while the user has
+   * scrolled back or opened find. So its own fail-fast (`dialogPresent`) can read false against a pane
+   * that has since put a dialog up, and the sweep then fires into that dialog — the exact
+   * keystrokes-into-a-modal failure #34 is about, just upstream of where #34 was fixed.
+   *
+   * For an adapter that lifts NO interactive kind that fail-fast is not merely stale, it is inert:
+   * `dialogPresent` is `buildBlocks(...).some(b => b.kind !== "raw")`, so an adapter whose
+   * `buildBlocks` returns one `raw` block by construction can never make it true. Verified live
+   * against an omp pane with a full-screen picker up: `dialogPresent === false`. There is no window
+   * to widen or narrow there — `composerReady` is the ONLY gate on such a pane, which is why this
+   * hook keys on it rather than on the caller having already checked something.
+   *
+   * The name is the contract: this runs ONLY on the branch where `composerReady` answered true about
+   * a pane read moments ago. `force`, a read that threw, an adapter with no `composerReady`, no
+   * adapter at all — none of them reaches it, and neither will whatever path is added next, because
+   * `preflight` hands the runner back only on that one branch (see `Preflight`). Every other path
+   * types without sweeping and leans on type-then-verify, which still withholds the submit key.
+   *
+   * Resolving `{ ok: false }` aborts the send with that error and nothing typed. `keysSent` says
+   * whether anything actually reached the pane: when it did, the pre-flight's evidence is stale and
+   * the guard re-confirms before typing.
+   *
+   * The argument carries the evidence FORWARD, not just the permission. `promptRegion` is the prompt
+   * row the adapter saw on the pane the pre-flight just read, and a caller that sends destructive
+   * keys must pass it to `api.sendKeys` as `expected_prompt`: an ordering guarantee alone cannot
+   * bound the gap between the read and the keys, because that gap is a network round-trip and the
+   * only limit on it is GET_TIMEOUT_MS. Binding hands the last word to the bridge, which re-reads
+   * immediately before `send_keys` and 409s the write if the row has gone — the same mitigation
+   * every dialog tap already gets through lib/dialog-guard.ts.
+   */
+  onComposerSeen?: (seen: ComposerSeen) => Promise<ComposerPrepResult>;
 }
+
+/** What the pre-flight's live read saw, handed to the caller's pre-type work. */
+export interface ComposerSeen {
+  /**
+   * The composer's own prompt row, verbatim on screen, for binding a destructive write to it
+   * (`api.sendKeys(..., expectedPrompt)`). `null` when the adapter has no `composerPrompt` — then the
+   * write goes out unbound, which is the pre-existing behaviour and the reason the hook is optional.
+   */
+  promptRegion: string | null;
+}
+
+export type ComposerPrepResult =
+  /** Done. `keysSent` = did anything actually go out on the wire? A caller with nothing to do says
+   *  `false` and saves the guard a re-confirming read. */
+  | { ok: true; keysSent: boolean }
+  /** Abort the send with this error, nothing typed. */
+  | { ok: false; error: string };
 
 export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOutcome> {
   const adapter = adapterFor(args.agent ?? undefined);
@@ -197,24 +258,17 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // owns the keyboard (Claude's `/model` picker — no input box at the tail at all) receives the
   // user's text before anything notices. One read up front is the difference between "nothing
   // happened" and "your reply is now sitting in a picker".
-  //
-  // Adapter-scoped and fail-OPEN in both weak directions: an adapter without `composerReady` keeps
-  // today's behaviour, and a read that throws falls through to the guard rather than blocking a send
-  // on a transient network blip. Only a definite `false` refuses.
-  if (adapter.composerReady && !args.force) {
-    try {
-      const probe = await fetchPane(args.paneId, args.requestedLines, args.scope);
-      if (!adapter.composerReady(splitLines(parseAnsi(probe.text)))) {
-        return {
-          status: "blocked",
-          error:
-            "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.",
-        };
-      }
-    } catch {
-      // Transient read failure: fall through. The type-then-verify guard still protects the submit key.
-    }
-  }
+  const { refuse, runPreType } = await preflight(adapter, args);
+  if (refuse !== null) return refuse;
+
+  // The ONE call site of the caller's destructive pre-type work — and it is not guarded by a
+  // condition, it is guarded by whether the runner exists at all. `preflight` returns one only from
+  // the branch where a live read just saw the composer, so every other path (force, a read that
+  // threw, an adapter with no `composerReady`, and anything added later) skips this by construction
+  // rather than by remembering to check. `?.()` is the whole enforcement; there is no list to keep
+  // in sync.
+  const aborted = await runPreType?.();
+  if (aborted) return aborted;
 
   let typed;
   try {
@@ -262,8 +316,106 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   };
 }
 
+const NO_BOX =
+  "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.";
+
+/**
+ * What the pre-flight decided. Two fields, and the second is the safety invariant of this module made
+ * structural rather than conditional:
+ *
+ *   `refuse`     — non-null ⇒ return it; the send is refused with no reply text typed.
+ *   `runPreType` — non-null ⇒ a live read POSITIVELY SAW the composer, so the caller's destructive
+ *                  pre-type work may run. It is created on exactly one branch below and nowhere else.
+ *
+ * The point of shipping the permission as a CALLABLE rather than a boolean is that there is nothing
+ * for a later edit to re-derive, forget, or get subtly wrong: a new path through `preflight` that does
+ * not positively confirm a composer cannot produce a runner, so it cannot fire a keystroke, whatever
+ * its author intended. That is what the three holes the previous shape left open all had in common —
+ * `force`, a read that threw, and an adapter with no `composerReady` each SKIPPED the read and then
+ * ran the sweep anyway, because the sweep was gated on its own separate condition — "did the caller
+ * hand me a callback?" — instead of on the evidence.
+ */
+interface Preflight {
+  refuse: ReplyOutcome | null;
+  runPreType: (() => Promise<ReplyOutcome | null>) | null;
+}
+
+/**
+ * One live read, and everything the rest of the send is allowed to do with it.
+ *
+ * Fail-OPEN for the MESSAGE in both weak directions — an adapter without `composerReady` and a read
+ * that throws both fall through to the type-then-verify guard rather than blocking a send on a
+ * transient network blip — and fail-CLOSED for KEYS in every direction but one. Failing open for the
+ * message is defensible: the submit key is still withheld until the text is seen. Extending that to a
+ * `ctrl+k` + 40×Backspace burst is not, because those keys are not withheld by anything downstream —
+ * once sent they have already landed in whatever owns the keyboard.
+ */
+async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promise<Preflight> {
+  const blind = (refuse: ReplyOutcome | null): Preflight => ({ refuse, runPreType: null });
+
+  // Nothing here can read this harness's input box, so there is no evidence to be had — and no
+  // refusal to make either. Same behaviour as before an adapter grows a `composerReady`, minus the
+  // sweep, which had no business going out unverified.
+  if (!adapter.composerReady) return blind(null);
+
+  const composerReady = adapter.composerReady.bind(adapter);
+  let probe;
+  try {
+    probe = await fetchPane(args.paneId, args.requestedLines, args.scope);
+  } catch {
+    return blind(null); // transient read failure
+  }
+  const seen = splitLines(parseAnsi(probe.text));
+  if (!composerReady(seen)) {
+    // `force` is the user's deliberate "type anyway", so it overrides the refusal — but this is the
+    // one screen we have POSITIVE evidence about, and what it says is "no composer". Keys stay home.
+    return blind(args.force ? null : { status: "blocked", error: NO_BOX });
+  }
+
+  // The region the read's `true` was true OF. Computed here, from the same parse `composerReady` just
+  // answered about, so the caller cannot bind its keys to anything but the screen that authorised
+  // them — and cannot forget to, since it arrives as the argument.
+  const promptRegion = adapter.composerPrompt?.(seen) ?? null;
+
+  return {
+    refuse: null,
+    runPreType: async () => {
+      if (!args.onComposerSeen) return null;
+      let prep;
+      try {
+        prep = await args.onComposerSeen({ promptRegion });
+      } catch (e) {
+        return { status: "error", error: message(e) };
+      }
+      if (!prep.ok) return { status: "error", error: prep.error };
+      if (!prep.keysSent) return null; // the read above is still the freshest thing there is
+
+      // The caller put keys on the wire and waited for the TUI to settle, so the evidence that
+      // authorised them is now an RPC and a settle old. Re-confirm before the MESSAGE goes out —
+      // otherwise this ordering, which exists to stop keys reaching a dialog, would hand the dialog
+      // the reply instead. Still fail-open on a throw: the submit key is guarded downstream.
+      try {
+        const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
+        if (composerReady(splitLines(parseAnsi(fresh.text)))) return null;
+      } catch {
+        return null;
+      }
+      return {
+        status: "blocked",
+        error:
+          "The agent's input box left the screen while its input line was being cleared — a menu or dialog is probably up. Your message wasn't typed.",
+      };
+    },
+  };
+}
+
 /** The pre-#34 behaviour: one call that types AND submits. Only for harnesses with no adapter. */
 async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
+  // No `onComposerSeen` here, and none is possible: with no adapter nothing can read the input box,
+  // so no live read can ever confirm a composer, and the invariant says the destructive sweep stays
+  // home. It costs this path nothing — agent-chat derives the stranded draft through
+  // `adapterFor(agent)?.extractInputDraft`, so a pane with no adapter has no draft to sweep and the
+  // composer's callback was already a no-op here.
   try {
     const res = await sendReply(args.paneId, args.text, true, args.scope);
     return res.ok ? { status: "sent" } : { status: "error", error: res.error };

@@ -26,7 +26,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { containedRealpath, exists, loadTail, statFile } from "./files.ts";
+import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -252,7 +252,12 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
 export class CodexTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, string>();
 
-  constructor(private readonly root: string) {}
+  private readonly roots: string[];
+
+  /** One sessions directory or several (a second `CODEX_HOME`), searched in order. */
+  constructor(roots: string | readonly string[]) {
+    this.roots = rootList(roots);
+  }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
     if (ref.kind !== "id" || !isCodexSessionId(ref.value)) return null;
@@ -264,11 +269,23 @@ export class CodexTranscriptSource implements TranscriptSource {
     }
 
     const suffix = `-${sessionId.toLowerCase()}.jsonl`;
-    // Newest first at every level: a session being read is almost always today's.
-    for (const year of await descending(this.root)) {
-      for (const month of await descending(join(this.root, year))) {
-        for (const day of await descending(join(this.root, year, month))) {
-          const dir = join(this.root, year, month, day);
+    for (const root of this.roots) {
+      const hit = await this.findUnder(root, suffix);
+      // A hit that failed containment is `null` too — that root has nothing it may serve for this
+      // uuid either way, and the next root is asked on its own terms (files.ts header).
+      if (hit === null) continue;
+      this.pathCache.set(sessionId, hit);
+      return hit;
+    }
+    return null;
+  }
+
+  /** Newest first at every level: a session being read is almost always today's. */
+  private async findUnder(root: string, suffix: string): Promise<string | null> {
+    for (const year of await descending(root)) {
+      for (const month of await descending(join(root, year))) {
+        for (const day of await descending(join(root, year, month))) {
+          const dir = join(root, year, month, day);
           let names: string[];
           try {
             names = await readdir(dir);
@@ -279,10 +296,7 @@ export class CodexTranscriptSource implements TranscriptSource {
             (n) => n.startsWith("rollout-") && n.toLowerCase().endsWith(suffix),
           );
           if (hit === undefined) continue;
-          const real = await containedRealpath(join(dir, hit), this.root);
-          if (real === null) return null;
-          this.pathCache.set(sessionId, real);
-          return real;
+          return containedRealpath(join(dir, hit), root);
         }
       }
     }
@@ -304,10 +318,10 @@ async function descending(dir: string): Promise<string[]> {
 }
 
 /** Codex's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function codexJournal(root: string): JournalAdapter {
+export function codexJournal(roots: string | readonly string[]): JournalAdapter {
   return {
     agent: "codex",
-    source: new CodexTranscriptSource(root),
+    source: new CodexTranscriptSource(roots),
     parse: parseCodexTranscript,
   };
 }

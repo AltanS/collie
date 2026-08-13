@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { defaultSocketPath, envBool, loadConfig, resolveBridgeHost } from "./config.ts";
@@ -68,9 +69,11 @@ describe("loadConfig", () => {
     expect(cfg.readLines).toBe(200);
     // Transcript history defaults ON — it's the only scrollback a Claude pane can ever have.
     expect(cfg.transcript).toBe(true);
-    expect(cfg.journalRoots.claude).toEndWith("/.claude/projects");
+    // One root by default, and it is a list of one rather than a special case (issue #92).
+    expect(cfg.journalRoots.claude).toHaveLength(1);
+    expect(cfg.journalRoots.claude[0]).toEndWith("/.claude/projects");
     // OpenCode keeps ONE sqlite database at the top of its XDG data dir — no per-session files.
-    expect(cfg.journalRoots.opencode).toEndWith("/.local/share/opencode");
+    expect(cfg.journalRoots.opencode).toEqual([join(homedir(), ".local", "share", "opencode")]);
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
     expect(cfg.allowedOrigins).toEqual([]);
@@ -141,7 +144,39 @@ describe("loadConfig", () => {
   // exactly that, so an existing deployment's env survives the change untouched.
   test("COLLIE_TRANSCRIPT_ROOT relocates the CLAUDE journal root", () => {
     process.env.COLLIE_TRANSCRIPT_ROOT = "/srv/claude/projects";
-    expect(loadConfig().journalRoots.claude).toBe("/srv/claude/projects");
+    expect(loadConfig().journalRoots.claude).toEqual(["/srv/claude/projects"]);
+  });
+
+  // The multi-profile case from issue #92: CLAUDE_CONFIG_DIR gives each Claude profile its own
+  // projects tree, so one root can only ever serve half the herd's history.
+  test("COLLIE_TRANSCRIPT_ROOT takes several roots, comma-separated and in order", () => {
+    process.env.COLLIE_TRANSCRIPT_ROOT = "/srv/work/projects,/srv/personal/projects";
+    expect(loadConfig().journalRoots.claude).toEqual([
+      "/srv/work/projects",
+      "/srv/personal/projects",
+    ]);
+  });
+
+  test("whitespace and empty entries around the separators are dropped", () => {
+    process.env.COLLIE_TRANSCRIPT_ROOT = " /a/projects , , /b/projects ,";
+    expect(loadConfig().journalRoots.claude).toEqual(["/a/projects", "/b/projects"]);
+  });
+
+  // An empty value used to become a root of `""` — which resolves against the bridge's cwd, not a
+  // journal. Falling back to the default is both safer and what the operator meant.
+  test("an empty value falls back to the default root", () => {
+    process.env.COLLIE_TRANSCRIPT_ROOT = "   ";
+    expect(loadConfig().journalRoots.claude).toEqual([join(homedir(), ".claude", "projects")]);
+  });
+
+  test("every harness root takes a list, not just Claude's", () => {
+    process.env.COLLIE_CODEX_ROOT = "/a/sessions,/b/sessions";
+    process.env.COLLIE_PI_ROOT = "/c/sessions,/d/sessions";
+    process.env.COLLIE_OPENCODE_ROOT = "/e/opencode,/f/opencode";
+    const cfg = loadConfig();
+    expect(cfg.journalRoots.codex).toEqual(["/a/sessions", "/b/sessions"]);
+    expect(cfg.journalRoots.pi).toEqual(["/c/sessions", "/d/sessions"]);
+    expect(cfg.journalRoots.opencode).toEqual(["/e/opencode", "/f/opencode"]);
   });
 
   test("each harness's own home var relocates its journal root", () => {
@@ -149,15 +184,15 @@ describe("loadConfig", () => {
     process.env.PI_CODING_AGENT_DIR = "/srv/pi";
     process.env.XDG_DATA_HOME = "/srv/share";
     const cfg = loadConfig();
-    expect(cfg.journalRoots.codex).toBe("/srv/codex/sessions");
-    expect(cfg.journalRoots.pi).toBe("/srv/pi/sessions");
-    expect(cfg.journalRoots.opencode).toBe("/srv/share/opencode");
+    expect(cfg.journalRoots.codex).toEqual(["/srv/codex/sessions"]);
+    expect(cfg.journalRoots.pi).toEqual(["/srv/pi/sessions"]);
+    expect(cfg.journalRoots.opencode).toEqual(["/srv/share/opencode"]);
   });
 
   test("an explicit COLLIE_* root beats the harness's home var", () => {
     process.env.CODEX_HOME = "/srv/codex";
     process.env.COLLIE_CODEX_ROOT = "/elsewhere/rollouts";
-    expect(loadConfig().journalRoots.codex).toBe("/elsewhere/rollouts");
+    expect(loadConfig().journalRoots.codex).toEqual(["/elsewhere/rollouts"]);
   });
 
   test("reads the per-device auth header and allowlist", () => {
