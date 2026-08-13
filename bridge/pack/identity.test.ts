@@ -3,6 +3,7 @@ import { sign, verify, X509Certificate } from "node:crypto";
 
 import {
   bearerToken,
+  derInteger,
   fingerprintFromDer,
   fingerprintOfCert,
   hashToken,
@@ -166,6 +167,29 @@ describe("minting this collie's certificate", () => {
     const a = mintIdentity({ commonName: "collie-desk" });
     const b = mintIdentity({ commonName: "collie-desk" });
     expect(a.fingerprint).not.toBe(b.fingerprint);
+  });
+
+  test("the serial is a MINIMAL DER INTEGER — a leading zero only ever guards a sign bit", () => {
+    // The 1-in-512 serial that used to mint a certificate no parser would accept: 16 random bytes
+    // whose first is `00` and whose second is under `0x80`. The redundant zero must be dropped.
+    const hex = (b: Buffer) => b.toString("hex");
+    expect(hex(derInteger(Buffer.from([0x00, 0x2a])))).toBe("02012a");
+    expect(hex(derInteger(Buffer.from([0x00, 0x00, 0x2a])))).toBe("02012a");
+    // …but a high bit still needs its zero, or the INTEGER reads negative.
+    expect(hex(derInteger(Buffer.from([0x00, 0x80])))).toBe("02020080");
+    expect(hex(derInteger(Buffer.from([0xff])))).toBe("020200ff");
+    // Ordinary values are untouched, and zero itself stays one byte rather than becoming empty.
+    expect(hex(derInteger(Buffer.from([0x02])))).toBe("020102");
+    expect(hex(derInteger(Buffer.from([0x00])))).toBe("020100");
+  });
+
+  test("a certificate whose serial drew that leading zero still parses", () => {
+    // Belt to the braces above: the whole mint, through a real parser, over enough draws that the
+    // 1-in-512 shape is likely present — and harmless now either way, so this cannot itself flake.
+    for (let i = 0; i < 64; i += 1) {
+      const minted = mintIdentity({ commonName: "collie-serial" });
+      expect(fingerprintOfCert(minted.certPem)).toBe(minted.fingerprint);
+    }
   });
 
   test("an unparseable certificate has no fingerprint, rather than a plausible one", () => {

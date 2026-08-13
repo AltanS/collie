@@ -171,7 +171,25 @@ const derLen = (n: number): Buffer => {
 const der = (tag: number, body: Buffer): Buffer => Buffer.concat([Buffer.from([tag]), derLen(body.length), body]);
 const SEQ = (...parts: Buffer[]): Buffer => der(0x30, Buffer.concat(parts));
 const SET = (...parts: Buffer[]): Buffer => der(0x31, Buffer.concat(parts));
-const INT = (b: Buffer): Buffer => der(0x02, b[0]! & 0x80 ? Buffer.concat([Buffer.from([0]), b]) : b);
+/**
+ * A DER INTEGER, **minimally encoded** — the encoding is not free to carry a redundant leading zero.
+ *
+ * DER requires the shortest form: a leading `00` is legal ONLY to keep a high bit from reading as a
+ * sign bit. The serial is 16 random bytes, so roughly 1 draw in 512 starts `00` with the next byte
+ * below `0x80` — a non-minimal INTEGER that OpenSSL/BoringSSL refuses outright
+ * (`ASN.1 … INVALID_INTEGER`). That certificate mints and fingerprints fine and then fails to parse
+ * anywhere it matters, which is a member that cannot be pinned, verified or served.
+ *
+ * Exported only so `identity.test.ts` can pin the rule deterministically — a test that mints until
+ * it draws the bad serial would be the same 1-in-512 flake, aimed at CI instead of at an operator.
+ */
+export function derInteger(b: Buffer): Buffer {
+  let start = 0;
+  while (start + 1 < b.length && b[start] === 0 && (b[start + 1]! & 0x80) === 0) start += 1;
+  const trimmed = b.subarray(start);
+  return der(0x02, trimmed[0]! & 0x80 ? Buffer.concat([Buffer.from([0]), trimmed]) : trimmed);
+}
+const INT = derInteger;
 const BOOL = (v: boolean): Buffer => der(0x01, Buffer.from([v ? 0xff : 0x00]));
 const OCTET = (b: Buffer): Buffer => der(0x04, b);
 const UTF8 = (s: string): Buffer => der(0x0c, Buffer.from(s, "utf8"));
