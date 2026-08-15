@@ -592,15 +592,18 @@ function memberVersions(
       "`collie build` here to stamp one",
     );
   }
-  const skewed = answered
-    .filter((e) => e.outcome.value.version !== null && e.outcome.value.version !== ours)
-    .map((e) => `${e.id} runs ${e.outcome.value.version}`);
+  const behind = answered.filter(
+    (e) => e.outcome.value.version !== null && e.outcome.value.version !== ours,
+  );
+  const skewed = behind.map((e) => `${e.id} runs ${e.outcome.value.version}`);
   if (skewed.length === 0) return ok("member-versions", `every member that reported one runs ${ours}${note}`);
+  // The remedy is a command, with the members already in it — a lead levels its peers over ssh
+  // (ADR 0016), and the only other way is `collie update` on each of those machines by hand.
   return warn(
     "member-versions",
     `this machine runs ${ours}; ${skewed.join(", ")} — build skew refuses nothing (§7.1), the link keeps` +
       ` working${note}`,
-    "update the older machine (`collie update` there)",
+    `\`collie pack update ${behind.map((e) => e.id).join(" ")}\` here, or \`collie update\` on each`,
   );
 }
 

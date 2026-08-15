@@ -868,7 +868,7 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     }
     if (outcome.ok) {
       emit(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`, "good");
-      for (const line of versionLines(outcome.value.version, ours)) emit(line, "dim");
+      for (const line of versionLines(outcome.value.version, ours, m.memberId)) emit(line, "dim");
       // First successful contact clears the provisional marker: one-time and self-healing. The
       // bridge's own sweep could also stamp this later; today `pack status` is the clearer.
       if (m.contactedAt === null) {
@@ -892,7 +892,11 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     }
     if (outcome.state === "incompatible") {
       emit(`    link    INCOMPATIBLE · ${outcome.reason}`, "bad");
-      emit("            Version skew is not retried on the poll cadence — update the older machine.", "dim");
+      emit(
+        `            Not retried on the poll cadence. If this machine is the newer one:` +
+          ` \`collie pack update ${m.memberId}\`.`,
+        "dim",
+      );
       continue;
     }
     emit(`    link    unreachable · ${outcome.reason}`, "bad");
@@ -956,7 +960,7 @@ export const VERSION_REPORTED_SINCE = "1.0.0-alpha.12";
  * Same version ⇒ one quiet line. Different ⇒ a `warn:` naming BOTH versions and the remedy. Absent
  * ⇒ pre-amendment, stated plainly: the member is behind, not broken, and cannot say so itself.
  */
-function versionLines(reported: string | null, ours: string): string[] {
+function versionLines(reported: string | null, ours: string, memberId: string): string[] {
   if (reported === null) return [`    version pre-${VERSION_REPORTED_SINCE} (not reported)`];
   if (reported === ours) return [`    version ${reported}`];
   // `unknown` is this checkout answering "no build stamp and no manifest" — it is not a version, so
@@ -965,7 +969,8 @@ function versionLines(reported: string | null, ours: string): string[] {
   if (ours === "unknown") return [`    version ${reported}`];
   return [
     `    version ${reported} — warn: this machine runs ${ours}`,
-    "            Build skew refuses nothing (§7.1) — the link keeps working. Update the older machine.",
+    `            Build skew refuses nothing (§7.1) — the link keeps working. Level it from here:`,
+    `            \`collie pack update ${memberId}\` (over your own ssh, ADR 0016).`,
   ];
 }
 

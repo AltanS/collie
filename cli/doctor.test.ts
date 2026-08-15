@@ -525,7 +525,7 @@ describe("collie doctor — the pack checks", () => {
     expect(f?.status).toBe("warn");
     expect(f?.detail).toContain("1.0.0-alpha.9");
     expect(f?.detail).toContain("1.0.0-alpha.12");
-    expect(f?.remedy).toContain("update the older machine");
+    expect(f?.remedy).toContain("collie pack update");
     expect(code).toBe(EXIT.OK);
   });
 
