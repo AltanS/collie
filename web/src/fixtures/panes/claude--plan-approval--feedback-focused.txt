@@ -1,0 +1,46 @@
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRe-plan the refactor using guard clauses. Do not ask questions - call ExitPlanMode immediately.[0m[48;2;55;55;55m                                   [0m
+
+[0m[38;2;72;150;140m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mReady to code?[0m
+  
+ Here is Claude's plan:
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[1m[3m[4mRefactor [0m[1m[3m[4m[38;2;177;185;249mvalidate()[0m[1m[3m[4m in validate.js[0m
+
+ [0m[1mContext[0m
+
+ [0m[38;2;177;185;249mvalidate(user) [0min [0m[38;2;177;185;249m/tmp/collie-probe/validate.js [0muses three nested [0m[38;2;177;185;249mif [0mstatements to check that [0m[38;2;177;185;249muser[0m, [0m[38;2;177;185;249muser.email[0m, and [0m[38;2;177;185;249muser.email[0m
+ containing [0m[38;2;177;185;249m"@" [0mare all truthy. This nesting is unnecessary and can be flattened using early returns (guard clauses).
+
+ [0m[1mPlan[0m
+
+ Replace the nested conditionals with a single guard clause:
+
+ [0m[38;5;4mfunction [0m[38;5;3mvalidate[0m(user) {
+   [0m[38;5;4mif [0m(!user || !user.email || !user.email.[0m[38;5;3mincludes[0m([0m[38;5;1m"@"[0m)) {
+     [0m[38;5;4mreturn false[0m;
+   }
+   [0m[38;5;4mreturn true[0m;
+ }
+
+ module.exports = { validate };
+
+ This preserves identical behavior (returns [0m[38;2;177;185;249mtrue [0monly when [0m[38;2;177;185;249muser.email [0mexists and contains [0m[38;2;177;185;249m"@"[0m, [0m[38;2;177;185;249mfalse [0motherwise) while eliminating
+ all nesting.
+
+ [0m[1mVerification[0m
+
+ - Run [0m[38;2;177;185;249mnode -e "const {validate} = require('./validate.js'); console.log(validate({email:'a@b.com'}), validate({email:'ab'}),[0m
+ [0m[38;2;177;185;249mvalidate({}), validate(null))" [0mand confirm output is [0m[38;2;177;185;249mtrue false false false[0m.
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+
+[0m[38;2;72;150;140m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[38;2;153;153;153mClaude has written up a plan and is ready to execute. Would you like to proceed?[0m
+
+   [0m[38;2;153;153;153m1. [0mYes, clear context (5% used) and use auto mode
+   [0m[38;2;153;153;153m2. [0mYes, and use auto mode
+   [0m[38;2;153;153;153m3. [0mYes, manually approve edits
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m4. [0m[2mTell Claude what to change[0m
+      [0m[38;2;153;153;153mshift+tab to approve with this feedback[0m
+
+ [0m[38;2;153;153;153mctrl+g to edit in Vim · ~/.claude/plans/refactor-validate-in-validate-js-typed-allen.md[0m
