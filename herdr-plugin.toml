@@ -29,19 +29,19 @@ platforms = ["linux", "macos"]
 
 [[actions]]
 id = "start"
-title = "Start web bridge"
+title = "Start Collie"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "start"]
 
 [[actions]]
 id = "stop"
-title = "Stop web bridge"
+title = "Stop Collie"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "stop"]
 
 [[actions]]
 id = "restart"
-title = "Restart web bridge"
+title = "Restart Collie"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "restart"]
 
@@ -50,7 +50,7 @@ command = ["bash", "scripts/collie-ctl.sh", "restart"]
 # cli/lifecycle.ts → cmdUninstall.
 [[actions]]
 id = "uninstall"
-title = "Uninstall web bridge (remove service)"
+title = "Uninstall Collie (remove service)"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "uninstall"]
 
@@ -64,13 +64,13 @@ command = ["bash", "scripts/collie-ctl.sh", "update"]
 
 [[actions]]
 id = "url"
-title = "Show bridge URL"
+title = "Show Collie URL"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "url"]
 
 [[actions]]
 id = "status"
-title = "Bridge status"
+title = "Collie status"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "status"]
 
