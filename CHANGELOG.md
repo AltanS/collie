@@ -6,6 +6,31 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.1] - 2026-08-15
+
+### Added
+
+- **`COLLIE_PUBLIC_URL` is the front-door address source** — set the real ingress once and every `pack invite` / `pack add` derives it, instead of handing joiners a derived tailnet name a one-way ACL makes undialable; origin only, a bad value warns and falls through, the peer's `pack-listener` address is untouched (cdeab7e)
+- **`doctor`, `status`, `pack status` and `pack add` render with ink on a TTY** — findings table, boxed banner, roster coloured by reachability, a spinner per `pack add` leg; every verb keeps its plain branch, selected by `isTTY && !CI && !--plain` (24dc52f, 62e2ba5, 7c9958b)
+- `collie promote` prints the demoted lead's repair steps and lists every remaining member for re-join — the peer sweep could never land through a peer that pins only its current lead (c9a7373, b02d4a8)
+- README: the 0.x → 1.0 migration path — one action, one must-do, a rehearsed way back (893c511)
+
+### Changed
+
+- **Commander owns parsing and dispatch**, built from the existing `COMMANDS` table so the usage line cannot drift from the verb list; it never exits or prints on its own — usage errors stay in this CLI's words and the pack exit codes survive (309c15e)
+- Herdr action titles say "Collie", not "web bridge" — titles only; action ids and command strings stay frozen (ADR 0006, ADR 0012) (9a2015a)
+
+### Fixed
+
+- **A non-minimal DER serial made 1 certificate mint in 512 unparseable** — the cert minted and fingerprinted but could never be re-parsed, so every pin re-derived from its PEM failed: in a pack that is a member that cannot be pinned, verified or served. Any member enrolled by an affected run must be re-enrolled (`collie pack remove` + a fresh join); `derInteger` now emits the shortest form and the rule is pinned deterministically (4037601)
+- **`COLLIE_INSTANCE` discovers its own conventional config dir and refuses another instance's** — a second instance's pack verb silently read the default instance's trust store and minted a fresh identity into the live one; an injected `HERDR_PLUGIN_CONFIG_DIR` still wins (73a2853)
+- `collie join`'s enrollment dial gets a 15s budget — an unreachable lead used to hang on the OS's TCP patience (5+ minutes observed); the peer's UNREACHABLE branch now names `--address` as the escape hatch (1177b57)
+- `pack add`'s git-bundle legs: `create` bundles HEAD rather than a bare sha it refuses, and `verify` runs in a scratch repo under `$WORK` (27ee624, 80b996f)
+- The `status` banner probes the bridge's actual bind instead of assuming loopback (2941300)
+- `collie build` runs on a bare checkout again — commander is lazy-loaded (fa6ecfa); `pack add` renders plain where ink would not fit (18a7b98) and surfaces the install leg's own error line (683ce68)
+- The lead's own roster entry is a machine label, not the pack name (43173a2); the standalone machine chip above the composer input is gone (4efb152)
+- A composer test's stall no longer outlives its test and lands in the next one (df879dd)
+
 ## [1.0.0-alpha.16] - 2026-08-13
 
 ### Added
