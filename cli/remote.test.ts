@@ -41,7 +41,7 @@ import { realExec } from "./sys.ts";
 
 // ── The fake transport ───────────────────────────────────────────────────────
 
-type Leg = "probe" | "install" | "configure" | "membership" | "enroll";
+type Leg = "probe" | "install" | "configure" | "membership" | "enroll" | "restart";
 
 /** Which leg a script is, read off the script itself — so a test never depends on call ordering. */
 function legOf(script: string): Leg {
@@ -49,6 +49,7 @@ function legOf(script: string): Leg {
   if (script.includes("collie-install:")) return "install";
   if (script.includes("collie-configure:")) return "configure";
   if (script.includes("pack status --no-probe")) return "membership";
+  if (script.includes('"$ROOT/bin/collie" restart')) return "restart";
   if (script.includes("'join'")) return "enroll";
   throw new Error(`unrecognised leg script:\n${script}`);
 }
@@ -691,6 +692,71 @@ describe("re-running against the same host", () => {
     expect(text(h.io)).toContain('✓ already a member of "the herd" as "nas"');
     expect(h.calls.map((c) => c.leg)).not.toContain("enroll");
     expect(h.restarts).toBe(0);
+  });
+
+  // ── THE FIELD BUG (2026-08-15) ────────────────────────────────────────────
+  // A re-run against an ENROLLED peer whose checkout is behind: the push and the build landed, and
+  // the machine kept answering with the old build because nothing restarted it — no `collie join`
+  // runs on this path, and a join is the only thing that ever restarted a peer from `pack add`. The
+  // operator had just consented to "replace it with 1.2.3"; `pack status` then still said 1.2.2.
+  test("re-adding an enrolled peer whose build was replaced RESTARTS it there", async () => {
+    const h = harness({
+      // The peer is in this lead's roster already — which is what makes the `hello` below the lead's
+      // own view of the machine it just rebuilt.
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      answers: {
+        probe: {
+          stdout: probeOut({
+            checkout: REMOTE_CHECKOUT,
+            commit: "0000feed0000feed0000feed0000feed0000feed",
+            version: "1.2.2",
+            envhost: "100.64.0.9",
+            dirty: "no",
+          }),
+        },
+        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "membership", "restart"]);
+    const rendered = text(h.io);
+    expect(rendered).toContain("restarting Collie on nas.example");
+    // And the verdict states what it is running NOW, from the lead's own `hello` — never from the
+    // probe it read before the push.
+    expect(rendered).toContain(`now running ${VERSION}`);
+    // The LEAD is not restarted: nothing in its own roster changed.
+    expect(h.restarts).toBe(0);
+  });
+
+  test("a restart that fails there is a FAILURE, and says which machine still runs the old build", async () => {
+    const h = harness({
+      answers: {
+        probe: {
+          stdout: probeOut({
+            checkout: REMOTE_CHECKOUT,
+            commit: "0000feed0000feed0000feed0000feed0000feed",
+            envhost: "100.64.0.9",
+            dirty: "no",
+          }),
+        },
+        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+        restart: { code: 1, stderr: "error: the unit did not come back" },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("The new build is on disk there and the old one is still running");
+  });
+
+  test("an unchanged re-run restarts nothing — a no-op stays a no-op", async () => {
+    const h = harness({
+      answers: {
+        probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
+        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).not.toContain("restart");
+    expect(text(h.io)).toContain('✓ already a member of "the herd" as "nas"');
   });
 
   test("a member of ANOTHER pack is STATE, naming `collie leave` there — never run for you", async () => {
