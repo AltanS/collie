@@ -322,7 +322,7 @@ export function AgentChat({
     async (action: PromptBlockAction, prompt: PromptModel) => {
       if (readOnly) {
         setStatus("Read-only — device not authorised", "error");
-        return;
+        return false;
       }
       const base = {
         paneId,
@@ -350,6 +350,9 @@ export function AgentChat({
       } else {
         setStatus(result.error || "Send failed", "error");
       }
+      // Reported back so the block can keep a refused feedback draft on screen rather than discard
+      // what someone just thumb-typed. Option taps ignore it.
+      return result.status === "sent";
     },
     [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );

@@ -104,6 +104,35 @@ refuses unless the box is **empty** (`feedback.text === ""`), and why the render
 text as a read-only card instead of an editor: the alternative is garbling a sentence someone at the
 terminal is still writing and then submitting the result irreversibly.
 
+## The row RE-FLOWS; it does not window
+
+A value longer than the row does **not** scroll around the caret. Claude re-flows the whole thing
+across as many display lines as it needs, indented under the row, with the static hint below them:
+
+```
+   ❯ 3. Keep the nested structure instead of a guard clause, but extract each condition into a
+        small named predicate so the intent reads at the call site.
+        shift+tab to approve with this feedback
+```
+
+Three consequences, all measured on 2.1.233 and all load-bearing:
+
+1. **The value has to be rebuilt** from the row's label plus every line above the hint, rejoined with
+   the single space the wrap seam consumed. Claude wraps on word boundaries, so this is exact.
+2. **The hint stops being the first sub-line**, so a marker anchored at the start of the joined
+   description silently stops matching — and the row goes back to being up-levelled into a button
+   carrying the user's own words, which is the original bug.
+3. **The footer moves away from the options.** A 355-character value pushed it past `MAX_FOOTER_GAP`
+   and the *entire dialog* stopped being recognised — it fell to the raw mirror, buttons and all.
+   `MAX_FEEDBACK_WRAP` is the allowance that keeps it readable, and `FEEDBACK_MAX_LENGTH` is sized to
+   stay inside that allowance even on a narrow pane.
+
+And one more, which is why the mid-flight identity is anchored at the **question** rather than at a
+lookback window: growing the dialog makes the terminal re-flow the screen, and **the plan body above
+the question comes back differently laid out**. Any signature reaching up into it moves under the
+feedback flow's own keystrokes. Verified by diffing the two signatures across a single live
+`3`-then-type transition — every line above the question shifted, nothing below it did.
+
 ## The verified send: digit → focus → type → Enter
 
 The whole sequence, driven end to end through the real bridge against a live agent (2026-08-15):
@@ -111,14 +140,20 @@ The whole sequence, driven end to end through the real bridge against a live age
 ```
 send_keys ["3"]        → ❯ moves onto the row, field focused        (answers nothing)
   …verify focused
-send_text "…", submit=false → the words appear on the row
-  …verify our own text is on the row
+send_text "…", submit=false → the words appear on the row (wrapping if long)
+  …verify the rejoined row matches our text EXACTLY
 send_keys ["Enter"]    → DENY-with-feedback; the agent re-plans with it
 ```
 
 The agent's next plan visibly incorporated the text, so this is a confirmed round trip, not a screen
-inference. Each step is gated on a fresh read of the one before it — the Enter is irreversible, so it
-never goes out on anything but visible evidence that the box holds what we typed.
+inference — run twice, once with a short value and once with a 185-character one that wrapped onto a
+second line. Each step is gated on a fresh read of the one before it, and the Enter is additionally
+bound to the region of that last read, so a keystroke at the terminal in the gap earns a refusal from
+the bridge rather than a submit aimed at a screen that has moved.
+
+The focus step also requires the box to still be **empty**. That window — our digit landed, our paste
+has not — is exactly when a human at the same dialog might start typing, and their fragment would sit
+at the head of ours. This row cannot be cleared, so refusing is the only remedy.
 
 ## What `Enter` and `Esc` actually deliver
 
@@ -157,7 +192,10 @@ Both were read back out of the agent's own transcript, not inferred from the scr
    `Yes, clear context (N% used) and use auto mode`, so the dialog is 3 or 4 rows plus the input, and
    the input's own digit is 3 or 4. Nothing may key on a fixed option count or a fixed key.
    `claude--plan-approval--three-row.txt` is the fixture that pins the other shape.
-5. **Approve-with-feedback is still out of reach.** `shift+tab` is the only key that keeps the plan
+5. **Anything typed into the box that reads back as the placeholder reads as EMPTY.** Feedback whose
+   text is exactly `Tell Claude what to change` would be typed, then fail its own read-back check and
+   sit in the box unsubmitted. Fails safe; not worth a special case, but don't be surprised by it.
+6. **Approve-with-feedback is still out of reach.** `shift+tab` is the only key that keeps the plan
    AND passes the note; until [#89](https://github.com/AltanS/collie/issues/89) clears, the phone can
    only deny with feedback. Anyone adding the approve path should re-walk this document first — the
    `Enter` and `shift+tab` results differ in the agent's transcript, not on screen.

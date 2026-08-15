@@ -475,23 +475,47 @@ describe("PromptSelectBlock — the feedback input row", () => {
     expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "use a switch" });
   });
 
+  it("keeps the draft on screen when a send is refused", async () => {
+    // Up to FEEDBACK_MAX_LENGTH characters, thumb-typed on a phone. A `changed` refusal must not eat
+    // them — this is the longest text the app ever asks anyone to type.
+    const model = fixtureModel("claude--plan-approval.txt");
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={() => false} />);
+    await user.click(screen.getByRole("button", { name: new RegExp(OFFER) }));
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(screen.getByRole("textbox", { name: "Feedback text" })).toHaveValue("keep me");
+  });
+
+  it("says WE are sending, not that the terminal is, while our own sequence runs", async () => {
+    // Our choreography focuses the row and fills it, so mid-flight the screen is indistinguishable
+    // from "someone at the terminal is typing" — which would be a lie told to the person who just
+    // pressed Send about their own action.
+    const model = fixtureModel("claude--plan-approval.txt");
+    let release: () => void = () => {};
+    const blocked = new Promise<boolean>((r) => (release = () => r(true)));
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={() => blocked} />);
+    await user.click(screen.getByRole("button", { name: new RegExp(OFFER) }));
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "use a switch");
+    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(await screen.findByText("Sending feedback…")).toBeInTheDocument();
+    expect(screen.queryByText(/in the terminal/)).toBeNull();
+    release();
+  });
+
   it("drives the real choreography end to end through the wired handler", async () => {
     const name = "claude--plan-approval--three-row.txt";
     const model = fixtureModel(name);
-    // Entry guard sees the dialog as captured; the polls then see it focused, then filled.
+    // The three real captures the flow actually walks: the dialog as tapped, then focused-and-empty
+    // (what the digit produces), then filled — the placeholder swapped for our words, which is
+    // exactly what the terminal shows once the paste lands.
+    const focusedEmpty = fixtureText("claude--plan-approval--three-row-focused.txt");
+    const pane = (text: string) => ({ paneId: "w1:p1", text, truncated: false, revision: 7 });
     mockFetchPane
-      .mockResolvedValueOnce({ paneId: "w1:p1", text: fixtureText(name), truncated: false, revision: 7 })
-      .mockResolvedValue({
-        paneId: "w1:p1",
-        // The row's placeholder is what the box shows while empty; swapping it for our words is
-        // exactly what the terminal does once the text lands.
-        text: fixtureText("claude--plan-approval--three-row-focused.txt").replace(
-          "Tell Claude what to change",
-          "use a switch",
-        ),
-        truncated: false,
-        revision: 7,
-      });
+      .mockResolvedValueOnce(pane(fixtureText(name))) // entry guard
+      .mockResolvedValueOnce(pane(focusedEmpty)) // focus poll: focused, box still empty
+      .mockResolvedValue(pane(focusedEmpty.replace("Tell Claude what to change", "use a switch")));
     const user = userEvent.setup();
     render(<Harness prompt={model} detectedRevision={7} />);
     await user.click(screen.getByRole("button", { name: new RegExp(OFFER) }));

@@ -61,11 +61,13 @@ export interface PromptModel {
   /** The dialog's inline free-text input row, when it has one. Absent on dialogs without one. */
   feedback?: PromptFeedback;
   /**
-   * The dialog's identity, independent of the two things OUR OWN choreography changes: the `❯`
-   * pointer and the feedback row's contents. Same lines as `signature`, with every pointer glyph
-   * normalised to a space and the feedback row's text replaced by a constant. The feedback flow
-   * (digit → focus → type → Enter) moves both by design, so its mid-flight polls compare THIS —
-   * while a same-shaped successor dialog (different subject, question, or labels) still breaks it.
+   * The dialog's identity, independent of everything OUR OWN choreography changes: the `❯` pointer,
+   * the feedback row's contents, and the row's HEIGHT (a long value wraps, which re-flows the screen
+   * above it). Runs from the QUESTION — not `signature`'s wider lookback — with pointers normalised
+   * and the whole feedback block collapsed to one token. The feedback flow moves all three by design,
+   * so its mid-flight polls compare THIS. Narrower than `signature` by exactly the subject above the
+   * question, which is the part that provably drifts under the flow's own keystrokes; the ENTRY guard
+   * still compares the full `signature`, so a stale tap never starts against the wrong dialog.
    * Mirrors preview-select's `coreSignature`, for the same reason.
    */
   coreSignature: string;

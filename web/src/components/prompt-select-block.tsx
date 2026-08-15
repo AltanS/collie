@@ -19,7 +19,7 @@ export interface PromptSelectBlockProps {
    * sends the option's keys (or drives the feedback choreography). Returning/throwing simply clears
    * the busy state.
    */
-  onAction: (action: PromptBlockAction) => void | Promise<void>;
+  onAction: (action: PromptBlockAction) => boolean | void | Promise<boolean | void>;
   /** Read-only device or a gone pane: buttons still render (for context) but can't be pressed. */
   disabled?: boolean;
 }
@@ -62,11 +62,13 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
   const terminalFocused = feedback?.focused ?? false;
   const locked = Boolean(disabled) || sending !== null || terminalFocused;
 
-  async function press(id: string, action: PromptBlockAction) {
-    if (locked) return;
+  async function press(id: string, action: PromptBlockAction): Promise<boolean> {
+    if (locked) return false;
     setSending(id);
     try {
-      await onAction(action);
+      // A handler that returns nothing is taken at its word (the presentational tests inject one);
+      // only an explicit `false` means "didn't send".
+      return (await onAction(action)) !== false;
     } finally {
       setSending(null);
     }
@@ -75,8 +77,10 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
   async function sendFeedback() {
     const text = draft.trim();
     if (text.length === 0) return;
-    await press("feedback", { kind: "feedback", text });
-    setEditorOpen(false);
+    // The editor closes only on a send that actually landed. A refused one (the guard saw the dialog
+    // move) would otherwise throw away up to FEEDBACK_MAX_LENGTH characters someone thumb-typed on a
+    // phone — the longest text this app ever asks anyone to type — with no way to get them back.
+    if (await press("feedback", { kind: "feedback", text })) setEditorOpen(false);
   }
 
   const busyIcon = (
@@ -112,8 +116,16 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
         })}
       </div>
 
-      {/* The inline text input, in whichever of its three states this screen is in. */}
-      {feedback && terminalFocused ? (
+      {/* The inline text input, in whichever of its states this screen is in. OUR OWN send comes
+          first: the choreography focuses the row and fills it, so from the moment Send is pressed the
+          screen is briefly indistinguishable from "someone at the terminal is typing" — and saying
+          that to the person who just pressed the button would be a lie about their own action. */}
+      {feedback && sending === "feedback" ? (
+        <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {busyIcon}
+          Sending feedback…
+        </div>
+      ) : feedback && terminalFocused ? (
         <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
           The feedback box has the keyboard in the terminal — these buttons would type into it
           instead of answering. They resume when it closes.
