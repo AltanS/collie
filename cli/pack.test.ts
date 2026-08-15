@@ -15,7 +15,7 @@ import {
   type TrustStoreData,
   type TrustStoreIo,
 } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, ROOT } from "./fakes.ts";
+import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdJoin,
@@ -73,6 +73,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
     },
   };
   const store = new TrustStore("/state", io);
+  const ops = fakeOps();
   const auditLines: AuditEntry[] = [];
   const out = capture();
   const exec = fakeExec({ answers: [["tailscale status --json", { stdout: TAILSCALE_JSON }]] });
@@ -96,6 +97,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
     exec,
     files,
     store,
+    ops,
     audit: new AuditLog((l) => void auditLines.push(JSON.parse(l) as AuditEntry), () => T0),
     fetch: async (url, init) => {
       const headers: Record<string, string> = {};

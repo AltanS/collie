@@ -5,7 +5,7 @@ import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { leadStore, material, member, T0 } from "../bridge/pack/fixtures.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, ROOT } from "./fakes.ts";
+import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { AddSurface, Ui } from "./render.ts";
 import { cmdPackAdd, type PackAddDeps, type RemoteResult } from "./remote.ts";
@@ -144,6 +144,7 @@ function harness(opts: {
     }),
     files: fakeFiles(),
     store: new TrustStore("/state", storeIo),
+    ops: fakeOps(),
     audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), () => T0),
     fetch: async () =>
       opts.reachable === false

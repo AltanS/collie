@@ -32,6 +32,7 @@ import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } fr
 import { signRequest } from "../bridge/pack/signing.ts";
 import { dialTls } from "../bridge/pack/transport.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
+import { PackOpsStore } from "../bridge/pack/ops-store.ts";
 import {
   packTimeoutBudget,
   PeerClient,
@@ -89,6 +90,12 @@ export interface PackDeps {
   readonly files: Files;
   /** This collie's trust store, over `ctx.stateDir`. */
   readonly store: TrustStore;
+  /**
+   * How the operator reached each member over SSH — written by `pack add`, read by `pack update`,
+   * dropped by `pack remove`. Operator-local convenience beside the trust store, never trust and
+   * never a wire field (ADR 0016), which is why it is a second store and not a column in the first.
+   */
+  readonly ops: PackOpsStore;
   /** Membership changes are the most consequential writes an operator makes; `null` only in tests. */
   readonly audit: AuditLog | null;
   /** The injected transport — the enrollment POST and every `PeerClient` share it. */
@@ -1067,6 +1074,9 @@ export async function cmdPackRemove(deps: PackDeps, args: readonly string[]): Pr
     deps.io.err(`error: no member "${memberId}" in this roster — \`collie pack status\` lists them.`);
     return EXIT.STATE;
   }
+  // The pin is gone, so the ssh route to it is no longer ours to keep: a member that is not a member
+  // must not linger in `pack update`'s target list (ADR 0016).
+  await deps.ops.forget(memberId);
   deps.io.out(`✓ removed "${memberId}" — its pin is gone, so its certificate is now simply not a member.`);
   deps.io.out("  Nothing was sent to it: revocation is local by design, and the removed machine keeps its");
   deps.io.out("  own copy of the pack until its operator runs `collie leave` there. Either side alone ends");
@@ -1391,6 +1401,7 @@ export function packDeps(
   return {
     ...base,
     store: new TrustStore(base.ctx.stateDir),
+    ops: new PackOpsStore(base.ctx.stateDir),
     audit,
     fetch: (url, init) => fetch(url, init),
     now: () => Date.now(),

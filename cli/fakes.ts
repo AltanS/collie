@@ -1,3 +1,4 @@
+import { PackOpsStore } from "../bridge/pack/ops-store.ts";
 import type { CliContext } from "./context.ts";
 import { instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
@@ -124,6 +125,23 @@ export function fakeFiles(seed: Record<string, string> = {}): FakeFiles {
       }
     },
   };
+}
+
+/**
+ * The ops store over an in-memory file — how the operator reached each member, with no disk. Kept
+ * here rather than in one suite because three of them need it and none of them may write a real one.
+ */
+export function fakeOps(seed: Record<string, unknown> = {}): PackOpsStore & { contents: () => string | null } {
+  let contents: string | null =
+    Object.keys(seed).length === 0 ? null : `${JSON.stringify({ version: 1, members: seed }, null, 2)}\n`;
+  const store = new PackOpsStore("/state", {
+    read: async () => contents,
+    write: async (_p, data) => {
+      contents = data;
+    },
+  }) as PackOpsStore & { contents: () => string | null };
+  store.contents = () => contents;
+  return store;
 }
 
 export function capture(): Io & { stdout: string[]; stderr: string[] } {

@@ -9,7 +9,7 @@ import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, PACK, T0 } from "../bridge/pack/fixtures.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, ROOT } from "./fakes.ts";
+import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { cmdPack, type PackDeps } from "./pack.ts";
 import {
@@ -118,6 +118,8 @@ interface HarnessOptions {
   flags?: string[];
   /** Extra resolved env — `COLLIE_PUBLIC_URL` is the one that steers the lead's own address. */
   env?: Record<string, string>;
+  /** Seed for the ops store — how `pack add` remembers a host it already reached. */
+  ops?: Record<string, unknown>;
 }
 
 function harness(opts: HarnessOptions = {}): Harness {
@@ -130,6 +132,7 @@ function harness(opts: HarnessOptions = {}): Harness {
     },
   };
   const store = new TrustStore("/state", storeIo);
+  const ops = fakeOps(opts.ops);
   const out = capture();
   const calls: Recorded[] = [];
   const audit: AuditEntry[] = [];
@@ -153,6 +156,7 @@ function harness(opts: HarnessOptions = {}): Harness {
     exec,
     files: fakeFiles(),
     store,
+    ops,
     audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), () => T0),
     fetch: async () =>
       opts.reachable === false
@@ -765,6 +769,7 @@ function minimalPackDeps(root: string): PackDeps {
     exec: realExec(gitEnv(), root),
     files: fakeFiles(),
     store: new TrustStore("/state", storeIo),
+    ops: fakeOps(),
     audit: null,
     fetch: () => Promise.reject(new Error("not used by gitBundle")),
     now: () => T0,
