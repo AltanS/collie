@@ -799,7 +799,7 @@ describe("collie pack status", () => {
     await cmdPackStatus(h.deps, []);
     const rendered = text(h.io);
     expect(rendered).toContain("version 1.0.0-alpha.11 — warn: this machine runs 1.0.0-alpha.12");
-    expect(rendered).toContain("Update the older machine");
+    expect(rendered).toContain("`collie pack update nas`");
     // Skew refuses nothing: the link is reachable and the member is NOT the incompatible state,
     // which §7 reserves for a protocol mismatch.
     expect(rendered).toContain("reachable");

@@ -223,3 +223,10 @@ door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
 **The pack link (lead↔peer, `/pack/v1/*`) is specified in [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md)**
 — two factors gate it (pinned mutual TLS + pack secret), and a peer publishes no front door
 ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
+
+**Code reaches a peer over the operator's own SSH, never over the pack link** — `pack add` installs
+it and `pack update` levels it, both pushing the lead's own commit as a `git bundle`; the link
+carries runtime data and never becomes a distribution channel
+([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)). How the operator reached a member is
+remembered locally in `pack-ops.json`, which is never a wire field and never merged into the trust
+store.

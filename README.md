@@ -540,6 +540,18 @@ By hand: frontend (`web/`) → `bin/collie build` (live, no restart — served f
 (`bridge/`) → `systemctl --user restart collie`. Run `scripts/install-hooks.sh` once to enable the
 repo's pre-commit / pre-push checks.
 
+#### Updating the rest of the pack
+
+`collie update` advances *this* machine. If you lead a pack, level its peers to the build you just
+landed with **`collie pack update <member>… `** (or `--all`), run on the lead. It probes each member
+read-only, shows you what it is about to do, asks **once**, and then per member pushes this lead's
+commit over **your own ssh**, rebuilds there, restarts that machine's bridge and confirms over the
+pack link that it now answers with the new version. A member that is already current is listed and
+left alone; one it has never `collie pack add`-ed from here is skipped with the command that would
+teach it; a failure stops that member and not the run. Nothing about an update crosses the pack link
+itself — that is deliberate, and the reasoning is
+[ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md).
+
 ### Migrating from 0.x
 
 The last 0.x release is **0.28.0**. Going from there to 1.0 is the command you already have:
@@ -561,9 +573,11 @@ assertion, not a promise.
 
 **Running a pack?** Four things to know, in this order:
 
-- **Update the lead first.** A peer still on the old build is *behind*, never `incompatible` — it
-  shows in `collie pack status` as a `warn:`-class version finding naming both versions and the
-  remedy ([PACK_PROTOCOL §7.1](./PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)).
+- **Update the lead first**, then level the peers from it with `collie pack update <member>…`
+  ([above](#updating-the-rest-of-the-pack)). A peer still on the old build is *behind*, never
+  `incompatible` — it shows in `collie pack status` as a `warn:`-class version finding naming both
+  versions and that remedy
+  ([PACK_PROTOCOL §7.1](./PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)).
 - `collie join` now refuses an `http://` lead without `--insecure`.
 - Invite tokens minted before the `<token>.<lead-fingerprint>` format fail closed — reissue with
   `collie pack invite`.

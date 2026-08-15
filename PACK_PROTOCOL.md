@@ -321,7 +321,8 @@ updated machines, so build skew is the steady state (§7), and this section is t
 
 - **Skew is an observation, and it is rendered.** `collie pack status` compares each member's reported
   version against this build's and marks a difference as a `warn:`-class finding naming **both**
-  versions and the remedy — update the older machine. A member that answers `hello` without the field
+  versions and the remedy — `collie pack update <member>` on the lead, which levels that machine to
+  this build over the operator's own ssh (ADR 0016), or `collie update` on the machine itself. A member that answers `hello` without the field
   renders honestly as pre-amendment (e.g. `version pre-1.0.0-alpha.12 (not reported)`), never as
   `unknown`-shaped noise and never as an error. The `incompatible` state stays reserved for §7's
   protocol mismatch; nothing here produces it.
