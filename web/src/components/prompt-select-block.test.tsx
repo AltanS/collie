@@ -11,18 +11,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/api", () => ({
   fetchPane: vi.fn(),
   sendKeys: vi.fn(),
+  sendReply: vi.fn(),
 }));
 
-import { fetchPane, sendKeys } from "@/lib/api";
+import { fetchPane, sendKeys, sendReply } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
-import { splitLines, type PromptModel, type PromptOption } from "@/lib/blocks";
+import { splitLines, type PromptModel } from "@/lib/blocks";
 import { detectPromptSelect } from "@/lib/harness/claude/prompt-select";
-import { submitPromptOption } from "@/lib/prompt-action";
+import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
-import { PromptSelectBlock } from "./prompt-select-block";
+import { PromptSelectBlock, type PromptBlockAction } from "./prompt-select-block";
 
 const mockFetchPane = vi.mocked(fetchPane);
 const mockSendKeys = vi.mocked(sendKeys);
+const mockSendReply = vi.mocked(sendReply);
 
 // Anchored on this file's directory (not `new URL(import.meta.url)`, which Vite rewrites to an asset).
 const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
@@ -38,6 +40,8 @@ beforeEach(() => {
   mockFetchPane.mockReset();
   mockSendKeys.mockReset();
   mockSendKeys.mockResolvedValue({ ok: true });
+  mockSendReply.mockReset();
+  mockSendReply.mockResolvedValue({ ok: true });
 });
 
 const selectModel: PromptModel = {
@@ -48,6 +52,7 @@ const selectModel: PromptModel = {
     { label: "Green", keys: ["2", "Enter"] },
   ],
   signature: "which-color-theme-region",
+  coreSignature: "which-color-theme-core",
 };
 
 describe("PromptSelectBlock — presentation", () => {
@@ -73,7 +78,7 @@ describe("PromptSelectBlock — presentation", () => {
     const user = userEvent.setup();
     render(<PromptSelectBlock prompt={selectModel} onAction={onAction} />);
     await user.click(screen.getByRole("button", { name: /Green/ }));
-    expect(onAction).toHaveBeenCalledWith(selectModel.options[1]);
+    expect(onAction).toHaveBeenCalledWith({ kind: "option", option: selectModel.options[1] });
   });
 
   it("disables every button when disabled (read-only device / gone pane)", () => {
@@ -291,15 +296,25 @@ function StatusSentinel() {
 }
 
 function Harness({ prompt, detectedRevision }: { prompt: PromptModel; detectedRevision: number }) {
-  async function onAction(option: PromptOption) {
-    const result = await submitPromptOption({
-      paneId: "w1:p1",
-      requestedLines: 600,
-      detectedRevision,
-      agent: "claude",
-      prompt,
-      option,
-    });
+  async function onAction(action: PromptBlockAction) {
+    const result =
+      action.kind === "option"
+        ? await submitPromptOption({
+            paneId: "w1:p1",
+            requestedLines: 600,
+            detectedRevision,
+            agent: "claude",
+            prompt,
+            option: action.option,
+          })
+        : await submitPromptFeedback({
+            paneId: "w1:p1",
+            requestedLines: 600,
+            detectedRevision,
+            agent: "claude",
+            prompt,
+            text: action.text,
+          });
     if (result.status === "sent") setStatus("Sent", "success");
     else if (result.status === "changed") setStatus("Menu changed — refreshing", "warn");
     else setStatus(result.error, "error");
@@ -402,5 +417,116 @@ describe("submitPromptOption — same-shaped successor prompt (H1)", () => {
     });
     expect(res).toEqual({ status: "sent" });
     expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined, promptA.signature);
+  });
+});
+
+// The plan dialog's inline input row (issue #95). Three surfaces, and the state that decides which
+// one shows also decides whether the ANSWER buttons work at all — so this block is where the phone
+// stops lying about a screen it cannot drive. Fixtures are real captures; PLAN_FEEDBACK_NOTES.md is
+// the ground truth for what each state does in the terminal.
+describe("PromptSelectBlock — the feedback input row", () => {
+  const OFFER = "Tell Claude what to change";
+
+  it("offers the composer when the box is empty and the pointer is elsewhere", () => {
+    const model = fixtureModel("claude--plan-approval.txt");
+    render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    // The three answers are live buttons, and the row itself is an affordance — never a fourth
+    // answer button, because pressing its digit answers nothing.
+    expect(screen.getByRole("button", { name: new RegExp(OFFER) })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Yes, and use auto mode/ })).toBeEnabled();
+  });
+
+  it("locks every button behind a banner while the terminal's input has FOCUS", async () => {
+    // The heart of #95: in this state the answer rows still parse as an ordinary menu, and tapping
+    // one types its digit into the box instead of answering. Nothing may be pressable.
+    const model = fixtureModel("claude--plan-approval--feedback-focused.txt");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+    expect(screen.getByText(/has the keyboard in the terminal/)).toBeInTheDocument();
+    for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /Yes, manually approve edits/ }));
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("shows what is in the box instead of offering to type, once it holds text", async () => {
+    // Answers still work here (verified live), but Collie must not type: the caret resets to position
+    // 0 on re-entry, so our words would be prepended to the sentence already there.
+    const model = fixtureModel("claude--plan-approval--feedback-typed.txt");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+    expect(screen.getByText(/use a guard clause instead/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: new RegExp(OFFER) })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /Yes, manually approve edits/ }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "option", option: model.options[2] });
+  });
+
+  it("the composer sends a feedback action carrying the typed text", async () => {
+    const model = fixtureModel("claude--plan-approval.txt");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+    await user.click(screen.getByRole("button", { name: new RegExp(OFFER) }));
+    // The wording has to say what actually happens: this DENIES the plan and hands over the text.
+    expect(screen.getByText(/Claude keeps planning instead of starting work/)).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "use a switch");
+    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "use a switch" });
+  });
+
+  it("keeps the draft on screen when a send is refused", async () => {
+    // Up to FEEDBACK_MAX_LENGTH characters, thumb-typed on a phone. A `changed` refusal must not eat
+    // them — this is the longest text the app ever asks anyone to type.
+    const model = fixtureModel("claude--plan-approval.txt");
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={() => false} />);
+    await user.click(screen.getByRole("button", { name: new RegExp(OFFER) }));
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(screen.getByRole("textbox", { name: "Feedback text" })).toHaveValue("keep me");
+  });
+
+  it("says WE are sending, not that the terminal is, while our own sequence runs", async () => {
+    // Our choreography focuses the row and fills it, so mid-flight the screen is indistinguishable
+    // from "someone at the terminal is typing" — which would be a lie told to the person who just
+    // pressed Send about their own action.
+    const model = fixtureModel("claude--plan-approval.txt");
+    let release: () => void = () => {};
+    const blocked = new Promise<boolean>((r) => (release = () => r(true)));
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={() => blocked} />);
+    await user.click(screen.getByRole("button", { name: new RegExp(OFFER) }));
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "use a switch");
+    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(await screen.findByText("Sending feedback…")).toBeInTheDocument();
+    expect(screen.queryByText(/in the terminal/)).toBeNull();
+    release();
+  });
+
+  it("drives the real choreography end to end through the wired handler", async () => {
+    const name = "claude--plan-approval--three-row.txt";
+    const model = fixtureModel(name);
+    // The three real captures the flow actually walks: the dialog as tapped, then focused-and-empty
+    // (what the digit produces), then filled — the placeholder swapped for our words, which is
+    // exactly what the terminal shows once the paste lands.
+    const focusedEmpty = fixtureText("claude--plan-approval--three-row-focused.txt");
+    const pane = (text: string) => ({ paneId: "w1:p1", text, truncated: false, revision: 7 });
+    mockFetchPane
+      .mockResolvedValueOnce(pane(fixtureText(name))) // entry guard
+      .mockResolvedValueOnce(pane(focusedEmpty)) // focus poll: focused, box still empty
+      .mockResolvedValue(pane(focusedEmpty.replace("Tell Claude what to change", "use a switch")));
+    const user = userEvent.setup();
+    render(<Harness prompt={model} detectedRevision={7} />);
+    await user.click(screen.getByRole("button", { name: new RegExp(OFFER) }));
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "use a switch");
+    await user.click(screen.getByRole("button", { name: "Send feedback" }));
+    // Two verification polls at the real pacing (POLL_DELAY_MS) sit between the tap and the Enter.
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Sent"), {
+      timeout: 5000,
+    });
+    // `3`, not `4` — this install has no clear-context row, and the key comes off the screen.
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["3"], ["Enter"]]);
+    expect(mockSendReply).toHaveBeenCalledWith("w1:p1", "use a switch", false, undefined);
   });
 });
