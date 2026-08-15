@@ -42,6 +42,7 @@ import {
 import { cmdPushTest } from "./push.ts";
 import { cmdQr } from "./qr.ts";
 import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
+import { cmdPackUpdate } from "./pack-update.ts";
 import { cmdPackAdd, packAddDeps, type PackAddDeps } from "./remote.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
 import { realFiles } from "./sys.ts";
@@ -310,6 +311,12 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
       packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd, true),
+      packSubcommand(
+        "update",
+        "level peers to this lead's build over SSH: `pack update <member>… | --all` (on the lead)",
+        cmdPackUpdate,
+        true,
+      ),
       packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus, true),
       packSubcommand("rotate", "reissue the pack secret and hand it to every reachable peer", (deps) =>
         cmdPackRotate(deps),

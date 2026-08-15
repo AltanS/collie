@@ -180,12 +180,12 @@ function Facts({ facts }: { facts: AddView["facts"] }): React.ReactElement | nul
 }
 
 /**
- * The prompt, inside the app.
+ * The prompt, inside the app. Shared with `pack update`, whose one question is the same `[y/N]`.
  *
  * `Enter` is No, which is what the `[y/N]` this replaces meant — the default must not change just
  * because the rendering did. Nothing is written to the terminal to ask: this IS the ask.
  */
-function Ask({ question, onAnswer }: { question: Question; onAnswer: (v: boolean | string) => void }): React.ReactElement {
+export function Ask({ question, onAnswer }: { question: Question; onAnswer: (v: boolean | string) => void }): React.ReactElement {
   const [typed, setTyped] = React.useState("");
   useInput((input, key) => {
     if (question.mode === "confirm") {

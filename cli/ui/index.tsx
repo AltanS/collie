@@ -2,6 +2,7 @@ import { Box, render, Text } from "ink";
 import React from "react";
 
 import { createAddSurface } from "./pack-add.tsx";
+import { createUpdateSurface } from "./pack-update.tsx";
 import type { DoctorView, StatusView, TonedLine, Ui, UiFinding } from "../render.ts";
 
 // The terminal view. NOTHING outside this directory imports ink — `cli/render.ts`'s `loadUi()` is
@@ -12,7 +13,8 @@ import type { DoctorView, StatusView, TonedLine, Ui, UiFinding } from "../render
 // ── ONE-SHOT, NOT AN APP ─────────────────────────────────────────────────────
 // Every surface in THIS file draws once and unmounts immediately: they are `console.log` with a
 // layout engine, not a TUI. The one exception lives in `./pack-add.tsx`, which stays mounted for a
-// whole verb — and may, because it owns every byte written while it is up (`cli/render.ts`).
+// whole verb — and may, because it owns every byte written while it is up (`cli/render.ts`). The
+// same goes for `./pack-update.tsx`, on the same terms.
 
 /** Draw a component once, wait for ink to flush it, and let go of the terminal. */
 async function once(node: React.ReactElement): Promise<void> {
@@ -153,5 +155,6 @@ export function createUi(): Ui {
     // The one surface that is NOT one-shot. It keeps the terminal for the length of the verb and is
     // allowed to, because it owns every byte written while it is up (`cli/render.ts`).
     packAdd: () => createAddSurface(),
+    packUpdate: () => createUpdateSurface(),
   };
 }

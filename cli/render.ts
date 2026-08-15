@@ -316,6 +316,260 @@ export function projectAdd(events: readonly AddEvent[]): AddView {
   };
 }
 
+// ── `pack update`, on the same terms ─────────────────────────────────────────
+// `collie pack update` streams and prompts exactly as `pack add` does, so it gets a surface on
+// exactly the same condition: it owns every byte while it is mounted. What it does NOT get is
+// `pack add`'s model — that one is a single host walking four fixed legs, and an update is N members
+// each walking three. So the events are its own, and only the shape of the seam is shared: one
+// structured stream, one plain replay ({@link plainUpdate}) that is the verb's byte-for-byte output,
+// one pure fold ({@link projectUpdate}) for the terminal. Neither reader can describe a different run.
+
+/** The three legs `pack update` runs per member. `probe` is not one — it happens before consent. */
+export type UpdateLeg = "push" | "restart" | "verify";
+
+/** How a member ended the run. Every target lands on exactly one of these. */
+export type UpdateOutcome = "updated" | "current" | "skipped" | "failed";
+
+/** What the probe found for one member, before anything is sent. */
+export type UpdatePlanState =
+  /** Behind, reachable and ready to take the push. */
+  | "ready"
+  /** Already at the lead's commit — listed, then left alone. */
+  | "current"
+  /** No ops record: never `pack add`-ed from here, so there is no host to dial. */
+  | "skipped"
+  /** Probed and refused — a dirty remote checkout, an unreachable host. */
+  | "blocked";
+
+/** One row of the closing table: what happened to a member, in one line. */
+export interface UpdateRow {
+  readonly memberId: string;
+  readonly outcome: UpdateOutcome;
+  readonly detail: string;
+}
+
+/** Everything `pack update` says, as structure rather than text. */
+export type UpdateEvent =
+  /** The build every target is being levelled to, once, up front. */
+  | { readonly kind: "title"; readonly version: string; readonly commit: string }
+  /** A free line, stream pinned — same shape and same reason as {@link AddEvent}'s. */
+  | { readonly kind: "line"; readonly text: string; readonly tone: AddTone; readonly stream: "out" | "err" }
+  /** The probe's verdict for one member. Emitted for every target, before the one confirmation. */
+  | {
+      readonly kind: "plan";
+      readonly memberId: string;
+      readonly state: UpdatePlanState;
+      readonly detail: string;
+    }
+  /** This member's turn began. */
+  | { readonly kind: "member-start"; readonly memberId: string }
+  | { readonly kind: "leg-start"; readonly memberId: string; readonly leg: UpdateLeg }
+  | {
+      readonly kind: "leg-done";
+      readonly memberId: string;
+      readonly leg: UpdateLeg;
+      readonly ok: boolean;
+      readonly detail: string;
+    }
+  | { readonly kind: "member-done"; readonly memberId: string; readonly outcome: UpdateOutcome }
+  /** The closing table and the one line a script should read. */
+  | {
+      readonly kind: "summary";
+      readonly rows: readonly UpdateRow[];
+      readonly verdict: string;
+      readonly ok: boolean;
+    };
+
+/** The column width of the per-member rows, so the plain table lines up without a formatter. */
+const UPDATE_LABEL_WIDTH = 12;
+
+function updateRow(mark: string, label: string, detail: string): string {
+  return `${mark} ${label}${" ".repeat(Math.max(1, UPDATE_LABEL_WIDTH - label.length))}${detail}`;
+}
+
+/** The mark a planned member wears: it is going to be touched, or it is not. */
+const PLAN_MARK: Record<UpdatePlanState, string> = {
+  ready: "→",
+  current: "·",
+  skipped: "·",
+  blocked: "✗",
+};
+
+const UPDATE_OUTCOME_WORD: Record<UpdateOutcome, string> = {
+  updated: "updated",
+  current: "current",
+  skipped: "skipped",
+  failed: "FAILED",
+};
+
+/**
+ * The plain reader: one event, as the line(s) `pack update` prints without a terminal. This is the
+ * only formatter — the rich view folds the same events, so the two cannot drift.
+ */
+export function plainUpdate(io: Io, event: UpdateEvent): void {
+  switch (event.kind) {
+    case "title":
+      io.out(`pack update — ${event.version} (${event.commit.slice(0, 12)})`);
+      return;
+    case "line":
+      if (event.stream === "err") io.err(event.text);
+      else io.out(event.text);
+      return;
+    case "plan":
+      io.out(updateRow(PLAN_MARK[event.state], event.memberId, event.detail));
+      return;
+    case "member-start":
+      io.out("");
+      io.out(`${event.memberId}:`);
+      return;
+    case "leg-start":
+      // Silent: what a leg is about to do is said by the `line` the verb emits with it, if anything.
+      return;
+    case "leg-done":
+      if (event.ok) io.out(updateRow("  ✓", event.leg, event.detail));
+      return;
+    case "member-done":
+      // The table below says what became of it; a second verdict per member would be noise.
+      return;
+    case "summary": {
+      io.out("");
+      io.out("summary:");
+      for (const row of event.rows) {
+        io.out(updateRow(" ", row.memberId, `${UPDATE_OUTCOME_WORD[row.outcome].padEnd(9)}${row.detail}`));
+      }
+      io.out(event.ok ? `✓ ${event.verdict}` : `✗ ${event.verdict}`);
+      return;
+    }
+  }
+}
+
+// ── The rich model ───────────────────────────────────────────────────────────
+
+export interface UpdateLegView {
+  readonly leg: UpdateLeg;
+  readonly status: "pending" | "active" | "done" | "failed";
+  readonly detail: string;
+}
+
+export interface UpdateMemberView {
+  readonly memberId: string;
+  /** What the probe said, until the member's turn moves it on. */
+  readonly plan: { readonly state: UpdatePlanState; readonly detail: string } | null;
+  readonly outcome: UpdateOutcome | null;
+  /** Present once this member's turn began; absent for one that was never touched. */
+  readonly legs: readonly UpdateLegView[] | null;
+  readonly notes: readonly AddNote[];
+}
+
+export interface UpdateView {
+  readonly version: string | null;
+  readonly commit: string | null;
+  readonly preamble: readonly AddNote[];
+  readonly members: readonly UpdateMemberView[];
+  readonly summary: {
+    readonly rows: readonly UpdateRow[];
+    readonly verdict: string;
+    readonly ok: boolean;
+  } | null;
+}
+
+const UPDATE_LEGS: readonly UpdateLeg[] = ["push", "restart", "verify"];
+
+/** Fold the event stream into what the terminal draws. Pure, and outside `cli/ui/` on purpose. */
+export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
+  let version: string | null = null;
+  let commit: string | null = null;
+  const preamble: AddNote[] = [];
+  let summary: UpdateView["summary"] = null;
+  // Insertion-ordered, which is the order the members were planned and then worked in.
+  const members = new Map<
+    string,
+    {
+      plan: { state: UpdatePlanState; detail: string } | null;
+      outcome: UpdateOutcome | null;
+      legs: Map<UpdateLeg, UpdateLegView> | null;
+      notes: AddNote[];
+    }
+  >();
+  let current: string | null = null;
+
+  const slot = (memberId: string) => {
+    const existing = members.get(memberId);
+    if (existing !== undefined) return existing;
+    const fresh = { plan: null, outcome: null, legs: null, notes: [] as AddNote[] };
+    members.set(memberId, fresh);
+    return fresh;
+  };
+
+  for (const event of events) {
+    switch (event.kind) {
+      case "title":
+        version = event.version;
+        commit = event.commit;
+        break;
+      case "line": {
+        const note = { text: event.text, tone: event.tone };
+        if (current === null) preamble.push(note);
+        else slot(current).notes.push(note);
+        break;
+      }
+      case "plan":
+        slot(event.memberId).plan = { state: event.state, detail: event.detail };
+        break;
+      case "member-start": {
+        current = event.memberId;
+        slot(event.memberId).legs = new Map(
+          UPDATE_LEGS.map((leg) => [leg, { leg, status: "pending" as const, detail: "" }]),
+        );
+        break;
+      }
+      case "leg-start": {
+        const legs = slot(event.memberId).legs;
+        legs?.set(event.leg, { leg: event.leg, status: "active", detail: "" });
+        break;
+      }
+      case "leg-done": {
+        const legs = slot(event.memberId).legs;
+        legs?.set(event.leg, {
+          leg: event.leg,
+          status: event.ok ? "done" : "failed",
+          detail: event.detail,
+        });
+        break;
+      }
+      case "member-done": {
+        const member = slot(event.memberId);
+        member.outcome = event.outcome;
+        // A leg still spinning when the member ended never finished — same rule `projectAdd` applies
+        // to a verdict that lands mid-leg.
+        for (const [leg, view] of member.legs ?? []) {
+          if (view.status === "active") member.legs!.set(leg, { ...view, status: "failed" });
+        }
+        current = null;
+        break;
+      }
+      case "summary":
+        summary = { rows: event.rows, verdict: event.verdict, ok: event.ok };
+        current = null;
+        break;
+    }
+  }
+
+  return {
+    version,
+    commit,
+    preamble,
+    summary,
+    members: [...members.entries()].map(([memberId, m]) => ({
+      memberId,
+      plan: m.plan,
+      outcome: m.outcome,
+      legs: m.legs === null ? null : [...m.legs.values()],
+      notes: m.notes,
+    })),
+  };
+}
+
 /**
  * A mounted `pack add` surface. **While this exists, it is the only writer**: `io` is what every
  * nested write must go through, and the two questions are answered inside the app rather than on
@@ -332,6 +586,17 @@ export interface AddSurface {
   close(): Promise<void>;
 }
 
+/**
+ * A mounted `pack update` surface, on the same contract as {@link AddSurface}: while it exists it is
+ * the only writer. It has no `prompt` — the whole verb asks exactly one question, and it is a `[y/N]`.
+ */
+export interface UpdateSurface {
+  readonly io: Io;
+  emit(event: UpdateEvent): void;
+  confirm(question: string): Promise<boolean | null>;
+  close(): Promise<void>;
+}
+
 /** The rich renderer. Absent (`null`) is the normal case: every verb's plain branch is the default. */
 export interface Ui {
   doctor(view: DoctorView): Promise<void>;
@@ -344,6 +609,8 @@ export interface Ui {
    * without it simply leaves `pack add` on its plain branch, which is the default anyway.
    */
   packAdd?(): AddSurface;
+  /** The same, for `pack update`. Optional for the same reason. */
+  packUpdate?(): UpdateSurface;
 }
 
 /**
