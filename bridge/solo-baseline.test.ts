@@ -628,7 +628,7 @@ const STATE_DIR_ENTRIES = [
  * The behavioural half of the guard — that an instance which never enrolled writes NONE of these —
  * is the `TrustStore` case in "driving every solo write path".
  */
-const PACK_STATE_DIR_ENTRIES = ["pack-runtime.json", "pack-trust.json"];
+const PACK_STATE_DIR_ENTRIES = ["pack-ops.json", "pack-runtime.json", "pack-trust.json"];
 
 /** Every `.ts` module under `dir`, recursively, excluding tests. */
 function sourceFiles(dir: string): string[] {
