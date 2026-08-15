@@ -819,6 +819,10 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   }
 
   deps.emit({ kind: "leg-start", leg: "install", text: "" });
+  // Whether this run REPLACED what the far machine runs. It decides one thing, in leg 4: an already
+  // enrolled peer is restarted only when there is something new for it to run.
+  const replaced = probe.commit !== commit;
+  const rebound = !bindIsCurrent(probe, peerHost, port);
   if (probe.commit === commit) {
     deps.emit({
       kind: "leg-done",
@@ -845,7 +849,7 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
 
   // ── Leg 4 — enroll ─────────────────────────────────────────────────────────
   deps.emit({ kind: "leg-start", leg: "enroll", text: "" });
-  return await enrollLeg(deps, runner, { host, root, port, peerAddress, flags });
+  return await enrollLeg(deps, runner, { host, root, port, peerAddress, flags, changed: replaced || rebound });
 }
 
 /** Leg 2, as its own step: the prompts, the bundle push and the post-install version check. */
@@ -927,6 +931,15 @@ async function installLeg(
   return null;
 }
 
+/**
+ * Is the far machine already bound where this run would bind it? Read by leg 3 (to skip) and by the
+ * caller (to know whether this run CHANGED anything there) — one predicate, so the two can never
+ * disagree about whether a write happened.
+ */
+function bindIsCurrent(probe: Probe, peerHost: string, port: number): boolean {
+  return probe.envhost === peerHost && configuredPort(probe) === port;
+}
+
 /** Leg 3, as its own step: skip, prompt, or write the peer's `.env`. */
 async function configureLeg(
   deps: Wired,
@@ -941,7 +954,7 @@ async function configureLeg(
   },
 ): Promise<number | null> {
   const { probe } = o;
-  if (probe.envhost === o.peerHost && configuredPort(probe) === o.port) {
+  if (bindIsCurrent(probe, o.peerHost, o.port)) {
     deps.emit({ kind: "leg-done", leg: "configure", ok: true, detail: `already ${o.peerHost}:${o.port}` });
     return null;
   }
@@ -990,6 +1003,8 @@ async function enrollLeg(
     port: number;
     peerAddress: string;
     flags: Readonly<Record<string, string>>;
+    /** Did this run replace the far machine's build or rewrite its bind? */
+    changed: boolean;
   },
 ): Promise<number> {
   // How this run reached the far machine, banked for `pack update` the moment the run proves it
@@ -1025,10 +1040,23 @@ async function enrollLeg(
   if (membership.packId !== null) {
     if (data.pack !== null && membership.packId === data.pack.packId) {
       if (membership.memberId !== null) await remember(membership.memberId);
+      // ── THE ALREADY-A-MEMBER PATH RESTARTS THE FAR MACHINE ──────────────────
+      // No `collie join` runs here, and a join is the ONLY thing that restarts a peer from this verb
+      // (every membership verb restarts on the machine it ran on, `cli/pack.ts`). So a re-run against
+      // an enrolled peer used to leave the new build on disk with the OLD process still answering —
+      // the operator had just consented to "replace it with <version>", and this line then said the
+      // replacement had happened while `pack status` kept reporting the old version. Restart only
+      // when something actually changed there: an unchanged re-run must stay the no-op it is.
+      if (o.changed) {
+        const failed = await restartRemote(deps, runner, o.host, o.root);
+        if (failed !== null) return failed;
+      }
       deps.emit({
         kind: "verdict",
         ok: true,
-        text: `already a member of "${membership.packName}" as "${membership.memberId}"`,
+        text:
+          `already a member of "${membership.packName}" as "${membership.memberId}"` +
+          (o.changed ? await reportedNow(deps, data, membership.memberId) : ""),
       });
       return EXIT.OK;
     }
@@ -1120,6 +1148,53 @@ async function enrollLeg(
   });
   await restartBridge(deps);
   return verdict(deps, before, o.host, remember);
+}
+
+/**
+ * `collie restart` on the far machine, said out loud. `null` when it came back.
+ *
+ * The far machine's own verb, run there — never a unit name guessed from here, which this side has no
+ * business knowing (CLAUDE.md).
+ */
+async function restartRemote(
+  deps: Wired,
+  runner: RemoteRunner,
+  host: string,
+  root: string,
+): Promise<number | null> {
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: "info",
+    text: `  restarting Collie on ${host} so the build it just took is the one it runs…`,
+  });
+  const restarted = await runner.run(restartScript(root));
+  const transport = transportFailure(deps.io, host, restarted);
+  if (transport !== null) return transport;
+  if (restarted.code !== 0) {
+    deps.io.err(`error: \`collie restart\` exited ${restarted.code} on ${host} — ${errorLine(restarted.stderr)}`);
+    deps.io.err(`       The new build is on disk there and the old one is still running. Run`);
+    deps.io.err(`       \`collie restart\` on ${host}, or its Herdr restart action.`);
+    return EXIT.FAIL;
+  }
+  return null;
+}
+
+/**
+ * What the member reports over the pack link NOW — the lead's own view, which is the only thing that
+ * proves the restart took. Never fails the verb: an already-enrolled member this lead cannot reach is
+ * a pre-existing condition `pack status` reports, not something this run broke.
+ */
+async function reportedNow(deps: Wired, data: TrustStoreData, memberId: string | null): Promise<string> {
+  const member = data.peers.find((p) => p.memberId === memberId);
+  if (member === undefined) return " — replaced its build and restarted it";
+  const outcome = (await probeMembers(deps, data, [member])).get(member.memberId);
+  if (outcome?.ok !== true) {
+    deps.io.err(`warn: it was restarted, but this lead cannot reach it at ${member.address} to confirm.`);
+    deps.io.err(`      Run \`collie doctor\` there; \`collie pack status\` here shows the same.`);
+    return " — replaced its build and restarted it";
+  }
+  return ` — now running ${outcome.value.version ?? "a version it does not report"}`;
 }
 
 /**
