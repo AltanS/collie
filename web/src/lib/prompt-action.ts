@@ -16,9 +16,16 @@
 // tapped. The mid-flight polls re-derive the same way, against `promptsSameIdentity` — the feedback
 // flow moves the pointer and fills the input by design, so `promptsEqual` would reject its own work.
 
-import { sendKeys, sendReply } from "./api";
+import { sendReply } from "./api";
 import { type PromptModel, type PromptOption } from "./blocks";
-import { guardDialog, pollDialog, sendGuardedKeys, type DialogTarget } from "./dialog-guard";
+import {
+  guardDialog,
+  pollDialog,
+  readDialog,
+  sendBoundKeys,
+  sendGuardedKeys,
+  type DialogTarget,
+} from "./dialog-guard";
 import { promptsSameIdentity } from "./harness/prompt-model";
 import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
 
@@ -31,11 +38,16 @@ export { promptsEqual, promptsSameIdentity, sameKeys } from "./harness/prompt-mo
 export type PromptActionResult = ActionResult;
 
 /**
- * Longest feedback Collie will type into a plan dialog. The box is a single visible row that windows
- * long text around the caret, so the verification below can only ever read back its TAIL — keep what
- * we type short enough to stay reviewable on a phone before it is submitted irreversibly.
+ * Longest feedback Collie will type into a plan dialog.
+ *
+ * Not a comfort limit — a grammar one. The row does not window long text: Claude re-flows the whole
+ * value across as many display lines as it needs, which pushes the dialog's footer away from its
+ * options. `MAX_FEEDBACK_WRAP` (harness/claude/prompt-select.ts) is how far that may go before the
+ * screen stops parsing at all, and this is sized to stay inside it even on a narrow pane (~4 lines of
+ * ~60 usable columns). Longer text isn't dangerous — the read-back check simply refuses and nothing is
+ * submitted — but the dialog would drop off the phone, so we don't let it happen.
  */
-export const FEEDBACK_MAX_LENGTH = 500;
+export const FEEDBACK_MAX_LENGTH = 240;
 
 interface GuardArgs {
   paneId: string;
@@ -62,8 +74,12 @@ function target(args: GuardArgs): DialogTarget<"prompt-select"> & { sleep?: Slee
  *
  * Refuses outright while the dialog's own input row has FOCUS: the terminal then swallows every digit
  * as a character, so the keystroke would silently type into someone's half-written sentence instead
- * of answering (issue #95). The renderer already locks the buttons in that state; this is the second
- * half of the same rule, at the layer that actually writes.
+ * of answering (issue #95).
+ *
+ * This is NOT a duplicate of the renderer's lock, and not belt-and-braces — it is the only thing at
+ * the write layer that refuses the STATE. The race guard below verifies SAMENESS: a model captured
+ * while focused, compared against a fresh screen that is still focused, compares EQUAL and the digit
+ * goes out. The renderer's lock is UX; this is the invariant. Don't remove it as redundant.
  */
 export async function submitPromptOption(
   args: GuardArgs & { option: PromptOption },
@@ -99,41 +115,48 @@ export async function submitPromptFeedback(
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
-  try {
-    // Bind only this first write. It changes the dialog (focus moves), so later steps must not reuse
-    // this region.
-    const focus = await sendKeys(args.paneId, [row.key], args.session, guarded.region);
-    if (!focus.ok && focus.code === "prompt_changed") return { status: "changed" };
-    if (!focus.ok) return { status: "error", error: focus.error };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
+  // Bind this write to the guarded region. It moves focus, so the steps after it must re-derive
+  // rather than reuse this binding.
+  const focus = await sendBoundKeys(args, [row.key], guarded.region);
+  if (focus.status !== "sent") return focus;
 
-  // The field must be FOCUSED before anything is typed — text sent early goes nowhere useful, and the
-  // Enter that follows would answer whatever row the pointer is still on. On timeout we stop dead.
-  const focused = (m: PromptModel) =>
-    promptsSameIdentity(m, args.prompt) && (m.feedback?.focused ?? false);
-  if ((await pollDialog(target(args), focused)) !== "ok") {
+  // The field must be FOCUSED, and STILL EMPTY, before anything is typed. Focus alone is not enough:
+  // this flow runs while a human is looking at the same dialog, so the window between our digit and
+  // our paste is exactly when they might start typing into the box themselves. Their fragment would
+  // sit at the head, our paste would follow it, and the tail-windowed read-back below cannot see a
+  // prefix — so the Enter would submit both as one garbled sentence. The note flow solves this by
+  // clearing first; this row cannot be cleared (Backspace at position 0 is a no-op), so refusing on a
+  // non-empty box is the substitute. It narrows the shared-PTY window to one read-to-write round
+  // trip, which is irreducible. On timeout we stop dead: nothing has been typed.
+  const focusedAndEmpty = (m: PromptModel) =>
+    promptsSameIdentity(m, args.prompt) && (m.feedback?.focused ?? false) && m.feedback?.text === "";
+  if ((await pollDialog(target(args), focusedAndEmpty)) !== "ok") {
     return { status: "error", error: "The feedback box didn't open — check the pane" };
   }
 
   try {
     const typed = await sendReply(args.paneId, text, false, args.session);
     if (!typed.ok) return { status: "error", error: typed.error };
-    // Wait for our words to render. The row windows long text around the caret, so what is visible is
-    // the TAIL of what we typed (the whole of it when it fits) — the same read-back shape the note
-    // flow uses. Enter is sent only on this evidence.
-    const landed = await pollDialog(
-      target(args),
-      (m) =>
-        focused(m) && (m.feedback?.text.length ?? 0) > 0 && text.endsWith(m.feedback!.text),
-    );
-    if (landed !== "ok") {
+    // Wait for our words to render, then match them EXACTLY. The row re-flows rather than windowing,
+    // and the grammar rejoins its wrapped lines, so the whole value is readable — there is no reason to
+    // accept a partial match, and every reason not to: this is the evidence the irreversible Enter is
+    // sent on. Anything the terminal did to our text that we can't account for (a mid-word wrap seam, a
+    // truncation) shows up as inequality and stops the flow with the box unsubmitted.
+    const landed = (m: PromptModel) =>
+      promptsSameIdentity(m, args.prompt) &&
+      (m.feedback?.focused ?? false) &&
+      m.feedback?.text === text;
+    if ((await pollDialog(target(args), landed)) !== "ok") {
       return { status: "error", error: "The feedback didn't arrive — nothing was submitted" };
     }
-    const submit = await sendKeys(args.paneId, ["Enter"], args.session);
-    if (!submit.ok) return { status: "error", error: submit.error };
-    return { status: "sent" };
+    // The Enter is the only irreversible write in this flow — it rejects a plan and puts words in the
+    // agent's mouth — so it is also the one that must not go out unbound. Re-read, re-check, and hand
+    // the bridge the region it must still find before writing: a keystroke at the terminal between
+    // that read and this write then produces a server-side refusal instead of a submit aimed at a
+    // screen that has moved. (The sibling flows send their last key unbound; this one carries more.)
+    const fresh = await readDialog(target(args));
+    if (!fresh.model || !landed(fresh.model)) return { status: "changed" };
+    return sendBoundKeys(args, ["Enter"], fresh.model.signature);
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
   }

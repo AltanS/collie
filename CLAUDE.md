@@ -164,7 +164,9 @@ the unit name; the Herdr action runs from anywhere.
 - **The plan dialog's last row is a text input, and it is never a button** — its label is only a
   placeholder while the box is empty, and its digit merely focuses the field. While `❯` sits on it the
   terminal swallows every digit as a character, so no button on that dialog may be pressable; while it
-  holds text, Collie must not type into it (the caret resets to position 0, so it would prepend).
+  holds text, Collie must not type into it (the caret resets to position 0, so it would prepend). A
+  long value **wraps** the row rather than windowing it, which re-flows the screen above — so nothing
+  may read that row as one line, and no mid-flight identity may reach above the question.
   Feedback is sent as a verified sequence, never a keystroke — the ground truth for every state is
   [`PLAN_FEEDBACK_NOTES.md`](./web/src/lib/grammar/PLAN_FEEDBACK_NOTES.md); re-walk it before touching
   `harness/claude/prompt-select.ts` or `lib/prompt-action.ts`.

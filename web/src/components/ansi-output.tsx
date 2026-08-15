@@ -59,7 +59,10 @@ export interface AnsiOutputProps {
   agent?: string;
   /** Injected handler for a prompt-select tap (the race guard lives in AgentChat). Absent (or with a
    *  disabled block) means the buttons render but don't act — AnsiOutput never touches the network. */
-  onPromptAction?: (action: PromptBlockAction, prompt: PromptModel) => void | Promise<void>;
+  onPromptAction?: (
+    action: PromptBlockAction,
+    prompt: PromptModel,
+  ) => boolean | void | Promise<boolean | void>;
   /** Injected handler for a wizard tap — one race-guarded keystroke per control (see
    *  lib/wizard-action.ts). Same presentational contract as onPromptAction. */
   onWizardAction?: (keys: string[], wizard: WizardModel) => void | Promise<void>;
@@ -219,7 +222,7 @@ export const AnsiOutput = memo(function AnsiOutput({
     <PromptSelectBlock
       prompt={promptBlock.prompt}
       disabled={promptDisabled || !onPromptAction}
-      onAction={(action) => onPromptAction?.(action, promptBlock.prompt)}
+      onAction={(action) => onPromptAction?.(action, promptBlock.prompt) ?? false}
     />
   ) : wizardBlock ? (
     <WizardBlock

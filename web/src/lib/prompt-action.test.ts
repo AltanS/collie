@@ -29,15 +29,39 @@ const mockSendReply = vi.mocked(sendReply);
 // subject above, the question, the answer rows, then the input row with its static hint sub-line and
 // the plan footer. `focused` puts `❯` on the input row; `text` fills its box (which replaces the
 // placeholder — that IS the on-screen behaviour, see PLAN_FEEDBACK_NOTES.md).
+function wrapWords(text: string, width: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line && (line + " " + word).length > width) {
+      out.push(line);
+      line = word;
+    } else line = line ? line + " " + word : word;
+  }
+  if (line) out.push(line);
+  return out;
+}
+
 function buffer(
-  opts: { focused?: boolean; text?: string; subject?: string; noInput?: boolean } = {},
+  opts: {
+    focused?: boolean;
+    text?: string;
+    subject?: string;
+    noInput?: boolean;
+    wrapAt?: number;
+  } = {},
 ) {
   const rows = ["Yes, and use auto mode", "Yes, manually approve edits"];
   const input = opts.text ? opts.text : "Tell Claude what to change";
+  // A value longer than the row re-flows onto continuation lines that sit ABOVE the hint — the live
+  // shape (fixture claude--plan-approval--feedback-wrapped.txt). `wrapAt` splits on word boundaries
+  // the way the terminal does.
+  const [head, ...rest] = opts.wrapAt ? wrapWords(input, opts.wrapAt) : [input];
   const inputRows = opts.noInput
     ? []
     : [
-        `   ${opts.focused ? "❯" : " "} 3. ${input}`,
+        `   ${opts.focused ? "❯" : " "} 3. ${head}`,
+        ...rest.map((line) => `        ${line}`),
         "        shift+tab to approve with this feedback",
       ];
   return [
@@ -108,28 +132,52 @@ describe("submitPromptFeedback — digit → verify focus → type → verify te
     const res = await submitPromptFeedback({ ...base, prompt: m, text: "use a switch instead" });
 
     expect(res).toEqual({ status: "sent" });
-    // The digit is bound to the guarded region (the bridge 409s it if the screen moved); the Enter is
-    // not, because our own first write legitimately changed the screen it would have been bound to.
+    // BOTH writes are bound, each to the region of the screen it is actually aimed at: the digit to
+    // the entry guard's, the Enter to a re-read taken after the text landed. The Enter is the only
+    // irreversible key in the flow, so it must not be the one that goes out unbound.
+    const filled = detectPromptSelect(
+      splitLines(parseAnsi(buffer({ focused: true, text: "use a switch instead" }))),
+    )!;
     expect(mockSendKeys.mock.calls).toEqual([
       ["w1:p1", ["3"], undefined, m.signature],
-      ["w1:p1", ["Enter"], undefined],
+      ["w1:p1", ["Enter"], undefined, filled.signature],
     ]);
     // Typed unsubmitted, through the reply path — one paste, immune to the per-key focus race.
     expect(mockSendReply.mock.calls).toEqual([["w1:p1", "use a switch instead", false, undefined]]);
   });
 
-  it("accepts a windowed read-back: the box shows only the TAIL of a long message", async () => {
-    // The row is one visible line that windows long text around the caret, so the evidence available
-    // is a suffix of what we typed — the same read-back shape the note flow and the reply guard use.
-    const text = "please use a switch statement rather than the guard clauses you proposed";
+  it("reads back a value the row WRAPPED across lines, rejoined and matched exactly", async () => {
+    // The row does not window a long value around the caret — it re-flows the whole thing across as
+    // many lines as it needs (measured live). The grammar rejoins them, so the evidence for the Enter
+    // is the FULL text, matched exactly; there is no reason to accept a partial match for the one
+    // irreversible key in the flow.
+    const text = "please use a switch statement rather than the guard clauses you proposed here";
     mockFetchPane
       .mockResolvedValueOnce(paneWith(buffer()))
       .mockResolvedValueOnce(paneWith(buffer({ focused: true })))
-      .mockResolvedValue(paneWith(buffer({ focused: true, text: "guard clauses you proposed" })));
+      .mockResolvedValue(paneWith(buffer({ focused: true, text, wrapAt: 30 })));
     expect(await submitPromptFeedback({ ...base, prompt: model(), text })).toEqual({
       status: "sent",
     });
-    expect(mockSendKeys.mock.calls.at(-1)).toEqual(["w1:p1", ["Enter"], undefined]);
+    expect(mockSendKeys.mock.calls.at(-1)![1]).toEqual(["Enter"]);
+  });
+
+  it("refuses when the wrap seam loses a character — no partial match earns the Enter", async () => {
+    const text = "please use a switch statement rather than guard clauses";
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(buffer()))
+      .mockResolvedValueOnce(paneWith(buffer({ focused: true })))
+      .mockResolvedValue(paneWith(buffer({ focused: true, text: text.slice(0, -6), wrapAt: 30 })));
+    const res = await submitPromptFeedback({ ...base, prompt: model(), text });
+    expect(res.status).toBe("error");
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["3"]]); // no Enter
+  });
+
+  it("a wrapped value keeps the dialog readable at all — the footer gap makes room", async () => {
+    // Before this was understood a 355-character value pushed the footer past MAX_FOOTER_GAP and the
+    // WHOLE dialog fell to the raw mirror, taking the buttons with it.
+    const long = "x y ".repeat(50).trim();
+    expect(model({ text: long, wrapAt: 40 }).feedback!.text).toBe(long);
   });
 
   it("truncates at FEEDBACK_MAX_LENGTH and types exactly what it verifies", async () => {
@@ -238,6 +286,49 @@ describe("submitPromptFeedback — the stopping points once it has started writi
       status: "changed",
     });
     expect(mockSendReply).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitPromptFeedback — the shared terminal, mid-flight", () => {
+  it("types NOTHING if someone at the terminal fills the box between our digit and our paste", async () => {
+    // The window this flow runs in is precisely when a human is looking at the same dialog. If they
+    // start typing after our digit focused the field, their fragment sits at the HEAD — and the
+    // read-back below is tail-windowed, so it cannot see a prefix. Enter would then submit their
+    // words and ours as one garbled sentence. The note flow clears the field first; this row cannot
+    // be cleared, so the focus poll requires it to still be EMPTY.
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(buffer())) // entry guard
+      .mockResolvedValue(paneWith(buffer({ focused: true, text: "no wait, I meant" })));
+    const res = await submitPromptFeedback({ ...base, prompt: model(), text: "use a switch" });
+    expect(res.status).toBe("error");
+    expect(mockSendReply).not.toHaveBeenCalled();
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["3"]]); // no Enter
+  });
+
+  it("does not send the Enter if the dialog moved between the last poll and the write", async () => {
+    // The re-read before the Enter is what closes the poll→write window. A dialog that drifted in it
+    // aborts here rather than committing a plan denial against a screen that has moved on.
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(buffer()))
+      .mockResolvedValueOnce(paneWith(buffer({ focused: true })))
+      .mockResolvedValueOnce(paneWith(buffer({ focused: true, text: "use a switch" })))
+      .mockResolvedValue(paneWith(buffer({ subject: " A different plan entirely" })));
+    const res = await submitPromptFeedback({ ...base, prompt: model(), text: "use a switch" });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["3"]]);
+  });
+
+  it("reports changed when the BRIDGE refuses the bound Enter (the screen moved under the write)", async () => {
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(buffer()))
+      .mockResolvedValueOnce(paneWith(buffer({ focused: true })))
+      .mockResolvedValue(paneWith(buffer({ focused: true, text: "use a switch" })));
+    mockSendKeys
+      .mockResolvedValueOnce({ ok: true }) // the digit
+      .mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" }); // the Enter
+    expect(await submitPromptFeedback({ ...base, prompt: model(), text: "use a switch" })).toEqual({
+      status: "changed",
+    });
   });
 });
 

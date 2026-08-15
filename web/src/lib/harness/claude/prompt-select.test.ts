@@ -157,9 +157,54 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
     expect(model!.feedback).toEqual({ key: "3", focused: false, text: "" });
   });
 
+  it("state 4 — text typed AND focused: the row is dropped and every button is dead", () => {
+    const model = detectPromptSelect(
+      fixtureLines("claude--plan-approval--three-row-typed-focused.txt"),
+    );
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    expect(model!.feedback).toEqual({
+      key: "3",
+      focused: true,
+      text: "use a guard clause instead",
+    });
+  });
+
+  it("a long value WRAPS onto continuation lines, and the row is rejoined from them", () => {
+    // The row is not a scrolling window — Claude re-flows the whole value across as many lines as it
+    // needs. Two things follow, both of which this capture pins. The value has to be rebuilt from the
+    // label plus the lines above the hint; and those lines push the footer away from the options, so
+    // MAX_FOOTER_GAP has to make room for them or the dialog stops parsing altogether (it did, before
+    // this was understood: a 355-character value dropped the whole thing to the raw mirror).
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--feedback-wrapped.txt"));
+    expect(model).not.toBeNull();
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "Yes, and use auto mode",
+      "Yes, manually approve edits",
+    ]);
+    expect(model!.feedback!.text).toBe(
+      "Keep the nested structure instead of a guard clause, but extract each condition into a small " +
+        "named predicate so the intent reads at the call site, and leave the exported name unchanged.",
+    );
+    // …and the wrapped row is still not an option, which is the whole hazard: its label alone is the
+    // user's own words, and a wrapped block no longer starts with the hint the marker looks for.
+    expect(model!.options.map((o) => o.label)).not.toContain(model!.feedback!.text);
+  });
+
   it("a dialog with no such row carries no feedback at all", () => {
     const model = detectPromptSelect(fixtureLines("claude--permission-edit.txt"));
     expect(model!.feedback).toBeUndefined();
+  });
+
+  it("AskUserQuestion's free-text row is DROPPED but never modelled", () => {
+    // "Type something." is a free-text row too, and it has always been dropped — but nothing about
+    // its focus or typed-in behaviour has been measured, and it carries no static description
+    // sub-line to identify it once typed into. Modelling it would hand the plan flow's copy ("Sends
+    // the plan back…") and its keystroke plan to a dialog where Enter means something else. Only the
+    // plan row's verified marker earns a model.
+    const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"))!;
+    expect(model.family).toBe("select");
+    expect(model.options.map((o) => o.label)).not.toContain("Type something.");
+    expect(model.feedback).toBeUndefined();
   });
 
   it("coreSignature survives the flow's OWN first keystroke, where signature must not", () => {
@@ -170,6 +215,11 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
     // what keeps a COMMITTING digit checked against the screen the user actually looked at.
     const before = detectPromptSelect(fixtureLines("claude--plan-approval--three-row.txt"))!;
     const after = detectPromptSelect(fixtureLines("claude--plan-approval--three-row-focused.txt"))!;
+    // Anchored at the QUESTION, deliberately: typing grows the dialog, the terminal re-flows to fit,
+    // and the plan body ABOVE comes back laid out differently — so a window reaching up into it moves
+    // under the flow's own keystrokes. Measured live; the entry guard's full `signature` still covers
+    // the subject.
+    expect(before.coreSignature.trimStart().startsWith(before.question)).toBe(true);
     expect(before.feedback!.focused).toBe(false);
     expect(after.feedback!.focused).toBe(true);
     expect(after.signature).not.toBe(before.signature);
