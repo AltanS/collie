@@ -6,6 +6,19 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.2] - 2026-08-15
+
+### Added
+
+- **`collie pack update <member>… | --all`** — level peers to the lead's build from the lead: read-only probe of every target, ONE consent question for the whole batch, then per member push the commit, restart, and verify the new version over the pack link; a failure is recorded and the run continues, ending in a table and a non-zero exit. A bare `pack update` is a usage error listing members and versions, a member with no ssh record is skipped with its remedy, a dirty remote checkout is refused, and there is no `--yes` (c5a1815)
+- The update rides the operator's own SSH and never the pack wire — over-the-wire updating would add the inbound admission surface ADR 0013 rejects and make a compromised lead a human-free code-execution credential on every peer (ADR 0016, 770140c)
+- **`pack-ops.json`** beside the trust store — member id → the ssh host, remote checkout and port the operator last used, so `pack update` need not be retaught what `pack add` already knew; operator-local convenience data, never a wire field and never a trust-store field, fails closed on a partial read (3d7f645). `pack add` banks the route on a finished run and `pack remove` forgets it (ffde078)
+
+### Changed
+
+- Version-skew warnings in `pack status` and `collie doctor` name `collie pack update <member>` with the member ids already in it, instead of "update the older machine"; `PACK_PROTOCOL.md` §7.1's remedy sentence and the README follow (770140c)
+- `cli/remote.ts`'s legs are three emit-free step runners plus the failure-family helpers, so a second verb can drive them — `pack add` prints exactly what it printed before, in the same order (ffde078)
+
 ## [1.0.0-beta.1] - 2026-08-15
 
 ### Added
