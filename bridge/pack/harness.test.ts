@@ -18,6 +18,7 @@ import {
 import type { CliContext } from "../../cli/context.ts";
 import type { Exec, ExecResult, Files } from "../../cli/sys.ts";
 import { realFiles } from "../../cli/sys.ts";
+import { PackOpsStore } from "./ops-store.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
 import { mintIdentity, randomToken } from "./identity.ts";
@@ -224,6 +225,7 @@ function depsFor(instance: Instance, captured: Captured): PackDeps {
     exec: noExec,
     files: realFiles as Files,
     store: freshStore(instance),
+    ops: new PackOpsStore(instance.stateDir),
     audit: null,
     // The REAL platform fetch, so a pinned handshake is a pinned handshake.
     fetch: (url, init) => fetch(url, init as RequestInit),
