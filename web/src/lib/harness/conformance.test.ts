@@ -43,13 +43,6 @@ const NEUTRAL = [
   // negative control for the generic menu grammar — its statusline is `·`-separated like a key-hint
   // footer, and the input-box gate is the only thing that keeps it raw.
   "claude--menu-model-picker-dismissed.txt",
-  // The one entry here that IS a dialog. The plan-approval feedback input has FOCUS (`❯` on its row),
-  // and Claude Code then routes every digit into that field as text instead of answering — so the
-  // three answer rows cannot be pressed, and lifting them would put buttons on the phone that look
-  // identical to working ones and silently type into the desktop user's sentence. Declining it is the
-  // fix (see prompt-select.ts + grammar/PLAN_FEEDBACK_NOTES.md), so it belongs in the must-stay-raw
-  // cohort even though a dialog is plainly on screen.
-  "claude--plan-approval--feedback-focused.txt",
 ];
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

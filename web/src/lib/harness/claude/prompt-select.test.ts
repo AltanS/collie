@@ -6,6 +6,7 @@ import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectPromptSelect, detectPromptSelectRegion, type PromptFamily } from "./prompt-select";
 import { lineText } from "./markers";
+import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
 // rewrites into a root-relative asset path) so the fixtures resolve regardless of the run cwd.
@@ -95,40 +96,92 @@ describe("detectPromptSelect — the five blocked-state fixtures", () => {
   });
 });
 
-describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in both its states", () => {
-  // Row 4 of the plan dialog is not an option. It is an inline text input, and
-  // "Tell Claude what to change" is its PLACEHOLDER — which is all `isFreeTextLabel` ever matched.
-  // The placeholder only holds while the box is empty; type into it and the label becomes the user's
-  // own words. Its `shift+tab to approve with this feedback` sub-line comes from a static description
-  // field and survives both states, so the DESCRIPTION is what identifies the row.
-  // Choreography verified against Claude Code 2.1.228 (see PLAN_FEEDBACK_NOTES.md).
+describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in all four states", () => {
+  // That row is not an option. It is an inline text input, and "Tell Claude what to change" is its
+  // PLACEHOLDER — which is all `isFreeTextLabel` ever matched. The placeholder only holds while the
+  // box is empty; type into it and the label becomes the user's own words. Its
+  // `shift+tab to approve with this feedback` sub-line comes from a static description field and
+  // survives both states, so the DESCRIPTION is what identifies the row.
+  //
+  // It is never a button. What the model carries instead is the row's two variables — is it FOCUSED
+  // (the terminal then swallows every digit as a character, so no button on the dialog can fire) and
+  // what TEXT is in it (non-empty means Collie must not type: the caret resets to position 0 on
+  // re-entry, so our words would be prepended to someone else's sentence).
+  //
+  // The four states were walked a keystroke at a time on Claude Code 2.1.228 and again on 2.1.233;
+  // PLAN_FEEDBACK_NOTES.md is the ground truth.
 
-  it("drops the row once it carries typed text — the label is now the user's own sentence", () => {
-    // Reachable state: focus the input (`4`), type, then arrow off it. The text persists on the row
-    // while the pointer sits elsewhere, so the digits still answer normally — but the label now reads
-    // "use a guard clause instead". Upstream 0.28.0 returned FOUR options here, the fourth being
-    // { label: "use a guard clause instead", keys: ["4"] }: a live button on the phone carrying
+  it("state 1 — box empty, pointer elsewhere: the answers are buttons, the row is an offer", () => {
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval.txt"));
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    expect(model!.feedback).toEqual({ key: "4", focused: false, text: "" });
+  });
+
+  it("state 2 — box empty, FOCUSED: same rows, but every digit would be typed as text", () => {
+    // Measured: from here `send_keys ["3"]` leaves the plan unapproved and rewrites the row as
+    // `❯ 4. 3`. The three answer rows still parse as an ordinary menu, so nothing in the shape of the
+    // screen distinguishes them from working buttons — `focused` is the only signal, and the renderer
+    // and lib/prompt-action.ts both refuse on it.
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--feedback-focused.txt"));
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    expect(model!.feedback).toEqual({ key: "4", focused: true, text: "" });
+  });
+
+  it("state 3 — text typed, pointer arrowed OFF: the row is not up-levelled into a button", () => {
+    // Reachable as `4`, type, `Up`; the text persists while the pointer sits elsewhere, so it is not
+    // transient. Upstream 0.28.0 returned FOUR options here, the fourth being
+    // { label: "use a guard clause instead", keys: ["4"] } — a live button on the phone carrying
     // whatever half-written sentence the desktop user had left in the box.
     const model = detectPromptSelect(fixtureLines("claude--plan-approval--feedback-typed.txt"));
-    expect(model).not.toBeNull();
-    expect(model!.family).toBe("plan");
     expect(model!.options.map((o) => o.label)).toEqual([
       "Yes, clear context (4% used) and use auto mode",
       "Yes, and use auto mode",
       "Yes, manually approve edits",
     ]);
-    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    expect(model!.feedback).toEqual({
+      key: "4",
+      focused: false,
+      text: "use a guard clause instead",
+    });
   });
 
-  it("bails entirely while the input has FOCUS — every digit would be swallowed as text", () => {
-    // `❯` on the input row means the field has focus, and the dialog then routes digits into it as
-    // characters instead of answering. Measured on 2.1.228: from this state `send_keys ["3"]` leaves
-    // the plan unapproved and rewrites the row as `❯ 4. 3`. The remaining rows would otherwise render
-    // as buttons indistinguishable from working ones, so the whole dialog falls to the raw mirror —
-    // the same "bail rather than emit a keystroke that can't fire" rule as the >9-option ceiling.
-    const lines = fixtureLines("claude--plan-approval--feedback-focused.txt");
-    expect(detectPromptSelect(lines)).toBeNull();
-    expect(detectPromptSelectRegion(lines)).toBeNull();
+  it("the row's DIGIT is install-dependent — nothing may assume a fixed number", () => {
+    // Same dialog on an install with `showClearContextOnPlanAccept` OFF: three rows, and the input is
+    // row 3. Captured live on 2.1.233. A grammar that hard-coded `4` would offer the feedback flow the
+    // wrong key here and type a stray digit into a plan approval.
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--three-row.txt"));
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "Yes, and use auto mode",
+      "Yes, manually approve edits",
+    ]);
+    expect(model!.feedback).toEqual({ key: "3", focused: false, text: "" });
+  });
+
+  it("a dialog with no such row carries no feedback at all", () => {
+    const model = detectPromptSelect(fixtureLines("claude--permission-edit.txt"));
+    expect(model!.feedback).toBeUndefined();
+  });
+
+  it("coreSignature survives the flow's OWN first keystroke, where signature must not", () => {
+    // The two three-row captures are the same live dialog one keystroke apart: `--three-row` was
+    // taken, `3` was sent, `--three-row-focused` was taken. The ONLY difference on screen is where the
+    // `❯` sits. That is the exact transition the feedback flow's first poll has to accept, so
+    // `coreSignature` (pointer-normalised) must match across it — while `signature` moves, which is
+    // what keeps a COMMITTING digit checked against the screen the user actually looked at.
+    const before = detectPromptSelect(fixtureLines("claude--plan-approval--three-row.txt"))!;
+    const after = detectPromptSelect(fixtureLines("claude--plan-approval--three-row-focused.txt"))!;
+    expect(before.feedback!.focused).toBe(false);
+    expect(after.feedback!.focused).toBe(true);
+    expect(after.signature).not.toBe(before.signature);
+    expect(after.coreSignature).toBe(before.coreSignature);
+    expect(promptsSameIdentity(after, before)).toBe(true);
+    expect(promptsEqual(after, before)).toBe(false); // focus alone re-routes every digit
+
+    // A genuinely different plan dialog still breaks the core identity — the property that stops a
+    // mid-flight keystroke from landing on a same-shaped successor.
+    const other = detectPromptSelect(fixtureLines("claude--plan-approval.txt"))!;
+    expect(promptsSameIdentity(other, before)).toBe(false);
+    expect(other.coreSignature).not.toBe(before.coreSignature);
   });
 });
 
