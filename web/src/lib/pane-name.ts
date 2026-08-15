@@ -53,7 +53,11 @@ function informativeCwd(cwd: string, project: string): string | null {
 /** The parts of a herd-list row title, unjoined — see {@link PaneParts}. */
 export function paneParts(pane: AgentView): PaneParts {
   const project = pane.workspaceLabel || pane.workspaceId;
-  const own = pane.paneLabel || pane.sessionName;
+  // A hand-set name first, then what the pane says it is doing. The title sits ahead of the cwd
+  // because it is the only one of the three that tracks the work as it moves — and in the herd this
+  // exists to untangle (several agents in ONE project) the cwd is identical on every row, so it
+  // discriminates nothing.
+  const own = pane.paneLabel || pane.sessionName || pane.terminalTitle;
   return {
     project,
     tab: pane.tabLabel ?? null,

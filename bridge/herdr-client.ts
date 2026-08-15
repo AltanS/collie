@@ -48,6 +48,21 @@ interface WirePane {
   /** User-set pane label (herdr `pane.rename`). Present only once set — the key disappears when
    *  cleared with `label: null`, so absent/null both read as "no label". */
   label?: string | null;
+  /**
+   * The pane's OSC title, as the process running in it set it, and Herdr's own attempt at stripping
+   * a leading status glyph off it. Both optional: older servers omit them.
+   *
+   * Carried on the PANE — not only on `session.snapshot`'s `agents[]` — which is why reading it
+   * costs nothing architecturally: agents stay derived from `panes`, one code path (see
+   * {@link WireSnapshot}).
+   *
+   * `terminal_title_stripped` is NOT a drop-in for display. Herdr strips the settled `✳` but leaves
+   * Claude's rotating spinner frames in place (live-observed in one snapshot: `✳ Read Notes From
+   * Underground` stripped, `◐ Custom UI for Collie…` not). Those frames advance on every poll, so a
+   * label bound straight to it churns. `meaningfulTerminalTitle` does the strip Collie can rely on.
+   */
+  terminal_title?: string | null;
+  terminal_title_stripped?: string | null;
   revision: number;
   /**
    * The agent's OWN session identity, as the agent reported it to Herdr (herdr ≥ 0.7.2). For Claude

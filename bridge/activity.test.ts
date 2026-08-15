@@ -7,6 +7,7 @@ import {
   ActivityLedger,
   coerceActivityFile,
   meaningfulTabLabel,
+  meaningfulTerminalTitle,
   PRUNE_AFTER_MS,
 } from "./activity.ts";
 
@@ -58,6 +59,71 @@ describe("meaningfulTabLabel", () => {
     expect(meaningfulTabLabel("  deploy  ", 2)).toBe("deploy");
     // …and a padded positional default is still recognised as positional.
     expect(meaningfulTabLabel("  1  ", 1)).toBeUndefined();
+  });
+});
+
+describe("meaningfulTerminalTitle", () => {
+  const title = (t: string | null | undefined, stripped?: string | null) =>
+    meaningfulTerminalTitle(t, stripped, "claude", "moonward_os");
+
+  test("keeps a real title", () => {
+    expect(title("Reviewing the auth diff")).toBe("Reviewing the auth diff");
+  });
+
+  test("strips the status glyph Herdr leaves behind", () => {
+    // Live-observed 2026-08-15 (herdr 0.8.0): the raw title keeps its spinner frame and so does
+    // Herdr's "stripped" form, because Herdr only knows the settled glyph.
+    expect(title("◐ Custom UI for Collie", "◐ Custom UI for Collie")).toBe("Custom UI for Collie");
+    expect(title("✳ Read Notes From Underground", "Read Notes From Underground")).toBe(
+      "Read Notes From Underground",
+    );
+  });
+
+  test("is stable as the spinner advances — the whole point", () => {
+    // Every frame of the rotation must land on ONE label, or the row's name flickers each poll.
+    const frames = ["◐", "◑", "◒", "◓", "✳", "✻", "✽", "✢", "*", "·"];
+    const labels = new Set(frames.map((f) => title(`${f} Reconcile the book lists`)));
+    expect(labels).toEqual(new Set(["Reconcile the book lists"]));
+  });
+
+  test("leaves a title that merely opens with punctuation alone", () => {
+    // The glyph rule requires a symbol from the spinner blocks; these are neither.
+    expect(title("(main) vim src/app.ts")).toBe("(main) vim src/app.ts");
+    expect(title("~/dev/collie — bun test")).toBe("~/dev/collie — bun test");
+  });
+
+  test("drops a title that is only a spinner frame — it names nothing", () => {
+    expect(title("◐")).toBeUndefined();
+    expect(title("◐   ")).toBeUndefined();
+    expect(title("✳ ◐")).toBeUndefined();
+  });
+
+  test("drops a title that repeats what the row already shows", () => {
+    // Herdr falls back to the process name when nothing sets a title.
+    expect(title("claude")).toBeUndefined();
+    expect(title("Claude")).toBeUndefined();
+    expect(title("moonward_os")).toBeUndefined();
+    expect(title("  MOONWARD_OS  ")).toBeUndefined();
+  });
+
+  test("treats blank, whitespace-only and absent titles as absent", () => {
+    expect(title("")).toBeUndefined();
+    expect(title("   ")).toBeUndefined();
+    expect(title(undefined)).toBeUndefined();
+    expect(title(null)).toBeUndefined();
+    expect(title(null, null)).toBeUndefined();
+  });
+
+  test("takes Herdr's strip as a head start when it is the shorter of the two", () => {
+    expect(title("✳ Reconcile the book lists", "Reconcile the book lists")).toBe(
+      "Reconcile the book lists",
+    );
+  });
+
+  test("works on an older server that reports no stripped form at all", () => {
+    expect(meaningfulTerminalTitle("◐ Fixing the parser", undefined, "claude", "collie")).toBe(
+      "Fixing the parser",
+    );
   });
 
   test("a zero tab count (workspace missing from the poll) is treated as single-tab", () => {

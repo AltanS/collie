@@ -59,6 +59,15 @@ export interface AgentView {
    */
   tabLabel?: string;
   /**
+   * What the pane's own process says it is doing — its OSC title, glyph-stripped and dropped when
+   * uninformative (see `meaningfulTerminalTitle`). Claude rewrites this per turn, so unlike
+   * `paneLabel` and `sessionName` — both set once, by hand — it tracks the work as it moves, which
+   * is what tells several agents in ONE project apart in the herd list.
+   *
+   * Absent when the title says nothing, and on Herdr servers too old to report it.
+   */
+  terminalTitle?: string;
+  /**
    * Epoch ms of this agent's last observed status transition (bridge/activity.ts). The only thing
    * that can make a pane read as unseen. Absent until the ledger has an entry, and on the very
    * first poll after a fresh install.
