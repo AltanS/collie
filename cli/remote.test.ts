@@ -23,6 +23,7 @@ import {
   parseMembership,
   parseProbe,
   probeScript,
+  restartScript,
   shq,
   sshOptions,
   STDIN_MARKER,
@@ -246,6 +247,9 @@ const GOLDEN: [file: string, script: string][] = [
     configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 9000, instance: "v1" }),
   ],
   ["leg4-membership.sh", membershipScript("/home/pat/.collie")],
+  // Not one of `pack add`'s legs — `pack update` drives it, and it is pinned here with the rest
+  // because it is the same kind of thing: a program this machine writes and another one runs.
+  ["restart.sh", restartScript("/home/pat/.collie")],
   [
     "leg4-enroll.sh",
     enrollScript({

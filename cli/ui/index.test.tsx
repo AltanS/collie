@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 
-import type { DoctorView, StatusView, TonedLine } from "../render.ts";
+import type { DoctorView, StatusView, TonedLine, UpdateEvent } from "../render.ts";
 import { Doctor, Members, Status } from "./index.tsx";
+import { createUpdateStore, PackUpdate } from "./pack-update.tsx";
 
 // The components, drawn into a string. These do NOT pin the layout — a box-drawing character or a
 // column width is not a contract, and asserting one would make every visual tweak a test edit. What
@@ -84,5 +85,58 @@ describe("the pack members block", () => {
     ];
     const frame = plain(render(<Members lines={lines} />).lastFrame());
     for (const l of lines) expect(frame).toContain(l.text);
+  });
+});
+
+describe("the pack update surface", () => {
+  /** The events a one-member run emits, up to and including its table. */
+  const RUN: UpdateEvent[] = [
+    { kind: "title", version: "1.2.3", commit: "abc123def4567890" },
+    { kind: "plan", memberId: "nas", state: "ready", detail: "1.2.2 at 0000feed0000" },
+    { kind: "plan", memberId: "pi", state: "skipped", detail: "no ssh record" },
+    { kind: "member-start", memberId: "nas" },
+    { kind: "leg-done", memberId: "nas", leg: "push", ok: true, detail: "1.2.3 at /home/pat/.collie" },
+    { kind: "line", text: "warn: nas answers as 9.9.9", tone: "warn", stream: "err" },
+    { kind: "member-done", memberId: "nas", outcome: "updated" },
+    {
+      kind: "summary",
+      rows: [
+        { memberId: "nas", outcome: "updated", detail: "1.2.2 → 1.2.3" },
+        { memberId: "pi", outcome: "skipped", detail: "no ssh record" },
+      ],
+      verdict: "1 updated, 1 skipped",
+      ok: true,
+    },
+  ];
+
+  test("every member, every leg and every line the plain replay prints is on screen", () => {
+    const store = createUpdateStore();
+    const frame = plain(render(<PackUpdate store={store} />).lastFrame());
+    // Drawn from a store that has the whole run in it: the surface is a fold, not a stream reader.
+    for (const event of RUN) store.emit(event);
+    const finished = plain(render(<PackUpdate store={store} />).lastFrame());
+    expect(frame).toContain("pack update");
+    for (const needle of [
+      "1.2.3",
+      "nas",
+      "pi",
+      "push",
+      "1.2.3 at /home/pat/.collie",
+      "warn: nas answers as 9.9.9",
+      "no ssh record",
+      "1 updated, 1 skipped",
+    ]) {
+      expect(finished).toContain(needle);
+    }
+  });
+
+  test("the one question is drawn IN the app — nothing is written to ask it", () => {
+    const store = createUpdateStore();
+    const answered = store.confirm("update 1 member to 1.2.3?");
+    const frame = plain(render(<PackUpdate store={store} />).lastFrame());
+    expect(frame).toContain("update 1 member to 1.2.3?");
+    expect(frame).toContain("y / N");
+    store.answer(true);
+    expect(answered).resolves.toBe(true);
   });
 });

@@ -1336,7 +1336,7 @@ export async function cmdReconnect(deps: PackDeps, args: readonly string[]): Pro
 // ── `collie pack <sub>` dispatch ─────────────────────────────────────────────
 
 /** The `pack` sub-verbs, in the order the help prints them. */
-export const PACK_SUBCOMMANDS = ["invite", "add", "status", "rotate", "remove", "approve-promote"] as const;
+export const PACK_SUBCOMMANDS = ["invite", "add", "update", "status", "rotate", "remove", "approve-promote"] as const;
 
 export function packUsage(): string {
   return `usage: collie pack {${PACK_SUBCOMMANDS.join("|")}}`;
@@ -1354,6 +1354,12 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       const { cmdPackAdd } = await import("./remote.ts");
       return cmdPackAdd(deps, rest);
     }
+    // Same reason `add` is imported at call time: `cli/pack-update.ts` reaches back into this module
+    // for `parsePackArgs` and `probeMembers`, and a static import here would close a cycle.
+    case "update": {
+      const { cmdPackUpdate } = await import("./pack-update.ts");
+      return cmdPackUpdate(deps, rest);
+    }
     case "status":
       return cmdPackStatus(deps, rest);
     case "rotate":
@@ -1369,6 +1375,7 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       deps.io.err(packUsage());
       deps.io.err("  invite   mint a single-use, 10-minute enrollment token (on the lead)");
       deps.io.err("  add      install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)");
+      deps.io.err("  update   level peers to this lead's build over SSH: `pack update <member>… | --all`");
       deps.io.err("  status   mode, members, reachability, secret pickup and why a link is refused");
       deps.io.err("  rotate   reissue the pack secret and hand it to every reachable peer");
       deps.io.err("  remove   unpin and forget a member (on the lead)");
