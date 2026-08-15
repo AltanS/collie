@@ -1,11 +1,16 @@
 # Plan-approval feedback row — TUI choreography notes
 
 Empirical findings from driving live Claude Code `ExitPlanMode` dialogs in a sandbox pane through
-Herdr (`pane.send_keys`, `pane.send_text`, `pane.read`), **2026-08-12**, Claude Code **2.1.228**.
-Every row of every table below was produced by sending one keystroke at a time and capturing the
-buffer byte-faithfully after each. These are the ground truth behind the free-text handling in
-`harness/claude/prompt-select.ts` and the fixtures
-`web/src/fixtures/panes/claude--plan-approval--feedback-*.txt`.
+Herdr (`pane.send_keys`, `pane.send_text`, `pane.read`): **2026-08-12** on Claude Code **2.1.228**,
+re-walked **2026-08-15** on **2.1.233** (which added §"The caret resets" and the second table below).
+Every row of every table was produced by sending one keystroke at a time and capturing the buffer
+byte-faithfully after each. These are the ground truth behind the free-text handling in
+`harness/claude/prompt-select.ts`, the feedback choreography in `lib/prompt-action.ts`, and the
+fixtures `web/src/fixtures/panes/claude--plan-approval--*.txt`.
+
+Throughout, the input row is written as "row 4" because that is where the 2.1.228 capture had it. It
+is **row 3** on an install without `showClearContextOnPlanAccept` — see hazard 4. Nothing in the code
+keys on the number; it is read off the screen.
 
 ## Row 4 is an input, not an option
 
@@ -70,13 +75,50 @@ Measured, from focused-and-empty:
 The plan is **not** approved and nothing on the phone reports a failure. In that state the three
 answer rows still parse as a perfectly ordinary menu, so a grammar that lifts them puts buttons on a
 phone that are indistinguishable from working ones and that silently type into a sentence someone
-else is in the middle of writing. Hence: **`❯` on the free-text row ⇒ decline the whole dialog** and
-fall back to the raw mirror + keys pad, the same rule as the >9-option ceiling.
+else is in the middle of writing.
+
+Hence: **`❯` on the free-text row ⇒ no button on this dialog may be pressable.** The model carries the
+state (`PromptModel.feedback.focused`) rather than dropping the dialog, so three things can happen at
+once: the renderer locks every button behind a banner that says why, `lib/prompt-action.ts` refuses to
+write at all, and the feedback flow's own mid-flight polls can *see* the focus they are waiting for.
+Polling clears the banner the moment the terminal's pointer moves off.
 
 Note the text **survives losing focus** — `4`, type, `Up` leaves the words on the row with the
 pointer elsewhere. That state is real, it is the one
 `claude--plan-approval--feedback-typed.txt` captures, and in it the digits *do* answer; only the
 description test keeps row 4 from becoming a button.
+
+## The caret resets to position 0 on re-entry
+
+The finding that decides when Collie may type at all. Leave the row and come back to it and the caret
+is at the **start** of the existing value, not the end:
+
+| From | Key | Result |
+|---|---|---|
+| row 4 focused, box holds `use a guard clause instead` | `Up` then `Down` | text intact, pointer back |
+| …then `send_text "X"` | | `❯ 4. Xuse a guard clause instead` — **prepended** |
+| …then `Backspace` ×30 | | **nothing deleted** — a no-op at position 0 |
+
+So a non-empty box cannot be safely appended to *or* cleared. That is why `submitPromptFeedback`
+refuses unless the box is **empty** (`feedback.text === ""`), and why the renderer shows the existing
+text as a read-only card instead of an editor: the alternative is garbling a sentence someone at the
+terminal is still writing and then submitting the result irreversibly.
+
+## The verified send: digit → focus → type → Enter
+
+The whole sequence, driven end to end through the real bridge against a live agent (2026-08-15):
+
+```
+send_keys ["3"]        → ❯ moves onto the row, field focused        (answers nothing)
+  …verify focused
+send_text "…", submit=false → the words appear on the row
+  …verify our own text is on the row
+send_keys ["Enter"]    → DENY-with-feedback; the agent re-plans with it
+```
+
+The agent's next plan visibly incorporated the text, so this is a confirmed round trip, not a screen
+inference. Each step is gated on a fresh read of the one before it — the Enter is irreversible, so it
+never goes out on anything but visible evidence that the box holds what we typed.
 
 ## What `Enter` and `Esc` actually deliver
 
@@ -112,5 +154,10 @@ Both were read back out of the agent's own transcript, not inferred from the scr
    **not** usable as a focus discriminator. (This is the opposite of the notes flow, where focus is
    exactly what adds `ctrl+g` — see `NOTES_NOTES.md`.) Pointer position is the only signal.
 4. **Row 1 is install-dependent.** `showClearContextOnPlanAccept` adds
-   `Yes, clear context (N% used) and use auto mode`, so the dialog is 3 or 4 rows plus the input.
-   Nothing may key on a fixed option count.
+   `Yes, clear context (N% used) and use auto mode`, so the dialog is 3 or 4 rows plus the input, and
+   the input's own digit is 3 or 4. Nothing may key on a fixed option count or a fixed key.
+   `claude--plan-approval--three-row.txt` is the fixture that pins the other shape.
+5. **Approve-with-feedback is still out of reach.** `shift+tab` is the only key that keeps the plan
+   AND passes the note; until [#89](https://github.com/AltanS/collie/issues/89) clears, the phone can
+   only deny with feedback. Anyone adding the approve path should re-walk this document first — the
+   `Enter` and `shift+tab` results differ in the agent's transcript, not on screen.
