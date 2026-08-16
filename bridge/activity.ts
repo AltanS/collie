@@ -73,6 +73,10 @@ const LEADING_STATUS_GLYPH = new RegExp(`^[${STATUS_GLYPH_CLASS}]{1,2}\\s+`, "u"
 /** A title with no prose in it at all — a bare spinner frame, which names nothing. Needed separately
  *  because the strip above requires trailing whitespace, so `"◐"` alone would otherwise survive. */
 const GLYPHS_ONLY = new RegExp(`^[${STATUS_GLYPH_CLASS}\\s]+$`, "u");
+/** A shell's default OSC title — bash's `\u@\h:\w` and friends: `user@host`, optionally `:` and a
+ *  path (Debian puts a space after the colon). Neither half may contain a space, `@` or `:`, so a
+ *  title that merely mentions an address (`foo@bar baz`, `re: user@host`) is not one of these. */
+const SHELL_LOCATOR = /^[^\s@:]+@[^\s@:]+(:.*)?$/;
 
 /**
  * A terminal title worth putting on screen, or `undefined` when it says nothing.
@@ -88,6 +92,13 @@ const GLYPHS_ONLY = new RegExp(`^[${STATUS_GLYPH_CLASS}\\s]+$`, "u");
  * A title is dropped when it repeats what the row already shows: the agent's own name (Herdr falls
  * back to the process name, so an agent that sets no title reports `claude`), or the workspace
  * label that is line one of every row. Case-insensitive, because neither comparison is about case.
+ *
+ * A shell's locator title (`altan@bluefin:~/projects/collie`) is dropped for the same reason: it is
+ * not what the process is doing, it is a restatement of the cwd the row already carries on that very
+ * line — longer, and rewritten on every `cd`. Dropped unconditionally rather than only when the path
+ * matches: the row's cwd is the fresher of the two (a locator only updates at the next prompt), and
+ * `\w`'s `~` belongs to a user the bridge cannot resolve a HOME for. Titles a shell sets for a
+ * running command (`vim foo.ts`, `htop`) are not locators and survive — those are the work.
  *
  * Pure + exported so the rule is unit-tested and lives in ONE place, exactly as
  * {@link meaningfulTabLabel} is.
@@ -111,6 +122,7 @@ export function meaningfulTerminalTitle(
 
   const cleaned = shortest.replace(LEADING_STATUS_GLYPH, "").trim();
   if (!cleaned) return undefined;
+  if (SHELL_LOCATOR.test(cleaned)) return undefined;
 
   const fold = cleaned.toLowerCase();
   if (fold === agent.trim().toLowerCase()) return undefined;
