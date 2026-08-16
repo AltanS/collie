@@ -17,6 +17,7 @@ import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
+import { useOperatorCommands } from "@/lib/operator-commands";
 import { isDestructiveInput } from "@/lib/destructive";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
@@ -380,7 +381,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     focusInputEnd();
   }
 
-  const commands = commandsFor(agent);
+  // The operator's own palette rows, resolved against the shipped catalog for both the button's
+  // visibility test here and the palette's own list below (same call, same arguments).
+  const operatorCommands = useOperatorCommands();
+  const commands = commandsFor(agent, operatorCommands);
 
   function focusInputImmediately() {
     const el = inputRef.current;
@@ -953,6 +957,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         open={drawer === "cmd"}
         onClose={closeDrawer}
         agent={agent}
+        mine={operatorCommands}
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />

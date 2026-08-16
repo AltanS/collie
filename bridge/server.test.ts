@@ -53,6 +53,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       opencode: ["/nope/opencode"],
     },
     submitKeys: ["Enter"],
+    operatorCommands: [],
     trustedUser: "",
     deviceHeader: "",
     deviceAllowlist: [],
