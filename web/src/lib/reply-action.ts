@@ -22,6 +22,7 @@ import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { adapterFor, type HarnessAdapter } from "./harness";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
+import { detectNoEchoPrompt } from "./no-echo";
 import type { Scope } from "./scope";
 
 export type ReplyOutcome =
@@ -34,10 +35,15 @@ export type ReplyOutcome =
    * (`force`). The caller's `onComposerSeen` work may have run before a re-confirming refusal — but
    * only ever on the path where a live read had just seen the composer, which is the invariant that
    * whole callback exists to enforce.
+   *
+   * `noEcho` carries the password prompt the refusing read was looking at, when it was one — see
+   * lib/no-echo.ts.
    */
-  | { status: "blocked"; error: string }
-  /** Text never reached the input box — NO submit key was sent. The caller MUST keep the draft. */
-  | { status: "stalled"; error: string }
+  | { status: "blocked"; error: string; noEcho?: string }
+  /** Text never reached the input box — NO submit key was sent. The caller MUST keep the draft.
+   *  `noEcho`: the prompt the last verification read saw, when the reason the text never appeared is
+   *  that the screen is deliberately not showing it — see lib/no-echo.ts. */
+  | { status: "stalled"; error: string; noEcho?: string }
   /** Transport/RPC failure. `textDelivered` = text is in the pane but unsubmitted; don't resend. */
   | { status: "error"; error: string; textDelivered?: boolean };
 
@@ -279,6 +285,11 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   if (!typed.ok) return { status: "error", error: typed.error };
 
   const sleep = args.sleep ?? defaultSleep;
+  // The last screen a verification read actually saw, kept only so the stall below can be named. The
+  // pre-flight catches almost every password prompt before a byte is typed, but not all of them: a
+  // harness with no `composerReady`, and a `force` the operator armed against a mis-detected screen,
+  // both arrive here having typed the secret into a prompt that will never echo it.
+  let lastSeen: string | null = null;
   for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
     // Read BEFORE the first sleep: pane.read is an on-demand live read, not a cached poll, so the
     // text is often already on screen by the time the type call returns. That saves a whole
@@ -287,7 +298,17 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     let draft: string | null = null;
     try {
       const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
-      draft = adapter.extractInputDraft(splitLines(parseAnsi(fresh.text)));
+      const lines = splitLines(parseAnsi(fresh.text));
+      // Only a screen the adapter does NOT recognise as its composer can be a raw password prompt.
+      // Without that gate a match on the tail is dangerous rather than merely wrong: the notice this
+      // feeds tells the operator to press Enter in Type, so a stall that was really a dialog eating
+      // the text — with an agent that happened to PRINT "Enter passphrase:" as its last line — would
+      // have us advising the exact keystroke #34 exists to prevent. An adapter with no
+      // `composerReady` cannot rule anything out, so it doesn't (`?? false`): that path is the
+      // unguarded one either way, and it is where a bare shell's sudo prompt actually lives.
+      const composerVisible = adapter.composerReady?.(lines) ?? false;
+      lastSeen = composerVisible ? null : detectNoEchoPrompt(lines);
+      draft = adapter.extractInputDraft(lines);
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
     }
@@ -309,6 +330,16 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // If instead this is a false negative (the text IS in the box, the adapter just couldn't see it),
   // nothing is lost: the next send's pre-clear sweep removes it, and the stranded-draft preview
   // surfaces it in the meantime.
+  if (lastSeen !== null) {
+    // Typed into a prompt that will never show it. The text IS in the pane — unsubmitted, which for a
+    // password means the operator needs one Enter, not a retry, and a retry would type a second copy.
+    return {
+      status: "stalled",
+      error:
+        "That's a password prompt — it shows nothing as you type, so the text can't be confirmed and nothing was submitted. What you typed is already in the pane.",
+      noEcho: lastSeen,
+    };
+  }
   return {
     status: "stalled",
     error:
@@ -318,6 +349,11 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
 
 const NO_BOX =
   "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.";
+
+/** Said instead of {@link NO_BOX} when the screen is a password prompt. It names the mechanism rather
+ *  than the symptom, because the operator's next move depends on knowing that waiting won't help. */
+const NO_ECHO =
+  "That's a password prompt — it shows nothing as you type, so Send can never confirm the text arrived. Nothing was typed.";
 
 /**
  * What the pre-flight decided. Two fields, and the second is the safety invariant of this module made
@@ -369,7 +405,15 @@ async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promi
   if (!composerReady(seen)) {
     // `force` is the user's deliberate "type anyway", so it overrides the refusal — but this is the
     // one screen we have POSITIVE evidence about, and what it says is "no composer". Keys stay home.
-    return blind(args.force ? null : { status: "blocked", error: NO_BOX });
+    if (args.force) return blind(null);
+    // The refusal is already made; naming the screen only changes what the operator is told. A
+    // password prompt is the one case where the generic "a menu or dialog is probably up" is not just
+    // unhelpful but actively misleading — there is no dialog to answer and no amount of retrying will
+    // ever work, because the evidence this guard needs is exactly what the prompt is refusing to show
+    // (#103). Hand the prompt itself back so the caller can say so and offer "Type".
+    const noEcho = detectNoEchoPrompt(seen);
+    if (noEcho !== null) return blind({ status: "blocked", error: NO_ECHO, noEcho });
+    return blind({ status: "blocked", error: NO_BOX });
   }
 
   // The region the read's `true` was true OF. Computed here, from the same parse `composerReady` just
