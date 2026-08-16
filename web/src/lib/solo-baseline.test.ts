@@ -89,6 +89,10 @@ const AGENT_VIEW_KEYS: Record<keyof AgentView, true> = {
   lastActiveAt: true,
   lastSeenAt: true,
   host: true,
+  // NOT a pack dimension — an ordinary optional feature field (0.29.0, panes named by their OSC
+  // title). Recorded here because the tripwire is exhaustive over `keyof AgentView`, not because it
+  // carries a host.
+  terminalTitle: true,
 };
 
 const DEVICE_AUTH_KEYS: Record<keyof DeviceAuth, true> = {
@@ -155,6 +159,7 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "status",
       "tabId",
       "tabLabel",
+      "terminalTitle",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",

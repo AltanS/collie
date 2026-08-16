@@ -27,7 +27,7 @@ import type { Block } from "../blocks";
 import { menusEqual, menusSameIdentity, type MenuModel } from "./menu-model";
 import { multiSelectEquals, multiSelectIdentity, type MultiSelectModel } from "./multi-select-model";
 import { previewCoreEqual, previewsEqual, type PreviewSelectModel } from "./preview-model";
-import { promptsEqual, type PromptModel } from "./prompt-model";
+import { promptsEqual, promptsSameIdentity, type PromptModel } from "./prompt-model";
 import { wizardsEqual, type WizardModel } from "./wizard-model";
 
 /** The model each interactive block kind carries. Keys are exactly the non-`raw` `Block["kind"]`s —
@@ -87,9 +87,11 @@ export interface DialogComparators<M> {
 /** kind → comparators. The whole table is the contract; adding a block kind means adding a row. */
 export const DIALOG_CONTRACT: { [K in DialogKind]: DialogComparators<DialogModels[K]> } = {
   "prompt-select": {
-    // Every prompt-select key commits (the digit IS the answer), so identity is the same check.
+    // Every ANSWER key commits (the digit IS the answer). The feedback flow is the one multi-step
+    // recipe here (digit → verify focus → type → Enter), and it moves the pointer and fills the input
+    // itself, so its mid-flight polls key on the pointer-/text-independent identity.
     commits: promptsEqual,
-    identity: promptsEqual,
+    identity: promptsSameIdentity,
     signature: (m) => m.signature,
     region: (m) => m.signature,
   },

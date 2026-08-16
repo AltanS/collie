@@ -264,6 +264,11 @@ const PANE_WIRE_KEYS: Record<keyof PaneWire, true> = {
   lastSeenAt: true,
   hasSession: true,
   host: true,
+  // NOT a pack dimension — an ordinary optional feature field (0.29.0, panes named by their OSC
+  // title). Recorded here because the tripwire is exhaustive over `keyof PaneWire`, not because it
+  // carries a host: like the fields above it is optional-and-absent when the pane has no meaningful
+  // title, and no golden byte moved.
+  terminalTitle: true,
 };
 
 const DEVICE_AUTH_KEYS: Record<keyof DeviceAuth, true> = {
@@ -346,6 +351,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "status",
       "tabId",
       "tabLabel",
+      "terminalTitle",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",

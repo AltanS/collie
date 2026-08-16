@@ -31,11 +31,12 @@ import { useHostHealth } from "@/components/pack-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
 import { ShellBadge, StatusBadge } from "@/components/status-badge";
-import { submitPromptOption } from "@/lib/prompt-action";
+import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { submitMenuKeys } from "@/lib/menu-action";
+import type { PromptBlockAction } from "@/components/prompt-select-block";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
@@ -49,7 +50,6 @@ import type {
   MultiSelectModel,
   PreviewSelectModel,
   PromptModel,
-  PromptOption,
   WizardModel,
 } from "@/lib/blocks";
 import type { Scope } from "@/lib/scope";
@@ -354,23 +354,29 @@ export function AgentChat({
   // with a "menu changed" notice and a revalidate; a clean send snaps back to the tail so the
   // result is visible. The composer stays live for the free-text rows we don't render as buttons.
   const handlePromptAction = useCallback(
-    async (option: PromptOption, prompt: PromptModel) => {
+    async (action: PromptBlockAction, prompt: PromptModel) => {
       const refusal = refuseWrite();
       if (refusal) {
         setStatus(refusal, "error");
-        return;
+        return false;
       }
-      const result = await submitPromptOption({
+      const base = {
         paneId,
         scope,
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
         prompt,
-        option,
-      });
+      };
+      // Two recipes behind one block: a single guarded keystroke for an option, and the plan
+      // dialog's multi-step feedback sequence (digit → verify focus → type → Enter, which denies the
+      // plan and hands the agent the text — see lib/prompt-action.ts).
+      const result =
+        action.kind === "option"
+          ? await submitPromptOption({ ...base, option: action.option })
+          : await submitPromptFeedback({ ...base, text: action.text });
       if (result.status === "sent") {
-        setStatus("Sent", "success");
+        setStatus(action.kind === "feedback" ? "Feedback sent" : "Sent", "success");
         setFollowing(true);
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
@@ -380,6 +386,9 @@ export function AgentChat({
       } else {
         setStatus(result.error || "Send failed", "error");
       }
+      // Reported back so the block can keep a refused feedback draft on screen rather than discard
+      // what someone just thumb-typed. Option taps ignore it.
+      return result.status === "sent";
     },
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
   );
