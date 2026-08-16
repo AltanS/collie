@@ -72,3 +72,9 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Collie does not run a terminal emulator | Accepted |
 | [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu is driven by the keys it names, never by digits | Accepted |
 | [0010](./0010-long-sends-are-verified-via-the-paste-placeholder.md) | Long sends are verified via the paste placeholder, not by chunking them | Accepted |
+| [0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) | Recognising a password prompt changes what Collie says, never what it sends | Accepted |
+
+**0011–0016 are not missing** — they are the pack/federation decisions, accepted on the `v1`
+integration branch and arriving here when it merges. Numbers are claimed across *both* branches, so
+the next ADR written on `main` continues from the highest number in use anywhere, not from the highest
+one in this table.
