@@ -173,7 +173,7 @@ rc=$?
 set -e
 assert_eq "$rc" "0"
 for verb in start stop restart uninstall update build serve unserve status url qr version push-test logs \
-           doctor pair devices join leave pack promote reconnect; do
+           doctor pair devices push join leave pack promote reconnect; do
   assert_contains "$(cat "${TMP_ROOT}/out")" "$verb"
 done
 
@@ -1325,6 +1325,66 @@ assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie devices revoke <label>
 # Not one of them shelled out to anything: no systemctl, no tailscale, no herdr.
 assert_eq "$(cat "$PAIR_CALLS")" ""
 
+# ── Push subscriptions ───────────────────────────────────────────────────────
+# `push list` and `push forget` are what an operator runs when push is BROKEN — no VAPID keys, no
+# `web-push`, and (here) no environment at all. What only this file can prove is that they still
+# land on the state dir the bridge resolves under `env -i`, and that neither needs the push stack to
+# be working to answer. Behaviour is covered against a throwaway dir in cli/push.test.ts.
+PUSH_STATE="${TMP_ROOT}/push-state"
+mkdir -p "$PUSH_STATE"
+: > "$PAIR_CALLS"
+push_env() {
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PUSH_STATE" \
+    PATH="$BIN_DIR" "$BIN" "$@"
+}
+
+# Nothing subscribed: a friendly line, exit 0, and no file conjured by the asking.
+push_env push list || fail "\`collie push list\` failed on an empty store: ${STDERR}"
+assert_contains "$STDOUT" "no subscribed devices"
+[ -z "$(ls -A "$PUSH_STATE")" ] || fail "\`push list\` wrote into the state dir with nothing subscribed"
+
+# A store the BRIDGE wrote — including a row from before the metadata fields existed.
+cat > "${PUSH_STATE}/push-subscriptions.json" <<'EOF'
+[
+  {"endpoint":"https://web.push.apple.com/AAAA1111bbbb2222","keys":{"p256dh":"p","auth":"a"},
+   "createdAt":"2026-07-02T09:11:00.000Z","userAgent":"Mozilla/5.0 (iPhone)"},
+  {"endpoint":"https://fcm.googleapis.com/fcm/send/CCCC3333dddd","keys":{"p256dh":"p","auth":"a"}}
+]
+EOF
+push_env push list || fail "\`collie push list\` failed with a store: ${STDERR}"
+assert_contains "$STDOUT" "web.push.apple.com"
+assert_contains "$STDOUT" "2026-07-02"
+assert_contains "$STDOUT" "fcm.googleapis.com"
+# The keys are a sending credential; a list is read over someone's shoulder.
+case "$STDOUT" in
+  *p256dh*) fail "\`push list\` printed the subscription keys" ;;
+esac
+
+# `forget` takes the substring the list makes retypable, and rewrites the store in place.
+push_env push forget apple.com || fail "\`collie push forget\` failed: ${STDERR}"
+assert_contains "$STDOUT" "forgot 1"
+case "$(cat "${PUSH_STATE}/push-subscriptions.json")" in
+  *web.push.apple.com*) fail "\`push forget\` left the row it reported dropping" ;;
+esac
+assert_contains "$(cat "${PUSH_STATE}/push-subscriptions.json")" "fcm.googleapis.com"
+
+# A substring nobody matches is an operational failure (1), and a bare `push` a usage error (2).
+# `|| rc=$?` rather than an `if`: the exit code IS the assertion here, and an `if` swallows it.
+rc=0
+push_env push forget nonsense || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "no subscription matches"
+for args in "push" "push nonsense"; do
+  rc=0
+  # shellcheck disable=SC2086
+  push_env $args || rc=$?
+  assert_eq "$rc" "2"
+  assert_contains "$STDERR" "usage: collie push"
+done
+
+# Not one of them shelled out either — and none of them needed a VAPID key to answer.
+assert_eq "$(cat "$PAIR_CALLS")" ""
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
@@ -1335,3 +1395,4 @@ echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
 echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one line per check"
 echo "✓ collie CLI pairing: 0600 pending file with no code in it, re-mint, list/revoke, exit codes"
+echo "✓ collie CLI push: list/forget answer with no VAPID and no environment, no keys on screen, exit codes"
