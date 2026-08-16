@@ -1,20 +1,11 @@
 // React Router data loaders are the data layer — there is intentionally no separate data-fetching
 // library. The home/detail routes declare these as `loader`s; polling is just
-// `useRevalidator().revalidate()` re-running them (see hooks/use-polling.ts). Each loader keeps the
-// last good result in a module cache so a transient fetch failure shows stale-but-present data
-// (flagged) instead of flashing empty — i.e. keep-previous-data while a refetch is in flight.
-//
-// Offline fast path (a PWA should navigate instantly to last-known data): during a KNOWN, escalated
-// outage (the shared connection-health store has latched "lost"), a NAVIGATION must not block on a
-// fetch that will only time out — it returns cached data immediately (flagged error). A REVALIDATION
-// (the poll) must keep really fetching so recovery is discovered and the stale data swapped out. React
-// Router never tells a loader which kind of run it is, but the request URL does: a revalidation re-runs
-// a loader at the SAME url; a navigation runs it at a DIFFERENT one (see isNavigation below). No timer,
-// no flag, no race — and because a navigation aborts any in-flight revalidation, the nav is instant
-// even while a poll's doomed fetch is still hanging.
+// `useRevalidator().revalidate()` re-running them (see hooks/use-polling.ts). Each loader keeps its
+// own last-good result in a module cache so a transient fetch failure shows stale data instead of
+// flashing empty. Root-snapshot and pane freshness stay independent: every loader run attempts its
+// own endpoint, and a successful or failed surface never changes another surface's outcome.
 
 import { fetchHistory, fetchPane, fetchSnapshot, isApiErrorStatus } from "@/lib/api";
-import { isLostLatched } from "@/lib/connection-health";
 import { SESSION_PARAM, normalizeSession } from "@/lib/session";
 import type {
   AgentView,
@@ -31,8 +22,8 @@ import type {
 } from "@/lib/types";
 
 // A superseded revalidation is aborted via the loader's request.signal; that surfaces as an
-// AbortError we must RETHROW so React Router discards the stale run — swallowing it into the
-// stale-data/error-banner path would flash a spurious "reconnecting…" on every fast poll.
+// AbortError we must RETHROW so React Router discards the stale run rather than treating a
+// superseded poll as a genuine stale-freshness result.
 function isAbortError(e: unknown): boolean {
   return (
     typeof e === "object" &&
@@ -77,10 +68,12 @@ export interface HomeData {
   update: UpdateInfo | undefined;
   /** True only when the bridge explicitly advertises the server-side voice capability. */
   transcriptionEnabled: boolean;
-  /** True when this render is the last-good snapshot after a failed refresh. */
-  error: boolean;
-  /** True when the failed refresh was rejected with HTTP 401 or 403. */
-  authError: boolean;
+  /** True when this render is stale after a failed root-snapshot refresh. */
+  snapshotStale: boolean;
+  /** True when the failed root-snapshot refresh was rejected with HTTP 401 or 403. */
+  snapshotAuthError: boolean;
+  /** True when a last-good root snapshot exists, including an intentionally empty snapshot. */
+  snapshotHasLastGood: boolean;
 }
 
 export interface PaneData {
@@ -94,54 +87,25 @@ export interface PaneData {
    * stale in-flight poll (a "Load older" tap raises this; see growRequestedLines). */
   requestedLines: number;
   /** Herdr's monotonic revision for `text` — the prompt-select race guard checks against it. 0 on
-   * the degraded (stale-text) path, where the guard's fresh fetch will reject a mismatch anyway. */
+   * the stale-text path, where the guard's fresh fetch will reject a mismatch anyway. */
   revision: number;
-  error: boolean;
-  /** True when the failed refresh was rejected with HTTP 401 or 403. */
-  authError: boolean;
+  /** True when this render is stale after a failed pane refresh. */
+  paneStale: boolean;
+  /** True when the failed pane refresh was rejected with HTTP 401 or 403. */
+  paneAuthError: boolean;
+  /** True when a last-good pane result exists, including intentionally empty output. */
+  paneHasLastGood: boolean;
 }
 
 // Keep-previous-data cache is now PER-SESSION: switching sessions must not show the other session's
 // herd flagged as stale. Keyed by session name ("" = primary).
 const lastSnapshot = new Map<string, SnapshotResponse>();
 
-// A latched navigation skips the network, so retain whether the last real outcome for each session
-// was an auth rejection. Store only rejected sessions; every other real outcome removes the marker.
-const authErrorSessions = new Set<string>();
-
-function rememberAuthError(session: string | undefined, authError: boolean): void {
-  const key = session ?? "";
-  if (authError) authErrorSessions.add(key);
-  else authErrorSessions.delete(key);
-}
-
-function hasAuthError(session: string | undefined): boolean {
-  return authErrorSessions.has(session ?? "");
-}
-
 function isAuthError(error: unknown): boolean {
   return isApiErrorStatus(error, 401) || isApiErrorStatus(error, 403);
 }
 
-// The URL each loader last RAN for — the nav-vs-revalidate discriminator for the offline fast path (see
-// the header comment). Module-scoped so it survives revalidations (the loader re-runs every poll) and
-// resets on a full reload — same lifetime as the caches. `lastRootUrl` is enough for the root loader
-// because it runs on EVERY navigation (it's the parent of all routes); the pane loader only runs while
-// a pane is mounted, so `lastRootUrl` also CLEARS `lastPaneUrl` whenever we're on a non-pane URL — that
-// way re-entering the same pane (pane → home → same pane) reads as a fresh navigation, not a poll.
-let lastRootUrl: string | undefined;
-let lastPaneUrl: string | undefined;
-
-function isPaneUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    return new URL(url).pathname.startsWith("/pane/");
-  } catch {
-    return url.includes("/pane/");
-  }
-}
-
-function toHomeData(snap: SnapshotResponse, session: string | undefined, error: boolean): HomeData {
+function toHomeData(snap: SnapshotResponse, session: string | undefined): HomeData {
   return {
     bridge: snap.bridge,
     device: snap.device,
@@ -155,62 +119,53 @@ function toHomeData(snap: SnapshotResponse, session: string | undefined, error: 
     update: snap.update,
     // An older bridge omits the capability; fail closed to the existing text-only composer.
     transcriptionEnabled: snap.transcriptionEnabled ?? false,
-    error,
-    authError: error && hasAuthError(session),
+    snapshotStale: false,
+    snapshotAuthError: false,
+    snapshotHasLastGood: lastSnapshot.has(session ?? ""),
   };
 }
 
-// Last-known home for a session, flagged stale — the cached snapshot if we have one, else an empty
-// error snapshot. Shared by BOTH the failed-refresh catch and the offline navigation fast path, so the
-// two return byte-identical shapes (the UI can't tell "fetch just failed" from "navigated while known-
-// offline" — both are "stale-but-present, flagged").
-function staleHome(session: string | undefined): HomeData {
-  const cached = lastSnapshot.get(session ?? "");
-  return cached
-    ? toHomeData(cached, session, true)
-    : {
-        bridge: undefined,
-        device: undefined,
-        agents: [],
-        shellPanes: [],
-        workspaces: [],
-        tabs: [],
-        sessions: [],
-        session,
-        snoozedUntil: null,
-        update: undefined,
-        transcriptionEnabled: false,
-        error: true,
-        authError: hasAuthError(session),
-      };
+// Last-known root snapshot for a session, flagged stale. `Map.has()` deliberately distinguishes an
+// intentionally empty cached snapshot from a cold failure with nothing to show.
+function staleHome(session: string | undefined, snapshotAuthError: boolean): HomeData {
+  const key = session ?? "";
+  const snapshotHasLastGood = lastSnapshot.has(key);
+  const cached = lastSnapshot.get(key);
+  if (snapshotHasLastGood && cached) {
+    return {
+      ...toHomeData(cached, session),
+      snapshotStale: true,
+      snapshotAuthError,
+      snapshotHasLastGood,
+    };
+  }
+  return {
+    bridge: undefined,
+    device: undefined,
+    agents: [],
+    shellPanes: [],
+    workspaces: [],
+    tabs: [],
+    sessions: [],
+    session,
+    snoozedUntil: null,
+    update: undefined,
+    transcriptionEnabled: false,
+    snapshotStale: true,
+    snapshotAuthError,
+    snapshotHasLastGood,
+  };
 }
 
 export async function rootLoader({ request }: { request?: Request } = {}): Promise<HomeData> {
   const session = sessionFromRequest(request);
-  // Nav-vs-revalidate: a revalidation (poll) re-runs at the SAME url; a navigation runs at a different
-  // one. Cold start (lastRootUrl undefined) reads as a navigation too, but the latch gate below is
-  // never set that early, so the first run always really fetches (BootSplash + escalation, as today).
-  const url = request?.url;
-  const isNavigation = lastRootUrl !== url;
-  lastRootUrl = url;
-  // Leaving a pane clears the pane loader's discriminator so a later return to it reads as a fresh nav.
-  if (!isPaneUrl(url)) lastPaneUrl = undefined;
-
-  // Fast path: a navigation during a known, escalated outage returns last-known data INSTANTLY rather
-  // than hanging on a doomed fetch. Revalidations fall through and really fetch (so recovery lands and
-  // markLive clears the latch → the next run fetches live and replaces the stale herd).
-  if (isNavigation && isLostLatched()) return staleHome(session);
-
   try {
     const snap = await fetchSnapshot(session, request?.signal);
     lastSnapshot.set(session ?? "", snap);
-    rememberAuthError(session, false);
-    return toHomeData(snap, session, false);
+    return toHomeData(snap, session);
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
-    rememberAuthError(session, isAuthError(e));
-    // Keep the last good herd on screen, flagged so the ConnectionBanner can say "reconnecting…".
-    return staleHome(session);
+    return staleHome(session, isAuthError(e));
   }
 }
 
@@ -280,19 +235,26 @@ export function resetRequestedLines(paneId?: string, session?: string): void {
   else requestedLines.delete(paneKey(paneId, session));
 }
 
-// Last-known pane payload, flagged degraded — stale text (empty if this pane was never fetched),
-// truncated cleared, revision 0 (the prompt-select guard rejects a 0-revision mismatch anyway). Shared
-// by the failed-refresh catch and the offline navigation fast path, so both return the same shape.
-function stalePane(paneId: string, session: string | undefined, lines: number): PaneData {
+// Last-known pane payload, flagged stale. `Map.has()` deliberately distinguishes an empty cached
+// pane from a cold failure with no output. The stale path clears metadata that cannot be current.
+function stalePane(
+  paneId: string,
+  session: string | undefined,
+  lines: number,
+  paneAuthError: boolean,
+): PaneData {
+  const key = paneKey(paneId, session);
+  const paneHasLastGood = lastPaneText.has(key);
   return {
     paneId,
     session,
-    text: lastPaneText.get(paneKey(paneId, session)) ?? "",
+    text: lastPaneText.get(key) ?? "",
     truncated: false,
     requestedLines: lines,
     revision: 0,
-    error: true,
-    authError: hasAuthError(session),
+    paneStale: true,
+    paneAuthError,
+    paneHasLastGood,
   };
 }
 
@@ -310,25 +272,13 @@ export async function paneLoader({
   const session = sessionFromRequest(request);
   const key = paneKey(paneId, session);
   const lines = getRequestedLines(paneId, session);
-  // Nav-vs-revalidate, as in rootLoader. `lastPaneUrl` also flips to undefined whenever rootLoader sees
-  // a non-pane URL, so opening a pane (even one just left) reads as a navigation, and polling within it
-  // (same URL) reads as a revalidation.
-  const url = request?.url;
-  const isNavigation = lastPaneUrl !== url;
-  lastPaneUrl = url;
-
-  // Fast path: navigating to a pane during a known, escalated outage shows its last-known mirror (or an
-  // empty degraded pane if never visited) INSTANTLY — never a 10s hang on a fetch that can't land.
-  if (isNavigation && isLostLatched()) return stalePane(paneId, session, lines);
 
   try {
-    // On a 304 fetchPane returns the cached body, so `read.text` is populated either way; the
-    // `?? lastPaneText` is just belt-and-suspenders. Both paths are a success (not the error
-    // branch) so the connection bar doesn't flicker on an unchanged poll.
+    // On a 304 fetchPane returns the cached body, so `read.text` is populated either way. An empty
+    // successful read is still authoritative and must replace rather than infer from the old text.
     const read: PaneReadResponse = await fetchPane(paneId, lines, session, request?.signal);
-    const text = read.text || lastPaneText.get(key) || "";
+    const text = read.text;
     rememberPaneText(key, text);
-    rememberAuthError(session, false);
     return {
       paneId,
       session,
@@ -336,14 +286,13 @@ export async function paneLoader({
       truncated: read.truncated,
       requestedLines: lines,
       revision: read.revision,
-      error: false,
-      authError: false,
+      paneStale: false,
+      paneAuthError: false,
+      paneHasLastGood: lastPaneText.has(key),
     };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
-    rememberAuthError(session, isAuthError(e));
-    // Genuine network / server failure: show stale text flagged as degraded.
-    return stalePane(paneId, session, lines);
+    return stalePane(paneId, session, lines, isAuthError(e));
   }
 }
 

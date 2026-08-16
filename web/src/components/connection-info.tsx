@@ -11,15 +11,18 @@ import type { BridgeStatus, DeviceAuth } from "@/lib/types";
 // isn't X working" triage.
 export function ConnectionInfo({
   bridge,
+  snapshotStale = false,
   device,
   build,
 }: {
   bridge: BridgeStatus | undefined;
+  /** Cached bridge state must not be presented as current. */
+  snapshotStale?: boolean;
   device: DeviceAuth | undefined;
   /** Build id the bridge reports it's serving (from /api/config); omitted while loading/offline. */
   build?: string;
 }) {
-  const b = bridgeLabel(bridge);
+  const b = bridgeLabel(bridge, snapshotStale);
   const d = deviceLabel(device);
   const secure = typeof window !== "undefined" && window.isSecureContext;
   const host = typeof window !== "undefined" ? window.location.host : "—";
@@ -59,10 +62,14 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function bridgeLabel(bridge: BridgeStatus | undefined): { text: string; tone: string } {
-  if (bridge === "connected") return { text: "Connected", tone: "text-status-done" };
-  if (bridge === "disconnected") return { text: "Herdr offline", tone: "text-status-working" };
-  return { text: "Connecting…", tone: "text-muted-foreground" };
+function bridgeLabel(
+  bridge: BridgeStatus | undefined,
+  snapshotStale: boolean,
+): { text: string; tone: string } {
+  if (snapshotStale) return { text: "Last update unavailable", tone: "text-muted-foreground" };
+  if (bridge === "connected") return { text: "Available", tone: "text-status-done" };
+  if (bridge === "disconnected") return { text: "Herdr unavailable", tone: "text-status-working" };
+  return { text: "Not available", tone: "text-muted-foreground" };
 }
 
 // Mirrors the deviceAuth matrix on the bridge (see bridge/server.ts). "Local" = an authorised request

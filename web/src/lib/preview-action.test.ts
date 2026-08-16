@@ -90,6 +90,7 @@ const base = {
   // The guard re-derives through the pane's ADAPTER (lib/dialog-guard.ts), so every call names the
   // agent whose grammar produced the fixture — an agent with no adapter fails the guard closed.
   agent: "claude",
+  canWrite: () => true,
   sleep: noSleep,
 };
 
@@ -242,6 +243,36 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
       ["w1:p1", ["Escape"], undefined],
     ]);
     expect(mockSendReply.mock.calls).toEqual([["w1:p1", "focus on mobile", false, undefined]]);
+  });
+
+  it("does not type a note after voice locks the pane during focus verification", async () => {
+    const m = model({});
+    let resolveFocused!: (value: ReturnType<typeof paneWith>) => void;
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(buffer({})))
+      .mockImplementationOnce(
+        () =>
+          new Promise<ReturnType<typeof paneWith>>((resolve) => {
+            resolveFocused = resolve;
+          }),
+      );
+    let voiceBusy = false;
+
+    const action = submitPreviewNote({
+      ...base,
+      canWrite: () => !voiceBusy,
+      preview: m,
+      text: "focus on mobile",
+    });
+    await vi.waitFor(() => expect(mockSendKeys).toHaveBeenCalledTimes(1));
+
+    // Opening the note happened while idle; the subsequent reply write must yield to recording.
+    voiceBusy = true;
+    resolveFocused(paneWith(buffer({ editing: true })));
+
+    await expect(action).resolves.toEqual({ status: "changed" });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["n"], undefined, m.regionSignature]]);
+    expect(mockSendReply).not.toHaveBeenCalled();
   });
 
   it("returns changed when the bound note-open write reports prompt_changed", async () => {

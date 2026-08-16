@@ -10,7 +10,7 @@ describe("ConnectionInfo — device access row", () => {
   it("reads 'Not enforced' when the feature is off (no device on the snapshot)", () => {
     render(<ConnectionInfo bridge="connected" device={undefined} />);
     expect(screen.getByText("Not enforced")).toBeInTheDocument();
-    expect(screen.getByText("Connected")).toBeInTheDocument();
+    expect(screen.getByText("Available")).toBeInTheDocument();
   });
 
   it("shows full access with the device id for an authorised device", () => {
@@ -34,9 +34,10 @@ describe("ConnectionInfo — device access row", () => {
     expect(screen.getByText(/full access \(local\)/i)).toBeInTheDocument();
   });
 
-  it("shows a connecting state and the server build when provided", () => {
-    render(<ConnectionInfo bridge={undefined} device={undefined} build="abc1234" />);
-    expect(screen.getByText("Connecting…")).toBeInTheDocument();
+  it("does not make current bridge claims from a stale snapshot", () => {
+    render(<ConnectionInfo bridge="disconnected" snapshotStale device={undefined} build="abc1234" />);
+    expect(screen.getByText("Last update unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Herdr unavailable")).toBeNull();
     expect(screen.getByText("abc1234")).toBeInTheDocument();
   });
 });

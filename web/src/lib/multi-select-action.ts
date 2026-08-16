@@ -52,6 +52,8 @@ interface GuardArgs {
   multi: MultiSelectModel;
   /** The session the pane lives in (undefined = primary) — scopes every read + keystroke below. */
   session?: string;
+  /** Live pane-write permission, rechecked before every macro or single-key write. */
+  canWrite: () => boolean;
   /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
   agent?: string;
   /** Test seam for the verification polls' pacing. */

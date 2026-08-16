@@ -316,10 +316,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     replyDraft: input,
     canActivate: () => !(locked || sending || uploading || voiceBusy),
     // `locked` covers a gone pane, a read-only device, and the idle pause. Voice activity also
-    // disarms direct typing: the two modes must never target the composer at once. A LOST CONNECTION
-    // is deliberately not added here: the mode already disarms on a failed batch, which is the same
-    // event observed directly rather than inferred from a timer, and it fires whether or not any
-    // banner has decided the connection counts as lost yet.
+    // disarms direct typing: the two modes must never target the composer at once. Loader freshness
+    // is deliberately not added here: direct typing already disarms on its own failed batch request,
+    // using the observed request outcome rather than an inferred shared state.
     suspended: locked || voiceBusy,
     sendKeys: pressKeys,
     onActivate: () => {
@@ -796,7 +795,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? "Recording"
                 : voice.phase === "requesting"
                   ? "Requesting microphone…"
-                  : "Transcribing voice…"}
+                  : voice.phase === "finalizing"
+                    ? "Finishing recording…"
+                    : "Processing voice…"}
             </span>
             {voice.phase === "recording" && (
               <span role="timer" aria-live="off" aria-label="Elapsed recording time">
@@ -1051,12 +1052,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               <Square className="size-4 fill-current" />
             </Button>
-          ) : voice.phase === "requesting" || voice.phase === "transcribing" ? (
+          ) : voice.phase === "requesting" || voice.phase === "finalizing" || voice.phase === "processing" ? (
             <Button
               size="icon"
               className="size-11 shrink-0 rounded-full"
               disabled
-              aria-label={voice.phase === "requesting" ? "Requesting microphone" : "Transcribing voice"}
+              aria-label={
+                voice.phase === "requesting"
+                  ? "Requesting microphone"
+                  : voice.phase === "finalizing"
+                    ? "Finishing recording"
+                    : "Processing voice"
+              }
             >
               <Loader2 className="size-4 animate-spin" />
             </Button>

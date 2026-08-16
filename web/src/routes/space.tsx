@@ -58,20 +58,19 @@ export function SpaceRoute() {
   const everExisted = useRef(false);
   if (selectedWs) everExisted.current = true;
   useEffect(() => {
-    if (gone && data.bridge === "connected" && !data.error) {
+    if (gone && data.bridge === "connected" && !data.snapshotStale) {
       setStatus(everExisted.current ? "Space closed" : "Space not found", "info");
       navigate(homePath(data.session), { replace: true });
     }
-  }, [gone, data.bridge, data.error, data.session, navigate]);
+  }, [gone, data.bridge, data.snapshotStale, data.session, navigate]);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The space header: same shell as the dashboard, minus the session switcher (you switch
-          sessions from home). Wordmark + shared pill + Settings gear. */}
+          sessions from home). It owns the wordmark and Settings gear; RootLayout owns freshness. */}
       <AppHeader
-        bridge={data.bridge}
-        error={data.error}
-        stalled={stalled}
+        loading={stalled}
+        degraded={data.snapshotStale || data.bridge === "disconnected"}
         onHome={toDashboard}
         wordmark
         rightTrail={<SettingsGear session={data.session} />}

@@ -134,7 +134,12 @@ export function SettingsRoute() {
         {/* On-demand upstream update check (independent of push) — drives the footer UpdateBanner. */}
         <UpdateCheckControl />
 
-        <ConnectionInfo bridge={root?.bridge} device={root?.device} build={serverBuild} />
+        <ConnectionInfo
+          bridge={root?.bridge}
+          snapshotStale={root?.snapshotStale ?? true}
+          device={root?.device}
+          build={serverBuild}
+        />
 
         {/* Update nudge + build stamp, grouped and pinned to the bottom of the page. */}
         <div className="mt-auto flex flex-col gap-2 pt-4">

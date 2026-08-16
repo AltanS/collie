@@ -104,15 +104,46 @@ describe("AgentList — sections", () => {
   });
 
   it("shows the herd-empty placeholder, and suppresses it when asked", () => {
-    const { rerender } = render(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} />);
+    const { rerender } = render(
+      <AgentList agents={[]} bridge="connected" snapshotHasLastGood onOpen={vi.fn()} />,
+    );
     expect(screen.getByText(/no agents running/i)).toBeInTheDocument();
     rerender(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} emptyState={false} />);
     expect(screen.queryByText(/no agents running/i)).not.toBeInTheDocument();
   });
 
-  it("says it's waiting when the bridge is down, rather than 'no agents'", () => {
+  it("says it's waiting when a fresh root snapshot reports Herdr unavailable", () => {
     render(<AgentList agents={[]} bridge="disconnected" onOpen={vi.fn()} />);
     expect(screen.getByText(/waiting for herdr/i)).toBeInTheDocument();
+  });
+
+  it("does not claim a prior update after a cold stale root failure", () => {
+    render(
+      <AgentList
+        agents={[]}
+        bridge="disconnected"
+        snapshotStale
+        snapshotHasLastGood={false}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Agents unavailable while live updates are delayed.")).toBeInTheDocument();
+    expect(screen.queryByText(/last update/i)).toBeNull();
+    expect(screen.queryByText(/waiting for herdr/i)).toBeNull();
+  });
+
+  it("describes a cached empty snapshot as the last update when its refresh is stale", () => {
+    render(
+      <AgentList
+        agents={[]}
+        bridge="disconnected"
+        snapshotStale
+        snapshotHasLastGood
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("No agents in the last update.")).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for herdr/i)).toBeNull();
   });
 });
 

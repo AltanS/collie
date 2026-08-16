@@ -6,8 +6,6 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
 
-import { __resetConnectionHealth } from "@/lib/connection-health";
-
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
 // prompt-select-block.test.tsx). The other tests in this file never reach it.
@@ -78,6 +76,7 @@ beforeEach(() => {
   voice = {
     phase: "idle",
     elapsedLabel: "0:00",
+    canWrite: () => voice.phase === "idle",
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
     cancel: vi.fn(),
@@ -402,7 +401,55 @@ describe("AgentChat — pane voice write lock", () => {
     if (control) expect(control()).toBeEnabled();
     await invoke(idleOutput);
     await waitFor(() => expect(submit()).toHaveBeenCalledTimes(1));
+    expect(submit()).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canWrite: expect.any(Function) }),
+    );
   });
+
+  it("passes a live voice-write check to a deferred dialog action", async () => {
+    let settleGuard!: () => void;
+    const guardPending = new Promise<void>((resolve) => {
+      settleGuard = resolve;
+    });
+    let writeAllowed: boolean | undefined;
+    const submit = vi.mocked(submitPromptOption);
+    submit.mockClear();
+    submit.mockImplementationOnce(async (args) => {
+      await guardPending;
+      writeAllowed = args.canWrite();
+      return writeAllowed ? { status: "sent" } : { status: "changed" };
+    });
+
+    const { setVoicePhase } = renderVoiceChat(MENU_TEXT);
+    const action = capturedAnsiOutput(false).onPromptAction!(undefined as never, undefined as never);
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+
+    // The dialog tap began idle, then recording took the pane before its asynchronous guard settled.
+    setVoicePhase("recording");
+    settleGuard();
+    await action;
+
+    expect(writeAllowed).toBe(false);
+  });
+
+  it.each(["requesting", "recording", "finalizing", "processing"] as const)(
+    "keeps current-pane draft and terminal writes locked while %s",
+    async (phase) => {
+      voice.phase = phase;
+      const submit = vi.mocked(submitPromptOption);
+      submit.mockClear();
+      const { setVoicePhase } = renderVoiceChat(MENU_TEXT);
+      const busyOutput = capturedAnsiOutput(true);
+
+      expect(screen.getByPlaceholderText(/type a reply/i)).toBeDisabled();
+      await busyOutput.onPromptAction!(undefined as never, undefined as never);
+      expect(submit).not.toHaveBeenCalled();
+
+      setVoicePhase("idle");
+      await capturedAnsiOutput(false).onPromptAction!(undefined as never, undefined as never);
+      await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    },
+  );
 
   it("routes a completed transcript to the editable draft without sending", () => {
     renderChat({ transcriptionEnabled: true });
@@ -606,18 +653,15 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   });
 });
 
-// Connection copy now lives in the single top ConnectionBanner (mounted in RootLayout), not in the
-// header — so the pane header has no pill. What it still owns: the agent StatusBadge, which shows the
-// LAST snapshot's status and must stop reading as current during an outage (it dims on any not-live).
-describe("AgentChat — shared header: stale-status dimming", () => {
-  beforeEach(() => __resetConnectionHealth());
-
-  it("dims the agent StatusBadge while the connection is not live and restores it on recovery", () => {
+// Root freshness is rendered in RootLayout; the pane header keeps only the agent StatusBadge. A stale
+// root snapshot makes that last-known status visually non-current without changing pane freshness.
+describe("AgentChat — root/pane freshness", () => {
+  it("dims the agent StatusBadge for a degraded root and restores it independently", () => {
     // fixtureAgents[0] is a blocked claude agent → StatusBadge reads "needs you".
-    let setError: (e: boolean) => void = () => {};
+    let setStale: (stale: boolean) => void = () => {};
     function Harness() {
-      const [error, setErr] = useState(true);
-      setError = setErr;
+      const [snapshotStale, setSnapshotStale] = useState(true);
+      setStale = setSnapshotStale;
       const agent = fixtureAgents[0]!;
       return (
         <AgentChat
@@ -628,7 +672,8 @@ describe("AgentChat — shared header: stale-status dimming", () => {
           tabs={[]}
           transcriptionEnabled={false}
           text="out"
-          error={error}
+          snapshotStale={snapshotStale}
+          rootDegraded={snapshotStale}
           onBack={vi.fn()}
           onSelect={vi.fn()}
         />
@@ -638,9 +683,21 @@ describe("AgentChat — shared header: stale-status dimming", () => {
     render(<RouterProvider router={router} />);
 
     const badge = screen.getByText("needs you");
-    expect(badge).toHaveClass("opacity-40"); // not live → frozen status dimmed
-    act(() => setError(false)); // snapshot recovers → live
-    expect(badge).not.toHaveClass("opacity-40"); // undimmed instantly
+    expect(badge).toHaveClass("opacity-40");
+    act(() => setStale(false));
+    expect(badge).not.toHaveClass("opacity-40");
+  });
+
+  it("keeps voice enabled when only the root snapshot is stale", () => {
+    renderChat({ transcriptionEnabled: true, snapshotStale: true, rootDegraded: true });
+    expect(voiceOptions?.enabled).toBe(true);
+    expect(voice.cancel).not.toHaveBeenCalled();
+  });
+
+  it("renders pane freshness locally without changing the root status treatment", () => {
+    renderChat({ paneStale: true, paneHasLastGood: true });
+    expect(screen.getByText(/Pane output delayed — showing the last update/i)).toBeInTheDocument();
+    expect(screen.getByText("needs you")).not.toHaveClass("opacity-40");
   });
 });
 

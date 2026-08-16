@@ -80,9 +80,9 @@ export function StatusBadge({
   className,
 }: {
   status: AgentStatus;
-  /** The badge is showing the LAST snapshot's status while the connection is not live — dim it so
-   *  frozen data doesn't read as current. No animation to remove here (the badge dot never pulses),
-   *  so opacity alone carries it; the transition restores it instantly on recovery. */
+  /** Dim a status from stale/refused root data, or a fresh root result that reports Herdr unavailable,
+   *  so it does not read as current. The badge dot never pulses, so opacity alone carries this
+   *  distinction; the transition restores it when current root data is available. */
   stale?: boolean;
   className?: string;
 }) {

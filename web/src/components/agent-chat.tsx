@@ -7,11 +7,11 @@ import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
-import { isConnecting } from "@/lib/connection";
 import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
 import { AppHeader } from "@/components/app-header";
+import { PaneFreshnessNotice } from "@/components/freshness-banner";
 import { AnsiOutput } from "@/components/ansi-output";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
-import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
+import type { AgentView, DeviceAuth, TabView } from "@/lib/types";
 import type {
   MenuModel,
   MultiSelectModel,
@@ -69,12 +69,17 @@ interface AgentChatProps {
   device?: DeviceAuth;
   /** Snapshot capability for native voice input; no provider configuration reaches this component. */
   transcriptionEnabled: boolean;
-  // Global connection state — fed straight to the shared AppHeader, which drives the header Collie
-  // mark (gallop/rest, identically to the dashboard), and lets us dim the stale StatusBadge while not
-  // live. Defaults describe a healthy link so tests that don't care render "live".
-  bridge?: BridgeStatus | undefined;
-  error?: boolean;
-  stalled?: boolean;
+  /** Root freshness is independent from pane freshness; the root banner owns its auth escape. */
+  snapshotStale?: boolean;
+  snapshotAuthError?: boolean;
+  /** Includes fresh root evidence that Herdr is unavailable. */
+  rootDegraded?: boolean;
+  /** Pane freshness is rendered directly below this pane's header/status area. */
+  paneStale?: boolean;
+  paneAuthError?: boolean;
+  paneHasLastGood?: boolean;
+  /** Generic route loading animation only. */
+  loading?: boolean;
   onBack: () => void;
   onSelect: (paneId: string) => void;
 }
@@ -105,18 +110,21 @@ export function AgentChat({
   revision = 0,
   device,
   transcriptionEnabled,
-  bridge = "connected",
-  error = false,
-  stalled = false,
+  snapshotStale = false,
+  snapshotAuthError = false,
+  rootDegraded = false,
+  paneStale = false,
+  paneAuthError = false,
+  paneHasLastGood = false,
+  loading = false,
   onBack,
   onSelect,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   const navigate = useNavigate();
-  // Poll-truth "is the data on screen not live". The header (AppHeader) reads the same inputs to drive
-  // the Collie mark + pill; here we use it to dim the StatusBadge, so the badge stops presenting the
-  // last snapshot's status as current while we're reconnecting/lost, and restores instantly on recovery.
-  const connecting = isConnecting({ bridge, error, stalled });
+  // Current-status presentation is static whenever the root snapshot is stale, refused, or freshly
+  // reports Herdr unavailable. Generic loading is deliberately not an input here.
+  const degraded = rootDegraded || snapshotStale || snapshotAuthError;
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal } = useDisplayPrefs();
@@ -146,6 +154,9 @@ export function AgentChat({
     onError: (message) => setStatus(message, "error"),
   });
   const voiceBusy = voice.phase !== "idle";
+  // This is owned by the voice lifecycle's synchronous phase ref, so a recording invalidates a
+  // deferred dialog write before React has to render the busy controls.
+  const canWrite = voice.canWrite;
 
   // Swipe up (or just tap) the handle above the composer to bring up the pane switcher. A lowish
   // threshold + a taller hit area (below) make the gesture easy to land with a thumb; tapping is the
@@ -345,6 +356,7 @@ export function AgentChat({
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
+        canWrite,
         prompt,
         option,
       });
@@ -360,7 +372,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, canWrite, revalidator],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -382,6 +394,7 @@ export function AgentChat({
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
+        canWrite,
         wizard,
         keys,
       });
@@ -397,7 +410,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, canWrite, revalidator],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -419,6 +432,7 @@ export function AgentChat({
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
+        canWrite,
         preview,
       };
       const result =
@@ -443,7 +457,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, canWrite, revalidator],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -464,6 +478,7 @@ export function AgentChat({
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
+        canWrite,
         multi,
         intent: action,
       });
@@ -479,7 +494,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, canWrite, revalidator],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -500,6 +515,7 @@ export function AgentChat({
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
+        canWrite,
         menu,
         keys: action.keys,
         nav: action.nav,
@@ -516,7 +532,7 @@ export function AgentChat({
         setStatus(result.error || "Send failed", "error");
       }
     },
-    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
+    [readOnly, voiceBusy, paneId, session, requestedLines, shown.revision, agent?.agent, canWrite, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
@@ -568,9 +584,8 @@ export function AgentChat({
           slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as the right-cluster
           lead, and the find bar as the full-row takeover while searching. */}
       <AppHeader
-        bridge={bridge}
-        error={error}
-        stalled={stalled}
+        loading={loading}
+        degraded={degraded}
         onHome={onBack}
         override={
           findOpen ? (
@@ -600,8 +615,9 @@ export function AgentChat({
         // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
         // transcript can exist at all), so the button never leads to an empty screen.
         //
-        // The status pill is dimmed while the connection isn't live, so a frozen "working"/"idle"
-        // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
+        // The status pill is dimmed when root data is stale, refused, or freshly reports Herdr
+        // unavailable, so a cached "working"/"idle" does not masquerade as current. A bare shell
+        // shows a muted "shell" tag.
         rightLead={
           agent ? (
             <>
@@ -626,9 +642,9 @@ export function AgentChat({
                 </button>
               )}
               {isShell ? (
-                <ShellBadge stale={connecting} />
+                <ShellBadge stale={degraded} />
               ) : (
-                <StatusBadge status={agent.status} stale={connecting} />
+                <StatusBadge status={agent.status} stale={degraded} />
               )}
             </>
           ) : undefined
@@ -681,6 +697,11 @@ export function AgentChat({
             (prompt/cursor + up-levelled prompt buttons) it used to cover. Renders nothing — no
             reserved space — when idle; auto-dismisses. */}
         <StatusArea className="mx-3 mt-1.5 shrink-0" />
+        <PaneFreshnessNotice
+          paneStale={paneStale}
+          paneAuthError={paneAuthError}
+          paneHasLastGood={paneHasLastGood}
+        />
 
         {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
         <ReadOnlyBanner device={device} />

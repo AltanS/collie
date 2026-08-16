@@ -26,69 +26,79 @@ const rejectPane = (status: 401 | 403) =>
   server.use(http.get(/\/api\/pane\/[^/]+$/, () => new HttpResponse(null, { status })));
 
 describe("rootLoader", () => {
-  it("returns the live snapshot on success", async () => {
+  it("returns a fresh snapshot with authoritative cache presence", async () => {
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader();
-    expect(data.error).toBe(false);
-    expect(data.authError).toBe(false);
+    expect(data.snapshotStale).toBe(false);
+    expect(data.snapshotAuthError).toBe(false);
+    expect(data.snapshotHasLastGood).toBe(true);
     expect(data.bridge).toBe("connected");
     expect(data.agents).toHaveLength(2);
   });
 
-  it.each([401, 403] as const)("marks a %i response as an auth error", async (status) => {
+  it("reports a cold root failure without inventing a cached snapshot", async () => {
+    failSnapshot();
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.snapshotStale).toBe(true);
+    expect(data.snapshotAuthError).toBe(false);
+    expect(data.snapshotHasLastGood).toBe(false);
+    expect(data.agents).toEqual([]);
+    expect(data.bridge).toBeUndefined();
+  });
+
+  it.each([401, 403] as const)("gives root auth precedence for a %i response", async (status) => {
     rejectSnapshot(status);
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader();
-    expect(data.error).toBe(true);
-    expect(data.authError).toBe(true);
+    expect(data.snapshotStale).toBe(true);
+    expect(data.snapshotAuthError).toBe(true);
+    expect(data.snapshotHasLastGood).toBe(false);
   });
 
-  it("keeps the last-good herd (flagged error) when a refresh fails", async () => {
+  it("keeps the last-good root snapshot on a failed refresh", async () => {
     const { rootLoader } = await import("./loaders");
-    await rootLoader(); // prime the cache with a good snapshot
-
+    await rootLoader();
     failSnapshot();
-    const stale = await rootLoader();
 
-    expect(stale.error).toBe(true);
-    expect(stale.authError).toBe(false);
-    expect(stale.bridge).toBe("connected"); // from the cached snapshot
-    expect(stale.agents).toHaveLength(2);
+    const stale = await rootLoader();
+    expect(stale.snapshotStale).toBe(true);
+    expect(stale.snapshotAuthError).toBe(false);
+    expect(stale.snapshotHasLastGood).toBe(true);
+    expect(stale.bridge).toBe("connected");
     expect(stale.agents[0]!.paneId).toBe(fixtureAgents[0]!.paneId);
   });
 
-  it("does not mark a network error as an auth error", async () => {
+  it("keeps cache presence for an intentionally empty root snapshot", async () => {
+    let calls = 0;
+    server.use(
+      http.get("/api/snapshot", () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json({ ...fixtureSnapshot, agents: [], shellPanes: [] })
+          : new HttpResponse(null, { status: 500 });
+      }),
+    );
     const { rootLoader } = await import("./loaders");
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network failed"));
-    const data = await rootLoader();
-    expect(data.error).toBe(true);
-    expect(data.authError).toBe(false);
+    await rootLoader();
+    const stale = await rootLoader();
+
+    expect(stale.snapshotHasLastGood).toBe(true);
+    expect(stale.agents).toEqual([]);
   });
 
-  it("returns empty + error when there is no last-good snapshot", async () => {
+  it("still fetches each root navigation after a failure", async () => {
+    const { rootLoader } = await import("./loaders");
     failSnapshot();
-    const { rootLoader } = await import("./loaders");
-    const data = await rootLoader();
-    expect(data.error).toBe(true);
-    expect(data.agents).toEqual([]);
-    expect(data.bridge).toBeUndefined();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await rootLoader({ request: new Request("http://localhost/") });
+    await rootLoader({ request: new Request("http://localhost/space/w1") });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("treats a cold-start TimeoutError as an error snapshot, NOT a rethrow to the error boundary", async () => {
-    // The cold-start-against-a-dead-host case: the first snapshot fetch aborts at its timeout with a
-    // DOMException named "TimeoutError" (distinct from the "AbortError" of a superseded revalidation).
-    // The loader must fall into the error-snapshot branch so RootLayout + the escalation prompt handle
-    // it uniformly — it must NOT bubble to RootError's generic "Something went wrong" screen.
-    const { rootLoader } = await import("./loaders");
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("timed out", "TimeoutError"));
-    const data = await rootLoader();
-    expect(data.error).toBe(true);
-    expect(data.authError).toBe(false);
-    expect(data.bridge).toBeUndefined();
-    expect(data.agents).toEqual([]);
-  });
-
-  it("surfaces the snapshot's optional update field onto the loader data", async () => {
+  it("surfaces the snapshot's optional update and voice capability", async () => {
     const update = {
       current: "0.11.0",
       latest: "0.12.0",
@@ -97,90 +107,100 @@ describe("rootLoader", () => {
       checkedAt: 123,
     };
     server.use(
-      http.get("/api/snapshot", () => HttpResponse.json({ ...fixtureSnapshot, update })),
+      http.get("/api/snapshot", () =>
+        HttpResponse.json({ ...fixtureSnapshot, update, transcriptionEnabled: true }),
+      ),
     );
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader();
     expect(data.update).toEqual(update);
-  });
-
-  it("leaves update undefined when the snapshot omits it (older bridge)", async () => {
-    const { rootLoader } = await import("./loaders");
-    const data = await rootLoader();
-    expect(data.update).toBeUndefined();
-  });
-
-  it("threads only the transcription capability and fails closed for an older bridge", async () => {
-    const { rootLoader } = await import("./loaders");
-    expect((await rootLoader()).transcriptionEnabled).toBe(false);
-
-    server.use(
-      http.get("/api/snapshot", () =>
-        HttpResponse.json({ ...fixtureSnapshot, transcriptionEnabled: true }),
-      ),
-    );
-    expect((await rootLoader()).transcriptionEnabled).toBe(true);
+    expect(data.transcriptionEnabled).toBe(true);
   });
 });
 
 describe("paneLoader", () => {
-  it("returns pane text on success", async () => {
+  it("returns a fresh pane result with authoritative cache presence", async () => {
     const { paneLoader } = await import("./loaders");
     const data = await paneLoader({ params: { paneId: "w1:p1" } });
-    expect(data.error).toBe(false);
-    expect(data.authError).toBe(false);
-    expect(data.paneId).toBe("w1:p1");
+    expect(data.paneStale).toBe(false);
+    expect(data.paneAuthError).toBe(false);
+    expect(data.paneHasLastGood).toBe(true);
     expect(data.text).toBe(paneTextWithDraft());
   });
 
-  it.each([401, 403] as const)("marks a %i response as an auth error", async (status) => {
-    rejectPane(status);
-    const { paneLoader } = await import("./loaders");
-    const data = await paneLoader({ params: { paneId: "w1:p1" } });
-    expect(data.error).toBe(true);
-    expect(data.authError).toBe(true);
-  });
-
-  it("keeps the last-good pane text (flagged error) when a refresh fails", async () => {
-    const { paneLoader } = await import("./loaders");
-    await paneLoader({ params: { paneId: "w1:p1" } }); // prime per-pane cache
-
-    failPane();
-    const stale = await paneLoader({ params: { paneId: "w1:p1" } });
-
-    expect(stale.error).toBe(true);
-    expect(stale.authError).toBe(false);
-    expect(stale.text).toBe(paneTextWithDraft());
-    expect(stale.paneId).toBe("w1:p1");
-  });
-
-  it("returns empty text + error when no last-good exists for that pane", async () => {
+  it("reports a cold pane failure without cached output", async () => {
     failPane();
     const { paneLoader } = await import("./loaders");
     const data = await paneLoader({ params: { paneId: "wX:p9" } });
-    expect(data.error).toBe(true);
+    expect(data.paneStale).toBe(true);
+    expect(data.paneAuthError).toBe(false);
+    expect(data.paneHasLastGood).toBe(false);
     expect(data.text).toBe("");
-    expect(data.paneId).toBe("wX:p9");
   });
 
-  it("treats a TimeoutError from fetchPane as degraded (stale text + error), NOT a rethrow", async () => {
-    // A request that times out aborts with a DOMException named "TimeoutError" — distinct from the
-    // "AbortError" of a superseded revalidation. The loader rethrows only AbortError, so a timeout
-    // must fall into the stale-data branch (keep the last-good text on screen, flagged) and not
-    // bubble up as if the run were superseded.
+  it.each([401, 403] as const)("gives pane auth precedence for a %i response", async (status) => {
+    rejectPane(status);
     const { paneLoader } = await import("./loaders");
-    await paneLoader({ params: { paneId: "w1:p1" } }); // prime the per-pane stale cache (via MSW)
+    const data = await paneLoader({ params: { paneId: "w1:p1" } });
+    expect(data.paneStale).toBe(true);
+    expect(data.paneAuthError).toBe(true);
+    expect(data.paneHasLastGood).toBe(false);
+  });
 
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+  it("keeps a stale cached pane, including intentionally empty output", async () => {
+    let calls = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json({ paneId: "w1:p1", text: "", truncated: false, revision: 1 })
+          : new HttpResponse(null, { status: 500 });
+      }),
+    );
+    const { paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p1" } });
     const stale = await paneLoader({ params: { paneId: "w1:p1" } });
 
-    expect(stale.error).toBe(true);
-    expect(stale.authError).toBe(false);
-    expect(stale.text).toBe(paneTextWithDraft());
-    expect(stale.paneId).toBe("w1:p1");
+    expect(stale.paneStale).toBe(true);
+    expect(stale.paneAuthError).toBe(false);
+    expect(stale.paneHasLastGood).toBe(true);
+    expect(stale.text).toBe("");
   });
 
-  it("throws on a missing :paneId param (fail-loud to the error boundary)", async () => {
+  it("keeps root and pane outcomes independent", async () => {
+    const { rootLoader, paneLoader } = await import("./loaders");
+    await rootLoader();
+    failSnapshot();
+    const staleRoot = await rootLoader();
+    const freshPane = await paneLoader({ params: { paneId: "w1:p1" } });
+
+    expect(staleRoot.snapshotStale).toBe(true);
+    expect(freshPane.paneStale).toBe(false);
+  });
+
+  it("keeps a fresh root result when only the pane refresh fails", async () => {
+    const { rootLoader, paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p1" } });
+    failPane();
+
+    const freshRoot = await rootLoader();
+    const stalePane = await paneLoader({ params: { paneId: "w1:p1" } });
+
+    expect(freshRoot.snapshotStale).toBe(false);
+    expect(stalePane.paneStale).toBe(true);
+  });
+
+  it("does not share auth outcomes between root and pane loaders", async () => {
+    rejectPane(401);
+    const { rootLoader, paneLoader } = await import("./loaders");
+    const pane = await paneLoader({ params: { paneId: "w1:p1" } });
+    const root = await rootLoader();
+
+    expect(pane.paneAuthError).toBe(true);
+    expect(root.snapshotAuthError).toBe(false);
+  });
+
+  it("throws on a missing :paneId param", async () => {
     const { paneLoader } = await import("./loaders");
     await expect(paneLoader({ params: {} })).rejects.toThrow(/paneId/);
   });
@@ -285,7 +305,8 @@ describe("loaders — session scoping", () => {
     failSnapshot(); // now every snapshot 500s
     const stale = await rootLoader({ request: new Request("http://localhost/?s=collie-demo") });
 
-    expect(stale.error).toBe(true);
+    expect(stale.snapshotStale).toBe(true);
+    expect(stale.snapshotHasLastGood).toBe(false);
     expect(stale.session).toBe("collie-demo");
     expect(stale.agents).toEqual([]); // NOT the primary session's cached herd
     expect(stale.bridge).toBeUndefined();
@@ -299,144 +320,9 @@ describe("loaders — session scoping", () => {
   });
 });
 
-// A PWA must navigate INSTANTLY to last-known data while offline. During a KNOWN, escalated outage
-// (the shared connection-health store has latched "lost"), a NAVIGATION (loader run at a NEW url) skips
-// the doomed fetch and returns cache immediately (flagged error); a REVALIDATION (same url — the poll)
-// still really fetches, so recovery is discovered and the stale data swapped out. connection-health is
-// imported AFTER vi.resetModules() alongside loaders so both share one fresh module instance (the latch
-// the test sets is the one the loader reads).
-describe("loaders — offline navigation fast path", () => {
-  it("a navigation during a known outage returns the cached snapshot INSTANTLY (error, no fetch)", async () => {
-    const { rootLoader } = await import("./loaders");
-    const { latchLost } = await import("./connection-health");
-
-    await rootLoader({ request: new Request("http://localhost/") }); // prime the last-good snapshot
-    latchLost(); // escalated outage
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    // Different url ⇒ navigation ⇒ fast path: cache returned without touching the network.
-    const data = await rootLoader({ request: new Request("http://localhost/space/w1") });
-
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(data.error).toBe(true); // flagged stale
-    expect(data.bridge).toBe("connected"); // last-known herd
-    expect(data.agents).toHaveLength(2);
-  });
-
-  it("keeps the last auth classification on the navigation fast path", async () => {
-    rejectSnapshot(401);
-    const { rootLoader } = await import("./loaders");
-    const { latchLost } = await import("./connection-health");
-
-    const rejected = await rootLoader({ request: new Request("http://localhost/") });
-    expect(rejected.authError).toBe(true);
-    latchLost();
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const data = await rootLoader({ request: new Request("http://localhost/space/w1") });
-
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(data.error).toBe(true);
-    expect(data.authError).toBe(true);
-  });
-
-  it("a revalidation (same url) still really fetches while latched — polls keep probing", async () => {
-    const { rootLoader } = await import("./loaders");
-    const { latchLost } = await import("./connection-health");
-
-    await rootLoader({ request: new Request("http://localhost/") }); // sets lastRootUrl = "/"
-    latchLost();
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    await rootLoader({ request: new Request("http://localhost/") }); // same url ⇒ revalidation
-    expect(fetchSpy).toHaveBeenCalled();
-  });
-
-  it("recovery: the next successful revalidation clears the latch and returns fresh, live data", async () => {
-    const { rootLoader } = await import("./loaders");
-    const { latchLost, isLostLatched } = await import("./connection-health");
-
-    await rootLoader({ request: new Request("http://localhost/") });
-    latchLost();
-    expect(isLostLatched()).toBe(true);
-
-    const data = await rootLoader({ request: new Request("http://localhost/") }); // lands (MSW success)
-    expect(data.error).toBe(false);
-    expect(isLostLatched()).toBe(false); // markLive cleared the latch
-  });
-
-  it("navigating to an UNVISITED pane during an outage returns a degraded pane INSTANTLY (no fetch)", async () => {
-    const { paneLoader } = await import("./loaders");
-    const { latchLost } = await import("./connection-health");
-    latchLost();
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const data = await paneLoader({
-      params: { paneId: "wX:p9" },
-      request: new Request("http://localhost/pane/wX:p9"),
-    });
-
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(data.error).toBe(true);
-    expect(data.text).toBe(""); // never fetched → empty mirror, but instant (no 10s hang)
-    expect(data.revision).toBe(0);
-  });
-
-  it("returning to a PREVIOUSLY-VISITED pane during an outage shows its stale mirror INSTANTLY", async () => {
-    const { rootLoader, paneLoader } = await import("./loaders");
-    const { latchLost } = await import("./connection-health");
-
-    // Visit the pane (healthy) so its text is cached, then leave to the dashboard — rootLoader clears
-    // the pane discriminator so a RETURN reads as a fresh navigation, not a poll.
-    await paneLoader({
-      params: { paneId: "w1:p1" },
-      request: new Request("http://localhost/pane/w1:p1"),
-    });
-    await rootLoader({ request: new Request("http://localhost/") });
-
-    latchLost();
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const data = await paneLoader({
-      params: { paneId: "w1:p1" },
-      request: new Request("http://localhost/pane/w1:p1"),
-    });
-
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(data.error).toBe(true);
-    expect(data.text).toBe(paneTextWithDraft()); // the stale mirror
-  });
-
-  it("polling within a pane during an outage keeps fetching (same url ⇒ revalidation)", async () => {
-    const { paneLoader } = await import("./loaders");
-    const { latchLost } = await import("./connection-health");
-
-    await paneLoader({
-      params: { paneId: "w1:p1" },
-      request: new Request("http://localhost/pane/w1:p1"),
-    });
-    latchLost();
-
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    await paneLoader({
-      params: { paneId: "w1:p1" },
-      request: new Request("http://localhost/pane/w1:p1"), // same url ⇒ poll ⇒ must fetch
-    });
-    expect(fetchSpy).toHaveBeenCalled();
-  });
-
-  it("does NOT fast-path when the connection is not latched (a brief blip still fetches)", async () => {
-    const { rootLoader } = await import("./loaders");
-    // No latchLost(): a transient blip must keep really fetching on navigation, not serve stale.
-    await rootLoader({ request: new Request("http://localhost/") });
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    await rootLoader({ request: new Request("http://localhost/space/w1") }); // navigation, but not latched
-    expect(fetchSpy).toHaveBeenCalled();
-  });
-});
-
 // A superseded revalidation aborts the in-flight fetch via request.signal. The loaders must
-// RETHROW that AbortError (so React Router discards the stale run) rather than swallow it into the
-// stale-data/error-banner branch — otherwise a fast poll would flash a spurious "reconnecting…".
+// RETHROW that AbortError (so React Router discards the stale run) rather than treating a
+// superseded poll as a genuine stale-freshness result.
 describe("loaders — aborted request", () => {
   function abortedRequest(): Request {
     const controller = new AbortController();

@@ -18,9 +18,9 @@
 // (`previewsEqual` for the entry, `previewCoreEqual` for the mid-flight identity) are the neutral
 // contract in harness/preview-model.ts, wired to this kind by harness/dialog-contract.ts.
 
-import { sendKeys, sendReply } from "./api";
+import { sendReply } from "./api";
 import { type PreviewOption, type PreviewSelectModel } from "./blocks";
-import { guardDialog, pollDialog, type DialogTarget } from "./dialog-guard";
+import { guardDialog, pollDialog, sendBoundKeys, type DialogTarget } from "./dialog-guard";
 import { previewCoreEqual, previewStructureEqual } from "./harness/preview-model";
 import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
 
@@ -49,6 +49,8 @@ interface GuardArgs {
   preview: PreviewSelectModel;
   /** The session the pane lives in (undefined = primary) — scopes every read + keystroke below. */
   session?: string;
+  /** Live pane-write permission, rechecked before every key or reply write. */
+  canWrite: () => boolean;
   /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
   agent?: string;
   /** Test seam for the verification polls' pacing. */
@@ -66,19 +68,9 @@ export async function submitPreviewOption(
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
-  try {
-    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const digit = await sendKeys(
-      args.paneId,
-      [String(args.option.n)],
-      args.session,
-      guarded.region,
-    );
-    if (!digit.ok && digit.code === "prompt_changed") return { status: "changed" };
-    if (!digit.ok) return { status: "error", error: digit.error };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
+  // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
+  const digit = await sendBoundKeys(target(args), [String(args.option.n)], guarded.region);
+  if (digit.status !== "sent") return digit;
 
   const pointed = await pollDialog(
     target(args),
@@ -88,13 +80,7 @@ export async function submitPreviewOption(
   );
   if (pointed !== "ok") return { status: "changed" };
 
-  try {
-    const enter = await sendKeys(args.paneId, ["Enter"], args.session);
-    if (!enter.ok) return { status: "error", error: enter.error };
-    return { status: "sent" };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
+  return sendBoundKeys(target(args), ["Enter"]);
 }
 
 /**
@@ -120,14 +106,9 @@ export async function submitPreviewNote(
   const editing = (m: PreviewSelectModel) =>
     previewCoreEqual(m, args.preview) && m.note.state === "editing";
 
-  try {
-    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const open = await sendKeys(args.paneId, ["n"], args.session, guarded.region);
-    if (!open.ok && open.code === "prompt_changed") return { status: "changed" };
-    if (!open.ok) return { status: "error", error: open.error };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
+  // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
+  const open = await sendBoundKeys(target(args), ["n"], guarded.region);
+  if (open.status !== "sent") return open;
 
   // The input must be FOCUSED before anything else is sent — early keys are misrouted (verified).
   // On timeout we stop dead: a blind Escape could cancel the whole dialog if `n` never landed.
@@ -140,12 +121,11 @@ export async function submitPreviewNote(
       // Deterministic clear: the restored cursor position is unreliable, so kill the tail from
       // wherever it is, then sweep the head with Backspaces (no-ops once the text is gone). Then
       // wait until the input verifiably shows empty before typing into it.
-      const clear = await sendKeys(
-        args.paneId,
+      const clear = await sendBoundKeys(
+        target(args),
         ["ctrl+k", ...Array.from({ length: CLEAR_SWEEP }, () => "Backspace")],
-        args.session,
       );
-      if (!clear.ok) return { status: "error", error: clear.error };
+      if (clear.status !== "sent") return clear;
       if (
         (await pollDialog(target(args), (m) => editing(m) && m.note.text === "")) !== "ok"
       ) {
@@ -153,6 +133,7 @@ export async function submitPreviewNote(
       }
     }
     if (text.length > 0) {
+      if (!args.canWrite()) return { status: "changed" };
       const typed = await sendReply(args.paneId, text, false, args.session);
       if (!typed.ok) return { status: "error", error: typed.error };
       // Wait for the text to render. The input windows long text around the trailing cursor, so
@@ -171,8 +152,8 @@ export async function submitPreviewNote(
     // (a successor dialog, or a now-running agent — pollUntil returns "drifted"), a second blind
     // Escape would cancel/interrupt whatever is there now — so abort with "changed" and send nothing.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const blur = await sendKeys(args.paneId, ["Escape"], args.session);
-      if (!blur.ok) return { status: "error", error: blur.error };
+      const blur = await sendBoundKeys(target(args), ["Escape"]);
+      if (blur.status !== "sent") return blur;
       const blurred = await pollDialog(
         target(args),
         (m) => previewCoreEqual(m, args.preview) && m.note.state !== "editing",
@@ -196,13 +177,6 @@ export async function submitPreviewKeys(
 ): Promise<ActionResult> {
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
-  try {
-    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const res = await sendKeys(args.paneId, args.keys, args.session, guarded.region);
-    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
-    if (!res.ok) return { status: "error", error: res.error };
-    return { status: "sent" };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
+  // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
+  return sendBoundKeys(target(args), args.keys, guarded.region);
 }

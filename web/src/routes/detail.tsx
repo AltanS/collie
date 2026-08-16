@@ -52,11 +52,11 @@ export function DetailRoute() {
   // leaving you on a dead "agent gone" view. Guarded on a connected, non-stale snapshot so a
   // transient poll failure or reconnect doesn't evict a still-valid pane.
   useEffect(() => {
-    if (gone && root.bridge === "connected" && !root.error) {
+    if (gone && root.bridge === "connected" && !root.snapshotStale) {
       setStatus("Pane closed", "info");
       navigate(homePath(session), { replace: true });
     }
-  }, [gone, root.bridge, root.error, navigate, session]);
+  }, [gone, root.bridge, root.snapshotStale, navigate, session]);
 
   return (
     <AgentChat
@@ -73,9 +73,13 @@ export function DetailRoute() {
       revision={pane.revision}
       device={root.device}
       transcriptionEnabled={root.transcriptionEnabled}
-      bridge={root.bridge}
-      error={root.error}
-      stalled={stalled}
+      snapshotStale={root.snapshotStale}
+      snapshotAuthError={root.snapshotAuthError}
+      rootDegraded={root.snapshotStale || root.bridge === "disconnected"}
+      paneStale={pane.paneStale}
+      paneAuthError={pane.paneAuthError}
+      paneHasLastGood={pane.paneHasLastGood}
+      loading={stalled}
       onBack={() => navigate(homePath(session))}
       onSelect={(id) => navigate(panePath(id, session))}
     />

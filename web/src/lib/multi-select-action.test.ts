@@ -101,6 +101,7 @@ const base = {
   // The guard re-derives through the pane's ADAPTER (lib/dialog-guard.ts), so every call names the
   // agent whose grammar produced the fixture — an agent with no adapter fails the guard closed.
   agent: "claude",
+  canWrite: () => true,
   sleep: noSleep,
 };
 const keysSent = () => mockSendKeys.mock.calls.map((c) => c[1]);

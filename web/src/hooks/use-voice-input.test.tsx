@@ -5,16 +5,18 @@ import userEvent from "@testing-library/user-event";
 vi.mock("@/lib/api", () => ({ transcribeAudio: vi.fn() }));
 
 import { transcribeAudio } from "@/lib/api";
-import {
-  MAX_VOICE_BYTES,
-  MAX_VOICE_DURATION_MS,
-  recordingMimeType,
-  useVoiceInput,
-} from "./use-voice-input";
+import { MAX_VOICE_BYTES, MAX_VOICE_DURATION_MS } from "@/lib/voice-policy";
+
+import { recordingMimeType, useVoiceInput } from "./use-voice-input";
 
 class MockMediaRecorder {
   static supported = new Set(["audio/webm;codecs=opus"]);
   static instances: MockMediaRecorder[] = [];
+  static constructionOptions: MediaRecorderOptions[] = [];
+  static deferStop = false;
+  static failWithBitrate = false;
+  static failAllConstructions = false;
+  static reportedAudioBitsPerSecond = 0;
   static isTypeSupported(type: string): boolean {
     return MockMediaRecorder.supported.has(type);
   }
@@ -26,10 +28,19 @@ class MockMediaRecorder {
 
   readonly stream: MediaStream;
   readonly options?: MediaRecorderOptions;
+  readonly audioBitsPerSecond: number;
 
   constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+    MockMediaRecorder.constructionOptions.push(options ?? {});
+    if (
+      MockMediaRecorder.failAllConstructions ||
+      (MockMediaRecorder.failWithBitrate && options?.audioBitsPerSecond !== undefined)
+    ) {
+      throw new DOMException("unsupported options", "NotSupportedError");
+    }
     this.stream = stream;
     this.options = options;
+    this.audioBitsPerSecond = MockMediaRecorder.reportedAudioBitsPerSecond;
     MockMediaRecorder.instances.push(this);
   }
 
@@ -40,6 +51,10 @@ class MockMediaRecorder {
   stop(): void {
     if (this.state === "inactive") return;
     this.state = "inactive";
+    if (!MockMediaRecorder.deferStop) this.finishStop();
+  }
+
+  finishStop(): void {
     this.ondataavailable?.({ data: new Blob(["recording"], { type: this.options?.mimeType }) } as BlobEvent);
     this.onstop?.(new Event("stop"));
   }
@@ -79,7 +94,12 @@ describe("useVoiceInput", () => {
 
   beforeEach(() => {
     MockMediaRecorder.instances = [];
+    MockMediaRecorder.constructionOptions = [];
     MockMediaRecorder.supported = new Set(["audio/webm;codecs=opus"]);
+    MockMediaRecorder.deferStop = false;
+    MockMediaRecorder.failWithBitrate = false;
+    MockMediaRecorder.failAllConstructions = false;
+    MockMediaRecorder.reportedAudioBitsPerSecond = 0;
     document.body.dataset.transcript = "";
     document.body.dataset.error = "";
     Object.defineProperty(globalThis, "MediaRecorder", {
@@ -103,6 +123,46 @@ describe("useVoiceInput", () => {
     expect(recordingMimeType()).toBe("audio/webm;codecs=opus");
     MockMediaRecorder.supported.clear();
     expect(recordingMimeType()).toBeNull();
+  });
+
+  it("retries recorder construction once without a rejected bitrate request", async () => {
+    const user = userEvent.setup();
+    const { stream, track } = streamWithTrack();
+    MockMediaRecorder.failWithBitrate = true;
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    render(<VoiceHarness />);
+
+    await user.click(screen.getByRole("button", { name: "start" }));
+    await screen.findByText("recording");
+
+    expect(MockMediaRecorder.constructionOptions).toEqual([
+      { mimeType: "audio/webm;codecs=opus", audioBitsPerSecond: 24_000 },
+      { mimeType: "audio/webm;codecs=opus" },
+    ]);
+    expect(MockMediaRecorder.instances).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "cancel" }));
+    expect(track.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the AAC request for an MP4 recorder", async () => {
+    const user = userEvent.setup();
+    const { stream } = streamWithTrack();
+    MockMediaRecorder.supported = new Set(["audio/mp4"]);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    render(<VoiceHarness />);
+
+    await user.click(screen.getByRole("button", { name: "start" }));
+    await screen.findByText("recording");
+    expect(MockMediaRecorder.instances[0]?.options).toEqual({
+      mimeType: "audio/mp4",
+      audioBitsPerSecond: 64_000,
+    });
   });
 
   it("stops at five minutes and transcribes the bounded recording once", async () => {
@@ -146,7 +206,69 @@ describe("useVoiceInput", () => {
     expect(screen.getByText("idle")).toBeInTheDocument();
   });
 
-  it("tears down an oversized chunk without transcribing it", async () => {
+  it("moves from finalizing to coarse processing only after the recorder finalizes", async () => {
+    const user = userEvent.setup();
+    const { stream } = streamWithTrack();
+    MockMediaRecorder.deferStop = true;
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    let resolveTranscription!: (value: { ok: true; text: string }) => void;
+    vi.mocked(transcribeAudio).mockReturnValue(
+      new Promise((resolve) => {
+        resolveTranscription = resolve;
+      }),
+    );
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
+    try {
+      render(<VoiceHarness />);
+      await user.click(screen.getByRole("button", { name: "start" }));
+      await screen.findByText("recording");
+      now.mockReturnValue(1);
+
+      await user.click(screen.getByRole("button", { name: "stop" }));
+      expect(screen.getByText("finalizing")).toBeInTheDocument();
+      expect(vi.mocked(transcribeAudio)).not.toHaveBeenCalled();
+
+      act(() => MockMediaRecorder.instances[0]!.finishStop());
+      await screen.findByText("processing");
+      expect(vi.mocked(transcribeAudio)).toHaveBeenCalledTimes(1);
+
+      resolveTranscription({ ok: true, text: "done" });
+      await screen.findByText("idle");
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("rejects an onstop delayed beyond five minutes instead of submitting a clamped duration", async () => {
+    vi.useFakeTimers();
+    const { stream } = streamWithTrack();
+    MockMediaRecorder.deferStop = true;
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    render(<VoiceHarness />);
+
+    await act(async () => {
+      screen.getByRole("button", { name: "start" }).click();
+      await Promise.resolve();
+    });
+    const recorder = MockMediaRecorder.instances[0]!;
+    act(() => vi.advanceTimersByTime(MAX_VOICE_DURATION_MS - 1));
+    act(() => screen.getByRole("button", { name: "stop" }).click());
+    expect(screen.getByText("finalizing")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(2));
+    act(() => recorder.finishStop());
+
+    expect(document.body.dataset.error).toBe("Voice recording exceeded 5 minutes");
+    expect(vi.mocked(transcribeAudio)).not.toHaveBeenCalled();
+    expect(screen.getByText("idle")).toBeInTheDocument();
+  });
+
+  it("tears down an oversized chunk without submitting it", async () => {
     const user = userEvent.setup();
     const { stream, track } = streamWithTrack();
     Object.defineProperty(navigator, "mediaDevices", {
@@ -171,7 +293,7 @@ describe("useVoiceInput", () => {
     expect(screen.getByText("idle")).toBeInTheDocument();
   });
 
-  it("releases a late permission stream after cancellation without recording or transcribing", async () => {
+  it("releases a late permission stream after cancellation without recording or submitting", async () => {
     const user = userEvent.setup();
     const { stream, track } = streamWithTrack();
     let resolveStream!: (value: MediaStream) => void;
@@ -203,9 +325,10 @@ describe("useVoiceInput", () => {
     expect(document.body.dataset.transcript).toBe("");
   });
 
-  it("records a completed clip, stops tracks, and hands only editable text back", async () => {
+  it("records when the browser ignores the requested bitrate and hands only editable text back", async () => {
     const user = userEvent.setup();
     const { stream, track } = streamWithTrack();
+    MockMediaRecorder.reportedAudioBitsPerSecond = 96_000;
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
@@ -215,10 +338,15 @@ describe("useVoiceInput", () => {
 
     await user.click(screen.getByRole("button", { name: "start" }));
     await screen.findByText("recording");
-    expect(MockMediaRecorder.instances[0]?.options?.mimeType).toBe("audio/webm;codecs=opus");
+    expect(MockMediaRecorder.instances[0]?.options).toEqual({
+      mimeType: "audio/webm;codecs=opus",
+      audioBitsPerSecond: 24_000,
+    });
 
     await user.click(screen.getByRole("button", { name: "stop" }));
     await waitFor(() => expect(document.body.dataset.transcript).toBe("review this first"));
+    expect(MockMediaRecorder.instances[0]?.audioBitsPerSecond).toBe(96_000);
+    expect(MockMediaRecorder.constructionOptions).toHaveLength(1);
     expect(track.stop).toHaveBeenCalledTimes(1);
     expect(vi.mocked(transcribeAudio)).toHaveBeenCalledTimes(1);
     expect(screen.getByText("idle")).toBeInTheDocument();
@@ -247,7 +375,7 @@ describe("useVoiceInput", () => {
     expect(wakeLock.release).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "stop" }));
-    await screen.findByText("transcribing");
+    await screen.findByText("processing");
     expect(wakeLock.release).toHaveBeenCalledTimes(1);
   });
 
@@ -334,7 +462,7 @@ describe("useVoiceInput", () => {
     await user.click(screen.getByRole("button", { name: "start" }));
     await screen.findByText("recording");
     await user.click(screen.getByRole("button", { name: "stop" }));
-    await screen.findByText("transcribing");
+    await screen.findByText("processing");
     const signal = vi.mocked(transcribeAudio).mock.calls[0]?.[4];
     expect(signal).toBeInstanceOf(AbortSignal);
 
@@ -373,7 +501,7 @@ describe("useVoiceInput", () => {
     await user.click(screen.getByRole("button", { name: "start" }));
     await screen.findByText("recording");
     await user.click(screen.getByRole("button", { name: "stop" }));
-    await screen.findByText("transcribing");
+    await screen.findByText("processing");
     const oldSignal = vi.mocked(transcribeAudio).mock.calls[0]?.[4];
     expect(oldSignal).toBeInstanceOf(AbortSignal);
     expect(first.track.stop).toHaveBeenCalledTimes(1);

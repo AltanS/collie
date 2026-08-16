@@ -36,6 +36,8 @@ export async function submitMenuKeys(args: {
   nav?: boolean;
   /** The session the pane lives in (undefined = primary) — scopes the read + keystroke. */
   session?: string;
+  /** Live pane-write permission, rechecked after the freshness guard and before the send. */
+  canWrite: () => boolean;
   /** The pane's agent — which adapter re-derives the fresh screen. No adapter = the guard refuses. */
   agent?: string;
 }): Promise<ActionResult> {

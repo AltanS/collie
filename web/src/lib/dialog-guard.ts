@@ -50,6 +50,8 @@ export interface DialogTarget<K extends DialogKind> {
   detectedRevision: number;
   /** The session the pane lives in (undefined = primary) — scopes every read + keystroke. */
   session?: string;
+  /** Live permission for this pane write, rechecked immediately before every terminal mutation. */
+  canWrite: () => boolean;
   /**
    * The pane's Herdr `agent` string — which adapter re-derives the fresh screen. An agent with no
    * adapter re-derives to nothing, so the guard refuses: fail-CLOSED, the only safe default when we
@@ -132,10 +134,13 @@ export async function sendGuardedKeys<K extends DialogKind>(
  *  undefined = an unbound write (a later step of a multi-step choreography, which has deliberately
  *  changed the screen since the guard ran). */
 export async function sendBoundKeys(
-  target: { paneId: string; session?: string },
+  target: { paneId: string; session?: string; canWrite: () => boolean },
   keys: string[],
   region?: string,
 ): Promise<ActionResult> {
+  // The dialog guard's fresh read is asynchronous, so its result is only usable while the caller
+  // still owns this pane's write permission. Check at the write boundary, not just at tap time.
+  if (!target.canWrite()) return { status: "changed" };
   try {
     const res =
       region === undefined

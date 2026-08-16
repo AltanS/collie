@@ -10,8 +10,24 @@ import { DetailRoute } from "./detail";
 // Stub the heavy terminal view: this test is about DetailRoute's routing/freshPane logic, not the
 // composer. The stub reports which pane it was handed and whether an agent resolved for it.
 vi.mock("@/components/agent-chat", () => ({
-  AgentChat: ({ paneId, agent }: { paneId: string; agent?: AgentView }) => (
-    <div data-testid="chat">{`pane:${paneId}:${agent ? "live" : "gone"}`}</div>
+  AgentChat: ({
+    paneId,
+    agent,
+    snapshotStale,
+    snapshotAuthError,
+    paneStale,
+    paneAuthError,
+  }: {
+    paneId: string;
+    agent?: AgentView;
+    snapshotStale?: boolean;
+    snapshotAuthError?: boolean;
+    paneStale?: boolean;
+    paneAuthError?: boolean;
+  }) => (
+    <div data-testid="chat" data-freshness={`${snapshotStale}:${snapshotAuthError}:${paneStale}:${paneAuthError}`}>
+      {`pane:${paneId}:${agent ? "live" : "gone"}`}
+    </div>
   ),
 }));
 
@@ -46,11 +62,16 @@ const connected = (agents: AgentView[], shellPanes: AgentView[] = []): HomeData 
   snoozedUntil: null,
   update: undefined,
   transcriptionEnabled: false,
-  error: false,
-  authError: false,
+  snapshotStale: false,
+  snapshotAuthError: false,
+  snapshotHasLastGood: true,
 });
 
-function makeRouter(initialPath: string, homeLoader: () => HomeData) {
+function makeRouter(
+  initialPath: string,
+  homeLoader: () => HomeData,
+  paneFreshness: Partial<PaneData> = {},
+) {
   return createMemoryRouter(
     [
       {
@@ -69,8 +90,10 @@ function makeRouter(initialPath: string, homeLoader: () => HomeData) {
               truncated: false,
               requestedLines: 600,
               revision: 0,
-              error: false,
-              authError: false,
+              paneStale: false,
+              paneAuthError: false,
+              paneHasLastGood: true,
+              ...paneFreshness,
             }),
             element: <DetailRoute />,
           },
@@ -82,6 +105,23 @@ function makeRouter(initialPath: string, homeLoader: () => HomeData) {
 }
 
 describe("DetailRoute — freshPane bootstrap", () => {
+  it("threads independent root and pane stale/auth outcomes to the detail UI", async () => {
+    const root = {
+      ...connected([]),
+      snapshotStale: true,
+      snapshotAuthError: true,
+      snapshotHasLastGood: true,
+    };
+    const router = makeRouter(panePath("w1:p1"), () => root, {
+      paneStale: true,
+      paneAuthError: true,
+      paneHasLastGood: true,
+    });
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByTestId("chat")).toHaveAttribute("data-freshness", "true:true:true:true");
+  });
+
   it("shows a freshly-created pane opened from the home screen", async () => {
     const router = makeRouter("/", () => connected([]));
     render(<RouterProvider router={router} />);

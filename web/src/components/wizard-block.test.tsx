@@ -181,6 +181,7 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       requestedLines: 600,
       detectedRevision: 7,
       agent: "claude",
+      canWrite: () => true,
       wizard: model,
       keys: ["2"],
     });
@@ -201,6 +202,7 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       requestedLines: 600,
       detectedRevision: 7,
       agent: "claude",
+      canWrite: () => true,
       wizard: model,
       keys: ["2"],
     });
@@ -222,6 +224,7 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       requestedLines: 600,
       detectedRevision: 0,
       agent: "claude",
+      canWrite: () => true,
       wizard: model,
       keys: ["1"],
     });
@@ -242,6 +245,7 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       requestedLines: 600,
       detectedRevision: 8,
       agent: "claude",
+      canWrite: () => true,
       wizard: model,
       keys: ["1"],
     });
@@ -263,6 +267,7 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       requestedLines: 600,
       detectedRevision: 5,
       agent: "claude",
+      canWrite: () => true,
       wizard: model,
       keys: ["3"],
     });
@@ -287,6 +292,7 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       requestedLines: 600,
       detectedRevision: 5,
       agent: "claude",
+      canWrite: () => true,
       wizard: model,
       keys: ["3"],
     });
@@ -308,6 +314,7 @@ function Harness({ wizard, detectedRevision }: { wizard: WizardModel; detectedRe
       requestedLines: 600,
       detectedRevision,
       agent: "claude",
+      canWrite: () => true,
       wizard,
       keys,
     });

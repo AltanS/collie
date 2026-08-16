@@ -41,16 +41,20 @@ import type {
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 // Multipart wraps a file in a boundary + part headers, so allow a small shared slack for its
 // Content-Length pre-checks.
-const MAX_MULTIPART_OVERHEAD = 64 * 1024; // 64 KB
+export const MAX_MULTIPART_OVERHEAD = 64 * 1024; // 64 KB
 // Hard cap the runtime enforces on ANY request body (Bun.serve maxRequestBodySize). Bigger than the
 // upload cap + overhead so the handler's own 413 fires first for honest clients; this cuts off a
-// chunked or lying client that never sends an accurate Content-Length.
-const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
+// chunked or lying client that never sends an accurate Content-Length. Bun may reject at this layer
+// before the route handler runs, so those runtime rejections have no terminal transcription audit.
+export const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
 // Voice recordings stay below the global body limit. They are never written to the uploads directory
 // or any other filesystem path.
 export const MAX_TRANSCRIPTION_BYTES = 8 * 1024 * 1024; // 8 MB
 export const MAX_TRANSCRIPTION_DURATION_MS = 5 * 60 * 1000; // 5 min
 export const MAX_TRANSCRIPT_CHARS = 8192;
+export const MAX_CONCURRENT_TRANSCRIPTION_ATTEMPTS = 2;
+/** Bun's per-request nominal idle allowance, not an exact wall-clock boundary or a browser/provider total deadline. */
+export const VOICE_REQUEST_IDLE_TIMEOUT_SECONDS = 90;
 
 function declaredMultipartTooLarge(req: Request, fileLimit: number): boolean {
   const declared = Number(req.headers.get("content-length"));
@@ -151,6 +155,27 @@ export function hasKnownPane(engine: StateEngine, paneId: string): boolean {
   return agents.some((pane) => pane.paneId === paneId) || shellPanes.some((pane) => pane.paneId === paneId);
 }
 
+/** A process-local, non-queued admission gate for one server instance. */
+export interface TranscriptionAdmission {
+  acquire(): (() => void) | null;
+}
+
+export function createTranscriptionAdmission(): TranscriptionAdmission {
+  let active = 0;
+  return {
+    acquire() {
+      if (active >= MAX_CONCURRENT_TRANSCRIPTION_ATTEMPTS) return null;
+      active += 1;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        active -= 1;
+      };
+    },
+  };
+}
+
 export function startServer(opts: {
   cfg: Config;
   registry: SessionRegistry;
@@ -170,6 +195,9 @@ export function startServer(opts: {
   // journal/registry.ts, never here.
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
+  // This closure is created once per Bun server, not per request or per session: slow multipart
+  // bodies and provider calls share the same bounded process-local capacity.
+  const transcriptionAdmission = createTranscriptionAdmission();
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
   // Per-session background notifications live in each session's runtime (built by the factory in
@@ -290,6 +318,23 @@ export function startServer(opts: {
         if (isTranscription && !hasKnownPane(rt.engine, paneId)) {
           return json({ ok: false, error: "pane not found" } satisfies TranscriptionResponse, req.headers.get("accept-encoding"), 404);
         }
+        if (isTranscription) {
+          // Access, session, and known-pane refusals return above without an attempt audit. From this
+          // point the wrapper owns admission, pre-body idle timeout, terminal audit, and release.
+          return await handleTranscriptionAttempt(
+            paneId,
+            req,
+            audit,
+            deviceAuth(req, cfg).device,
+            session,
+            transcriber,
+            transcriptionAdmission,
+            () => {
+              bunServer.timeout(req, VOICE_REQUEST_IDLE_TIMEOUT_SECONDS);
+              activity.noteSeen(session, paneId);
+            },
+          );
+        }
         // You are in this pane: reading it, replying, sending keys, browsing its history. That is
         // the whole definition of "seen" (.adr/0003), and this is the one place every such request
         // passes through. It cannot false-positive from background polling — the dashboard loader
@@ -311,8 +356,6 @@ export function startServer(opts: {
         if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit, device, session);
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit, device, session);
-        if (action === "transcribe" && req.method === "POST")
-          return transcribePane(paneId, req, audit, device, session, transcriber, () => bunServer.timeout(req, 90));
         if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit, device, session);
         if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit, device, session);
         return text("method not allowed", 405);
@@ -323,9 +366,8 @@ export function startServer(opts: {
         // Read-level, like the other non-terminal endpoints. Nothing here is secret — the VAPID
         // public key is handed to every browser by design — but this was the one route that skipped
         // checkAccess entirely, so COLLIE_PUBLIC_HOSTS didn't cover it and a rebound DNS name could
-        // still read the build id. The client only ever calls this same-origin, and a refusal can't
-        // be mistaken for an outage: ConnectionBanner short-circuits to AuthErrorBanner before its
-        // red-state probe runs. Noted in #32.
+        // still read the build id. The client only ever calls this same-origin, and refusals retain
+        // the normal read-access response. Noted in #32.
         const denied = guard(req, cfg, "read");
         if (denied) return denied;
         return json({
@@ -1065,55 +1107,207 @@ async function createWorkspace(
   }
 }
 
+type TranscriptionOutcome = "ok" | "busy" | "invalid" | "timeout" | "client-aborted" | "unavailable";
+type TranscriptionFailedPhase = "request" | "body" | "validation" | "provider" | "result";
+
+interface ValidatedTranscriptionMetadata {
+  mime: "audio/webm" | "audio/mp4";
+  bytes: number;
+  reportedDurationMs: number;
+}
+
+interface TranscriptionAttemptResult {
+  response: Response;
+  outcome: TranscriptionOutcome;
+  failedPhase?: TranscriptionFailedPhase;
+  bodyFormDataMs?: number;
+  providerMs?: number;
+  metadata?: ValidatedTranscriptionMetadata;
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function bodyWasAborted(req: Request, error: unknown): boolean {
+  // Bun 1.3.14 reports a disconnected caller and its own idle expiry alike: an aborted request
+  // signal and/or a DOM AbortError from formData(). They are body cancellations, but their source
+  // is not independently distinguishable here; provider deadlines remain the clear timeout outcome.
+  return req.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
+}
+
+function recordTranscriptionAttempt(
+  audit: AuditLog,
+  paneId: string,
+  session: string,
+  device: string | null,
+  requestId: string,
+  startedAt: number,
+  result: TranscriptionAttemptResult,
+): void {
+  // This is the sole terminal transcription audit. It contains only route metadata and validated
+  // file metadata; audio, filename, transcript, provider data, errors, request headers, and form
+  // fields never reach it. AuditLog itself deliberately makes a write failure non-fatal.
+  audit.record({
+    action: "transcribe",
+    paneId,
+    session,
+    device,
+    detail: {
+      requestId,
+      outcome: result.outcome,
+      status: result.response.status,
+      ...(result.failedPhase !== undefined ? { failedPhase: result.failedPhase } : {}),
+      ...(result.bodyFormDataMs !== undefined ? { bodyFormDataMs: result.bodyFormDataMs } : {}),
+      ...(result.providerMs !== undefined ? { providerMs: result.providerMs } : {}),
+      serverTotalMs: elapsedMs(startedAt),
+      ...(result.metadata ?? {}),
+    },
+  });
+}
+
 /**
- * Validate and forward one completed voice clip without retaining it. This is deliberately separate
- * from `uploadPane`: image uploads are durable host files that Herdr reads by path; audio is only a
- * short-lived multipart value passed onward to the configured transcription endpoint.
+ * One authenticated, known-pane route attempt. This owns the complete bounded lifetime: admission,
+ * Bun's pre-body idle allowance, response construction, one terminal audit, and slot release.
  */
-export async function transcribePane(
+export async function handleTranscriptionAttempt(
   paneId: string,
   req: Request,
   audit: AuditLog,
   device: string | null,
   session: string,
   transcriber: Transcriber | null,
-  /** Production extends only this validated provider wait past Bun's default request timeout. */
-  beforeProviderCall?: () => void,
+  admission: TranscriptionAdmission,
+  beforeBody: () => void,
 ): Promise<Response> {
+  const startedAt = performance.now();
+  const requestId = crypto.randomUUID();
   const accept = req.headers.get("accept-encoding");
+  const release = admission.acquire();
+  if (release === null) {
+    const response = json(
+      { ok: false, error: "transcription busy" } satisfies TranscriptionResponse,
+      accept,
+      429,
+    );
+    recordTranscriptionAttempt(audit, paneId, session, device, requestId, startedAt, {
+      response,
+      outcome: "busy",
+      failedPhase: "request",
+    });
+    return response;
+  }
+
+  let enteredHandler = false;
+  try {
+    let result: TranscriptionAttemptResult;
+    try {
+      beforeBody();
+      enteredHandler = true;
+      // Await before the finally below releases the slot; a bare return of this promise would make
+      // slow bodies/provider work escape the admission gate.
+      result = await transcribePane(req, transcriber);
+    } catch {
+      // Do not reflect or audit a thrown implementation/provider body. The response is constructed
+      // before its total duration is stamped, and the terminal audit remains exactly one entry.
+      result = {
+        response: json(
+          { ok: false, error: "transcription unavailable" } satisfies TranscriptionResponse,
+          accept,
+          502,
+        ),
+        outcome: "unavailable",
+        failedPhase: enteredHandler ? "result" : "request",
+      };
+    }
+    recordTranscriptionAttempt(audit, paneId, session, device, requestId, startedAt, result);
+    return result.response;
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Validate and forward one completed voice clip without retaining it. This is deliberately separate
+ * from `uploadPane`: image uploads are durable host files that Herdr reads by path; audio is only a
+ * short-lived multipart value passed onward to the configured transcription endpoint. The route
+ * wrapper records the sole terminal audit after this handler constructs its response.
+ */
+export async function transcribePane(
+  req: Request,
+  transcriber: Transcriber | null,
+): Promise<TranscriptionAttemptResult> {
+  const handlerStartedAt = performance.now();
+  const accept = req.headers.get("accept-encoding");
+  const invalid = (
+    error: string,
+    status: number,
+    failedPhase: TranscriptionFailedPhase,
+    fields: Pick<TranscriptionAttemptResult, "bodyFormDataMs" | "providerMs" | "metadata"> = {},
+  ): TranscriptionAttemptResult => ({
+    response: json({ ok: false, error } satisfies TranscriptionResponse, accept, status),
+    outcome: "invalid",
+    failedPhase,
+    ...fields,
+  });
+
   if (transcriber === null) {
-    return json({ ok: false, error: "transcription unavailable" } satisfies TranscriptionResponse, accept, 503);
+    return {
+      response: json(
+        { ok: false, error: "transcription unavailable" } satisfies TranscriptionResponse,
+        accept,
+        503,
+      ),
+      outcome: "unavailable",
+      failedPhase: "request",
+    };
   }
   if (!req.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data")) {
-    return json({ ok: false, error: "expected multipart audio" } satisfies TranscriptionResponse, accept, 400);
+    return invalid("expected multipart audio", 400, "request");
   }
   // FormData buffers the completed request, so reject an honest oversized declaration before asking
   // Bun to parse it. `maxRequestBodySize` remains the hard backstop for chunked or lying requests.
   if (declaredMultipartTooLarge(req, MAX_TRANSCRIPTION_BYTES)) {
-    return json({ ok: false, error: "audio too large (max 8 MiB)" } satisfies TranscriptionResponse, accept, 413);
+    return invalid("audio too large (max 8 MiB)", 413, "request");
   }
 
   let form: FormData;
   try {
     form = await req.formData();
-  } catch {
-    return json({ ok: false, error: "expected multipart audio" } satisfies TranscriptionResponse, accept, 400);
+  } catch (error) {
+    const bodyFormDataMs = elapsedMs(handlerStartedAt);
+    if (bodyWasAborted(req, error)) {
+      // Preserve the existing sanitized malformed-body response; only the terminal audit distinguishes
+      // a body cancellation from malformed multipart.
+      return {
+        response: json(
+          { ok: false, error: "expected multipart audio" } satisfies TranscriptionResponse,
+          accept,
+          400,
+        ),
+        outcome: "client-aborted",
+        failedPhase: "body",
+        bodyFormDataMs,
+      };
+    }
+    return invalid("expected multipart audio", 400, "body", { bodyFormDataMs });
   }
+  const bodyFormDataMs = elapsedMs(handlerStartedAt);
   const files = form.getAll("file");
   const durations = form.getAll("duration_ms");
   if (files.length !== 1 || !(files[0] instanceof File)) {
-    return json({ ok: false, error: "audio file required" } satisfies TranscriptionResponse, accept, 400);
+    return invalid("audio file required", 400, "validation", { bodyFormDataMs });
   }
   if (durations.length !== 1 || typeof durations[0] !== "string" || !/^\d+$/.test(durations[0])) {
-    return json({ ok: false, error: "invalid recording duration" } satisfies TranscriptionResponse, accept, 400);
+    return invalid("invalid recording duration", 400, "validation", { bodyFormDataMs });
   }
   // This is browser-reported recording lifecycle metadata, not media duration parsed by the bridge.
   const reportedDurationMs = Number(durations[0]);
   if (!Number.isSafeInteger(reportedDurationMs) || reportedDurationMs < 1) {
-    return json({ ok: false, error: "invalid recording duration" } satisfies TranscriptionResponse, accept, 400);
+    return invalid("invalid recording duration", 400, "validation", { bodyFormDataMs });
   }
   if (reportedDurationMs > MAX_TRANSCRIPTION_DURATION_MS) {
-    return json({ ok: false, error: "recording too long (max 5 minutes)" } satisfies TranscriptionResponse, accept, 413);
+    return invalid("recording too long (max 5 minutes)", 413, "validation", { bodyFormDataMs });
   }
 
   const file = files[0];
@@ -1128,52 +1322,58 @@ export async function transcribePane(
         ? "audio/mp4"
         : null;
   if (mime === null) {
-    return json({ ok: false, error: "unsupported audio type" } satisfies TranscriptionResponse, accept, 415);
+    return invalid("unsupported audio type", 415, "validation", { bodyFormDataMs });
   }
   if (file.size < 1) {
-    return json({ ok: false, error: "audio file required" } satisfies TranscriptionResponse, accept, 400);
+    return invalid("audio file required", 400, "validation", { bodyFormDataMs });
   }
   if (file.size > MAX_TRANSCRIPTION_BYTES) {
-    return json({ ok: false, error: "audio too large (max 8 MiB)" } satisfies TranscriptionResponse, accept, 413);
+    return invalid("audio too large (max 8 MiB)", 413, "validation", { bodyFormDataMs });
   }
 
-  const detail = { mime, bytes: file.size, reportedDurationMs };
+  const metadata: ValidatedTranscriptionMetadata = { mime, bytes: file.size, reportedDurationMs };
   // Never forward the caller-supplied filename. It may be sensitive metadata, and the configured
   // provider only needs a conventional extension to interpret the completed browser recording.
   const providerFile = new File([file], mime === "audio/mp4" ? "recording.mp4" : "recording.webm", {
     type: mime,
   });
+  const providerStartedAt = performance.now();
   try {
-    // Multipart validation deliberately retains Bun's normal slow-client timeout. Only the
-    // subsequent provider wait gets route-specific transport headroom above its own 60s deadline.
-    beforeProviderCall?.();
     const text = (await transcriber.transcribe(providerFile, req.signal)).trim();
+    const providerMs = elapsedMs(providerStartedAt);
     if (!text || text.length > MAX_TRANSCRIPT_CHARS) {
-      audit.record({ action: "transcribe", paneId, session, device, detail: { ...detail, outcome: "invalid" } });
-      return json({ ok: false, error: "invalid transcription result" } satisfies TranscriptionResponse, accept, 502);
+      return invalid("invalid transcription result", 502, "result", {
+        bodyFormDataMs,
+        providerMs,
+        metadata,
+      });
     }
-    // Metadata only: no filename, audio bytes, provider body, or returned transcript enters audit.log.
-    audit.record({ action: "transcribe", paneId, session, device, detail: { ...detail, outcome: "ok" } });
-    return json({ ok: true, text } satisfies TranscriptionResponse, accept);
+    return {
+      response: json({ ok: true, text } satisfies TranscriptionResponse, accept),
+      outcome: "ok",
+      bodyFormDataMs,
+      providerMs,
+      metadata,
+    };
   } catch (error) {
-    const kind = error instanceof TranscriptionProviderError ? error.kind : "unavailable";
-    audit.record({
-      action: "transcribe",
-      paneId,
-      session,
-      device,
-      detail: { ...detail, outcome: kind },
-    });
+    const outcome = error instanceof TranscriptionProviderError ? error.kind : "unavailable";
     // Provider messages can include account, model, or upstream error-body details; never reflect
-    // them to a browser or log them. A fresh recording is required after every failed request.
-    const status = kind === "timeout" ? 504 : kind === "client-aborted" ? 499 : 502;
+    // them to a browser or audit them. A fresh recording is required after every failed request.
+    const status = outcome === "timeout" ? 504 : outcome === "client-aborted" ? 499 : 502;
     const message =
-      kind === "timeout"
+      outcome === "timeout"
         ? "transcription timed out"
-        : kind === "client-aborted"
+        : outcome === "client-aborted"
           ? "transcription cancelled"
           : "transcription unavailable";
-    return json({ ok: false, error: message } satisfies TranscriptionResponse, accept, status);
+    return {
+      response: json({ ok: false, error: message } satisfies TranscriptionResponse, accept, status),
+      outcome,
+      failedPhase: "provider",
+      bodyFormDataMs,
+      providerMs: elapsedMs(providerStartedAt),
+      metadata,
+    };
   }
 }
 

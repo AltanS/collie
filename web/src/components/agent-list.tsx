@@ -8,7 +8,11 @@ import { AgentCard } from "./agent-card";
 
 interface AgentListProps {
   agents: AgentView[];
+  /** Herdr state is meaningful only when the root snapshot itself is fresh. */
   bridge?: BridgeStatus | undefined;
+  snapshotStale?: boolean;
+  /** Whether the root loader has an authoritative snapshot, even if it is empty. */
+  snapshotHasLastGood?: boolean;
   onOpen: (paneId: string) => void;
   /** Which way Recent runs, and how to flip it. Omit to render Recent newest-first with no toggle. */
   recentDir?: RecentDir;
@@ -39,6 +43,8 @@ const ATTENTION: ReadonlySet<TriageKey> = new Set<TriageKey>(["needs", "ready"])
 export function AgentList({
   agents,
   bridge,
+  snapshotStale = false,
+  snapshotHasLastGood = false,
   onOpen,
   recentDir = "newest",
   onRecentDirChange,
@@ -52,7 +58,13 @@ export function AgentList({
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
         <Inbox className="size-7" />
         <span className="text-sm">
-          {bridge === "connected" ? "No agents running." : "Waiting for Herdr…"}
+          {snapshotStale
+            ? snapshotHasLastGood
+              ? "No agents in the last update."
+              : "Agents unavailable while live updates are delayed."
+            : bridge === "connected"
+              ? "No agents running."
+              : "Waiting for Herdr…"}
         </span>
       </div>
     );

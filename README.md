@@ -356,14 +356,25 @@ For a Herdr-installed candidate, configure transcription in the protected plugin
 only when the composer is empty. The root [`.env.example`](./.env.example) is a hidden dotfile template:
 all transcription assignments are intentionally commented, so copying it keeps voice disabled until you
 uncomment and fill a setting. Any nonblank dedicated setting opts in, and an omitted model resolves to
-Collie's default, `gpt-4o-transcribe`. The browser posts a completed WebM/MP4 recording to the
-same-origin bridge; after validation, the bridge calls **one** OpenAI-compatible transcription endpoint.
-Its narrow provider contract is `POST /audio/transcriptions` with a model/file and `response_format=json`,
-returning `{ "text": "…" }`. Collie puts that text into the ordinary editable draft and waits for you to
-press the existing **Send** button. It never auto-submits text to Herdr.
+Collie's default, `gpt-4o-transcribe`.
 
-Compatible browsers make a best-effort attempt to keep the screen awake only during active foreground recording;
-browser, OS, or manual-lock policy may override it, and hiding or closing still cancels recording with no background
+Voice is a completed-file, synchronous one-shot: the browser keeps a WebM/MP4 recording in memory,
+makes one multipart upload to the same-origin bridge, and, after validation, the bridge makes **one** call
+to the configured OpenAI-compatible transcription endpoint. Its narrow provider contract is
+`POST /audio/transcriptions` with a model/file and `response_format=json`, returning `{ "text": "…" }`.
+Neither stage automatically retries; after a failure, make a fresh recording rather than replaying audio.
+Collie puts returned text into the ordinary editable draft and waits for the existing **Send** button. It
+never auto-submits text to Herdr.
+
+The composer reports **Requesting microphone…**, **Recording**, **Finishing recording…**, then
+**Processing voice…**. Processing deliberately covers multipart creation and upload, bridge parsing,
+provider work, and response consumption: Fetch cannot truthfully split those stages further. Compatible
+browsers request 24 kb/s for WebM/Opus (and the WebM fallback) and 64 kb/s for MP4/AAC. Those are
+best-effort encoder hints, not acceptance or telemetry guarantees, and a browser may ignore them.
+
+Compatible browsers make a best-effort attempt to keep the screen awake only during active foreground
+recording; browser, OS, or manual-lock policy may override it. Hiding the page, page close, a pane/session
+change, or **Cancel** cancels the active voice operation, so there is no background recording or completion
 guarantee.
 
 ```dotenv
@@ -392,11 +403,27 @@ outbound only, never another Collie listener or front door.
 
 Recording stops at about 5 minutes and is rejected above 8 MiB; only WebM/MP4 containers are
 accepted. `duration_ms` is browser-reported recording lifecycle metadata, not media duration parsed by
-the bridge. The browser aborts the complete browser-to-bridge request after 90 seconds and Fetch
-refuses a front-door redirect before it can replay the multipart recording. The bridge bounds the
-complete bridge-to-provider call, including response-body consumption, to 60 seconds with no retry; its
-SDK fetch adapter independently refuses provider redirects and caps **provider** success and error
-response bodies at 256 KiB decoded.
+the bridge. For a completed Blob of `B` bytes, the browser's total wall-clock deadline is
+`ceil((B + 65,536) × 8 × 1000 / 256,000) + 60,000 + 20,000` ms. It assumes a sustained, progressing
+effective uplink of at least 256 kb/s; a slower path or a long interruption can still fail. At the 8 MiB
+maximum (8,388,608 bytes), the upload allowance is 264,192 ms and the total browser maximum is
+**344,192 ms** (5m44.192s). The timer starts before multipart construction and lasts through the final
+response body; Fetch also refuses a front-door redirect before it can replay the recording.
+
+That browser total is separate from Bun's configured 90-second nominal **inactivity** allowance, set
+before multipart parsing. Bun applies that setting with coarse runtime granularity, so it is not an exact
+90-second maximum or a whole-request deadline. The bridge's provider call has its own independent
+60-second deadline, including response-body consumption. At most two known-pane voice attempts that
+pass the existing write gate run in one bridge process; a third receives the sanitized
+`429 transcription busy` response, and the browser does not retry. The SDK fetch adapter independently
+refuses provider redirects and caps
+**provider** success and error response bodies at 256 KiB decoded.
+
+The completed-file wire format (`file` plus browser-reported `duration_ms`) is compatible for an
+old-web/new-bridge or new-web/old-bridge pair, so update skew is safe rather than a new protocol.
+Only a matched current PWA bundle/service worker and bridge provide the complete 8 MiB / 256 kb/s
+behaviour. API traffic remains network-only: the service worker does not cache or route `/api/`, and
+this refactor changes no service-worker route.
 
 Collie does not intentionally persist or log audio or provider bodies: no audio file is written to
 `stateDir`, backups, or audit/log bodies. The bridge also does not persist or log transcripts. A

@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
+import {
+  MAX_VOICE_BYTES,
+  MAX_VOICE_DURATION_MS,
+  RECORDING_MIME_TYPES,
+  requestedRecordingBitrate,
+} from "@/lib/voice-policy";
 
-export const MAX_VOICE_DURATION_MS = 5 * 60 * 1000;
-export const MAX_VOICE_BYTES = 8 * 1024 * 1024;
-
-export type VoicePhase = "idle" | "requesting" | "recording" | "transcribing";
+export type VoicePhase = "idle" | "requesting" | "recording" | "finalizing" | "processing";
 
 /** One pane's active voice lifecycle, shared by the pane write boundary and its composer controls. */
 export interface VoiceInput {
   phase: VoicePhase;
   elapsedLabel: string;
+  /** Synchronous live write permission: false for every active voice phase. */
+  canWrite: () => boolean;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   cancel: () => void;
@@ -34,7 +39,7 @@ export function recordingMimeType(): string | null {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
     return null;
   }
-  for (const type of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
+  for (const type of RECORDING_MIME_TYPES) {
     if (MediaRecorder.isTypeSupported(type)) return type;
   }
   return null;
@@ -82,6 +87,7 @@ export function useVoiceInput({
     phaseRef.current = next;
     setPhase(next);
   };
+  const canWrite = useCallback(() => phaseRef.current === "idle", []);
 
   const clearRecordingTimers = () => {
     if (elapsedTimerRef.current !== null) clearInterval(elapsedTimerRef.current);
@@ -174,9 +180,11 @@ export function useVoiceInput({
     reportedDurationMs: number,
   ) => {
     if (!isCurrentOperation(controller, scope)) return;
-    setVoicePhase("transcribing");
     const extension = mime.startsWith("audio/mp4") ? "mp4" : "webm";
     const file = new File([blob], `recording.${extension}`, { type: mime });
+    // Fetch cannot distinguish upload, server parsing, and provider work, so processing remains one
+    // intentionally coarse phase through the completed one-shot request.
+    setVoicePhase("processing");
     try {
       const response = await api.transcribeAudio(
         scope.paneId,
@@ -211,7 +219,7 @@ export function useVoiceInput({
     }
     // Switch UI immediately so no draft/edit action can race the completed recording while the
     // browser delivers its final dataavailable/stop events.
-    setVoicePhase("transcribing");
+    setVoicePhase("finalizing");
     releaseWakeLock();
     try {
       recorder.stop();
@@ -245,7 +253,17 @@ export function useVoiceInput({
         return;
       }
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, {
+          mimeType: mime,
+          audioBitsPerSecond: requestedRecordingBitrate(mime),
+        });
+      } catch {
+        // Some browsers reject a valid container when paired with a bitrate request. Retry exactly
+        // once without that best-effort hint; a second construction error uses the existing failure path.
+        recorder = new MediaRecorder(stream, { mimeType: mime });
+      }
       recorderRef.current = recorder;
       chunksRef.current = [];
       bytesRef.current = 0;
@@ -264,12 +282,16 @@ export function useVoiceInput({
         recorderRef.current = null;
         clearRecordingTimers();
         stopTracks();
-        const reportedDurationMs = Math.min(Date.now() - startedAtRef.current, MAX_VOICE_DURATION_MS);
+        const reportedDurationMs = Date.now() - startedAtRef.current;
         const chunks = chunksRef.current;
         chunksRef.current = [];
         bytesRef.current = 0;
         if (reportedDurationMs < 1 || chunks.length === 0) {
           failOperation(controller, scope, "Voice recording was empty");
+          return;
+        }
+        if (reportedDurationMs > MAX_VOICE_DURATION_MS) {
+          failOperation(controller, scope, "Voice recording exceeded 5 minutes");
           return;
         }
         const blob = new Blob(chunks, { type: mime });
@@ -323,6 +345,7 @@ export function useVoiceInput({
   return {
     phase,
     elapsedLabel: elapsedLabel(elapsedMs),
+    canWrite,
     startRecording,
     stopRecording,
     cancel,

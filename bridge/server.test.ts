@@ -4,13 +4,17 @@ import {
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
+  createTranscriptionAdmission,
   marksPaneSeen,
+  MAX_CONCURRENT_TRANSCRIPTION_ATTEMPTS,
+  MAX_MULTIPART_OVERHEAD,
   MAX_TRANSCRIPT_CHARS,
   MAX_TRANSCRIPTION_BYTES,
   MAX_TRANSCRIPTION_DURATION_MS,
   SEEN_HEADER,
   deviceAuth,
   guard,
+  handleTranscriptionAttempt,
   hasKnownPane,
   historyParams,
   isHostAllowed,
@@ -22,14 +26,18 @@ import {
   resolveStaticPath,
   sendReplySteps,
   startupWarnings,
-  transcribePane,
+  VOICE_REQUEST_IDLE_TIMEOUT_SECONDS,
   withBuildHeader,
   type ReplySender,
 } from "./server.ts";
 import { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
-import { TranscriptionProviderError, type Transcriber } from "./transcription.ts";
+import {
+  TRANSCRIPTION_TIMEOUT_MS,
+  TranscriptionProviderError,
+  type Transcriber,
+} from "./transcription.ts";
 import type { StateEngine } from "./state-engine.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
@@ -108,6 +116,34 @@ describe("voice transcription — guarded, bounded, and body-free", () => {
     const lines: string[] = [];
     return { audit: new AuditLog((line) => void lines.push(line)), lines };
   };
+  const attempt = (
+    request: Request,
+    transcriber: Transcriber | null,
+    audit: AuditLog,
+    admission = createTranscriptionAdmission(),
+    beforeBody: () => void = () => {},
+  ) =>
+    handleTranscriptionAttempt(
+      "w1:p1",
+      request,
+      audit,
+      null,
+      "default",
+      transcriber,
+      admission,
+      beforeBody,
+    );
+  const detailOf = (line: string): Record<string, unknown> =>
+    (JSON.parse(line) as { detail: Record<string, unknown> }).detail;
+  const expectAllSlotsFree = (admission: ReturnType<typeof createTranscriptionAdmission>) => {
+    const first = admission.acquire();
+    const second = admission.acquire();
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(admission.acquire()).toBeNull();
+    first!();
+    second!();
+  };
 
   test("the central write guard rejects before the transcription handler can parse multipart", () => {
     let parsed = false;
@@ -125,10 +161,33 @@ describe("voice transcription — guarded, bounded, and body-free", () => {
     expect(parsed).toBe(false);
   });
 
-  test("accepts the exact multipart declaration threshold and rejects one byte over before parsing", async () => {
+  test("audits an unavailable configured transcriber without parsing the body", async () => {
+    const { audit, lines } = auditEntries();
+    let parsed = false;
+    const request = {
+      headers: new Headers({ "content-type": "multipart/form-data" }),
+      signal: new AbortController().signal,
+      formData: () => {
+        parsed = true;
+        return Promise.resolve(audioForm());
+      },
+    } as unknown as Request;
+
+    const response = await attempt(request, null, audit);
+    expect(response.status).toBe(503);
+    expect(parsed).toBe(false);
+    expect(lines).toHaveLength(1);
+    const detail = detailOf(lines[0]!);
+    expect(detail).toMatchObject({ outcome: "unavailable", status: 503, failedPhase: "request" });
+    expect(detail).not.toHaveProperty("bodyFormDataMs");
+    expect(detail).not.toHaveProperty("providerMs");
+    expect(detail).not.toHaveProperty("mime");
+  });
+
+  test("accepts the exact 8 MiB file plus declaration allowance and rejects one byte over before parsing", async () => {
     const { transcriber, files } = fakeTranscriber();
-    const { audit } = auditEntries();
-    const declaration = MAX_TRANSCRIPTION_BYTES + 64 * 1024;
+    const { audit, lines } = auditEntries();
+    const declaration = MAX_TRANSCRIPTION_BYTES + MAX_MULTIPART_OVERHEAD;
     let parsed = false;
     const request = (contentLength: number) =>
       ({
@@ -139,35 +198,32 @@ describe("voice transcription — guarded, bounded, and body-free", () => {
         signal: new AbortController().signal,
         formData: () => {
           parsed = true;
-          return Promise.resolve(audioForm());
+          return Promise.resolve(audioForm({ bytes: MAX_TRANSCRIPTION_BYTES }));
         },
       }) as unknown as Request;
 
-    await expect(
-      transcribePane("w1:p1", request(declaration), audit, null, "default", transcriber),
-    ).resolves.toHaveProperty("status", 200);
+    const accepted = await attempt(request(declaration), transcriber, audit);
+    expect(accepted.status).toBe(200);
     expect(parsed).toBe(true);
     expect(files).toHaveLength(1);
+    expect(files[0]?.size).toBe(MAX_TRANSCRIPTION_BYTES);
 
     parsed = false;
-    const rejected = await transcribePane(
-      "w1:p1",
-      request(declaration + 1),
-      audit,
-      null,
-      "default",
-      transcriber,
-    );
+    const rejected = await attempt(request(declaration + 1), transcriber, audit);
     expect(rejected.status).toBe(413);
     expect(await rejected.json()).toEqual({ ok: false, error: "audio too large (max 8 MiB)" });
     expect(parsed).toBe(false);
     expect(files).toHaveLength(1);
+    expect(lines).toHaveLength(2);
+    const rejectedDetail = detailOf(lines[1]!);
+    expect(rejectedDetail).toMatchObject({ outcome: "invalid", status: 413, failedPhase: "request" });
+    expect(rejectedDetail).not.toHaveProperty("bodyFormDataMs");
+    expect(rejectedDetail).not.toHaveProperty("providerMs");
+    expect(rejectedDetail).not.toHaveProperty("mime");
   });
 
   test("rejects invalid MIME, size, and reported duration before provider invocation", async () => {
     const { transcriber, files } = fakeTranscriber();
-    const { audit } = auditEntries();
-    let beforeProviderCalls = 0;
     for (const form of [
       // Bun derives multipart MIME from a filename, so use an Ogg extension for this negative case.
       audioForm({ type: "audio/ogg", name: "recording.ogg" }),
@@ -175,53 +231,58 @@ describe("voice transcription — guarded, bounded, and body-free", () => {
       audioForm({ duration: String(MAX_TRANSCRIPTION_DURATION_MS + 1) }),
       audioForm({ duration: "not-a-duration" }),
     ]) {
-      const response = await transcribePane(
-        "w1:p1",
-        acceptedRequest(form),
-        audit,
-        null,
-        "default",
-        transcriber,
-        () => { beforeProviderCalls += 1; },
-      );
+      const { audit, lines } = auditEntries();
+      const response = await attempt(acceptedRequest(form), transcriber, audit);
       expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(lines).toHaveLength(1);
+      const detail = detailOf(lines[0]!);
+      expect(detail).toMatchObject({ outcome: "invalid", failedPhase: "validation" });
+      expect(detail).toHaveProperty("bodyFormDataMs");
+      expect(detail).not.toHaveProperty("providerMs");
+      expect(detail).not.toHaveProperty("mime");
     }
     expect(files).toEqual([]);
-    expect(beforeProviderCalls).toBe(0);
   });
 
-  test("waits for valid multipart parsing before extending the provider wait", async () => {
+  test("sets the 90-second idle allowance before formData and leaves the provider deadline independent", async () => {
     const { audit } = auditEntries();
     let releaseForm!: (form: FormData) => void;
-    const pendingForm = new Promise<FormData>((resolve) => { releaseForm = resolve; });
+    const pendingForm = new Promise<FormData>((resolve) => {
+      releaseForm = resolve;
+    });
+    const order: string[] = [];
     const parsingRequest = {
       headers: new Headers({ "content-type": "multipart/form-data" }),
       signal: new AbortController().signal,
-      formData: () => pendingForm,
+      formData: () => {
+        order.push("formData");
+        return pendingForm;
+      },
     } as unknown as Request;
-    const order: string[] = [];
     const orderedTranscriber: Transcriber = {
       transcribe: () => {
         order.push("transcriber");
         return Promise.resolve("review this transcript");
       },
     };
-    const pending = transcribePane(
-      "w1:p1",
+    const pending = attempt(
       parsingRequest,
-      audit,
-      null,
-      "default",
       orderedTranscriber,
-      () => { order.push("before-provider"); },
+      audit,
+      createTranscriptionAdmission(),
+      () => {
+        order.push("idle-timeout");
+      },
     );
 
     await Promise.resolve();
-    expect(order).toEqual([]);
+    expect(order).toEqual(["idle-timeout", "formData"]);
     releaseForm(audioForm());
 
     await expect(pending).resolves.toHaveProperty("status", 200);
-    expect(order).toEqual(["before-provider", "transcriber"]);
+    expect(order).toEqual(["idle-timeout", "formData", "transcriber"]);
+    expect(VOICE_REQUEST_IDLE_TIMEOUT_SECONDS).toBe(90);
+    expect(TRANSCRIPTION_TIMEOUT_MS).toBe(60_000);
   });
 
   test("recognises both agent and shell panes in the last-known state", () => {
@@ -239,36 +300,58 @@ describe("voice transcription — guarded, bounded, and body-free", () => {
     expect(hasKnownPane(engine, "w1:missing")).toBe(false);
   });
 
-  test("forwards only a generic provider filename and audits no audio or transcript body", async () => {
+  test("forwards only a generic provider filename and writes one allowlisted metadata-only success audit", async () => {
     const { transcriber, files } = fakeTranscriber("private transcript text");
     const { audit, lines } = auditEntries();
-    const response = await transcribePane(
+    const form = new FormData();
+    form.append("file", new File(["private audio bytes"], "personal-note.webm", { type: "audio/webm" }));
+    form.append("duration_ms", "1000");
+    const response = await handleTranscriptionAttempt(
       "w1:p1",
-      acceptedRequest(audioForm({ name: "personal-note.webm" })),
+      acceptedRequest(form),
       audit,
       "phone",
       "default",
       transcriber,
+      createTranscriptionAdmission(),
+      () => {},
     );
 
     expect(await response.json()).toEqual({ ok: true, text: "private transcript text" });
     expect(files).toHaveLength(1);
     expect(files[0]?.name).toBe("recording.webm");
-    await Promise.resolve();
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('"outcome":"ok"');
     expect(lines[0]).not.toContain("personal-note");
+    expect(lines[0]).not.toContain("private audio bytes");
     expect(lines[0]).not.toContain("private transcript text");
-    expect(JSON.parse(lines[0]!).detail).toEqual({
-      mime: "audio/webm",
-      bytes: 4,
-      reportedDurationMs: 1000,
+    const detail = detailOf(lines[0]!);
+    expect(Object.keys(detail).sort()).toEqual(
+      [
+        "requestId",
+        "outcome",
+        "status",
+        "bodyFormDataMs",
+        "providerMs",
+        "serverTotalMs",
+        "mime",
+        "bytes",
+        "reportedDurationMs",
+      ].sort(),
+    );
+    expect(detail).toMatchObject({
       outcome: "ok",
+      status: 200,
+      mime: "audio/webm",
+      bytes: 19,
+      reportedDurationMs: 1000,
     });
-    expect(lines[0]).not.toContain("durationMs");
+    expect(detail.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i);
+    for (const field of ["bodyFormDataMs", "providerMs", "serverTotalMs"] as const) {
+      expect(detail[field]).toEqual(expect.any(Number));
+    }
   });
 
-  test("maps deadline, caller-aborted, and unavailable provider failures to distinct outcomes", async () => {
+  test("maps deadline, caller-aborted, and unavailable provider failures to distinct audited outcomes", async () => {
     const cases: Array<["timeout" | "client-aborted" | "unavailable", number, string]> = [
       ["timeout", 504, "transcription timed out"],
       ["client-aborted", 499, "transcription cancelled"],
@@ -279,29 +362,251 @@ describe("voice transcription — guarded, bounded, and body-free", () => {
       const failing: Transcriber = {
         transcribe: () => Promise.reject(new TranscriptionProviderError(kind)),
       };
-      const response = await transcribePane("w1:p1", acceptedRequest(audioForm()), audit, null, "default", failing);
+      const response = await attempt(acceptedRequest(audioForm()), failing, audit);
       expect(response.status).toBe(status);
       expect(await response.json()).toEqual({ ok: false, error: message });
-      await Promise.resolve();
-      expect(JSON.parse(lines[0]!).detail.outcome).toBe(kind);
+      expect(lines).toHaveLength(1);
+      const detail = detailOf(lines[0]!);
+      expect(detail).toMatchObject({
+        outcome: kind,
+        status,
+        failedPhase: "provider",
+        mime: "audio/webm",
+        bytes: 4,
+        reportedDurationMs: 1000,
+      });
+      expect(detail).toHaveProperty("bodyFormDataMs");
+      expect(detail).toHaveProperty("providerMs");
     }
   });
 
-  test("sanitizes provider failures and rejects an overlong provider result", async () => {
-    const { audit } = auditEntries();
+  test("sanitizes provider failures and audits invalid provider results as their own terminal phase", async () => {
+    const failedAudit = auditEntries();
     const failing: Transcriber = {
       transcribe: () => Promise.reject(new Error("private provider response body")),
     };
-    const failed = await transcribePane("w1:p1", acceptedRequest(audioForm()), audit, null, "default", failing);
+    const failed = await attempt(acceptedRequest(audioForm()), failing, failedAudit.audit);
     expect(failed.status).toBe(502);
     const failedBody = await failed.text();
     expect(failedBody).toContain("transcription unavailable");
     expect(failedBody).not.toContain("private provider response body");
+    expect(failedAudit.lines).toHaveLength(1);
+    expect(failedAudit.lines[0]).not.toContain("private provider response body");
+    expect(detailOf(failedAudit.lines[0]!)).toMatchObject({
+      outcome: "unavailable",
+      status: 502,
+      failedPhase: "provider",
+    });
 
+    const resultAudit = auditEntries();
     const { transcriber } = fakeTranscriber("x".repeat(MAX_TRANSCRIPT_CHARS + 1));
-    const tooLong = await transcribePane("w1:p1", acceptedRequest(audioForm()), audit, null, "default", transcriber);
+    const tooLong = await attempt(acceptedRequest(audioForm()), transcriber, resultAudit.audit);
     expect(tooLong.status).toBe(502);
     expect(await tooLong.text()).toContain("invalid transcription result");
+    expect(resultAudit.lines).toHaveLength(1);
+    const resultDetail = detailOf(resultAudit.lines[0]!);
+    expect(resultDetail).toMatchObject({
+      outcome: "invalid",
+      status: 502,
+      failedPhase: "result",
+      mime: "audio/webm",
+      bytes: 4,
+      reportedDurationMs: 1000,
+    });
+    expect(resultDetail).toHaveProperty("providerMs");
+  });
+
+  test("audits malformed form data once with allowlisted body metadata and releases admission", async () => {
+    const { audit, lines } = auditEntries();
+    const admission = createTranscriptionAdmission();
+    let transcriberCalls = 0;
+    const malformed = {
+      headers: new Headers({ "content-type": "multipart/form-data" }),
+      signal: new AbortController().signal,
+      formData: () => Promise.reject(new Error("private malformed body")),
+    } as unknown as Request;
+
+    const response = await attempt(
+      malformed,
+      {
+        transcribe: () => {
+          transcriberCalls += 1;
+          return Promise.resolve("must not run");
+        },
+      },
+      audit,
+      admission,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "expected multipart audio" });
+    expect(transcriberCalls).toBe(0);
+    expect(lines).toHaveLength(1);
+    const detail = detailOf(lines[0]!);
+    expect(detail).toMatchObject({ outcome: "invalid", status: 400, failedPhase: "body" });
+    expect(Object.keys(detail).sort()).toEqual(
+      ["requestId", "outcome", "status", "failedPhase", "bodyFormDataMs", "serverTotalMs"].sort(),
+    );
+    expect(lines[0]).not.toContain("private malformed body");
+    expectAllSlotsFree(admission);
+  });
+
+  test("audits cancelled form data as client-aborted and releases admission", async () => {
+    const aborted = new AbortController();
+    aborted.abort();
+    const cases = [
+      // A disconnected caller can surface through the request signal before formData's rejection.
+      { signal: aborted.signal, error: new Error("private signal cancellation") },
+      // Bun's formData() cancellation shape is AbortError even when a signal has not surfaced yet.
+      { signal: new AbortController().signal, error: new DOMException("private abort", "AbortError") },
+    ];
+
+    for (const { signal, error } of cases) {
+      const { audit, lines } = auditEntries();
+      const admission = createTranscriptionAdmission();
+      let transcriberCalls = 0;
+      const request = {
+        headers: new Headers({ "content-type": "multipart/form-data" }),
+        signal,
+        formData: () => Promise.reject(error),
+      } as unknown as Request;
+
+      const response = await attempt(
+        request,
+        {
+          transcribe: () => {
+            transcriberCalls += 1;
+            return Promise.resolve("must not run");
+          },
+        },
+        audit,
+        admission,
+      );
+      // A cancellation changes only audit classification; retain the existing sanitized body response.
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ ok: false, error: "expected multipart audio" });
+      expect(transcriberCalls).toBe(0);
+      expect(lines).toHaveLength(1);
+      const detail = detailOf(lines[0]!);
+      expect(detail).toMatchObject({ outcome: "client-aborted", status: 400, failedPhase: "body" });
+      expect(Object.keys(detail).sort()).toEqual(
+        ["requestId", "outcome", "status", "failedPhase", "bodyFormDataMs", "serverTotalMs"].sort(),
+      );
+      expect(lines[0]).not.toContain("private");
+      expectAllSlotsFree(admission);
+    }
+  });
+
+  test("holds two attempts, audits a busy third without parsing it, then admits after release", async () => {
+    expect(MAX_CONCURRENT_TRANSCRIPTION_ATTEMPTS).toBe(2);
+    const admission = createTranscriptionAdmission();
+    const { audit, lines } = auditEntries();
+    let calls = 0;
+    let firstReady!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      firstReady = () => resolve();
+    });
+    let secondReady!: () => void;
+    const secondStarted = new Promise<void>((resolve) => {
+      secondReady = () => resolve();
+    });
+    let releaseFirst!: (text: string) => void;
+    let releaseSecond!: (text: string) => void;
+    const transcriber: Transcriber = {
+      transcribe: () => {
+        calls += 1;
+        if (calls === 1) {
+          firstReady();
+          return new Promise<string>((resolve) => {
+            releaseFirst = resolve;
+          });
+        }
+        if (calls === 2) {
+          secondReady();
+          return new Promise<string>((resolve) => {
+            releaseSecond = resolve;
+          });
+        }
+        return Promise.resolve("after release");
+      },
+    };
+
+    const first = attempt(acceptedRequest(audioForm()), transcriber, audit, admission);
+    await firstStarted;
+    const second = attempt(acceptedRequest(audioForm()), transcriber, audit, admission);
+    await secondStarted;
+    const busy = await attempt(acceptedRequest(audioForm()), transcriber, audit, admission);
+
+    expect(busy.status).toBe(429);
+    expect(await busy.json()).toEqual({ ok: false, error: "transcription busy" });
+    expect(calls).toBe(2);
+    const busyDetail = detailOf(lines[0]!);
+    expect(Object.keys(busyDetail).sort()).toEqual(
+      ["requestId", "outcome", "status", "failedPhase", "serverTotalMs"].sort(),
+    );
+    expect(busyDetail).toMatchObject({ outcome: "busy", status: 429, failedPhase: "request" });
+
+    releaseFirst("first complete");
+    await expect(first).resolves.toHaveProperty("status", 200);
+    const afterRelease = await attempt(acceptedRequest(audioForm()), transcriber, audit, admission);
+    expect(afterRelease.status).toBe(200);
+    expect(calls).toBe(3);
+    releaseSecond("second complete");
+    await expect(second).resolves.toHaveProperty("status", 200);
+    expect(lines).toHaveLength(4);
+  });
+
+  test("releases admission after success, malformed or aborted bodies, provider failure, and thrown setup", async () => {
+    const cases: Array<{
+      name: string;
+      request: Request;
+      transcriber: Transcriber | null;
+      beforeBody?: () => void;
+    }> = [
+      {
+        name: "success",
+        request: acceptedRequest(audioForm()),
+        transcriber: fakeTranscriber().transcriber,
+      },
+      {
+        name: "malformed body",
+        request: {
+          headers: new Headers({ "content-type": "multipart/form-data" }),
+          signal: new AbortController().signal,
+          formData: () => Promise.reject(new Error("malformed")),
+        } as unknown as Request,
+        transcriber: fakeTranscriber().transcriber,
+      },
+      {
+        name: "aborted body",
+        request: {
+          headers: new Headers({ "content-type": "multipart/form-data" }),
+          signal: new AbortController().signal,
+          formData: () => Promise.reject(new DOMException("aborted", "AbortError")),
+        } as unknown as Request,
+        transcriber: fakeTranscriber().transcriber,
+      },
+      {
+        name: "provider failure",
+        request: acceptedRequest(audioForm()),
+        transcriber: { transcribe: () => Promise.reject(new Error("provider failed")) },
+      },
+      {
+        name: "thrown setup",
+        request: acceptedRequest(audioForm()),
+        transcriber: fakeTranscriber().transcriber,
+        beforeBody: () => {
+          throw new Error("timeout setup failed");
+        },
+      },
+    ];
+
+    for (const { request, transcriber, beforeBody } of cases) {
+      const admission = createTranscriptionAdmission();
+      const { audit, lines } = auditEntries();
+      await attempt(request, transcriber, audit, admission, beforeBody);
+      expect(lines).toHaveLength(1);
+      expectAllSlotsFree(admission);
+    }
   });
 });
 

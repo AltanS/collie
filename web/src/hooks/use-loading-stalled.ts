@@ -13,8 +13,8 @@ const DEFAULT_THRESHOLD_MS = 2_500;
  *
  * Covering navigation as well as revalidation is what makes a black-holed pane-open tap give
  * feedback: the tap is a router navigation that waits on `paneLoader`, so without this the app looks
- * completely dead until the loader's own timeout fires. Feeds `isConnecting`, which gallops the
- * Collie mark — instant "we're stuck" signal on both the dashboard and the pane view.
+ * completely dead until the loader's own timeout fires. It drives only the header's generic loading
+ * animation, never a freshness or connection diagnosis.
  */
 export function useLoadingStalled(thresholdMs = DEFAULT_THRESHOLD_MS): boolean {
   const revalidator = useRevalidator();

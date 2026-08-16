@@ -68,12 +68,42 @@ describe("the guard refuses when the fresh screen isn't the tapped dialog", () =
       requestedLines: 200,
       detectedRevision: 0,
       agent: "claude",
+      canWrite: () => true,
       prompt: p,
       option: p.options[0]!,
     });
 
     expect(res).toEqual({ status: "sent" });
     expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", p.options[0]!.keys, undefined, p.signature);
+  });
+
+  it("does not write when recording starts while its fresh read is pending", async () => {
+    const p = prompt();
+    let resolveFresh!: (value: { paneId: string; text: string; truncated: boolean; revision: number }) => void;
+    mockFetchPane.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFresh = resolve;
+      }),
+    );
+    let voiceBusy = false;
+
+    const action = submitPromptOption({
+      paneId: "w1:p1",
+      requestedLines: 200,
+      detectedRevision: 0,
+      agent: "claude",
+      canWrite: () => !voiceBusy,
+      prompt: p,
+      option: p.options[0]!,
+    });
+    expect(mockFetchPane).toHaveBeenCalledTimes(1);
+
+    // The action began idle, but its fresh-read guard has not settled when recording takes ownership.
+    voiceBusy = true;
+    resolveFresh({ paneId: "w1:p1", text: permission, truncated: false, revision: 0 });
+
+    await expect(action).resolves.toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
   });
 
   it("refuses (and types nothing) when the pane belongs to an agent with no adapter", async () => {
@@ -85,6 +115,7 @@ describe("the guard refuses when the fresh screen isn't the tapped dialog", () =
       requestedLines: 200,
       detectedRevision: 0,
       agent: "codex",
+      canWrite: () => true,
       prompt: p,
       option: p.options[0]!,
     });
@@ -106,6 +137,7 @@ describe("the guard refuses when the fresh screen isn't the tapped dialog", () =
         requestedLines: 200,
         detectedRevision: 0,
         agent: "claude",
+        canWrite: () => true,
         kind: "prompt-select",
         model: p,
       },

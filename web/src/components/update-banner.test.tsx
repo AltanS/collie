@@ -62,8 +62,9 @@ function homeData(update: UpdateInfo | undefined): HomeData {
     snoozedUntil: null,
     update,
     transcriptionEnabled: false,
-    error: false,
-    authError: false,
+    snapshotStale: false,
+    snapshotAuthError: false,
+    snapshotHasLastGood: true,
   };
 }
 

@@ -1,8 +1,7 @@
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
-import { fixtureSnapshot } from "@/test/handlers";
-import { __resetConnectionHealth, lastHealthyAt } from "./connection-health";
+import { transcriptionDeadlineMs } from "./voice-policy";
 import {
   checkForUpdates,
   createTab,
@@ -243,13 +242,14 @@ describe("api client — request timeouts", () => {
   });
 });
 
-// Voice owns a distinct 90-second total deadline because its completed multipart response can stall
-// after headers. These cases stay local to the new endpoint; existing request paths retain main's
-// native timeout coverage above.
+// Voice owns a Blob-size-derived total deadline because its completed multipart response can stall
+// after headers. These cases stay local to the endpoint; existing request paths retain main's native
+// timeout coverage above.
 describe("api client — transcription deadline", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   function stallTranscriptionBody() {
@@ -284,17 +284,32 @@ describe("api client — transcription deadline", () => {
     };
   }
 
-  it("keeps the 90-second deadline through a stalled transcription body", async () => {
+  it("starts the Blob-size deadline before FormData and keeps it through a stalled JSON body", async () => {
     vi.useFakeTimers();
+    const NativeFormData = FormData;
+    const formDataConstructed = vi.fn();
+    class TrackingFormData extends NativeFormData {
+      constructor() {
+        super();
+        formDataConstructed();
+      }
+    }
+    vi.stubGlobal("FormData", TrackingFormData);
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
     const stalled = stallTranscriptionBody();
-    const pending = transcribeAudio(
-      "w1:p1",
-      new File(["x"], "recording.webm", { type: "audio/webm" }),
-      1_000,
-    ).catch((error: unknown) => error);
+    const file = new File(["x"], "recording.webm", { type: "audio/webm" });
+    const deadlineMs = transcriptionDeadlineMs(file.size);
+    const pending = transcribeAudio("w1:p1", file, 1_000).catch((error: unknown) => error);
+
+    expect(formDataConstructed).toHaveBeenCalledTimes(1);
+    const deadlineTimer = timeoutSpy.mock.calls.findIndex(([, ms]) => ms === deadlineMs);
+    expect(deadlineTimer).toBeGreaterThanOrEqual(0);
+    expect(timeoutSpy.mock.invocationCallOrder[deadlineTimer]!).toBeLessThan(
+      formDataConstructed.mock.invocationCallOrder[0]!,
+    );
 
     await stalled.bodyReadStarted;
-    await vi.advanceTimersByTimeAsync(90_000);
+    await vi.advanceTimersByTimeAsync(deadlineMs);
 
     await expect(pending).resolves.toMatchObject({ name: "TimeoutError" });
     expect(stalled.signal?.aborted).toBe(true);
@@ -350,41 +365,6 @@ describe("api client — session scoping", () => {
     await fetchPane("w1:p1", 600);
     expect(urls[0]).toBe("/api/snapshot");
     expect(urls[1]).toBe("/api/pane/w1%3Ap1?lines=600");
-  });
-});
-
-// The fetch layer is where liveness is stamped onto the shared lib/connection-health anchor (the same
-// interception point that captures X-Collie-Build). A live snapshot/pane stamps; a 200 that reports
-// the herd link down must NOT — otherwise the "Herdr is down" escalation could never fire.
-describe("api client — connection-health stamping", () => {
-  it("stamps a live moment on a healthy snapshot (bridge connected)", async () => {
-    __resetConnectionHealth(1); // pin the anchor far in the past
-    await fetchSnapshot(); // default handler → fixtureSnapshot.bridge === "connected"
-    expect(lastHealthyAt()).toBeGreaterThan(1);
-  });
-
-  it("does NOT stamp when the snapshot 200s but reports the herd link disconnected", async () => {
-    server.use(
-      http.get("/api/snapshot", () =>
-        HttpResponse.json({ ...fixtureSnapshot, bridge: "disconnected" }),
-      ),
-    );
-    __resetConnectionHealth(1);
-    await fetchSnapshot();
-    expect(lastHealthyAt()).toBe(1); // a 200 that says "Herdr down" is not a provably-live moment
-  });
-
-  it("stamps a live moment on a successful pane read", async () => {
-    __resetConnectionHealth(1);
-    await fetchPane("w1:p1"); // default handler → 200 body
-    expect(lastHealthyAt()).toBeGreaterThan(1);
-  });
-
-  it("does NOT stamp when a poll fails (the throw precedes the stamp)", async () => {
-    server.use(http.get("/api/snapshot", () => new HttpResponse("boom", { status: 502 })));
-    __resetConnectionHealth(1);
-    await expect(fetchSnapshot()).rejects.toThrow(/502/);
-    expect(lastHealthyAt()).toBe(1);
   });
 });
 

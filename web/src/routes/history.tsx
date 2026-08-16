@@ -3,6 +3,7 @@ import { useLoaderData, useNavigate, useParams, useRouteLoaderData } from "react
 import { ArrowUpToLine, ChevronDown, ChevronUp, Loader2, ScrollText, Search, X } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { FindBar } from "@/components/find-bar";
 import { TranscriptView } from "@/components/transcript-view";
@@ -48,6 +49,7 @@ export function HistoryRoute() {
   const { paneId = "" } = useParams();
   const navigate = useNavigate();
   const session = data.session;
+  const headerLoading = useLoadingStalled();
 
   const agent =
     root.agents.find((a) => a.paneId === paneId) ??
@@ -187,8 +189,8 @@ export function HistoryRoute() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppHeader
-        bridge={root.bridge}
-        error={root.error}
+        loading={headerLoading}
+        degraded={root.snapshotStale || root.bridge === "disconnected"}
         onHome={() => navigate(panePath(paneId, session))}
         override={
           findOpen ? (

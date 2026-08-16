@@ -96,6 +96,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 7,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[0]!,
     });
@@ -121,6 +122,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 3,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[0]!,
     });
@@ -141,6 +143,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 7,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[0]!,
     });
@@ -161,6 +164,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 7,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[0]!,
     });
@@ -184,6 +188,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 42,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[1]!,
     });
@@ -208,6 +213,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 0,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[1]!,
     });
@@ -231,6 +237,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 42,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[1]!,
     });
@@ -252,6 +259,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 5,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[0]!,
     });
@@ -276,6 +284,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       requestedLines: 600,
       detectedRevision: 5,
       agent: "claude",
+      canWrite: () => true,
       prompt: model,
       option: model.options[0]!,
     });
@@ -297,6 +306,7 @@ function Harness({ prompt, detectedRevision }: { prompt: PromptModel; detectedRe
       requestedLines: 600,
       detectedRevision,
       agent: "claude",
+      canWrite: () => true,
       prompt,
       option,
     });
@@ -381,6 +391,7 @@ describe("submitPromptOption — same-shaped successor prompt (H1)", () => {
       requestedLines: 600,
       detectedRevision: 0,
       agent: "claude",
+      canWrite: () => true,
       prompt: promptA,
       option: promptA.options[0]!,
     });
@@ -397,6 +408,7 @@ describe("submitPromptOption — same-shaped successor prompt (H1)", () => {
       requestedLines: 600,
       detectedRevision: 0,
       agent: "claude",
+      canWrite: () => true,
       prompt: promptA,
       option: promptA.options[0]!,
     });

@@ -2,8 +2,8 @@
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
 import { trackBusy } from "./busy";
-import { markLive } from "./connection-health";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
+import { transcriptionDeadlineMs } from "./voice-policy";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -22,13 +22,12 @@ export type { NotifyPrefs, UpdateInfo };
 /**
  * Marks every API request as XHR so a fronting identity proxy answers it with a status we can read.
  *
- * The refusal banner (components/connection-banner.tsx) is reached only through `isAuthError`
+ * The refusal banner (components/freshness-banner.tsx) is reached only through `isAuthError`
  * (lib/loaders.ts), which matches 401/403 on an {@link ApiError}. A proxy that answers an
  * unauthenticated request with a REDIRECT never produces one: `fetch` follows the 302 to the
  * identity provider's origin, that response carries no CORS headers, and the call rejects as a
- * `TypeError` — a transport failure with no status. The user then gets the connection banner
- * ("can't reach Collie") and, worse, loses the Sign-in link that would have fixed it, since a
- * missing session is precisely the thing it recovers from.
+ * `TypeError` — a transport failure with no status. The loaders can then show only a generic stale
+ * freshness state, losing the Sign-in link that a classified 401/403 would provide.
  *
  * Measured against Cloudflare Access with no session: a plain request, `Accept: application/json`
  * and `Sec-Fetch-Mode: cors` all still redirect; only this header flips the answer to a same-origin
@@ -62,16 +61,14 @@ export function isApiErrorStatus(error: unknown, status: number): boolean {
 // gates on `revalidator.state === "idle"` and never fires again, and route navigations wait on a
 // loader that never settles. On timeout the fetch aborts with a DOMException named "TimeoutError";
 // the loaders rethrow ONLY "AbortError" (a superseded revalidation), so a timeout falls into their
-// catch → stale-data-with-error, and the poller/nav can retry. Budgets by request class:
+// catch → a stale loader result, and the poller/nav can retry. Budgets by request class:
 //   - GET reads (snapshot/pane polls) are small and frequent — a short leash surfaces a dead link
-//     fast so the UI can show "reconnecting…" and retry on the next tick.
+//     fast so the loaders can retain stale data and retry on the next tick.
 const GET_TIMEOUT_MS = 10_000;
 //   - Mutations drive a real terminal on the host, which can legitimately take a beat — more slack.
 const MUTATION_TIMEOUT_MS = 20_000;
 //   - Uploads carry a whole file over the phone's uplink — the most generous budget.
 const UPLOAD_TIMEOUT_MS = 60_000;
-//   - A completed voice clip has the same uplink cost plus one bounded provider round trip.
-const TRANSCRIPTION_TIMEOUT_MS = 90_000;
 
 /**
  * Compose the caller's abort signal (a loader's `request.signal`, used to supersede a stale poll)
@@ -96,6 +93,7 @@ export function withTimeout(
 /** Keep voice's deadline and caller signal alive until its response body is consumed. */
 async function transcribeWithDeadline<T>(
   callerSignal: AbortSignal | undefined,
+  deadlineMs: number,
   request: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
@@ -112,7 +110,7 @@ async function transcribeWithDeadline<T>(
       if (!controller.signal.aborted) {
         controller.abort(new DOMException("Request timed out", "TimeoutError"));
       }
-    }, TRANSCRIPTION_TIMEOUT_MS);
+    }, deadlineMs);
   }
 
   try {
@@ -225,17 +223,8 @@ function req<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise
   return method === "GET" ? op : trackBusy(op);
 }
 
-export async function fetchSnapshot(
-  session?: string,
-  signal?: AbortSignal,
-): Promise<SnapshotResponse> {
-  const snap = await req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
-  // A snapshot whose herd link is UP is a provably-live moment — stamp the shared connection-health
-  // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
-  // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the
-  // clock, or the "Herdr is down" escalation could never surface.
-  if (snap.bridge !== "disconnected") markLive();
-  return snap;
+export function fetchSnapshot(session?: string, signal?: AbortSignal): Promise<SnapshotResponse> {
+  return req<SnapshotResponse>(withSession("/api/snapshot", session), { signal });
 }
 
 // Per-pane cache of the last ETag AND the body it belongs to, kept together on purpose. We send
@@ -283,9 +272,7 @@ export async function fetchPane(
   captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
 
   if (res.status === 304 && cached) {
-    // Unchanged — hand back the cached body (text included) so the mirror keeps its content. An
-    // unchanged poll is still a live poll: stamp the connection-health anchor (a 304 counts as live).
-    markLive();
+    // Unchanged — hand back the cached body (text included) so the mirror keeps its content.
     return { ...cached.response, notModified: true };
   }
 
@@ -305,8 +292,6 @@ export async function fetchPane(
     }
   }
 
-  // A pane body served from Herdr is provably-live data — stamp the connection-health anchor.
-  markLive();
   return data;
 }
 
@@ -520,27 +505,28 @@ export function transcribeAudio(
   session?: string,
   signal?: AbortSignal,
 ): Promise<TranscriptionResponse> {
+  const deadlineMs = transcriptionDeadlineMs(file.size);
   return trackBusy(
-    (async () => {
+    transcribeWithDeadline(signal, deadlineMs, async (deadlineSignal) => {
+      // Constructing multipart can synchronously do non-trivial Blob work, so it remains inside the
+      // total deadline along with the upload, bridge/provider work, and final JSON consumption.
       const fd = new FormData();
       fd.append("file", file);
       // The wire field is retained for bridge compatibility; its value is browser-reported lifecycle metadata.
       fd.append("duration_ms", String(reportedDurationMs));
-      return transcribeWithDeadline(signal, async (deadlineSignal) => {
-        const res = await fetch(withSession(`/api/pane/${encodeURIComponent(paneId)}/transcribe`, session), {
-          method: "POST",
-          body: fd,
-          // Do not set content-type: the browser adds the multipart boundary.
-          headers: { [XHR_HEADER]: XHR_HEADER_VALUE },
-          // Do not replay a voice recording if an identity proxy/front door redirects this POST.
-          redirect: "error",
-          signal: deadlineSignal,
-        });
-        if (!res.ok) {
-          throw new ApiError(`transcription → ${res.status} ${await errorDetail(res)}`, res.status);
-        }
-        return (await res.json()) as TranscriptionResponse;
+      const res = await fetch(withSession(`/api/pane/${encodeURIComponent(paneId)}/transcribe`, session), {
+        method: "POST",
+        body: fd,
+        // Do not set content-type: the browser adds the multipart boundary.
+        headers: { [XHR_HEADER]: XHR_HEADER_VALUE },
+        // Do not replay a voice recording if an identity proxy/front door redirects this POST.
+        redirect: "error",
+        signal: deadlineSignal,
       });
-    })(),
+      if (!res.ok) {
+        throw new ApiError(`transcription → ${res.status} ${await errorDetail(res)}`, res.status);
+      }
+      return (await res.json()) as TranscriptionResponse;
+    }),
   );
 }

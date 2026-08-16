@@ -39,12 +39,11 @@ export function HomeRoute() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
-          and the Settings gear. The switcher self-hides on a single-session install. */}
+      {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the Settings
+          gear. Freshness is owned by RootLayout; the switcher self-hides on a single-session install. */}
       <AppHeader
-        bridge={data.bridge}
-        error={data.error}
-        stalled={stalled}
+        loading={stalled}
+        degraded={data.snapshotStale || data.bridge === "disconnected"}
         wordmark
         rightLead={<SessionSwitcher sessions={data.sessions ?? []} current={data.session} />}
         rightTrail={<SettingsGear session={data.session} />}
@@ -61,6 +60,8 @@ export function HomeRoute() {
           <AgentList
             agents={data.agents}
             bridge={data.bridge}
+            snapshotStale={data.snapshotStale}
+            snapshotHasLastGood={data.snapshotHasLastGood}
             onOpen={open}
             recentDir={prefs.recentDir}
             onRecentDirChange={setRecentDir}

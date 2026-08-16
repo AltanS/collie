@@ -15,8 +15,8 @@ interface DogGallopProps {
 // The Collie mascot doubling as the app's activity indicator: a 6-frame gallop sprite
 // (public/dog-gallop.png — a 768×128 strip of six 128px cells, transparent background) stepped
 // through with a pure-CSS steps(6) animation. No JS timers, no layout thrash, GPU-cheap — the whole
-// cycle is one repainting background-position. It gallops while the app is loading/reconnecting
-// (`running`); `prefers-reduced-motion` pins it to frame 0 (see index.css). `--dog-size` drives both
+// cycle is one repainting background-position. It gallops for generic loading (`running`);
+// `prefers-reduced-motion` pins it to frame 0 (see index.css). `--dog-size` drives both
 // the box and the sprite scale, so one length keeps them in lockstep at any placement.
 //
 // NOTE: the `running={false}` rest frame is frame 0 of the gallop strip — a full-stretch mid-stride

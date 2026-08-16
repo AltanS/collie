@@ -37,6 +37,7 @@ beforeAll(() => {
 const idleVoice = (): VoiceInput => ({
   phase: "idle",
   elapsedLabel: "0:00",
+  canWrite: () => true,
   startRecording: vi.fn(),
   stopRecording: vi.fn(),
   cancel: vi.fn(),
@@ -168,12 +169,17 @@ describe("Composer — voice input", () => {
     expect(screen.getByRole("button", { name: "Quick" })).toBeDisabled();
   });
 
-  it("shows disabled progress while transcribing", () => {
+  it.each([
+    ["requesting", "Requesting microphone…", "Requesting microphone"],
+    ["finalizing", "Finishing recording…", "Finishing recording"],
+    ["processing", "Processing voice…", "Processing voice"],
+  ] as const)("shows truthful disabled progress while %s", (phase, status, controlLabel) => {
     renderComposer({
       transcriptionEnabled: true,
-      voice: { ...idleVoice(), phase: "transcribing" },
+      voice: { ...idleVoice(), phase },
     });
-    expect(screen.getByRole("button", { name: "Transcribing voice" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(status);
+    expect(screen.getByRole("button", { name: controlLabel })).toBeDisabled();
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeDisabled();
   });
 

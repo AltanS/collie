@@ -58,8 +58,9 @@ function makeData(agents: AgentView[], shellPanes: AgentView[] = []): HomeData {
     snoozedUntil: null,
     update: undefined,
     transcriptionEnabled: false,
-    error: false,
-    authError: false,
+    snapshotStale: false,
+    snapshotAuthError: false,
+    snapshotHasLastGood: true,
   };
 }
 

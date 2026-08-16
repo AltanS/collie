@@ -112,8 +112,12 @@ Product details that shaped the loop:
   configured OpenAI-compatible endpoint for final text. All dedicated transcription settings blank
   leaves this flow off; any nonblank setting opts in and an omitted model uses Collie's
   `gpt-4o-transcribe` default. There is no Web Speech API, streaming, playback, codec conversion,
-  provider registry or fallback. The transcript enters the normal editable/persisted draft; only an
-  explicit existing Send reaches Herdr.
+  provider registry or fallback. A pane-local lifecycle reports requesting, recording, finalizing,
+  and coarse processing. During non-idle voice work, it locks only current-pane terminal/draft
+  mutations; structural tab/pane controls remain available, while a context-changing navigation
+  cancels the work or suppresses late results. It never becomes global connection or reconnecting
+  state. The transcript enters the normal editable/persisted draft; only an explicit existing Send
+  reaches Herdr.
 - **Quick replies are heuristics, not guarantees.** Different agents expect different input (a Y/n
   prompt vs a numbered menu vs an approval phrase), so there is always a **"send exactly what I
   type"** fallback.
@@ -172,23 +176,39 @@ app. Closing this needs the server-side blocking-message capture described above
   work across turns you haven't scrolled to. Rationale and the measured numbers are commented at the
   top of `web/src/routes/history.tsx`.
 - **The browser polls too.** `useRevalidator` → `/api/snapshot` on an adaptive interval. There is no
-  WebSocket fan-out to the browser and no push of state; pulling is what makes the two recovery loops
-  below trivial.
-- **Two independent recovery loops, designed in from the start** (not retrofitted):
-  - *bridge ↔ Herdr*: the snapshot poll doubles as resync — a failed tick marks the herd
-    disconnected (the UI's connection bar shows "Herdr offline") and keeps retrying; the
-    `events.subscribe` stream reconnects with backoff and re-subscribes, and since it only pokes the
-    poll, a dropped stream costs latency, never correctness.
-  - *browser ↔ bridge*: polling makes reconnect trivial — failed polls surface in the connection bar
-    / offline banner, and the next successful poll heals the UI. No socket lifecycle to manage.
+  WebSocket fan-out to the browser and no push of state.
+- **Freshness is loader-owned, not a global connection inference.** `rootLoader` caches a successful
+  snapshot per session; `paneLoader` caches successful text per `(session, pane)`. Each cache is
+  updated only by its own successful response, including an intentionally empty response, and map
+  presence distinguishes a cold failure from a known-empty last-good result. Every loader run still
+  attempts its own endpoint: a root result never heals or poisons pane freshness, and vice versa.
+  A root failure is `snapshotStale`; a pane failure is `paneStale`.
+- **Auth and Herdr state have narrower authority.** A 401/403 is classified independently for the
+  affected root or pane request and its access-refused presentation takes precedence over that
+  surface's stale notice. A `bridge`/Herdr state is trusted only from a fresh root snapshot: fresh
+  `disconnected` means Herdr is unavailable, while a cached `bridge` value is never used to make a
+  current dependency claim. There is no global connection clock, outage latch, probe, or
+  reconnecting inference.
+- **Loading and voice remain local.** Generic navigation/poll loading drives generic progress
+  treatment, including the header animation; it neither diagnoses freshness nor changes cached data.
+  During non-idle voice work, the local lifecycle locks only current-pane terminal/draft mutations;
+  structural tab/pane controls remain available, and context-changing navigation cancels the work or
+  suppresses late results. Recording or completion cannot alter root/pane freshness.
+- **Bridge ↔ Herdr resync remains separate.** The bridge snapshot poll keeps retrying and the
+  `events.subscribe` stream reconnects with backoff and re-subscribes; because events only poke the
+  poll, a dropped stream costs latency, not correctness. Browser revalidation likewise retries its
+  own reads without maintaining a client-side connection state.
 - **Polling moots per-client backpressure.** A push design would need `bufferedAmount` watching so a
   slow phone couldn't OOM the bridge. Each client instead fetches a bounded snapshot at its own pace,
   so there is nothing to buffer or coalesce.
 - **Render `pane.read` safely** (see §6): strip ANSI **server-side** to plain text and render it as
   React text nodes; never `innerHTML` raw terminal output.
-- **PWA cache-busting.** Service workers serve stale clients after an update, so the build stamp
-  travels in every response (`X-Collie-Build` header + `/api/config`); on mismatch the footer offers
-  "new build — tap to update."
+- **PWA cache-busting and voice skew.** Service workers serve stale clients after an update, so the
+  build stamp travels in every response (`X-Collie-Build` header + `/api/config`); on mismatch the
+  footer offers "new build — tap to update." The completed-file voice multipart format remains stable
+  across old-web/new-bridge and new-web/old-bridge pairs, but the complete 8 MiB / 256 kb/s behaviour
+  requires a matched current PWA bundle/service worker and bridge. API traffic remains network-only;
+  `/api/` receives no service-worker cache or route change.
 
 ## 6. Security model
 
@@ -239,10 +259,18 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
 Also shipped, as defence in depth:
 
 - **Audit log** — every write-level action appends a JSONL line (timestamp, method, truncated params)
-  to `<stateDir>/audit.log`, mode 0600 since it may echo reply text. Voice transcription records only
-  MIME, bytes, browser-reported lifecycle duration (`reportedDurationMs`) and outcome (`ok`, `invalid`,
-  `timeout`, `client-aborted`, or `unavailable`) — never audio, filename, transcript or provider body.
-  An audit failure never fails the user's action (`bridge/audit.ts`).
+  to `<stateDir>/audit.log`, mode 0600 since it may echo reply text. Voice has a narrower terminal
+  boundary: after the write gate, session lookup, and known-pane check, every request that reaches the
+  transcription handler — including a capacity refusal — records exactly one metadata-only
+  `transcribe` entry. Its random request id, constructed HTTP status, outcome (`ok`, `busy`,
+  `invalid`, `timeout`, `client-aborted`, or `unavailable`), optional failed phase, and timing fields
+  never include audio, filename, transcript, headers, form fields, provider bodies, or provider errors.
+  Validated MIME, bytes, and browser-reported lifecycle duration (`reportedDurationMs`) appear only
+  after validation. `bodyFormDataMs` is handler-entry through `formData()` settlement (receive plus
+  parse, not browser upload time); `providerMs` exists only after a provider invocation; and
+  `serverTotalMs` ends when the response is constructed, not when the browser receives it. A runtime
+  body-cap rejection or connection termination before the handler can therefore have no terminal
+  transcription audit. An audit failure never fails the user's action (`bridge/audit.ts`).
 - **Destructive-action confirm** — a browser-side prompt when input pattern-matches `rm`, `sudo`,
   `git push --force`, `dd`, etc. (`web/src/lib/destructive.ts`). Prevents catastrophic mistaps.
 
@@ -254,22 +282,33 @@ Considered, not built:
   where that friction would have to live: the lock is a pause on an unattended screen and deliberately
   gates nothing ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
 
+### Voice transcription boundary
+
 Collie does not intentionally persist or log voice audio or provider bodies: no `Bun.write`, uploads
 folder, reuse, backup, playback, or request/audit body. The bridge also does not persist or log
 transcripts; a successful transcript enters the browser's ordinary editable `localStorage` draft,
 removed on Send or pruned lazily after 48 hours. These are Collie-owned guarantees: browser, Bun, OS,
 and proxy buffering remain outside them. The configured provider receives the audio, and its retention
-or logging is controlled by that provider's policy, not Collie. The client stops at five minutes and
-bounds the complete browser-to-bridge request, including its body, to 90 seconds; browser Fetch
-refuses a front-door redirect before it can replay the multipart recording. The bridge enforces an 8
-MiB file cap plus the 12 MiB global body cap, validates MIME and browser-reported lifecycle duration
-metadata (not parsed media duration) before the outbound call, and applies a 60-second bridge-to-provider
-deadline through response-body consumption with zero retries. Its SDK fetch boundary independently
-refuses bridge-to-provider redirects and caps decoded **provider** success and error response bodies at
-256 KiB; returned text is bounded to 8192 characters. Bun labels `.webm`/`.mp4` multipart parts as
-`video/*` even when MediaRecorder supplied `audio/*`, so the bridge accepts those container aliases and
-canonicalises them to `audio/webm`/`audio/mp4` for the upstream; no codec inspection or conversion is
-added.
+or logging is controlled by that provider's policy, not Collie.
+
+The completed Blob has a known size, so the browser owns one total wall-clock budget:
+`ceil((B + 65,536) × 8 × 1000 / 256,000) + 60,000 + 20,000` ms for a valid `B` up to 8 MiB. It starts
+before multipart construction and includes upload, bridge work, provider work, and response-body
+consumption. The 8 MiB maximum gives 264,192 ms for upload and 344,192 ms total; it supports a
+sustained, progressing 256 kb/s effective uplink, not a slower path or a long interruption. This total
+browser deadline is distinct from Bun's configured 90-second nominal per-request **idle** allowance,
+set before `req.formData()`. Bun's runtime granularity is coarse, so that setting is neither an exact
+90-second cutoff nor a whole-request maximum. The provider has its own independent 60-second deadline
+through response-body consumption.
+
+The bridge enforces an 8 MiB file cap plus a 12 MiB global runtime body cap, validates MIME and
+browser-reported lifecycle duration metadata (not parsed media duration) before the outbound call, and
+admits at most two known-pane voice attempts that pass the write gate per bridge process. A third
+receives a sanitized 429 with no browser retry. Browser and provider Fetch both refuse redirects; the
+provider SDK has zero retries, caps decoded **provider** success and error response bodies at 256 KiB, and
+bounds returned text to 8192 characters. Bun labels `.webm`/`.mp4` multipart parts as `video/*` even
+when MediaRecorder supplied `audio/*`, so the bridge accepts those container aliases and canonicalises
+them to `audio/webm`/`audio/mp4` for the upstream; no codec inspection or conversion is added.
 
 Full passthrough (no command allow-list) is acceptable for a personal tool — an allow-list would
 defeat the purpose. **Never use `tailscale funnel`** (public exposure).
