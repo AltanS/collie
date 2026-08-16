@@ -18,7 +18,8 @@ ships none of its own.
 - **A dashboard ranked by who needs you**, not by what changed last
 - **Push notifications** the moment an agent is waiting on you
 - **Special-keys pad** — `Esc`, `Ctrl+C`, arrows, combinable modifiers
-- **Slash-command palette** per agent — tap, don't type
+- **Slash-command palette** per agent — tap, don't type (or make it your own shortcuts, including
+  plugin/custom commands, with `COLLIE_COMMANDS` — see [`.env.example`](./.env.example))
 
 - **Send an image** from your camera roll
 - **Find in output** — search a pane, don't eyeball it

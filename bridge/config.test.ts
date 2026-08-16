@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSocketPath, loadConfig } from "./config.ts";
+import { defaultSocketPath, loadConfig, parseOperatorCommands } from "./config.ts";
 
 // loadConfig is the deployment contract — env vars in, a resolved Config out. Pure (just reads
 // process.env + homedir), so we drive it by mutating the environment and restoring it after.
@@ -39,6 +39,7 @@ const KEYS = [
   "HERDR_SOCKET_PATH",
   "HERDR_PLUGIN_STATE_DIR",
   "COLLIE_HERDR_DIAL",
+  "COLLIE_COMMANDS",
 ];
 
 let saved: Record<string, string | undefined>;
@@ -300,5 +301,96 @@ describe("defaultSocketPath", () => {
     expect(defaultSocketPath("win32", {}, "C:\\Users\\u")).toBe(
       join("C:\\Users\\u", "AppData", "Roaming", "herdr", "herdr.sock"),
     );
+  });
+});
+
+// The palette's escape hatch: an operator-declared row for a command the shipped catalog cannot
+// vouch for (a plugin's, or their own). Pure, so it is driven directly rather than through env.
+describe("parseOperatorCommands", () => {
+  test("unset or blank yields nothing", () => {
+    expect(parseOperatorCommands(undefined)).toEqual([]);
+    expect(parseOperatorCommands("")).toEqual([]);
+    expect(parseOperatorCommands(" , ,")).toEqual([]);
+  });
+
+  test("scopes a row to one agent and keeps its description", () => {
+    expect(parseOperatorCommands("omp:/fork-in-herdr=Fork into a new herdr tab")).toEqual([
+      {
+        agent: "omp",
+        command: "/fork-in-herdr",
+        description: "Fork into a new herdr tab",
+        takesArg: false,
+        argHint: "",
+      },
+    ]);
+  });
+
+  test("an unscoped row carries no agent, so every pane gets it", () => {
+    const rows = parseOperatorCommands("/deploy");
+    expect(rows).toEqual([
+      { command: "/deploy", description: "Custom command", takesArg: false, argHint: "" },
+    ]);
+    expect("agent" in rows[0]!).toBe(false);
+  });
+
+  test("a hint after the command marks the row arg-taking", () => {
+    expect(parseOperatorCommands("claude:/model <name>=Switch model")).toEqual([
+      {
+        agent: "claude",
+        command: "/model",
+        description: "Switch model",
+        takesArg: true,
+        argHint: "<name>",
+      },
+    ]);
+  });
+
+  test("splits on commas, trims fields, and lowercases the agent", () => {
+    expect(parseOperatorCommands(" OMP:/a=One , codex:/b=Two ").map((c) => [c.agent, c.command, c.description])).toEqual([
+      ["omp", "/a", "One"],
+      ["codex", "/b", "Two"],
+    ]);
+  });
+
+  test("a colon AFTER the slash belongs to the command, not to a scope", () => {
+    const rows = parseOperatorCommands("/skill:review=Run the review skill");
+    expect(rows[0]!.agent).toBeUndefined();
+    expect(rows[0]!.command).toBe("/skill:review");
+  });
+
+  test("drops entries that are not slash commands", () => {
+    expect(parseOperatorCommands("fork-in-herdr,omp:,/,omp:/ok")).toEqual([
+      { agent: "omp", command: "/ok", description: "Custom command", takesArg: false, argHint: "" },
+    ]);
+  });
+
+  test("a redefinition wins, in place, without disturbing another scope", () => {
+    expect(
+      parseOperatorCommands("omp:/x=first,codex:/x=other,omp:/x=second").map((c) => [
+        c.agent,
+        c.description,
+      ]),
+    ).toEqual([
+      ["omp", "second"],
+      ["codex", "other"],
+    ]);
+  });
+
+  test("an empty scope is rejected, never widened to every agent", () => {
+    // ":/wipe" is someone reaching for a narrower rule than they typed. Dropping the empty prefix
+    // would hand them a row on every pane — the one outcome they were not asking for.
+    expect(parseOperatorCommands(":/wipe=Wipe")).toEqual([]);
+    expect(parseOperatorCommands("  :/wipe")).toEqual([]);
+  });
+
+  test("the FIRST = starts the description, so a hint cannot contain one", () => {
+    // A documented cost of the grammar, pinned so it cannot drift into a silent change of meaning:
+    // everything after that first `=` is description, `=` included.
+    expect(parseOperatorCommands("omp:/deploy <env>=Ship to a=b")).toMatchObject([
+      { command: "/deploy", argHint: "<env>", description: "Ship to a=b", takesArg: true },
+    ]);
+    expect(parseOperatorCommands("omp:/set [key=value]=Set a key")).toMatchObject([
+      { command: "/set", argHint: "[key", description: "value]=Set a key" },
+    ]);
   });
 });
