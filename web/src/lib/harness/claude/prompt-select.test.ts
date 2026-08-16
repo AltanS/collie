@@ -6,6 +6,7 @@ import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectPromptSelect, detectPromptSelectRegion, type PromptFamily } from "./prompt-select";
 import { lineText } from "./markers";
+import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
 // rewrites into a root-relative asset path) so the fixtures resolve regardless of the run cwd.
@@ -92,6 +93,145 @@ describe("detectPromptSelect — the five blocked-state fixtures", () => {
       "No, refine with Ultraplan on Claude Code on the web",
     ]);
     expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+  });
+});
+
+describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in all four states", () => {
+  // That row is not an option. It is an inline text input, and "Tell Claude what to change" is its
+  // PLACEHOLDER — which is all `isFreeTextLabel` ever matched. The placeholder only holds while the
+  // box is empty; type into it and the label becomes the user's own words. Its
+  // `shift+tab to approve with this feedback` sub-line comes from a static description field and
+  // survives both states, so the DESCRIPTION is what identifies the row.
+  //
+  // It is never a button. What the model carries instead is the row's two variables — is it FOCUSED
+  // (the terminal then swallows every digit as a character, so no button on the dialog can fire) and
+  // what TEXT is in it (non-empty means Collie must not type: the caret resets to position 0 on
+  // re-entry, so our words would be prepended to someone else's sentence).
+  //
+  // The four states were walked a keystroke at a time on Claude Code 2.1.228 and again on 2.1.233;
+  // PLAN_FEEDBACK_NOTES.md is the ground truth.
+
+  it("state 1 — box empty, pointer elsewhere: the answers are buttons, the row is an offer", () => {
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval.txt"));
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    expect(model!.feedback).toEqual({ key: "4", focused: false, text: "" });
+  });
+
+  it("state 2 — box empty, FOCUSED: same rows, but every digit would be typed as text", () => {
+    // Measured: from here `send_keys ["3"]` leaves the plan unapproved and rewrites the row as
+    // `❯ 4. 3`. The three answer rows still parse as an ordinary menu, so nothing in the shape of the
+    // screen distinguishes them from working buttons — `focused` is the only signal, and the renderer
+    // and lib/prompt-action.ts both refuse on it.
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--feedback-focused.txt"));
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    expect(model!.feedback).toEqual({ key: "4", focused: true, text: "" });
+  });
+
+  it("state 3 — text typed, pointer arrowed OFF: the row is not up-levelled into a button", () => {
+    // Reachable as `4`, type, `Up`; the text persists while the pointer sits elsewhere, so it is not
+    // transient. Upstream 0.28.0 returned FOUR options here, the fourth being
+    // { label: "use a guard clause instead", keys: ["4"] } — a live button on the phone carrying
+    // whatever half-written sentence the desktop user had left in the box.
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--feedback-typed.txt"));
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "Yes, clear context (4% used) and use auto mode",
+      "Yes, and use auto mode",
+      "Yes, manually approve edits",
+    ]);
+    expect(model!.feedback).toEqual({
+      key: "4",
+      focused: false,
+      text: "use a guard clause instead",
+    });
+  });
+
+  it("the row's DIGIT is install-dependent — nothing may assume a fixed number", () => {
+    // Same dialog on an install with `showClearContextOnPlanAccept` OFF: three rows, and the input is
+    // row 3. Captured live on 2.1.233. A grammar that hard-coded `4` would offer the feedback flow the
+    // wrong key here and type a stray digit into a plan approval.
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--three-row.txt"));
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "Yes, and use auto mode",
+      "Yes, manually approve edits",
+    ]);
+    expect(model!.feedback).toEqual({ key: "3", focused: false, text: "" });
+  });
+
+  it("state 4 — text typed AND focused: the row is dropped and every button is dead", () => {
+    const model = detectPromptSelect(
+      fixtureLines("claude--plan-approval--three-row-typed-focused.txt"),
+    );
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    expect(model!.feedback).toEqual({
+      key: "3",
+      focused: true,
+      text: "use a guard clause instead",
+    });
+  });
+
+  it("a long value WRAPS onto continuation lines, and the row is rejoined from them", () => {
+    // The row is not a scrolling window — Claude re-flows the whole value across as many lines as it
+    // needs. Two things follow, both of which this capture pins. The value has to be rebuilt from the
+    // label plus the lines above the hint; and those lines push the footer away from the options, so
+    // MAX_FOOTER_GAP has to make room for them or the dialog stops parsing altogether (it did, before
+    // this was understood: a 355-character value dropped the whole thing to the raw mirror).
+    const model = detectPromptSelect(fixtureLines("claude--plan-approval--feedback-wrapped.txt"));
+    expect(model).not.toBeNull();
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "Yes, and use auto mode",
+      "Yes, manually approve edits",
+    ]);
+    expect(model!.feedback!.text).toBe(
+      "Keep the nested structure instead of a guard clause, but extract each condition into a small " +
+        "named predicate so the intent reads at the call site, and leave the exported name unchanged.",
+    );
+    // …and the wrapped row is still not an option, which is the whole hazard: its label alone is the
+    // user's own words, and a wrapped block no longer starts with the hint the marker looks for.
+    expect(model!.options.map((o) => o.label)).not.toContain(model!.feedback!.text);
+  });
+
+  it("a dialog with no such row carries no feedback at all", () => {
+    const model = detectPromptSelect(fixtureLines("claude--permission-edit.txt"));
+    expect(model!.feedback).toBeUndefined();
+  });
+
+  it("AskUserQuestion's free-text row is DROPPED but never modelled", () => {
+    // "Type something." is a free-text row too, and it has always been dropped — but nothing about
+    // its focus or typed-in behaviour has been measured, and it carries no static description
+    // sub-line to identify it once typed into. Modelling it would hand the plan flow's copy ("Sends
+    // the plan back…") and its keystroke plan to a dialog where Enter means something else. Only the
+    // plan row's verified marker earns a model.
+    const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"))!;
+    expect(model.family).toBe("select");
+    expect(model.options.map((o) => o.label)).not.toContain("Type something.");
+    expect(model.feedback).toBeUndefined();
+  });
+
+  it("coreSignature survives the flow's OWN first keystroke, where signature must not", () => {
+    // The two three-row captures are the same live dialog one keystroke apart: `--three-row` was
+    // taken, `3` was sent, `--three-row-focused` was taken. The ONLY difference on screen is where the
+    // `❯` sits. That is the exact transition the feedback flow's first poll has to accept, so
+    // `coreSignature` (pointer-normalised) must match across it — while `signature` moves, which is
+    // what keeps a COMMITTING digit checked against the screen the user actually looked at.
+    const before = detectPromptSelect(fixtureLines("claude--plan-approval--three-row.txt"))!;
+    const after = detectPromptSelect(fixtureLines("claude--plan-approval--three-row-focused.txt"))!;
+    // Anchored at the QUESTION, deliberately: typing grows the dialog, the terminal re-flows to fit,
+    // and the plan body ABOVE comes back laid out differently — so a window reaching up into it moves
+    // under the flow's own keystrokes. Measured live; the entry guard's full `signature` still covers
+    // the subject.
+    expect(before.coreSignature.trimStart().startsWith(before.question)).toBe(true);
+    expect(before.feedback!.focused).toBe(false);
+    expect(after.feedback!.focused).toBe(true);
+    expect(after.signature).not.toBe(before.signature);
+    expect(after.coreSignature).toBe(before.coreSignature);
+    expect(promptsSameIdentity(after, before)).toBe(true);
+    expect(promptsEqual(after, before)).toBe(false); // focus alone re-routes every digit
+
+    // A genuinely different plan dialog still breaks the core identity — the property that stops a
+    // mid-flight keystroke from landing on a same-shaped successor.
+    const other = detectPromptSelect(fixtureLines("claude--plan-approval.txt"))!;
+    expect(promptsSameIdentity(other, before)).toBe(false);
+    expect(other.coreSignature).not.toBe(before.coreSignature);
   });
 });
 
