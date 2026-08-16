@@ -643,6 +643,76 @@ describe("Composer — typing into the terminal", () => {
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   });
 
+  // The disarm above is invisible while the page is hidden — lib/status.ts expires a non-error in
+  // 2.5s, so a message published on the way out is gone before anyone can read it. Coming back to a
+  // focused field with the mode silently off is how keystrokes meant for the terminal end up in the
+  // reply draft instead, so the message has to wait for the return trip.
+  it("says the mode stopped once the page comes back", async () => {
+    renderComposerWithStatus();
+    startDirectTyping();
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+    expect(screen.getByTestId("status")).not.toHaveTextContent(/backgrounded/i);
+
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/stopped typing into the terminal/i),
+    );
+  });
+
+  // The notice above expires; a focused field does not. Handing the composer back with the keyboard
+  // still up is what turns "the mode stopped" into keystrokes buffered as a reply, so the disarm
+  // puts the keyboard away — same as the blur on a failed batch.
+  it("puts the keyboard away when the page is hidden, rather than leaving the field primed", async () => {
+    renderComposerWithStatus();
+    const box = startDirectTyping();
+    box.focus();
+    expect(document.activeElement).toBe(box);
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(document.activeElement).not.toBe(box));
+    expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull();
+
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/stopped typing into the terminal/i),
+    );
+    // Still not focused on the way back: the reply field must be entered on purpose.
+    expect(document.activeElement).not.toBe(box);
+  });
+
+  // The blur above is deferred, so it can arrive after the field has changed hands. Re-arming is
+  // the ordinary way that happens: you come back, tap Type again, and an old disarm's timer must
+  // not reach into the session that replaced it and drop the keyboard you just asked for.
+  it("does not blur a re-armed session with the disarm it already superseded", () => {
+    renderComposerWithStatus();
+    const box = startDirectTyping();
+    const blurred = vi.spyOn(box, "blur");
+
+    // Fake timers only for the race itself: the deferred blur must be held, not waited out.
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      fireEvent(document, new Event("visibilitychange")); // schedules the blur
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      fireEvent(document, new Event("visibilitychange"));
+      fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i })); // re-arm
+      act(() => vi.runOnlyPendingTimers());
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(blurred).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+  });
+
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
     const keyCalls: string[][] = [];
     let replyCalls = 0;
