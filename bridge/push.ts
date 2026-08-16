@@ -4,10 +4,68 @@ import type { Config } from "./config.ts";
 
 // Optional Web Push (VAPID). Zero hard dependency: if `web-push` isn't installed or VAPID keys
 // aren't configured, push is silently disabled and the rest of the bridge works unchanged.
-// Subscriptions are persisted to the state dir so they survive restarts.
+// Subscriptions are persisted to the state dir so they survive restarts, and there are exactly three
+// ways a row leaves that file: the push service disowns it mid-send (404/410, or EVICT_AFTER
+// same-origin-witnessed failures — see broadcast()), the device that owns it registers a successor
+// (SubscriptionMeta.replaces), or an operator drops it by hand (`collie push forget`). The first
+// alone is not enough, which is issue #104: a subscription orphaned by a service-worker
+// re-registration was never `unsubscribe()`d, so the push service has no reason to reject it and it
+// accumulates forever, answering 201 to nobody. Hence the other two.
 
 type WebPushModule = typeof import("web-push");
 export type PushSubscription = { endpoint: string; keys: { p256dh: string; auth: string } };
+
+/**
+ * A persisted row: the subscription web-push needs, plus metadata that exists only so an OPERATOR
+ * can tell two rows apart. Both fields are optional in every direction — a file written before they
+ * existed loads unchanged, and a row that never learned a user agent simply hasn't got one.
+ *
+ * They are deliberately NOT part of {@link PushSubscription}: what reaches `sendNotification` is
+ * rebuilt as `{ endpoint, keys }`, because web-push signs and serialises what it is handed and an
+ * extra field there is a wire change nobody asked for.
+ */
+export interface StoredSubscription extends PushSubscription {
+  /** When this endpoint was FIRST seen. Preserved across a re-subscribe of the same endpoint —
+   *  "since when has this device been subscribed" is the question it answers, not "when last". */
+  createdAt?: string;
+  /** The `User-Agent` of the request that registered it, trimmed and capped. The only thing that
+   *  tells "my iPhone" from "the Mac I used once" in a list of opaque Apple endpoints. */
+  userAgent?: string;
+}
+
+/** What a registration knows about itself beyond the subscription — see {@link Push.addSubscription}. */
+export interface SubscriptionMeta {
+  /**
+   * An endpoint this registration SUPERSEDES: the one the same device last registered with. A
+   * service worker re-registration (a reinstall, a rejected push topic, a restart-triggered
+   * re-subscribe) mints a brand-new endpoint without `unsubscribe()`ing the old one, so the push
+   * service keeps answering 201 for a row nothing will ever read — invisible to the send-time
+   * 404/410 prune, and the whole of issue #104. The device is the only party that knows the two are
+   * the same device, so it is the device that says so.
+   */
+  replaces?: string;
+  userAgent?: string;
+}
+
+/** Longer than this and a user agent is padding a terminal column, not identifying a device. */
+const USER_AGENT_MAX = 160;
+
+/** One row off disk. Anything that isn't a usable subscription is dropped; the two metadata fields
+ *  are carried only when they are strings, so a file written before they existed loads unchanged. */
+function coerceStored(v: unknown): StoredSubscription | null {
+  if (typeof v !== "object" || v === null) return null;
+  const o = v as Record<string, unknown>;
+  const keys = o.keys as Record<string, unknown> | undefined;
+  if (typeof o.endpoint !== "string" || typeof keys !== "object" || keys === null) return null;
+  if (typeof keys.p256dh !== "string" || typeof keys.auth !== "string") return null;
+  const row: StoredSubscription = {
+    endpoint: o.endpoint,
+    keys: { p256dh: keys.p256dh, auth: keys.auth },
+  };
+  if (typeof o.createdAt === "string") row.createdAt = o.createdAt;
+  if (typeof o.userAgent === "string") row.userAgent = o.userAgent.slice(0, USER_AGENT_MAX);
+  return row;
+}
 
 // Delivery options passed to web-push on every send. Without them a message gets web-push's 4-week
 // default TTL and NO collapse key, so an offline device replays every queued herd update on reconnect.
@@ -124,7 +182,7 @@ export interface PushMessage {
 
 export class Push {
   private lib: WebPushModule | null = null;
-  private subs = new Map<string, PushSubscription>();
+  private subs = new Map<string, StoredSubscription>();
   private readonly file: string;
   private readonly sender: PushSender;
   private _enabled = false;
@@ -167,17 +225,64 @@ export class Push {
     }
     this.lib.setVapidDetails(this.cfg.vapidSubject, this.cfg.vapidPublic, this.cfg.vapidPrivate);
     this._enabled = true;
-    await this.load();
+    await this.loadStore();
     console.log(`[push] enabled (${this.subs.size} saved subscription(s))`);
   }
 
-  async addSubscription(sub: PushSubscription): Promise<void> {
+  async addSubscription(sub: PushSubscription, meta: SubscriptionMeta = {}): Promise<void> {
     if (!this.enabled) return;
-    this.subs.set(sub.endpoint, sub);
+    // The row this one supersedes (SubscriptionMeta.replaces). Dropped BEFORE the new one is stored,
+    // and only when it is a different endpoint — a device re-registering the endpoint it already
+    // holds is naming itself, not a predecessor.
+    if (meta.replaces !== undefined && meta.replaces !== sub.endpoint) {
+      if (this.subs.delete(meta.replaces)) {
+        console.log(`[push] replaced superseded subscription: ${meta.replaces}`);
+      }
+      this.failures.delete(meta.replaces);
+    }
+    const previous = this.subs.get(sub.endpoint);
+    const userAgent = meta.userAgent?.trim().slice(0, USER_AGENT_MAX) ?? previous?.userAgent;
+    const row: StoredSubscription = { endpoint: sub.endpoint, keys: sub.keys };
+    // Re-subscribing does not restart the clock: `createdAt` is when this endpoint first appeared.
+    row.createdAt = previous?.createdAt ?? new Date().toISOString();
+    if (userAgent !== undefined && userAgent !== "") row.userAgent = userAgent;
+    this.subs.set(sub.endpoint, row);
     // A re-subscribe is fresh evidence even when the endpoint string is unchanged — the device just
     // told us it wants pushes, so it doesn't inherit the failure history of its predecessor.
     this.failures.delete(sub.endpoint);
     await this.save();
+  }
+
+  /**
+   * The persisted rows, for the operator-facing `collie push list`. Read-only and metadata-only:
+   * the keys are a sending credential and have no business on a terminal.
+   */
+  listSubscriptions(): ReadonlyArray<{ endpoint: string; createdAt?: string; userAgent?: string }> {
+    return [...this.subs.values()].map(({ endpoint, createdAt, userAgent }) => {
+      const row: { endpoint: string; createdAt?: string; userAgent?: string } = { endpoint };
+      if (createdAt !== undefined) row.createdAt = createdAt;
+      if (userAgent !== undefined) row.userAgent = userAgent;
+      return row;
+    });
+  }
+
+  /**
+   * Drop every row whose endpoint CONTAINS `match` (or all of them for `"*"`), and persist. Returns
+   * how many went. This is the hand-operated counterpart to the automatic prune in {@link broadcast}
+   * — which can only ever catch an endpoint the push service has disowned, and an orphan the device
+   * never `unsubscribe()`d is not one (issue #104).
+   *
+   * Nothing matched means nothing is written: asking the question must not create the file.
+   */
+  async forget(match: string): Promise<number> {
+    const doomed = [...this.subs.keys()].filter((e) => match === "*" || e.includes(match));
+    if (doomed.length === 0) return 0;
+    for (const endpoint of doomed) {
+      this.subs.delete(endpoint);
+      this.failures.delete(endpoint);
+    }
+    await this.save();
+    return doomed.length;
   }
 
   /** Send a notification instruction (render, clear, or update) to every subscribed device. */
@@ -209,7 +314,9 @@ export class Push {
     const results = await Promise.all(
       [...this.subs.values()].map(async (sub) => {
         try {
-          await this.sender(sub, payload, options);
+          // `{ endpoint, keys }` and nothing else: the stored row also carries operator metadata,
+          // and web-push serialises what it is handed.
+          await this.sender({ endpoint: sub.endpoint, keys: sub.keys }, payload, options);
           return { sub, err: null };
         } catch (err) {
           return { sub, err };
@@ -268,10 +375,21 @@ export class Push {
     }
   }
 
-  private async load(): Promise<void> {
+  /**
+   * Read the persisted file into memory. `init()` calls this once push is known to be live; the CLI
+   * calls it DIRECTLY, without VAPID, because `collie push list` / `push forget` are precisely what
+   * an operator runs when push is off or misconfigured — the store is a file, not a capability.
+   *
+   * This and {@link save} are the only reader and the only writer of `push-subscriptions.json`.
+   */
+  async loadStore(): Promise<void> {
     try {
-      const raw = await Bun.file(this.file).json();
-      if (Array.isArray(raw)) for (const s of raw as PushSubscription[]) this.subs.set(s.endpoint, s);
+      const raw: unknown = await Bun.file(this.file).json();
+      if (!Array.isArray(raw)) return;
+      for (const item of raw) {
+        const row = coerceStored(item);
+        if (row !== null) this.subs.set(row.endpoint, row);
+      }
     } catch {
       /* no saved subs yet */
     }
