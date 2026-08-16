@@ -221,6 +221,77 @@ describe("sendGuardedReply", () => {
     expect(calls).toEqual([]);
   });
 
+  // #103. The refusal is the same refusal — what changes is that the caller is told WHICH screen it
+  // refused at, because at a password prompt "a menu or dialog is probably up" sends the operator
+  // looking for a dialog to answer and waiting for an echo that is never coming.
+  it("#103: names the password prompt it refused at, and still types nothing", async () => {
+    const calls = harness(() => "$ sudo systemctl restart collie\n[sudo] password for altan:");
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "hunter2hunter2",
+      agent: "claude",
+      ...instant,
+    });
+
+    expect(out).toMatchObject({
+      status: "blocked",
+      error: expect.stringMatching(/password prompt/i),
+      noEcho: "[sudo] password for altan:",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("#103: a stall at a password prompt says the text is already in the pane", async () => {
+    // The path a `force` takes: the pre-flight was overridden, so the secret IS typed, and then the
+    // verification can never succeed because the prompt shows nothing. The caller must hear that a
+    // re-send types a SECOND copy rather than recovering a lost one.
+    const calls = harness(() => "[sudo] password for altan:");
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "hunter2hunter2",
+      agent: "claude",
+      force: true,
+      ...instant,
+    });
+
+    expect(out).toMatchObject({
+      status: "stalled",
+      noEcho: "[sudo] password for altan:",
+      error: expect.stringMatching(/already in the pane/i),
+    });
+    // Still no submit key — the guard's own contract is untouched by any of this.
+    expect(calls).toEqual([{ text: "hunter2hunter2", submit: false }]);
+  });
+
+  it("#103: a stall on a screen the adapter still recognises is NOT called a password prompt", async () => {
+    // The dangerous false positive: an agent whose last printed line happens to read "Enter
+    // passphrase:" while its own input box is right there. The stall is then an ordinary one, and
+    // calling it no-echo would have the UI advise pressing Enter — the #34 keystroke.
+    harness(() => "[sudo] password for altan:");
+    const real = registry.adapterFor("claude")!;
+    // An adapter that says "my composer is right there" about the very screen the detector would
+    // otherwise claim. Its draft never carries the send, so the send still stalls — the question this
+    // pins is only whether the stall gets NAMED a password prompt. It must not be.
+    const spy = vi.spyOn(registry, "adapterFor").mockReturnValue({
+      ...real,
+      composerReady: () => true,
+      extractInputDraft: () => null,
+    });
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do the thing",
+      agent: "claude",
+      ...instant,
+    });
+
+    expect(out.status).toBe("stalled");
+    expect(out).not.toHaveProperty("noEcho");
+    spy.mockRestore();
+  }, 15000);
+
   it("#34: force overrides the pre-flight's refusal but still never sends the submit key blind", async () => {
     const calls = harness(() => paneWithDialog);
 

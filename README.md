@@ -968,6 +968,19 @@ through an origin the bridge doesn't expect — a custom domain, or a proxy that
 Allow the exact public origin with `COLLIE_ALLOWED_ORIGINS` (see [Configure](#configure)), or make
 the proxy forward `Host` unchanged (Variant B, rule 4).
 
+**A `sudo` (or SSH passphrase, or `gpg`) prompt won't take your reply.** Use **Type** in the
+Controls row, not Send. Send *verifies* what it typed before it presses Enter — it reads the text
+back off the screen, which is what stops a reply being swallowed by a dialog and its Enter answering
+that dialog ([#34](https://github.com/AltanS/collie/issues/34)). A password prompt turns echo off, so
+there is nothing to read back, and no amount of retrying will change that. **Type** sends your
+keystrokes straight to the pane with no verification at all — Enter included — which is exactly what
+this prompt needs. Collie now recognises the common prompts and offers the handoff on the spot — and
+the moment it recognises one it **drops the stored draft and stops storing what you type**, because a
+composer draft is otherwise kept on the phone for 48 hours and a password has no business sitting
+there. (Recognition is English-only and deliberately conservative; an unrecognised prompt just gets
+the older, vaguer refusal — use **Type** there too.) Nothing you
+type in **Type** is stored, echoed into a draft, or restored later. ([#103](https://github.com/AltanS/collie/issues/103))
+
 **Collie is gone after a reboot.** A `systemd --user` unit only runs while you have a session — on a
 headless host enable lingering once (`loginctl enable-linger $USER`) and the `collie` unit (already
 `enable`d) starts at boot with your user manager. The `tailscale serve` mapping persists on its own
