@@ -925,6 +925,98 @@ describe("Composer — blocked pre-flight override", () => {
   }, 15000);
 });
 
+// #103. A password prompt is the one refusal that never becomes a success: `sudo` turns echo off, so
+// the evidence Send needs is exactly what the screen is refusing to show, and the reporter tapped Send
+// at it for three days. These pin the two halves of the answer — say what it is, and get the operator
+// into the mode that works without leaving the secret behind.
+describe("Composer — password prompt", () => {
+  const SUDO = "$ sudo systemctl restart collie\n[sudo] password for altan:";
+
+  function serveSudo(calls: string[]) {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ paneId: "w1:p1", text: SUDO, truncated: false, revision: 1 }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string; submit?: boolean };
+        calls.push(body.submit ? "submit" : "type");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+  }
+
+  it("names the prompt and offers Type, without replacing the override", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveSudo(calls);
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hunter2hunter2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    // The refusal names the mechanism, not "a menu or dialog is probably up".
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/password prompt/i),
+    );
+    // The prompt is quoted off the mirror, so the claim is checkable against the screen.
+    expect(screen.getByText("[sudo] password for altan:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
+    // The pre-existing override is untouched — a false positive costs a dismissal, not an action.
+    expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument();
+    expect(calls).toEqual([]);
+  });
+
+  it("the handoff clears the draft before arming Type", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveSudo(calls);
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hunter2hunter2");
+    // The write-through has already put the secret in the 48h store, before any send was attempted —
+    // the leak #103 asked about. Asserted here so the assertion below isn't vacuously true.
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toContain("hunter2hunter2");
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: /use type/i }));
+
+    // Armed, and the secret is gone from the field (and from its localStorage copy with it) — which
+    // is also what lets it arm at all: useDirectTyping refuses while any draft is present.
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/type into the terminal/i)).toHaveValue(""),
+    );
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
+    expect(screen.queryByRole("button", { name: /use type/i })).not.toBeInTheDocument();
+    expect(calls).toEqual([]); // nothing was ever typed by the reply path
+  });
+
+  it("drops the stored draft the moment it recognises the prompt, button or no button", async () => {
+    // The reporter's actual behaviour: tap Send, give up, walk to a laptop. No button is ever pressed,
+    // so a handoff that clears on its way through would never have run — and the pane-leave save would
+    // have written the password back out. The store has to be empty from the refusal onwards.
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveSudo(calls);
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hunter2hunter2");
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toContain("hunter2hunter2");
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("button", { name: /use type/i });
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
+
+    // Dismissing keeps the text on screen — the operator may still need to read it — but the typing
+    // that happened while the notice was up was never stored either.
+    await user.click(screen.getByRole("button", { name: /dismiss password-prompt notice/i }));
+    expect(box).toHaveValue("hunter2hunter2");
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
+  });
+});
+
 describe("Composer — destructive-input confirm", () => {
   it("holds a destructive command for a second tap, then sends", async () => {
     const user = userEvent.setup();
