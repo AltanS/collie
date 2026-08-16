@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -351,5 +351,134 @@ describe("Push — per-message collapse topic (update must not share the herd sl
     expect(topicIsSendable("")).toBe(false);
     expect(topicIsSendable("a".repeat(33))).toBe(false); // over the 32-char ceiling
     expect(topicIsSendable("a".repeat(32))).toBe(true); // exactly 32, and 32 ≡ 0
+  });
+});
+
+// ── The store: superseding, metadata, and the hand-operated forget (issue #104) ──────────────────
+// The send-time prune above can only ever catch an endpoint the push service DISOWNS. A subscription
+// orphaned by a service-worker re-registration was never `unsubscribe()`d, so Apple keeps answering
+// 201 for it and it accumulates forever — twenty rows in a one-phone install. The two mechanisms
+// that do reach those rows are asserted here.
+describe("Push — superseding, metadata and forget", () => {
+  /** An enabled, empty push over a fresh state dir — the store starts as it does in production. */
+  async function fresh(sender?: PushSender) {
+    const cfg = await tempCfg();
+    const push = new Push(cfg, sender);
+    enable(push, []);
+    return { cfg, push };
+  }
+
+  test("a re-subscribe that names its predecessor removes the row it supersedes", async () => {
+    const { cfg, push } = await fresh();
+    await push.addSubscription(sub("old"));
+    await push.addSubscription(sub("new"), { replaces: "old" });
+
+    expect(push.listSubscriptions().map((r) => r.endpoint)).toEqual(["new"]);
+    expect(await fileEndpoints(cfg.stateDir)).toEqual(["new"]);
+  });
+
+  test("naming ITSELF is not a replacement — the row survives its own re-subscribe", async () => {
+    const { cfg, push } = await fresh();
+    await push.addSubscription(sub("same"));
+    await push.addSubscription(sub("same"), { replaces: "same" });
+
+    expect(push.listSubscriptions().map((r) => r.endpoint)).toEqual(["same"]);
+    expect(await fileEndpoints(cfg.stateDir)).toEqual(["same"]);
+  });
+
+  test("an unknown `replaces` is harmless — it drops nothing and still registers", async () => {
+    const { push } = await fresh();
+    await push.addSubscription(sub("a"));
+    await push.addSubscription(sub("b"), { replaces: "never-seen" });
+
+    expect(push.listSubscriptions().map((r) => r.endpoint)).toEqual(["a", "b"]);
+  });
+
+  test("createdAt is when the endpoint FIRST appeared, not when it last re-subscribed", async () => {
+    const { push } = await fresh();
+    await push.addSubscription(sub("a"), { userAgent: "first" });
+    const first = push.listSubscriptions()[0]!.createdAt;
+    expect(typeof first).toBe("string");
+
+    await push.addSubscription(sub("a"), { userAgent: "second" });
+    const again = push.listSubscriptions()[0]!;
+    expect(again.createdAt).toBe(first);
+    // The user agent, unlike the clock, IS the latest thing the device said about itself.
+    expect(again.userAgent).toBe("second");
+  });
+
+  test("a user agent is trimmed and capped, and absent when the request carried none", async () => {
+    const { push } = await fresh();
+    await push.addSubscription(sub("long"), { userAgent: `  ${"U".repeat(400)}  ` });
+    await push.addSubscription(sub("none"));
+
+    const [long, none] = push.listSubscriptions();
+    expect(long!.userAgent).toBe("U".repeat(160));
+    expect(none!.userAgent).toBeUndefined();
+  });
+
+  test("web-push is handed `{ endpoint, keys }` and nothing else", async () => {
+    const seen: unknown[] = [];
+    const { push } = await fresh((s) => {
+      seen.push(s);
+      return Promise.resolve();
+    });
+    await push.addSubscription(sub("a"), { userAgent: "iPhone" });
+
+    await push.notify("hi", "there");
+    // Not `toMatchObject`: the point is that the metadata does NOT ride along into the signer.
+    expect(seen).toEqual([{ endpoint: "a", keys: { p256dh: "p", auth: "a" } }]);
+  });
+
+  test("rows written before the metadata existed load unchanged", async () => {
+    const cfg = await tempCfg();
+    await writeFile(
+      join(cfg.stateDir, "push-subscriptions.json"),
+      JSON.stringify([sub("legacy"), { endpoint: "junk" }, sub("also")]),
+    );
+    const push = new Push(cfg);
+    await push.loadStore();
+
+    // The malformed row is dropped; the two usable ones arrive with no metadata invented for them.
+    expect(push.listSubscriptions()).toEqual([{ endpoint: "legacy" }, { endpoint: "also" }]);
+  });
+
+  test("loadStore needs no VAPID — the store is a file, and that is when you clean it up", async () => {
+    const cfg = await tempCfg();
+    await writeFile(join(cfg.stateDir, "push-subscriptions.json"), JSON.stringify([sub("a")]));
+    const push = new Push(cfg);
+    await push.loadStore();
+
+    expect(push.enabled).toBe(false);
+    expect(push.listSubscriptions().map((r) => r.endpoint)).toEqual(["a"]);
+    expect(await push.forget("*")).toBe(1);
+  });
+
+  test("forget drops every row whose endpoint CONTAINS the match, and persists", async () => {
+    const { cfg, push } = await fresh();
+    for (const e of [
+      "https://web.push.apple.com/aaa",
+      "https://web.push.apple.com/bbb",
+      "https://fcm.googleapis.com/aaa",
+    ]) {
+      await push.addSubscription(sub(e));
+    }
+
+    expect(await push.forget("apple.com")).toBe(2);
+    expect(await fileEndpoints(cfg.stateDir)).toEqual(["https://fcm.googleapis.com/aaa"]);
+  });
+
+  test("`*` forgets everything; a match nobody has forgets nothing and writes nothing", async () => {
+    const { cfg, push } = await fresh();
+
+    // Nothing subscribed at all: asking the question must not materialise the file.
+    expect(await push.forget("*")).toBe(0);
+    expect(await stat(join(cfg.stateDir, "push-subscriptions.json")).catch(() => null)).toBeNull();
+
+    await push.addSubscription(sub("a"));
+    expect(await push.forget("zzz")).toBe(0);
+    expect(await fileEndpoints(cfg.stateDir)).toEqual(["a"]);
+    expect(await push.forget("*")).toBe(1);
+    expect(await fileEndpoints(cfg.stateDir)).toEqual([]);
   });
 });

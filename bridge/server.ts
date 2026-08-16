@@ -312,7 +312,10 @@ export function startServer(opts: {
           return text("bad subscription", 400);
         }
         if (!isPushSubscription(body)) return text("bad subscription", 400);
-        await push.addSubscription(body);
+        await push.addSubscription(body, {
+          replaces: supersededEndpoint(body),
+          userAgent: req.headers.get("user-agent") ?? undefined,
+        });
         return secure(new Response(null, { status: 204 }));
       }
       if (pathname === "/api/notifications/snooze" && req.method === "POST") {
@@ -1289,6 +1292,20 @@ function isPushSubscription(v: unknown): v is PushSubscription {
     typeof keys.p256dh === "string" &&
     typeof keys.auth === "string"
   );
+}
+
+/**
+ * The endpoint a subscribe body says it supersedes (`replaces`) — the row the same device last
+ * registered, which nothing else can identify (bridge/push.ts, SubscriptionMeta).
+ *
+ * A bad value is IGNORED rather than rejected: the subscription itself is well-formed and must be
+ * stored, and a client that got this field wrong would otherwise lose push entirely over a
+ * housekeeping hint. The cap is only there so a junk field can't be persisted at length.
+ */
+function supersededEndpoint(body: unknown): string | undefined {
+  const replaces = (body as { replaces?: unknown }).replaces;
+  if (typeof replaces !== "string" || replaces === "" || replaces.length > 2048) return undefined;
+  return replaces;
 }
 
 // Build id of the bundle currently on disk (written by the Vite build to dist/build-info.json).
