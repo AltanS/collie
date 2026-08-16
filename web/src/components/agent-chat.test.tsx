@@ -10,6 +10,7 @@ import { createMemoryRouter, RouterProvider, useParams } from "react-router";
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
 // prompt-select-block.test.tsx). The other tests in this file never reach it.
 vi.mock("@/lib/prompt-action", () => ({
+  submitPromptFeedback: vi.fn(),
   submitPromptOption: vi.fn(),
 }));
 vi.mock("@/lib/wizard-action", () => ({
@@ -304,6 +305,8 @@ const MULTI_SELECT_TEXT = readFileSync(
 const GENERIC_MENU_TEXT = readFileSync(join(PANES_DIR, "claude--menu-model-picker.txt"), "utf8");
 
 describe("AgentChat — pane voice write lock", () => {
+  const testPromptAction = { kind: "option" as const, option: { label: "test", keys: [] } };
+
   function capturedAnsiOutput(busy: boolean): AnsiOutputProps {
     const props = [...capturedAnsiOutputs].reverse().find((output) => output.promptDisabled === busy);
     if (!props) throw new Error(`expected ${busy ? "busy" : "idle"} AnsiOutput callbacks`);
@@ -346,7 +349,7 @@ describe("AgentChat — pane voice write lock", () => {
       text: MENU_TEXT,
       submit: () => vi.mocked(submitPromptOption),
       invoke: (output: AnsiOutputProps) =>
-        output.onPromptAction!(undefined as never, undefined as never),
+        output.onPromptAction!(testPromptAction, undefined as never),
     },
     {
       name: "wizard",
@@ -421,7 +424,7 @@ describe("AgentChat — pane voice write lock", () => {
     });
 
     const { setVoicePhase } = renderVoiceChat(MENU_TEXT);
-    const action = capturedAnsiOutput(false).onPromptAction!(undefined as never, undefined as never);
+    const action = capturedAnsiOutput(false).onPromptAction!(testPromptAction, undefined as never);
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
 
     // The dialog tap began idle, then recording took the pane before its asynchronous guard settled.
@@ -442,11 +445,11 @@ describe("AgentChat — pane voice write lock", () => {
       const busyOutput = capturedAnsiOutput(true);
 
       expect(screen.getByPlaceholderText(/type a reply/i)).toBeDisabled();
-      await busyOutput.onPromptAction!(undefined as never, undefined as never);
+      await busyOutput.onPromptAction!(testPromptAction, undefined as never);
       expect(submit).not.toHaveBeenCalled();
 
       setVoicePhase("idle");
-      await capturedAnsiOutput(false).onPromptAction!(undefined as never, undefined as never);
+      await capturedAnsiOutput(false).onPromptAction!(testPromptAction, undefined as never);
       await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     },
   );

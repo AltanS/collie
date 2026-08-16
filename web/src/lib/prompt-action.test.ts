@@ -97,6 +97,7 @@ const base = {
   // The guard re-derives through the pane's ADAPTER (lib/dialog-guard.ts), so every call names the
   // agent whose grammar produced the buffer — an agent with no adapter fails the guard closed.
   agent: "claude",
+  canWrite: () => true,
   sleep: noSleep,
 };
 
