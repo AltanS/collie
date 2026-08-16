@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 import { PACK_SUBCOMMANDS } from "./pack.ts";
 import { DEVICES_SUBCOMMANDS } from "./pairing.ts";
+import { PUSH_SUBCOMMANDS } from "./push.ts";
 import {
   type Command,
   COMMANDS,
@@ -53,6 +54,11 @@ const DIAGNOSTIC_VERBS = ["doctor"];
 // they sit in the table, and grouped separately for the same reason as the two above.
 const PAIRING_VERBS = ["pair", "devices"];
 
+// The push-subscription verb (#104). `push-test` sits in SHELL_VERBS above — it is the shell's, and
+// keeps its spelling — while `push` is the tree that grew around it, declared next to `devices`
+// because it answers the same question about a different register.
+const PUSH_VERBS = ["push"];
+
 function capture(): Io & { stdout: string[]; stderr: string[] } {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -65,6 +71,7 @@ describe("the verb table", () => {
       ...SHELL_VERBS,
       ...DIAGNOSTIC_VERBS,
       ...PAIRING_VERBS,
+      ...PUSH_VERBS,
       ...PACK_VERBS,
       "help",
     ]);
@@ -192,9 +199,14 @@ describe("the subcommand trees", () => {
     expect(devices?.subcommands?.map((s) => s.name)).toEqual([...DEVICES_SUBCOMMANDS]);
   });
 
+  test("`push` declares exactly `cli/push.ts`'s sub-verbs, in its order", () => {
+    expect(findCommand("push")?.subcommands?.map((s) => s.name)).toEqual([...PUSH_SUBCOMMANDS]);
+  });
+
   test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
     expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual([
       "devices",
+      "push",
       "pack",
     ]);
   });
@@ -285,6 +297,9 @@ describe("exit codes", () => {
       // `pair` writes a pending pairing into the developer's own state dir, and `devices` resolves
       // that same real dir before it decides anything. cli/pairing.test.ts drives both against fakes.
       ...PAIRING_VERBS,
+      // Every `push` sub-verb resolves the real state dir, and `push test` would send to this host's
+      // own subscribed phones. cli/push.test.ts drives all three against a throwaway dir.
+      ...PUSH_VERBS,
     ];
     const readOnly = ["version", "help"];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();

@@ -39,7 +39,14 @@ import {
   DEVICES_SUBCOMMANDS,
   type PairingDeps,
 } from "./pairing.ts";
-import { cmdPushTest } from "./push.ts";
+import {
+  cmdPush,
+  cmdPushForget,
+  cmdPushList,
+  cmdPushTest,
+  type PushDeps,
+  PUSH_SUBCOMMANDS,
+} from "./push.ts";
 import { cmdQr } from "./qr.ts";
 import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
 import { cmdPackUpdate } from "./pack-update.ts";
@@ -152,6 +159,14 @@ function pairingDeps(io: Io): PairingDeps {
   return { ctx: loadContext(io.err), io, files: realFiles };
 }
 
+/**
+ * The push verbs' seams: the resolved context and the output seam, nothing else. The subscription
+ * store is read and written by `bridge/push.ts` — the CLI holds no second parser for it.
+ */
+function pushDeps(io: Io): PushDeps {
+  return { ctx: loadContext(io.err), io };
+}
+
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
 function lifecycleCommand(
   name: string,
@@ -242,10 +257,7 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "push-test",
     summary: "send a one-off Web Push to every subscribed device",
-    run: (args, s) => {
-      const ctx = loadContext(s.io.err);
-      return cmdPushTest({ ctx, io: s.io, files: realFiles }, args);
-    },
+    run: (args, s) => cmdPushTest(pushDeps(s.io), args),
   },
   lifecycleCommand("logs", "tail the service log (default 50 lines)", (deps, args) =>
     cmdLogs(deps, args),
@@ -289,6 +301,31 @@ export const COMMANDS: readonly Command[] = [
     ],
     // Bare or misspelt lands here, and `cmdDevices` owns that message — as `cmdPack` does.
     run: (args, s) => cmdDevices(pairingDeps(s.io), args),
+  },
+  // ── Push subscriptions ─────────────────────────────────────────────────────
+  // Next to `devices` because it answers the same shape of question — who is registered with this
+  // bridge, and how do I drop one. `list` and `forget` need no VAPID: the store is a file.
+  {
+    name: "push",
+    summary: `subscribed devices: ${PUSH_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "list",
+        summary: "the subscribed devices, with when each subscribed and from what",
+        run: (_args, s) => cmdPushList(pushDeps(s.io)),
+      },
+      {
+        name: "forget",
+        summary: "drop rows by endpoint substring: `push forget <substring>|--all`",
+        run: (args, s) => cmdPushForget(pushDeps(s.io), args),
+      },
+      {
+        name: "test",
+        summary: "send a one-off Web Push to every subscribed device (also spelled `push-test`)",
+        run: (args, s) => cmdPushTest(pushDeps(s.io), args),
+      },
+    ],
+    run: (args, s) => cmdPush(pushDeps(s.io), args),
   },
   // ── The pack (M4/07) ───────────────────────────────────────────────────────
   // The only way a machine enters or leaves a pack. Every one of them resolves its seams through
