@@ -50,6 +50,13 @@ export interface AgentView {
    */
   tabLabel?: string;
   /**
+   * What the pane's process says it is doing — its OSC title, glyph-stripped and dropped when
+   * uninformative bridge-side (see `meaningfulTerminalTitle` in bridge/activity.ts). Unlike
+   * `paneLabel` and `sessionName`, which are set once by hand, this follows the work as it moves.
+   * Render as text only, never markup — same XSS boundary as `paneLabel`.
+   */
+  terminalTitle?: string;
+  /**
    * Epoch ms of this agent's last status transition, as the bridge observed it. Absent on an older
    * bridge — which is exactly why triage degrades cleanly; see `triage()`.
    */
@@ -76,13 +83,16 @@ export interface AgentView {
 
 /**
  * The name to show for a pane, in priority order: an explicit user label (herdr `pane.rename`) wins,
- * then Claude's own `/rename` session name, then the agent name (or "shell"). Both label and session
- * name are rendered only as React text nodes by callers — never markup — so they stay within the
- * pane-output XSS boundary.
+ * then Claude's own `/rename` session name, then the pane's terminal title, then the agent name (or
+ * "shell"). The two hand-set names outrank the title because a name you chose should not be
+ * overwritten by one the process is rewriting every turn; the title outranks the agent name because
+ * "claude" tells you nothing when four rows say it. All three are rendered only as React text nodes
+ * by callers — never markup — so they stay within the pane-output XSS boundary.
  */
 export function paneDisplayName(pane: AgentView): string {
   if (pane.paneLabel) return pane.paneLabel;
   if (pane.sessionName) return pane.sessionName;
+  if (pane.terminalTitle) return pane.terminalTitle;
   return pane.kind === "shell" ? "shell" : pane.agent;
 }
 

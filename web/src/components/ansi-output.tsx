@@ -12,13 +12,12 @@ import {
   type MultiSelectModel,
   type PreviewSelectModel,
   type PromptModel,
-  type PromptOption,
   type WizardModel,
 } from "@/lib/blocks";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";
-import { PromptSelectBlock } from "@/components/prompt-select-block";
+import { PromptSelectBlock, type PromptBlockAction } from "@/components/prompt-select-block";
 import { WizardBlock } from "@/components/wizard-block";
 import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
 import { MultiSelectBlock } from "@/components/multi-select-block";
@@ -60,7 +59,10 @@ export interface AnsiOutputProps {
   agent?: string;
   /** Injected handler for a prompt-select tap (the race guard lives in AgentChat). Absent (or with a
    *  disabled block) means the buttons render but don't act — AnsiOutput never touches the network. */
-  onPromptAction?: (option: PromptOption, prompt: PromptModel) => void | Promise<void>;
+  onPromptAction?: (
+    action: PromptBlockAction,
+    prompt: PromptModel,
+  ) => boolean | void | Promise<boolean | void>;
   /** Injected handler for a wizard tap — one race-guarded keystroke per control (see
    *  lib/wizard-action.ts). Same presentational contract as onPromptAction. */
   onWizardAction?: (keys: string[], wizard: WizardModel) => void | Promise<void>;
@@ -220,7 +222,7 @@ export const AnsiOutput = memo(function AnsiOutput({
     <PromptSelectBlock
       prompt={promptBlock.prompt}
       disabled={promptDisabled || !onPromptAction}
-      onAction={(option) => onPromptAction?.(option, promptBlock.prompt)}
+      onAction={(action) => onPromptAction?.(action, promptBlock.prompt) ?? false}
     />
   ) : wizardBlock ? (
     <WizardBlock

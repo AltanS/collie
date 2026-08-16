@@ -56,8 +56,43 @@ describe("paneParts — the second line", () => {
     expect(paneParts(pane({ sessionName: "oauth-refactor" })).secondary).toBe("oauth-refactor");
   });
 
+  it("falls back to the terminal title — what the pane says it is doing", () => {
+    expect(paneParts(pane({ terminalTitle: "Reconcile the book lists" })).secondary).toBe(
+      "Reconcile the book lists",
+    );
+  });
+
+  it("lets a hand-set name outrank the terminal title", () => {
+    // A name you chose must not be overwritten by one the process rewrites every turn.
+    const over = { terminalTitle: "Reconcile the book lists" };
+    expect(paneParts(pane({ ...over, paneLabel: "hand-named" })).secondary).toBe("hand-named");
+    expect(paneParts(pane({ ...over, sessionName: "oauth-refactor" })).secondary).toBe(
+      "oauth-refactor",
+    );
+  });
+
   it("falls back to a shortened cwd", () => {
     expect(paneParts(pane()).secondary).toBe("~/dev/moonward");
+  });
+
+  it("prefers the terminal title over the cwd — a project's herd shares one cwd", () => {
+    expect(paneParts(pane({ terminalTitle: "Fixing the parser" })).secondary).toBe(
+      "Fixing the parser",
+    );
+  });
+
+  it("tells apart several agents sitting in ONE project and tab", () => {
+    // The herd this change exists for: same project, same cwd, no hand-set names. Before the title
+    // was read, all three rows rendered identically.
+    const rendered = [
+      "Custom UI for Collie",
+      "Read Notes From Underground",
+      "Reconcile book lists",
+    ].map((terminalTitle) => {
+      const p = paneParts(pane({ terminalTitle }));
+      return `${join(p)}|${p.secondary}`;
+    });
+    expect(new Set(rendered).size).toBe(3);
   });
 
   it("is null when there is nothing to say", () => {
