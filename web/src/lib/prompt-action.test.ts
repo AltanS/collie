@@ -259,6 +259,37 @@ describe("submitPromptFeedback — the stopping points once it has started writi
     expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["3"], undefined, model().signature]]);
   });
 
+  it("does not type feedback after voice locks the pane during focus verification", async () => {
+    const m = model();
+    let resolveFocused!: (value: ReturnType<typeof paneWith>) => void;
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(buffer()))
+      .mockImplementationOnce(
+        () =>
+          new Promise<ReturnType<typeof paneWith>>((resolve) => {
+            resolveFocused = resolve;
+          }),
+      );
+    let canWrite = true;
+
+    const action = submitPromptFeedback({
+      ...base,
+      canWrite: () => canWrite,
+      prompt: m,
+      text: "use a switch",
+    });
+    await vi.waitFor(() => expect(mockFetchPane).toHaveBeenCalledTimes(2));
+
+    // The focus digit was sent while idle; once recording owns this pane, its resolved poll must
+    // not be followed by either the reply paste or the irreversible Enter.
+    canWrite = false;
+    resolveFocused(paneWith(buffer({ focused: true })));
+
+    await expect(action).resolves.toEqual({ status: "changed" });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["3"], undefined, m.signature]]);
+    expect(mockSendReply).not.toHaveBeenCalled();
+  });
+
   it("sends NO Enter if the text never arrives — the words wait in the box for a human", async () => {
     // The single most important assertion in this file. A blind Enter here would submit whatever the
     // box happens to hold (possibly nothing) as a plan denial.

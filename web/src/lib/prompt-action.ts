@@ -137,6 +137,7 @@ export async function submitPromptFeedback(
   }
 
   try {
+    if (!args.canWrite()) return { status: "changed" };
     const typed = await sendReply(args.paneId, text, false, args.session);
     if (!typed.ok) return { status: "error", error: typed.error };
     // Wait for our words to render, then match them EXACTLY. The row re-flows rather than windowing,
