@@ -1061,6 +1061,15 @@ Collie pushes when an agent goes **blocked** or **done**, with the agent's messa
 bin/collie push-test                 # or: push-test "Title" "Body"
 ```
 
+Subscriptions accumulate — a home-screen reinstall or a service-worker re-registration mints a fresh
+endpoint, and the old one stays live-looking rather than 410ing. Collie supersedes the row a device
+re-registers over, and the rest are yours to see and drop (both work with push off):
+
+```bash
+bin/collie push list                 # one line per device: service, since, user agent, endpoint tail
+bin/collie push forget <substring>   # or: push forget --all
+```
+
 ## Troubleshooting
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or

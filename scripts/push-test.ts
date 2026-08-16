@@ -11,7 +11,6 @@
 import { loadContext } from "../cli/context.ts";
 import { realIo } from "../cli/io.ts";
 import { cmdPushTest } from "../cli/push.ts";
-import { realFiles } from "../cli/sys.ts";
 
 const ctx = loadContext(realIo.err);
-process.exitCode = await cmdPushTest({ ctx, io: realIo, files: realFiles }, process.argv.slice(2));
+process.exitCode = await cmdPushTest({ ctx, io: realIo }, process.argv.slice(2));
