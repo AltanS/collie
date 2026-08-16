@@ -277,12 +277,34 @@ export interface CreatedPane {
  */
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
+/**
+ * One operator-declared slash command (`COLLIE_COMMANDS`). A pane any of these rows address shows
+ * them INSTEAD of the shipped Agent-commands catalog; a pane none of them address keeps it. This is
+ * the escape hatch for commands the shipped catalog cannot know about — plugin- or user-registered
+ * ones like omp's `/fork-in-herdr` — which exist only on THIS operator's machine and so must never
+ * be hard-coded into `web/src/lib/agent-commands.ts`.
+ */
+export interface OperatorCommand {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  /** Includes the leading slash. */
+  command: string;
+  /** One-line description shown in the palette (also searched). */
+  description: string;
+  /** True when tapping should insert `/cmd ` into the composer instead of submitting it. */
+  takesArg: boolean;
+  /** Placeholder shown after insert, e.g. `<name>`. Empty when {@link takesArg} is false. */
+  argHint: string;
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
+  /** The operator's own palette rows. Absent/empty when `COLLIE_COMMANDS` is unset. */
+  operatorCommands?: OperatorCommand[];
 }
 
 /** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */
