@@ -106,6 +106,23 @@ describe("meaningfulTerminalTitle", () => {
     expect(title("  MOONWARD_OS  ")).toBeUndefined();
   });
 
+  test("drops a shell's locator title — it restates the cwd the row already shows", () => {
+    // Live-observed 2026-08-15: an unattended shell pane reports bash's `\u@\h:\w` verbatim.
+    expect(title("altan@bluefin:~/projects/workspace-sprqvntrs/tgl")).toBeUndefined();
+    expect(title("user@host: ~/x")).toBeUndefined(); // Debian's variant spaces after the colon.
+    expect(title("user@host")).toBeUndefined(); // …and some configs print no path at all.
+    expect(title("◐ user@host:~")).toBeUndefined(); // the glyph strip runs first.
+  });
+
+  test("keeps a shell title that names the command it is running", () => {
+    // The locator is dropped because it restates the cwd; a command title is the work itself.
+    expect(title("vim foo.ts")).toBe("vim foo.ts");
+    expect(title("htop")).toBe("htop");
+    expect(title("make")).toBe("make");
+    // Both halves of a locator are space-free, so a title that merely mentions an address stays.
+    expect(title("foo@bar baz")).toBe("foo@bar baz");
+  });
+
   test("treats blank, whitespace-only and absent titles as absent", () => {
     expect(title("")).toBeUndefined();
     expect(title("   ")).toBeUndefined();
