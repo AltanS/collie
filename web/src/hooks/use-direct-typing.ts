@@ -36,7 +36,11 @@ function keyForKeyDown(key: string): string | undefined {
 interface DirectTypingOptions {
   paneKey: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
-  replyDraft: string;
+  /** The durable reply draft, read at the moment of arming rather than captured at render. A getter,
+   *  because the password-prompt handoff (components/no-echo-notice.tsx) clears the draft and arms in
+   *  the SAME tick: a value captured at render would still be the secret the operator just typed, and
+   *  the refusal below would block the very remedy being offered. */
+  replyDraft: () => string;
   canActivate: () => boolean;
   /** True while the view the mode belongs to has stopped being live: a gone pane, a read-only
    *  device, or the idle pause. Arming survives none of them — see the disarm effect below. */
@@ -105,7 +109,7 @@ export function useDirectTyping({
     if (!canActivate()) return;
     // A buffered reply and live keystrokes cannot safely share one field. Keep the durable draft
     // exactly where it is and make the user send or clear it before arming direct terminal input.
-    if (replyDraft.length > 0) {
+    if (replyDraft().length > 0) {
       setStatus("Send or clear the draft before typing into the terminal.", "info");
       return;
     }
