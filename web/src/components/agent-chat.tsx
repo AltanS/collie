@@ -27,11 +27,12 @@ import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { StatusArea } from "@/components/status-area";
 import { ShellBadge, StatusBadge } from "@/components/status-badge";
-import { submitPromptOption } from "@/lib/prompt-action";
+import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { submitMenuKeys } from "@/lib/menu-action";
+import type { PromptBlockAction } from "@/components/prompt-select-block";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
@@ -44,7 +45,6 @@ import type {
   MultiSelectModel,
   PreviewSelectModel,
   PromptModel,
-  PromptOption,
   WizardModel,
 } from "@/lib/blocks";
 
@@ -115,7 +115,7 @@ export function AgentChat({
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, setWrap, stepFontSize, setRawTerminal } = useDisplayPrefs();
+  const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus } = useDisplayPrefs();
   // Raw-terminal escape hatch: when on, every Claude grammar is bypassed and the plain mirror shows,
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
   const grammarsOn = !prefs.rawTerminal;
@@ -319,22 +319,28 @@ export function AgentChat({
   // with a "menu changed" notice and a revalidate; a clean send snaps back to the tail so the
   // result is visible. The composer stays live for the free-text rows we don't render as buttons.
   const handlePromptAction = useCallback(
-    async (option: PromptOption, prompt: PromptModel) => {
+    async (action: PromptBlockAction, prompt: PromptModel) => {
       if (readOnly) {
         setStatus("Read-only — device not authorised", "error");
-        return;
+        return false;
       }
-      const result = await submitPromptOption({
+      const base = {
         paneId,
         session,
         requestedLines,
         detectedRevision: shown.revision,
         agent: agent?.agent,
         prompt,
-        option,
-      });
+      };
+      // Two recipes behind one block: a single guarded keystroke for an option, and the plan
+      // dialog's multi-step feedback sequence (digit → verify focus → type → Enter, which denies the
+      // plan and hands the agent the text — see lib/prompt-action.ts).
+      const result =
+        action.kind === "option"
+          ? await submitPromptOption({ ...base, option: action.option })
+          : await submitPromptFeedback({ ...base, text: action.text });
       if (result.status === "sent") {
-        setStatus("Sent", "success");
+        setStatus(action.kind === "feedback" ? "Feedback sent" : "Sent", "success");
         setFollowing(true);
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
@@ -344,6 +350,9 @@ export function AgentChat({
       } else {
         setStatus(result.error || "Send failed", "error");
       }
+      // Reported back so the block can keep a refused feedback draft on screen rather than discard
+      // what someone just thumb-typed. Option taps ignore it.
+      return result.status === "sent";
     },
     [readOnly, paneId, session, requestedLines, shown.revision, agent?.agent, revalidator],
   );
@@ -525,7 +534,14 @@ export function AgentChat({
     navigate(spacePath(workspaceId, session));
   }
 
-  // Tapping the terminal mirror focuses the composer so you can start typing right away. Two bails:
+  // Tapping the terminal mirror focuses the composer so you can start typing right away. Three bails:
+  //  - the operator turned "Tap to type" off (View). It is on by default and always has been — the
+  //    mirror as one big "start typing" target is the fastest path from reading to replying on a
+  //    phone. But the same handler makes the mirror unable to behave like a document, which is what
+  //    someone expects who is trying to interact with a LINE rather than reply to it, and they read
+  //    it as the tap being absorbed. Off, the mirror keeps its buttons and its links; it just stops
+  //    volunteering the keyboard. (What it still cannot offer is a tappable agent-printed hyperlink:
+  //    herdr's `pane.read` strips OSC 8, so the link target never reaches Collie at all.)
   //  - the tap landed on an interactive control INSIDE the mirror — a native prompt/wizard/preview
   //    button, the Load-older button, or the note editor's own textarea. Their click bubbles up to
   //    this handler, and focusing the composer here would pop the soft keyboard on every option tap
@@ -533,6 +549,7 @@ export function AgentChat({
   //  - the user is selecting text (a long-press selection), so copy works instead of the tap
   //    collapsing the selection and popping the keyboard.
   function focusFromMirror(e: ReactMouseEvent<HTMLDivElement>) {
+    if (!prefs.tapToFocus) return;
     const target = e.target as Element | null;
     // The `a` is what keeps a tap on an autolinked URL (components/ansi-output) from popping the
     // keyboard on top of the page it just opened. Don't trim it out of this selector.
@@ -861,6 +878,7 @@ export function AgentChat({
             setWrap={setWrap}
             stepFontSize={stepFontSize}
             setRawTerminal={setRawTerminal}
+            setTapToFocus={setTapToFocus}
             onSent={onSent}
           />
         </div>
