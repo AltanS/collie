@@ -99,9 +99,6 @@ export function useDirectTyping({
   const backgrounded = useRef(false);
   const composing = useRef(false);
   const committedComposition = useRef<string | null>(null);
-  // The armed session a pending blur belongs to. A blur is always deferred (see dropKeyboard), so
-  // by the time it runs the field may have been handed to someone else.
-  const armGeneration = useRef(0);
   const pendingBlur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sender = useOrderedKeySender(sendKeys, () => {
     resetMode();
@@ -119,8 +116,8 @@ export function useDirectTyping({
       return;
     }
     onActivate();
-    // A new armed session owns the field from here: any blur still pending belongs to an older one.
-    armGeneration.current += 1;
+    // A new armed session owns the field from here: any blur still pending belongs to an older one,
+    // and this cancellation is what keeps it from landing on the session that replaced it.
     cancelPendingBlur();
     setValue("");
     composing.current = false;
@@ -160,16 +157,23 @@ export function useDirectTyping({
    * Put the phone keyboard away after a disarm the user did not ask for.
    *
    * Deferred, because focusInputEnd() is itself a `setTimeout` and a synchronous blur here is
-   * simply undone by a focus already queued behind it. Deferring means the blur can arrive after
-   * the field has changed hands, so it carries the generation it was scheduled for and does
-   * nothing once a re-arm has taken ownership — an old disarm must not reach into a live session.
+   * simply undone by a focus already queued behind it. Deferring means the blur can outlive the
+   * disarm that scheduled it, so ownership is settled by CANCELLATION rather than by a token:
+   * everything that STARTS OR RETARGETS a session — a re-arm (activate), a pane change, unmount, a
+   * second disarm — cancels the pending blur first. An old disarm therefore never reaches a live
+   * session, because it no longer exists by the time one begins.
+   *
+   * Do not read that as "every path that focuses the field cancels": three don't, and don't need to.
+   * `deactivate`/`clearMode`, the `suspended` disarm, and the composer's own takeOverDraft /
+   * insertCommand / uploadImage all focus without cancelling — they are safe because a blur is only
+   * ever pending while the mode is DISARMED (both schedulers call resetMode() in the same frame, and
+   * the first two gate on `active`), and because their focus is itself deferred, so it queues behind
+   * any pending blur and lands last.
    */
   function dropKeyboard() {
-    const generation = armGeneration.current;
     cancelPendingBlur();
     pendingBlur.current = setTimeout(() => {
       pendingBlur.current = null;
-      if (activeRef.current || armGeneration.current !== generation) return;
       inputRef.current?.blur();
     }, 0);
   }
@@ -229,8 +233,12 @@ export function useDirectTyping({
   // in-flight call; the call already on the wire captured the old pane and cannot be recalled.
   useEffect(() => {
     resetMode();
-    // The new pane's field is not the one that disarm was about.
+    // The new pane's field is not the one that disarm was about — neither the blur it scheduled nor
+    // the notice it owes. Dropping the debt matters because a pane can change WHILE hidden: a push
+    // notification deep-links into another pane, and without this the return trip announces "the app
+    // was backgrounded" over a pane the mode was never armed on.
     cancelPendingBlur();
+    backgrounded.current = false;
     sender.reset();
   }, [paneKey, sender.reset]);
 

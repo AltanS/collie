@@ -712,9 +712,11 @@ describe("Composer — typing into the terminal", () => {
     expect(document.activeElement).not.toBe(box);
   });
 
-  // The blur above is deferred, so it can arrive after the field has changed hands. Re-arming is
-  // the ordinary way that happens: you come back, tap Type again, and an old disarm's timer must
-  // not reach into the session that replaced it and drop the keyboard you just asked for.
+  // The blur above is deferred, so it can outlive the disarm that scheduled it. Re-arming is the
+  // ordinary way that happens: you come back, tap Type again, and the old timer must not fire into
+  // the session that replaced it and drop the keyboard you just asked for. What prevents it is
+  // activate()'s cancelPendingBlur() — remove that one line and this test fails, which is the whole
+  // reason it runs the timers by hand instead of waiting them out.
   it("does not blur a re-armed session with the disarm it already superseded", () => {
     renderComposerWithStatus();
     const box = startDirectTyping();
@@ -735,6 +737,52 @@ describe("Composer — typing into the terminal", () => {
 
     expect(blurred).not.toHaveBeenCalled();
     expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+  });
+
+  // The notice is owed by the pane that was armed, and a pane can change WHILE the page is hidden —
+  // a push notification deep-links straight into another one. Delivering it on arrival would tell
+  // you the mode stopped on a pane where it was never running.
+  it("does not announce the background disarm over a pane it was never armed on", async () => {
+    function Harness() {
+      const [paneId, setPaneId] = useState("w1:p1");
+      return (
+        <>
+          <StatusSentinel />
+          <button type="button" onClick={() => setPaneId("w1:p2")}>
+            Switch pane
+          </button>
+          <Composer
+            paneId={paneId}
+            agent="claude"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={false}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
+            onSent={vi.fn()}
+          />
+        </>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    startDirectTyping();
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent.click(screen.getByRole("button", { name: "Switch pane" }));
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument());
+    expect(screen.getByTestId("status")).not.toHaveTextContent(/backgrounded/i);
   });
 
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
