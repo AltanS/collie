@@ -1,12 +1,23 @@
 import { fetchConfig, XHR_HEADER, XHR_HEADER_VALUE } from "@/lib/api";
 import type { BridgeConfig } from "@/lib/types";
 
-// Client-side control of Web Push: the browser subscription plus a per-device preference. The bridge
-// just stores whatever subscriptions it's told about and prunes dead ones on its own — a browser
-// `unsubscribe()` makes the endpoint return 410 on the next send, so the server drops it (there's no
-// unsubscribe endpoint to call). We persist the user's choice so we don't re-subscribe on next load.
+// Client-side control of Web Push: the browser subscription plus a per-device preference. We persist
+// the user's choice so we don't re-subscribe on next load.
+//
+// ── WHY THIS DEVICE HAS TO NAME ITS OWN PREDECESSOR ──────────────────────────
+// An explicit `unsubscribe()` does make the endpoint 410 on the next send, and the bridge drops it
+// then (there is no unsubscribe endpoint to call). But that covers only the endpoints we retire on
+// purpose. A service worker re-registration — a home-screen reinstall, a rejected push topic, a
+// re-subscribe after the bridge restarts — mints a BRAND-NEW endpoint and abandons the old one
+// without unsubscribing it, and the push service happily keeps accepting sends to that orphan
+// forever. Nothing server-side can tell it apart from a live device, so twenty of them piled up in
+// one single-user install (issue #104). This device is the only party that knows the new endpoint
+// and the old one are the same phone, so it says so: `replaces` on the subscribe body, remembered
+// here across reloads.
 
 const PREF_KEY = "collie:push-disabled";
+/** The endpoint this device last registered with the bridge, so the next one can supersede it. */
+const ENDPOINT_KEY = "collie:push-endpoint";
 
 export type PushAvailability =
   | "unsupported" // browser lacks service worker / Push API
@@ -43,6 +54,40 @@ function setUserDisabled(disabled: boolean): void {
   } catch {
     /* private mode / storage blocked — the preference just won't persist */
   }
+}
+
+function rememberedEndpoint(): string | null {
+  try {
+    return localStorage.getItem(ENDPOINT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberEndpoint(endpoint: string | null): void {
+  try {
+    if (endpoint === null) localStorage.removeItem(ENDPOINT_KEY);
+    else localStorage.setItem(ENDPOINT_KEY, endpoint);
+  } catch {
+    /* private mode / storage blocked — we just can't supersede next time */
+  }
+}
+
+/** The body `/api/subscribe` receives, built field by field rather than by serialising the
+ *  PushSubscription whole: the bridge stores what it is sent, so the shape is a contract. `replaces`
+ *  is present only when this device held a DIFFERENT endpoint before — re-registering the same one
+ *  supersedes nothing. Pure, and exported, because `enablePush` itself needs a real PushManager. */
+export function subscribeBody(
+  json: PushSubscriptionJSON,
+  previous: string | null,
+): { endpoint: string; keys: { p256dh: string; auth: string }; replaces?: string } {
+  const endpoint = json.endpoint ?? "";
+  const body = {
+    endpoint,
+    keys: { p256dh: json.keys?.p256dh ?? "", auth: json.keys?.auth ?? "" },
+  };
+  if (previous === null || previous === "" || previous === endpoint) return body;
+  return { ...body, replaces: previous };
 }
 
 export function pushSupported(): boolean {
@@ -99,17 +144,23 @@ export async function enablePush(): Promise<EnableResult> {
       applicationServerKey: serverKey,
     });
   }
-  await fetch("/api/subscribe", {
+  const body = subscribeBody(sub.toJSON(), rememberedEndpoint());
+  const res = await fetch("/api/subscribe", {
     method: "POST",
     headers: { "content-type": "application/json", [XHR_HEADER]: XHR_HEADER_VALUE },
-    body: JSON.stringify(sub),
+    body: JSON.stringify(body),
   });
+  // Only a registration the bridge actually took supersedes the one we remembered — otherwise the
+  // next attempt must still be able to name the endpoint that is on the server.
+  if (res.ok) rememberEndpoint(body.endpoint);
   setUserDisabled(false);
   return { ok: true };
 }
 
-// Unsubscribe this device and remember the choice. The bridge drops the now-dead endpoint on its
-// next send attempt (410), so there's nothing to call server-side.
+// Unsubscribe this device and remember the choice. This is the case the server-side prune DOES
+// cover: an explicitly unsubscribed endpoint 410s on the next send and the bridge drops it, so
+// there's nothing to call server-side. We forget it here too — the row it leaves behind is already
+// doomed, and a later re-subscribe must not claim to supersede an endpoint it has no relation to.
 export async function disablePush(): Promise<void> {
   setUserDisabled(true);
   if (!pushSupported()) return;
@@ -117,6 +168,7 @@ export async function disablePush(): Promise<void> {
     const reg = await navigator.serviceWorker.getRegistration();
     const sub = await reg?.pushManager.getSubscription();
     await sub?.unsubscribe();
+    rememberEndpoint(null);
   } catch {
     /* best-effort: the persisted preference still prevents re-subscription */
   }

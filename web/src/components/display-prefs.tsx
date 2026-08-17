@@ -23,6 +23,7 @@ interface DisplayPrefsContentProps {
   setWrap: (wrap: boolean) => void;
   stepFontSize: (delta: number) => void;
   setRawTerminal: (raw: boolean) => void;
+  setTapToFocus: (tapToFocus: boolean) => void;
 }
 
 // One settings row: name (+ optional explanation) on the left, control on the right. Module-level so
@@ -56,6 +57,7 @@ export function DisplayPrefsContent({
   setWrap,
   stepFontSize,
   setRawTerminal,
+  setTapToFocus,
 }: DisplayPrefsContentProps) {
   return (
     <div className="divide-y divide-border/60 border-t border-border/60 bg-muted/30 px-3 py-1">
@@ -69,6 +71,19 @@ export function DisplayPrefsContent({
             checked={prefs.wrap}
             onCheckedChange={setWrap}
             aria-label="Wrap lines"
+          />
+        }
+      />
+      <Row
+        label="Tap to type"
+        hint="On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document — taps land on the text and only the composer opens the keyboard."
+        htmlFor="pref-tap-to-focus"
+        control={
+          <Switch
+            id="pref-tap-to-focus"
+            checked={prefs.tapToFocus}
+            onCheckedChange={setTapToFocus}
+            aria-label="Tap to type"
           />
         }
       />
