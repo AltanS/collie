@@ -92,17 +92,19 @@ export function useDirectTyping({
 }: DirectTypingOptions) {
   const [active, setActive] = useState(false);
   const [value, setValue] = useState("");
+  // Live read for the visibility listener below, which outlives any one armed session. Written at
+  // the transitions themselves, not during render: the listener fires between renders, and a ref
+  // that only catches up on the next one would let it misread which state it is reporting on.
+  const activeRef = useRef(false);
+  const backgrounded = useRef(false);
   const composing = useRef(false);
   const committedComposition = useRef<string | null>(null);
+  const pendingBlur = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sender = useOrderedKeySender(sendKeys, () => {
-    setActive(false);
-    setValue("");
-    composing.current = false;
-    committedComposition.current = null;
+    resetMode();
     // Stop the phone keyboard too: otherwise continued typing after a transport failure silently
-    // becomes a buffered Reply, which is a different action with an eventual Enter attached. Defer
-    // past the activation focus timer so even an immediate failure cannot be re-focused behind us.
-    setTimeout(() => inputRef.current?.blur(), 0);
+    // becomes a buffered Reply, which is a different action with an eventual Enter attached.
+    dropKeyboard();
   });
 
   function activate() {
@@ -114,9 +116,13 @@ export function useDirectTyping({
       return;
     }
     onActivate();
+    // A new armed session owns the field from here: any blur still pending belongs to an older one,
+    // and this cancellation is what keeps it from landing on the session that replaced it.
+    cancelPendingBlur();
     setValue("");
     composing.current = false;
     committedComposition.current = null;
+    activeRef.current = true;
     setActive(true);
     setStatus("Typing into the terminal — keys send as you type.", "success");
     // Focus synchronously while the long-press/contextmenu gesture still carries browser user
@@ -127,12 +133,49 @@ export function useDirectTyping({
     focusInput();
   }
 
-  function clearMode() {
+  /** Disarm and forget the transient state. Leaves the field alone — callers decide about focus. */
+  function resetMode() {
+    activeRef.current = false;
     setActive(false);
     setValue("");
     composing.current = false;
     committedComposition.current = null;
+  }
+
+  function clearMode() {
+    resetMode();
     focusInput();
+  }
+
+  function cancelPendingBlur() {
+    if (pendingBlur.current === null) return;
+    clearTimeout(pendingBlur.current);
+    pendingBlur.current = null;
+  }
+
+  /**
+   * Put the phone keyboard away after a disarm the user did not ask for.
+   *
+   * Deferred, because focusInputEnd() is itself a `setTimeout` and a synchronous blur here is
+   * simply undone by a focus already queued behind it. Deferring means the blur can outlive the
+   * disarm that scheduled it, so ownership is settled by CANCELLATION rather than by a token:
+   * everything that STARTS OR RETARGETS a session — a re-arm (activate), a pane change, unmount, a
+   * second disarm — cancels the pending blur first. An old disarm therefore never reaches a live
+   * session, because it no longer exists by the time one begins.
+   *
+   * Do not read that as "every path that focuses the field cancels": three don't, and don't need to.
+   * `deactivate`/`clearMode`, the `suspended` disarm, and the composer's own takeOverDraft /
+   * insertCommand / uploadImage all focus without cancelling — they are safe because a blur is only
+   * ever pending while the mode is DISARMED (both schedulers call resetMode() in the same frame, and
+   * the first two gate on `active`), and because their focus is itself deferred, so it queues behind
+   * any pending blur and lands last.
+   */
+  function dropKeyboard() {
+    cancelPendingBlur();
+    pendingBlur.current = setTimeout(() => {
+      pendingBlur.current = null;
+      inputRef.current?.blur();
+    }, 0);
   }
 
   function deactivate() {
@@ -155,25 +198,51 @@ export function useDirectTyping({
     setStatus("Stopped typing into the terminal — the pane view was interrupted.", "info");
   }, [active, suspended]);
 
+  // The backgrounded-tab disarm has to announce itself on the way BACK, not on the way out. A
+  // status set while the document is hidden is gone before anyone can read it (lib/status.ts
+  // auto-clears non-errors after 2.5s), so the old silent clearMode() produced the one genuinely
+  // confusing failure this mode has: you switch apps mid-command, return to a still-focused field
+  // with the keyboard still up, and the next characters land in the REPLY DRAFT instead of the
+  // terminal — a different action, with an eventual Enter attached. Deferring the message to the
+  // next visible event is what makes that state readable.
+  //
+  // Mounted for the hook's whole life, NOT keyed on `active`: hiding the document is what disarms,
+  // so an effect keyed on `active` tears its own listener down in the same commit and the return
+  // trip has nobody left to report it. The armed state is read through a ref for the same reason.
   useEffect(() => {
-    if (!active) return;
     const onVisibility = () => {
-      if (document.visibilityState !== "hidden") return;
-      clearMode();
+      if (document.visibilityState === "hidden") {
+        if (!activeRef.current) return;
+        backgrounded.current = true;
+        resetMode();
+        // Put the keyboard away rather than hand the field back focused. The notice below is the
+        // only thing telling you the mode is gone, and it expires; a primed field outlasts it, and
+        // typing into it is exactly the mistake being warned about.
+        dropKeyboard();
+        return;
+      }
+      if (!backgrounded.current) return;
+      backgrounded.current = false;
+      setStatus("Stopped typing into the terminal — the app was backgrounded.", "info");
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [active]);
+  }, []);
 
   // Direct input never crosses a pane boundary. Reset also invalidates keys accumulated behind an
   // in-flight call; the call already on the wire captured the old pane and cannot be recalled.
   useEffect(() => {
-    setActive(false);
-    setValue("");
-    composing.current = false;
-    committedComposition.current = null;
+    resetMode();
+    // The new pane's field is not the one that disarm was about — neither the blur it scheduled nor
+    // the notice it owes. Dropping the debt matters because a pane can change WHILE hidden: a push
+    // notification deep-links into another pane, and without this the return trip announces "the app
+    // was backgrounded" over a pane the mode was never armed on.
+    cancelPendingBlur();
+    backgrounded.current = false;
     sender.reset();
   }, [paneKey, sender.reset]);
+
+  useEffect(() => cancelPendingBlur, []);
 
   // Android virtual Backspace/Enter can arrive as beforeinput without a useful keydown. A native
   // listener is intentional: React's synthetic beforeinput omits these events on some engines.

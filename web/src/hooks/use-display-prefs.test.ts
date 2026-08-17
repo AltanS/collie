@@ -9,7 +9,7 @@ describe("useDisplayPrefs", () => {
 
   it("returns defaults when localStorage is empty", () => {
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false, tapToFocus: true });
   });
 
   it("persists wrap=true and reloads it on mount", () => {
@@ -27,9 +27,9 @@ describe("useDisplayPrefs", () => {
   });
 
   it("loads persisted prefs from localStorage on mount", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, fontSize: 14, rawTerminal: true }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, fontSize: 14, rawTerminal: true, tapToFocus: false }));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, rawTerminal: true });
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, rawTerminal: true, tapToFocus: false });
   });
 
   it("persists rawTerminal and reloads it on mount (the escape hatch survives a reload)", () => {
@@ -40,6 +40,23 @@ describe("useDisplayPrefs", () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).rawTerminal).toBe(true);
     const { result: reloaded } = renderHook(() => useDisplayPrefs());
     expect(reloaded.current.prefs.rawTerminal).toBe(true);
+  });
+
+  it("persists tapToFocus and reloads it on mount", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs.tapToFocus).toBe(true);
+    act(() => result.current.setTapToFocus(false));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).tapToFocus).toBe(false);
+    const { result: reloaded } = renderHook(() => useDisplayPrefs());
+    expect(reloaded.current.prefs.tapToFocus).toBe(false);
+  });
+
+  // The storage key was deliberately NOT bumped for tapToFocus: a payload written before it existed
+  // must keep every other choice and take the default for the new one. A bump would have reset them.
+  it("reads a pre-tapToFocus payload without discarding the prefs it does have", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, fontSize: 15, rawTerminal: true }));
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 15, rawTerminal: true, tapToFocus: true });
   });
 
   it("setFontSize clamps below minimum to 9", () => {
@@ -75,12 +92,12 @@ describe("useDisplayPrefs", () => {
   it("falls back to defaults on malformed JSON", () => {
     localStorage.setItem(STORAGE_KEY, "not-json{{{");
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false, tapToFocus: true });
   });
 
   it("falls back to defaults when stored value is not an object", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(42));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 12, rawTerminal: false, tapToFocus: true });
   });
 });

@@ -6,6 +6,21 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.3] - 2026-08-18
+
+Merges `main` 0.31.0 + 0.31.1 into v1 (entries below). v1-specific on top of them:
+
+### Added
+
+- **`push-keys` is a `bin/collie` verb** (`cli/push-keys.ts`, also spelled `collie push keys`) rather than shell in the bootstrap shim — main implemented it in `collie-ctl.sh` because it has no `cli/`; on v1 every verb is implemented once in `cli/` and the shim only delegates (ADR 0006). Behaviour is main's, unchanged: `--force`, subject-only update, symlink refusal, no placeholder subject, mode 600, `wx` temp file
+- `scripts/collie-cli.test.sh` drives `push-keys` through the compiled binary — resolved `.env`, mode, the refusal to replace live keys, the subject-only update, `--force`, and the symlinked-`.env` refusal
+
+### Changed
+
+- `AuditLog`'s options object carries v1's pack `defaults` alongside main's `content`, so scoped pack logs and `COLLIE_AUDIT_CONTENT` redaction compose; every call site passes `{ now }` instead of a positional clock
+- `/api/config` reports `operatorCommands` through `bridgeConfigBody()`, so the pack `mode` key and the operator's palette rows share one omit-when-empty body
+- Drafts' two tiers key off the `(host, session, paneId)` scope, so the memory tier cannot disagree with disk about which pane is which
+
 ## [1.0.0-beta.2] - 2026-08-15
 
 ### Added
@@ -231,6 +246,34 @@ All notable changes to Collie are recorded here. The format follows
 
 - **`PACK_PROTOCOL.md` §11's files-written row omitted `update-state.json`** — the baseline found it;
   the row now lists the real set
+## [0.31.1] - 2026-08-18
+
+### Fixed
+
+- **A long request survives socket backpressure** — Bun's socket accepts fewer bytes than it is handed under pressure and queues nothing; the dialer now parks the tail and resumes from `drain`, so a big request can no longer silently truncate and die on the timeout (cc810c9). Probed while fixing: herdr drops any request line of 1 MiB or more — now in `HERDR_API.md`
+
+### Changed
+
+- In-code pointers name `DEPLOYMENT.md` now that variants B–E live there (cd2f1f8); `COLLIE_MULTI_SESSION` spelled `on`/`off` everywhere; `push-keys`/`push-test` listed in the Commands table (ee64069)
+
+## [0.31.0] - 2026-08-18
+
+### Added
+
+- **`push-keys` generates the VAPID keypair and writes it into the right `.env`** — Web Push setup is now three plugin actions (`push-keys` → `restart` → subscribe), no manual key wrangling (85f0454)
+- **"Tap to type" can be turned off** — a display setting stops the mirror volunteering the keyboard on a tap; on by default (357b86f)
+- **`COLLIE_AUDIT_CONTENT=none` keeps the audit trail and drops the bodies** — a fail-closed allowlist keeps action parameters legible while anything operator- or screen-originated redacts (#107, 5dda876, cdad445) — thanks @shuangwangnyc
+- **Your own slash commands in the palette, declared in `commands.toml`** — on a pane your rows address they replace the shipped catalog (ADR 0018); `confirm = true` adds a two-tap; edits are live, no restart (#109, 35da673, 28bdf5a) — thanks @enieuwy
+
+### Fixed
+
+- **⚠ A paste too big to persist no longer restores an older, shorter draft after a remount** — oversize drafts now ride an in-memory tier whole, never truncated and never swapped for stale text; they survive pane switches but not closing the app, and the composer says so (7965674)
+- **A half-arrived long send is no longer accepted as send evidence** — when the input box ends in literal text it must be the end of what was sent, or the guard refuses to press Enter (#110, 27f4cdf)
+- **Direct typing no longer owes a "mode stopped" notice to the next pane**, and the blur it schedules is settled by cancellation instead of racing a re-arm (#108, 452da20, 1a2ca49) — thanks @enieuwy
+
+### Changed
+
+- **README cut to ~60% of its length, how-first** — deployment variants B–E now live in `DEPLOYMENT.md`, and troubleshooting entries are findable by the words you'd actually search (9464c14, c52d4af)
 
 ## [0.30.0] - 2026-08-16
 

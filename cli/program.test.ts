@@ -37,6 +37,10 @@ const SHELL_VERBS = [
   "url",
   "qr",
   "version",
+  // `push-keys` has no shell ancestor on this branch — main implemented it in `collie-ctl.sh`
+  // because it has no `cli/`; here it is a verb like every other, and the shim delegates it. It
+  // sits beside `push-test` because both keep the hyphenated spelling the Herdr action names.
+  "push-keys",
   "push-test",
   "logs",
 ];
@@ -283,6 +287,7 @@ describe("exit codes", () => {
       "unserve",
       "status",
       "logs",
+      "push-keys",
       "push-test",
       "url",
       // `qr` shells out to `tailscale` to decide which URL is worth encoding.

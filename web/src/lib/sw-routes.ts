@@ -5,7 +5,7 @@
  * touching the network. That is what makes deep links work offline — and it is also why an installed
  * PWA, which has no address bar to fall back on, cannot reach anything a fronting reverse proxy
  * serves at a path Collie doesn't own. A proxy that authenticates devices ahead of the bridge
- * (README Variant C/E) has a sign-in or enrolment page, and before this list existed there was no
+ * (DEPLOYMENT.md, Variant C/E) has a sign-in or enrolment page, and before this list existed there was no
  * legitimate place to put it: the `/api/` denylist was the only crack in the precache, so operators
  * squatted a page inside the namespace the API owns.
  *

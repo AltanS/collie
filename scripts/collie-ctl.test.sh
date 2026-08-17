@@ -127,7 +127,7 @@ test_delegation_passes_argv_and_env() {
   # Every verb the manifest's frozen action set names still reaches the binary (ADR 0006: a
   # <0.8.0 managed install invokes `bash scripts/collie-ctl.sh <verb>` from its cached definition).
   local verb
-  for verb in start stop restart uninstall update url status version; do
+  for verb in start stop restart uninstall update url status version push-keys push-test; do
     : > "$CALLS"
     run_shim "$verb" || fail "the shim failed on \`${verb}\`"
     assert_contains "$(cat "$CALLS")" "collie ${verb}"

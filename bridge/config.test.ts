@@ -38,6 +38,7 @@ const KEYS = [
   "COLLIE_SKIP_SERVE",
   "HERDR_SOCKET_PATH",
   "HERDR_PLUGIN_STATE_DIR",
+  "HERDR_PLUGIN_CONFIG_DIR",
   "COLLIE_HERDR_DIAL",
 ];
 
@@ -193,6 +194,15 @@ describe("loadConfig", () => {
     process.env.CODEX_HOME = "/srv/codex";
     process.env.COLLIE_CODEX_ROOT = "/elsewhere/rollouts";
     expect(loadConfig().journalRoots.codex).toEqual(["/elsewhere/rollouts"]);
+  });
+
+  // The operator's rows sit beside their .env, and the launcher hands us that dir precisely so the
+  // bridge and scripts/collie-ctl.sh never disagree about which one it is.
+  test("commands.toml is resolved in the plugin config dir the launcher passed", () => {
+    process.env.HERDR_PLUGIN_CONFIG_DIR = "/srv/herdr/plugins/collie";
+    expect(loadConfig().commandsFile).toBe(join("/srv/herdr/plugins/collie", "commands.toml"));
+    delete process.env.HERDR_PLUGIN_CONFIG_DIR;
+    expect(loadConfig().commandsFile).toBe(join(homedir(), ".config", "collie", "commands.toml"));
   });
 
   test("reads the per-device auth header and allowlist", () => {

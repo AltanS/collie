@@ -63,7 +63,9 @@ function cfg(overrides: Partial<Config> = {}): Config {
       opencode: ["/nope/opencode"],
     },
     submitKeys: ["Enter"],
+    commandsFile: "/nope/commands.toml",
     trustedUser: "",
+    auditContent: "preview",
     deviceHeader: "",
     deviceAllowlist: [],
     allowedOrigins: [],
@@ -920,7 +922,9 @@ describe("startupWarnings — security-posture nags", () => {
     const ws = startupWarnings(cfg({ skipServe: true, trustedUser: "me@example.com" }));
     expect(has(ws, "COLLIE_TRUSTED_USER has no effect")).toBe(true);
     expect(has(ws, "COLLIE_DEVICE_HEADER")).toBe(true);
-    expect(has(ws, "Variant C")).toBe(true);
+    // The pointer must name the doc the variant actually lives in — B–E moved to DEPLOYMENT.md in
+    // 0.31.0, while Variant A stayed in the README (pinned in the empty-trustedUser test below).
+    expect(has(ws, "DEPLOYMENT.md → Variant C")).toBe(true);
     // The Variant-A empty-trustedUser nag must NOT also fire (it's meaningless behind a proxy).
     expect(has(ws, "any tailnet device/user")).toBe(false);
   });
@@ -933,7 +937,7 @@ describe("startupWarnings — security-posture nags", () => {
   test("no skipServe + empty trustedUser: the existing Variant-A warning still fires", () => {
     const ws = startupWarnings(cfg({ skipServe: false, trustedUser: "" }));
     expect(has(ws, "COLLIE_TRUSTED_USER is empty")).toBe(true);
-    expect(has(ws, "Variant A")).toBe(true);
+    expect(has(ws, "README → Variant A")).toBe(true);
   });
 
   test("no skipServe + trustedUser set: no identity warning (correctly configured)", () => {

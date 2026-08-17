@@ -2,7 +2,7 @@
 # Bootstrap shim for Collie. Its ONLY job: make sure `bin/collie` exists, then hand it the argv.
 #
 # Every verb — start/stop/restart/build/serve/unserve/status/url/qr/version/update/_apply-update/
-# _exec-bridge/uninstall/push-test/logs and the pack verbs — is implemented ONCE, in `cli/`, and
+# _exec-bridge/uninstall/push-keys/push-test/logs and the pack verbs — is implemented ONCE, in `cli/`, and
 # compiled into `bin/collie` (M6/01). Nothing about a systemd unit, a launchd agent, `tailscale
 # serve` or a git checkout lives here any more; if you are about to add such a thing, it belongs in
 # `cli/`.

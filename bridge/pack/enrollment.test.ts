@@ -422,7 +422,7 @@ describe("commitPackChange — write first, audit second", () => {
         contents = d;
       },
     };
-    return { lines, io, audit: new AuditLog((l) => void lines.push(JSON.parse(l) as AuditEntry), () => T0) };
+    return { lines, io, audit: new AuditLog((l) => void lines.push(JSON.parse(l) as AuditEntry), { now: () => T0 }) };
   }
 
   test("a successful change is persisted and audited", async () => {

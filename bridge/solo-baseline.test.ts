@@ -503,6 +503,8 @@ describe("solo zero-tax — routes", () => {
 const CONFIG_KEYS: Record<keyof Config, true> = {
   socketPath: true,
   dialMode: true,
+  auditContent: true,
+  commandsFile: true,
   port: true,
   host: true,
   pollMs: true,
@@ -530,6 +532,8 @@ describe("solo zero-tax — config", () => {
     const keys = Object.keys(CONFIG_KEYS).sort();
     expect(keys).toEqual([
       "allowedOrigins",
+      "auditContent",
+      "commandsFile",
       "deviceAllowlist",
       "deviceHeader",
       "dialMode",
@@ -576,6 +580,7 @@ describe("solo zero-tax — config", () => {
     const keys = [...new Set([...src.matchAll(/COLLIE_[A-Z0-9_]+/g)].map((m) => m[0]))].sort();
     expect(keys).toEqual([
       "COLLIE_ALLOWED_ORIGINS",
+      "COLLIE_AUDIT_CONTENT",
       "COLLIE_CODEX_ROOT",
       "COLLIE_DEVICE_ALLOWLIST",
       "COLLIE_DEVICE_HEADER",
@@ -693,7 +698,7 @@ describe("solo zero-tax — the filesystem", () => {
       const ledger = new ActivityLedger({ stateDir }, () => TS, 60 * 60 * 1000);
       ledger.ensure("default", "w1:p1");
       await ledger.flush();
-      new AuditLog(fileAuditAppender(join(stateDir, "audit.log")), () => TS).record({
+      new AuditLog(fileAuditAppender(join(stateDir, "audit.log")), { now: () => TS }).record({
         action: "reply",
         paneId: "w1:p1",
         detail: { text: "ok" },

@@ -98,7 +98,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
     files,
     store,
     ops,
-    audit: new AuditLog((l) => void auditLines.push(JSON.parse(l) as AuditEntry), () => T0),
+    audit: new AuditLog((l) => void auditLines.push(JSON.parse(l) as AuditEntry), { now: () => T0 }),
     fetch: async (url, init) => {
       const headers: Record<string, string> = {};
       new Headers(init.headers).forEach((v, k) => {

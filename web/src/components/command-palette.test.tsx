@@ -2,8 +2,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CommandPalette } from "./command-palette";
+import type { OperatorCommand } from "@/lib/types";
 
-function setup(overrides?: { agent?: string | null }) {
+function setup(overrides?: { agent?: string | null; mine?: OperatorCommand[] }) {
   const props = {
     open: true,
     onClose: vi.fn(),
@@ -78,5 +79,96 @@ describe("CommandPalette", () => {
     setup({ agent: "gemini" });
     expect(screen.queryByText("/status")).toBeNull();
     expect(screen.queryByText("/compact")).toBeNull();
+  });
+
+  it("shows one of the operator's own commands on the first screen and submits it", async () => {
+    const user = userEvent.setup();
+    const props = setup({
+      agent: "omp",
+      mine: [
+        {
+          agent: "omp",
+          command: "/fork-in-herdr",
+          description: "Fork into a new herdr tab",
+          takesArg: false,
+          argHint: "",
+        },
+      ],
+    });
+    // No search needed — an operator-declared row is common by construction.
+    await user.click(screen.getByText("/fork-in-herdr"));
+    expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith("/fork-in-herdr");
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  it("gives an agent with no catalog a palette when an unscoped row applies", () => {
+    setup({
+      agent: "gemini",
+      mine: [{ command: "/deploy", description: "Ship it", takesArg: false, argHint: "" }],
+    });
+    expect(screen.getByText("/deploy")).toBeInTheDocument();
+  });
+
+  it("renders one button when a scoped and an unscoped row name the same command", () => {
+    setup({
+      agent: "omp",
+      mine: [
+        { command: "/deploy", description: "Everywhere", takesArg: false, argHint: "" },
+        { agent: "omp", command: "/deploy", description: "On omp", takesArg: false, argHint: "" },
+      ],
+    });
+    // getAllByText, not getByText: two rows would also mean two children under one React key.
+    expect(screen.getAllByText("/deploy")).toHaveLength(1);
+    expect(screen.getByText("On omp")).toBeInTheDocument();
+  });
+
+  it("shows the operator's rows INSTEAD of the shipped catalog", () => {
+    setup({
+      agent: "omp",
+      mine: [
+        { agent: "omp", command: "/fork-in-herdr", description: "Fork", takesArg: false, argHint: "" },
+      ],
+    });
+    expect(screen.getByText("/fork-in-herdr")).toBeInTheDocument();
+    // The sheet is the operator's shortcuts now — no searching past ten rows nobody picked.
+    expect(screen.queryByText("/compact")).toBeNull();
+  });
+
+  it("still asks twice before a renamed destructive command", async () => {
+    const user = userEvent.setup();
+    const props = setup({
+      agent: "omp",
+      mine: [
+        { agent: "omp", command: "/new", description: "Fresh start", takesArg: false, argHint: "" },
+      ],
+    });
+    await user.click(screen.getByText("Fresh start"));
+    expect(props.onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText("Confirm?")).toBeInTheDocument();
+    await user.click(screen.getByText("Fresh start"));
+    expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith("/new");
+  });
+
+  it("asks twice before a row the operator marked confirm", async () => {
+    const user = userEvent.setup();
+    const props = setup({
+      agent: "omp",
+      mine: [
+        {
+          agent: "omp",
+          command: "/deploy",
+          description: "Deploy staging",
+          takesArg: false,
+          argHint: "",
+          confirm: true,
+        },
+      ],
+    });
+    // Same two-tap a shipped dangerous command gets — the operator's own brake, on their own row.
+    await user.click(screen.getByText("Deploy staging"));
+    expect(props.onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText("Confirm?")).toBeInTheDocument();
+    await user.click(screen.getByText("Deploy staging"));
+    expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith("/deploy");
   });
 });

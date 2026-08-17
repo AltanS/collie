@@ -82,7 +82,7 @@ describe("AuditLog", () => {
   test("records a formatted, newline-terminated line to the injected append", async () => {
     const lines: string[] = [];
     const append: AppendFn = (l) => void lines.push(l);
-    const log = new AuditLog(append, () => 0);
+    const log = new AuditLog(append, { now: () => 0 });
 
     log.record({ action: "keys", paneId: "p1", detail: { keys: ["Enter"] } });
     // record() is fire-and-forget; let the swallowed promise settle.
@@ -100,7 +100,7 @@ describe("AuditLog", () => {
 
   test("a rejecting append never throws out of record() (audit must not break the action)", async () => {
     const append: AppendFn = () => Promise.reject(new Error("disk full"));
-    const log = new AuditLog(append, () => 0);
+    const log = new AuditLog(append, { now: () => 0 });
     const warnings: string[] = [];
     const origWarn = console.warn;
     console.warn = ((...args: unknown[]) => void warnings.push(args.map(String).join(" "))) as typeof console.warn;
@@ -118,7 +118,7 @@ describe("AuditLog", () => {
     const append: AppendFn = () => {
       throw new Error("boom");
     };
-    const log = new AuditLog(append, () => 0);
+    const log = new AuditLog(append, { now: () => 0 });
     const origWarn = console.warn;
     console.warn = (() => {}) as typeof console.warn;
     try {
@@ -158,7 +158,7 @@ describe("pack attribution", () => {
     // This is how the peer hands the UNMODIFIED browser handlers a log that already knows the action
     // arrived over a pack link — the handlers take no `via` parameter and there is nothing to forget.
     const lines: string[] = [];
-    const log = new AuditLog((l) => void lines.push(l), () => 0);
+    const log = new AuditLog((l) => void lines.push(l), { now: () => 0 });
     const packLog = log.scoped({ via: "pack", from: "desk" });
     packLog.record({ action: "keys", paneId: "w1:p1", device: "phone-7", detail: { keys: ["Enter"] } });
     // The unscoped log is untouched — one process, two views, no leakage between them.
@@ -170,8 +170,23 @@ describe("pack attribution", () => {
 
   test("an entry's own field beats the scope's — the record is what happened, not what was assumed", () => {
     const lines: string[] = [];
-    const log = new AuditLog((l) => void lines.push(l), () => 0).scoped({ via: "pack", from: "desk" });
+    const log = new AuditLog((l) => void lines.push(l), { now: () => 0 }).scoped({ via: "pack", from: "desk" });
     log.record({ action: "reply", from: "nas", detail: {} });
     expect(JSON.parse(lines[0]!).from).toBe("nas");
+  });
+
+  // `defaults` and `content` share one options object precisely so neither can be transposed into
+  // the other's slot — and a scoped view must keep BOTH. A `scoped()` that dropped the content mode
+  // would be a redaction quietly turning itself off on exactly the lines a peer writes.
+  test("a scoped view keeps the content mode as well as the attribution", () => {
+    const lines: string[] = [];
+    const log = new AuditLog((l) => void lines.push(l), {
+      now: () => 0,
+      content: "none",
+    }).scoped({ via: "pack", from: "desk" });
+    log.record({ action: "reply", paneId: "w1:p1", detail: { text: "the secret" } });
+    const entry = JSON.parse(lines[0]!);
+    expect(entry).toMatchObject({ action: "reply", via: "pack", from: "desk" });
+    expect(lines[0]).not.toContain("the secret");
   });
 });

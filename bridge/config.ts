@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
 import type { JournalRoots } from "./journal/registry.ts";
 
@@ -144,6 +145,12 @@ export interface Config {
   /** Key sequence sent to submit a reply after the text (agent-dependent; see HERDR_API.md). */
   submitKeys: string[];
   /**
+   * Where the operator's Agent-commands rows live — `commands.toml` in the same dir as their
+   * `.env`. Read at request time behind an mtime check (bridge/operator-commands.ts), so it is
+   * resolved here but never read here.
+   */
+  commandsFile: string;
+  /**
    * Tailscale identity gate. If set, any request carrying a `Tailscale-User-Login` header
    * (injected by `tailscale serve`) must match this login — a mismatching tailnet user is
    * rejected. A request with no such header still passes (direct-loopback callers don't get one),
@@ -151,6 +158,11 @@ export interface Config {
    * loopback caller (fine when only tailscaled can reach the port).
    */
   trustedUser: string;
+  /**
+   * How much of each value's content the audit trail keeps — see {@link AuditContent} in audit.ts
+   * for what `none` does and does not redact.
+   */
+  auditContent: AuditContent;
   /**
    * Per-device authorisation. Name of a request header carrying an opaque device identifier,
    * injected by a trusted upstream reverse proxy. Empty = the feature is off (no behaviour change).
@@ -195,7 +207,7 @@ export interface Config {
    * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
    * identically either way — this flag only informs the startup warnings: without `tailscale serve`
    * in front, the `Tailscale-User-Login` header is never injected, so {@link trustedUser} is inert
-   * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (README → Variant C).
+   * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (DEPLOYMENT.md → Variant C).
    */
   skipServe: boolean;
 }
@@ -256,6 +268,13 @@ export function loadConfig(): Config {
 
   const submitKeys = envList("COLLIE_SUBMIT_KEYS");
 
+  // The operator's config dir — where their `.env` lives, and now their `commands.toml` beside it.
+  // Resolved exactly the way scripts/collie-ctl.sh resolves it MINUS the `herdr` shell-out: the
+  // launcher passes HERDR_PLUGIN_CONFIG_DIR into the unit (and the launchd plist) precisely so this
+  // process never has to ask the CLI, and the two entry points must not disagree about which dir
+  // that is. ~/.config/collie is the same last-resort default the shim ends on.
+  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), ".config", "collie");
+
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),
     dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto"),
@@ -290,7 +309,9 @@ export function loadConfig(): Config {
       ),
     },
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
+    commandsFile: join(configDir, "commands.toml"),
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
+    auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview"),
     deviceHeader: (process.env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST"),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS"),
