@@ -132,6 +132,9 @@ the unit name; the Herdr action runs from anywhere.
   read-only, idle pause), a hidden page, and a failed batch — never persisted, never restored. Don't
   lift it, and don't add the reply guard's `composerReady` pre-flight to it; the reasoning for both
   sits in `web/src/components/send-mode-menu.tsx`'s header.
+- **The operator's rows in `commands.toml` replace the shipped command catalog on the panes they
+  address, never merge into it** ([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md));
+  the bridge re-reads the file behind an mtime check, so edits are live and need no restart.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).

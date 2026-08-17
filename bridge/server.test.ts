@@ -53,6 +53,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       opencode: ["/nope/opencode"],
     },
     submitKeys: ["Enter"],
+    commandsFile: "/nope/commands.toml",
     trustedUser: "",
     auditContent: "preview",
     deviceHeader: "",
