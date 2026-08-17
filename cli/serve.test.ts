@@ -298,7 +298,7 @@ describe("serve — publishing", () => {
   });
 });
 
-describe("serve — COLLIE_SKIP_SERVE (README Variants C/E)", () => {
+describe("serve — COLLIE_SKIP_SERVE (DEPLOYMENT.md Variants C/E)", () => {
   test("publishes nothing", () => {
     const h = harness({ env: { COLLIE_SKIP_SERVE: "1" } });
     expect(cmdServe(h.deps)).toBe(EXIT.OK);

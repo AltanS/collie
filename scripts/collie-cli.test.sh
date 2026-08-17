@@ -647,7 +647,7 @@ assert_contains "$STDERR" "retained ${RECORD} for retry"
 assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|${OURS}"
 rm -f "$FD_OFF_FAILS"
 
-# COLLIE_SKIP_SERVE=1 (README Variants C/E): the operator owns the ingress, Collie publishes
+# COLLIE_SKIP_SERVE=1 (DEPLOYMENT.md Variants C/E): the operator owns the ingress, Collie publishes
 # NOTHING — but still tears down a mapping published before the flag was flipped, which would
 # otherwise stay reachable by a path the operator thinks is closed.
 status_is "$COLLIE_HTTP_ROOT"
@@ -1453,6 +1453,9 @@ rc=0
 run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$LINK_CONFIG" PATH="$BIN_DIR"   "$BIN" push-keys || rc=$?
 assert_eq "$rc" "1"
 assert_contains "$STDERR" "symlink"
+# The remedy must name something the operator can DO. This verb takes no path argument, so advice
+# of the "point it at the real file" shape would name no object — the pin is the concrete command.
+assert_contains "$STDERR" "cp -L"
 [ -L "${LINK_CONFIG}/.env" ] || fail "the symlink was replaced by a regular file"
 assert_eq "$(cat "${TMP_ROOT}/dotfiles-env")" "COLLIE_PORT=8787"
 

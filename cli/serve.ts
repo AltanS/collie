@@ -287,7 +287,7 @@ function readFingerprint(deps: ServeDeps, record: OwnershipRecord): string | nul
 export function cmdServe(deps: ServeDeps): number {
   // Skipping teardown would strand a mapping published BEFORE the flag was flipped on, leaving the
   // app reachable by a path the operator thinks is closed. So Variant C/E publishes nothing — and
-  // still tears down. (README Variants C/E; bridge/config.ts exposes the same flag as `skipServe`.)
+  // still tears down. (DEPLOYMENT.md Variants C/E; bridge/config.ts exposes the flag as `skipServe`.)
   if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
     const torn = stopTailscaleServe(deps);
     if (torn !== EXIT.OK) return torn;

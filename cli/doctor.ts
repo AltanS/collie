@@ -313,7 +313,7 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     return skipped(
       "front-door",
       "no `tailscale` here — the published mapping cannot be read",
-      "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (README Variant E)",
+      "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (DEPLOYMENT.md Variant E)",
     );
   }
   const status = liveServeStatus(deps);
