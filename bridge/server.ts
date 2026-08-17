@@ -8,6 +8,7 @@ import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
+import { createOperatorCommands } from "./operator-commands.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -43,6 +44,7 @@ import type {
   BridgeConfig,
   CreateResponse,
   DeviceAuth,
+  OperatorCommand,
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
@@ -186,13 +188,20 @@ export function bridgeConfigBody(opts: {
   vapidPublicKey: string;
   build: string;
   mode: PackRuntime["mode"];
+  /**
+   * The operator's own palette rows. Omitted entirely when there are none, so an operator who never
+   * wrote a `commands.toml` ships the same payload as before — the same reasoning `mode` follows.
+   */
+  operatorCommands?: readonly OperatorCommand[];
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
+  const mine = opts.operatorCommands ?? [];
   return {
     push: opts.push,
     vapidPublicKey: opts.vapidPublicKey,
     build: opts.build,
     ...(mode !== undefined ? { mode } : {}),
+    ...(mine.length > 0 ? { operatorCommands: [...mine] } : {}),
   } satisfies BridgeConfig;
 }
 
@@ -261,6 +270,8 @@ export function startServer(opts: {
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
   // journal/registry.ts, never here.
+  // One reader per process; it owns the mtime cache that keeps commands.toml off the hot path.
+  const operatorCommands = createOperatorCommands(cfg.commandsFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -573,20 +584,26 @@ export function startServer(opts: {
 
       // ── Misc API ─────────────────────────────────────────────────────────
       if (pathname === "/api/config") {
-        // Read-level, like the other non-terminal endpoints. Nothing here is secret — the VAPID
-        // public key is handed to every browser by design — but this was the one route that skipped
-        // checkAccess entirely, so COLLIE_PUBLIC_HOSTS didn't cover it and a rebound DNS name could
-        // still read the build id. The client only ever calls this same-origin, and a refusal can't
-        // be mistaken for an outage: ConnectionBanner short-circuits to AuthErrorBanner before its
-        // red-state probe runs. Noted in #32.
+        // Read-level, like the other non-terminal endpoints. Nothing Collie puts here is a
+        // credential — the VAPID public key is handed to every browser by design — but the payload
+        // is no longer entirely Collie's: operatorCommands is operator-authored text, and any read
+        // client sees it verbatim (`.env.example` says so where it is set).
+        // It was also the one route that skipped checkAccess entirely, so COLLIE_PUBLIC_HOSTS
+        // didn't cover it and a rebound DNS name could still read the build id. The client only ever
+        // calls this same-origin, and a refusal can't be mistaken for an outage: ConnectionBanner
+        // short-circuits to AuthErrorBanner before its red-state probe runs. Noted in #32.
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
+        // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
+        // with no restart. The path is cfg's, never the request's.
+        const mine = await operatorCommands();
         return json(
           bridgeConfigBody({
             push: push.enabled,
             vapidPublicKey: push.publicKey,
             build: await buildId(),
             mode: pack.mode,
+            operatorCommands: mine,
           }),
           req.headers.get("accept-encoding"),
         );
@@ -797,7 +814,7 @@ export function startupWarnings(cfg: Config): string[] {
     // an identity to enforce — trustedUser is dead config. Only nag when it's set (a likely mistake).
     if (cfg.trustedUser) {
       warnings.push(
-        `[bridge] WARNING: COLLIE_TRUSTED_USER has no effect under COLLIE_SKIP_SERVE=1 — without tailscale serve in front, the Tailscale-User-Login header is never injected. Use COLLIE_DEVICE_HEADER for per-device auth (see README → Variant C).`,
+        `[bridge] WARNING: COLLIE_TRUSTED_USER has no effect under COLLIE_SKIP_SERVE=1 — without tailscale serve in front, the Tailscale-User-Login header is never injected. Use COLLIE_DEVICE_HEADER for per-device auth (see DEPLOYMENT.md → Variant C).`,
       );
     }
   } else if (!cfg.trustedUser) {

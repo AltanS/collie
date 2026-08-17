@@ -47,6 +47,7 @@ import {
   type PushDeps,
   PUSH_SUBCOMMANDS,
 } from "./push.ts";
+import { cmdPushKeys } from "./push-keys.ts";
 import { cmdQr } from "./qr.ts";
 import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
 import { cmdPackUpdate } from "./pack-update.ts";
@@ -254,6 +255,14 @@ export const COMMANDS: readonly Command[] = [
       return EXIT.OK;
     },
   },
+  // `push-keys` and `push-test` keep their hyphenated spellings because the Herdr action set cached
+  // at install time names them (ADR 0006) — the shim delegates both here. `push keys` / `push test`
+  // below are the same functions under the parent verb.
+  {
+    name: "push-keys",
+    summary: "generate the VAPID keypair and write it into this install's .env",
+    run: (args, s) => cmdPushKeys(pushDeps(s.io), args),
+  },
   {
     name: "push-test",
     summary: "send a one-off Web Push to every subscribed device",
@@ -318,6 +327,11 @@ export const COMMANDS: readonly Command[] = [
         name: "forget",
         summary: "drop rows by endpoint substring: `push forget <substring>|--all`",
         run: (args, s) => cmdPushForget(pushDeps(s.io), args),
+      },
+      {
+        name: "keys",
+        summary: "generate the VAPID keypair into this install's .env (also spelled `push-keys`)",
+        run: (args, s) => cmdPushKeys(pushDeps(s.io), args),
       },
       {
         name: "test",

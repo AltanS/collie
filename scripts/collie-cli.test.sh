@@ -1385,6 +1385,92 @@ done
 # Not one of them shelled out either — and none of them needed a VAPID key to answer.
 assert_eq "$(cat "$PAIR_CALLS")" ""
 
+# ── push-keys ────────────────────────────────────────────────────────────────
+# The keygen itself is pure and covered in cli/push-keys.test.ts. What only this file can prove is
+# the part the verb exists for: WHERE the keys land — the same config dir every other verb resolves,
+# under `env -i`, with the mode a signing credential needs — and that the three refusals hold
+# against a real filesystem. (Main pins the same behaviours through the shim, which on this branch
+# implements nothing: here they are asserted against the binary the shim delegates to.)
+KEYS_CONFIG="${TMP_ROOT}/keys-config"
+mkdir -p "$KEYS_CONFIG"
+: > "$PAIR_CALLS"
+keys_env() {
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$KEYS_CONFIG" PATH="$BIN_DIR" "$BIN" "$@"
+}
+KEYS_ENV_FILE="${KEYS_CONFIG}/.env"
+
+keys_env push-keys "mailto:probe@example.com" || fail "push-keys failed: ${STDERR}"
+[ -f "$KEYS_ENV_FILE" ] || fail "push-keys did not write ${KEYS_ENV_FILE}"
+assert_contains "$(cat "$KEYS_ENV_FILE")" "COLLIE_VAPID_PUBLIC="
+assert_contains "$(cat "$KEYS_ENV_FILE")" "COLLIE_VAPID_SUBJECT=mailto:probe@example.com"
+# A private key is a signing credential; a world-readable moment is a leak.
+assert_eq "$(stat -c '%a' "$KEYS_ENV_FILE" 2>/dev/null || stat -f '%Lp' "$KEYS_ENV_FILE")" "600"
+
+# Re-running must NOT silently mint new keys: that would invalidate every subscription already out
+# there, and the devices would go quiet with nothing to show for it.
+KEYS_BEFORE="$(cat "$KEYS_ENV_FILE")"
+rc=0
+keys_env push-keys || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "already configured"
+assert_eq "$(cat "$KEYS_ENV_FILE")" "$KEYS_BEFORE"
+
+# A subject is a contact address, not a credential: correcting one must not cost every subscription,
+# so it is the one edit allowed on a configured file without --force.
+PRIVATE_BEFORE="$(grep COLLIE_VAPID_PRIVATE "$KEYS_ENV_FILE")"
+keys_env push-keys "mailto:fixed@example.com" || fail "push-keys refused a subject-only update: ${STDERR}"
+assert_contains "$(cat "$KEYS_ENV_FILE")" "COLLIE_VAPID_SUBJECT=mailto:fixed@example.com"
+assert_eq "$(grep COLLIE_VAPID_PRIVATE "$KEYS_ENV_FILE")" "$PRIVATE_BEFORE"
+
+# The subject is allowlisted, not blocklisted — it lands in a file bash sources and systemd parses,
+# and a value that means two different things there is a bug whoever wrote it. Refused at usage (2),
+# and nothing is written.
+rc=0
+keys_env push-keys 'https://x/;id' || rc=$?
+assert_eq "$rc" "2"
+assert_contains "$STDERR" "unsafe"
+assert_eq "$(grep COLLIE_VAPID_PRIVATE "$KEYS_ENV_FILE")" "$PRIVATE_BEFORE"
+
+keys_env push-keys --force || fail "push-keys --force failed: ${STDERR}"
+[ "$(cat "$KEYS_ENV_FILE")" != "$KEYS_BEFORE" ] || fail "--force left the old keys in place"
+assert_contains "$STDOUT" "keys replaced"
+
+# `push keys` is the same function under the parent verb — the hyphenated spelling exists because
+# the Herdr action set cached at install time names it (ADR 0006).
+rc=0
+keys_env push keys || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "already configured"
+
+# A .env symlinked out of a dotfiles repo (or rendered by a secret manager) is a shape this file has
+# only ever been READ in. An atomic rename would replace the link with a plain file and quietly
+# detach the operator's source of truth, so it is refused instead.
+LINK_CONFIG="${TMP_ROOT}/keys-symlink"
+mkdir -p "$LINK_CONFIG"
+printf 'COLLIE_PORT=8787\n' > "${TMP_ROOT}/dotfiles-env"
+ln -s "${TMP_ROOT}/dotfiles-env" "${LINK_CONFIG}/.env"
+rc=0
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$LINK_CONFIG" PATH="$BIN_DIR"   "$BIN" push-keys || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "symlink"
+[ -L "${LINK_CONFIG}/.env" ] || fail "the symlink was replaced by a regular file"
+assert_eq "$(cat "${TMP_ROOT}/dotfiles-env")" "COLLIE_PORT=8787"
+
+# A temp file left behind by a run that died between write and rename is reported, never deleted
+# blind — it may hold the only copy of a key someone just generated.
+STALE_CONFIG="${TMP_ROOT}/keys-stale"
+mkdir -p "$STALE_CONFIG"
+: > "${STALE_CONFIG}/.env.push-keys.tmp"
+rc=0
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$STALE_CONFIG" PATH="$BIN_DIR" \
+  "$BIN" push-keys || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "a previous run left it behind"
+[ -f "${STALE_CONFIG}/.env.push-keys.tmp" ] || fail "push-keys deleted the temp file it was told to report"
+
+# Not one of these shelled out.
+assert_eq "$(cat "$PAIR_CALLS")" ""
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
@@ -1396,3 +1482,4 @@ echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/le
 echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one line per check"
 echo "✓ collie CLI pairing: 0600 pending file with no code in it, re-mint, list/revoke, exit codes"
 echo "✓ collie CLI push: list/forget answer with no VAPID and no environment, no keys on screen, exit codes"
+echo "✓ collie CLI push-keys: writes the resolved .env at 0600, refuses live keys / a bad subject / a symlink"

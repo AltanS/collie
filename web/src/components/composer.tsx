@@ -17,10 +17,11 @@ import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
+import { useOperatorCommands } from "@/lib/operator-commands";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostLabel } from "@/components/pack-provider";
-import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
+import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
@@ -76,6 +77,7 @@ interface ComposerProps {
   setWrap: (wrap: boolean) => void;
   stepFontSize: (delta: number) => void;
   setRawTerminal: (raw: boolean) => void;
+  setTapToFocus: (tapToFocus: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
 }
@@ -155,7 +157,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -452,7 +454,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     focusInputEnd();
   }
 
-  const commands = commandsFor(agent);
+  // The operator's own palette rows, resolved against the shipped catalog for both the button's
+  // visibility test here and the palette's own list below (same call, same arguments).
+  const operatorCommands = useOperatorCommands();
+  const commands = commandsFor(agent, operatorCommands);
 
   function focusInputImmediately() {
     const el = inputRef.current;
@@ -800,6 +805,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               setWrap={setWrap}
               stepFontSize={stepFontSize}
               setRawTerminal={setRawTerminal}
+              setTapToFocus={setTapToFocus}
             />
           </ComposerDock>
         )}
@@ -944,6 +950,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
             deliberately NOT only on the button and textarea — see the component. */}
         {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
+        {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
+            memory tier holds it whole — but not the app closing, and that difference is invisible
+            without saying so: the old behaviour silently restored an OLDER, SHORTER draft instead.
+            Derived at render rather than pushed through setStatus, because this is a CONDITION that
+            lasts as long as the text does, and a status auto-clears in 2.5s and would re-fire on
+            every keystroke. Self-clearing: trim the draft or send it and the row is simply gone. */}
+        {!direct.active && !fitsDraftStore(input) && (
+          <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
+            Too long to keep as a saved draft — it survives switching panes, but not closing the app.
+          </p>
+        )}
         {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
             field and Send, and the old spacing left them looking joined. */}
         <div className="flex items-end gap-3">
@@ -1071,6 +1088,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         open={drawer === "cmd"}
         onClose={closeDrawer}
         agent={agent}
+        mine={operatorCommands}
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />

@@ -231,6 +231,10 @@ export class HerdrClient {
           }
           socket = s;
           // Write only once the connection is established — matches the verified probe pattern.
+          // A long request (a big paste, a wide pane's text) can exceed what the socket accepts in
+          // one go; the dialer owns that continuation, so there is nothing to retry here (dial.ts,
+          // write-drain.ts). A connection that dies mid-write lands in close/error above and
+          // rejects like any other transport failure.
           s.write(JSON.stringify({ id, method, params }) + "\n");
           s.flush();
         })

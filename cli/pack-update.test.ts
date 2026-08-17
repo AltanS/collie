@@ -114,7 +114,7 @@ function harness(opts: HarnessOptions = {}) {
     files: fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: `id = "herdr.collie"\nversion = "${VERSION}"\n` }),
     store: new TrustStore("/state", storeIo),
     ops,
-    audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), () => T0),
+    audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), { now: () => T0 }),
     fetch: async (url) => {
       // Every dial in this verb is a `hello` at a member's own address; the member is named by it.
       const who = [...Object.keys(opts.hello ?? {})].find((id) => url.includes(addressOf(initial, id))) ?? "nas";

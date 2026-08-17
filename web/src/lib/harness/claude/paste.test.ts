@@ -78,6 +78,44 @@ describe("pasteCarriesSend — rejections (the guard stays shut)", () => {
     expect(pasteCarriesSend("x".repeat(400), "[Pasted text #3]")).toBe(false);
   });
 
+  it("rejects a tail that stops SHORT of the end of what we sent (#110)", () => {
+    // THE partial-arrival false positive. Live-probed 2026-08-17 (collie-demo, pane `w6:p1`): the
+    // head collapsed into a token and two of three tails arrived literally. `Σ M ≤ S` passes (the
+    // tail's own newlines were never in the token's count), and the truncated tail is still a
+    // prefix-ordered substring, so the indexOf loop passes too — the trailing text being the END of
+    // our message is the only thing that separates this screen from a complete one.
+    const sent = `${multiline(5)} TAIL-ONE-alpha TAIL-TWO-bravo TAIL-THREE-charlie`;
+    expect(pasteCarriesSend(sent, "[Pasted text #3 +5 lines] TAIL-ONE-alpha TAIL-TWO-bravo")).toBe(
+      false,
+    );
+    // …and the complete arrival of the very same send still accepts.
+    expect(
+      pasteCarriesSend(sent, "[Pasted text #3 +5 lines] TAIL-ONE-alpha TAIL-TWO-bravo TAIL-THREE-charlie"),
+    ).toBe(true);
+  });
+
+  it("rejects a tail truncated MID-WORD, and a lone trailing scrap", () => {
+    const sent = `${multiline(3)} and then the tail four`;
+    expect(pasteCarriesSend(sent, "[Pasted text #1 +3 lines] and then the tail fo")).toBe(false);
+    expect(pasteCarriesSend(sent, "[Pasted text #1 +3 lines] x")).toBe(false);
+  });
+
+  it("still accepts a tail the box WRAPPED — the suffix is checked whitespace-stripped", () => {
+    // The wrap falls anywhere, including inside the tail, and extractInputDraft space-joins the rows.
+    const sent = `${multiline(3)} and then the tail four`;
+    expect(pasteCarriesSend(sent, "[Pasted text #1 +3 lines] and then the ta il fo ur")).toBe(true);
+  });
+
+  it("keeps today's looser rule when the draft ends ON a token", () => {
+    // The end of our message is inside the token there, so there is nothing visible to compare and
+    // the tightening has nothing to bite on. Documented hole (see paste.ts) — rejecting a shape we
+    // cannot read would turn working sends into permanent stalls, the worse of the two failures.
+    const sent = `${multiline(3)} a literal middle bit and more that collapsed`;
+    expect(
+      pasteCarriesSend(sent, "a literal middle bit[Pasted text #2 +3 lines]"),
+    ).toBe(true);
+  });
+
   it("rejects a draft with no token at all (the generic matcher's job, not ours)", () => {
     expect(pasteCarriesSend(multiline(3), "an unrelated leftover line")).toBe(false);
     expect(pasteCarriesSend(multiline(3), "")).toBe(false);

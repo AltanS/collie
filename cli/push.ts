@@ -4,6 +4,7 @@ import { loadConfig, type Config } from "../bridge/config.ts";
 import { Push } from "../bridge/push.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import { cmdPushKeys } from "./push-keys.ts";
 
 // `push list`, `push forget`, `push test` — the operator's view of the subscription store, plus the
 // one-off send that proves push works end to end WITHOUT waiting for an agent to actually block.
@@ -20,8 +21,9 @@ import { EXIT, type Io } from "./io.ts";
 // `list` and `forget` deliberately work with push DISABLED — no VAPID, no `web-push` — because a
 // broken push setup is exactly when an operator is cleaning up. Only `test` needs a live sender.
 //
-// `push test` is also spelled `push-test`, which is the older name: a README recipe, a Herdr action
-// set cached at install time (ADR 0006), and `scripts/push-test.ts` all say it. Same function.
+// `push test` is also spelled `push-test`, and `push keys` (cli/push-keys.ts) `push-keys` — the
+// hyphenated names are the older ones: a README recipe, and a Herdr action set cached at install
+// time (ADR 0006), say them. Same functions either way.
 
 export interface PushDeps {
   ctx: CliContext;
@@ -29,7 +31,7 @@ export interface PushDeps {
 }
 
 /** The `push` sub-verbs, in the order the usage block prints them. */
-export const PUSH_SUBCOMMANDS = ["list", "forget", "test"] as const;
+export const PUSH_SUBCOMMANDS = ["list", "forget", "keys", "test"] as const;
 
 const DEFAULTS = ["Collie test 🐕", "Push works — tap to open Collie", "test"] as const;
 
@@ -178,6 +180,8 @@ export async function cmdPush(deps: PushDeps, args: readonly string[]): Promise<
       return cmdPushList(deps);
     case "forget":
       return cmdPushForget(deps, rest);
+    case "keys":
+      return cmdPushKeys(deps, rest);
     case "test":
       return cmdPushTest(deps, rest);
     default:
@@ -187,6 +191,7 @@ export async function cmdPush(deps: PushDeps, args: readonly string[]): Promise<
       deps.io.err(pushUsage());
       deps.io.err("  list     the subscribed devices, with when each subscribed and from what");
       deps.io.err("  forget   drop rows by endpoint substring: `push forget <substring>|--all`");
+      deps.io.err("  keys     generate the VAPID keypair into this install's .env");
       deps.io.err("  test     send a one-off Web Push to every subscribed device");
       return EXIT.USAGE;
   }

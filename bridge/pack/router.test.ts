@@ -42,7 +42,7 @@ function harness(initial: TrustStoreData) {
     },
   };
   const store = new TrustStore("/unused", io);
-  const audit = new AuditLog((l) => void lines.push(JSON.parse(l) as AuditEntry), () => T0);
+  const audit = new AuditLog((l) => void lines.push(JSON.parse(l) as AuditEntry), { now: () => T0 });
   return {
     store,
     audit,

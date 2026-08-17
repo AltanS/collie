@@ -203,8 +203,8 @@ describe("the parent verb", () => {
     const d = deps(await tempState());
     expect(await cmdPush(d, [])).toBe(EXIT.USAGE);
     const err = d.stderr.join("\n");
-    expect(err).toContain("usage: collie push {list|forget|test}");
-    for (const sub of ["list", "forget", "test"]) expect(err).toContain(sub);
+    expect(err).toContain("usage: collie push {list|forget|keys|test}");
+    for (const sub of ["list", "forget", "keys", "test"]) expect(err).toContain(sub);
     expect(err).not.toContain("unknown push subcommand");
   });
 

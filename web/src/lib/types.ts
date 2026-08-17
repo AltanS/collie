@@ -357,6 +357,24 @@ export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; erro
  */
 export type PackMode = "solo" | "lead" | "peer";
 
+/**
+ * One operator-declared palette row (a `[[commands]]` table in their `commands.toml`). Mirrors
+ * OperatorCommand in
+ * bridge/types.ts. Resolved against the shipped catalog by `commandsFor()`, which hands a pane
+ * these rows instead of the catalog when any of them address it — see agent-commands.ts for why a
+ * plugin- or user-registered command can only arrive this way.
+ */
+export interface OperatorCommand {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  command: string;
+  description: string;
+  takesArg: boolean;
+  argHint: string;
+  /** The operator marking their own row dangerous. Optional so an older bridge stays readable. */
+  confirm?: boolean;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
@@ -368,6 +386,8 @@ export interface BridgeConfig {
    * `mode ?? "solo"`; never infer the mode from behaviour.
    */
   mode?: PackMode;
+  /** The operator's own palette rows. Absent when there is no `commands.toml`. */
+  operatorCommands?: OperatorCommand[];
 }
 
 /**

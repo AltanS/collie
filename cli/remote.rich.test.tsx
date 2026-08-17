@@ -145,7 +145,7 @@ function harness(opts: {
     files: fakeFiles(),
     store: new TrustStore("/state", storeIo),
     ops: fakeOps(),
-    audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), () => T0),
+    audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), { now: () => T0 }),
     fetch: async () =>
       opts.reachable === false
         ? Promise.reject(new Error("connection refused"))

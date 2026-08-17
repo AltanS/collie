@@ -18,6 +18,13 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
 - Malformed requests close the connection too, and the serde error message names the missing/
   wrong field — which is how this contract was reverse-engineered without side effects.
 - **Exception:** `events.subscribe` keeps the connection open and streams events.
+- **A request line is capped at 1 MiB.** Live-probed 2026-08-17 against herdr 0.7.5: a request of
+  1 048 575 bytes (newline included) still gets a normal reply; 1 048 576 gets no reply at all —
+  the server drops the connection or simply never answers. Nothing Collie sends is near that, but
+  it is the ceiling to design against, and a hang at that size is the server, not the client. (The
+  client-side hazard at large sizes was Collie's own: Bun's `socket.write()` accepts only what the
+  socket has room for, and the unwritten tail must be resumed on `drain` — see
+  [`bridge/write-drain.ts`](./bridge/write-drain.ts).)
 
 ## Methods the bridge uses (verified params)
 
