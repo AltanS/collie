@@ -59,11 +59,9 @@ await activity.load();
 
 // Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
 // inside record() so it can never break the user action it's auditing.
-const audit = new AuditLog(
-  fileAuditAppender(join(cfg.stateDir, "audit.log")),
-  Date.now,
-  cfg.auditContent,
-);
+const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")), {
+  content: cfg.auditContent,
+});
 
 // ── Update-availability monitor ───────────────────────────────────────────────
 // The running plugin version, captured NOW at module load — never re-read from disk later, or a

@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
 import type { JournalRoots } from "./journal/registry.ts";
 
@@ -145,14 +146,17 @@ export interface Config {
    */
   trustedUser: string;
   /**
+   * How much of each value's content the audit trail keeps — see {@link AuditContent} in audit.ts
+   * for what `none` does and does not redact.
+   */
+  auditContent: AuditContent;
+  /**
    * Per-device authorisation. Name of a request header carrying an opaque device identifier,
    * injected by a trusted upstream reverse proxy. Empty = the feature is off (no behaviour change).
    * When set, devices whose header value isn't in {@link deviceAllowlist} are read-only. See
    * `deviceAuth()` in server.ts for the full matrix. The header is trusted only because the bridge
    * binds loopback behind the proxy — a direct client can't set it (same trust basis as trustedUser).
    */
-  /** Whether the audit trail keeps a preview of each value's content, or only its length. */
-  auditContent: "preview" | "none";
   deviceHeader: string;
   /**
    * Device identifiers permitted to perform sensitive actions (typing into agent terminals,
