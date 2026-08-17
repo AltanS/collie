@@ -231,7 +231,7 @@ const CATALOG: Record<string, readonly AgentCommand[]> = {
 
 /**
  * Commands for a Herdr-detected agent (`pane.agent`, e.g. "claude" / "codex") — the operator's own
- * `COLLIE_COMMANDS` rows if any of them address this pane, otherwise the shipped catalog. Returns
+ * `commands.toml` rows if any of them address this pane, otherwise the shipped catalog. Returns
  * [] when neither has anything, and the UI hides the command button.
  *
  * `Object.hasOwn`, not a truthy index: `CATALOG` is a plain object, so an agent string that spells
@@ -292,7 +292,9 @@ export function commandsFor(
     argHint: row.argHint,
     // A row you typed into your own config is by definition one you want on the first screen.
     common: true,
-    dangerous: byName.get(row.command)?.dangerous ?? false,
+    // Inheriting is a FLOOR, never a default: `confirm = false` on a row that names a shipped
+    // dangerous command still confirms, so the only direction this field moves is up.
+    dangerous: (byName.get(row.command)?.dangerous ?? false) || row.confirm === true,
   }));
 }
 

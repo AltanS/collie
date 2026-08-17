@@ -148,4 +148,27 @@ describe("CommandPalette", () => {
     await user.click(screen.getByText("Fresh start"));
     expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith("/new");
   });
+
+  it("asks twice before a row the operator marked confirm", async () => {
+    const user = userEvent.setup();
+    const props = setup({
+      agent: "omp",
+      mine: [
+        {
+          agent: "omp",
+          command: "/deploy",
+          description: "Deploy staging",
+          takesArg: false,
+          argHint: "",
+          confirm: true,
+        },
+      ],
+    });
+    // Same two-tap a shipped dangerous command gets — the operator's own brake, on their own row.
+    await user.click(screen.getByText("Deploy staging"));
+    expect(props.onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText("Confirm?")).toBeInTheDocument();
+    await user.click(screen.getByText("Deploy staging"));
+    expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith("/deploy");
+  });
 });

@@ -278,11 +278,11 @@ export interface CreatedPane {
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
 /**
- * One operator-declared slash command (`COLLIE_COMMANDS`). A pane any of these rows address shows
- * them INSTEAD of the shipped Agent-commands catalog; a pane none of them address keeps it. This is
- * the escape hatch for commands the shipped catalog cannot know about — plugin- or user-registered
- * ones like omp's `/fork-in-herdr` — which exist only on THIS operator's machine and so must never
- * be hard-coded into `web/src/lib/agent-commands.ts`.
+ * One operator-declared slash command (a `[[commands]]` row in their `commands.toml`). A pane any of
+ * these rows address shows them INSTEAD of the shipped Agent-commands catalog; a pane none of them
+ * address keeps it (ADR 0018). This is the escape hatch for commands the shipped catalog cannot know
+ * about — plugin- or user-registered ones like omp's `/fork-in-herdr` — which exist only on THIS
+ * operator's machine and so must never be hard-coded into `web/src/lib/agent-commands.ts`.
  */
 export interface OperatorCommand {
   /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
@@ -295,6 +295,12 @@ export interface OperatorCommand {
   takesArg: boolean;
   /** Placeholder shown after insert, e.g. `<name>`. Empty when {@link takesArg} is false. */
   argHint: string;
+  /**
+   * The operator marking their own row dangerous — it then gets the same two-tap confirmation a
+   * shipped dangerous command gets. Only ever ADDS: a row naming a shipped command inherits that
+   * command's confirm regardless (rule 3 in agent-commands.ts), and `false` cannot lift it.
+   */
+  confirm: boolean;
 }
 
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
@@ -303,7 +309,7 @@ export interface BridgeConfig {
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
-  /** The operator's own palette rows. Absent/empty when `COLLIE_COMMANDS` is unset. */
+  /** The operator's own palette rows. Absent/empty when there is no `commands.toml`. */
   operatorCommands?: OperatorCommand[];
 }
 

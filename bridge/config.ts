@@ -4,7 +4,6 @@ import { join } from "node:path";
 import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
 import type { JournalRoots } from "./journal/registry.ts";
-import type { OperatorCommand } from "./types.ts";
 
 // All bridge configuration, resolved once at startup. Env-driven so the systemd unit and the
 // plugin launcher can configure it without code changes. Defaults are safe for a single-user,
@@ -42,90 +41,6 @@ function envList(name: string): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-}
-
-/**
- * Parse `COLLIE_COMMANDS` — the operator's own Agent-commands palette.
- *
- * One entry per comma-separated field, in the same list style as every other Collie list var
- * ({@link envList}):
- *
- * ```
- * [<agent>:]/<command>[ <arg hint>][=<description>]
- * ```
- *
- * `omp:/fork-in-herdr=Fork this conversation into a new herdr tab` scopes the row to omp panes;
- * a bare `/deploy` applies to every agent (and makes the palette button appear on an agent that
- * ships no catalog at all). An arg hint — anything after a space, before the FIRST `=` — marks the
- * row as arg-taking, so tapping it INSERTS `/cmd ` into the composer instead of submitting it.
- *
- * A LATER entry for the same `agent:/command` pair replaces an earlier one, so appending to the
- * variable (the usual way these grow) corrects a row instead of being silently ignored. An empty
- * scope (`:/wipe`) is REJECTED rather than read as "every agent": the operator was reaching for a
- * narrower rule than they got, and the failure has to be the narrow one.
- *
- * Two grammar costs, both of them separators the list style already spends: a description cannot
- * contain a comma, and an arg hint cannot contain `=` (the first one starts the description, so
- * `/set [key=value]=Set a key` hints `[key` and describes `value]=Set a key`). Everything after
- * that first `=` is description, `=` included. Inventing a second separator that means one thing
- * here and another everywhere else in this file costs more than either.
- *
- * Why this exists at all: the shipped catalog (`web/src/lib/agent-commands.ts`) is deliberately
- * limited to commands its sources vouch for on EVERY user's machine, so a plugin- or user-registered
- * command can never be added there. This is the supported way to get one into the palette — and a
- * pane addressed by these rows shows them INSTEAD of the shipped ones, because the palette is a
- * handful of one-thumb shortcuts and a list half-chosen by the operator is worse than either whole
- * one. Exported and pure so the grammar is unit-testable without touching `process.env`.
- */
-export function parseOperatorCommands(raw: string | undefined): OperatorCommand[] {
-  const out: OperatorCommand[] = [];
-  const at = new Map<string, number>();
-  for (const entry of (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
-    const eq = entry.indexOf("=");
-    const spec = (eq === -1 ? entry : entry.slice(0, eq)).trim();
-    const description = (eq === -1 ? "" : entry.slice(eq + 1).trim()) || "Custom command";
-    // An `agent:` prefix only counts BEFORE the slash — a colon later belongs to the command or its
-    // hint and must not be mistaken for a scope.
-    const colon = spec.indexOf(":");
-    const slash = spec.indexOf("/");
-    const scoped = colon !== -1 && (slash === -1 || colon < slash);
-    const agent = scoped ? spec.slice(0, colon).trim().toLowerCase() : "";
-    const rest = (scoped ? spec.slice(colon + 1) : spec).trim();
-    const space = rest.search(/\s/);
-    const command = space === -1 ? rest : rest.slice(0, space);
-    const argHint = space === -1 ? "" : rest.slice(space + 1).trim();
-    if (!command.startsWith("/") || command.length < 2) {
-      console.warn(
-        `[config] COLLIE_COMMANDS: ignoring "${entry}" — expected [agent:]/command[ hint][=description]`,
-      );
-      continue;
-    }
-    if (scoped && agent === "") {
-      // Fail closed. Dropping the empty scope would widen the row to every pane — the opposite of
-      // what a scope was typed for.
-      console.warn(`[config] COLLIE_COMMANDS: ignoring "${entry}" — empty agent scope`);
-      continue;
-    }
-    const row: OperatorCommand = {
-      ...(agent ? { agent } : {}),
-      command,
-      description,
-      takesArg: argHint !== "",
-      argHint,
-    };
-    const key = `${agent}\u0000${command}`;
-    const prev = at.get(key);
-    if (prev !== undefined) {
-      // Later wins, in place: the row keeps its original position so fixing a description does not
-      // reshuffle the palette.
-      console.warn(`[config] COLLIE_COMMANDS: "${command}" redefined — later entry wins`);
-      out[prev] = row;
-      continue;
-    }
-    at.set(key, out.length);
-    out.push(row);
-  }
-  return out;
 }
 
 /**
@@ -223,11 +138,11 @@ export interface Config {
   /** Key sequence sent to submit a reply after the text (agent-dependent; see HERDR_API.md). */
   submitKeys: string[];
   /**
-   * Operator-declared additions to the Agent-commands palette, served on `/api/config`. Empty
-   * unless `COLLIE_COMMANDS` is set — see {@link parseOperatorCommands} for the grammar and for
-   * why the shipped catalog cannot carry these.
+   * Where the operator's Agent-commands rows live — `commands.toml` in the same dir as their
+   * `.env`. Read at request time behind an mtime check (bridge/operator-commands.ts), so it is
+   * resolved here but never read here.
    */
-  operatorCommands: OperatorCommand[];
+  commandsFile: string;
   /**
    * Tailscale identity gate. If set, any request carrying a `Tailscale-User-Login` header
    * (injected by `tailscale serve`) must match this login — a mismatching tailnet user is
@@ -315,6 +230,13 @@ export function loadConfig(): Config {
 
   const submitKeys = envList("COLLIE_SUBMIT_KEYS");
 
+  // The operator's config dir — where their `.env` lives, and now their `commands.toml` beside it.
+  // Resolved exactly the way scripts/collie-ctl.sh resolves it MINUS the `herdr` shell-out: the
+  // launcher passes HERDR_PLUGIN_CONFIG_DIR into the unit (and the launchd plist) precisely so this
+  // process never has to ask the CLI, and the two entry points must not disagree about which dir
+  // that is. ~/.config/collie is the same last-resort default the shim ends on.
+  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), ".config", "collie");
+
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),
     dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto"),
@@ -349,7 +271,7 @@ export function loadConfig(): Config {
       ),
     },
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
-    operatorCommands: parseOperatorCommands(process.env.COLLIE_COMMANDS),
+    commandsFile: join(configDir, "commands.toml"),
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview"),
     deviceHeader: (process.env.COLLIE_DEVICE_HEADER ?? "").trim(),
