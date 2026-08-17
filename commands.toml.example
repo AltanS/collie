@@ -1,0 +1,32 @@
+# Your own rows for Collie's Agent-commands palette. Copy to your plugin config dir, next to `.env`:
+#   cp commands.toml.example "$(herdr plugin config-dir herdr.collie)/commands.toml"
+#
+# On a pane your rows address, YOUR rows are the whole palette — the shipped catalog is replaced,
+# not merged into (ADR 0018). A pane none of them address keeps its catalog untouched, and this file
+# with every row commented out (as shipped) leaves every pane exactly as shipped.
+#
+# Edits are picked up live — no restart, no reload of the bridge. Reload the page to see them.
+#
+# Fields: `command` (required, leading slash; a space after it is an arg hint, and tapping the row
+# then puts "/cmd " in the composer to finish instead of sending), `description`, `scope` (a herdr
+# agent name — omit it and the row addresses every pane), `confirm` (two-tap before it fires).
+# These strings are served to every browser that can read this Collie: labels, not secrets.
+
+# A row scoped to one agent — omp's /fork-in-herdr is registered by a plugin, so no shipped catalog
+# can carry it.
+# [[commands]]
+# scope = "omp"
+# command = "/fork-in-herdr"
+# description = "Fork this conversation into a new herdr tab"
+
+# No scope: every pane, including agents Collie ships no catalog for.
+# [[commands]]
+# command = "/standup"
+# description = "Post today's standup, then wait for review"
+
+# Your own brake on your own row. (A row naming a SHIPPED command inherits that command's confirm
+# whether you ask for it or not — `confirm = false` cannot lift it.)
+# [[commands]]
+# command = "/deploy"
+# description = "Deploy staging"
+# confirm = true
