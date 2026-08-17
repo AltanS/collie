@@ -115,7 +115,7 @@ export function AgentChat({
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, setWrap, stepFontSize, setRawTerminal } = useDisplayPrefs();
+  const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus } = useDisplayPrefs();
   // Raw-terminal escape hatch: when on, every Claude grammar is bypassed and the plain mirror shows,
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
   const grammarsOn = !prefs.rawTerminal;
@@ -534,7 +534,14 @@ export function AgentChat({
     navigate(spacePath(workspaceId, session));
   }
 
-  // Tapping the terminal mirror focuses the composer so you can start typing right away. Two bails:
+  // Tapping the terminal mirror focuses the composer so you can start typing right away. Three bails:
+  //  - the operator turned "Tap to type" off (View). It is on by default and always has been — the
+  //    mirror as one big "start typing" target is the fastest path from reading to replying on a
+  //    phone. But the same handler makes the mirror unable to behave like a document, which is what
+  //    someone expects who is trying to interact with a LINE rather than reply to it, and they read
+  //    it as the tap being absorbed. Off, the mirror keeps its buttons and its links; it just stops
+  //    volunteering the keyboard. (What it still cannot offer is a tappable agent-printed hyperlink:
+  //    herdr's `pane.read` strips OSC 8, so the link target never reaches Collie at all.)
   //  - the tap landed on an interactive control INSIDE the mirror — a native prompt/wizard/preview
   //    button, the Load-older button, or the note editor's own textarea. Their click bubbles up to
   //    this handler, and focusing the composer here would pop the soft keyboard on every option tap
@@ -542,6 +549,7 @@ export function AgentChat({
   //  - the user is selecting text (a long-press selection), so copy works instead of the tap
   //    collapsing the selection and popping the keyboard.
   function focusFromMirror(e: ReactMouseEvent<HTMLDivElement>) {
+    if (!prefs.tapToFocus) return;
     const target = e.target as Element | null;
     // The `a` is what keeps a tap on an autolinked URL (components/ansi-output) from popping the
     // keyboard on top of the page it just opened. Don't trim it out of this selector.
@@ -870,6 +878,7 @@ export function AgentChat({
             setWrap={setWrap}
             stepFontSize={stepFontSize}
             setRawTerminal={setRawTerminal}
+            setTapToFocus={setTapToFocus}
             onSent={onSent}
           />
         </div>
