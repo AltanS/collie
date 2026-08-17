@@ -151,6 +151,8 @@ export interface Config {
    * `deviceAuth()` in server.ts for the full matrix. The header is trusted only because the bridge
    * binds loopback behind the proxy — a direct client can't set it (same trust basis as trustedUser).
    */
+  /** Whether the audit trail keeps a preview of each value's content, or only its length. */
+  auditContent: "preview" | "none";
   deviceHeader: string;
   /**
    * Device identifiers permitted to perform sensitive actions (typing into agent terminals,
@@ -253,6 +255,7 @@ export function loadConfig(): Config {
     },
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
+    auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview"),
     deviceHeader: (process.env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST"),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS"),

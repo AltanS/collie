@@ -9,6 +9,20 @@ import { appendFile } from "node:fs/promises";
 /** Cap on any single string value written into a line — a 2 000-char reply becomes a 120-char preview. */
 const MAX_STR = 120;
 
+/**
+ * How much of a value's CONTENT the trail keeps.
+ *
+ * - `preview` (default, unchanged behaviour): a bounded, single-line preview.
+ * - `none`: the length only. Every string inside `detail` becomes `⟨n chars⟩`.
+ *
+ * `none` exists for deployments where the audit trail is wanted but the message bodies are not:
+ * under `tailscale serve` the operator's replies and, via the prompt binding, a slice of whatever
+ * was on the terminal both land in this file. Keys, booleans, numbers and the whole envelope
+ * (ts, action, paneId, session, device) are untouched either way — the point is to keep answering
+ * "who typed into what, when" without also keeping "what they said".
+ */
+export type AuditContent = "preview" | "none";
+
 /** One write-level action worth recording. `ts` is stamped by {@link formatAuditLine}, not here. */
 export interface AuditEntry {
   /** The action performed, e.g. "reply" / "keys" / "upload" / "tab.create" / "pane.close". */
@@ -32,15 +46,18 @@ export type AppendFn = (line: string) => void | Promise<void>;
  * still fold embedded newlines to a space so a multi-line reply reads as one legible preview rather
  * than a wall of `\n`. Recurses into arrays/objects so `detail` can nest (e.g. a key-name array).
  */
-function sanitize(value: unknown): unknown {
+function sanitize(value: unknown, content: AuditContent = "preview"): unknown {
   if (typeof value === "string") {
+    // ⛔ The LENGTH, not a shorter preview. A truncated secret is still a secret, and the useful
+    // question a reader asks of a redacted trail is "was anything sent", which a count answers.
+    if (content === "none") return `⟨${value.length} chars⟩`;
     const oneLine = value.replace(/[\r\n]+/g, " ");
     return oneLine.length > MAX_STR ? `${oneLine.slice(0, MAX_STR)}…` : oneLine;
   }
-  if (Array.isArray(value)) return value.map(sanitize);
+  if (Array.isArray(value)) return value.map((v) => sanitize(v, content));
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) out[k] = sanitize(v);
+    for (const [k, v] of Object.entries(value)) out[k] = sanitize(v, content);
     return out;
   }
   return value;
@@ -52,12 +69,16 @@ function sanitize(value: unknown): unknown {
  * attribution is omitted (not null) when absent. Pure — `now` (epoch ms) is injected so tests are
  * deterministic.
  */
-export function formatAuditLine(entry: AuditEntry, now: number): string {
+export function formatAuditLine(
+  entry: AuditEntry,
+  now: number,
+  content: AuditContent = "preview",
+): string {
   const line: Record<string, unknown> = { ts: new Date(now).toISOString(), action: entry.action };
   if (entry.paneId !== undefined) line.paneId = entry.paneId;
   if (entry.session !== undefined) line.session = entry.session;
   if (entry.device != null) line.device = entry.device;
-  line.detail = sanitize(entry.detail ?? {});
+  line.detail = sanitize(entry.detail ?? {}, content);
   return JSON.stringify(line);
 }
 
@@ -75,12 +96,13 @@ export class AuditLog {
   constructor(
     private readonly append: AppendFn,
     private readonly now: () => number = Date.now,
+    private readonly content: AuditContent = "preview",
   ) {}
 
   record(entry: AuditEntry): void {
     let line: string;
     try {
-      line = formatAuditLine(entry, this.now());
+      line = formatAuditLine(entry, this.now(), this.content);
     } catch (err) {
       console.warn(`[audit] could not format ${entry.action}: ${(err as Error).message}`);
       return;
