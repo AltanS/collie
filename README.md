@@ -18,7 +18,8 @@ ships none of its own.
 - **A dashboard ranked by who needs you**, not by what changed last
 - **Push notifications** the moment an agent is waiting on you
 - **Special-keys pad** — `Esc`, `Ctrl+C`, arrows, combinable modifiers
-- **Slash-command palette** per agent — tap, don't type
+- **Slash-command palette** per agent — tap, don't type (or [make it your own
+  shortcuts](#your-own-slash-commands), plugin and custom commands included)
 
 - **Send an image** from your camera roll
 - **Find in output** — search a pane, don't eyeball it
@@ -36,7 +37,7 @@ ships none of its own.
 - [Requirements](#requirements)
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
-- [Configure](#configure)
+- [Configure](#configure) · [Your own slash commands](#your-own-slash-commands)
 - [Dark mode / light mode](#dark-mode--light-mode)
 - [Commands](#commands) · [Herdr actions](#herdr-actions)
 - [Update](#update-to-a-new-release)
@@ -346,6 +347,37 @@ your MagicDNS name works as-is, but a different hostname or TLS terminator makes
 ```bash
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 ```
+
+### Your own slash commands
+
+The palette ships a per-agent catalog, but it can only carry commands *every* user of that harness
+has. The one you actually reach for is often the one that exists on this machine only — a plugin's
+`/fork-in-herdr`, a Claude Code custom command, your own `/deploy`. Declare those in a
+`commands.toml` next to your `.env`:
+
+```bash
+cp commands.toml.example "$(herdr plugin config-dir herdr.collie)/commands.toml"
+```
+
+Uncomment a row and edit it:
+
+```toml
+[[commands]]
+scope = "omp"                # optional; omit it and the row addresses every pane
+command = "/fork-in-herdr"
+description = "Fork this conversation into a new herdr tab"
+```
+
+**A pane your rows address shows your rows and nothing else** — they replace the shipped catalog
+rather than merging into it, and a pane none of them address keeps its catalog untouched (the
+narrowest matching row wins for a given command)
+([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md) has the why). Add
+`confirm = true` to a row to put it behind the same two-tap a destructive shipped command gets.
+
+Edits are live: the bridge re-reads the file when it changes, so **no restart** — just reload the
+page. Check it worked by opening a pane and tapping the **`/`** button: your rows are there, on the
+first screen, with no searching. If the file has a syntax error the palette keeps showing the last
+version that parsed — `journalctl --user -u collie -n 20` names the line.
 
 ## Dark mode / light mode
 

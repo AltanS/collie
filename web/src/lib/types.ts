@@ -264,11 +264,31 @@ export interface CreatedPane {
 /** Result of creating a new tab/space — on success `pane` is the fresh shell to navigate into. */
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
+/**
+ * One operator-declared palette row (a `[[commands]]` table in their `commands.toml`). Mirrors
+ * OperatorCommand in
+ * bridge/types.ts. Resolved against the shipped catalog by `commandsFor()`, which hands a pane
+ * these rows instead of the catalog when any of them address it — see agent-commands.ts for why a
+ * plugin- or user-registered command can only arrive this way.
+ */
+export interface OperatorCommand {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  command: string;
+  description: string;
+  takesArg: boolean;
+  argHint: string;
+  /** The operator marking their own row dangerous. Optional so an older bridge stays readable. */
+  confirm?: boolean;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
+  /** The operator's own palette rows. Absent when there is no `commands.toml`. */
+  operatorCommands?: OperatorCommand[];
 }
 
 /**
