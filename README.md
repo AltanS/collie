@@ -286,7 +286,8 @@ $ scripts/collie-ctl.sh logs        # journal timestamps trimmed here
 **Both WARNINGs are expected on a fresh install** — that's the bridge telling you it's running
 open-by-default on your tailnet. [Configure](#configure) closes both. (The loopback URL in the log
 is also correct: the bridge itself only ever binds `127.0.0.1` — `tailscale serve` is what makes it
-reachable.)
+reachable.) `[push] disabled` is expected too: notifications are opt-in, and
+[Web Push](#web-push-optional) is three commands.
 
 On the phone: your agents are listed, and the footer build stamp (`v0.9.0 · debcff9 · …`) matches
 `scripts/collie-ctl.sh version`. If the page loads but stays empty, that's the same-origin gate —
@@ -892,26 +893,57 @@ can be exercised — and regression-tested — without a Windows box; `bridge/di
 
 ## Web Push (optional)
 
-Off unless you opt in:
+Off unless you opt in. Three steps, and nothing to install — the sender (`web-push`) is already an
+optional dependency, installed by the build:
 
 ```bash
-bun add web-push
-bunx web-push generate-vapid-keys
-# set COLLIE_VAPID_PUBLIC / _PRIVATE / _SUBJECT in your .env, then restart
+herdr plugin action invoke push-keys --plugin herdr.collie   # 1. generate + write the VAPID keys
+herdr plugin action invoke restart   --plugin herdr.collie   # 2. the bridge reads them at start
+#                                                              3. on your phone: Settings → notifications
 ```
 
-Push needs a **secure context (HTTPS)**, which any HTTPS-terminating front door provides — the
-default `tailscale serve` (Tailscale manages the MagicDNS cert; nothing to obtain or renew) or a
-[Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) proxy that terminates TLS.
-Plain-HTTP modes (`COLLIE_SERVE_MODE=http`) are **not** a secure context, so push silently won't fire
-there — Settings flags it `insecure`.
+Step 1 is the one that used to be fiddly. `push-keys` generates the keypair *and* writes
+`COLLIE_VAPID_PUBLIC` / `_PRIVATE` into the .env the service actually reads, at mode 600 — you never
+have to work out which config dir is in play.
 
-Collie pushes when an agent goes **blocked** or **done**, with the agent's message in the body;
-**tapping it opens Collie at that agent**. Test it without waiting for an agent to block:
+**Worth one extra keystroke:** pass a *subject* — the contact address RFC 8292 wants, so a push
+service has a way to reach whoever is sending. An action carries no arguments, so this form is the
+shell one:
+
+```bash
+bash scripts/collie-ctl.sh push-keys mailto:you@example.com
+```
+
+Two behaviours worth knowing. It **refuses to replace keys that are already live** unless you pass
+`--force`, because new keys invalidate every existing subscription: each device must re-enable
+notifications, and until it does it silently receives nothing. But passing a subject on an
+already-configured install is *not* that — it updates the contact address and leaves the keys alone,
+so fixing a typo never costs you your subscribers.
+
+> **On a Herdr install older than 0.8.0**, actions are the set cached when the plugin was installed
+> ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)), so `push-keys` and
+> `push-test` won't appear until the next `herdr plugin install`. Use
+> `bash scripts/collie-ctl.sh push-keys` until then — it does the identical thing.
+
+**Did it work?** Fire a notification at every subscribed device without waiting for an agent to
+block:
 
 ```bash
 bash scripts/collie-ctl.sh push-test                 # or: push-test "Title" "Body"
 ```
+
+You should get it within a second or two. If it says push is disabled, the bridge didn't get the keys
+— restart it (step 2). If it says there are no subscribed devices, step 3 hasn't happened on that
+phone yet.
+
+Push needs a **secure context (HTTPS)**, which any HTTPS-terminating front door provides — the
+default `tailscale serve` (Tailscale manages the MagicDNS cert; nothing to obtain or renew) or a
+[Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) proxy that terminates TLS.
+Plain-HTTP modes (`COLLIE_SERVE_MODE=http`) are **not** a secure context, so the browser won't even
+offer the subscribe button — Settings flags it `insecure`.
+
+Collie pushes when an agent goes **blocked** or **done**, with the agent's message in the body;
+**tapping it opens Collie at that agent**.
 
 ## Troubleshooting
 

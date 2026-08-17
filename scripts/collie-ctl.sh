@@ -947,6 +947,18 @@ cmd_push_test() {
   "$BUN" run "${PLUGIN_ROOT}/scripts/push-test.ts" "$@"
 }
 
+# Generate the VAPID keypair Web Push needs and write it into the plugin .env. This exists because the
+# config dir is the hard part: it is resolved four different ways (see resolve_config_dir), so an
+# operator following a "put these in your .env" instruction has to first work out WHICH .env — and
+# getting that wrong looks exactly like push being broken. This verb never guesses: it writes to the
+# same "${CONFIG_DIR}/.env" this script sourced at the top and the unit's EnvironmentFile= points at.
+# Args: [subject] [--force]; scripts/push-keys.ts owns the refusal to silently replace live keys.
+cmd_push_keys() {
+  [ -n "$BUN" ] || { echo "error: bun not found on PATH" >&2; exit 1; }
+  mkdir -p "$CONFIG_DIR"
+  "$BUN" run "${PLUGIN_ROOT}/scripts/push-keys.ts" "${CONFIG_DIR}/.env" "$@"
+}
+
 # Sourced (by scripts/collie-ctl.test.sh) rather than run: define the functions and stop before the
 # dispatch, so a test can call one function in isolation with its dependencies stubbed out.
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
@@ -968,7 +980,8 @@ case "${1:-}" in
   url)     bridge_url ;;
   qr)      cmd_qr ;;
   version) cmd_version ;;
+  push-keys) shift || true; cmd_push_keys "$@" ;;
   push-test) shift || true; cmd_push_test "$@" ;;
   logs)    cmd_logs "${2:-50}" ;;
-  *) echo "usage: collie-ctl.sh {start|stop|restart|uninstall|update|version|push-test|build|serve|unserve|status|url|qr|logs}" >&2; exit 2 ;;
+  *) echo "usage: collie-ctl.sh {start|stop|restart|uninstall|update|version|push-keys|push-test|build|serve|unserve|status|url|qr|logs}" >&2; exit 2 ;;
 esac
