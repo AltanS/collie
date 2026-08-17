@@ -110,7 +110,8 @@ Four sharp edges:
   shell. The idle-lock pauses an unattended screen and gates nothing — it is not auth, and never was
   ([ADR 0007](./.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)). Every write action (replies, keys, uploads, pane/tab
   create/close) is appended to `<state-dir>/audit.log`, so there is at least a trail — but a trail
-  is not a gate.
+  is not a gate. That trail keeps a preview of what you typed; `COLLIE_AUDIT_CONTENT=none` keeps the
+  events and drops the bodies (what survives is spelled out in `bridge/audit.ts`).
 - **One bridge fronts _every_ session.** With `COLLIE_MULTI_SESSION` on (the default), the bridge
   discovers and serves every named Herdr session under your config root — a private or sandbox
   session (e.g. `collie-demo`) is readable and drivable through the same URL as your primary, and the
