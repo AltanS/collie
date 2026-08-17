@@ -305,8 +305,8 @@ first screen. Syntax error? `journalctl --user -u collie -n 20` names the line.
 
 ### Multi-session
 
-`COLLIE_MULTI_SESSION=1` (the default) discovers and serves every named Herdr session under your
-config root, switchable from the header; `COLLIE_MULTI_SESSION=0` serves only the primary one. Every
+`COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your
+config root, switchable from the header; `COLLIE_MULTI_SESSION=off` serves only the primary one. Every
 session it finds is drivable through the same URL — including a private or sandbox one, which is why
 [Security](#%EF%B8%8F-security--read-before-you-run-it) lists this as a sharp edge.
 
@@ -341,6 +341,8 @@ below as `invoke <cmd>`). The ones you'll actually use:
 | **Update** — advance the checkout + rebuild + restart | `collie-ctl.sh update` | `invoke update` |
 | **Uninstall** — remove the service; keep `.env` + checkout | `collie-ctl.sh uninstall` | `invoke uninstall` |
 | **Logs** — tail the journal / log file | `collie-ctl.sh logs` | — (script only) |
+| **Push keys** — generate the VAPID keypair into your `.env` | `collie-ctl.sh push-keys` | `invoke push-keys` |
+| **Push test** — send one notification to prove it works | `collie-ctl.sh push-test` | `invoke push-test` |
 
 The actions are declared in `herdr-plugin.toml` and each one shells out to the control script; list
 them live with `herdr plugin action list --plugin herdr.collie`. `build` · `serve` · `unserve` are
