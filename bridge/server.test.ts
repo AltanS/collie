@@ -54,6 +54,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     },
     submitKeys: ["Enter"],
     trustedUser: "",
+    auditContent: "preview",
     deviceHeader: "",
     deviceAllowlist: [],
     allowedOrigins: [],
