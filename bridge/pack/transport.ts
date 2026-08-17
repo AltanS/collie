@@ -18,9 +18,9 @@ import type { TrustedMember, TrustStoreData } from "./trust-store.ts";
 //     exactly one member (§8.2 step 4). An admitted connection therefore *cannot* be anyone else,
 //     which is what makes a boolean sufficient rather than lossy.
 //   • A LEAD does not pin its listener at all. Its pack surface rides the front door, and
-//     `tailscale serve` (or any conforming proxy, README Variant C) terminates TLS before the process
-//     sees the connection — no client certificate can survive to it under ANY design. Peer→lead
-//     requests re-establish the second factor at the application layer instead (§8.6,
+//     `tailscale serve` (or any conforming proxy, DEPLOYMENT.md Variant C) terminates TLS before
+//     the process sees the connection — no client certificate can survive to it under ANY
+//     design. Peer→lead requests re-establish the second factor at the application layer instead (§8.6,
 //     bridge/pack/signing.ts).
 //   • There is **no live re-pin**. `server.reload({ tls })` does NOT swap the `ca` list — verified:
 //     a member added after bind is still refused. Membership changes therefore take effect through

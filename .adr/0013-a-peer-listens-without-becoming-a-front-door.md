@@ -94,7 +94,7 @@ the lead.** 0001's criterion is untouched — *we manage only what we run and ca
   | Lead and peer on one host (dev, tests) | loopback | No change beyond the existing local-uid surface §6 already documents. |
   | Operator-provided overlay (tailnet, NetBird, ZeroTier, …) | the **specific** overlay interface address | Reachable by **every device on that overlay**, gated only by the two factors. Say this plainly in the docs; do not imply loopback safety. |
   | LAN | the specific LAN address | Reachable by the whole broadcast domain, gated only by the two factors. |
-  | Operator-owned tunnel or reverse proxy terminating on the peer | loopback | The operator owns the ingress and Collie publishes nothing — the README Variant E shape, unchanged. |
+  | Operator-owned tunnel or reverse proxy terminating on the peer | loopback | The operator owns the ingress and Collie publishes nothing — the DEPLOYMENT.md Variant E shape, unchanged. |
 
 - **`tailscale whois` is an optional extra, never a factor.** It demotes to a
   `COLLIE_TRUSTED_USER`-shaped *narrowing* on top of a gate that already holds without it — never

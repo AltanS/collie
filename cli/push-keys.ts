@@ -213,10 +213,18 @@ export async function cmdPushKeys(deps: PushKeysDeps, args: readonly string[]): 
   // A SYMLINKED .env is refused rather than renamed over. Some operators keep this file in a dotfiles
   // repo or have it rendered by a secret manager and symlink it into place; `rename` would silently
   // replace the link with a regular file, and their source of truth would quietly stop being one.
+  //
+  // The remedy has to be something the operator does to the FILE, not to this command: the verb
+  // takes no path (the config dir is `CliContext`'s, resolved once, and that single resolution is
+  // the whole reason the verb exists), so "point it at the real file" would name no object.
   const link = await lstat(envPath).catch(() => null);
   if (link?.isSymbolicLink()) {
-    deps.io.err(`✗ ${envPath} is a symlink — writing it would replace the link with a plain file.`);
-    deps.io.err(`  Point this at the real file instead: cp -L, or resolve it with \`readlink -f\`.`);
+    deps.io.err(`✗ ${envPath} is a symlink — writing it would replace the link with a plain file,`);
+    deps.io.err("  and whatever renders it (a dotfiles repo, a secret manager) would stop being the");
+    deps.io.err("  source of truth. Either add the keys where that file is generated and re-render,");
+    deps.io.err("  or make this a real file first and re-run:");
+    deps.io.err(`    cp -L ${envPath} ${envPath}.real && mv ${envPath}.real ${envPath}`);
+    deps.io.err("  Nothing was written either way — any existing keys are untouched.");
     return EXIT.FAIL;
   }
 
