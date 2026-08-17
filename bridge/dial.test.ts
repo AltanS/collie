@@ -128,6 +128,89 @@ describe("dialHerdr over a live endpoint (node:net dialer, both platforms)", () 
     expect(sawError).toBe(true);
   });
 
+  // The regression this pins: `socket.write()` on Bun accepts only what the socket has room for and
+  // returns that count — the tail is the caller's problem. Discarding it truncated long requests
+  // (~219 KB was where it started biting), and since Herdr's RPC is one-shot the server then waits
+  // for a newline that never arrives, so the call died on a timeout instead of doing anything. The
+  // server here refuses to read for a beat, which fills the kernel buffer and forces the short write
+  // on any machine; a truncated request would hang until the assertion's own await gives up.
+  //
+  // Both dial modes run it: "bun" is the deployed path and the one that was broken, "net" is the
+  // Windows path, whose node:net write() queues instead of short-writing — this keeps that claim
+  // honest rather than merely asserted in a comment.
+  const modes: Array<"bun" | "net"> = process.platform === "win32" ? ["net"] : ["bun", "net"];
+  for (const mode of modes) {
+    test(`a payload far past the short-write threshold arrives whole (${mode} dialer)`, async () => {
+      const pipe = pipeFor(`backpressure-${mode}`);
+      // ~1 MB of distinguishable, newline-free filler: a lost tail is a length mismatch AND a
+      // content mismatch, so a partial reassembly can't accidentally pass.
+      const filler = "0123456789abcdef".repeat(64 * 1024);
+      const request = `{"id":"t","method":"probe","params":{"text":"${filler}"}}\n`;
+      const requestBytes = Buffer.byteLength(request, "utf-8");
+
+      const seen: { line: string | null } = { line: null };
+      const server = net.createServer((conn) => {
+        // Don't read for a beat: the kernel buffer fills and the client's write is forced short.
+        conn.pause();
+        setTimeout(() => conn.resume(), 50);
+        const chunks: Buffer[] = [];
+        conn.on("data", (chunk: Buffer) => {
+          chunks.push(chunk);
+          const text = Buffer.concat(chunks).toString("utf-8");
+          if (!text.includes("\n")) return;
+          seen.line = text.slice(0, text.indexOf("\n"));
+          conn.write('{"id":"t","result":{"ok":true}}\n');
+          conn.end();
+        });
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(pipe, resolve);
+      });
+
+      try {
+        const reply = await new Promise<string>((resolve, reject) => {
+          const out: Buffer[] = [];
+          let settled = false;
+          const once = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            fn();
+          };
+          const timer = setTimeout(() => once(() => reject(new Error("no reply — request truncated?"))), 5000);
+          dialHerdr(pipe, {
+            data(_s, chunk) {
+              out.push(Buffer.from(chunk));
+              const text = Buffer.concat(out).toString("utf-8");
+              if (text.includes("\n")) {
+                clearTimeout(timer);
+                once(() => resolve(text.slice(0, text.indexOf("\n"))));
+              }
+            },
+            error(_s, err) {
+              clearTimeout(timer);
+              once(() => reject(err));
+            },
+            close() {
+              clearTimeout(timer);
+              once(() => reject(new Error("closed before a full reply line")));
+            },
+          }, mode)
+            .then((s) => s.write(request))
+            .catch((err) => once(() => reject(err)));
+        });
+
+        expect(reply).toBe('{"id":"t","result":{"ok":true}}');
+        expect(seen.line).not.toBeNull();
+        // The newline is the frame delimiter and isn't part of the captured line.
+        expect(Buffer.byteLength(seen.line!, "utf-8")).toBe(requestBytes - 1);
+        expect(seen.line).toBe(request.slice(0, -1));
+      } finally {
+        server.close();
+      }
+    }, 15000);
+  }
+
   test("onDial cancel settles the promise instead of leaving it pending", async () => {
     let cancel: (() => void) | null = null;
     const p = dialHerdr(
