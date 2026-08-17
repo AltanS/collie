@@ -3,7 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { fetchConfig } from "@/lib/api";
 import type { OperatorCommand } from "@/lib/types";
 
-// The operator's own palette rows (`COLLIE_COMMANDS`), read from /api/config and held in
+// The operator's own palette rows (their `commands.toml`), read from /api/config and held in
 // module state. Modelled on the lib/server-build.ts store idiom: plain module state + subscribe +
 // a useSyncExternalStore hook, so the composer participates without prop-drilling through the route
 // tree.

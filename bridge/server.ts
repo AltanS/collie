@@ -7,6 +7,7 @@ import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
+import { createOperatorCommands } from "./operator-commands.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -147,6 +148,8 @@ export function startServer(opts: {
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
   // journal/registry.ts, never here.
+  // One reader per process; it owns the mtime cache that keeps commands.toml off the hot path.
+  const operatorCommands = createOperatorCommands(cfg.commandsFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -296,13 +299,16 @@ export function startServer(opts: {
         // short-circuits to AuthErrorBanner before its red-state probe runs. Noted in #32.
         const denied = guard(req, cfg, "read");
         if (denied) return denied;
+        // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
+        // with no restart. The path is cfg's, never the request's.
+        const mine = await operatorCommands();
         return json({
           push: push.enabled,
           vapidPublicKey: push.publicKey,
           build: await buildId(),
-          // Omitted entirely when unset, so an operator who never touched COLLIE_COMMANDS
+          // Omitted entirely when there are none, so an operator who never wrote a commands.toml
           // ships the same payload as before.
-          ...(cfg.operatorCommands.length > 0 ? { operatorCommands: cfg.operatorCommands } : {}),
+          ...(mine.length > 0 ? { operatorCommands: mine } : {}),
         } satisfies BridgeConfig, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {

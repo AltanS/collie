@@ -127,7 +127,7 @@ describe("commandsFor", () => {
   );
 });
 
-// The operator's own rows (COLLIE_COMMANDS → /api/config). The shipped catalogs cannot carry a
+// The operator's own rows (commands.toml → /api/config). The shipped catalogs cannot carry a
 // plugin- or user-registered command, and a list half-chosen by you and half-guessed for you is
 // worse than either — so a pane your rows address shows your rows and nothing else.
 describe("commandsFor with the operator's own rows", () => {
@@ -216,6 +216,23 @@ describe("commandsFor with the operator's own rows", () => {
     const row = commandsFor("omp", [override]).find((c) => c.command === "/new");
     expect(row?.description).toBe("Fresh start");
     expect(row?.dangerous).toBe(true);
+  });
+
+  it("confirms a row the operator marked, and treats inheriting as a floor", () => {
+    // `confirm = true` buys the same two-tap a shipped dangerous command gets, on a command nothing
+    // out here knows anything about.
+    const mine = {
+      agent: "omp",
+      command: "/wipe-prod",
+      description: "Wipe staging",
+      takesArg: false,
+      argHint: "",
+      confirm: true,
+    };
+    expect(commandsFor("omp", [mine])[0].dangerous).toBe(true);
+    // …and `confirm = false` is not a way OUT of rule 3: the shipped classification is a floor.
+    const renamed = { ...mine, command: "/new", description: "Fresh start", confirm: false };
+    expect(commandsFor("omp", [renamed])[0].dangerous).toBe(true);
   });
 
   it("resolves a scoped and an unscoped row for one command to a single scoped button", () => {

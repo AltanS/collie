@@ -12,7 +12,7 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   agent: string | undefined | null;
-  /** The operator's own rows (`COLLIE_COMMANDS`); they replace the catalog on panes they address. */
+  /** The operator's own rows (`commands.toml`); they replace the catalog on panes they address. */
   mine?: readonly OperatorCommand[];
   /** Insert "/cmd " into the composer for the user to complete (arg-taking commands). */
   onInsert: (text: string) => void;

@@ -265,7 +265,8 @@ export interface CreatedPane {
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
 /**
- * One operator-declared palette row (`COLLIE_COMMANDS`). Mirrors OperatorCommand in
+ * One operator-declared palette row (a `[[commands]]` table in their `commands.toml`). Mirrors
+ * OperatorCommand in
  * bridge/types.ts. Resolved against the shipped catalog by `commandsFor()`, which hands a pane
  * these rows instead of the catalog when any of them address it — see agent-commands.ts for why a
  * plugin- or user-registered command can only arrive this way.
@@ -277,6 +278,8 @@ export interface OperatorCommand {
   description: string;
   takesArg: boolean;
   argHint: string;
+  /** The operator marking their own row dangerous. Optional so an older bridge stays readable. */
+  confirm?: boolean;
 }
 
 export interface BridgeConfig {
@@ -284,7 +287,7 @@ export interface BridgeConfig {
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
-  /** The operator's own palette rows. Absent when `COLLIE_COMMANDS` is unset. */
+  /** The operator's own palette rows. Absent when there is no `commands.toml`. */
   operatorCommands?: OperatorCommand[];
 }
 
