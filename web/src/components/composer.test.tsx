@@ -7,6 +7,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
+import { loadDraft } from "@/lib/drafts";
 import { server } from "@/test/setup";
 import { recordReply } from "@/test/handlers";
 import { Composer } from "./composer";
@@ -925,6 +926,29 @@ describe("Composer — blocked pre-flight override", () => {
   }, 15000);
 });
 
+// A draft too big for the disk tier survives a pane switch but not the app closing, and the only
+// thing that makes that difference visible is this row. Before it, the oversize write was skipped
+// and a remount silently restored an OLDER, SHORTER draft — text the user never wrote.
+describe("Composer — oversize draft notice", () => {
+  it("says an oversize draft won't survive the app closing, and stops saying it when it fits", async () => {
+    const props = renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    expect(screen.queryByText(/too long to keep as a saved draft/i)).not.toBeInTheDocument();
+
+    // Paste, rather than type: 8 KiB of userEvent keystrokes would take minutes.
+    fireEvent.change(box, { target: { value: "# heading\n".repeat(1200) } });
+    expect(await screen.findByText(/too long to keep as a saved draft/i)).toBeInTheDocument();
+    // …and the whole paste is still what the store hands back, which is the actual fix.
+    expect(loadDraft(undefined, props.paneId)).toHaveLength(12000);
+
+    fireEvent.change(box, { target: { value: "short again" } });
+    await waitFor(() =>
+      expect(screen.queryByText(/too long to keep as a saved draft/i)).not.toBeInTheDocument(),
+    );
+  });
+});
+
 // #103. A password prompt is the one refusal that never becomes a success: `sudo` turns echo off, so
 // the evidence Send needs is exactly what the screen is refusing to show, and the reporter tapped Send
 // at it for three days. These pin the two halves of the answer — say what it is, and get the operator
@@ -1008,6 +1032,10 @@ describe("Composer — password prompt", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByRole("button", { name: /use type/i });
     expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
+    // Through the store's own reader, not just the storage key: the draft store has a second,
+    // in-memory tier (lib/drafts.ts) and a secret surviving in a tier this assertion cannot see
+    // would be #103 all over again, invisibly. clearDraft must empty both.
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
 
     // Dismissing keeps the text on screen — the operator may still need to read it — but the typing
     // that happened while the notice was up was never stored either.

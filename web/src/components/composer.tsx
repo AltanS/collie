@@ -18,7 +18,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
 import { isDestructiveInput } from "@/lib/destructive";
-import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
+import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
@@ -911,6 +911,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
             deliberately NOT only on the button and textarea — see the component. */}
         {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
+        {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
+            memory tier holds it whole — but not the app closing, and that difference is invisible
+            without saying so: the old behaviour silently restored an OLDER, SHORTER draft instead.
+            Derived at render rather than pushed through setStatus, because this is a CONDITION that
+            lasts as long as the text does, and a status auto-clears in 2.5s and would re-fire on
+            every keystroke. Self-clearing: trim the draft or send it and the row is simply gone. */}
+        {!direct.active && !fitsDraftStore(input) && (
+          <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
+            Too long to keep as a saved draft — it survives switching panes, but not closing the app.
+          </p>
+        )}
         {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
             field and Send, and the old spacing left them looking joined. */}
         <div className="flex items-end gap-3">
