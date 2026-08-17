@@ -28,7 +28,7 @@ A Herdr web bridge — a long-lived local process that
 - translates browser actions → socket methods,
 - sits behind **one hardened front door** — `tailscale serve` (default; tailnet-only HTTPS +
   MagicDNS) or a conforming reverse proxy
-  ([README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)) —
+  ([DEPLOYMENT.md → Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)) —
   installable as a **PWA**.
 
 The browser never touches the socket directly; the bridge is the only thing that does.
@@ -212,9 +212,9 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   not mandate the header. That is safe under `tailscale serve`, which injects it on every request, and
   not safe behind anything that might stop injecting it — the header exists **only** under
   `tailscale serve` ingress. Under a reverse-proxy front door
-  ([README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
+  ([DEPLOYMENT.md → Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
   there is none, and the equivalent write gate is **per-device auth** (`COLLIE_DEVICE_HEADER`) with
-  the proxy contract (README Variant B/C requirements) as the load-bearing piece. That gate **fails
+  the proxy contract (DEPLOYMENT.md Variant B/C requirements) as the load-bearing piece. That gate **fails
   closed since 0.15.0**: with `COLLIE_DEVICE_HEADER` set, a request arriving without the header is
   read-only, so reaching the port is no longer sufficient to write. Device ids are names your proxy
   asserts, not secrets — treat them as guessable and keep the front door and its ACL as the real
@@ -228,7 +228,7 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   device can't CSRF the bridge. With a plain `tailscale serve` on the MagicDNS name these match
   automatically (no config). When Collie is fronted by a *different* public hostname or an extra
   reverse proxy / TLS terminator (custom domain, load balancer, Headscale + upstream TLS, or a
-  reverse-proxy front door — [README → Variant C](./README.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)),
+  reverse-proxy front door — [DEPLOYMENT.md → Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)),
   the public origin no longer matches the forwarded `Host` — list that exact origin in
   `COLLIE_ALLOWED_ORIGINS` (the only sanctioned way to widen the gate; never bind off-loopback to
   "fix" it).
