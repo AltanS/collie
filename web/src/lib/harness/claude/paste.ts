@@ -24,6 +24,12 @@
 //   * A PTY chunk split can leave `placeholder` + a literal tail in one draft (observed:
 //     `[Pasted text #1 +3 lines]xxxxx… four`). Rapid consecutive chunks usually merge into ONE
 //     placeholder carrying the total newline count.
+//   * In that split shape the token comes FIRST and the literal tail after it, so the last thing on
+//     the row is the last thing that arrived — re-probed 2026-08-17 (collie-demo, pane `w6:p1`,
+//     200-col PTY), where a send whose final chunk never landed showed
+//     `[Pasted text #3 +5 lines] TAIL-ONE… TAIL-TWO…` and the complete one added `TAIL-THREE…`.
+//     Both captures are in the corpus (`claude--draft-paste-split-{partial,tail}.txt`); rule 5 below
+//     is what tells them apart.
 //   * The token WRAPS arbitrarily inside the box and `extractInputDraft` space-joins wrapped rows, so
 //     a wrap can fall mid-token (`…+3 li` / `nes]`). Every match here therefore runs on a
 //     whitespace-STRIPPED normalisation — never on the space-joined raw, which would miss the wrap.
@@ -55,6 +61,11 @@ interface Scan {
   /** The literal text between/around the tokens, in screen order, whitespace already stripped. Never
    *  contains an empty string, so `fragments.length === 0` IS the fully-collapsed shape. */
   fragments: string[];
+  /** The LAST fragment when the draft ends in literal text rather than in a token — i.e. what the
+   *  screen shows as the final thing typed. `null` when the draft ends on a token (or holds no
+   *  literal text at all), because then the end of the message is inside a token and invisible. This
+   *  is the one place the "is the tail complete?" question can be asked at all. */
+  trailing: string | null;
 }
 
 function stripWhitespace(s: string): string {
@@ -74,8 +85,12 @@ function scan(stripped: string): Scan {
     if (m.index > cursor) fragments.push(stripped.slice(cursor, m.index));
     cursor = m.index + m[0].length;
   }
-  if (cursor < stripped.length) fragments.push(stripped.slice(cursor));
-  return { tokens, lines, fragments };
+  let trailing: string | null = null;
+  if (cursor < stripped.length) {
+    trailing = stripped.slice(cursor);
+    fragments.push(trailing);
+  }
+  return { tokens, lines, fragments, trailing };
 }
 
 /**
@@ -94,7 +109,22 @@ function scan(stripped: string): Scan {
  *  3. when the draft is NOTHING but tokens (the fully-collapsed shape), the counts match exactly
  *     (`Σ M === S`). For a long single-line send that means S = 0, i.e. the M-less form;
  *  4. every literal fragment beside the tokens appears in what we sent, IN ORDER — the split
- *     token+tail shape, where the tail is the part of our message the chunk boundary left uncollapsed.
+ *     token+tail shape, where the tail is the part of our message the chunk boundary left uncollapsed;
+ *  5. when the draft ENDS in literal text, that trailing text is the END of what we sent, not merely
+ *     somewhere inside it (#110). Rules 2 and 4 both pass a PARTIALLY arrived send: `Σ M ≤ S` is
+ *     deliberately loose (the tail's own newlines are not in the token's count, and they cannot be
+ *     recovered — the box wraps and `extractInputDraft` space-joins the rows, so no newline survives
+ *     to be counted), and a truncated tail is still a prefix-ordered substring, so every `indexOf`
+ *     succeeds. The suffix is what distinguishes "the tail we can see is all the tail there is" from
+ *     "later chunks are still missing". Live-probed 2026-08-17 (collie-demo, pane `w6:p1`):
+ *     `[Pasted text #3 +5 lines] TAIL-ONE… TAIL-TWO…` for a message ending `…TAIL-THREE-echo-foxtrot`
+ *     was accepted before this rule and fired Enter on a half-arrived send.
+ *
+ * A draft that ends ON a token keeps rules 1–4 only: the end of our message is then inside a token,
+ * where nothing is visible to compare, and the tightening has nothing to bite on. That residual hole
+ * is deliberate — it was never observed (truncation shows up as a literal dribble, not as a collapse),
+ * and rejecting a shape we cannot read would convert working sends into permanent stalls, which is the
+ * worse failure of the two.
  *
  * Anything inconsistent returns false and the caller keeps today's behaviour: no submit key, draft
  * kept, "didn't reach the input box". Guessing here would fire Enter at a screen we cannot read.
@@ -102,7 +132,7 @@ function scan(stripped: string): Scan {
 export function pasteCarriesSend(sent: string, draft: string): boolean {
   const d = stripWhitespace(draft);
   const s = stripWhitespace(sent);
-  const { tokens, lines, fragments } = scan(d);
+  const { tokens, lines, fragments, trailing } = scan(d);
   if (tokens === 0) return false;
 
   const newlines = countNewlines(sent);
@@ -110,6 +140,12 @@ export function pasteCarriesSend(sent: string, draft: string): boolean {
 
   if (lines > newlines) return false;
   if (fragments.length === 0) return lines === newlines;
+
+  // The draft ends in literal text, so the last thing the screen shows IS the last thing that
+  // arrived — and it therefore has to be the last thing we sent. Anything else means bytes are still
+  // missing (#110). No length exemption here: `extractInputDraft` trims the row, so a trailing scrap
+  // that is not the end of our message is a screen we do not understand, not wrap debris.
+  if (trailing !== null && !s.endsWith(trailing)) return false;
 
   // Chained indexOf: each fragment must occur after the previous one, so a draft that shuffles our
   // words around (a different message that happens to share vocabulary) is rejected.

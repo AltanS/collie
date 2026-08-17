@@ -696,6 +696,10 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "draft-footer-single", statusRows: 2, draft: "remember to update the changelo", stripped: 9 },
     { fixture: "draft-footer-wrapped", statusRows: 2, draft: "this stranded draft is long eno", stripped: 11 },
     { fixture: "draft-paste-placeholder", statusRows: 2, draft: "[Pasted text #3 +3 lines]", stripped: 7 },
+    // The split shape (#110): a token plus the literal tail beside it, captured complete and
+    // half-arrived. Three status rows here — the sandbox pane also carries a transcript warning.
+    { fixture: "draft-paste-split-partial", statusRows: 3, draft: "[Pasted text #3 +5 lines] TAIL-ONE-alpha-bravo TAIL-TWO-charlie-delta", stripped: 7 },
+    { fixture: "draft-paste-split-tail", statusRows: 3, draft: "[Pasted text #3 +5 lines] TAIL-ONE-alpha-bravo TAIL-TWO-charlie-delta TAIL-THREE-echo-foxtrot", stripped: 7 },
     { fixture: "draft-wrapped", statusRows: 2, draft: "this stranded draft is long eno", stripped: 10 },
     { fixture: "fresh-idle", statusRows: 2, draft: null, stripped: 47 },
     { fixture: "permission-bash", statusRows: 0, draft: null, stripped: 0 },
