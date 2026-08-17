@@ -998,7 +998,67 @@ test_suite_ignores_an_inherited_git_dir() {
     fail "the suite corrupted the repository it was run from"
 }
 
+# `push-keys` exists to answer "which .env?" on the operator's behalf, so the thing worth pinning is
+# not the keygen (scripts/push-keys.test.ts covers that) but WHERE the keys land: the same config dir
+# every other verb resolves, with the mode a signing credential needs. Runs the real Bun — the script
+# under test is the wiring between the two, and a faked Bun would test nothing but the argv.
+test_push_keys_writes_the_resolved_env() {
+  setup_case push-keys
+  command -v bun > /dev/null || { echo "  (skipped push-keys: no bun on PATH)"; return 0; }
+
+  run_ctl push-keys "mailto:probe@example.com" > "${CASE_DIR}/keys.out" 2>&1 ||
+    fail "push-keys failed: $(cat "${CASE_DIR}/keys.out")"
+
+  local env_file="${CONFIG_DIR}/.env"
+  [ -f "$env_file" ] || fail "push-keys did not write ${env_file}"
+  assert_contains "$(cat "$env_file")" "COLLIE_VAPID_PUBLIC="
+  assert_contains "$(cat "$env_file")" "COLLIE_VAPID_SUBJECT=mailto:probe@example.com"
+  # A private key is a signing credential; a world-readable moment is a leak.
+  assert_eq "$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")" "600"
+
+  # Re-running must NOT silently mint new keys: that would invalidate every subscription already out
+  # there, and the devices would go quiet with nothing to show for it.
+  local before; before="$(cat "$env_file")"
+  if run_ctl push-keys > "${CASE_DIR}/again.out" 2>&1; then
+    fail "push-keys replaced live keys without --force"
+  fi
+  assert_contains "$(cat "${CASE_DIR}/again.out")" "already configured"
+  assert_eq "$(cat "$env_file")" "$before"
+
+  # A subject is a contact address, not a credential: correcting one must not cost every subscription,
+  # so it is the one edit allowed on a configured file without --force.
+  local keys_before; keys_before="$(grep COLLIE_VAPID_PRIVATE "$env_file")"
+  run_ctl push-keys "mailto:fixed@example.com" > "${CASE_DIR}/subj.out" 2>&1 ||
+    fail "push-keys refused a subject-only update: $(cat "${CASE_DIR}/subj.out")"
+  assert_contains "$(cat "$env_file")" "COLLIE_VAPID_SUBJECT=mailto:fixed@example.com"
+  assert_eq "$(grep COLLIE_VAPID_PRIVATE "$env_file")" "$keys_before"
+
+  run_ctl push-keys --force > /dev/null 2>&1 || fail "push-keys --force failed"
+  [ "$(cat "$env_file")" != "$before" ] || fail "--force left the old keys in place"
+}
+
+# A .env symlinked out of a dotfiles repo (or rendered by a secret manager) is a shape this file has
+# only ever been READ in. An atomic rename would replace the link with a plain file and quietly
+# detach the operator's source of truth, so it is refused instead.
+test_push_keys_refuses_a_symlinked_env() {
+  setup_case push-keys-symlink
+  command -v bun > /dev/null || return 0
+
+  local real="${CASE_DIR}/dotfiles-env"
+  printf 'COLLIE_PORT=8787\n' > "$real"
+  ln -s "$real" "${CONFIG_DIR}/.env"
+
+  if run_ctl push-keys > "${CASE_DIR}/link.out" 2>&1; then
+    fail "push-keys wrote through a symlinked .env"
+  fi
+  assert_contains "$(cat "${CASE_DIR}/link.out")" "symlink"
+  [ -L "${CONFIG_DIR}/.env" ] || fail "the symlink was replaced by a regular file"
+  assert_eq "$(cat "$real")" "COLLIE_PORT=8787"
+}
+
 test_suite_ignores_an_inherited_git_dir
+test_push_keys_writes_the_resolved_env
+test_push_keys_refuses_a_symlinked_env
 test_tailscale_cutovers_and_collisions
 test_missing_tailscale_cli
 test_state_delete_failures
