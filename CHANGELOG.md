@@ -6,6 +6,29 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.5] - 2026-08-18
+
+Adds a lint gate; changes no operator workflow. Reasoning:
+[ADR 0019](./.adr/0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md).
+
+### Added
+
+- **oxlint + the vendored [anti-slop](./tools/oxlint/README.md) plugin are the lint gate** — one root `.oxlintrc.json`, all 15 anti-slop rules plus oxlint's correctness/suspicious/perf catalog at `error`, run with `bun run lint` (92b8fff)
+- The gate runs on five surfaces: the editor (`.vscode/`), the agent edit loop (`.claude/hooks/lint-edited-file.sh`, PostToolUse), pre-commit over staged files (`SKIP_LINT_CHECK=1`), `collie build` full-tree (`SKIP_LINT=1`), and CI before typecheck/test — every one shelling out to the same config with no flags of its own (ae0e1d0, 5299ece, 864a90c, 0f05edf)
+- `.adr/0019` records the decision, the one triage pass's rule-by-rule rationale table, and the fix-shapes for the rules you'll trip most; CLAUDE.md gains the rule and lists every `SKIP_*` escape hatch in one place
+- The pre-commit hook's version and lint guards are independently skippable — `SKIP_VERSION_CHECK=1` used to exit 0 out of the whole hook (ae0e1d0)
+
+### Changed
+
+- **TypeScript 7.0.2 on both sides** — zero new diagnostics, no source or tsconfig edits; typecheck drops to ~0.3s root / ~0.6s web. TS7 ships no `tsserver` bin, only `tsc` (3935eaa)
+- **2,851 lint findings paid down to zero by fixing code** — no suppressions, no rule downgrades outside the one triage pass. Boundaries now parse instead of assert: new `bridge/json.ts` / `web/src/lib/json.ts` (`JsonValue`), `web/src/lib/env.ts` (capability probes), `web/src/test/stub.ts` (1373a02..a3159fd)
+
+### Fixed
+
+- **A journal line that is literally `null` threw a `TypeError` out of all four parsers** instead of being skipped like any other unusable line (242e49d)
+- **Three bridge write routes answered on a body they only declared** — a non-string `text` reached `pane.send_text`, `submit: 0` meant "type but don't send", and a non-string `workspaceId` threw a `TypeError` out of the handler; each is a 400 now (b19fc35)
+- **An unrecognised pairing refusal rendered a blank card** — the failure name was asserted into a union whose exhaustive switch then returned `undefined`; it falls back to the bridge's own copy (a6a91bb)
+
 ## [1.0.0-beta.4] - 2026-08-18
 
 ### Fixed

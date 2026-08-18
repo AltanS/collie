@@ -64,7 +64,8 @@ line — do it as part of the change, not after**:
   disagree).
 - A **git pre-commit hook** (`scripts/git-hooks/pre-commit`, activate once with
   `scripts/install-hooks.sh`) blocks commits where functional code changed but the version didn't.
-  Escape hatch for a single commit: `SKIP_VERSION_CHECK=1 git commit …`.
+  Escape hatch for a single commit: `SKIP_VERSION_CHECK=1 git commit …` (every `SKIP_*` hatch is
+  listed under *Linting* below).
 
 **Tag the release when you push it.** Cutting a release means the three version files + the newest
 `CHANGELOG.md` heading agree on `x.y.z` (steps 1–3). When that release lands on `main` and you push,
@@ -100,7 +101,8 @@ the unit name; the Herdr action runs from anywhere.
 - **Backend changes** (`bridge/*.ts`): Bun does **not** hot-reload the service — you must
   `systemctl --user restart collie`. Forgetting this is the #1 "my change didn't take" trap.
 - `bun run build` (root) is now **one definition**: it runs `collie build`, which gates on
-  `scripts/check-version.sh`, installs both trees, **typechecks both sides** (root tsc + web tsc),
+  `scripts/check-version.sh`, installs both trees, **lints the full tree**, **typechecks both
+  sides** (root tsc + web tsc),
   compiles `bin/collie`, builds web to `dist-staging`, and swaps both artifacts in **last** — a
   failed build never empties a live `web/dist` and never replaces the running binary. The binary is
   always renamed into place, never written through (the running service keeps its old inode until
@@ -111,7 +113,7 @@ the unit name; the Herdr action runs from anywhere.
   `scripts/collie-cli.test.sh`, which drives every verb of the compiled binary in a sandboxed HOME,
   and `scripts/collie-ctl.test.sh`, which pins the shim's delegation and bootstrap.
   A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
-  every push — override once with `SKIP_TESTS=1 git push`. The bits that genuinely need `Bun.serve` /
+  every push — override once with `SKIP_TESTS=1 git push` (see *Linting* → escape hatches). The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
   so keep new backend logic pure/injectable enough for `bun test`, or exercise it through `web/`.
 - Service: `systemd --user` unit `collie` on the deployment host; logs `journalctl --user -u collie -f`.
@@ -123,6 +125,46 @@ the unit name; the Herdr action runs from anywhere.
   enforces `verbatimModuleSyntax` + `erasableSyntaxOnly` (use `import type`, no parameter-property
   shorthand there). The **bridge** tsconfig does not enable those two — bridge code uses
   parameter-property shorthand by convention; keep each side consistent with itself.
+
+## Linting — one linter, one config
+
+- **oxlint is the linter and `bun run lint` is how you run it** — oxlint's own
+  correctness/suspicious/perf catalog plus all 15 rules of the vendored
+  [anti-slop](./tools/oxlint/README.md) plugin, at `error`. Don't add ESLint or biome
+  ([ADR 0019](./.adr/0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md)).
+- **One config, `.oxlintrc.json` at the root** — the editor, the PostToolUse hook, pre-commit,
+  `collie build` and CI all shell out to it with no flags of their own. `web/` has no lint script;
+  the root config already covers `web/src`. Only the **full-tree** runs (`collie build`, CI) define
+  "passing".
+- **A finding is fixed in the code, never suppressed and never cleared by downgrading a rule.**
+  There are zero `oxlint-disable` comments in the tree and that is the policy. A `// SAFETY:`
+  comment must state the invariant that makes the assertion sound — "safe, trust me" clears the
+  rule and fails review.
+- **Changing what's enforced goes through the rationale table in
+  [ADR 0019](./.adr/0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md)**, which also holds the
+  fix-shapes for the rules you'll trip most and the reasoning for the scoped `no-runtime-typeof`
+  parse-boundary overrides. Per-rule reasons live as comments at the rule in `.oxlintrc.json`.
+- **Don't edit `tools/oxlint/anti-slop/`** — it's a vendored copy, overwritten at the next
+  re-vendor. Re-pinning upstream is the maintainer's deliberate act, and the diff gets a human
+  read: vendored code is copied, not installed, so the 7-day dependency age gate never sees it.
+- **`overrides.files` globs match the full path** — a glob must start with `**/` or it silently
+  matches nothing. Verify any new one with a planted violation in-scope and a negative control out.
+
+### Escape hatches (all of them, in one place)
+
+Each guard has its own name on its own surface, so skipping one never disarms another. Use one for
+a single command; never export one.
+
+| variable | surface | skips |
+| --- | --- | --- |
+| `SKIP_VERSION_CHECK=1` | `git commit` (pre-commit hook) | the version-consistency + bump-on-change guard |
+| `SKIP_LINT_CHECK=1` | `git commit` (pre-commit hook) | oxlint over the staged files |
+| `SKIP_LINT=1` | `bun run build` / `collie build` | the full-tree lint step |
+| `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
+| `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
+
+The pre-commit hook's two guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the
+lint guard.
 
 ## Frontend data layer (React Router, not TanStack)
 
