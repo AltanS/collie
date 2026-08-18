@@ -130,6 +130,29 @@ describe("the pack update surface", () => {
     }
   });
 
+  test("a leg's progress line is drawn under THAT leg, never below the ones that came after it", () => {
+    const store = createUpdateStore();
+    for (const event of [
+      { kind: "title", version: "1.2.3", commit: "abc123def4567890" },
+      { kind: "member-start", memberId: "nas" },
+      { kind: "leg-start", memberId: "nas", leg: "push" },
+      { kind: "line", text: "  pushing abc123def456 (10831 KiB base64) to /home/pat/.collie…", tone: "info", stream: "out" },
+      { kind: "leg-done", memberId: "nas", leg: "push", ok: true, detail: "1.2.3 at /home/pat/.collie" },
+      { kind: "leg-start", memberId: "nas", leg: "restart" },
+      { kind: "leg-done", memberId: "nas", leg: "restart", ok: true, detail: "its bridge came back" },
+      { kind: "leg-start", memberId: "nas", leg: "verify" },
+      { kind: "leg-done", memberId: "nas", leg: "verify", ok: true, detail: "answers at 100.64.0.9:8787 · 1.2.3" },
+      { kind: "member-done", memberId: "nas", outcome: "updated" },
+    ] satisfies UpdateEvent[]) {
+      store.emit(event);
+    }
+    const frame = plain(render(<PackUpdate store={store} />).lastFrame());
+    expect(frame).toContain("pushing abc123def456");
+    // The field bug, as an ordering assertion: it belongs above `restart`, not below `verify`.
+    expect(frame.indexOf("pushing abc123def456")).toBeLessThan(frame.indexOf("restart"));
+    expect(frame.indexOf("1.2.3 at /home/pat/.collie")).toBeLessThan(frame.indexOf("pushing abc123def456"));
+  });
+
   test("the one question is drawn IN the app — nothing is written to ask it", () => {
     const store = createUpdateStore();
     const answered = store.confirm("update 1 member to 1.2.3?");

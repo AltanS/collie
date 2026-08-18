@@ -279,9 +279,35 @@ describe("projectUpdate", () => {
       ["restart", "pending"],
       ["verify", "pending"],
     ]);
-    // A line said during a member's turn belongs to that member, never to the run.
-    expect(view.members[0]!.notes).toEqual([{ text: "  pushing abc123def456…", tone: "info" }]);
+    // A line said during a member's turn belongs to that member — and, when a leg was running, to
+    // that LEG, so it is drawn under the row it describes rather than under all three of them.
+    expect(view.members[0]!.legs?.[0]!.notes).toEqual([{ text: "  pushing abc123def456…", tone: "info" }]);
+    expect(view.members[0]!.notes).toEqual([]);
     expect(view.preamble).toEqual([]);
+  });
+
+  test("a line said between legs is the member's, not the leg that just finished", () => {
+    const view = projectUpdate([
+      ...RUN,
+      { kind: "line", text: "warn: the ops file could not be updated", tone: "warn", stream: "err" },
+    ]);
+    expect(view.members[0]!.legs?.[0]!.notes).toEqual([{ text: "  pushing abc123def456…", tone: "info" }]);
+    expect(view.members[0]!.notes).toEqual([
+      { text: "warn: the ops file could not be updated", tone: "warn" },
+    ]);
+  });
+
+  test("the push's progress line never lands on a later leg — the field ordering bug", () => {
+    const view = projectUpdate([
+      ...RUN,
+      { kind: "leg-start", memberId: "nas", leg: "restart" },
+      { kind: "leg-done", memberId: "nas", leg: "restart", ok: true, detail: "its bridge came back" },
+      { kind: "leg-start", memberId: "nas", leg: "verify" },
+      { kind: "leg-done", memberId: "nas", leg: "verify", ok: true, detail: "answers at 100.64.0.9:8787 · 1.2.3" },
+      { kind: "member-done", memberId: "nas", outcome: "updated" },
+    ]);
+    expect(view.members[0]!.legs?.map((l) => l.notes.length)).toEqual([1, 0, 0]);
+    expect(view.members[0]!.notes).toEqual([]);
   });
 
   test("a member that ended mid-leg never leaves one spinning", () => {

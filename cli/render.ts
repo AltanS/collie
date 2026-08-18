@@ -449,6 +449,16 @@ export interface UpdateLegView {
   readonly leg: UpdateLeg;
   readonly status: "pending" | "active" | "done" | "failed";
   readonly detail: string;
+  /**
+   * Everything said while this leg was the one running — the push's `pushing …` progress line, a
+   * failing leg's `error:` block, the verify's version warning.
+   *
+   * It hangs off the LEG and not off the member for the reason `pack add` hangs its notes off a leg
+   * (`AddLegView.notes`): the member's notes are drawn after all three leg rows, so a progress line
+   * banked there renders *below* the ✓ of the leg it was describing — which is how a field run
+   * printed `pushing …` underneath a finished `verify`.
+   */
+  readonly notes: readonly AddNote[];
 }
 
 export interface UpdateMemberView {
@@ -458,6 +468,7 @@ export interface UpdateMemberView {
   readonly outcome: UpdateOutcome | null;
   /** Present once this member's turn began; absent for one that was never touched. */
   readonly legs: readonly UpdateLegView[] | null;
+  /** Said during this member's turn but between legs — never while one was running. */
   readonly notes: readonly AddNote[];
 }
 
@@ -487,11 +498,14 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
     {
       plan: { state: UpdatePlanState; detail: string } | null;
       outcome: UpdateOutcome | null;
-      legs: Map<UpdateLeg, UpdateLegView> | null;
+      legs: Map<UpdateLeg, { status: UpdateLegView["status"]; detail: string; notes: AddNote[] }> | null;
       notes: AddNote[];
     }
   >();
   let current: string | null = null;
+  // The leg a line belongs to: set by `leg-start`, cleared the moment that leg finishes. A line said
+  // between legs — or after the last one — is the member's, not the previous leg's.
+  let currentLeg: UpdateLeg | null = null;
 
   const slot = (memberId: string) => {
     const existing = members.get(memberId);
@@ -509,8 +523,14 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
         break;
       case "line": {
         const note = { text: event.text, tone: event.tone };
-        if (current === null) preamble.push(note);
-        else slot(current).notes.push(note);
+        if (current === null) {
+          preamble.push(note);
+          break;
+        }
+        const member = slot(current);
+        const leg = currentLeg === null ? undefined : member.legs?.get(currentLeg);
+        if (leg === undefined) member.notes.push(note);
+        else leg.notes.push(note);
         break;
       }
       case "plan":
@@ -518,23 +538,25 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
         break;
       case "member-start": {
         current = event.memberId;
+        currentLeg = null;
         slot(event.memberId).legs = new Map(
-          UPDATE_LEGS.map((leg) => [leg, { leg, status: "pending" as const, detail: "" }]),
+          UPDATE_LEGS.map((leg) => [leg, { status: "pending" as const, detail: "", notes: [] as AddNote[] }]),
         );
         break;
       }
       case "leg-start": {
-        const legs = slot(event.memberId).legs;
-        legs?.set(event.leg, { leg: event.leg, status: "active", detail: "" });
+        const leg = slot(event.memberId).legs?.get(event.leg);
+        if (leg !== undefined) leg.status = "active";
+        currentLeg = event.leg;
         break;
       }
       case "leg-done": {
-        const legs = slot(event.memberId).legs;
-        legs?.set(event.leg, {
-          leg: event.leg,
-          status: event.ok ? "done" : "failed",
-          detail: event.detail,
-        });
+        const leg = slot(event.memberId).legs?.get(event.leg);
+        if (leg !== undefined) {
+          leg.status = event.ok ? "done" : "failed";
+          leg.detail = event.detail;
+        }
+        if (currentLeg === event.leg) currentLeg = null;
         break;
       }
       case "member-done": {
@@ -542,15 +564,17 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
         member.outcome = event.outcome;
         // A leg still spinning when the member ended never finished — same rule `projectAdd` applies
         // to a verdict that lands mid-leg.
-        for (const [leg, view] of member.legs ?? []) {
-          if (view.status === "active") member.legs!.set(leg, { ...view, status: "failed" });
+        for (const view of (member.legs ?? new Map()).values()) {
+          if (view.status === "active") view.status = "failed";
         }
         current = null;
+        currentLeg = null;
         break;
       }
       case "summary":
         summary = { rows: event.rows, verdict: event.verdict, ok: event.ok };
         current = null;
+        currentLeg = null;
         break;
     }
   }
@@ -564,7 +588,7 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
       memberId,
       plan: m.plan,
       outcome: m.outcome,
-      legs: m.legs === null ? null : [...m.legs.values()],
+      legs: m.legs === null ? null : [...m.legs.entries()].map(([leg, view]) => ({ leg, ...view })),
       notes: m.notes,
     })),
   };
