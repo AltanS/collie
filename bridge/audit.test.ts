@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { AuditLog, formatAuditLine, type AppendFn, type AuditEntry } from "./audit.ts";
+import {
+  AuditLog,
+  fileAuditAppender,
+  formatAuditLine,
+  type AppendFn,
+  type AuditEntry,
+  type AuditFileIo,
+} from "./audit.ts";
 
 // formatAuditLine is the pure, load-bearing bit (stable order, truncation, single-line output); the
 // AuditLog writer is exercised with a fake append so the fire-and-forget + never-throw contract is
@@ -126,6 +133,92 @@ describe("AuditLog", () => {
     } finally {
       console.warn = origWarn;
     }
+  });
+});
+
+// ── The size cap: an unauthenticated caller can add lines, so it must not add bytes forever ──
+
+/** An in-memory filesystem for the appender: files by path, `rotate` overwriting the destination. */
+function fakeIo(seed: Record<string, string> = {}): AuditFileIo & {
+  files: Record<string, string>;
+  failRotate?: boolean;
+} {
+  const files: Record<string, string> = { ...seed };
+  const io = {
+    files,
+    failRotate: false,
+    size: async (p: string) => Buffer.byteLength(files[p] ?? "", "utf8"),
+    rotate: async (from: string, to: string) => {
+      if (io.failRotate) throw new Error("EACCES");
+      if (files[from] === undefined) throw new Error("ENOENT");
+      files[to] = files[from]!;
+      delete files[from];
+    },
+    append: async (p: string, line: string) => {
+      files[p] = (files[p] ?? "") + line;
+    },
+  };
+  return io;
+}
+
+describe("fileAuditAppender rotation", () => {
+  test("rotates at the cap: the old content lands in .1 and the line starts a fresh log", async () => {
+    const io = fakeIo();
+    const append = fileAuditAppender("/s/audit.log", io, 20);
+    await append("a".repeat(20) + "\n");
+    // Still one file — the cap is checked before a write, so the line that crosses it stays put.
+    expect(io.files["/s/audit.log.1"]).toBeUndefined();
+    await append("second\n");
+    expect(io.files["/s/audit.log.1"]).toBe("a".repeat(20) + "\n");
+    expect(io.files["/s/audit.log"]).toBe("second\n");
+  });
+
+  test("keeps exactly one generation — a second rotation replaces .1", async () => {
+    const io = fakeIo();
+    const append = fileAuditAppender("/s/audit.log", io, 8);
+    await append("first-1\n");
+    await append("second2\n");
+    expect(io.files["/s/audit.log.1"]).toBe("first-1\n");
+    await append("third\n");
+    expect(io.files["/s/audit.log.1"]).toBe("second2\n");
+    expect(io.files["/s/audit.log"]).toBe("third\n");
+    expect(Object.keys(io.files).sort()).toEqual(["/s/audit.log", "/s/audit.log.1"]);
+  });
+
+  test("a failed rename still appends — an oversized trail beats a missing line", async () => {
+    const io = fakeIo();
+    io.failRotate = true;
+    const append = fileAuditAppender("/s/audit.log", io, 8);
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = ((...args: unknown[]) => void warnings.push(args.map(String).join(" "))) as typeof console.warn;
+    try {
+      await append("first-1\n");
+      await append("second\n");
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(io.files["/s/audit.log"]).toBe("first-1\nsecond\n");
+    expect(io.files["/s/audit.log.1"]).toBeUndefined();
+    expect(warnings.some((w) => w.includes("could not rotate"))).toBe(true);
+  });
+
+  test("lines below the cap never rotate", async () => {
+    const io = fakeIo();
+    const append = fileAuditAppender("/s/audit.log", io, 1024);
+    for (let i = 0; i < 20; i++) await append(`line ${i}\n`);
+    expect(io.files["/s/audit.log.1"]).toBeUndefined();
+    expect(io.files["/s/audit.log"]!.split("\n")).toHaveLength(21);
+  });
+
+  test("seeds its counter from the existing file, so a restart doesn't reset the cap", async () => {
+    // The in-memory counter is an optimisation, not the truth: a fresh process inherits a log that
+    // is already at the cap and must rotate on its first line, not after another 5 MiB.
+    const io = fakeIo({ "/s/audit.log": "x".repeat(64) + "\n" });
+    const append = fileAuditAppender("/s/audit.log", io, 32);
+    await append("after restart\n");
+    expect(io.files["/s/audit.log.1"]).toBe("x".repeat(64) + "\n");
+    expect(io.files["/s/audit.log"]).toBe("after restart\n");
   });
 });
 
