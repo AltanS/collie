@@ -97,11 +97,14 @@ export interface PeerNotifierDeps<H> {
  * Built only in `lead` mode. A solo instance never constructs one, so it holds no map, arms no timer
  * and adds no tag (§11).
  */
+/** One host's slot: its own debounce coordinator plus the statuses the last sweep left behind. */
+type HostEntry<H> = {
+  readonly coordinator: NotificationCoordinator<H>;
+  statuses: ReadonlyMap<string, AgentStatus>;
+};
+
 export class PeerNotifier<H = unknown> {
-  private readonly hosts = new Map<
-    string,
-    { readonly coordinator: NotificationCoordinator<H>; statuses: ReadonlyMap<string, AgentStatus> }
-  >();
+  private readonly hosts = new Map<string, HostEntry<H>>();
 
   constructor(private readonly deps: PeerNotifierDeps<H>) {}
 
@@ -120,6 +123,8 @@ export class PeerNotifier<H = unknown> {
     for (const t of diff.transitions) {
       // `PaneWire` is `AgentView` minus the server-only session ref, so it is exactly what the
       // coordinator reads (agent, workspaceLabel, cwd, paneId) — no re-hydration, no second shape.
+      // SAFETY: `PaneWire` IS `AgentView` minus the server-only `agentSession`, and the coordinator
+      // reads only agent/workspaceLabel/cwd/paneId — every one of them present and typed on both.
       entry.coordinator.onTransition(t.pane as AgentView, t.from, t.to);
     }
     for (const id of diff.removed) entry.coordinator.onRemove(id);
@@ -148,7 +153,7 @@ export class PeerNotifier<H = unknown> {
     return [...this.hosts.keys()].map((host) => packHerdTagFor(host, true, ""));
   }
 
-  private create(host: string): { coordinator: NotificationCoordinator<H>; statuses: ReadonlyMap<string, AgentStatus> } {
+  private create(host: string): HostEntry<H> {
     // A peer's sweep reads its `/pack/v1/snapshot` with no `?session=`, i.e. its PRIMARY session
     // (§5's "absent → primary"), and a merged pane carries no session of its own — so a host has
     // exactly one slot today. When per-session sweeping lands, this is where the key grows.
@@ -161,7 +166,7 @@ export class PeerNotifier<H = unknown> {
         this.deps.isNotifiable,
       ),
       statuses: new Map<string, AgentStatus>(),
-    };
+    } satisfies HostEntry<H>;
     this.hosts.set(host, entry);
     return entry;
   }

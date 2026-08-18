@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import type { JsonObject, JsonValue } from "../json.ts";
 import { fsTrustStoreIo, type TrustStoreIo } from "./trust-store.ts";
 
 // The ops store: how the operator reached a member ONCE, so they need not retype it.
@@ -53,9 +54,11 @@ export function emptyPackOps(): PackOpsData {
   return { version: PACK_OPS_VERSION, members: {} };
 }
 
-function isRecord(value: unknown): value is OpsRecord {
-  if (value === null || typeof value !== "object") return false;
-  const r = value as Record<string, unknown>;
+function isRecord(value: JsonValue | undefined): value is JsonValue & OpsRecord {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const r: JsonObject = value;
   return (
     typeof r.sshHost === "string" &&
     r.sshHost !== "" &&
@@ -74,18 +77,21 @@ function isRecord(value: unknown): value is OpsRecord {
  * command run on someone's machine. Refuse; the caller reports it and the file is left untouched.
  */
 export function parsePackOps(raw: string): PackOpsData | null {
-  let value: unknown;
+  let value: JsonValue;
   try {
-    value = JSON.parse(raw);
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction — string/number/boolean/null or an
+    // array/object of those. Naming it keeps every field read below a checked property access.
+    value = JSON.parse(raw) as JsonValue;
   } catch {
     return null;
   }
-  if (value === null || typeof value !== "object") return null;
-  const d = value as Record<string, unknown>;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const d: JsonObject = value;
   if (d.version !== PACK_OPS_VERSION) return null;
-  if (d.members === null || typeof d.members !== "object") return null;
+  const rawMembers = d.members;
+  if (rawMembers === null || rawMembers === undefined || typeof rawMembers !== "object") return null;
   const members: Record<string, OpsRecord> = {};
-  for (const [memberId, record] of Object.entries(d.members as Record<string, unknown>)) {
+  for (const [memberId, record] of Object.entries(rawMembers)) {
     if (!isRecord(record)) return null;
     members[memberId] = {
       sshHost: record.sshHost,
@@ -151,7 +157,7 @@ export class PackOpsStore {
     if (unreadable) return false;
     const next: PackOpsData = {
       version: PACK_OPS_VERSION,
-      members: { ...(data?.members ?? {}), [memberId]: record },
+      members: { ...data?.members, [memberId]: record },
     };
     await this.write(next);
     return true;

@@ -1,4 +1,5 @@
 import type { AuditLog } from "../audit.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
 import {
   admitPackRequest,
   factsFrom,
@@ -233,6 +234,48 @@ function verifySigned(
  * enrollment unanswerable. The zero-tax contract is untouched by this, because it is a promise to an
  * instance that never enrolled, and such an instance has no trust store to register on.
  */
+/** `GET /pack/v1/hello`'s body. `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1). */
+type HelloBody = { protocol: number; member: string; version?: string };
+
+/**
+ * A box rather than a bare `let`, so a refusal decided inside `commitPackChange`'s callback survives
+ * with its type intact: TypeScript's flow analysis does not follow an assignment made in a closure.
+ */
+type DemotionGate = { refused: DemotionRefused | null };
+
+/** The record inside a parsed JSON body, or null when the body isn't one (a scalar, an array). */
+function asRecord(value: JsonValue | undefined): JsonObject | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value;
+}
+
+/**
+ * A JSON body, or `null` when it will not parse. Every membership route answers `null` with a 400.
+ *
+ * `cached` is the body text already read to verify a §8.6 signature. Re-reading `req` after that
+ * would throw on a consumed stream — and, worse, parsing a *second* read would mean the bytes that
+ * were signed and the bytes that are acted on could differ. One read, one meaning.
+ */
+async function readJson(req: Request, cached: string | null): Promise<JsonValue> {
+  try {
+    // SAFETY: both branches are JSON.parse output (`Request.json()` is one too), which IS a
+    // JsonValue by construction. Every field read off it below is checked before it is used.
+    return cached === null ? await req.json() : (JSON.parse(cached) as JsonValue);
+  } catch {
+    return null;
+  }
+}
+
+/** A 400 on an admitted link. Free to say why — the caller already passed both factors (§8.5). */
+function badRequest(self: string, reason: string): Response {
+  return new Response(JSON.stringify({ error: reason }), {
+    status: 400,
+    headers: packResponseHeaders(self),
+  });
+}
+
 export function createPackRouter(deps: PackRouterDeps): PackHandler {
   const transportPinned = deps.transportPinned ?? false;
   const membershipChanged = (): void => deps.onMembershipChange?.();
@@ -303,7 +346,7 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1) and it is additive: an
       // older parser reads `protocol` and `member` by name and passes the sibling over untouched, so
       // this build answering an older prober costs nothing and needs no coordination.
-      const hello: Record<string, unknown> = { protocol: PACK_PROTOCOL_VERSION, member: verdict.self };
+      const hello: HelloBody = { protocol: PACK_PROTOCOL_VERSION, member: verdict.self };
       if (deps.version !== undefined) hello.version = deps.version;
       return new Response(JSON.stringify(hello), {
         status: 200,
@@ -322,8 +365,8 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // a body field. Removal is idempotent: a second `leave` from a member already gone answers 200
       // rather than 404, because the operator's question ("am I still listed there?") is answered the
       // same way either time and a 404 would read as a broken link.
-      await commitPackChange(deps.store, deps.audit, (data) =>
-        data === null ? null : removeMember(data, verdict.member.memberId),
+      await commitPackChange(deps.store, deps.audit, (current) =>
+        current === null ? null : removeMember(current, verdict.member.memberId),
       );
       return new Response(JSON.stringify({ removed: verdict.member.memberId }), {
         status: 200,
@@ -390,29 +433,6 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
   };
 
   /**
-   * A JSON body, or `null` when it will not parse. Every membership route answers `null` with a 400.
-   *
-   * `cached` is the body text already read to verify a §8.6 signature. Re-reading `req` after that
-   * would throw on a consumed stream — and, worse, parsing a *second* read would mean the bytes that
-   * were signed and the bytes that are acted on could differ. One read, one meaning.
-   */
-  async function readJson(req: Request, cached: string | null): Promise<unknown> {
-    try {
-      return cached === null ? await req.json() : (JSON.parse(cached) as unknown);
-    } catch {
-      return null;
-    }
-  }
-
-  /** A 400 on an admitted link. Free to say why — the caller already passed both factors (§8.5). */
-  function badRequest(self: string, reason: string): Response {
-    return new Response(JSON.stringify({ error: reason }), {
-      status: 400,
-      headers: packResponseHeaders(self),
-    });
-  }
-
-  /**
    * §14.3's refusal: **403, and free to say why**. The caller passed both factors and §8.6, so
    * §8.1's uniform-401 rule does not apply — that rule exists to tell an *unauthenticated* caller
    * nothing. This is one status up from `badRequest` because the caller is *admitted but not
@@ -448,7 +468,7 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
    * holds in memory and the peer's very next request already needs the new one.
    */
   async function secret(req: Request, cached: string | null, from: TrustedMember, self: string): Promise<Response> {
-    const body = (await readJson(req, cached)) as Record<string, unknown> | null;
+    const body = asRecord(await readJson(req, cached));
     const value = typeof body?.secret === "string" ? body.secret : null;
     const generation = typeof body?.generation === "number" ? body.generation : null;
     if (value === null || value === "" || generation === null || !Number.isSafeInteger(generation)) {
@@ -485,7 +505,7 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
    * never pinned this member can pin it now.
    */
   async function newLead(req: Request, cached: string | null, from: TrustedMember, self: string): Promise<Response> {
-    const body = (await readJson(req, cached)) as Record<string, unknown> | null;
+    const body = asRecord(await readJson(req, cached));
     const claim = parseRosterEntry(body?.lead);
     if (claim === null) return badRequest(self, "a leadership claim needs `lead`");
     if (claim.memberId !== from.memberId) {
@@ -500,7 +520,7 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // store write, so reading the approval and spending it cannot be split by an expiry or a race.
       // A box rather than a bare `let`, so the refusal survives the closure with its type intact:
       // TypeScript's flow analysis does not follow an assignment made inside a callback.
-      const gate: { refused: DemotionRefused | null } = { refused: null };
+      const gate: DemotionGate = { refused: null };
       const handover = await commitPackChange(deps.store, deps.audit, (current) => {
         if (current === null) return null;
         const outcome = demoteSelf(current, claim, from, now());
@@ -558,9 +578,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
   async function enroll(req: Request): Promise<Response> {
     if (req.method !== "POST") return refuse(PACK_ENROLL_PATH, "token");
 
-    let body: unknown;
+    let body: JsonValue;
     try {
-      body = await req.json();
+      // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseEnrollRequest` below
+      // re-checks every field before any of it is used.
+      body = (await req.json()) as JsonValue;
     } catch {
       // A malformed body is answered exactly like a bad token. Splitting it into a 400 would tell an
       // unauthenticated caller that this endpoint parses enrollment requests.

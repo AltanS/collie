@@ -1,3 +1,4 @@
+import type { JsonObject } from "../json.ts";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER } from "./admission.ts";
 import type { PackLink, PeerFailure, PeerOutcome } from "./peer-client.ts";
@@ -109,7 +110,7 @@ export function forwardAuditAction(route: string): string | null {
  * because a peer has no peers (§4): forwarding it would invite a peer to re-resolve a host, which is
  * the first step of a hop chain this protocol does not have.
  */
-export function forwardParams(url: URL): Record<string, string> {
+export function forwardParams(url: URL) {
   const params: Record<string, string> = {};
   for (const [k, v] of url.searchParams) {
     if (k === HOST_PARAM) continue;
@@ -117,6 +118,15 @@ export function forwardParams(url: URL): Record<string, string> {
   }
   return params;
 }
+
+/** One audit row a forward writes. `paneId`/`session` are absent, never `undefined`, when unknown. */
+export type ForwardAuditEntry = {
+  action: string;
+  host: string;
+  paneId?: string;
+  session?: string;
+  outcome: string;
+};
 
 /**
  * The headers a forwarded request carries. An allowlist, not a copy: a browser's `cookie`,
@@ -186,7 +196,7 @@ export function forwardError(
   code: ForwardErrorCode,
   error: string,
   status: number,
-  extra: Record<string, unknown> = {},
+  extra: JsonObject = {},
 ): Response {
   return new Response(JSON.stringify({ ok: false, code, error, ...extra }), {
     status,
@@ -287,7 +297,7 @@ export interface ForwardDeps {
    * with the same `action` the peer will write plus `host`. Never called for a read: a read is not
    * audited locally today and does not become audited by crossing a link.
    */
-  readonly audit?: (entry: { action: string; host: string; paneId?: string; session?: string; outcome: string }) => void;
+  readonly audit?: (entry: ForwardAuditEntry) => void;
   /** The operator's device, as the LEAD resolved it — forwarded as `X-Pack-Device` (§12). */
   readonly device?: string | null;
 }
@@ -327,15 +337,19 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     );
   }
 
-  const init: RequestInit = {
+  // `duplex` is required by the Fetch spec for a stream body; the DOM lib's `RequestInit` predates
+  // it, so the streaming half of this init is typed here rather than asserted at the assignment.
+  const init: RequestInit & { duplex?: "half" } = {
     method: req.method,
     headers: forwardHeaders(req, deps.device),
-    // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
-    // stores a copy of it (§13). `duplex` is required by the Fetch spec for a stream body.
-    ...(req.body === null || req.method === "GET" || req.method === "HEAD"
-      ? {}
-      : { body: req.body, duplex: "half" }),
   };
+  // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
+  // stores a copy of it (§13). Assigned, never conditionally spread: a bodyless method must carry
+  // NEITHER key.
+  if (req.body !== null && req.method !== "GET" && req.method !== "HEAD") {
+    init.body = req.body;
+    init.duplex = "half";
+  }
 
   const outcome = await deps.transport(deps.link, route, forwardParams(url), init);
   const action = forwardAuditAction(route);
@@ -343,13 +357,12 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   const session = url.searchParams.get("session");
   const record = (result: string): void => {
     if (action === null || deps.audit === undefined) return;
-    deps.audit({
-      action,
-      host: deps.link.memberId,
-      ...(paneId === undefined ? {} : { paneId }),
-      ...(session === null ? {} : { session }),
-      outcome: result,
-    });
+    // Assigned, never conditionally spread: an absent pane/session must leave the key off the entry
+    // rather than record it as `undefined`.
+    const entry: ForwardAuditEntry = { action, host: deps.link.memberId, outcome: result };
+    if (paneId !== undefined) entry.paneId = paneId;
+    if (session !== null) entry.session = session;
+    deps.audit(entry);
   };
 
   if (!outcome.ok) {

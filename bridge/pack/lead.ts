@@ -1,3 +1,4 @@
+import type { JsonValue } from "../json.ts";
 import type { SnapshotResponse } from "../types.ts";
 import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forward.ts";
 import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnapshotBody } from "./merge.ts";
@@ -69,7 +70,10 @@ export function foldPeerMemory(
 ): PeerMemory {
   const base = prev ?? FRESH;
   if (outcome.ok) {
-    const parsed = parsePeerSnapshot(outcome.value);
+    // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by construction. The
+    // type argument stays `unknown` because a caller may script any outcome; `parsePeerSnapshot`
+    // re-checks every field of it before a byte is used, so nothing downstream trusts this cast.
+    const parsed = parsePeerSnapshot(outcome.value as JsonValue);
     return { body: parsed ?? base.body, incompatibleRuns: 0, probeAfter: 0 };
   }
   if (outcome.state === "incompatible") {
@@ -166,7 +170,7 @@ export class PackLead {
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the pack degrades to
       // "stale" rather than taking the lead's poll loop down with it.
-      console.warn(`[pack] sweep failed: ${(err as Error).message}`);
+      console.warn(`[pack] sweep failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.sweeping = false;
     }

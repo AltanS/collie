@@ -1,3 +1,4 @@
+import type { JsonObject, JsonValue } from "../json.ts";
 import { STATUS_RANK } from "../types.ts";
 import type { PaneWire, ServerSummary, SessionSummary, SnapshotResponse } from "../types.ts";
 import type { PeerState } from "./registry.ts";
@@ -54,6 +55,13 @@ export const MAX_PEER_PANES = 500;
 export const MAX_PEER_SESSIONS = 50;
 
 /**
+ * A peer's `GET /pack/v1/snapshot` body exactly as it arrives off the wire: three lists, none of
+ * them checked until {@link parsePeerSnapshot} runs. Named so the parser's input has a contract of
+ * its own rather than being `unknown`.
+ */
+export type PeerSnapshotWire = { sessions?: unknown; agents?: unknown; shellPanes?: unknown };
+
+/**
  * Coerce a peer's `GET /pack/v1/snapshot` body into {@link PeerSnapshotBody}, or `null` if it is not
  * one at all.
  *
@@ -63,12 +71,15 @@ export const MAX_PEER_SESSIONS = 50;
  * information: if a peer could label its panes with another member's id, the phone would address a
  * write to the wrong machine, and the lead would have handed it the address to do so.
  */
-export function parsePeerSnapshot(value: unknown): PeerSnapshotBody | null {
-  if (value === null || typeof value !== "object") return null;
-  const raw = value as Record<string, unknown>;
-  const sessions = Array.isArray(raw.sessions) ? raw.sessions : null;
-  const agents = Array.isArray(raw.agents) ? raw.agents : null;
-  const shellPanes = Array.isArray(raw.shellPanes) ? raw.shellPanes : null;
+export function parsePeerSnapshot(
+  value: PeerSnapshotWire | JsonValue | null | undefined,
+): PeerSnapshotBody | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const sessions = Array.isArray(value.sessions) ? value.sessions : null;
+  const agents = Array.isArray(value.agents) ? value.agents : null;
+  const shellPanes = Array.isArray(value.shellPanes) ? value.shellPanes : null;
   // All three are required. A body missing one is not a partial snapshot to salvage — it is a peer
   // answering something other than a snapshot, and salvaging it would render half a machine.
   if (sessions === null || agents === null || shellPanes === null) return null;
@@ -127,17 +138,19 @@ export function serverSummaryFor(c: PeerContribution): ServerSummary {
     : c.state.health === "reachable" || c.body !== null
       ? "ok"
       : "unknown";
-  return {
+  const summary: ServerSummary = {
     id: c.state.memberId,
     name: c.name,
     isLead: false,
     reachable: c.state.health === "reachable",
     protocol,
-    // The peer's refusal reason, verbatim (§9.2) — never paraphrased, because the operator's next
-    // move is to read it and go fix a version somewhere.
-    ...(incompatible && c.state.reason !== null ? { protocolDetail: c.state.reason } : {}),
     lastSeenAt: c.state.lastSeenAt ?? 0,
   };
+  // The peer's refusal reason, verbatim (§9.2) — never paraphrased, because the operator's next
+  // move is to read it and go fix a version somewhere. Assigned, never conditionally spread: a
+  // reachable peer's entry carries no `protocolDetail` key at all.
+  if (incompatible && c.state.reason !== null) summary.protocolDetail = c.state.reason;
+  return summary;
 }
 
 /**
@@ -153,7 +166,7 @@ export function serverSummaryFor(c: PeerContribution): ServerSummary {
  */
 export function mergeSnapshot(local: SnapshotResponse, ctx: MergeContext): SnapshotResponse {
   const self = ctx.self.id;
-  const peers = [...ctx.peers].sort((a, b) => a.state.memberId.localeCompare(b.state.memberId));
+  const peers = ctx.peers.toSorted((a, b) => a.state.memberId.localeCompare(b.state.memberId));
 
   const servers: ServerSummary[] = [
     {
@@ -172,7 +185,7 @@ export function mergeSnapshot(local: SnapshotResponse, ctx: MergeContext): Snaps
 
   const sessions: SessionSummary[] = [
     ...local.sessions.map((s) => ({ ...s, host: self })),
-    ...peers.flatMap((p) => (p.body?.sessions ?? []).map((s) => ({ ...s, host: p.state.memberId }))),
+    ...peers.flatMap((p) => (p.body?.sessions ?? []).map((s) => Object.assign({}, s, { host: p.state.memberId }))),
   ];
 
   return {
@@ -204,7 +217,7 @@ export function mergeSnapshot(local: SnapshotResponse, ctx: MergeContext): Snaps
  * hoping the sort is stable.
  */
 function triageSorted(panes: PaneWire[], self: string): PaneWire[] {
-  return panes.sort(
+  return panes.toSorted(
     (a, b) =>
       STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
       hostRank(a, b, self) ||
@@ -215,7 +228,7 @@ function triageSorted(panes: PaneWire[], self: string): PaneWire[] {
 
 /** Shell panes: same rule minus the status key, mirroring `bridge/state-engine.ts:271`. */
 function spaceSorted(panes: PaneWire[], self: string): PaneWire[] {
-  return panes.sort(
+  return panes.toSorted(
     (a, b) =>
       hostRank(a, b, self) ||
       a.workspaceNumber - b.workspaceNumber ||
@@ -248,15 +261,19 @@ function untagPane(p: PaneWire): PaneWire {
   return rest;
 }
 
-function isSessionSummary(value: unknown): value is SessionSummary {
-  if (value === null || typeof value !== "object") return false;
-  const s = value as Record<string, unknown>;
+function isSessionSummary(value: JsonValue | undefined): value is JsonValue & SessionSummary {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const s: JsonObject = value;
   return typeof s.name === "string" && typeof s.reachable === "boolean";
 }
 
-function isPaneWire(value: unknown): value is PaneWire {
-  if (value === null || typeof value !== "object") return false;
-  const p = value as Record<string, unknown>;
+function isPaneWire(value: JsonValue | undefined): value is JsonValue & PaneWire {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const p: JsonObject = value;
   // paneId and status are what the merge SORTS by and what the phone ADDRESSES by; a row missing
   // either cannot be rendered or driven, so it is dropped rather than defaulted into the list.
   return (

@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { JsonObject, JsonValue } from "../json.ts";
 import { isFingerprint, isMemberId } from "./identity.ts";
 import type { Enrollment } from "./mode.ts";
 
@@ -183,9 +184,17 @@ export function enrollmentOf(data: TrustStoreData | null): Enrollment | null {
 
 // ── Parsing ──────────────────────────────────────────────────────────────────
 
-function isMember(value: unknown): value is TrustedMember {
-  if (value === null || typeof value !== "object") return false;
-  const m = value as Record<string, unknown>;
+/** A serialised record, or null when the value isn't one. Arrays are records to `typeof`, not here. */
+function asRecord(value: JsonValue | undefined): JsonObject | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value;
+}
+
+function isMember(value: JsonValue | undefined): value is JsonValue & TrustedMember {
+  const m = asRecord(value);
+  if (m === null) return false;
   return (
     isMemberId(m.memberId) &&
     isFingerprint(m.fingerprint) &&
@@ -205,9 +214,9 @@ function isMember(value: unknown): value is TrustedMember {
   );
 }
 
-function isInvite(value: unknown): value is PendingInvite {
-  if (value === null || typeof value !== "object") return false;
-  const i = value as Record<string, unknown>;
+function isInvite(value: JsonValue | undefined): value is JsonValue & PendingInvite {
+  const i = asRecord(value);
+  if (i === null) return false;
   return (
     typeof i.tokenHash === "string" &&
     i.tokenHash.length > 0 &&
@@ -217,9 +226,9 @@ function isInvite(value: unknown): value is PendingInvite {
   );
 }
 
-function isHandover(value: unknown): value is PendingHandover {
-  if (value === null || typeof value !== "object") return false;
-  const h = value as Record<string, unknown>;
+function isHandover(value: JsonValue | undefined): value is JsonValue & PendingHandover {
+  const h = asRecord(value);
+  if (h === null) return false;
   return isMemberId(h.memberId) && typeof h.createdAt === "number" && typeof h.expiresAt === "number";
 }
 
@@ -233,19 +242,21 @@ function isHandover(value: unknown): value is PendingHandover {
  * "fixed" store back over the operator's file.
  */
 export function parseTrustStore(raw: string): TrustStoreData | null {
-  let value: unknown;
+  let value: JsonValue;
   try {
-    value = JSON.parse(raw);
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction. Naming it here is what makes every
+    // field read below a checked property access instead of an assertion through `unknown`.
+    value = JSON.parse(raw) as JsonValue;
   } catch {
     return null;
   }
-  if (value === null || typeof value !== "object") return null;
-  const d = value as Record<string, unknown>;
+  const d = asRecord(value);
+  if (d === null) return null;
   if (d.version !== TRUST_STORE_VERSION) return null;
 
-  const self = d.self as Record<string, unknown> | undefined;
+  const self = asRecord(d.self);
   if (
-    !self ||
+    self === null ||
     !isMemberId(self.memberId) ||
     typeof self.certPem !== "string" ||
     typeof self.keyPem !== "string" ||
@@ -257,8 +268,9 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
 
   let pack: PackIdentity | null = null;
   if (d.pack !== null && d.pack !== undefined) {
-    const p = d.pack as Record<string, unknown>;
+    const p = asRecord(d.pack);
     if (
+      p === null ||
       typeof p.packId !== "string" ||
       typeof p.name !== "string" ||
       typeof p.secret !== "string" ||
@@ -276,15 +288,27 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
     };
   }
 
-  if (d.lead !== null && d.lead !== undefined && !isMember(d.lead)) return null;
+  // `null`/absent lead is the ordinary peerless case; anything else must be a whole member.
+  let lead: TrustedMember | null = null;
+  if (d.lead !== null && d.lead !== undefined) {
+    if (!isMember(d.lead)) return null;
+    lead = d.lead;
+  }
   if (!Array.isArray(d.peers) || !d.peers.every(isMember)) return null;
   if (!Array.isArray(d.invites) || !d.invites.every(isInvite)) return null;
   // Same strictness the roster gets: a malformed approval invalidates the WHOLE store rather than
-  // being read around. Absent or `null` is the ordinary, fail-closed case — no live approval.
-  const handover = d.pendingHandover;
-  if (handover !== null && handover !== undefined && !isHandover(handover)) return null;
+  // being read around. Absent or `null` is the ordinary, fail-closed case — no live approval. The
+  // two are NOT collapsed: `null` round-trips as `null`, absent round-trips as absent.
+  const rawHandover = d.pendingHandover;
+  let handover: PendingHandover | null | undefined;
+  if (rawHandover === null || rawHandover === undefined) {
+    handover = rawHandover;
+  } else {
+    if (!isHandover(rawHandover)) return null;
+    handover = rawHandover;
+  }
 
-  return {
+  const store: TrustStoreData = {
     version: TRUST_STORE_VERSION,
     self: {
       memberId: self.memberId,
@@ -294,15 +318,16 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
       createdAt: self.createdAt,
     },
     pack,
-    lead: (d.lead as TrustedMember | undefined) ?? null,
+    lead,
     peers: d.peers,
     invites: d.invites,
-    // THE WHITELIST IS THE TRAP: this literal is the store, so a field validated above and left out
-    // here vanishes on every load→save round trip — and an approval that cannot survive a read is an
-    // approval the demotion can never find (§14.1). Absent stays absent rather than becoming an
-    // explicit `null`, so a pre-amendment store round-trips to the same bytes it arrived as.
-    ...(handover === undefined ? {} : { pendingHandover: handover }),
   };
+  // THE WHITELIST IS THE TRAP: the literal above is the store, so a field validated but left out of
+  // it vanishes on every load→save round trip — and an approval that cannot survive a read is an
+  // approval the demotion can never find (§14.1). Absent stays absent rather than becoming an
+  // explicit `null`, so a pre-amendment store round-trips to the same bytes it arrived as.
+  if (handover === undefined) return store;
+  return { ...store, pendingHandover: handover };
 }
 
 /** Serialise a store for disk. Stable, pretty-printed, newline-terminated — a diffable secret file. */
@@ -327,7 +352,7 @@ export function fsTrustStoreIo(stateDir: string): TrustStoreIo {
       try {
         return await readFile(path, "utf8");
       } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        if (err instanceof Error && "code" in err && err.code === "ENOENT") return null;
         throw err;
       }
     },

@@ -1,3 +1,4 @@
+import type { JsonObject, JsonValue } from "../json.ts";
 import { unlinkSync } from "node:fs";
 
 // A stand-in Herdr control socket, for the two-instance harness (`harness.test.ts`).
@@ -30,13 +31,22 @@ export interface FakeHerdrOptions {
 
 export interface FakeHerdr {
   /** Every `pane.send_text` / `pane.send_keys` this fake received — the harness's write evidence. */
-  readonly writes: Array<{ method: string; params: Record<string, unknown> }>;
+  readonly writes: PaneWrite[];
   /** Every method name served, in order. Counting these is how the harness measures poll cadence. */
   readonly calls: string[];
   stop(): void;
 }
 
 const AGENT_STATUS = { state: "idle", label: "idle" };
+
+/** One `pane.send_text` / `pane.send_keys` / `pane.rename` the fake received — the write evidence. */
+export type PaneWrite = { method: string; params: JsonObject };
+
+/** One request line off the socket, before any of its fields are believed. */
+type RpcRequest = { id?: string; method?: string; params?: JsonObject };
+
+/** The slice of Bun's socket `handle` uses — named so the fake states its own contract. */
+type FakeSocket = { write(s: string): void; end(): void };
 
 /** Start the fake on `socketPath`. Unlinks a stale socket first, as a real daemon would. */
 export function startFakeHerdr(opts: FakeHerdrOptions): FakeHerdr {
@@ -45,7 +55,7 @@ export function startFakeHerdr(opts: FakeHerdrOptions): FakeHerdr {
   } catch {
     // No stale socket — the normal case.
   }
-  const writes: Array<{ method: string; params: Record<string, unknown> }> = [];
+  const writes: PaneWrite[] = [];
   const calls: string[] = [];
 
   const snapshot = () => ({
@@ -88,7 +98,7 @@ export function startFakeHerdr(opts: FakeHerdrOptions): FakeHerdr {
     })),
   });
 
-  const answer = (method: string, params: Record<string, unknown>): unknown => {
+  const answer = (method: string, params: JsonObject): JsonValue => {
     if (method === "session.snapshot") return { type: "snapshot", snapshot: snapshot() };
     if (method === "workspace.list") return { workspaces: snapshot().workspaces };
     if (method === "tab.list") return { tabs: snapshot().tabs };
@@ -125,10 +135,12 @@ export function startFakeHerdr(opts: FakeHerdrOptions): FakeHerdr {
     },
   });
 
-  function handle(socket: { write(s: string): unknown; end(): unknown }, line: string): void {
-    let msg: { id?: string; method?: string; params?: Record<string, unknown> };
+  function handle(socket: FakeSocket, line: string): void {
+    let msg: RpcRequest;
     try {
-      msg = JSON.parse(line) as typeof msg;
+      // SAFETY: the harness speaks the same newline-delimited JSON-RPC the real daemon does; every
+      // field below is read with a `??` default, so a line of another shape answers rather than throws.
+      msg = JSON.parse(line) as RpcRequest;
     } catch {
       socket.end();
       return;

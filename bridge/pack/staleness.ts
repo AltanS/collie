@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import type { JsonObject, JsonValue } from "../json.ts";
 import { deriveMode, type PackMode } from "./mode.ts";
 import { enrollmentOf, type TrustStoreData } from "./trust-store.ts";
 
@@ -53,7 +54,7 @@ export function rosterSignature(data: TrustStoreData | null): string[] {
   return members
     .filter((m) => m.status === "enrolled")
     .map((m) => `${m.role}:${m.memberId}`)
-    .sort();
+    .toSorted();
 }
 
 export function markerFor(data: TrustStoreData | null, now: number, pid: number): PackRuntimeMarker {
@@ -72,14 +73,15 @@ export function formatMarker(marker: PackRuntimeMarker): string {
 /** Tolerant by design: a marker we cannot read is simply no marker, never a reason to fail a verb. */
 export function parseMarker(raw: string | null): PackRuntimeMarker | null {
   if (raw === null || raw.trim() === "") return null;
-  let value: unknown;
+  let value: JsonValue;
   try {
-    value = JSON.parse(raw);
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    value = JSON.parse(raw) as JsonValue;
   } catch {
     return null;
   }
-  if (typeof value !== "object" || value === null) return null;
-  const v = value as Record<string, unknown>;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const v: JsonObject = value;
   const roster = Array.isArray(v.roster) ? v.roster.filter((e): e is string => typeof e === "string") : null;
   if (typeof v.bootedAt !== "number" || typeof v.pid !== "number" || roster === null) return null;
   const mode = v.mode;

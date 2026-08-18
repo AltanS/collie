@@ -1,3 +1,4 @@
+import type { JsonObject, JsonValue } from "../json.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
 import { PACK_PREFIX } from "./router.ts";
@@ -228,7 +229,7 @@ export class PeerClient {
   async hello(link: PackLink): Promise<PeerOutcome<HelloResult>> {
     const outcome = await this.json(link, "hello");
     if (!outcome.ok) return outcome;
-    const body = outcome.value as Record<string, unknown> | null;
+    const body = asRecord(outcome.value);
     const member = typeof body?.member === "string" ? body.member : null;
     const protocol = typeof body?.protocol === "number" ? body.protocol : null;
     if (member === null || protocol === null) {
@@ -244,7 +245,7 @@ export class PeerClient {
   }
 
   /** `GET /pack/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business. */
-  snapshot(link: PackLink, session?: string): Promise<PeerOutcome<unknown>> {
+  snapshot(link: PackLink, session?: string): Promise<PeerOutcome<JsonValue>> {
     return this.json(link, "snapshot", session === undefined || session === "" ? undefined : { session });
   }
 
@@ -254,11 +255,12 @@ export class PeerClient {
     route: string,
     params?: Record<string, string>,
     init: PackRequestInit = {},
-  ): Promise<PeerOutcome<unknown>> {
+  ): Promise<PeerOutcome<JsonValue>> {
     const outcome = await this.raw(link, route, params, init);
     if (!outcome.ok) return outcome;
     try {
-      return { ...outcome, value: await outcome.value.json() };
+      const value: JsonValue = await outcome.value.json();
+      return { ...outcome, value };
     } catch {
       // A body that will not parse, from a peer whose version header matched, is a broken peer — not
       // a version problem. §7's rule runs the other way (a version mismatch is never *reported* as a
@@ -361,7 +363,10 @@ export class PeerClient {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
       // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
       const tls = this.deps.tls?.(link);
-      res = await this.deps.fetch(url, { ...init, headers, signal: controller.signal, ...(tls ? { tls } : {}) });
+      const dialInit: PackRequestInit = { ...init, headers, signal: controller.signal };
+      // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
+      if (tls) dialInit.tls = tls;
+      res = await this.deps.fetch(url, dialInit);
     } catch (err) {
       // Timeout, connection refused, DNS, TLS — one state, because the phone's answer is the same in
       // all of them: last-good state, marked stale (§10.2). The peer's address is named; the secret
@@ -465,8 +470,16 @@ function httpDate(raw: string | null): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+/** The record inside a parsed JSON body, or null when the body isn't one (a scalar, an array). */
+function asRecord(value: JsonValue | undefined): JsonObject | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value;
+}
+
 /** The reason string for a transport throw, with no secret and no stack in it. */
-function errorReason(err: unknown): string {
+function errorReason<T>(err: T): string {
   if (err instanceof Error) return err.message === "" ? err.name : err.message;
   return "request failed";
 }
@@ -480,7 +493,8 @@ function errorReason(err: unknown): string {
  */
 async function readRefusal(res: Response): Promise<{ error: string; code: string } | null> {
   try {
-    const body = (await res.json()) as Record<string, unknown> | null;
+    const raw: JsonValue = await res.json();
+    const body = asRecord(raw);
     const error = typeof body?.error === "string" ? body.error : null;
     const code = typeof body?.code === "string" ? body.code : null;
     return error === null || code === null || code === "" ? null : { error, code };
@@ -492,7 +506,8 @@ async function readRefusal(res: Response): Promise<{ error: string; code: string
 /** Read a `409` body for §7's `expected`/`received`, tolerating a peer that sends neither. */
 async function readMismatch(res: Response): Promise<{ reason: string; expected: number; received: number | null }> {
   try {
-    const body = (await res.json()) as Record<string, unknown> | null;
+    const raw: JsonValue = await res.json();
+    const body = asRecord(raw);
     const error = typeof body?.error === "string" ? body.error : "pack protocol mismatch";
     const expected = typeof body?.expected === "number" ? body.expected : PACK_PROTOCOL_VERSION;
     const received = typeof body?.received === "number" ? body.received : null;
