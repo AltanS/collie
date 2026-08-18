@@ -7,7 +7,7 @@ import { parsePackOps } from "../bridge/pack/ops-store.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
-import { cmdPackUpdate, type PackUpdateDeps } from "./pack-update.ts";
+import { answersThisBuild, cmdPackUpdate, type PackUpdateDeps } from "./pack-update.ts";
 import type { RemoteResult } from "./remote.ts";
 
 // `collie pack update` against fakes for every seam. NOTHING here spawns `ssh`, dials a network or
@@ -27,6 +27,8 @@ function legOf(script: string): Leg {
 }
 
 const COMMIT = "abc123def4567890abc123def4567890abc123de";
+/** How git abbreviates {@link COMMIT} here — the build stamp's `+<sha>` half. */
+const SHORT = "abc123d";
 const OLD_COMMIT = "0000feed0000feed0000feed0000feed0000feed";
 const VERSION = "1.2.3";
 const OLD_VERSION = "1.2.2";
@@ -100,6 +102,7 @@ function harness(opts: HarnessOptions = {}) {
   const exec = fakeExec({
     answers: [
       [`git -C ${ROOT} rev-parse HEAD`, { stdout: `${COMMIT}\n` }],
+      [`git -C ${ROOT} rev-parse --short ${COMMIT}`, { stdout: `${SHORT}\n` }],
       [`git -C ${ROOT} status --porcelain`, { stdout: "" }],
       [`git -C ${ROOT} show ${COMMIT}:herdr-plugin.toml`, { stdout: `version = "${VERSION}"\n` }],
     ],
@@ -384,10 +387,39 @@ describe("a member's turn: push, restart, verify", () => {
     expect(text(h.io)).toContain("nas         FAILED");
   });
 
+  // ── What counts as "it came back running what we pushed" ───────────────────
+  // A built Collie reports `<semver>+<short sha>`, so the manifest version alone is only half of the
+  // string. The first field run compared against that half and warned about a member running exactly
+  // the commit it had just been sent — under a ✓ calling the same string a success.
+
+  test("a member answering the version AND the pushed commit is not warned about at all", async () => {
+    const h = harness({ hello: { nas: `${VERSION}+${SHORT}` } });
+    expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).not.toContain("warn: nas answers as");
+    expect(rendered).toContain(`answers at 100.64.0.9:8787 · ${VERSION}+${SHORT}`);
+    expect(rendered).not.toContain("(expected");
+  });
+
+  test("git may abbreviate the same commit longer there than here, and that is still this build", async () => {
+    const h = harness({ hello: { nas: `${VERSION}+${COMMIT.slice(0, 10)}` } });
+    expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(text(h.io)).not.toContain("warn: nas answers as");
+  });
+
+  test("a member built from ANOTHER commit is warned about, naming both strings", async () => {
+    const h = harness({ hello: { nas: `${VERSION}+beefbee` } });
+    expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`warn: nas answers as ${VERSION}+beefbee, not ${VERSION}+${SHORT} — check the build there.`);
+    // The ✓ row and the warning above it say the same thing about the same string.
+    expect(rendered).toContain(`· ${VERSION}+beefbee (expected ${VERSION}+${SHORT})`);
+  });
+
   test("a member that comes back reporting a different version is warned about, loudly", async () => {
     const h = harness({ hello: { nas: "9.9.9" } });
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
-    expect(text(h.io)).toContain(`warn: nas answers as 9.9.9, not ${VERSION}`);
+    expect(text(h.io)).toContain(`warn: nas answers as 9.9.9, not ${VERSION}+${SHORT}`);
   });
 
   test("a bundle this checkout cannot produce fails every member instead of half of them", async () => {
@@ -399,6 +431,25 @@ describe("a member's turn: push, restart, verify", () => {
     expect(await cmdPackUpdate(h.deps, ["--all"])).toBe(EXIT.FAIL);
     expect(legs(h).filter((l) => l.endsWith("install"))).toEqual([]);
     expect(text(h.io)).toContain("not attempted — the bundle failed here");
+  });
+});
+
+describe("answersThisBuild", () => {
+  test("the version alone is the most an unstamped member can say, and it is not evidence against us", () => {
+    expect(answersThisBuild(VERSION, VERSION, COMMIT)).toBe(true);
+    expect(answersThisBuild(OLD_VERSION, VERSION, COMMIT)).toBe(false);
+  });
+
+  test("the build half must abbreviate the commit that was pushed", () => {
+    expect(answersThisBuild(`${VERSION}+${SHORT}`, VERSION, COMMIT)).toBe(true);
+    expect(answersThisBuild(`${VERSION}+${COMMIT}`, VERSION, COMMIT)).toBe(true);
+    expect(answersThisBuild(`${VERSION}+beefbee`, VERSION, COMMIT)).toBe(false);
+    expect(answersThisBuild(`${VERSION}+ab`, VERSION, COMMIT)).toBe(false);
+  });
+
+  test("a marker on either half means it is not that commit — `-dirty` and `-dev` both fail", () => {
+    expect(answersThisBuild(`${VERSION}+${SHORT}-dirty`, VERSION, COMMIT)).toBe(false);
+    expect(answersThisBuild(`${VERSION}-dev+${SHORT}`, VERSION, COMMIT)).toBe(false);
   });
 });
 
