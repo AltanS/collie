@@ -179,6 +179,9 @@ describe("api client — request timeouts", () => {
       return new Response("{}", { status: 200 });
     });
     await fetchSnapshot();
+    // SAFETY: `timeoutSpy` spies on `AbortSignal.timeout`, whose return type IS an AbortSignal;
+    // `results[0]` exists because the call above went through it. Vitest types a spy result value
+    // as `any`, which is the only reason this is written down.
     const produced = timeoutSpy.mock.results[0]!.value as AbortSignal;
     expect(captured).toBe(produced); // no caller signal → the timeout signal reaches fetch directly
   });

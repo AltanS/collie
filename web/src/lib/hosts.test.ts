@@ -43,7 +43,7 @@ const pane = (paneId: string, host?: string, status: AgentView["status"] = "idle
   status,
   cwd: "/home/you/ws",
   focused: false,
-  ...(host ? { host } : {}),
+  host, // optional and undefined-when-absent: the same thing to every reader of an AgentView
 });
 
 describe("the solo answer is the default answer", () => {

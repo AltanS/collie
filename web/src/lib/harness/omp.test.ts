@@ -23,17 +23,17 @@ const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
 const allOmpFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
-  .sort();
+  .toSorted();
 const allClaudeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
-  .sort();
+  .toSorted();
 
 // Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
 // can draw (omp's tool-approval dialog, in particular, was never captured; see omp/index.ts). These
 // are NOT "neutral output" in the plain sense: eleven of them are live modals with the keyboard, and
 // the conformance assertion (raw-only) is exactly the promise worth pinning, because it is a promise
 // about a screen where being wrong would type a keystroke. One reason per line.
-const DECLINED = [
+const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
   "omp--done--tool-result.txt",
@@ -70,13 +70,13 @@ const DECLINED = [
   "omp--menu-resume.txt",
   "omp--menu-settings-moved.txt",
   "omp--menu-settings.txt",
-];
+]);
 
 // Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
 // each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
 // raw-only on all 20 omp captures and all 38 claude ones.
 const ownFixtures: string[] = [];
-const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.includes(f));
+const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
 describeAdapterConformance(ompAdapter, {
   ownFixtures,
@@ -138,7 +138,7 @@ describe("ompBuildBlocks emits nothing but raw", () => {
   // is the whole list, spelled out — adding a key is how an adapter accidentally goes hot, so make it
   // a deliberate edit with a reason attached.
   it("exposes only read-only surfaces — no dialog, menu or wizard hook", () => {
-    expect(Object.keys(ompAdapter).sort()).toEqual(
+    expect(Object.keys(ompAdapter).toSorted()).toEqual(
       [
         "agent", // the registry key
         "buildBlocks", // raw-only, asserted above
@@ -146,7 +146,7 @@ describe("ompBuildBlocks emits nothing but raw", () => {
         "composerReady", // the pre-flight's refusal
         "extractInputDraft", // the stranded-draft preview + the type-then-verify half
         "extractStatusLines", // the statusline the strip peels off the mirror
-      ].sort(),
+      ].toSorted(),
     );
   });
 });

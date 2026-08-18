@@ -30,6 +30,9 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GOLDEN = join(__dirname, "..", "..", "..", "bridge", "fixtures", "solo-baseline", "snapshot.json");
+// SAFETY: the golden is the bridge's own committed solo body — `bridge/prompt-binding.test.ts`
+// reads the same file and pins it from the other side, so its shape IS `SnapshotResponse`. The
+// assertions below are what would fail if it ever stopped being.
 const goldenSnapshot = JSON.parse(readFileSync(GOLDEN, "utf8")) as SnapshotResponse;
 
 // Exhaustive by construction: `Record<keyof T, true>` makes every key of T — optional ones included —
@@ -45,7 +48,7 @@ const goldenSnapshot = JSON.parse(readFileSync(GOLDEN, "utf8")) as SnapshotRespo
 // committed solo body still contains none of them — which the golden assertion below now states
 // positively, not just as "no unknown keys". Only the key-LIST assertions in this file changed; every
 // byte-level and wire-level assertion is untouched. (§11's "Why `servers` is optional-and-absent".)
-const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
+const SNAPSHOT_KEYS = {
   bridge: true,
   device: true,
   agents: true,
@@ -58,9 +61,9 @@ const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
   ts: true,
   // Present on the type since M5/02, absent from every solo body — see the section header.
   servers: true,
-};
+} satisfies Record<keyof SnapshotResponse, true>;
 
-const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
+const SESSION_SUMMARY_KEYS = {
   name: true,
   isPrimary: true,
   reachable: true,
@@ -68,9 +71,9 @@ const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
   working: true,
   blocked: true,
   host: true,
-};
+} satisfies Record<keyof SessionSummary, true>;
 
-const AGENT_VIEW_KEYS: Record<keyof AgentView, true> = {
+const AGENT_VIEW_KEYS = {
   paneId: true,
   workspaceId: true,
   workspaceLabel: true,
@@ -93,26 +96,26 @@ const AGENT_VIEW_KEYS: Record<keyof AgentView, true> = {
   // title). Recorded here because the tripwire is exhaustive over `keyof AgentView`, not because it
   // carries a host.
   terminalTitle: true,
-};
+} satisfies Record<keyof AgentView, true>;
 
-const DEVICE_AUTH_KEYS: Record<keyof DeviceAuth, true> = {
+const DEVICE_AUTH_KEYS = {
   enforced: true,
   device: true,
   authorized: true,
-};
+} satisfies Record<keyof DeviceAuth, true>;
 
-const UPDATE_INFO_KEYS: Record<keyof UpdateInfo, true> = {
+const UPDATE_INFO_KEYS = {
   current: true,
   latest: true,
   latestUrl: true,
   releaseAvailable: true,
   bridgeStale: true,
   checkedAt: true,
-};
+} satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no pack dimension", () => {
   it("SnapshotResponse mirrors the bridge's field set exactly", () => {
-    expect(Object.keys(SNAPSHOT_KEYS).sort()).toEqual([
+    expect(Object.keys(SNAPSHOT_KEYS).toSorted()).toEqual([
       "agents",
       "bridge",
       "device",
@@ -143,7 +146,7 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
     expect(SNAPSHOT_KEYS.servers).toBe(true);
     expect(SESSION_SUMMARY_KEYS.host).toBe(true);
     expect(AGENT_VIEW_KEYS.host).toBe(true);
-    expect(Object.keys(AGENT_VIEW_KEYS).sort()).toEqual([
+    expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
       "agent",
       "cwd",
       "focused",
@@ -164,8 +167,8 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "workspaceLabel",
       "workspaceNumber",
     ]);
-    expect(Object.keys(DEVICE_AUTH_KEYS).sort()).toEqual(["authorized", "device", "enforced"]);
-    expect(Object.keys(UPDATE_INFO_KEYS).sort()).toEqual([
+    expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);
+    expect(Object.keys(UPDATE_INFO_KEYS).toSorted()).toEqual([
       "bridgeStale",
       "checkedAt",
       "current",

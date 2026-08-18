@@ -557,7 +557,7 @@ describe("a labelled top border narrower than any real bare border is not an inp
 describe("a combining-mark top border whose .length clears the floor but whose display width doesn't", () => {
   // Explicit decomposed form (base "e" + combining acute U+0301), NOT the precomposed "é" glyph —
   // that would collapse to a single UTF-16 unit and defeat the point of this fixture.
-  const topBorder = "── e" + "́" + " ──"; // .length 8, displayWidth 7
+  const topBorder = `── e\u0301 ──`; // .length 8, displayWidth 7
   const lines = splitLines(
     parseAnsi(
       [
@@ -745,8 +745,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     const onDisk = readdirSync(PANES_DIR)
       .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
       .map((f) => f.replace("claude--", "").replace(".txt", ""))
-      .sort();
-    expect(onDisk).toEqual(PINNED.map((p) => p.fixture).sort());
+      .toSorted();
+    expect(onDisk).toEqual(PINNED.map((p) => p.fixture).toSorted());
   });
 
   it.each(PINNED)("$fixture classifies identically", ({ fixture, statusRows, draft, stripped }) => {

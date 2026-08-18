@@ -43,7 +43,7 @@ describe("isHorizontalRule", () => {
 describe("isBoxBorder", () => {
   it("matches a long rule run even with an embedded label (input-box top border)", () => {
     expect(isBoxBorder("─".repeat(40))).toBe(true);
-    expect(isBoxBorder("─".repeat(30) + " collie upgrades " + "──")).toBe(true);
+    expect(isBoxBorder("─".repeat(30) + " collie upgrades ──")).toBe(true);
   });
 
   it("rejects ordinary text and short dashes", () => {

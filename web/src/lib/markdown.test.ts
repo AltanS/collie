@@ -169,6 +169,8 @@ describe("parseMarkdown", () => {
     ]);
     const ol = parseMarkdown("1. first\n2. second");
     expect(ol[0]).toMatchObject({ kind: "list", ordered: true });
+    // SAFETY: the line above pinned `ol[0]` as an ordered list block, and a list block carries
+    // `items`. The Block union is addressed positionally here, which is what needs writing down.
     expect((ol[0] as { items: unknown[] }).items).toHaveLength(2);
   });
 

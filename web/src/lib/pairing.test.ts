@@ -19,8 +19,13 @@ import { closePane, fetchDevices, fetchPane, fetchSnapshot, pairDevice, revokeDe
 //   2. The refusal latch is driven by the bridge's exact 403 body, so the header gate's
 //      "device not authorised" can never be mistaken for "device not paired".
 
+/** The Authorization headers a case's requests carried, in order. */
+interface AuthCapture {
+  seen: (string | null)[];
+}
+
 // Capture the Authorization header of whatever request the case makes.
-function captureAuth(): { seen: (string | null)[] } {
+function captureAuth(): AuthCapture {
   const seen: (string | null)[] = [];
   server.use(
     http.get("/api/snapshot", ({ request }) => {

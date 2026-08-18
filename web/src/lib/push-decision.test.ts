@@ -90,6 +90,8 @@ describe("decidePush", () => {
 
   test("a lead push carries no host — the pre-pack decision, unchanged", () => {
     const decision = decidePush({ title: "claude needs you", data: { paneId: "w1:p1" } }, false);
+    // SAFETY: the case asserts a field the union's "show" arm does not declare — that ABSENCE is
+    // the invariant (a lead push carries no host), so it has to be read off the value to be pinned.
     expect((decision as { host?: string }).host).toBeUndefined();
   });
 
@@ -99,6 +101,8 @@ describe("decidePush", () => {
     const data = { paneId: "w1:p1", host: "box2" };
     const shown = decidePush({ title: "claude needs you", data }, false);
     const cleared = decidePush({ type: "clear", data }, true);
+    // SAFETY: `shown` is the "show" decision produced two lines above (the input carried a title,
+    // not `type: "clear"`), and every show decision carries a `tag`.
     expect(cleared).toEqual({ kind: "clear", tag: (shown as { tag: string }).tag });
     expect(cleared).toEqual({ kind: "clear", tag: "collie@box2:w1:p1" });
     // …and the bridge-supplied tag still wins over the fallback, in both directions.
@@ -111,6 +115,7 @@ describe("decidePush", () => {
   test("an agent push carries no target (defaults to the pane deep-link path)", () => {
     const decision = decidePush({ title: "claude needs you", data: { paneId: "p1" } }, false);
     expect(decision).toMatchObject({ kind: "show", paneId: "p1" });
+    // SAFETY: as above — the absence of `target` is what the case pins, so it must be read.
     expect((decision as { target?: string }).target).toBeUndefined();
   });
 });

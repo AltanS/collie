@@ -16,7 +16,7 @@ describe("haptics", () => {
   });
 
   afterEach(() => {
-    Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, "vibrate");
+    Reflect.deleteProperty(navigator, "vibrate");
     __resetHaptics();
   });
 
@@ -47,7 +47,7 @@ describe("haptics", () => {
   // iOS Safari: navigator.vibrate is simply undefined. The optional call must swallow it, and the
   // Settings row hides itself rather than offering a toggle that provably does nothing.
   it("no-ops where the platform has no vibrate, and reports itself unsupported", () => {
-    Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, "vibrate");
+    Reflect.deleteProperty(navigator, "vibrate");
     expect(hapticsSupported()).toBe(false);
     expect(() => buzz()).not.toThrow();
   });

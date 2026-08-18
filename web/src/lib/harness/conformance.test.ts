@@ -24,7 +24,7 @@ const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 // in-flight-send captures — a `❯ …` input box (with or without a slash-autocomplete menu above it) is
 // composer chrome, not a dialog, so it must stay raw. The wrapped-draft capture is the same: a
 // (multi-line) input box, stripped as chrome, never lifted.
-const NEUTRAL = [
+const NEUTRAL = new Set([
   "claude--working.txt",
   "claude--fresh-idle.txt",
   "claude--done.txt",
@@ -47,17 +47,17 @@ const NEUTRAL = [
   // negative control for the generic menu grammar — its statusline is `·`-separated like a key-hint
   // footer, and the input-box gate is the only thing that keeps it raw.
   "claude--menu-model-picker-dismissed.txt",
-];
+]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
-  .sort();
+  .toSorted();
 const allOmpFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
-  .sort();
+  .toSorted();
 
-const ownFixtures = allClaudeFixtures.filter((f) => !NEUTRAL.includes(f));
-const neutralFixtures = allClaudeFixtures.filter((f) => NEUTRAL.includes(f));
+const ownFixtures = allClaudeFixtures.filter((f) => !NEUTRAL.has(f));
+const neutralFixtures = allClaudeFixtures.filter((f) => NEUTRAL.has(f));
 
 describeAdapterConformance(claudeAdapter, {
   ownFixtures,

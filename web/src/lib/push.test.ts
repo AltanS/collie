@@ -57,7 +57,10 @@ describe("subscribeBody", () => {
   });
 
   it("never forwards a field the browser happened to put on the subscription", () => {
+    // SAFETY: the assertion is the point of the case — `extra` is deliberately a subscription
+    // carrying fields the type does not declare, which is exactly what a browser may hand us. The
+    // case then pins that `subscribeBody` forwards none of them.
     const extra = { ...json, expirationTime: 123, junk: "x" } as PushSubscriptionJSON;
-    expect(Object.keys(subscribeBody(extra, null)).sort()).toEqual(["endpoint", "keys"]);
+    expect(Object.keys(subscribeBody(extra, null)).toSorted()).toEqual(["endpoint", "keys"]);
   });
 });

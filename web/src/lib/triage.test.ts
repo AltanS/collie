@@ -25,8 +25,9 @@ function agent(
     status,
     cwd: "/home/k/proj",
     focused: false,
-    ...(ts.active !== undefined ? { lastActiveAt: ts.active } : {}),
-    ...(ts.seen !== undefined ? { lastSeenAt: ts.seen } : {}),
+    // Both optional: an absent key and an explicit `undefined` read the same to every consumer.
+    lastActiveAt: ts.active,
+    lastSeenAt: ts.seen,
   };
 }
 
@@ -52,7 +53,7 @@ describe("isUnseen", () => {
   });
 
   it("only ever applies to done agents", () => {
-    for (const s of ["working", "idle", "blocked", "unknown"] as AgentStatus[]) {
+    for (const s of ["working", "idle", "blocked", "unknown"] satisfies AgentStatus[]) {
       expect(isUnseen(agent("p", s, { active: 200, seen: 100 }))).toBe(false);
     }
   });

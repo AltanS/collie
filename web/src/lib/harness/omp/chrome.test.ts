@@ -61,7 +61,7 @@ const COMPOSER_FIXTURES = [
 
 const ALL_OMP_FIXTURES = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
-  .sort();
+  .toSorted();
 
 const NON_COMPOSER_FIXTURES = ALL_OMP_FIXTURES.filter((f) => !COMPOSER_FIXTURES.includes(f));
 
@@ -92,7 +92,7 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
   });
 
   it("covers every composer capture in the corpus", () => {
-    expect(PINNED.map((p) => p.fixture).sort()).toEqual([...COMPOSER_FIXTURES].sort());
+    expect(PINNED.map((p) => p.fixture).toSorted()).toEqual(COMPOSER_FIXTURES.toSorted());
   });
 });
 

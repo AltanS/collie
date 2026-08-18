@@ -50,7 +50,7 @@ describe("prereleaseLabel — what the alpha bar keys off", () => {
     expect(prereleaseLabel("not a version - really")).toBeUndefined();
     expect(prereleaseLabel(undefined)).toBeUndefined();
     expect(prereleaseLabel(null)).toBeUndefined();
-    expect(prereleaseLabel(42 as unknown as string)).toBeUndefined();
+    expect(prereleaseLabel(42)).toBeUndefined(); // a number really can arrive off parsed JSON
   });
 });
 

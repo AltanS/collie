@@ -33,9 +33,18 @@ const PANES_DIR = join(FIXTURES_DIR, "panes");
 const fixtureLines = (name: string): StyledLine[] =>
   splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
 
+/** One committed row of the client/bridge binding golden. */
+interface RegionRow {
+  fixture: string;
+  detector: string;
+  region: string;
+}
+
+// SAFETY: `prompt-binding-regions.json` is this repo's own committed golden, and every field the
+// rows below read is asserted against it by the cases in this file — a drifted shape fails here.
 const REGIONS = JSON.parse(
   readFileSync(join(FIXTURES_DIR, "prompt-binding-regions.json"), "utf8"),
-) as { fixture: string; detector: string; region: string }[];
+) as RegionRow[];
 
 /** The region each detector hands to the bridge, or null when it does not recognise the pane. The
  *  order mirrors the precedence the action layer uses, so a pane is attributed to one detector. */
@@ -56,7 +65,7 @@ function detectRegion(lines: StyledLine[]): { detector: string; region: string }
 
 describe("client/bridge binding contract", () => {
   it("covers every dialog detector", () => {
-    expect([...new Set(REGIONS.map((r) => r.detector))].sort()).toEqual([
+    expect([...new Set(REGIONS.map((r) => r.detector))].toSorted()).toEqual([
       "menu",
       "multi-select",
       "preview-select",

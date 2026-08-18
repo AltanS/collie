@@ -312,6 +312,8 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     );
     const res = await submitPreviewNote({ ...base, preview: m, text: raw });
     expect(res).toEqual({ status: "sent" });
+    // SAFETY: `sendReply(paneId, text, …)` — argument 1 is the text, a string by that signature.
+    // Vitest types a recorded call argument loosely, which is the only reason this is written down.
     const typed = mockSendReply.mock.calls[0]![1] as string;
     expect(typed).toBe(expected);
     expect(typed.startsWith("a b c x")).toBe(true);
@@ -334,6 +336,8 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     );
     const res = await submitPreviewNote({ ...base, preview: m, text: raw });
     expect(res).toEqual({ status: "sent" });
+    // SAFETY: `sendReply(paneId, text, …)` — argument 1 is the text, a string by that signature.
+    // Vitest types a recorded call argument loosely, which is the only reason this is written down.
     const typed = mockSendReply.mock.calls[0]![1] as string;
     expect(typed).toBe(expected);
     expect(typed).not.toMatch(/\p{Cc}/u); // no raw control byte survives
