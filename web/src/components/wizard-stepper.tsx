@@ -60,9 +60,7 @@ export function WizardStepper({
       : "";
   return (
     <div className="flex items-center gap-1.5">
-      <span className="sr-only" role="status">
-        {position}
-      </span>
+      <output className="sr-only">{position}</output>
       <button
         type="button"
         aria-label="Previous step"

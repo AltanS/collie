@@ -87,8 +87,12 @@ describe("mirror line wrapping", () => {
     expect(clipped.className).toContain("break-normal");
     expect(clipped.textContent).toBe(border);
     expect(clipped.children).toHaveLength(2);
-    expect((clipped.children[0] as HTMLElement).style.backgroundColor).toBe("var(--ansi-1)");
-    expect((clipped.children[1] as HTMLElement).style.backgroundColor).toBe("var(--ansi-4)");
+    // SAFETY: `children` is typed `Element`, but the mirror renders every segment as a <span> with
+    // an inline style — which is exactly what these two lines assert. Two assertions, two reasons,
+    // same reason.
+    const [first, second] = [clipped.children[0] as HTMLElement, clipped.children[1] as HTMLElement];
+    expect(first.style.backgroundColor).toBe("var(--ansi-1)");
+    expect(second.style.backgroundColor).toBe("var(--ansi-4)");
     expect(clipped.querySelector("[data-find-match]")).not.toBeNull();
     expect(pre.querySelector("a")?.textContent).toBe("https://herdr.dev/docs");
     expect(pre.textContent).toBe(`ordinary prose\n${border}\nsee https://herdr.dev/docs\n`);

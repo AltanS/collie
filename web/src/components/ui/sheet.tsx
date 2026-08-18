@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
   React.useEffect(() => {
     if (!open) return;
+    // SAFETY: `document.activeElement` is typed `Element | null`; the only thing read off it below
+    // is the optional `focus()`, which is what makes it an HTMLElement in practice. The optional
+    // call is what covers the case where it isn't one (an SVG element, say).
     const previouslyFocused = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
     return () => {

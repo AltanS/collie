@@ -31,8 +31,8 @@ describe("PairedDevices — pairing", () => {
     const user = userEvent.setup();
     let body: { code?: string; label?: string } | undefined;
     server.use(
-      http.post("/api/pair", async ({ request }) => {
-        body = (await request.json()) as { code?: string; label?: string };
+      http.post<never, { code?: string; label?: string }>("/api/pair", async ({ request }) => {
+        body = await request.json();
         return HttpResponse.json({ token: "tok-secret", label: "my phone" });
       }),
     );
@@ -105,8 +105,8 @@ describe("PairedDevices — revoking", () => {
     setDeviceToken("tok-secret");
     let body: { label?: string } | undefined;
     server.use(
-      http.post("/api/devices/revoke", async ({ request }) => {
-        body = (await request.json()) as { label?: string };
+      http.post<never, { label?: string }>("/api/devices/revoke", async ({ request }) => {
+        body = await request.json();
         return HttpResponse.json({ enforced: false, current: null, devices: [] });
       }),
     );
@@ -136,8 +136,8 @@ describe("PairedDevices — revoking", () => {
     };
     let body: { label?: string } | undefined;
     server.use(
-      http.post("/api/devices/revoke", async ({ request }) => {
-        body = (await request.json()) as { label?: string };
+      http.post<never, { label?: string }>("/api/devices/revoke", async ({ request }) => {
+        body = await request.json();
         return HttpResponse.json({ ...data, devices: [data.devices[0]!] });
       }),
     );

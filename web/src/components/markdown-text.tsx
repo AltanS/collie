@@ -84,23 +84,25 @@ const Spans = ({ spans }: { spans: MdSpan[] }) => (
   </>
 );
 
-const HEADING_CLASS: Record<number, string> = {
-  1: "text-base font-semibold",
-  2: "text-[0.95rem] font-semibold",
-  3: "text-sm font-semibold",
-};
+// Maps, not object literals: both are addressed with a value parsed out of the agent's own
+// markdown (a heading level, a column alignment), so an object lookup could reach an inherited name.
+const HEADING_CLASS = new Map<number, string>([
+  [1, "text-base font-semibold"],
+  [2, "text-[0.95rem] font-semibold"],
+  [3, "text-sm font-semibold"],
+]);
 
-const ALIGN_CLASS: Record<string, string> = {
-  left: "text-left",
-  center: "text-center",
-  right: "text-right",
-};
+const ALIGN_CLASS = new Map<string, string>([
+  ["left", "text-left"],
+  ["center", "text-center"],
+  ["right", "text-right"],
+]);
 
 function Block({ block }: { block: MdBlock }) {
   switch (block.kind) {
     case "heading": {
       // Levels 4-6 are rare in agent prose and don't earn another size step on a phone.
-      const cls = HEADING_CLASS[block.level] ?? "text-sm font-semibold";
+      const cls = HEADING_CLASS.get(block.level) ?? "text-sm font-semibold";
       return (
         <div className={`${cls} mt-1 leading-snug`}>
           <Spans spans={block.spans} />
@@ -144,7 +146,7 @@ function Block({ block }: { block: MdBlock }) {
                 {block.header.map((cell, i) => (
                   <th
                     key={i}
-                    className={`border px-2 py-1 font-semibold ${ALIGN_CLASS[block.align[i] ?? "left"]}`}
+                    className={`border px-2 py-1 font-semibold ${ALIGN_CLASS.get(block.align[i] ?? "left") ?? "text-left"}`}
                   >
                     <Spans spans={cell} />
                   </th>
@@ -157,7 +159,7 @@ function Block({ block }: { block: MdBlock }) {
                   {row.map((cell, c) => (
                     <td
                       key={c}
-                      className={`border px-2 py-1 align-top ${ALIGN_CLASS[block.align[c] ?? "left"]}`}
+                      className={`border px-2 py-1 align-top ${ALIGN_CLASS.get(block.align[c] ?? "left") ?? "text-left"}`}
                     >
                       <Spans spans={cell} />
                     </td>

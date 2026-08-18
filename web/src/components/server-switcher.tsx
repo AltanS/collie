@@ -52,7 +52,11 @@ interface ServerSwitcherProps {
 // Not pack administration. It lists members and lets you go to one; join / leave / promote / rotate
 // are CLI verbs, and an unreachable row gets no "reconnect" button — the lead is already retrying on
 // its own poll, and a button that only looks like it helps is worse than none.
-export function ServerSwitcher({ servers, scope, agents = [] }: ServerSwitcherProps) {
+// A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
+// every render is a new reference, which defeats memoisation downstream for no benefit here.
+const NO_PANES: AgentView[] = [];
+
+export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwitcherProps) {
   const current = scope.host;
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();

@@ -590,6 +590,9 @@ export function AgentChat({
   //    collapsing the selection and popping the keyboard.
   function focusFromMirror(e: ReactMouseEvent<HTMLDivElement>) {
     if (!prefs.tapToFocus) return;
+    // SAFETY: a React mouse event's `target` is the DOM node the tap landed on — an Element by
+    // construction for a click inside this div. React types it as the generic `EventTarget`, which
+    // has no `closest`; the optional call below still covers a target that somehow isn't one.
     const target = e.target as Element | null;
     // The `a` is what keeps a tap on an autolinked URL (components/ansi-output) from popping the
     // keyboard on top of the page it just opened. Don't trim it out of this selector.
@@ -761,7 +764,7 @@ export function AgentChat({
           <PaneStrip
             panes={[...agents, ...shellPanes]
               .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-              .sort((a, b) => a.paneId.localeCompare(b.paneId))}
+              .toSorted((a, b) => a.paneId.localeCompare(b.paneId))}
             currentPaneId={paneId}
             onSelect={switchTo}
             scope={scope}
@@ -781,7 +784,16 @@ export function AgentChat({
             straight into terminal output — the chrome and the mirror read as one surface. Drawing it
             here rather than as a border-b on PaneStrip covers the case where that strip is absent
             (a tab holding a single pane), which is the common one. */}
-        <div className="min-h-0 min-w-0 flex-1 border-t border-border/40" onClick={focusFromMirror}>
+        {/* `role="presentation"` because that is what this element is: a layout wrapper with no
+            semantics of its own. Its click handler adds nothing a keyboard user needs — focusing the
+            composer is what a keyboard user already has (the textarea is the next tabbable thing),
+            and `focusFromMirror` deliberately declines a tap that landed on a control or a text
+            selection. It is a touch convenience layered over an already-reachable action. */}
+        <div
+          role="presentation"
+          className="min-h-0 min-w-0 flex-1 border-t border-border/40"
+          onClick={focusFromMirror}
+        >
           <ChatMessageList
             ref={listRef}
             dep={display}

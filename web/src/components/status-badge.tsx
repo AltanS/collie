@@ -2,21 +2,21 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { type AgentStatus, STATUS_LABEL } from "@/lib/types";
 
-const DOT: Record<AgentStatus, string> = {
+const DOT = {
   blocked: "bg-status-blocked",
   working: "bg-status-working",
   done: "bg-status-done",
   idle: "bg-status-idle",
   unknown: "bg-status-unknown",
-};
+} satisfies Record<AgentStatus, string>;
 
-const CHIP: Record<AgentStatus, string> = {
+const CHIP = {
   blocked: "border-status-blocked/30 bg-status-blocked/15 text-status-blocked",
   working: "border-status-working/30 bg-status-working/15 text-status-working",
   done: "border-status-done/30 bg-status-done/15 text-status-done",
   idle: "border-status-idle/30 bg-status-idle/10 text-status-idle",
   unknown: "border-status-unknown/30 bg-status-unknown/10 text-status-unknown",
-};
+} satisfies Record<AgentStatus, string>;
 
 /**
  * As a FILL, the status palette needs a different ramp than it does as text. Every --status-* value
@@ -27,13 +27,13 @@ const CHIP: Record<AgentStatus, string> = {
  */
 const RESTING: ReadonlySet<AgentStatus> = new Set(["idle", "unknown"]);
 
-const RING: Record<AgentStatus, string> = {
+const RING = {
   blocked: "border-status-blocked",
   working: "border-status-working",
   done: "border-status-done",
   idle: "border-status-idle/60",
   unknown: "border-status-unknown/60",
-};
+} satisfies Record<AgentStatus, string>;
 
 export function StatusDot({
   status,

@@ -51,8 +51,7 @@ function Strip({
   className?: string;
 }) {
   return (
-    <div
-      role="status"
+    <output
       className={cn(
         "flex items-center gap-2 border-b border-status-working/40 bg-status-working/15 px-4 py-2 text-xs font-medium text-status-working",
         className,
@@ -60,6 +59,6 @@ function Strip({
     >
       {icon}
       <span>{children}</span>
-    </div>
+    </output>
   );
 }

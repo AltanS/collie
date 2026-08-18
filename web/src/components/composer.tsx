@@ -214,12 +214,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * The in-memory draft is untouched: a false positive costs one draft its ability to survive the OS
    * killing the PWA, which is a cheap price for never storing a real one.
    */
-  function updateInput(next: string | ((prev: string) => string)) {
-    const value = typeof next === "function" ? next(inputValueRef.current) : next;
+  function updateInput(value: string) {
     inputValueRef.current = value;
     setInput(value);
     if (noEchoRef.current !== null) return;
     saveDraft(scope, paneId, value);
+  }
+
+  /** {@link updateInput} for the appenders, which need the current value to build the next one.
+   *  Split from it rather than overloaded on the argument: the two callers are different shapes,
+   *  and the ref — not React state — is what carries "the current value" here. */
+  function updateInputFrom(next: (prev: string) => string) {
+    updateInput(next(inputValueRef.current));
   }
 
   useEffect(() => {
@@ -230,7 +236,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const restored = loadDraft(scope, paneId) ?? "";
     inputValueRef.current = restored;
     setInput(restored);
-    noticeNoEcho(null); // it described the pane we just left
+    noticeNoEchoRef.current(null); // it described the pane we just left
   }, [scope, scopeId, paneId]);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -313,6 +319,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setNoEcho(next);
     if (next !== null) clearDraft(scope, paneId);
   }
+
+  // The pane-change effect below is a LIFECYCLE handler, not a reactive computation: it must fire
+  // when the addressed pane changes and on nothing else. `noticeNoEcho` is re-created every render,
+  // so naming it as a dependency would re-run the effect on every render instead. A latest-value
+  // ref says that outright and still calls the current closure.
+  const noticeNoEchoRef = useRef(noticeNoEcho);
+  noticeNoEchoRef.current = noticeNoEcho;
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -448,7 +461,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (effectiveRaw === null) return;
     const draft = effectiveRaw;
     direct.deactivateSilently();
-    updateInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
+    updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()}\n${draft}` : draft));
     setHandledKey(normalizeDraft(draft));
     setPreviewLatched(false);
     focusInputEnd();
@@ -704,7 +717,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // typed (with a separating space) rather than clobbering it; an empty draft just gets set.
   function insertCommand(value: string) {
     direct.deactivateSilently();
-    updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
+    updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
     focusInputEnd();
   }
 
@@ -718,7 +731,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (res.ok) {
         const path = res.path;
         direct.deactivateSilently();
-        updateInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
+        updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
         setStatus("Image added — path in message", "success");
       } else {

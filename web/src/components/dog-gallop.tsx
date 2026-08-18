@@ -29,6 +29,9 @@ export function DogGallop({ running = false, size = "1.5rem", label, className }
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
+      // SAFETY: a CSS CUSTOM PROPERTY. React passes it through to the style attribute verbatim,
+      // which is exactly what the `.dog-gallop` rules read; `CSSProperties` only declares the known
+      // property names, so a `--*` key has no other way to be spelled.
       style={{ "--dog-size": size } as CSSProperties}
       className={cn("dog-gallop", running && "dog-gallop--running", className)}
     />

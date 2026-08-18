@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { hasWindow } from "@/lib/env";
 import { Plug } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -21,8 +22,8 @@ export function ConnectionInfo({
 }) {
   const b = bridgeLabel(bridge);
   const d = deviceLabel(device);
-  const secure = typeof window !== "undefined" && window.isSecureContext;
-  const host = typeof window !== "undefined" ? window.location.host : "—";
+  const secure = hasWindow() && window.isSecureContext;
+  const host = hasWindow() ? window.location.host : "—";
 
   return (
     <Card className="gap-0 py-0">
@@ -59,7 +60,13 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function bridgeLabel(bridge: BridgeStatus | undefined): { text: string; tone: string } {
+/** A one-line status with the colour class that carries its meaning. */
+interface StatusLine {
+  text: string;
+  tone: string;
+}
+
+function bridgeLabel(bridge: BridgeStatus | undefined): StatusLine {
   if (bridge === "connected") return { text: "Connected", tone: "text-status-done" };
   if (bridge === "disconnected") return { text: "Herdr offline", tone: "text-status-working" };
   return { text: "Connecting…", tone: "text-muted-foreground" };
@@ -67,7 +74,7 @@ function bridgeLabel(bridge: BridgeStatus | undefined): { text: string; tone: st
 
 // Mirrors the deviceAuth matrix on the bridge (see bridge/server.ts). "Local" = an authorised request
 // with no device header, i.e. the on-host loopback operator.
-function deviceLabel(device: DeviceAuth | undefined): { text: string; tone: string } {
+function deviceLabel(device: DeviceAuth | undefined): StatusLine {
   if (!device || !device.enforced) return { text: "Not enforced", tone: "text-muted-foreground" };
   if (device.authorized) {
     return {

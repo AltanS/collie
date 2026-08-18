@@ -22,13 +22,14 @@ export function BuildStamp({ className }: { className?: string }) {
     // the footer is correct even before the first poll lands — and so an older bridge that reports
     // `build` in JSON but sends no header still works. Only seed when nothing's been observed yet
     // (the config response's own header usually already has), so we don't double-count an observation.
-    fetchConfig()
-      .then((c) => {
+    void (async () => {
+      try {
+        const c = await fetchConfig();
         if (alive && getServerBuild() === undefined) observeServerBuild(c.build);
-      })
-      .catch(() => {
+      } catch {
         /* offline / bridge down — just show the local stamp */
-      });
+      }
+    })();
     return () => {
       alive = false;
     };
