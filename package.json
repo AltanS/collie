@@ -12,18 +12,22 @@
     "build:web": "cd web && bun run build",
     "build:cli": "bun build --compile --target=bun ./cli/main.ts --outfile bin/collie",
     "web:dev": "cd web && bun run dev",
+    "lint": "oxlint --max-warnings 0",
+    "lint:fix": "oxlint --fix --max-warnings 0",
     "test": "bun test ./bridge ./cli ./scripts && bash scripts/collie-ctl.test.sh && bash scripts/collie-cli.test.sh",
     "test:ctl": "bash scripts/collie-ctl.test.sh",
     "test:pack": "bun test ./bridge/pack/harness.test.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.78.0",
     "@types/bun": "latest",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.18",
     "@types/web-push": "^3.6.4",
     "ink-testing-library": "^4.0.0",
     "jsqr": "^1.4.0",
+    "oxlint": "1.78.0",
     "typescript": "^5"
   },
   "dependencies": {
