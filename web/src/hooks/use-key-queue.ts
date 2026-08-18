@@ -11,7 +11,11 @@ export type { ModMode };
 // cleanly — `if (r.mode === "fire") onSend(r.keys)`.
 export type PressResult = { mode: "fire"; keys: string[] } | { mode: "queued" };
 
-type ModState = Record<Modifier, ModMode>;
+interface ModState {
+  ctrl: ModMode;
+  alt: ModMode;
+  shift: ModMode;
+}
 
 const ALL_OFF: ModState = { ctrl: "off", alt: "off", shift: "off" };
 

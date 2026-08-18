@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { stubPart } from "@/test/stub";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import { useLongPress } from "./use-long-press";
@@ -8,18 +9,18 @@ import { useLongPress } from "./use-long-press";
 const DELAY = 450;
 
 function down(x = 0, y = 0, button = 0): ReactPointerEvent {
-  return { button, clientX: x, clientY: y } as unknown as ReactPointerEvent;
+  return stubPart<ReactPointerEvent>({ button, clientX: x, clientY: y });
 }
 function pointerEndEvent(): ReactPointerEvent {
-  return { preventDefault: vi.fn() } as unknown as ReactPointerEvent;
+  return stubPart<ReactPointerEvent>({ preventDefault: vi.fn() });
 }
 function clickEvent(): ReactMouseEvent {
-  return { preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as ReactMouseEvent;
+  return stubPart<ReactMouseEvent>({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
 }
 // A `contextmenu` event — what Android Chrome raises at the end of a long-press, and desktop on
 // right-click. The hook preventDefaults it and (idempotently) uses it as an alternative trigger.
 function contextMenuEvent(): ReactMouseEvent {
-  return { preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as ReactMouseEvent;
+  return stubPart<ReactMouseEvent>({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
 }
 
 describe("useLongPress", () => {

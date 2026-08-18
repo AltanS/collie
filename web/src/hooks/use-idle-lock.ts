@@ -19,7 +19,13 @@ import { setLocked, useLocked } from "@/lib/idle";
 // auth — Tailscale proves the device and there is no session to re-confirm.
 const DEFAULT_IDLE_MS = 30 * 60 * 1000;
 
-export function useIdleLock(idleMs = DEFAULT_IDLE_MS): { locked: boolean; unlock: () => void } {
+/** The idle pause, as a component sees it: whether the overlay is up, and how to dismiss it. */
+export interface IdleLock {
+  locked: boolean;
+  unlock: () => void;
+}
+
+export function useIdleLock(idleMs = DEFAULT_IDLE_MS): IdleLock {
   // Lives in a module store, not local state: use-polling's tick has to read it too (see lib/idle).
   const locked = useLocked();
   const unlock = useCallback(() => setLocked(false), []);

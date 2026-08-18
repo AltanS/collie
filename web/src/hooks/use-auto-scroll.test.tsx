@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react";
+import { stubPart } from "@/test/stub";
 import { useState } from "react";
 
 import { useAutoScroll } from "./use-auto-scroll";
@@ -63,7 +64,7 @@ function GrowingHarness() {
 
 function fireResize(el: Element) {
   for (const o of observers.filter((x) => x.el === el)) {
-    o.cb([], {} as ResizeObserver);
+    o.cb([], stubPart<ResizeObserver>({}));
   }
 }
 
@@ -87,7 +88,7 @@ describe("useAutoScroll — resize re-pin", () => {
     // Content taller than the viewport; the observer fired on mount is a no-op until we drive it.
     setMetrics(el, { scrollHeight: 500, clientHeight: 200, scrollTop: 300 });
     const scrollTo = vi.fn();
-    el.scrollTo = scrollTo as unknown as HTMLElement["scrollTo"];
+    el.scrollTo = scrollTo;
 
     // Following by default (autoScroll = true), so a resize snaps the tail back into view — pinned
     // to scrollHeight, NOT a recomputed at-bottom (the shrink already pushed the tail off-screen).
@@ -105,7 +106,7 @@ describe("useAutoScroll — resize re-pin", () => {
     const content = getByTestId("content");
     setMetrics(el, { scrollHeight: 500, clientHeight: 200, scrollTop: 0 });
     const scrollTo = vi.fn();
-    el.scrollTo = scrollTo as unknown as HTMLElement["scrollTo"];
+    el.scrollTo = scrollTo;
 
     act(() => fireResize(content));
 
@@ -120,7 +121,7 @@ describe("useAutoScroll — resize re-pin", () => {
     fireEvent.scroll(el); // onScroll captures the scrolled-up intent (autoScroll = false)
 
     const scrollTo = vi.fn();
-    el.scrollTo = scrollTo as unknown as HTMLElement["scrollTo"];
+    el.scrollTo = scrollTo;
     act(() => fireResize(el));
 
     expect(scrollTo).not.toHaveBeenCalled();
@@ -131,7 +132,7 @@ describe("useAutoScroll — resize re-pin", () => {
     const el = getByTestId("scroll");
     setMetrics(el, { scrollHeight: 800, clientHeight: 200, scrollTop: 0 });
     const scrollTo = vi.fn();
-    el.scrollTo = scrollTo as unknown as HTMLElement["scrollTo"];
+    el.scrollTo = scrollTo;
 
     act(() => fireEvent.click(getByTestId("grow-dep")));
 

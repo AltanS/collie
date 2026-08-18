@@ -25,6 +25,9 @@ export function useSpaceActions() {
   // bridge rejects it anyway. Short-circuit centrally so every create entry point (tab strip,
   // space list, command palette) is covered with one friendly notice. Read via a ref so the
   // returned callbacks stay stable across revalidations.
+  // SAFETY: `ROOT_ROUTE_ID` names the root route, whose loader (`rootLoader`, lib/loaders.ts)
+  // returns `HomeData`; `undefined` covers the render before it has resolved. React Router types
+  // `useRouteLoaderData` as `unknown` because the id is a runtime string.
   const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
   const readOnlyRef = useRef(false);
   // Either write gate refusing is the same answer here: the create would 403 anyway. The notice

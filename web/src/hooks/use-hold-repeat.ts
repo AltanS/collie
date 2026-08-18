@@ -106,9 +106,9 @@ export function useHoldRepeat(
     const n = Math.min(pending.current, MAX_BATCH);
     pending.current -= n;
     inFlight.current = true;
-    void flushRef
-      .current(key, n)
-      .then((ok) => {
+    void (async () => {
+      try {
+        const ok = await flushRef.current(key, n);
         if (!ok) {
           // A refused key means the pane isn't taking input — stop rather than hammer it.
           pending.current = 0;
@@ -116,11 +116,11 @@ export function useHoldRepeat(
           stopTimers();
           if (alive.current) setHolding(null);
         }
-      })
-      .finally(() => {
+      } finally {
         inFlight.current = false;
         if (alive.current) pump();
-      });
+      }
+    })();
   }, [stopTimers]);
 
   // End the hold: stop accumulating, flush whatever is left, drop the visual state. `heldKey` stays

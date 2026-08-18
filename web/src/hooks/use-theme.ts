@@ -27,7 +27,7 @@ const DEFAULT: Theme = "system";
  *  rasterized: oklch(0.97) is rgb(245,245,245) and oklch(0.145) is rgb(10,10,10). Not #ffffff for
  *  light — the page is a step off white on purpose (index.css), and a pure-white URL bar above it
  *  shows the seam. Re-measure these if --background moves. */
-const META_COLOR: Record<ResolvedTheme, string> = { light: "#f5f5f5", dark: "#0a0a0a" };
+const META_COLOR = { light: "#f5f5f5", dark: "#0a0a0a" } satisfies Record<ResolvedTheme, string>;
 
 /** Read the pin. BARE string, not JSON — public/theme-init.js does the same strict compare before
  *  first paint, and JSON.stringify would write `"dark"` with the quotes and silently break it. */

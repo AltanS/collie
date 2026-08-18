@@ -7,7 +7,11 @@ import type { AgentView } from "@/lib/types";
 
 // usePolling reads useRevalidator(); drive its state/revalidate directly (hoisted so the vi.mock
 // factory can close over the holder). intervalFor is pure and doesn't touch it.
-const rr = vi.hoisted(() => ({ state: "idle" as "idle" | "loading", revalidate: vi.fn() }));
+interface RevalidatorState {
+  state: "idle" | "loading";
+  revalidate: ReturnType<typeof vi.fn>;
+}
+const rr = vi.hoisted((): RevalidatorState => ({ state: "idle", revalidate: vi.fn() }));
 vi.mock("react-router", () => ({
   useRevalidator: () => ({ state: rr.state, revalidate: rr.revalidate }),
 }));
