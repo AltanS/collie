@@ -1,0 +1,93 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "off",
+    "style": "off",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "plugins": [
+    "typescript",
+    "react",
+    "import",
+    "promise",
+    "node",
+    "unicorn",
+    "oxc",
+    "jsx-a11y"
+  ],
+  "ignorePatterns": [
+    "node_modules/**",
+    "web/node_modules/**",
+    "web/dist/**",
+    "web/dist-staging/**",
+    "web/dev-dist/**",
+    "bin/**",
+    "contrib/**",
+    "tools/oxlint/anti-slop/**",
+    ".tracker/**",
+    ".adr/**",
+    ".claude/**",
+    "assets/**"
+  ],
+  "jsPlugins": [
+    {
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    }
+  ],
+  "rules": {
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error"
+  },
+  "overrides": [
+    {
+      // Herdr socket + HTTP wire parsing: these modules ARE the I/O boundary the rule tells you to parse at, so `typeof` here is the parse, not a dodge of one. A schema validator instead of hand-rolled checks is a real future improvement but explicitly out of scope for M8.
+      "files": [
+        "**/bridge/herdr-client.ts",
+        "**/bridge/dial.ts",
+        "**/bridge/wire.ts",
+        "**/bridge/types.ts",
+        "**/bridge/config.ts",
+        "**/bridge/uploads.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
+      // Journal adapters read third-party agent session logs off disk — untyped JSONL written by Claude/Codex/pi/opencode. `typeof` is how an unvalidated on-disk record is narrowed before it becomes a domain value.
+      "files": [
+        "**/bridge/journal/**/*.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
+      // Pack protocol handling (/pack/v1/*): payloads arrive from another Collie instance across a machine boundary and are untrusted until parsed. See PACK_PROTOCOL.md.
+      "files": [
+        "**/bridge/pack/**/*.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    }
+  ]
+}
