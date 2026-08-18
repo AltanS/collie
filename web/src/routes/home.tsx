@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useRouteLoaderData } from "react-router";
+import { useNavigate } from "react-router";
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
@@ -14,17 +14,17 @@ import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
-import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
+import { useRootData } from "@/lib/route-data";
 
 // Dashboard home screen. Everything you might ACT on comes first — Needs you → Ready · unseen →
 // Working → Recent (see lib/triage.ts) — and the Spaces navigator sits last, under the thing it
 // navigates to. Recent and Spaces fold; fold both and the page is the triaged herd and nothing else.
 // Tapping an agent opens its pane; tapping a space drills into /space/:id.
 export function HomeRoute() {
-  const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
+  const data = useRootData();
   // A stalled load (a black-holed poll, or a pane-open tap whose navigation hangs) gallops the
   // Collie mark within the threshold — instant feedback while you're still on the dashboard, even
   // though the tap otherwise shows no visual change until its loader finally settles or times out.

@@ -142,10 +142,14 @@ export const fixturePackAgents: AgentView[] = [
   },
 ];
 
-export const fixturePackShellPanes: AgentView[] = fixtureShellPanes.map((p) => ({
-  ...p,
-  host: "bluefin",
-}));
+export const fixturePackShellPanes: AgentView[] = fixtureShellPanes.map((p) => {
+  // Built by mutating a copy rather than by spreading in the map body: one clone per row instead of
+  // a fresh object literal plus a spread, and it says plainly that `host` is the ONLY difference
+  // from the solo fixture.
+  const packed = structuredClone(p);
+  packed.host = "bluefin";
+  return packed;
+});
 
 /** Both machines run a session called "default" — which is why the switchers stay separate. */
 export const fixturePackSessions: SessionSummary[] = [
@@ -230,8 +234,8 @@ export const handlers = [
       fileTruncated: false,
     }),
   ),
-  http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-    recordReply((await request.json()) as { text?: string; submit?: boolean });
+  http.post<never, { text?: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+    recordReply(await request.json());
     return HttpResponse.json({ ok: true });
   }),
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),
@@ -262,15 +266,15 @@ export const handlers = [
     }),
   ),
   http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
-  http.post("/api/notifications/snooze", async ({ request }) => {
-    const { snoozedUntil } = (await request.json()) as { snoozedUntil: number | null };
+  http.post<never, { snoozedUntil: number | null }>("/api/notifications/snooze", async ({ request }) => {
+    const { snoozedUntil } = await request.json();
     return HttpResponse.json({ snoozedUntil });
   }),
   http.get("/api/notifications/prefs", () =>
     HttpResponse.json({ blocked: true, done: false, updates: true }),
   ),
-  http.post("/api/notifications/prefs", async ({ request }) => {
-    const patch = (await request.json()) as Record<string, boolean>;
+  http.post<never, Partial<{ blocked: boolean; done: boolean; updates: boolean }>>("/api/notifications/prefs", async ({ request }) => {
+    const patch = await request.json();
     return HttpResponse.json({ blocked: true, done: false, updates: true, ...patch });
   }),
   // Device pairing. The default world has NOTHING paired — writes are ungated, exactly like a

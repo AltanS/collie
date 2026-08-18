@@ -19,7 +19,7 @@
   try {
     var t = localStorage.getItem("collie:theme:v1");
     if (t === "dark" || t === "light") document.documentElement.classList.add(t);
-  } catch (e) {
+  } catch {
     // Safari private mode throws on localStorage. Falling through leaves `color-scheme: light dark`
     // in charge, which follows the OS — the right default anyway.
   }

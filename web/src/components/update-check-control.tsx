@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
-import { useRevalidator, useRouteLoaderData } from "react-router";
+import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { checkForUpdates } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
-import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { UpdateInfo } from "@/lib/types";
+import { useOptionalRootData } from "@/lib/route-data";
 
 // "Check for updates" — a manual, on-demand upstream check. The bridge only polls upstream every few
 // hours, so this forces a fresh look (which can take ~10s). It reads the current version + last-checked
@@ -22,10 +22,7 @@ function describe(update: UpdateInfo | undefined): string {
 }
 
 export function UpdateCheckControl() {
-  // SAFETY: `ROOT_ROUTE_ID` names the root route, whose loader returns `HomeData`; `undefined`
-  // covers the render before it resolves. React Router types this `unknown` — the id is a runtime
-  // string, so it cannot relate the two.
-  const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
+  const data = useOptionalRootData();
   const update = data?.update;
   const revalidator = useRevalidator();
   const [busy, setBusy] = useState(false);

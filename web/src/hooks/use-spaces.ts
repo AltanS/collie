@@ -1,13 +1,13 @@
 import { useCallback, useRef } from "react";
-import { useNavigate, useRevalidator, useRouteLoaderData } from "react-router";
+import { useNavigate, useRevalidator } from "react-router";
 
 import * as api from "@/lib/api";
 import { setStatus } from "@/lib/status";
 import { panePath } from "@/lib/nav";
-import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { Scope } from "@/lib/scope";
+import { useOptionalRootData } from "@/lib/route-data";
 
 // Shared "create a tab/space, then jump into its fresh shell" flow, used by the home space view and
 // the detail Herdr palette. The new pane won't be in the snapshot until the next poll, so we pass
@@ -21,14 +21,7 @@ export function useSpaceActions() {
   const revalidatorRef = useRef(revalidator);
   revalidatorRef.current = revalidator;
 
-  // Creating a tab/space is a sensitive (structural) action — a read-only device can't, and the
-  // bridge rejects it anyway. Short-circuit centrally so every create entry point (tab strip,
-  // space list, command palette) is covered with one friendly notice. Read via a ref so the
-  // returned callbacks stay stable across revalidations.
-  // SAFETY: `ROOT_ROUTE_ID` names the root route, whose loader (`rootLoader`, lib/loaders.ts)
-  // returns `HomeData`; `undefined` covers the render before it has resolved. React Router types
-  // `useRouteLoaderData` as `unknown` because the id is a runtime string.
-  const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
+  const root = useOptionalRootData();
   const readOnlyRef = useRef(false);
   // Either write gate refusing is the same answer here: the create would 403 anyway. The notice
   // names the pairing gate first where it applies, because that one is fixable from this phone.

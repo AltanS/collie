@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useRevalidator, useRouteLoaderData } from "react-router";
+import { useNavigate, useParams, useRevalidator } from "react-router";
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -12,19 +12,19 @@ import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
-import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { homePath, panePath, spacePath } from "@/lib/nav";
 import { leadHost, paneScope } from "@/lib/hosts";
 import type { AgentView } from "@/lib/types";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
+import { useRootData } from "@/lib/route-data";
 
 // Space detail route: one space's tabs + panes, with the space/tab strips for in-space navigation.
 // Shares the root snapshot (no own loader), reading :spaceId from the URL — a deep-linkable,
 // back-button-friendly drill-in. The SpaceStrip's "All" chip returns to the dashboard.
 export function SpaceRoute() {
-  const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
+  const data = useRootData();
   const { spaceId = "" } = useParams();
   const stalled = useLoadingStalled();
   const navigate = useNavigate();

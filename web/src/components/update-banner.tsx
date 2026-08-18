@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
-import { useRouteLoaderData } from "react-router";
 
 import { cn } from "@/lib/utils";
-import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { UpdateInfo } from "@/lib/types";
+import { useOptionalRootData } from "@/lib/route-data";
 
 // The footer "update available" chip, sitting next to the build stamp. It reads the snapshot's
 // optional `update` field (surfaced on the root loader data) and, when there's something to do,
@@ -45,11 +44,7 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
 }
 
 export function UpdateBanner({ className }: { className?: string }) {
-  // Home is the root route; space/settings are its children — so the root loader data (and its
-  // `update`) is in scope for all three footers via one read.
-  // SAFETY: as in update-check-control — `ROOT_ROUTE_ID` names the root route and `rootLoader`
-  // returns `HomeData`; React Router types a by-id read as `unknown`.
-  const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
+  const data = useOptionalRootData();
   const notice = updateNotice(data?.update);
   const [copied, setCopied] = useState(false);
 

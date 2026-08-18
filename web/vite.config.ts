@@ -80,6 +80,9 @@ function isReleaseBuild(version: string): boolean {
     return true;
   }
 }
+// SAFETY: `web/package.json` is this repo's own manifest, sitting next to this config, and
+// `scripts/check-version.sh` gates every build on its `version` agreeing with the other two files —
+// so the field is both present and a string, or the build never gets here.
 const pkgVersion = (
   JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")) as {
     version: string;

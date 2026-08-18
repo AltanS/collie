@@ -17,6 +17,9 @@ import type { HomeData } from "@/lib/loaders";
 // routes (home + pane detail) via the router's loader data. Mounted only while unlocked (the
 // idle-lock in App swaps the whole RouterProvider out), so polling pauses when the app is locked.
 export function RootLayout() {
+  // SAFETY: this component IS the root route's element, and `rootLoader` — the loader `router.tsx`
+  // pairs with it — returns `HomeData`. React Router types `useLoaderData()` as `unknown` in data
+  // mode; the element does not mount until its own loader has resolved.
   const data = useLoaderData() as HomeData;
   // useParams accumulates params from matched child routes, so `paneId` is set when the
   // `/pane/:paneId` child is active. useAgentTransitions uses it to suppress a notification for the
