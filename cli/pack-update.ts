@@ -145,6 +145,9 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     deps.io.err(`error: cannot read herdr-plugin.toml at ${commit.slice(0, 12)} — nothing to pin the push to.`);
     return EXIT.FAIL;
   }
+  // What a levelled member should answer `hello` with — the version the commit carries PLUS that
+  // commit's build metadata, which is what this lead itself runs after building the same commit.
+  const expected = expectedAnswer(deps, version, commit);
   deps.emitUpdate({ kind: "title", version, commit });
   if (gitOut(deps, ["status", "--porcelain"]) !== "") {
     line(deps, "warn: this checkout has uncommitted changes — the bundle carries the COMMIT, so they are", "warn", "err");
@@ -158,7 +161,7 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     if (ready.length > 0) {
       const consent = await confirmBatch(deps, ready, outcomes, version, commit);
       if (consent !== EXIT.OK) return consent;
-      await workAll(deps, data, ready, { commit, version, outcomes });
+      await workAll(deps, data, ready, { commit, version, expected, outcomes });
     }
     return report(deps, targets, outcomes, version);
   } finally {
@@ -372,7 +375,7 @@ async function workAll(
   deps: Wired,
   data: TrustStoreData,
   ready: readonly Planned[],
-  o: { commit: string; version: string; outcomes: Map<string, UpdateRow> },
+  o: { commit: string; version: string; expected: string; outcomes: Map<string, UpdateRow> },
 ): Promise<void> {
   // Bundled ONCE for the whole run: the commit is one artifact, and re-running `git bundle` per
   // member would be N copies of the same bytes with N chances for HEAD to have moved underneath.
@@ -406,7 +409,13 @@ async function workOne(
   deps: Wired,
   data: TrustStoreData,
   planned: Planned,
-  o: { commit: string; version: string; bundle: string; outcomes: Map<string, UpdateRow> },
+  o: {
+    commit: string;
+    version: string;
+    expected: string;
+    bundle: string;
+    outcomes: Map<string, UpdateRow>;
+  },
 ): Promise<boolean> {
   const { target, runner, root } = planned;
   const id = target.member.memberId;
@@ -458,19 +467,56 @@ async function workOne(
     return legFailed(deps, id, "verify", o.outcomes, `updated, but unreachable at ${target.member.address}`);
   }
   const reported = outcome.value.version;
-  if (reported !== null && reported !== o.version) {
-    line(deps, `warn: ${id} answers as ${reported}, not ${o.version} — check the build there.`, "warn", "err");
+  const skewed = reported !== null && !answersThisBuild(reported, o.version, o.commit);
+  if (skewed) {
+    line(deps, `warn: ${id} answers as ${reported}, not ${o.expected} — check the build there.`, "warn", "err");
   }
   deps.emitUpdate({
     kind: "leg-done",
     memberId: id,
     leg: "verify",
     ok: true,
-    detail: `answers at ${target.member.address} · ${reported ?? "no version reported"}`,
+    // The row and the warning above it must never say opposite things about the same string: when the
+    // answer is the one that was pushed it stands alone, and when it is not, the row names both.
+    detail:
+      `answers at ${target.member.address} · ${reported ?? "no version reported"}` +
+      (skewed ? ` (expected ${o.expected})` : ""),
   });
 
   await remember(deps, planned);
   return true;
+}
+
+// ── What "it came back running what we pushed" means ─────────────────────────
+// A built Collie reports `<semver>+<short sha>` (`bridge/version.ts`, from the build stamp) — so the
+// version the MANIFEST carries is only half of the string a levelled member answers with. Comparing
+// against that half alone is what made the first field run warn `answers as 1.0.0-beta.4+fd1a9b3,
+// not 1.0.0-beta.4` about a member that was running exactly the commit this lead had just pushed,
+// directly under a ✓ that called the same string a success.
+
+/** The full string this lead expects back: the commit's version, stamped with the commit's own sha. */
+function expectedAnswer(deps: Wired, version: string, commit: string): string {
+  // `--short` rather than a fixed slice: git's abbreviation length is what the build stamp records,
+  // so this is the string this lead itself answers with once it has built the same commit.
+  const short = gitOut(deps, ["rev-parse", "--short", commit]) || commit.slice(0, 7);
+  return `${version}+${short}`;
+}
+
+/**
+ * Does `reported` name the build that was pushed?
+ *
+ * The build metadata is compared as an ABBREVIATION of the commit rather than byte for byte: git
+ * chooses that length per repository, so the far machine may spell the same commit with more digits
+ * than this one does — and it stays a mismatch the moment the digits disagree, or a `-dirty`/`-dev`
+ * marker says the build is not that commit. A member with no build stamp at all can only report its
+ * manifest version; that is the version it was given, and it is not evidence against the push.
+ */
+export function answersThisBuild(reported: string, version: string, commit: string): boolean {
+  const plus = reported.indexOf("+");
+  if (plus < 0) return reported === version;
+  if (reported.slice(0, plus) !== version) return false;
+  const build = reported.slice(plus + 1);
+  return build.length >= 4 && commit.toLowerCase().startsWith(build.toLowerCase());
 }
 
 /** Refresh the ops record when the operator steered this run by hand. */
