@@ -28,7 +28,7 @@
     "ink-testing-library": "^4.0.0",
     "jsqr": "^1.4.0",
     "oxlint": "1.78.0",
-    "typescript": "^5"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "commander": "^15.0.0",
