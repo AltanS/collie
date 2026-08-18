@@ -36,13 +36,11 @@ import type {
 // A superseded revalidation is aborted via the loader's request.signal; that surfaces as an
 // AbortError we must RETHROW so React Router discards the stale run — swallowing it into the
 // stale-data/error-banner path would flash a spurious "reconnecting…" on every fast poll.
-function isAbortError(e: unknown): boolean {
-  return (
-    typeof e === "object" &&
-    e !== null &&
-    "name" in e &&
-    (e as { name?: unknown }).name === "AbortError"
-  );
+function isAbortError<TThrown>(e: TThrown): boolean {
+  // `fetch` rejects an aborted request with a DOMException, which is an Error subclass in every
+  // engine Collie runs in (and in jsdom) — so an `instanceof Error` test reaches it without having
+  // to inspect the shape of an arbitrary thrown value.
+  return e instanceof Error && e.name === "AbortError";
 }
 
 // The root route's id, paired with rootLoader. Children read its data via
@@ -137,7 +135,7 @@ function hasAuthError(scope: Scope): boolean {
   return authErrorScopes.has(scopeKey(scope));
 }
 
-function isAuthError(error: unknown): boolean {
+function isAuthError<TThrown>(error: TThrown): boolean {
   return isApiErrorStatus(error, 401) || isApiErrorStatus(error, 403);
 }
 

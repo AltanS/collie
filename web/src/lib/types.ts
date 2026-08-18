@@ -404,18 +404,18 @@ export interface NotifyPrefs {
 }
 
 /** Lower sorts first — "needs you" at the top. Mirrors STATUS_RANK on the server. */
-export const STATUS_RANK: Record<AgentStatus, number> = {
+export const STATUS_RANK = {
   blocked: 0,
   working: 1,
   unknown: 2,
   idle: 3,
   done: 4,
-};
+} satisfies Record<AgentStatus, number>;
 
-export const STATUS_LABEL: Record<AgentStatus, string> = {
+export const STATUS_LABEL = {
   blocked: "needs you",
   working: "working",
   idle: "idle",
   done: "done",
   unknown: "unknown",
-};
+} satisfies Record<AgentStatus, string>;

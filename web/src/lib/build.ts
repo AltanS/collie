@@ -1,3 +1,5 @@
+import { asJsonString } from "./json";
+
 export interface BuildInfo {
   version: string;
   sha: string;
@@ -33,8 +35,12 @@ const SEMVER = /^v?\d+\.\d+\.\d+(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
  * before the test — otherwise every dev build of stable Collie would wear an alpha banner.
  */
 export function prereleaseLabel(version: string | undefined | null): string | undefined {
-  if (typeof version !== "string") return undefined;
-  const tag = SEMVER.exec(version.trim().replace(/-dev$/, ""))?.[1];
+  // Narrowed rather than trusted: this reads a version off `/api/config` and off the update check,
+  // both parsed JSON, so a number can arrive here despite the annotation — and `.trim()` would
+  // throw on one. `asJsonString` is the single place that question is asked.
+  const raw = asJsonString(version);
+  if (raw === undefined) return undefined;
+  const tag = SEMVER.exec(raw.trim().replace(/-dev$/, ""))?.[1];
   if (!tag) return undefined;
   const first = tag.split(".")[0] ?? "";
   return /[A-Za-z]/.test(first) ? first.toUpperCase() : "PRERELEASE";

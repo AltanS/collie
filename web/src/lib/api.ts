@@ -3,6 +3,8 @@
 
 import { trackBusy } from "./busy";
 import { markLive } from "./connection-health";
+import { abortSignalAfter, abortSignalAny } from "./env";
+import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
@@ -56,7 +58,7 @@ class ApiError extends Error {
 }
 
 /** True when an API request failed with the given HTTP status. */
-export function isApiErrorStatus(error: unknown, status: number): boolean {
+export function isApiErrorStatus<TThrown>(error: TThrown, status: number): boolean {
   return error instanceof ApiError && error.status === status;
 }
 
@@ -87,11 +89,10 @@ export function withTimeout(
   signal: AbortSignal | null | undefined,
   ms: number,
 ): AbortSignal | undefined {
-  if (typeof AbortSignal.timeout !== "function") return signal ?? undefined;
-  const timeoutSignal = AbortSignal.timeout(ms);
+  const timeoutSignal = abortSignalAfter(ms);
+  if (timeoutSignal === null) return signal ?? undefined;
   if (!signal) return timeoutSignal;
-  if (typeof AbortSignal.any !== "function") return signal;
-  return AbortSignal.any([signal, timeoutSignal]);
+  return abortSignalAny([signal, timeoutSignal]) ?? signal;
 }
 
 // Append the addressing scope to an API path, composing with any query already present (fetchPane
@@ -128,23 +129,13 @@ const recoverPromptChanged = (status: number, detail: string): ActionResponse | 
   status === 409 ? promptChangedResponse(detail) : null;
 
 function promptChangedResponse(detail: string): ActionResponse | null {
-  try {
-    const body = JSON.parse(detail) as {
-      ok?: unknown;
-      code?: unknown;
-      error?: unknown;
-    };
-    if (
-      body.ok === false &&
-      body.code === "prompt_changed" &&
-      typeof body.error === "string"
-    ) {
-      return { ok: false, error: body.error, code: "prompt_changed" };
-    }
-  } catch {
-    // A non-JSON error body follows the existing ApiError path below.
-  }
-  return null;
+  // A non-JSON error body parses to `undefined` and follows the existing ApiError path below.
+  const body = parseJsonObject(detail);
+  if (!body) return null;
+  if (body.ok !== false || body.code !== "prompt_changed") return null;
+  const error = asJsonString(body.error);
+  if (error === undefined) return null;
+  return { ok: false, error, code: "prompt_changed" };
 }
 
 /**
@@ -204,7 +195,16 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status);
   }
   notePairing(method, res.status);
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    // SAFETY: `T` is the response contract each exported wrapper below declares for its own
+    // endpoint; `doReq` is the generic transport and has no shape of its own to check against. A
+    // 204 carries no body by definition, so the only honest value is `undefined`, and every caller
+    // that passes a 204-returning path types `T` to include it.
+    return undefined as T;
+  }
+  // SAFETY: as above — the bridge's JSON body is `T` by the endpoint's contract. The shapes that
+  // are NOT under the bridge's control (a proxy's error page, a refusal body) never reach here:
+  // they are non-ok and were parsed field-by-field by the `recover` handlers above.
   return (await res.json()) as T;
 }
 
@@ -267,14 +267,14 @@ export async function fetchPane(
   // SEEN_HEADER is what tells the bridge this read came from our own page and may mark the pane
   // seen. A cross-site no-cors GET can't set a custom header, so it can't clear your alerts by
   // guessing pane ids (bridge/server.ts → marksPaneSeen).
-  const headers: Record<string, string> = {
+  const headers = new Headers({
     "x-collie-seen": "1",
     [XHR_HEADER]: XHR_HEADER_VALUE,
     // A read needs no token, but the bridge stamps `lastSeenAt` off whatever it resolves — so a
     // paired device's polls are what keep its "last seen" honest. Same injection point as `doReq`.
     ...authHeader(),
-  };
-  if (cached) headers["if-none-match"] = cached.etag;
+  });
+  if (cached) headers.set("if-none-match", cached.etag);
 
   const res = await fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
   captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
@@ -292,6 +292,8 @@ export async function fetchPane(
 
   // Parse the body BEFORE recording the ETag, so the cache only ever holds an (etag, text) pair
   // that actually arrived intact.
+  // SAFETY: a 200 on `/api/pane/:id` is the bridge's own `PaneReadResponse` by contract — the same
+  // endpoint contract every other call in this module rests on. Non-ok answers threw above.
   const data = (await res.json()) as PaneReadResponse;
   const etag = res.headers.get("etag");
   if (etag) {
@@ -345,11 +347,9 @@ export function sendReply(
     withScope(`/api/pane/${encodeURIComponent(paneId)}/reply`, scope),
     {
       method: "POST",
-      body: JSON.stringify({
-        text,
-        submit,
-        ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
-      }),
+      // `JSON.stringify` omits an `undefined` property entirely, so an absent binding puts no
+      // `expected_prompt` on the wire — byte-identical to not naming the field at all.
+      body: JSON.stringify({ text, submit, expected_prompt: expectedPrompt }),
     },
     recoverPromptChanged,
   );
@@ -365,10 +365,8 @@ export function sendKeys(
     withScope(`/api/pane/${encodeURIComponent(paneId)}/keys`, scope),
     {
       method: "POST",
-      body: JSON.stringify({
-        keys,
-        ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
-      }),
+      // As in `sendReply`: an `undefined` property is omitted by `JSON.stringify`.
+      body: JSON.stringify({ keys, expected_prompt: expectedPrompt }),
     },
     recoverPromptChanged,
   );
@@ -487,15 +485,26 @@ export type PairResult =
  * never minted one — so it is recovered into a value the pairing card can render a sentence for,
  * exactly like the reply/keys 409. Anything other than a well-formed 400 still throws.
  */
+const PAIR_FAILURES: readonly PairFailure[] = [
+  "no-pending",
+  "expired",
+  "exhausted",
+  "bad-code",
+  "duplicate-label",
+  "bad-request",
+];
+
 const recoverPairFailure: Recover<{ ok: false; reason: PairFailure }> = (status, detail) => {
   if (status !== 400) return null;
-  try {
-    const body = JSON.parse(detail) as { error?: unknown };
-    if (typeof body.error === "string") return { ok: false, reason: body.error as PairFailure };
-  } catch {
-    // A non-JSON 400 body falls through to the usual ApiError.
-  }
-  return null;
+  // A non-JSON 400 body, or one with no `error` string, falls through to the usual ApiError.
+  const body = parseJsonObject(detail);
+  if (!body) return null;
+  const named = asJsonString(body.error);
+  if (named === undefined) return null;
+  // A refusal this build doesn't know the name of is still a refusal, not a transport failure: it
+  // reads as the bridge's own catch-all so the card says something actionable. (Left as the raw
+  // string, `failureText`'s exhaustive switch returned `undefined` and the card said nothing.)
+  return { ok: false, reason: PAIR_FAILURES.find((f) => f === named) ?? "bad-request" };
 };
 
 /**
@@ -555,6 +564,8 @@ export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<
         throw new ApiError(`upload → ${res.status} ${detail}`, res.status);
       }
       notePairing("POST", res.status);
+      // SAFETY: a 200 on `/api/pane/:id/upload` is the bridge's own `UploadResponse` by contract;
+      // every non-ok answer threw above.
       return (await res.json()) as UploadResponse;
     })(),
   );

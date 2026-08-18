@@ -43,6 +43,9 @@ function ansiVar(n: number): string {
 const MIRROR_BG = "#0a0a0a";
 const MIRROR_FG = "#fafafa";
 
+// One axis of xterm's 6x6x6 colour cube: level 0 is black, the rest start at 55 and step by 40.
+const cubeLevel = (x: number): number => (x === 0 ? 0 : 55 + x * 40);
+
 function color256(n: number): string {
   if (n < 16) return ansiVar(n);
   if (n >= 232) {
@@ -53,8 +56,7 @@ function color256(n: number): string {
   const r = Math.floor(i / 36);
   const g = Math.floor((i % 36) / 6);
   const b = i % 6;
-  const c = (x: number) => (x === 0 ? 0 : 55 + x * 40);
-  return `rgb(${c(r)},${c(g)},${c(b)})`;
+  return `rgb(${cubeLevel(r)},${cubeLevel(g)},${cubeLevel(b)})`;
 }
 
 interface State {

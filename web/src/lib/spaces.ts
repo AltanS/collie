@@ -107,7 +107,7 @@ export function sortSpacesByRecency(
   seen: Map<string, number> = spaceLastSeenMap(panes),
   host?: string,
 ): WorkspaceView[] {
-  return [...workspaces].sort(
+  return workspaces.toSorted(
     (a, b) =>
       (seen.get(spaceKey(host, b.workspaceId)) ?? 0) - (seen.get(spaceKey(host, a.workspaceId)) ?? 0),
   );

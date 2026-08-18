@@ -119,7 +119,11 @@ export async function checkForUpdate(): Promise<void> {
   watchWorker(reg.installing);
   if (reg.waiting) {
     watchWorker(reg.waiting);
-    reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    // `ServiceWorker.postMessage(message, transfer)` — the second argument is a TRANSFER LIST, not
+    // a target origin: the recipient is our own registered worker, reached by reference, so there is
+    // no cross-origin window to address. Spelled out as empty because nothing is transferred; the
+    // structured clone of the message itself is all that crosses.
+    reg.waiting.postMessage({ type: "SKIP_WAITING" }, []);
   }
   // update() succeeded yet found nothing to activate, while the button only shows when we're provably
   // stale → the active worker is behind and won't self-update. The one place unregister-then-reload is

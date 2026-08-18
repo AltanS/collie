@@ -20,6 +20,7 @@
 import { fetchPane, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
+import { graphemeSegmenter } from "./env";
 import { adapterFor, type HarnessAdapter } from "./harness";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
 import { detectNoEchoPrompt } from "./no-echo";
@@ -63,10 +64,7 @@ const FOLD_SEAM = " ";
  *  precision, never the app. The `null` branches below fall back to per-code-point counting, which
  *  is exactly what this check did before clusters were understood at all — a match that stops mid
  *  cluster slips through there, as it always did. */
-const GRAPHEMES =
-  typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
-    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
-    : null;
+const GRAPHEMES = graphemeSegmenter();
 
 /** A cluster nobody can see: whitespace, or formatting controls that render as nothing at all
  *  (LRM/RLM, zero-width space, soft hyphen). A cluster that merely CONTAINS one still counts — the
@@ -376,6 +374,9 @@ interface Preflight {
   runPreType: (() => Promise<ReplyOutcome | null>) | null;
 }
 
+/** A preflight that read nothing: no pre-type sweep may run, and `refuse` says whether to send. */
+const blind = (refuse: ReplyOutcome | null): Preflight => ({ refuse, runPreType: null });
+
 /**
  * One live read, and everything the rest of the send is allowed to do with it.
  *
@@ -387,8 +388,6 @@ interface Preflight {
  * once sent they have already landed in whatever owns the keyboard.
  */
 async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promise<Preflight> {
-  const blind = (refuse: ReplyOutcome | null): Preflight => ({ refuse, runPreType: null });
-
   // Nothing here can read this harness's input box, so there is no evidence to be had — and no
   // refusal to make either. Same behaviour as before an adapter grows a `composerReady`, minus the
   // sweep, which had no business going out unverified.
@@ -489,6 +488,6 @@ async function submitOnly(args: GuardedReplyArgs): Promise<ReplyOutcome> {
   }
 }
 
-function message(e: unknown): string {
+function message<TThrown>(e: TThrown): string {
   return e instanceof Error ? e.message : String(e);
 }

@@ -42,8 +42,8 @@ import { lineText, splitLines, type Block, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
 import {
   DIALOG_CONTRACT,
+  dialogComparators,
   dialogModelOf,
-  type DialogComparators,
   type DialogKind,
   type DialogModels,
 } from "./dialog-contract";
@@ -125,6 +125,9 @@ function menuSignatures(blocks: Block[]): string[] {
 
 /** Every interactive block kind, in the order the contract table declares them. A kind added to
  *  `DialogModels` without a fixture that lifts it registers a todo below, never a silent pass. */
+// SAFETY: `DIALOG_CONTRACT` is annotated `DialogContract`, a mapped type whose keys ARE exactly
+// `DialogKind` — so its own keys are that union and nothing else. `Object.keys` is only weakly typed
+// because a wider object could be assigned; this table is a literal declared right here.
 const DIALOG_KINDS = Object.keys(DIALOG_CONTRACT) as DialogKind[];
 
 /** The models of `kind` the adapter lifts from `name`, in order (usually 0 or 1 — a grammar claims at
@@ -191,7 +194,7 @@ function perturbRegion<K extends DialogKind>(
 
   const candidates = [
     ...range(start, lines.length), // the region itself, top-down
-    ...range(Math.max(0, start - PERTURB_LOOKBACK), start).reverse(), // then upward into the subject
+    ...range(Math.max(0, start - PERTURB_LOOKBACK), start).toReversed(), // then upward into the subject
   ];
   for (const i of candidates) {
     if (i === footer) continue;
@@ -327,9 +330,10 @@ function emittableKeys(block: Block): string[] | null {
         ...(block.menu.nav.leftRight !== undefined ? [...MENU_LEFT_KEYS, ...MENU_RIGHT_KEYS] : []),
       ];
     default: {
-      // `block` is `never` here today — every kind is cased above. The cast names the offending kind
-      // at runtime once a FUTURE Block kind is added to the union without a case here: a keyless one
-      // is tolerated via the allowlist; any other (an interactive block whose keys aren't being
+      // SAFETY: `block` is `never` here today — every kind is cased above — so widening it back to
+      // `Block` cannot be wrong for any value that exists. The assertion is what names the offending
+      // kind at runtime once a FUTURE Block kind is added to the union without a case here: a keyless
+      // one is tolerated via the allowlist; any other (an interactive block whose keys aren't being
       // validated) fails loudly so the key-grammar invariant can't go vacuous.
       const kind = (block as Block).kind;
       if (KEYLESS_FUTURE_KINDS.has(kind)) return null;
@@ -531,11 +535,12 @@ export function describeAdapterConformance(
           it.todo(`adapter lifts no ${kind} blocks from its own fixtures`);
           continue;
         }
-        // `kind` is the UNION here, so TS would intersect the five models into an impossible
-        // parameter type. The comparators are only ever handed models this same table produced for
-        // this same kind (`modelsOf(..., kind)`), so erasing to `object` is safe and keeps the loop
-        // one generic pass instead of five hand-written copies.
-        const contract = DIALOG_CONTRACT[kind] as unknown as DialogComparators<object>;
+        // `kind` is the UNION here, so addressing the table with it would intersect the five models
+        // into an impossible parameter type. `dialogComparators` does that erasure once, in the
+        // module that owns the table, and keeps this loop one generic pass instead of five
+        // hand-written copies. The comparators are only ever handed models this same table produced
+        // for this same kind (`modelsOf(..., kind)`).
+        const contract = dialogComparators(kind);
 
         for (const name of kindFixtures) {
           it(`${name}: the ${kind} model signs itself (signature + bound region non-empty)`, () => {

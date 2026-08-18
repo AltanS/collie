@@ -54,12 +54,12 @@ export const TRIAGE_ORDER: readonly TriageKey[] = ["needs", "ready", "working", 
  * The status one representative {@link StatusDot} should show for a bucket, so a tab chip, a space
  * chip and a list row all draw the same colour for the same meaning.
  */
-export const TRIAGE_STATUS: Record<TriageKey, AgentStatus> = {
+export const TRIAGE_STATUS = {
   needs: "blocked",
   ready: "done",
   working: "working",
   recent: "idle",
-};
+} satisfies Record<TriageKey, AgentStatus>;
 
 /**
  * The most urgent bucket among a set of panes — what a tab or space chip should advertise. Null when
@@ -80,12 +80,12 @@ function byDesc(key: (a: AgentView) => number | undefined) {
   return (x: AgentView, y: AgentView) => (key(y) ?? 0) - (key(x) ?? 0);
 }
 
-const SECTION_META: Record<TriageKey, Omit<TriageSection, "agents">> = {
+const SECTION_META = {
   needs: { key: "needs", label: "Needs you", accent: true, dot: "bg-status-blocked" },
   ready: { key: "ready", label: "Ready · unseen", dot: "bg-status-done" },
   working: { key: "working", label: "Working", dot: "bg-status-working" },
   recent: { key: "recent", label: "Recent", dot: "bg-status-idle", collapsible: true },
-};
+} satisfies Record<TriageKey, Omit<TriageSection, "agents">>;
 
 /**
  * Bucket and order a herd. Returns every section (including empty ones) in fixed display order —
@@ -128,11 +128,13 @@ export function triage(agents: readonly AgentView[], dir: RecentDir = "newest"):
  * up without the status-colour bullet the switcher had, and a new field would have done it again.
  */
 export function sectionHeaderProps(s: TriageSection) {
+  // `accent` is passed through as-is rather than conditionally spread: the prop is optional, so an
+  // explicit `undefined` and an absent key are the same thing to the component that destructures it.
   return {
     label: s.label,
     count: s.agents.length,
     dot: s.dot,
-    ...(s.accent ? { accent: s.accent } : {}),
+    accent: s.accent,
   };
 }
 

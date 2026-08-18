@@ -112,6 +112,9 @@ function parse(raw: string | null): DraftEntry | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (typeof value !== "object" || value === null) return null;
+    // SAFETY: `value` was just checked to be a non-null object, so reading `text`/`at` off it is
+    // defined behaviour; both are validated as the right primitive on the very next line before any
+    // of them is used. `Partial` is what makes those two checks mandatory rather than assumed.
     const entry = value as Partial<DraftEntry>;
     if (typeof entry.text !== "string" || typeof entry.at !== "number") return null;
     return { text: entry.text, at: entry.at };
@@ -203,7 +206,7 @@ function evictMemory(keep: string): void {
   if (total <= MEMORY_MAX_CHARS) return;
   const byAge = [...memory.entries()]
     .filter(([key]) => key !== keep)
-    .sort((a, b) => a[1].at - b[1].at);
+    .toSorted((a, b) => a[1].at - b[1].at);
   for (const [key, entry] of byAge) {
     memory.delete(key);
     total -= entry.text.length;
