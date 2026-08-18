@@ -68,5 +68,5 @@ export function adapterFor(
 
 /** The agents this build can serve a journal for — used by the probe script and by tests. */
 export function journalAgents(registry: Record<string, JournalAdapter>): string[] {
-  return Object.keys(registry).sort();
+  return Object.keys(registry).toSorted();
 }

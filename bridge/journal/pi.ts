@@ -20,6 +20,8 @@
 // journal/files.ts. The id fallback is supported too, since the hook uses it when no file is open yet.
 
 import { readdir } from "node:fs/promises";
+
+import type { JsonObject, JsonValue } from "../json.ts";
 import { join } from "node:path";
 
 import {
@@ -30,7 +32,7 @@ import {
   rootList,
   statFile,
 } from "./files.ts";
-import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -47,25 +49,32 @@ export function isPiSessionId(value: string): boolean {
 }
 
 /** Flatten a pi content list into text, keeping only `text` blocks. */
-function textBlocks(content: unknown): string {
+function textBlocks(content: JsonValue | undefined): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
     .map((b) =>
-      b && typeof b === "object" && (b as { type?: unknown }).type === "text" &&
-      typeof (b as { text?: unknown }).text === "string"
-        ? (b as { text: string }).text
+      b !== null && typeof b === "object" && !Array.isArray(b) && b.type === "text" &&
+      typeof b.text === "string"
+        ? b.text
         : "",
     )
     .filter(Boolean)
     .join("\n");
 }
 
-interface PiRow {
-  type?: unknown;
-  id?: unknown;
-  timestamp?: unknown;
-  message?: unknown;
+/** A session-log line, once JSON.parse has admitted it is an object at all. */
+type PiRow = JsonObject;
+
+/** A `tool` part's answered result — {@link Clamped} plus the error flag the result row carried. */
+type ToolResult = Clamped & { isError?: boolean };
+
+/** One row's `toolResult` payload, folded onto the call it answers. */
+function toolResult(text: string, isError: boolean): ToolResult {
+  const result: ToolResult = clamp(text, MAX_RESULT_CHARS);
+  // Assigned, never conditionally spread: `isError` is ABSENT when false, not `false`.
+  if (isError) result.isError = true;
+  return result;
 }
 
 /**
@@ -81,17 +90,23 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
-    let row: PiRow;
+    let parsed: JsonValue;
     try {
-      row = JSON.parse(line) as PiRow;
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
+      // read below a checked property access.
+      parsed = JSON.parse(line) as JsonValue;
     } catch {
       continue;
     }
+    // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
+    // no row shape — skip it exactly as an unparseable line is skipped.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    const row: PiRow = parsed;
     // `session`, `model_change`, `thinking_level_change` are bookkeeping — nothing to render.
     if (row.type !== "message") continue;
     const message = row.message;
-    if (message === null || typeof message !== "object") continue;
-    const m = message as Record<string, unknown>;
+    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) continue;
+    const m: JsonObject = message;
     const uuid = typeof row.id === "string" ? row.id : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
 
@@ -104,10 +119,7 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
         pendingTools.delete(id);
-        target.result = {
-          ...clamp(resultText, MAX_RESULT_CHARS),
-          ...(isError ? { isError: true } : {}),
-        };
+        target.result = toolResult(resultText, isError);
       } else if (resultText.trim() !== "") {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -120,7 +132,7 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
               kind: "tool",
               name: typeof m.toolName === "string" ? m.toolName : "result",
               summary: "",
-              result: { ...clamp(resultText, MAX_RESULT_CHARS), ...(isError ? { isError: true } : {}) },
+              result: toolResult(resultText, isError),
             },
           ],
         });
@@ -131,9 +143,8 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
     const role: TranscriptEntry["role"] = m.role === "assistant" ? "assistant" : "user";
     const parts: TranscriptPart[] = [];
     const content = Array.isArray(m.content) ? m.content : [];
-    for (const block of content) {
-      if (block === null || typeof block !== "object") continue;
-      const b = block as Record<string, unknown>;
+    for (const b of content) {
+      if (b === null || typeof b !== "object" || Array.isArray(b)) continue;
       if (b.type === "text" && typeof b.text === "string") {
         if (b.text.trim() !== "")
           parts.push({ kind: "text", ...clamp(stripAnsi(b.text), MAX_TEXT_CHARS) });

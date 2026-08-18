@@ -22,10 +22,13 @@ interface CacheEntry {
  * opens at the recent end, like the mirror it replaces); `before` walks backwards from a turn you
  * already hold. Returned entries stay oldest-first so the view renders top-down either way.
  */
+/** One page of turns plus the "older exist" flag that drives "load older". */
+export type EntryPage = { window: TranscriptEntry[]; hasMore: boolean };
+
 export function pageEntries(
   entries: TranscriptEntry[],
   opts: { limit: number; before?: string },
-): { window: TranscriptEntry[]; hasMore: boolean } {
+): EntryPage {
   // An unknown cursor (log rewritten under us, a stale client, or a synthesised cursor whose row
   // fell out of the window) degrades to "newest", never to an empty page — the user asked for older
   // history and must still see something.

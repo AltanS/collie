@@ -39,6 +39,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
+import type { JsonObject, JsonValue } from "../json.ts";
 import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -107,8 +108,11 @@ interface CountRow {
   m: number;
 }
 
+/** What a session's row counts stand in for, in place of a file's size + mtime. */
+type SessionMeta = { size: number; mtimeMs: number };
+
 /** Row counts + newest touch across `message` and `part` for one session. */
-function sessionMeta(db: Database, sessionId: string): { size: number; mtimeMs: number } {
+function sessionMeta(db: Database, sessionId: string): SessionMeta {
   const msg = db
     .query<CountRow, [string]>(
       "select count(*) c, coalesce(max(time_updated),0) m from message where session_id = ?",
@@ -126,10 +130,12 @@ function sessionMeta(db: Database, sessionId: string): { size: number; mtimeMs: 
 }
 
 /** Parse a `data` column, or null when it isn't json. The row still renders what it can. */
-function parseData(raw: unknown): unknown {
+function parseData(raw: string | null): JsonValue {
   if (typeof raw !== "string") return null;
   try {
-    return JSON.parse(raw) as unknown;
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction — string/number/boolean/null or an
+    // array/object of those. It is re-serialised into the composed line right after this.
+    return JSON.parse(raw) as JsonValue;
   } catch {
     return null;
   }
@@ -147,13 +153,8 @@ interface PartRow {
   data: string | null;
 }
 
-/** One composed JSONL line — the text `parse()` reads. */
-interface OpencodeLine {
-  id?: unknown;
-  ts?: unknown;
-  data?: unknown;
-  parts?: unknown;
-}
+/** One composed JSONL line — the text `parse()` reads, once it has parsed to an object at all. */
+type OpencodeLine = JsonObject;
 
 /**
  * Compose the session's rows into JSONL — one line per message, its parts nested.
@@ -197,7 +198,9 @@ function composeLines(db: Database, sessionId: string): string[] {
  * Keep the NEWEST lines that fit under the byte cap — the same "keep the tail" policy `loadTail`
  * applies to a file, applied to composed text instead.
  */
-function clipToCap(lines: string[]): { text: string; complete: boolean } {
+type ClippedText = { text: string; complete: boolean };
+
+function clipToCap(lines: string[]): ClippedText {
   let bytes = 0;
   let start = 0;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -211,9 +214,9 @@ function clipToCap(lines: string[]): { text: string; complete: boolean } {
 }
 
 /** Map one part's `data` json onto a renderable part. Null for anything we don't model. */
-export function opencodePart(data: unknown): TranscriptPart | null {
-  if (data === null || typeof data !== "object") return null;
-  const d = data as Record<string, unknown>;
+export function opencodePart(data: JsonValue | undefined): TranscriptPart | null {
+  if (data === null || data === undefined || typeof data !== "object" || Array.isArray(data)) return null;
+  const d: JsonObject = data;
 
   if (d.type === "text") {
     const text = stripAnsi(typeof d.text === "string" ? d.text : "");
@@ -226,7 +229,11 @@ export function opencodePart(data: unknown): TranscriptPart | null {
   }
 
   if (d.type === "tool") {
-    const state = d.state !== null && typeof d.state === "object" ? (d.state as Record<string, unknown>) : {};
+    const rawState = d.state;
+    const state: JsonObject =
+      rawState !== null && rawState !== undefined && typeof rawState === "object" && !Array.isArray(rawState)
+        ? rawState
+        : {};
     const part: Extract<TranscriptPart, { kind: "tool" }> = {
       kind: "tool",
       name: typeof d.tool === "string" ? d.tool : "tool",
@@ -267,13 +274,23 @@ export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
-    let row: OpencodeLine;
+    let parsed: JsonValue;
     try {
-      row = JSON.parse(line) as OpencodeLine;
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction — and this line was composed by
+      // `composeLines` above, so it is our own JSON.stringify round-tripping.
+      parsed = JSON.parse(line) as JsonValue;
     } catch {
       continue;
     }
-    const data = row.data !== null && typeof row.data === "object" ? (row.data as Record<string, unknown>) : {};
+    // A line that parses to a scalar (or a bare `null`, which used to reach `.data` and THROW) has
+    // no row shape — skip it exactly as an unparseable line is skipped.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    const row: OpencodeLine = parsed;
+    const rawData = row.data;
+    const data: JsonObject =
+      rawData !== null && rawData !== undefined && typeof rawData === "object" && !Array.isArray(rawData)
+        ? rawData
+        : {};
     // Roles are matched EXPLICITLY, never "assistant or else user" — same rule and same rationale as
     // codex.ts's `developer` guard: an unmodelled role is plumbing, and rendering it as speech would
     // put words in the operator's mouth.
@@ -283,8 +300,8 @@ export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
     const parts: TranscriptPart[] = [];
     if (Array.isArray(row.parts)) {
       for (const p of row.parts) {
-        if (p === null || typeof p !== "object") continue;
-        const part = opencodePart((p as { data?: unknown }).data);
+        if (p === null || typeof p !== "object" || Array.isArray(p)) continue;
+        const part = opencodePart(p.data);
         if (part !== null) parts.push(part);
       }
     }
@@ -303,13 +320,13 @@ export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
 }
 
 /** ISO timestamp from `data.time.created`, falling back to the message row's `time_created`. */
-function isoFrom(time: unknown, fallback: unknown): string {
+function isoFrom(time: JsonValue | undefined, fallback: JsonValue | undefined): string {
+  const fromTime =
+    time !== null && time !== undefined && typeof time === "object" && !Array.isArray(time)
+      ? time.created
+      : undefined;
   const created =
-    time !== null && typeof time === "object" && typeof (time as { created?: unknown }).created === "number"
-      ? (time as { created: number }).created
-      : typeof fallback === "number"
-        ? fallback
-        : null;
+    typeof fromTime === "number" ? fromTime : typeof fallback === "number" ? fallback : null;
   if (created === null) return "";
   const d = new Date(created);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString();

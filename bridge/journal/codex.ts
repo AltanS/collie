@@ -26,6 +26,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { JsonObject, JsonValue } from "../json.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -78,13 +79,13 @@ export function codexCursor(line: string, seen: Map<string, number>): string {
 }
 
 /** Flatten a Codex content list (`input_text` / `output_text` / `text` blocks) into plain text. */
-function blockText(content: unknown): string {
+function blockText(content: JsonValue | undefined): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
     .map((b) =>
-      b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string"
-        ? (b as { text: string }).text
+      b !== null && typeof b === "object" && !Array.isArray(b) && typeof b.text === "string"
+        ? b.text
         : "",
     )
     .filter(Boolean)
@@ -96,12 +97,14 @@ function blockText(content: unknown): string {
  * than the output itself. Falls back to the raw string when it isn't that shape — a tool whose
  * output isn't JSON should still show its output rather than nothing.
  */
-export function codexToolOutput(raw: unknown): string {
+export function codexToolOutput(raw: JsonValue | undefined): string {
   if (typeof raw !== "string") return "";
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && typeof (parsed as { output?: unknown }).output === "string") {
-      return (parsed as { output: string }).output;
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction; this names it so the `output`
+    // read below stays a checked property access rather than a second assertion.
+    const parsed = JSON.parse(raw) as JsonValue;
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && typeof parsed.output === "string") {
+      return parsed.output;
     }
   } catch {
     // not JSON — the raw string IS the output
@@ -110,10 +113,11 @@ export function codexToolOutput(raw: unknown): string {
 }
 
 /** `arguments` arrives as a JSON string, not an object — parse before summarising. */
-function codexToolSummary(args: unknown): string {
+function codexToolSummary(args: JsonValue | undefined): string {
   if (typeof args !== "string") return summarizeToolInput(args);
   try {
-    return summarizeToolInput(JSON.parse(args));
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    return summarizeToolInput(JSON.parse(args) as JsonValue);
   } catch {
     return oneLine(args); // malformed/partial arguments still say something useful
   }
@@ -127,11 +131,8 @@ function isInjectedContext(text: string): boolean {
   return text.trimStart().startsWith("<environment_context>");
 }
 
-interface CodexRow {
-  timestamp?: unknown;
-  type?: unknown;
-  payload?: unknown;
-}
+/** A rollout line, once JSON.parse has admitted it is an object at all. */
+type CodexRow = JsonObject;
 
 /**
  * Parse a Codex rollout log into oldest-first turns. PURE — no fs, no clock.
@@ -147,17 +148,23 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
-    let row: CodexRow;
+    let parsed: JsonValue;
     try {
-      row = JSON.parse(line) as CodexRow;
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
+      // read below a checked property access.
+      parsed = JSON.parse(line) as JsonValue;
     } catch {
       continue;
     }
+    // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
+    // no row shape — skip it exactly as an unparseable line is skipped.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    const row: CodexRow = parsed;
     // The double-booking guard: everything the UI stream carries is already in `response_item`.
     if (row.type !== "response_item") continue;
     const payload = row.payload;
-    if (payload === null || typeof payload !== "object") continue;
-    const p = payload as Record<string, unknown>;
+    if (payload === null || payload === undefined || typeof payload !== "object" || Array.isArray(payload)) continue;
+    const p: JsonObject = payload;
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
     const uuid = codexCursor(line, seen);
 
@@ -181,8 +188,8 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
       const summary = Array.isArray(p.summary)
         ? p.summary
             .map((s) =>
-              s && typeof s === "object" && typeof (s as { text?: unknown }).text === "string"
-                ? (s as { text: string }).text
+              s !== null && typeof s === "object" && !Array.isArray(s) && typeof s.text === "string"
+                ? s.text
                 : "",
             )
             .filter(Boolean)
@@ -311,7 +318,7 @@ export class CodexTranscriptSource implements TranscriptSource {
 /** Directory entries, newest-name first. Empty when the directory doesn't exist. */
 async function descending(dir: string): Promise<string[]> {
   try {
-    return (await readdir(dir)).sort().reverse();
+    return (await readdir(dir)).toSorted().toReversed();
   } catch {
     return [];
   }

@@ -26,8 +26,9 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import type { JsonObject, JsonValue } from "../json.ts";
 import { containedRealpath, exists, head, loadTail, rootList, statFile } from "./files.ts";
-import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -101,25 +102,33 @@ export function classifyUserText(
 }
 
 /** Flatten a `tool_result.content`, which is either a plain string or a list of text blocks. */
-function toolResultText(content: unknown): string {
+function toolResultText(content: JsonValue | undefined): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .map((b) => (b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string"
-      ? (b as { text: string }).text
+    .map((b) => (b !== null && typeof b === "object" && !Array.isArray(b) && typeof b.text === "string"
+      ? b.text
       : ""))
     .filter(Boolean)
     .join("\n");
 }
 
-interface RawRow {
-  type?: unknown;
-  uuid?: unknown;
-  timestamp?: unknown;
-  isSidechain?: unknown;
-  isCompactSummary?: unknown;
-  message?: { role?: unknown; content?: unknown } | unknown;
+/** A `tool` part's answered result — {@link Clamped} plus the error flag the result row carried. */
+type ToolResult = Clamped & { isError?: boolean };
+
+/** One row's `tool_result` payload, folded onto the call it answers. */
+function toolResult(text: string, isError: boolean): ToolResult {
+  const result: ToolResult = clamp(text, MAX_RESULT_CHARS);
+  // Assigned, never conditionally spread: `isError` is ABSENT when false, not `false`.
+  if (isError) result.isError = true;
+  return result;
 }
+
+/** A log line, once JSON.parse has admitted it is an object at all. */
+type RawRow = JsonObject;
+
+/** What {@link ClaudeTranscriptSource.followContinuation} compares candidate siblings against. */
+type LogStamp = { root: string | null; size: number; mtimeMs: number };
 
 /**
  * Parse a Claude session log into oldest-first turns.
@@ -141,19 +150,25 @@ export function parseClaudeTranscript(
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
-    let row: RawRow;
+    let parsed: JsonValue;
     try {
-      row = JSON.parse(line) as RawRow;
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction — string/number/boolean/null or
+      // an array/object of those. Naming it here is what keeps every field read below checked.
+      parsed = JSON.parse(line) as JsonValue;
     } catch {
       continue; // partial trailing write, or the clipped first line of a tail read
     }
+    // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
+    // no row shape at all — skip it exactly as an unparseable line is skipped.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    const row: RawRow = parsed;
     const type = row.type;
     if (type !== "user" && type !== "assistant") continue;
     if (row.isSidechain === true && !opts.includeSidechains) continue;
 
     const message = row.message;
-    if (message === null || typeof message !== "object") continue;
-    const content = (message as { content?: unknown }).content;
+    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) continue;
+    const content = message.content;
     const uuid = typeof row.uuid === "string" ? row.uuid : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
     const parts: TranscriptPart[] = [];
@@ -168,9 +183,8 @@ export function parseClaudeTranscript(
       if (classified.role === "note") roleOverride = "note";
       parts.push({ kind: "text", ...clamp(classified.text, MAX_TEXT_CHARS) });
     } else if (Array.isArray(content)) {
-      for (const block of content) {
-        if (block === null || typeof block !== "object") continue;
-        const b = block as Record<string, unknown>;
+      for (const b of content) {
+        if (b === null || typeof b !== "object" || Array.isArray(b)) continue;
         if (b.type === "text" && typeof b.text === "string") {
           if (b.text.trim() !== "")
             parts.push({ kind: "text", ...clamp(stripAnsi(b.text), MAX_TEXT_CHARS) });
@@ -195,10 +209,7 @@ export function parseClaudeTranscript(
           const resultText = stripAnsi(toolResultText(b.content));
           if (target) {
             pendingTools.delete(id);
-            target.result = {
-              ...clamp(resultText, MAX_RESULT_CHARS),
-              ...(b.is_error === true ? { isError: true } : {}),
-            };
+            target.result = toolResult(resultText, b.is_error === true);
           } else if (resultText.trim() !== "") {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.
@@ -206,10 +217,7 @@ export function parseClaudeTranscript(
               kind: "tool",
               name: "result",
               summary: "",
-              result: {
-                ...clamp(resultText, MAX_RESULT_CHARS),
-                ...(b.is_error === true ? { isError: true } : {}),
-              },
+              result: toolResult(resultText, b.is_error === true),
             });
           }
         }
@@ -246,7 +254,9 @@ export function conversationRoot(text: string): string | null {
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
     try {
-      const row = JSON.parse(line) as { uuid?: unknown };
+      // SAFETY: JSON.parse output is a JsonValue by construction (see parseClaudeTranscript).
+      const row = JSON.parse(line) as JsonValue;
+      if (row === null || typeof row !== "object" || Array.isArray(row)) continue;
       if (typeof row.uuid === "string" && row.uuid !== "") return row.uuid;
     } catch {
       continue; // a clipped/partial line — keep looking
@@ -343,7 +353,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    */
   private async followContinuation(path: string, root: string): Promise<string> {
     const dir = dirname(path);
-    let self: { root: string | null; size: number; mtimeMs: number };
+    let self: LogStamp;
     try {
       const st = await stat(path);
       self = { root: conversationRoot(await head(path)), size: st.size, mtimeMs: st.mtimeMs };
