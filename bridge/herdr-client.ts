@@ -1,6 +1,7 @@
+import type { JsonObject } from "./json.ts";
 import type { AgentStatus } from "./types.ts";
 import { dialHerdr, type DialMode, type SockHandle } from "./dial.ts";
-import { decodeReplyLine, decodeStreamLine } from "./wire.ts";
+import { decodeReplyLine, decodeStreamLine, type EventData } from "./wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The Herdr socket adapter. THIS IS THE ONLY FILE that knows Herdr's method names
@@ -133,6 +134,23 @@ export interface PaneRead {
 type ReadSource = "visible" | "recent" | "recent_unwrapped";
 type ReadFormat = "text" | "ansi";
 
+/** Wire params of `tab.create`. `focus` is always false — never yank the desktop TUI's focus. */
+type TabCreateParams = { workspace_id: string; focus: false; label?: string; cwd?: string };
+
+/** Wire params of `workspace.create`. */
+type WorkspaceCreateParams = { cwd: string; focus: false; label?: string };
+
+/** What {@link HerdrClient.subscribeEvents} is asked for. */
+export type SubscribeOptions = {
+  subscriptions: Array<{ type: string; pane_id?: string }>;
+  onUp: () => void;
+  onEvent: (event: string, data: EventData) => void;
+  onDown: (reason: string) => void;
+};
+
+/** The handle {@link HerdrClient.subscribeEvents} hands back. `close()` is idempotent. */
+export type EventStream = { close(): void };
+
 let idCounter = 0;
 
 /** Per-request wall-clock budget. Exported so callers can pass it explicitly alongside a dial mode. */
@@ -147,7 +165,7 @@ export class HerdrClient {
   ) {}
 
   /** One request, one reply, one connection. Rejects on error reply, timeout, or early close. */
-  private request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  private request<T>(method: string, params: JsonObject = {}): Promise<T> {
     const id = `b${++idCounter}`;
     return new Promise<T>((resolve, reject) => {
       let buf = "";
@@ -190,7 +208,7 @@ export class HerdrClient {
         this.timeoutMs,
       );
 
-      dialHerdr(this.socketPath, {
+      const dialed = dialHerdr(this.socketPath, {
         onDial(cancel) {
           cancelDial = cancel;
         },
@@ -207,7 +225,7 @@ export class HerdrClient {
             try {
               resolve(decodeReplyLine<T>(line, method));
             } catch (e) {
-              reject(e as Error);
+              reject(e);
             }
           });
         },
@@ -217,8 +235,13 @@ export class HerdrClient {
         close() {
           finish(() => reject(new Error(`herdr ${method}: connection closed before reply`)));
         },
-      }, this.dialMode)
-        .then((s) => {
+      }, this.dialMode);
+
+      // One catch for BOTH the dial failing and anything the post-connect block throws — the
+      // `.then(…).catch(…)` this replaces funnelled them to the same `finish(reject)`.
+      void (async () => {
+        try {
+          const s = await dialed;
           // Already settled (e.g. timed out) before the connection opened — close it so the FD
           // doesn't leak, and don't bother writing.
           if (settled) {
@@ -237,8 +260,10 @@ export class HerdrClient {
           // rejects like any other transport failure.
           s.write(JSON.stringify({ id, method, params }) + "\n");
           s.flush();
-        })
-        .catch((err) => finish(() => reject(err)));
+        } catch (err) {
+          finish(() => reject(err));
+        }
+      })();
     });
   }
 
@@ -275,12 +300,7 @@ export class HerdrClient {
    * reason (error line, socket error, close, or a 5s ack timeout); `close()` is idempotent and also
    * ends it with reason "closed". Reconnect/backoff live in the caller (see EventPoker).
    */
-  subscribeEvents(opts: {
-    subscriptions: Array<{ type: string; pane_id?: string }>;
-    onUp: () => void;
-    onEvent: (event: string, data: unknown) => void;
-    onDown: (reason: string) => void;
-  }): { close(): void } {
+  subscribeEvents(opts: SubscribeOptions): EventStream {
     const id = `es${++idCounter}`;
     const decoder = new TextDecoder("utf-8");
     let buf = "";
@@ -323,7 +343,7 @@ export class HerdrClient {
       try {
         decoded = decodeStreamLine(line);
       } catch (e) {
-        fireDown(`protocol error: ${(e as Error).message}`);
+        fireDown(`protocol error: ${e instanceof Error ? e.message : String(e)}`);
         return;
       }
       if (decoded.kind === "error") {
@@ -340,7 +360,7 @@ export class HerdrClient {
       opts.onEvent(decoded.event, decoded.data);
     };
 
-    dialHerdr(this.socketPath, {
+    const dialed = dialHerdr(this.socketPath, {
       onDial(cancel) {
         cancelDial = cancel;
       },
@@ -353,7 +373,8 @@ export class HerdrClient {
         socket = s;
         buf += decoder.decode(chunk, { stream: true });
         let nl = buf.indexOf("\n");
-        while (nl >= 0 && !down) {
+        while (nl >= 0) {
+          if (down) break;
           const line = buf.slice(0, nl);
           buf = buf.slice(nl + 1);
           handleLine(line);
@@ -366,8 +387,13 @@ export class HerdrClient {
       close() {
         fireDown("connection closed");
       },
-    }, this.dialMode)
-      .then((s) => {
+    }, this.dialMode);
+
+    // One catch for BOTH the dial failing and anything the post-connect block throws — the
+    // `.then(…).catch(…)` this replaces funnelled them to the same `fireDown`.
+    void (async () => {
+      try {
+        const s = await dialed;
         if (down) {
           try {
             s.end();
@@ -379,8 +405,10 @@ export class HerdrClient {
         socket = s;
         s.write(JSON.stringify({ id, method: "events.subscribe", params: { subscriptions: opts.subscriptions } }) + "\n");
         s.flush();
-      })
-      .catch((err) => fireDown((err as Error).message || "connect failed"));
+      } catch (err) {
+        fireDown((err instanceof Error ? err.message : String(err)) || "connect failed");
+      }
+    })();
 
     return { close: () => fireDown("closed") };
   }
@@ -391,7 +419,9 @@ export class HerdrClient {
    * TUI's focus. Returns the new shell pane to navigate into.
    */
   async createTab(workspaceId: string, opts: { label?: string; cwd?: string } = {}): Promise<CreatedShell> {
-    const params: Record<string, unknown> = { workspace_id: workspaceId, focus: false };
+    // Optional keys are ASSIGNED, not spread — an empty-string label must stay omitted (herdr
+    // stores "" literally), which a `label: opts.label` field would not do.
+    const params: TabCreateParams = { workspace_id: workspaceId, focus: false };
     if (opts.label) params.label = opts.label;
     if (opts.cwd) params.cwd = opts.cwd;
     const r = await this.request<{ root_pane: WirePane }>("tab.create", params);
@@ -404,7 +434,8 @@ export class HerdrClient {
    * leave the desktop TUI undisturbed. Returns the new shell pane (with its workspace label).
    */
   async createWorkspace(opts: { cwd: string; label?: string }): Promise<CreatedShell> {
-    const params: Record<string, unknown> = { cwd: opts.cwd, focus: false };
+    // See createTab: an empty label stays omitted.
+    const params: WorkspaceCreateParams = { cwd: opts.cwd, focus: false };
     if (opts.label) params.label = opts.label;
     const r = await this.request<{
       workspace: WireWorkspace;

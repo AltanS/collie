@@ -381,10 +381,10 @@ export interface BridgeConfig {
 }
 
 /** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */
-export const STATUS_RANK: Record<AgentStatus, number> = {
+export const STATUS_RANK = {
   blocked: 0,
   working: 1,
   unknown: 2,
   idle: 3,
   done: 4,
-};
+} satisfies Record<AgentStatus, number>;
