@@ -211,6 +211,24 @@ describe("fileAuditAppender rotation", () => {
     expect(io.files["/s/audit.log"]!.split("\n")).toHaveLength(21);
   });
 
+  test("a flood of refusals stays bounded — the whole trail never exceeds two generations", async () => {
+    // The threat the cap answers: `/pack/v1/enroll` audits a refusal before any factor
+    // authenticates, so anyone who can reach the listener can add lines for free. Rotation is only
+    // a bound if the TOTAL on disk stops growing — one live file plus one `.1`, and nothing else.
+    const io = fakeIo();
+    const cap = 200;
+    const append = fileAuditAppender("/s/audit.log", io, cap);
+    const line = `${JSON.stringify({ action: "pack.refused", detail: { code: "unauthorized" } })}\n`;
+    for (let i = 0; i < 1000; i++) await append(line);
+    // Exactly two files ever exist — no third generation accumulates behind the rotation.
+    expect(Object.keys(io.files).toSorted()).toEqual(["/s/audit.log", "/s/audit.log.1"]);
+    const total = Object.values(io.files).reduce((n, c) => n + Buffer.byteLength(c, "utf8"), 0);
+    // The live file may cross the cap by the one line that trips it; `.1` is a file that already did.
+    expect(total).toBeLessThanOrEqual(2 * (cap + Buffer.byteLength(line, "utf8")));
+    // …and 1000 lines really would have blown past that without the cap.
+    expect(1000 * Buffer.byteLength(line, "utf8")).toBeGreaterThan(total * 10);
+  });
+
   test("seeds its counter from the existing file, so a restart doesn't reset the cap", async () => {
     // The in-memory counter is an optimisation, not the truth: a fresh process inherits a log that
     // is already at the cap and must rotate on its first line, not after another 5 MiB.
