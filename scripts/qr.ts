@@ -60,7 +60,7 @@ export async function renderQr(url: string): Promise<string> {
   if (url.length > MAX_URL_LEN) throw new Error(`url too long to render as a QR code (${url.length} > ${MAX_URL_LEN})`);
   let qrcode: QrModule;
   try {
-    qrcode = (await import("qrcode-terminal")).default as unknown as QrModule;
+    qrcode = (await import("qrcode-terminal")).default;
   } catch {
     throw new Error("qrcode-terminal isn't installed — run 'bun install' in the plugin root");
   }

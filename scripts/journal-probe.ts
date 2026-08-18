@@ -53,7 +53,7 @@ async function logsNewestFirst(dir: string, depth = 4): Promise<string[]> {
     }
   };
   await walk(dir, depth);
-  return found.sort((a, b) => b.mtimeMs - a.mtimeMs).map((f) => f.path);
+  return found.toSorted((a, b) => b.mtimeMs - a.mtimeMs).map((f) => f.path);
 }
 
 /** How many candidates to try before calling a harness unreadable. */

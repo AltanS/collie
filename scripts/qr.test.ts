@@ -15,15 +15,19 @@ import { renderQr } from "./qr.ts";
 
 const require = createRequire(import.meta.url);
 
+// An SGR sequence, built rather than written as a literal: a regex holding a raw ESC is unreadable
+// and is flagged wherever it appears. Same construction as `bridge/prompt-binding.ts`'s CSI.
+const SGR = new RegExp(`${String.fromCodePoint(0x1b)}\\[[0-9;]*m`, "g");
+
 /** Half-block glyphs, read with the polarity qr.ts pins: a FILLED glyph half is a LIGHT module. */
 function toModules(rendered: string): boolean[][] {
   const rows: boolean[][] = [];
   for (const line of rendered.split("\n")) {
-    const stripped = line.replace(/\x1b\[[0-9;]*m/g, "");
+    const stripped = line.replace(SGR, "");
     if (stripped.length === 0) continue;
     const top: boolean[] = [];
     const bottom: boolean[] = [];
-    for (const ch of [...stripped]) {
+    for (const ch of stripped) {
       // dark = the half is NOT filled
       top.push(!(ch === "█" || ch === "▀"));
       bottom.push(!(ch === "█" || ch === "▄"));
@@ -41,7 +45,12 @@ function truthMatrix(url: string): boolean[][] {
   qr.addData(url);
   qr.make();
   const n = qr.getModuleCount();
-  return Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => qr.isDark(r, c) as boolean));
+  // SAFETY: `isDark(row, col)` is the encoder's own module bitmap and answers a boolean for every
+  // in-range cell; `n` comes from its `getModuleCount()`, so every index asked for is in range. The
+  // assertion only re-states that — the vendored QRCode ships no types, so `require` hands back any.
+  return Array.from({ length: n }, (_row, r) =>
+    Array.from({ length: n }, (_col, c) => qr.isDark(r, c) as boolean),
+  );
 }
 
 /** Blow the modules up to a scanner-sized image — one module to SCALE² pixels — and read it. */
