@@ -1,3 +1,4 @@
+import type { JsonValue } from "./json.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -59,9 +60,11 @@ function readBuildInfo(text: string): string | null {
   let version: string | undefined;
   let sha: string | undefined;
   try {
-    const data = JSON.parse(text) as { version?: unknown; sha?: unknown };
-    if (typeof data.version === "string") version = data.version;
-    if (typeof data.sha === "string") sha = data.sha;
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction; both fields are checked below.
+    const data = JSON.parse(text) as JsonValue;
+    const fields = data !== null && typeof data === "object" && !Array.isArray(data) ? data : {};
+    if (typeof fields.version === "string") version = fields.version;
+    if (typeof fields.sha === "string") sha = fields.sha;
   } catch {
     // The shell read this file with `sed`, so a truncated write still yielded a version. Keep that
     // tolerance rather than falling all the way back to the manifest on a half-written stamp.

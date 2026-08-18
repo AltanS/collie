@@ -1,3 +1,4 @@
+import type { JsonObject, JsonValue } from "./json.ts";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
@@ -47,16 +48,37 @@ export interface SubscriptionMeta {
   userAgent?: string;
 }
 
+/**
+ * What a delivery answers with. Structurally `web-push`'s own `SendResult`, restated here so the
+ * seam does not drag the library's types into every fake — and optional throughout, because nothing
+ * on the send path reads it: a FAILED delivery throws, and that is the only outcome that matters.
+ */
+export type PushDeliveryResult = { statusCode?: number; body?: string; headers?: unknown } | void;
+
+/** One row of {@link PushStore.listSubscriptions} — metadata only, never the sending keys. */
+export type SubscriptionRow = { endpoint: string; createdAt?: string; userAgent?: string };
+
+/** The deep-link fields the service worker reads off a push payload (see web/src/sw.ts). */
+type PushPayloadData = { paneId?: string; session?: string; host?: string; target?: "settings" };
+
+/** The HTTP status a `web-push` rejection carries, or undefined when it carries none. */
+function sendErrorStatus<T>(err: T): number | undefined {
+  if (err === null || typeof err !== "object" || !("statusCode" in err)) return undefined;
+  return typeof err.statusCode === "number" ? err.statusCode : undefined;
+}
+
 /** Longer than this and a user agent is padding a terminal column, not identifying a device. */
 const USER_AGENT_MAX = 160;
 
 /** One row off disk. Anything that isn't a usable subscription is dropped; the two metadata fields
  *  are carried only when they are strings, so a file written before they existed loads unchanged. */
-function coerceStored(v: unknown): StoredSubscription | null {
-  if (typeof v !== "object" || v === null) return null;
-  const o = v as Record<string, unknown>;
-  const keys = o.keys as Record<string, unknown> | undefined;
-  if (typeof o.endpoint !== "string" || typeof keys !== "object" || keys === null) return null;
+function coerceStored(v: JsonValue | undefined): StoredSubscription | null {
+  if (typeof v !== "object" || v === null || v === undefined || Array.isArray(v)) return null;
+  const o: JsonObject = v;
+  const keys = o.keys;
+  if (typeof o.endpoint !== "string" || typeof keys !== "object" || keys === null || keys === undefined || Array.isArray(keys)) {
+    return null;
+  }
   if (typeof keys.p256dh !== "string" || typeof keys.auth !== "string") return null;
   const row: StoredSubscription = {
     endpoint: o.endpoint,
@@ -127,11 +149,12 @@ function pushServiceOrigin(endpoint: string): string {
  *  constant "Received unexpected response code" — useless on its own — while the status and the
  *  service's own reason (Apple's `{"reason":"BadDeviceToken"}`, FCM's text) sit unread on the error.
  *  Surfacing them is what makes a transient 5xx distinguishable from a permanent rejection. */
-function describeSendError(err: unknown): string {
-  const e = err as { statusCode?: number; body?: unknown };
+function describeSendError<T>(err: T): string {
   const message = err instanceof Error ? err.message : String(err);
-  const status = typeof e.statusCode === "number" ? ` status=${e.statusCode}` : "";
-  const raw = typeof e.body === "string" ? e.body.replace(/\s+/g, " ").trim() : "";
+  const code = sendErrorStatus(err);
+  const status = code === undefined ? "" : ` status=${code}`;
+  const bodyField = err !== null && typeof err === "object" && "body" in err ? err.body : undefined;
+  const raw = typeof bodyField === "string" ? bodyField.replace(/\s+/g, " ").trim() : "";
   const body = raw ? ` body=${raw.length > 200 ? `${raw.slice(0, 200)}…` : raw}` : "";
   return `${message}${status}${body}`;
 }
@@ -145,7 +168,7 @@ export type PushSender = (
   sub: PushSubscription,
   payload: string,
   options: SendOptions,
-) => Promise<unknown>;
+) => Promise<PushDeliveryResult>;
 
 /**
  * A notification instruction for the service worker (see web/src/sw.ts). `type:"clear"` closes the
@@ -257,9 +280,9 @@ export class Push {
    * The persisted rows, for the operator-facing `collie push list`. Read-only and metadata-only:
    * the keys are a sending credential and have no business on a terminal.
    */
-  listSubscriptions(): ReadonlyArray<{ endpoint: string; createdAt?: string; userAgent?: string }> {
+  listSubscriptions(): readonly SubscriptionRow[] {
     return [...this.subs.values()].map(({ endpoint, createdAt, userAgent }) => {
-      const row: { endpoint: string; createdAt?: string; userAgent?: string } = { endpoint };
+      const row: SubscriptionRow = { endpoint };
       if (createdAt !== undefined) row.createdAt = createdAt;
       if (userAgent !== undefined) row.userAgent = userAgent;
       return row;
@@ -290,9 +313,7 @@ export class Push {
     // The SW reads deep-link fields from `data`. `session` is omitted for the primary and `host` for
     // this collie's own sessions (both absent on the message), keeping that payload identical to the
     // pre-multi-session, pre-pack shape.
-    const data: { paneId?: string; session?: string; host?: string; target?: "settings" } = {
-      paneId: msg.paneId,
-    };
+    const data: PushPayloadData = { paneId: msg.paneId };
     if (msg.session !== undefined) data.session = msg.session;
     if (msg.host !== undefined) data.host = msg.host;
     if (msg.target !== undefined) data.target = msg.target;
@@ -339,7 +360,7 @@ export class Push {
       // 404/410 are the only statuses RFC 8030 blesses as "this subscription is gone". Everything
       // else — 400, 401, 403, 429, 5xx — is either transient or about the SENDER (a VAPID key slip
       // makes a whole push service reject perfectly live devices), so it must never prune on sight.
-      const code = (err as { statusCode?: number }).statusCode;
+      const code = sendErrorStatus(err);
       if (code === 404 || code === 410) {
         console.log(`[push] pruning gone subscription (${code}): ${sub.endpoint}`);
         dead.push(sub.endpoint);

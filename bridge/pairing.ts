@@ -3,6 +3,8 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import type { JsonObject, JsonValue } from "./json.ts";
+
 // ── DEVICE PAIRING: A CREDENTIAL THE DEVICE HOLDS, NOT A NAME THE NETWORK ASSERTS ─────────────
 //
 // The pre-existing write gate (COLLIE_DEVICE_HEADER + COLLIE_DEVICE_ALLOWLIST, bridge/server.ts
@@ -48,29 +50,29 @@ export const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTWXYZ";
 export const SEEN_THROTTLE_MS = 60_000;
 
 /** A minted, not-yet-claimed pairing code. Only its hash is ever persisted. */
-export interface PendingPairing {
+export type PendingPairing = {
   /** SHA-256 (hex) of the normalised code. */
   codeHash: string;
   /** Epoch ms after which the code is dead. */
   expiresAt: number;
   /** Wrong guesses left before the pending pairing is destroyed. */
   attemptsLeft: number;
-}
+};
 
 /** One paired device. The token itself was shown once, at claim time, and is not recoverable. */
-export interface PairedDevice {
+export type PairedDevice = {
   /** Operator-facing name, unique across the registry. */
   label: string;
   /** SHA-256 (hex) of the bearer token. */
   tokenHash: string;
   createdAt: number;
   lastSeenAt: number;
-}
+};
 
 /** The on-disk registry shape. An object (not a bare array) so it can gain keys without a migration. */
-export interface PairedRegistry {
+export type PairedRegistry = {
   devices: PairedDevice[];
-}
+};
 
 /** A paired device as the API reports it — the hash never leaves the bridge. */
 export interface PairedDeviceWire {
@@ -132,9 +134,9 @@ export function newPending(code: string, now: number, ttlMs = CODE_TTL_MS): Pend
 }
 
 /** Coerce an untrusted parsed value into a {@link PendingPairing}, or null if it isn't one. */
-export function coercePending(raw: unknown): PendingPairing | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const o = raw as Record<string, unknown>;
+export function coercePending(raw: JsonValue | undefined): PendingPairing | null {
+  if (typeof raw !== "object" || raw === null || raw === undefined || Array.isArray(raw)) return null;
+  const o: JsonObject = raw;
   if (typeof o.codeHash !== "string" || o.codeHash === "") return null;
   if (typeof o.expiresAt !== "number" || !Number.isFinite(o.expiresAt)) return null;
   if (typeof o.attemptsLeft !== "number" || !Number.isFinite(o.attemptsLeft)) return null;
@@ -146,13 +148,13 @@ export function coercePending(raw: unknown): PendingPairing | null {
  * A half-written or hand-edited file therefore degrades to "fewer paired devices", never to a device
  * with an empty `tokenHash` — which would otherwise authorise a caller whose token hashes to "".
  */
-export function coerceRegistry(raw: unknown): PairedRegistry {
-  const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+export function coerceRegistry(raw: JsonValue | undefined): PairedRegistry {
+  const o: JsonObject =
+    typeof raw === "object" && raw !== null && raw !== undefined && !Array.isArray(raw) ? raw : {};
   const list = Array.isArray(o.devices) ? o.devices : [];
   const devices: PairedDevice[] = [];
-  for (const entry of list) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const d = entry as Record<string, unknown>;
+  for (const d of list) {
+    if (typeof d !== "object" || d === null || Array.isArray(d)) continue;
     if (typeof d.label !== "string" || d.label.trim() === "") continue;
     if (typeof d.tokenHash !== "string" || d.tokenHash.length !== 64) continue;
     if (devices.some((x) => x.label === d.label)) continue;
@@ -170,7 +172,7 @@ export function coerceRegistry(raw: unknown): PairedRegistry {
  * Validate and bound a client-supplied label. Returns null when it is unusable — the same answer for
  * "empty" and "1 KB of newlines", because the label is echoed into the audit log and the UI.
  */
-export function normalizeLabel(raw: unknown): string | null {
+export function normalizeLabel(raw: JsonValue | undefined): string | null {
   if (typeof raw !== "string") return null;
   const label = raw.replace(/[\r\n\t]+/g, " ").trim();
   if (label === "" || label.length > 48) return null;
@@ -285,13 +287,13 @@ export function bearerToken(headers: { get(name: string): string | null }): stri
  * revocation made by `bin/collie devices revoke` in another process without a restart.
  */
 export interface PairingIo {
-  readPending(): Promise<unknown | null>;
+  readPending(): Promise<JsonValue | null>;
   writePending(pending: PendingPairing): Promise<void>;
   deletePending(): Promise<void>;
-  readRegistry(): Promise<unknown | null>;
+  readRegistry(): Promise<JsonValue | null>;
   writeRegistry(registry: PairedRegistry): Promise<void>;
   /** The registry as of now, read synchronously. Null ⇒ no registry file. */
-  readRegistrySync(): unknown | null;
+  readRegistrySync(): JsonValue | null;
 }
 
 /**
@@ -301,24 +303,26 @@ export interface PairingIo {
  * per-request cost of the gate is one `stat` — not a parse — while a CLI revocation still lands on
  * the very next request.
  */
+/** A JSON file's parsed contents, or null when it is missing or unreadable. */
+async function readJson(path: string): Promise<JsonValue | null> {
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction; every caller re-coerces it.
+    return JSON.parse(await readFile(path, "utf8")) as JsonValue;
+  } catch {
+    return null;
+  }
+}
+
 export function filePairingIo(stateDir: string): PairingIo {
   const pendingPath = join(stateDir, PENDING_FILENAME);
   const registryPath = join(stateDir, DEVICES_FILENAME);
-  let cache: { key: string; value: unknown } | null = null;
+  let cache: { key: string; value: JsonValue } | null = null;
 
   const writeAtomic = async (path: string, text: string): Promise<void> => {
     await mkdir(stateDir, { recursive: true, mode: 0o700 });
     const tmp = `${path}.tmp`;
     await writeFile(tmp, text, { mode: 0o600 });
     await rename(tmp, path);
-  };
-
-  const readJson = async (path: string): Promise<unknown | null> => {
-    try {
-      return JSON.parse(await readFile(path, "utf8"));
-    } catch {
-      return null;
-    }
   };
 
   return {
@@ -347,7 +351,8 @@ export function filePairingIo(stateDir: string): PairingIo {
       }
       if (cache?.key === key) return cache.value;
       try {
-        const value: unknown = JSON.parse(readFileSync(registryPath, "utf8"));
+        // SAFETY: `JSON.parse` output IS a JsonValue by construction; `coerceRegistry` re-checks it.
+        const value = JSON.parse(readFileSync(registryPath, "utf8")) as JsonValue;
         cache = { key, value };
         return value;
       } catch {
@@ -392,9 +397,16 @@ export class PairingStore {
     if (!device) return null;
     const touched = touchDevice(registry, device.label, this.now());
     if (touched) {
-      void this.io.writeRegistry(touched).catch((err: unknown) => {
-        console.warn(`[pairing] could not stamp lastSeenAt: ${(err as Error).message}`);
-      });
+      // Fire-and-forget: a failed stamp must never fail the request that triggered it.
+      void (async () => {
+        try {
+          await this.io.writeRegistry(touched);
+        } catch (err) {
+          console.warn(
+            `[pairing] could not stamp lastSeenAt: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })();
     }
     return device;
   }

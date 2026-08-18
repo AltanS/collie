@@ -45,7 +45,7 @@ export interface NotifySink {
 
 /** Just the transport the sink needs — "deliver this message to the devices". */
 export interface PushSender {
-  send(msg: PushMessage): unknown;
+  send(msg: PushMessage): void;
 }
 /** Just the quiet-hours check the sink needs — "are we muted right now?". */
 export interface MuteGate {
@@ -138,6 +138,9 @@ export class NotificationCoordinator<H = unknown> {
       agent: agent.agent,
       workspaceLabel: agent.workspaceLabel,
       cwd: agent.cwd,
+      // SAFETY: `onTransition` is only reached for a status the prefs call notifiable, and the
+      // notifiable set IS `NotifiableStatus` (blocked/done) — `isNotifiable` returns false for
+      // every other member of `AgentStatus`, so this branch cannot be entered with one.
       status: to as NotifiableStatus,
     };
     const handle = this.clock.schedule(() => {
@@ -161,12 +164,12 @@ export class NotificationCoordinator<H = unknown> {
    */
   applyPrefs(): void {
     // Drop pending timers for a now-disabled kind — nothing was shown yet, so no re-emit is needed.
-    for (const [id, p] of [...this.pending]) {
+    for (const [id, p] of this.pending) {
       if (!this.isNotifiable(p.status)) this.cancelPending(id);
     }
     // Retract delivered alerts of a now-disabled kind; re-emit the shrunk summary once if any went.
     let removed = false;
-    for (const [id, a] of [...this.outstanding]) {
+    for (const [id, a] of this.outstanding) {
       if (!this.isNotifiable(a.status)) {
         this.outstanding.delete(id);
         removed = true;
@@ -181,7 +184,7 @@ export class NotificationCoordinator<H = unknown> {
    * its alerts never linger on the lock screen with no live session behind them.
    */
   clearAll(): void {
-    for (const id of [...this.pending.keys()]) this.cancelPending(id);
+    for (const id of this.pending.keys()) this.cancelPending(id);
     const had = this.outstanding.size > 0;
     this.outstanding.clear();
     if (had) this.sink.clear();

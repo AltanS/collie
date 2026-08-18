@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
+import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
@@ -705,9 +706,11 @@ export function startServer(opts: {
         // exists to stop asking.
         const gate = checkAccess(req, cfg, "write");
         if (!gate.ok) return text(gate.reason, 403);
-        let body: unknown;
+        let body: JsonValue;
         try {
-          body = await req.json();
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `parsePairRequest`
+          // re-checks every field of it before any of it is used.
+          body = (await req.json()) as JsonValue;
         } catch {
           return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
         }
@@ -751,7 +754,9 @@ export function startServer(opts: {
         } catch {
           return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
         }
-        const label = normalizeLabel((body as { label?: unknown }).label);
+        // SAFETY: `body` is this handler's own `req.json()` output — a JsonValue by construction;
+        // `normalizeLabel` refuses anything that is not a usable string.
+        const label = normalizeLabel(asJsonRecord(body as JsonValue)?.label);
         if (label === null) return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
         if (!(await pairing.revoke(label))) {
           return jsonError("unknown device", 404, req.headers.get("accept-encoding"));
@@ -1699,9 +1704,20 @@ function text(body: string, status: number): Response {
  * a caller "that isn't even code-shaped" would be a free oracle. Pure + exported because the handler
  * lives inside `Bun.serve`, which `bun test` cannot stand up (CLAUDE.md).
  */
-export function parsePairRequest(v: unknown): { code: string; label: string } | null {
-  if (typeof v !== "object" || v === null) return null;
-  const o = v as Record<string, unknown>;
+/** The record inside a parsed JSON body, or null when the body isn't one (a scalar, an array). */
+function asJsonRecord(value: JsonValue | undefined): JsonObject | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value;
+}
+
+/** A `/api/pair/claim` body, once it is one. */
+type PairRequest = { code: string; label: string };
+
+export function parsePairRequest(v: JsonValue | undefined): PairRequest | null {
+  const o = asJsonRecord(v);
+  if (o === null) return null;
   if (typeof o.code !== "string" || o.code.length === 0 || o.code.length > 64) return null;
   const label = normalizeLabel(o.label);
   if (label === null) return null;

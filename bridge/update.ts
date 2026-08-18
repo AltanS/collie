@@ -1,3 +1,4 @@
+import type { JsonValue } from "./json.ts";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -77,8 +78,8 @@ export function shouldNotify(a: {
 /** A stable, comparable stamp of source files by (path, mtime, size). Order-independent. Equality is
  *  all we need — any content edit changes size or mtime, and a pull/rebuild touches the changed files. */
 export function stampOf(entries: { path: string; mtimeMs: number; size: number }[]): string {
-  return [...entries]
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  return entries
+    .toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
     .map((e) => `${e.path}:${e.mtimeMs}:${e.size}`)
     .join("\n");
 }
@@ -127,10 +128,16 @@ export function githubTagsFetcher(repo: string): () => Promise<string[]> {
       signal: AbortSignal.timeout(TAGS_TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`github tags: HTTP ${res.status}`);
-    const data = (await res.json()) as unknown;
+    // SAFETY: `Response.json()` output IS a JsonValue by construction; every tag name below is
+    // checked to be a string before it is kept.
+    const data = (await res.json()) as JsonValue;
     if (!Array.isArray(data)) return [];
     return data
-      .map((t) => (typeof (t as { name?: unknown }).name === "string" ? (t as { name: string }).name : ""))
+      .map((t) =>
+        t !== null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string"
+          ? t.name
+          : "",
+      )
       .filter(Boolean);
   };
 }
@@ -149,8 +156,12 @@ export class UpdateStateStore {
 
   async load(): Promise<void> {
     try {
-      const raw = (await Bun.file(this.file).json()) as { lastNotified?: unknown };
-      this.lastVersion = typeof raw.lastNotified === "string" ? raw.lastNotified : null;
+      // SAFETY: `Bun.file().json()` output IS a JsonValue by construction; `lastNotified` is
+      // checked before it is believed.
+      const raw = (await Bun.file(this.file).json()) as JsonValue;
+      const last =
+        raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw.lastNotified : undefined;
+      this.lastVersion = typeof last === "string" ? last : null;
     } catch {
       /* none saved yet */
     }

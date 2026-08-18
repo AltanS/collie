@@ -1,3 +1,4 @@
+import type { JsonObject, JsonValue } from "./json.ts";
 import { appendFile, rename, stat } from "node:fs/promises";
 
 // Append-only audit trail of write-level actions (a socket call can type into a real terminal, so
@@ -78,7 +79,27 @@ export interface AuditEntry {
    */
   from?: string;
   /** Truncated, newline-safe parameters — reply text, key names, filename+size, labels, etc. */
-  detail?: Record<string, unknown>;
+  detail?: AuditDetail;
+}
+
+/**
+ * What a `detail` value may be: JSON, plus the shapes a caller can actually hand over. A
+ * function-valued property (a smuggled `toJSON`) is precisely what {@link sanitize} exists to drop,
+ * so this type must NOT pretend one cannot arrive — the redaction tests plant exactly that.
+ */
+export type AuditDetailValue =
+  | JsonValue
+  | undefined
+  | ((...args: never[]) => JsonValue | undefined)
+  | AuditDetailValue[]
+  | { [key: string]: AuditDetailValue };
+
+/** Truncated, newline-safe parameters — reply text, key names, filename+size, labels, etc. */
+export type AuditDetail = { [key: string]: AuditDetailValue };
+
+/** The message of a thrown value, without assuming it was an Error. */
+function errorText<T>(err: T): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** Delivers one formatted line (newline included) to its destination. Injectable for tests. */
@@ -98,7 +119,11 @@ export type AppendFn = (line: string) => void | Promise<void>;
  * `JSON.stringify` later CALLS a copied own `toJSON`, which re-injects its return value into the
  * line — past the preview cap, and past every redaction decision made here.
  */
-function sanitize(value: unknown, content: AuditContent = "preview", allowed = false): unknown {
+function sanitize(
+  value: AuditDetailValue,
+  content: AuditContent = "preview",
+  allowed = false,
+): JsonValue | undefined {
   if (typeof value === "function") return null;
   if (typeof value === "string") {
     // ⛔ A constant, never `⟨n chars⟩`. An exact length is itself content — a 9-character redaction
@@ -108,9 +133,11 @@ function sanitize(value: unknown, content: AuditContent = "preview", allowed = f
     const oneLine = value.replace(/[\r\n]+/g, " ");
     return oneLine.length > MAX_STR ? `${oneLine.slice(0, MAX_STR)}…` : oneLine;
   }
-  if (Array.isArray(value)) return value.map((v) => sanitize(v, content, allowed));
+  // `?? null` only names what `JSON.stringify` already does with an `undefined` array slot, so the
+  // rendered line is byte-identical; it keeps the element type JSON rather than JSON-or-undefined.
+  if (Array.isArray(value)) return value.map((v) => sanitize(v, content, allowed) ?? null);
   if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
+    const out: JsonObject = {};
     for (const [k, v] of Object.entries(value)) {
       if (typeof v === "function") continue;
       out[k] = sanitize(v, content, METADATA_KEYS.has(k));
@@ -134,7 +161,7 @@ export function formatAuditLine(
   now: number,
   content: AuditContent = "preview",
 ): string {
-  const line: Record<string, unknown> = { ts: new Date(now).toISOString(), action: entry.action };
+  const line: JsonObject = { ts: new Date(now).toISOString(), action: entry.action };
   if (entry.host !== undefined) line.host = entry.host;
   if (entry.paneId !== undefined) line.paneId = entry.paneId;
   if (entry.session !== undefined) line.session = entry.session;
@@ -173,7 +200,7 @@ export function fsAuditFileIo(): AuditFileIo {
       try {
         return (await stat(path)).size;
       } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+        if (err instanceof Error && "code" in err && err.code === "ENOENT") return 0;
         throw err;
       }
     },
@@ -217,7 +244,7 @@ export function fileAuditAppender(
         bytes = 0;
       } catch (err) {
         bytes = null;
-        console.warn(`[audit] could not rotate ${path}: ${(err as Error).message}`);
+        console.warn(`[audit] could not rotate ${path}: ${errorText(err)}`);
       }
     }
     await io.append(path, line);
@@ -286,16 +313,18 @@ export class AuditLog {
     try {
       line = formatAuditLine({ ...this.defaults, ...entry }, this.now(), this.content);
     } catch (err) {
-      console.warn(`[audit] could not format ${entry.action}: ${(err as Error).message}`);
+      console.warn(`[audit] could not format ${entry.action}: ${errorText(err)}`);
       return;
     }
-    try {
-      void Promise.resolve(this.append(`${line}\n`)).catch((err) => {
-        console.warn(`[audit] write failed: ${(err as Error).message}`);
-      });
-    } catch (err) {
-      // A synchronous throw from the append (shouldn't happen for the fs sink, but stay defensive).
-      console.warn(`[audit] write failed: ${(err as Error).message}`);
-    }
+    // A failed append is logged and dropped — an audit write must never fail the action it records.
+    // One catch covers BOTH a rejection and a synchronous throw from the sink (which `await` turns
+    // into a rejection), exactly as the `.catch()` + surrounding `try` this replaces did.
+    void (async () => {
+      try {
+        await this.append(`${line}\n`);
+      } catch (err) {
+        console.warn(`[audit] write failed: ${errorText(err)}`);
+      }
+    })();
   }
 }

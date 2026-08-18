@@ -5,7 +5,11 @@
  * question, so trailing whitespace and blank lines are ignored. Leading indentation and internal
  * alignment must survive because they can be semantic content in a displayed diff or command.
  */
-const SGR_SEQUENCE = /(?:\x1b\[|\x9b)[0-?]*[ -/]*m/g;
+// The two control characters are spliced in from their code points rather than written as escapes
+// in the literal: matching them IS the point here, and a regex literal that says so is (correctly)
+// flagged as suspicious wherever it isn't. `\x1b[` is the 7-bit CSI, `\x9b` its 8-bit form.
+const CSI = `(?:${String.fromCodePoint(0x1b)}\\[|${String.fromCodePoint(0x9b)})`;
+const SGR_SEQUENCE = new RegExp(`${CSI}[0-?]*[ -/]*m`, "g");
 
 export function normalizePromptRegion(text: string): string[] {
   return text

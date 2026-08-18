@@ -1,3 +1,4 @@
+import type { JsonObject, JsonValue } from "./json.ts";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
@@ -28,8 +29,9 @@ export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = { blocked: true, done: false, u
  * Coerce an untrusted parsed value into a {@link NotifyPrefs}, filling any missing or non-boolean key
  * from the defaults. Pure + exported so the file-shape handling is unit-testable.
  */
-export function coerceNotifyPrefs(raw: unknown): NotifyPrefs {
-  const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+export function coerceNotifyPrefs(raw: JsonValue | undefined): NotifyPrefs {
+  const o: JsonObject =
+    typeof raw === "object" && raw !== null && raw !== undefined && !Array.isArray(raw) ? raw : {};
   return {
     blocked: typeof o.blocked === "boolean" ? o.blocked : DEFAULT_NOTIFY_PREFS.blocked,
     done: typeof o.done === "boolean" ? o.done : DEFAULT_NOTIFY_PREFS.done,
@@ -70,9 +72,10 @@ export class NotifyPrefsStore {
 
   /** Merge a partial patch (only booleans are applied), persist, and return the updated prefs. */
   async set(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs> {
-    if (typeof patch.blocked === "boolean") this.prefs.blocked = patch.blocked;
-    if (typeof patch.done === "boolean") this.prefs.done = patch.done;
-    if (typeof patch.updates === "boolean") this.prefs.updates = patch.updates;
+    // `Partial<NotifyPrefs>` already types each key `boolean | undefined`, so presence IS the test.
+    if (patch.blocked !== undefined) this.prefs.blocked = patch.blocked;
+    if (patch.done !== undefined) this.prefs.done = patch.done;
+    if (patch.updates !== undefined) this.prefs.updates = patch.updates;
     await this.save();
     return this.current();
   }
