@@ -14,6 +14,7 @@ import {
   packRouteFor,
   proxiedResponse,
   type ForwardDeps,
+  type ForwardErrorCode,
   type ForwardTransport,
 } from "./forward.ts";
 import type { PackLink, PeerOutcome } from "./peer-client.ts";
@@ -79,6 +80,25 @@ function post(path: string, body: string, headers: Record<string, string> = {}):
 
 // ── The route table is §5's, and it is one table ─────────────────────────────
 
+/**
+ * The refusal envelope every lead-generated failure answers with — `forwardError` in forward.ts
+ * writes `{ ok, code, error }` plus whichever `extra` the caller passed (`host`, `lastSeenAt`).
+ */
+interface ForwardFailure {
+  ok: boolean;
+  code: ForwardErrorCode;
+  error: string;
+  host?: string;
+  lastSeenAt?: number | null;
+}
+
+/** Read a refusal body as the envelope forward.ts guarantees for it. */
+async function failureBody(res: Response): Promise<ForwardFailure> {
+  // SAFETY: every non-2xx from `forward`/`forwardToPeer` comes out of `forwardError`, which is the
+  // single writer of this shape; the tests below assert `code` and `error` field by field.
+  return (await res.json()) as ForwardFailure;
+}
+
 describe("which routes cross a link", () => {
   test("the pane family, tabs and workspace map 1:1 onto the pack prefix", () => {
     expect(packRouteFor("/api/pane/w1:p1")).toBe("pane/w1:p1");
@@ -125,10 +145,10 @@ describe("which routes cross a link", () => {
     const pane = server.match(/^const PANE_ROUTE = (.+);$/m)![1]!;
     const tab = server.match(/^const TAB_ACTION_ROUTE = (.+);$/m)![1]!;
     const alternation = /\(([a-z]+(?:\|[a-z]+)+)\)/;
-    const paneActions = pane.match(alternation)![1]!.split("|").sort();
+    const paneActions = pane.match(alternation)![1]!.split("|").toSorted();
     expect(paneActions).toEqual(["close", "history", "keys", "rename", "reply", "upload"]);
     for (const action of paneActions) expect(packRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
-    const tabActions = tab.match(alternation)![1]!.split("|").sort();
+    const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
     for (const action of tabActions) expect(packRouteFor(`/api/tab/x/${action}`)).toBe(`tab/x/${action}`);
   });
@@ -300,7 +320,7 @@ describe("a write to a member that is not reachable (§10.3)", () => {
     const res = await forward(req, url, { transport, state: DEAD });
 
     expect(res.status).toBe(503);
-    const body = (await res.json()) as Record<string, unknown>;
+    const body = await failureBody(res);
     expect(body.code).toBe("host_unreachable");
     expect(body.host).toBe("laptop");
     expect(body.lastSeenAt).toBe(DEAD.lastSeenAt);
@@ -315,7 +335,7 @@ describe("a write to a member that is not reachable (§10.3)", () => {
     const [req, url] = post("/api/pane/w1:p1/keys?host=laptop", `{"keys":["Enter"]}`);
     const res = await forward(req, url, { transport, state: SKEWED });
     expect(res.status).toBe(503);
-    expect((await res.json() as Record<string, unknown>).code).toBe("host_incompatible");
+    expect((await failureBody(res)).code).toBe("host_incompatible");
     expect(calls).toHaveLength(0);
   });
 
@@ -339,7 +359,7 @@ describe("an attempted write whose outcome is unknown (§10.3, .adr/0010 over a 
     const res = await forward(req, url, { transport });
 
     expect(res.status).toBe(504);
-    const body = (await res.json()) as Record<string, unknown>;
+    const body = await failureBody(res);
     expect(body.code).toBe("write_outcome_unknown");
     expect(body.ok).toBe(false);
     expect(String(body.error)).toContain("outcome is unknown");
@@ -371,7 +391,7 @@ describe("an attempted write whose outcome is unknown (§10.3, .adr/0010 over a 
     const [req, url] = post("/api/pane/w1:p1/reply?host=laptop", `{"text":"hi"}`);
     const res = await forward(req, url, { transport });
     expect(res.status).toBe(503);
-    expect((await res.json() as Record<string, unknown>).code).toBe("host_unreachable");
+    expect((await failureBody(res)).code).toBe("host_unreachable");
   });
 
   test("a failed READ never becomes an unknown outcome — nothing changed, so nothing is ambiguous", async () => {
@@ -384,7 +404,7 @@ describe("an attempted write whose outcome is unknown (§10.3, .adr/0010 over a 
     const [req, url] = get("/api/pane/w1:p1/history?host=laptop");
     const res = await forward(req, url, { transport });
     expect(res.status).toBe(503);
-    expect((await res.json() as Record<string, unknown>).code).toBe("host_unreachable");
+    expect((await failureBody(res)).code).toBe("host_unreachable");
   });
 
   test("no failure is ever a bare 500, and every one carries a renderable code", async () => {
@@ -398,7 +418,7 @@ describe("an attempted write whose outcome is unknown (§10.3, .adr/0010 over a 
       const [req, url] = post("/api/tab?host=laptop", "{}");
       const res = await forward(req, url, { transport, state });
       expect(res.status).not.toBe(500);
-      expect((await res.json() as Record<string, unknown>).code).toBeString();
+      expect((await failureBody(res)).code).toBeString();
     }
   });
 });
@@ -455,7 +475,7 @@ describe("uploads land on the owning host (§13)", () => {
     const res = await forwardToPeer(req, url, { link: LINK, state: REACHABLE, transport });
 
     expect(res.status).toBe(413);
-    const body = (await res.json()) as Record<string, unknown>;
+    const body = await failureBody(res);
     expect(body.code).toBe("image_too_large");
     expect(body.error).toBe("image too large (max 10 MB)");
     expect(calls).toHaveLength(0);

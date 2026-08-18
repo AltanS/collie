@@ -25,7 +25,7 @@ import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo
 function headerList(res: Response): string[] {
   const out: string[] = [];
   res.headers.forEach((value, key) => out.push(`${key}: ${value}`));
-  return out.sort();
+  return out.toSorted();
 }
 
 function harness(initial: TrustStoreData) {
@@ -42,6 +42,8 @@ function harness(initial: TrustStoreData) {
     },
   };
   const store = new TrustStore("/unused", io);
+  // SAFETY: the appender only ever sees formatAuditLine's own output, so the parse round-trips the
+  // AuditEntry the router just recorded.
   const audit = new AuditLog((l) => void lines.push(JSON.parse(l) as AuditEntry), { now: () => T0 });
   return {
     store,
@@ -68,15 +70,19 @@ const authed = { authorization: `Bearer ${PACK.secret}`, "x-pack-protocol": "1" 
  * Sign a §8.6 request as `memberLabel` — whose pinned certificate is `material(memberLabel).certPem`
  * — so a SIGNABLE_PATHS route admits it as that member. Only `leave`, `lead` and `hello` read these.
  */
-function signed(memberLabel: string, method: string, path: string, body: string, timestamp: number): Record<string, string> {
+function signed(memberLabel: string, method: string, path: string, body: string, timestamp: number) {
   return {
     [SIGNATURE_HEADER]: signRequest(material(memberLabel).keyPem, { method, path, body, timestamp }),
     [TIMESTAMP_HEADER]: String(timestamp),
   };
 }
 
-/** A signed POST: `Authorization` + protocol + signature headers, and the body they cover. */
-function signedPost(memberLabel: string, path: string, body: unknown, timestamp: number): RequestInit {
+/**
+ * A signed POST: `Authorization` + protocol + signature headers, and the body they cover. Generic in
+ * the body so each call site's own literal type is what gets serialised — several tests post a
+ * deliberately partial or wrong one, and that refusal is what they check.
+ */
+function signedPost<TBody>(memberLabel: string, path: string, body: TBody, timestamp: number): RequestInit {
   const json = JSON.stringify(body);
   return {
     method: "POST",
@@ -143,8 +149,7 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     const res = (await call(handler, PACK_HELLO_PATH, {
       headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
     }))!;
-    const body = (await res.json()) as Record<string, unknown>;
-    expect("version" in body).toBe(false);
+    expect(Object.hasOwn(await res.json(), "version")).toBe(false);
   });
 
   test("without a pinned certificate it is 401 — the unwired default admits nobody", async () => {
@@ -166,15 +171,15 @@ describe("GET /pack/v1/hello — behind both factors", () => {
       ["wrong version", { ...authed, "x-pack-protocol": "9", ...strangerSig }],
     ];
     const unpinned = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
-    const shapes: string[] = [];
+    const refusals: string[] = [];
     for (const [, headers] of cases) {
       const res = (await call(unpinned, PACK_HELLO_PATH, { headers }))!;
-      shapes.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
+      refusals.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
     }
-    expect(new Set(shapes).size).toBe(1);
-    expect(JSON.parse(shapes[0]!).body).toBe('{"error":"unauthorized"}');
+    expect(new Set(refusals).size).toBe(1);
+    expect(JSON.parse(refusals[0]!).body).toBe('{"error":"unauthorized"}');
     // Not even a wrong VERSION leaks a 409 to an unpinned caller.
-    expect(shapes[0]).not.toContain("protocol_mismatch");
+    expect(refusals[0]).not.toContain("protocol_mismatch");
   });
 
   test("an admitted caller on the wrong version DOES get the legible 409 (§7)", async () => {
@@ -207,7 +212,7 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     const handler = createPackRouter({ store: h.store, audit: h.audit });
     await call(handler, PACK_HELLO_PATH, { headers: authed });
     await Bun.sleep(5);
-    expect(h.lines.map((l) => [l.action, (l.detail as Record<string, unknown>).factor])).toEqual([
+    expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([
       ["pack.refused", "certificate"],
     ]);
   });
@@ -303,7 +308,18 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     return { ...h, token: minted.result.token };
   }
 
-  const body = (over: Record<string, unknown> = {}) => ({
+  /** The §8.2 enroll body a joiner posts. Every field optional: several tests below post a wrong or
+   *  missing one on purpose, and refusing that is what they check. */
+  interface EnrollBody {
+    protocol?: number;
+    fingerprint?: string;
+    certPem?: string;
+    address?: string;
+    label?: string;
+    token?: string;
+  }
+
+  const body = (over: EnrollBody = {}): EnrollBody => ({
     protocol: 1,
     fingerprint: fp("laptop"),
     certPem: material("laptop").certPem,
@@ -321,6 +337,8 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
       body: JSON.stringify(body({ token: h.token })),
     }))!;
     expect(res.status).toBe(200);
+    // SAFETY: a 200 on the enroll route is defined by §8.2 to carry the whole transfer — the router
+    // has no other 200 body for this path, and the assertions below check every field of it.
     const payload = (await res.json()) as EnrollResponse;
     expect(payload.memberId).toBe("laptop");
     expect(payload.leadMemberId).toBe("desk");
@@ -368,7 +386,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
   test("a wrong token, a malformed body and a GET are all the same 401", async () => {
     const h = invited();
     const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
-    const shapes: string[] = [];
+    const refusals: string[] = [];
     for (const init of [
       { method: "POST", body: JSON.stringify(body({ token: "wrong" })) },
       { method: "POST", body: "{not json" },
@@ -376,10 +394,10 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
       { method: "GET" },
     ] satisfies RequestInit[]) {
       const res = (await call(handler, PACK_ENROLL_PATH, { ...init, headers: { "x-pack-protocol": "1" } }))!;
-      shapes.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
+      refusals.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
     }
-    expect(new Set(shapes).size).toBe(1);
-    expect(JSON.parse(shapes[0]!).body).toBe('{"error":"unauthorized"}');
+    expect(new Set(refusals).size).toBe(1);
+    expect(JSON.parse(refusals[0]!).body).toBe('{"error":"unauthorized"}');
   });
 
   test("an expired token is refused", async () => {
@@ -432,7 +450,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     // Case C (nothing matched, nothing expired → no write) and case B (nothing matched, but an
     // expired invite was swept → a write DID happen) must be indistinguishable from outside, or the
     // fix has traded a write-amplification for an oracle on "is there an expired invite in there".
-    const shapes: string[] = [];
+    const refusals: string[] = [];
     let sweepWrites = 0;
     for (const [at, expectWrite] of [
       [T0 + 1, false],
@@ -445,15 +463,15 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
         headers: { "x-pack-protocol": "1" },
         body: JSON.stringify(body({ token: "bogus" })),
       }))!;
-      shapes.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
+      refusals.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
       expect(h.writes() > 0).toBe(expectWrite);
       sweepWrites += h.writes();
     }
     // The two branches really were different underneath…
     expect(sweepWrites).toBe(1);
     // …and identical on the wire.
-    expect(new Set(shapes).size).toBe(1);
-    expect(JSON.parse(shapes[0]!).body).toBe('{"error":"unauthorized"}');
+    expect(new Set(refusals).size).toBe(1);
+    expect(JSON.parse(refusals[0]!).body).toBe('{"error":"unauthorized"}');
   });
 
   test("F4: a REAL invite still enrolls after the no-op path stopped writing", async () => {
@@ -535,12 +553,13 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
     const h = harness(peerStore());
     return {
       h,
-      handler: createPackRouter({
-        store: h.store,
-        audit: h.audit,
-        transportPinned: true,
-        ...(d === undefined ? {} : { dispatch: d.dispatch }),
-      }),
+      handler: createPackRouter(
+        // A router built with NO `dispatch` is a different thing from one built with `undefined` —
+        // the unwired default is what several tests below exercise — so the key is added, not spread.
+        d === undefined
+          ? { store: h.store, audit: h.audit, transportPinned: true }
+          : { store: h.store, audit: h.audit, transportPinned: true, dispatch: d.dispatch },
+      ),
     };
   }
 
@@ -561,11 +580,11 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
       ["workspace", "POST"],
     ];
     for (const [route, method] of routes) {
-      const res = (await call(handler, `${PACK_PREFIX}${route}`, {
-        method,
-        headers: authed,
-        ...(method === "POST" ? { body: "{}" } : {}),
-      }))!;
+      // A GET with a `body` key at all is a TypeError from `new Request`, so the key is added only
+      // for the POSTs rather than spread in as an empty object.
+      const init: RequestInit = { method, headers: authed };
+      if (method === "POST") init.body = "{}";
+      const res = (await call(handler, `${PACK_PREFIX}${route}`, init))!;
       expect(res.status).toBe(200);
     }
     expect(d.seen.map((s) => s.path)).toEqual(routes.map(([r]) => `/api/${r}`));
@@ -641,7 +660,13 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
 // behind the same two factors as everything else on the prefix, and each has a role check on top —
 // because "an admitted member" and "the member allowed to do THIS" are different questions.
 
-const post = (body: unknown): RequestInit => ({
+/** A plain (unsigned) JSON POST. Generic in the body for the same reason `signedPost` is. */
+/** A refusal body on the prefix: §8.x answers every "no" with a machine-readable `code`. */
+interface PackRefusal {
+  code: string;
+}
+
+const post = <TBody,>(body: TBody): RequestInit => ({
   method: "POST",
   headers: { ...authed, "content-type": "application/json" },
   body: JSON.stringify(body),
@@ -784,7 +809,9 @@ describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
     const impostor = { ...claim, fingerprint: fp("laptop"), certPem: material("laptop").certPem };
     const res = (await call(handler, PACK_LEAD_PATH, signedPost("nas", PACK_LEAD_PATH, { lead: impostor }, T0)))!;
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { code: string }).code).toBe("handover_not_approved");
+    // SAFETY: every §8.x refusal body carries a `code` (this is the shape asserted verbatim in the
+    // "every refusal cause produces the identical response" test above).
+    expect(((await res.json()) as PackRefusal).code).toBe("handover_not_approved");
     expect(h.data().lead).toBeNull();
     // The consent is NOT spent by a refusal — the operator's ten minutes are still theirs.
     expect(h.data().pendingHandover).toMatchObject({ memberId: "nas" });
