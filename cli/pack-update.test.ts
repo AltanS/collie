@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { leadStore, material, member, peerStore, T0 } from "../bridge/pack/fixtures.ts";
-import { parsePackOps } from "../bridge/pack/ops-store.ts";
+import { type OpsRecord, parsePackOps } from "../bridge/pack/ops-store.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
+import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededOps } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { answersThisBuild, cmdPackUpdate, type PackUpdateDeps } from "./pack-update.ts";
 import type { RemoteResult } from "./remote.ts";
@@ -66,7 +66,7 @@ interface Recorded {
 interface HarnessOptions {
   store?: TrustStoreData | null;
   /** Seeded ops records, by member id. Absent ⇒ that member has no remembered ssh host. */
-  ops?: Record<string, unknown>;
+  ops?: SeededOps;
   /** Per-host probe field overrides. */
   probes?: Record<string, Record<string, string>>;
   /** Per-host, per-leg canned results. */
@@ -77,7 +77,7 @@ interface HarnessOptions {
   bundle?: string | null;
 }
 
-function opsRecord(sshHost: string): Record<string, unknown> {
+function opsRecord(sshHost: string): OpsRecord {
   return { sshHost, path: CHECKOUT, port: 8787, recordedAt: T0 };
 }
 

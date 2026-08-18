@@ -35,13 +35,19 @@ export const PUSH_SUBCOMMANDS = ["list", "forget", "keys", "test"] as const;
 
 const DEFAULTS = ["Collie test 🐕", "Push works — tap to open Collie", "test"] as const;
 
+/** The bridge's config and the `Push` built over it — what every push verb starts from. */
+interface OpenedPush {
+  cfg: Config;
+  push: Push;
+}
+
 /**
  * The bridge's config and an unopened `Push` over it.
  *
  * `loadConfig()` reads `process.env`; the CLI's context is the `.env`-merged environment, and this
  * is where a mode-600 `COLLIE_VAPID_PRIVATE` reaches the signer. Same handoff `_exec-bridge` does.
  */
-function open(deps: PushDeps): { cfg: Config; push: Push } {
+function open(deps: PushDeps): OpenedPush {
   for (const [k, v] of Object.entries(deps.ctx.env)) if (v !== undefined) process.env[k] = v;
   const cfg = loadConfig();
   return { cfg, push: new Push(cfg) };

@@ -59,7 +59,7 @@ function readRegistry(deps: PairingDeps): PairedRegistry {
 }
 
 /** Owner-only, and the directory too: both files are credentials-in-hash-form. */
-function writeOwnerOnly(deps: PairingDeps, path: string, value: unknown): void {
+function writeOwnerOnly<TDocument>(deps: PairingDeps, path: string, value: TDocument): void {
   deps.files.mkdirp(deps.ctx.stateDir, 0o700);
   deps.files.write(path, `${JSON.stringify(value, null, 2)}\n`, 0o600);
 }

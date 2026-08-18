@@ -9,7 +9,7 @@ import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, PACK, T0 } from "../bridge/pack/fixtures.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
+import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededOps } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { cmdPack, type PackDeps } from "./pack.ts";
 import {
@@ -121,7 +121,7 @@ interface HarnessOptions {
   /** Extra resolved env — `COLLIE_PUBLIC_URL` is the one that steers the lead's own address. */
   env?: Record<string, string>;
   /** Seed for the ops store — how `pack add` remembers a host it already reached. */
-  ops?: Record<string, unknown>;
+  ops?: SeededOps;
 }
 
 function harness(opts: HarnessOptions = {}): Harness {

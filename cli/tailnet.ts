@@ -1,3 +1,4 @@
+import type { JsonValue } from "../bridge/json.ts";
 import type { ServeMode } from "./context.ts";
 import type { Exec } from "./sys.ts";
 
@@ -8,9 +9,13 @@ import type { Exec } from "./sys.ts";
 /** `Self.DNSName` with its trailing dot stripped, or null when the JSON says nothing useful. */
 export function selfDnsName(statusJson: string): string | null {
   try {
-    const data = JSON.parse(statusJson) as { Self?: { DNSName?: unknown } };
+    // SAFETY: the shape `tailscale status --json` documents, and nothing here trusts it further
+    // than the `catch` below — every path off `Self.DNSName` is a string method, so a record that
+    // disagrees (missing key, number, array) either yields `undefined` or throws inside this `try`,
+    // and both read as "no name".
+    const data = JSON.parse(statusJson) as { Self?: { DNSName?: string } };
     const name = data.Self?.DNSName;
-    if (typeof name !== "string") return null;
+    if (name === undefined) return null;
     const trimmed = name.replace(/\.$/, "").trim();
     return trimmed === "" ? null : trimmed;
   } catch {
@@ -57,7 +62,9 @@ export function bridgeUrl(exec: Exec, mode: ServeMode, port: number): string {
  */
 export function packetFilterDeniesAll(netmapJson: string): boolean {
   try {
-    const filter = (JSON.parse(netmapJson) as { PacketFilter?: unknown }).PacketFilter;
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction, and the only thing read off it is
+    // whether `PacketFilter` is an empty array — re-checked on the next line, never trusted.
+    const filter = (JSON.parse(netmapJson) as { PacketFilter?: JsonValue }).PacketFilter;
     return Array.isArray(filter) && filter.length === 0;
   } catch {
     return false;

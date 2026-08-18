@@ -130,7 +130,7 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     return EXIT.USAGE;
   }
   const targets = await resolveTargets(deps, data, roster, { positional, flags, bare, port });
-  if (typeof targets === "number") return targets;
+  if (!Array.isArray(targets)) return targets;
 
   // The build every target is being levelled to: this checkout's commit, and the version that commit
   // carries — read out of the commit rather than the working tree, exactly as `pack add` reads it,
@@ -186,7 +186,7 @@ async function resolveTargets(
     bare: ReadonlySet<string>;
     port: number;
   },
-): Promise<readonly Target[] | number> {
+): Promise<Target[] | number> {
   const all = o.bare.has("all");
   if (all && o.positional.length > 0) {
     deps.io.err("error: `--all` names every peer already — drop the member names, or drop `--all`.");
@@ -346,11 +346,11 @@ async function confirmBatch(
   const banked = [...outcomes.values()];
   const current = banked.filter((r) => r.outcome === "current").length;
   const skipped = banked.filter((r) => r.outcome === "skipped").length;
-  const blocked = banked.filter((r) => r.outcome === "failed").length;
+  const refused = banked.filter((r) => r.outcome === "failed").length;
   const aside = [
     current === 0 ? "" : `${current} already current`,
     skipped === 0 ? "" : `${skipped} without an ssh record`,
-    blocked === 0 ? "" : `${blocked} the probe refused`,
+    refused === 0 ? "" : `${refused} the probe refused`,
   ].filter((s) => s !== "");
   const question =
     `update ${ready.length} member${ready.length === 1 ? "" : "s"} to ${version} (${commit.slice(0, 12)})` +
@@ -542,11 +542,11 @@ function report(
   outcomes: ReadonlyMap<string, UpdateRow>,
   version: string,
 ): number {
-  const rows = targets.map(
+  const rows: UpdateRow[] = targets.map(
     (t) =>
       outcomes.get(t.member.memberId) ?? {
         memberId: t.member.memberId,
-        outcome: "skipped" as UpdateOutcome,
+        outcome: "skipped",
         detail: "not attempted",
       },
   );

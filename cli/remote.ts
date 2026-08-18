@@ -134,7 +134,7 @@ export function sshRunner(
         stdin: new TextEncoder().encode(composeStdin(script, stdin)),
         stdout: "pipe",
         stderr: "pipe",
-        env: env as Record<string, string>,
+        env,
       });
       const [stdout, stderr, code] = await Promise.all([
         new Response(proc.stdout).text(),
@@ -151,7 +151,7 @@ export function sshRunner(
           Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", host], {
             stdout: "ignore",
             stderr: "ignore",
-            env: env as Record<string, string>,
+            env,
           });
         } catch {
           // The master may already be gone; the directory removal below is what actually matters.
@@ -222,24 +222,6 @@ export interface Probe {
 
 const PROBE_PREFIX = "collie-probe:";
 
-const PROBE_FIELDS = [
-  "home",
-  "git",
-  "bun",
-  "herdr",
-  "configdir",
-  "envhost",
-  "envport",
-  "checkout",
-  "commit",
-  "branch",
-  "dirty",
-  "dirtyfiles",
-  "version",
-  "address",
-  "port",
-] as const;
-
 /**
  * Parse leg 1's output. `null` is the third error family — "the remote answered something this
  * build cannot read" — and is deliberately distinguished from a probe that ran and said no.
@@ -256,9 +238,26 @@ export function parseProbe(stdout: string): Probe | null {
   // The sentinel is written last, so its presence proves the script ran to the end rather than
   // dying halfway with a plausible-looking half-answer.
   if (raw.get("probe") !== "ok") return null;
-  const out: Record<string, string> = {};
-  for (const field of PROBE_FIELDS) out[field] = raw.get(field) ?? "";
-  return out as unknown as Probe;
+  // Field by field rather than a loop-and-assert: a field the remote did not print reads as "",
+  // exactly as before, and the compiler — not a cast — is what says the result is a whole Probe.
+  const said = (field: string): string => raw.get(field) ?? "";
+  return {
+    home: said("home"),
+    git: said("git"),
+    bun: said("bun"),
+    herdr: said("herdr"),
+    configdir: said("configdir"),
+    envhost: said("envhost"),
+    envport: said("envport"),
+    checkout: said("checkout"),
+    commit: said("commit"),
+    branch: said("branch"),
+    dirty: said("dirty"),
+    dirtyfiles: said("dirtyfiles"),
+    version: said("version"),
+    address: said("address"),
+    port: said("port"),
+  };
 }
 
 /**
@@ -1394,7 +1393,7 @@ export function packAddDeps(base: PackDeps): PackAddDeps {
       const proc = Bun.spawn([git, "-C", base.ctx.root, "bundle", "create", "-", "HEAD"], {
         stdout: "pipe",
         stderr: "pipe",
-        env: base.ctx.env as Record<string, string>,
+        env: base.ctx.env,
       });
       const [bytes, stderr, code] = await Promise.all([
         new Response(proc.stdout).arrayBuffer(),

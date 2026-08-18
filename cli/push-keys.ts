@@ -37,9 +37,19 @@ export type VapidKey = (typeof VAPID_KEYS)[number];
  * A VAPID keypair, base64url, in the shape `web-push` and the browser's `applicationServerKey` both
  * expect: public = the uncompressed P-256 point, private = the 32-byte scalar.
  */
-export function generateVapidKeys(): { publicKey: string; privateKey: string } {
+export interface VapidKeyPair {
+  publicKey: string;
+  privateKey: string;
+}
+
+/** {@link VapidKeyPair}, freshly generated. */
+export function generateVapidKeys(): VapidKeyPair {
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  // SAFETY: a P-256 JWK export names its coordinates `x`/`y` and its scalar `d` (RFC 7518 §6.2).
+  // All three are read as optional and every one is re-checked on the next lines before use, so an
+  // export that disagrees throws here rather than yielding a short key.
   const pub = pair.publicKey.export({ format: "jwk" }) as { x?: string; y?: string };
+  // SAFETY: as above — the private half of the same RFC 7518 §6.2 JWK, `d` checked below.
   const priv = pair.privateKey.export({ format: "jwk" }) as { d?: string };
   if (!pub.x || !pub.y || !priv.d) throw new Error("node:crypto returned an incomplete P-256 JWK");
   const x = Buffer.from(pub.x, "base64url");
@@ -168,7 +178,7 @@ export async function cmdPushKeys(deps: PushKeysDeps, args: readonly string[]): 
   try {
     subject = subjectArg === undefined ? undefined : validateSubject(subjectArg);
   } catch (e) {
-    deps.io.err(`✗ ${(e as Error).message}`);
+    deps.io.err(`✗ ${message(e)}`);
     return EXIT.USAGE;
   }
 
@@ -232,8 +242,10 @@ export async function cmdPushKeys(deps: PushKeysDeps, args: readonly string[]): 
   try {
     await writeFile(tmp, merged, { mode: 0o600, flag: "wx" });
   } catch (e) {
+    // SAFETY: `writeFile` rejects with Node's fs error, which carries `.code`; a rejection that
+    // somehow doesn't reads as "not EEXIST" and takes the generic-failure path just below.
     if ((e as NodeJS.ErrnoException).code !== "EEXIST") {
-      deps.io.err(`✗ could not write ${tmp}: ${(e as Error).message}`);
+      deps.io.err(`✗ could not write ${tmp}: ${message(e)}`);
       return EXIT.FAIL;
     }
     // Left behind by a run that died between write and rename. Say so and stop: deleting it blind is
@@ -271,4 +283,9 @@ export async function cmdPushKeys(deps: PushKeysDeps, args: readonly string[]): 
   deps.io.out("  2. On your phone: open Collie → Settings → enable notifications");
   deps.io.out("  3. collie push test");
   return EXIT.OK;
+}
+
+/** The message of a thrown value, without assuming the `catch` handed us an Error. */
+function message<TThrown>(e: TThrown): string {
+  return e instanceof Error ? e.message : String(e);
 }

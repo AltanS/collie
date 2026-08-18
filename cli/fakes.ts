@@ -1,5 +1,5 @@
-import { PackOpsStore } from "../bridge/pack/ops-store.ts";
-import type { CliContext } from "./context.ts";
+import { type OpsRecord, PackOpsStore } from "../bridge/pack/ops-store.ts";
+import type { CliContext, Environment } from "./context.ts";
 import { instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
 import type { Exec, ExecResult, Files } from "./sys.ts";
@@ -29,11 +29,20 @@ export interface FakeExec extends Exec {
   spawned: { command: string[]; env: Record<string, string>; logPath: string }[];
 }
 
+/**
+ * An answer that varies with how many times its prefix has matched — `n` is 1 on the first match.
+ * Wrapped in an object rather than left as a bare function so the two forms are told apart by the
+ * property they carry, not by what `typeof` says about them.
+ */
+export interface PerCallAnswer {
+  perCall: (n: number) => Partial<ExecResult>;
+}
+
 export interface Scripted {
   /** Tools that are not installed. */
   absent?: string[];
   /** Per-call answers, by `<tool> <args…>` prefix match; the first matching entry wins. */
-  answers?: [prefix: string, answer: Partial<ExecResult> | ((n: number) => Partial<ExecResult>)][];
+  answers?: [prefix: string, answer: Partial<ExecResult> | PerCallAnswer][];
   /** The process table, for `ps -p <pid> -o command=`. */
   ps?: Record<number, string>;
   /** pid handed back by a detached spawn. */
@@ -54,7 +63,7 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
       if (!line.startsWith(prefix)) continue;
       const n = (seen.get(prefix) ?? 0) + 1;
       seen.set(prefix, n);
-      const resolved = typeof a === "function" ? a(n) : a;
+      const resolved = "perCall" in a ? a.perCall(n) : a;
       return { code: 0, stdout: "", stderr: "", found: true, ...resolved };
     }
     return { code: 0, stdout: "", stderr: "", found: true };
@@ -127,11 +136,14 @@ export function fakeFiles(seed: Record<string, string> = {}): FakeFiles {
   };
 }
 
+/** Ops records to seed a {@link fakeOps} with, by member id. */
+export type SeededOps = Readonly<Record<string, OpsRecord>>;
+
 /**
  * The ops store over an in-memory file — how the operator reached each member, with no disk. Kept
  * here rather than in one suite because three of them need it and none of them may write a real one.
  */
-export function fakeOps(seed: Record<string, unknown> = {}): PackOpsStore & { contents: () => string | null } {
+export function fakeOps(seed: SeededOps = {}): PackOpsStore & { contents: () => string | null } {
   let contents: string | null =
     Object.keys(seed).length === 0 ? null : `${JSON.stringify({ version: 1, members: seed }, null, 2)}\n`;
   const store = new PackOpsStore("/state", {
@@ -139,9 +151,8 @@ export function fakeOps(seed: Record<string, unknown> = {}): PackOpsStore & { co
     write: async (_p, data) => {
       contents = data;
     },
-  }) as PackOpsStore & { contents: () => string | null };
-  store.contents = () => contents;
-  return store;
+  });
+  return Object.assign(store, { contents: () => contents });
 }
 
 export function capture(): Io & { stdout: string[]; stderr: string[] } {
@@ -151,7 +162,7 @@ export function capture(): Io & { stdout: string[]; stderr: string[] } {
 }
 
 export function context(
-  env: Record<string, string | undefined> = {},
+  env: Environment = {},
   over: Partial<CliContext> = {},
 ): CliContext {
   // The default fixture is the solo instance, so every existing verb suite keeps asserting the
