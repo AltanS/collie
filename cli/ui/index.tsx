@@ -25,25 +25,25 @@ async function once(node: React.ReactElement): Promise<void> {
   await instance.waitUntilExit();
 }
 
-const TONE_COLOR: Record<TonedLine["tone"], string | undefined> = {
+const TONE_COLOR = {
   plain: undefined,
   dim: "gray",
   good: "green",
   warn: "yellow",
   bad: "red",
-};
+} satisfies Record<TonedLine["tone"], string | undefined>;
 
 // ── doctor ───────────────────────────────────────────────────────────────────
 // The plain form is one line per check, its own padding baked in. Here the three columns are laid
 // out by the layout engine instead, so a long identifier widens the column rather than shunting the
 // detail out of alignment — and the status carries the colour the plain form can only spell.
 
-const STATUS_TONE: Record<UiFinding["status"], TonedLine["tone"]> = {
+const STATUS_TONE = {
   ok: "good",
   warn: "warn",
   error: "bad",
   skipped: "dim",
-};
+} satisfies Record<UiFinding["status"], TonedLine["tone"]>;
 
 /** The status cell: a ✓ when it passed, the severity word otherwise — the plain form's vocabulary. */
 function statusLabel(status: UiFinding["status"]): string {

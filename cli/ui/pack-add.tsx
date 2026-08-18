@@ -91,7 +91,10 @@ export function createAddStore(): AddStore {
         emit({ kind: "line", text, tone: text.trimStart().startsWith("warn") ? "warn" : "error", stream: "err" }),
     },
     confirm: (question) => askFor({ mode: "confirm", text: question }, (v) => v === true),
-    prompt: (question) => askFor({ mode: "text", text: question }, (v) => (typeof v === "string" ? v : "")),
+    // A text question is answered with text; the boolean half of the answer channel belongs to
+    // `confirm`, and an answer arriving on it here is not one this prompt can read.
+    prompt: (question) =>
+      askFor({ mode: "text", text: question }, (v) => (v === true || v === false ? "" : v)),
   };
 }
 
@@ -100,11 +103,11 @@ export function createAddStore(): AddStore {
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const LEG_WIDTH = 10;
 
-const TONE_COLOR: Record<AddNote["tone"], string | undefined> = {
+const TONE_COLOR = {
   info: undefined,
   warn: "yellow",
   error: "red",
-};
+} satisfies Record<AddNote["tone"], string | undefined>;
 
 function Notes({ notes, indent }: { notes: readonly AddNote[]; indent: number }): React.ReactElement | null {
   if (notes.length === 0) return null;
@@ -129,12 +132,12 @@ function legMark(status: AddView["legs"][number]["status"], frame: number): Reac
   return <Text dimColor>·</Text>;
 }
 
-const LEG_NAME: Record<AddLeg, string> = {
+const LEG_NAME = {
   probe: "probe",
   install: "install",
   configure: "configure",
   enroll: "enroll",
-};
+} satisfies Record<AddLeg, string>;
 
 function Legs({ legs, frame }: { legs: AddView["legs"]; frame: number }): React.ReactElement {
   return (
