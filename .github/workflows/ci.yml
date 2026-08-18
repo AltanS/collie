@@ -24,6 +24,16 @@ jobs:
 
       - name: Install (root)
         run: bun install --frozen-lockfile
+
+      # Lint as early as it can actually run: oxlint lives in the ROOT node_modules, so the root
+      # install has to come first — but nothing else does. It reads the one `.oxlintrc.json` at the
+      # root (which already covers web/src, hence no second run after the web install) with no flags
+      # of its own, exactly like the pre-commit hook and `collie build`. Cheap (<1s over the whole
+      # tree) and placed before the typechecks and tests so a lint failure doesn't burn minutes on a
+      # doomed run. This full-tree run is the authority when a narrower surface disagrees.
+      - name: Lint
+        run: bun run lint
+
       - name: Typecheck (root)
         run: bun run typecheck
       - name: Test (bridge)
