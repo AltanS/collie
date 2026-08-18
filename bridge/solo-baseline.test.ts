@@ -50,7 +50,7 @@ import type {
 // description, with the reason and the §11 row it renegotiates. Silent regeneration defeats the test.
 //
 // Two layers, deliberately:
-//   • TYPE level — an exhaustive `Record<keyof T, true>` per wire type. `keyof` includes optional
+//   • TYPE level — an exhaustive `satisfies Record<keyof T, true>` per wire type. `keyof` includes optional
 //     keys, so adding `servers?:` or `host?:` to a wire type fails `bun run typecheck` at the exact
 //     line the field was added. server.ts emits its snapshot `satisfies SnapshotResponse`, so a new
 //     emitted key must first exist on the type — the chain has no gap.
@@ -160,6 +160,19 @@ const updateStatus: UpdateStatus = {
   checkedAt: null,
 };
 
+/**
+ * Every member of {@link SessionParts} is a class with private fields, so no fake can ever *be* one
+ * structurally. `Partial<T>` keeps the compiler checking each method a fake DOES supply against the
+ * real class (a renamed or re-typed method still breaks this file); only the "the rest is never
+ * reached" step is asserted.
+ */
+function stubPart<T>(impl: Partial<T>): T {
+  // SAFETY: SessionRegistry only ever calls the methods these fakes implement — `engine.current()`
+  // and the `stop()`/`clearAll()` disposal hooks. `herdr` is stored and handed back, never called,
+  // on the paths this file drives (registry construction, `list()`, and the snapshot assembly).
+  return impl as T;
+}
+
 /** Only claude has a journal adapter in this fixture — codex/shell must not advertise History. */
 const hasJournal = (agent: string) => agent === "claude";
 
@@ -169,10 +182,10 @@ const hasJournal = (agent: string) => agent === "claude";
  */
 function soloRegistry(): SessionRegistry {
   const factory: SessionFactory = () => ({
-    herdr: {} as unknown as SessionParts["herdr"],
-    engine: { current: () => engineSnapshot, stop: () => {} } as unknown as SessionParts["engine"],
-    poker: { stop: () => {} } as unknown as SessionParts["poker"],
-    notifications: { clearAll: () => {} } as unknown as SessionParts["notifications"],
+    herdr: stubPart<SessionParts["herdr"]>({}),
+    engine: stubPart<SessionParts["engine"]>({ current: () => engineSnapshot, stop: () => {} }),
+    poker: stubPart<SessionParts["poker"]>({ stop: () => {} }),
+    notifications: stubPart<SessionParts["notifications"]>({ clearAll: () => {} }),
   });
   return new SessionRegistry({
     configRoot: "/home/you/.config/herdr",
@@ -207,9 +220,10 @@ function soloSnapshot(registry: SessionRegistry): SnapshotResponse {
 }
 
 // ── 1. Wire shapes: the pack dimension exists on the TYPE, never in solo's BYTES ──
-// §11 rows: "Snapshot bytes", "?h=". These maps are exhaustive by construction — `Record<keyof T,…>`
-// makes every key of T (optional ones included) required here, so adding a federation field to a
-// wire type is a TYPECHECK failure, not a silent widening.
+// §11 rows: "Snapshot bytes", "?h=". These maps are exhaustive by construction — `satisfies
+// Record<keyof T,…>` makes every key of T (optional ones included) required here and rejects any key
+// that is NOT on T, so adding a federation field to a wire type is a TYPECHECK failure, not a silent
+// widening.
 //
 // ── THE TRIPWIRE FIRED, ONCE, IN M4/04 ───────────────────────────────────────
 // `servers?:` (SnapshotResponse) and `host?:` (SessionSummary, PaneWire) were added by the snapshot
@@ -220,7 +234,7 @@ function soloSnapshot(registry: SessionRegistry): SnapshotResponse {
 // `servers` is optional-and-absent"). The key-LIST assertions in this section are therefore the one
 // authorised change; every byte-level assertion in this file is untouched.
 
-const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
+const SNAPSHOT_KEYS = {
   bridge: true,
   device: true,
   agents: true,
@@ -233,9 +247,9 @@ const SNAPSHOT_KEYS: Record<keyof SnapshotResponse, true> = {
   ts: true,
   // Present on the type since M4/04, absent from every solo body — see the section header.
   servers: true,
-};
+} satisfies Record<keyof SnapshotResponse, true>;
 
-const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
+const SESSION_SUMMARY_KEYS = {
   name: true,
   isPrimary: true,
   reachable: true,
@@ -243,9 +257,9 @@ const SESSION_SUMMARY_KEYS: Record<keyof SessionSummary, true> = {
   working: true,
   blocked: true,
   host: true,
-};
+} satisfies Record<keyof SessionSummary, true>;
 
-const PANE_WIRE_KEYS: Record<keyof PaneWire, true> = {
+const PANE_WIRE_KEYS = {
   paneId: true,
   workspaceId: true,
   workspaceLabel: true,
@@ -269,24 +283,24 @@ const PANE_WIRE_KEYS: Record<keyof PaneWire, true> = {
   // carries a host: like the fields above it is optional-and-absent when the pane has no meaningful
   // title, and no golden byte moved.
   terminalTitle: true,
-};
+} satisfies Record<keyof PaneWire, true>;
 
-const DEVICE_AUTH_KEYS: Record<keyof DeviceAuth, true> = {
+const DEVICE_AUTH_KEYS = {
   enforced: true,
   device: true,
   authorized: true,
-};
+} satisfies Record<keyof DeviceAuth, true>;
 
-const UPDATE_STATUS_KEYS: Record<keyof UpdateStatus, true> = {
+const UPDATE_STATUS_KEYS = {
   current: true,
   latest: true,
   latestUrl: true,
   releaseAvailable: true,
   bridgeStale: true,
   checkedAt: true,
-};
+} satisfies Record<keyof UpdateStatus, true>;
 
-const WORKSPACE_KEYS: Record<keyof WorkspaceView, true> = {
+const WORKSPACE_KEYS = {
   workspaceId: true,
   number: true,
   label: true,
@@ -294,20 +308,20 @@ const WORKSPACE_KEYS: Record<keyof WorkspaceView, true> = {
   activeTabId: true,
   tabCount: true,
   paneCount: true,
-};
+} satisfies Record<keyof WorkspaceView, true>;
 
-const TAB_KEYS: Record<keyof TabView, true> = {
+const TAB_KEYS = {
   tabId: true,
   workspaceId: true,
   number: true,
   label: true,
   focused: true,
   paneCount: true,
-};
+} satisfies Record<keyof TabView, true>;
 
 describe("solo zero-tax — wire shapes carry no pack dimension", () => {
   test("SnapshotResponse carries `servers` as OPTIONAL and nothing else new", () => {
-    expect(Object.keys(SNAPSHOT_KEYS).sort()).toEqual([
+    expect(Object.keys(SNAPSHOT_KEYS).toSorted()).toEqual([
       "agents",
       "bridge",
       "device",
@@ -323,7 +337,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
   });
 
   test("SessionSummary gained `host` and nothing else", () => {
-    expect(Object.keys(SESSION_SUMMARY_KEYS).sort()).toEqual([
+    expect(Object.keys(SESSION_SUMMARY_KEYS).toSorted()).toEqual([
       "agents",
       "blocked",
       "host",
@@ -335,7 +349,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
   });
 
   test("PaneWire gained `host` and nothing else", () => {
-    expect(Object.keys(PANE_WIRE_KEYS).sort()).toEqual([
+    expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "agent",
       "cwd",
       "focused",
@@ -359,8 +373,8 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
   });
 
   test("the supporting wire types are unchanged too", () => {
-    expect(Object.keys(DEVICE_AUTH_KEYS).sort()).toEqual(["authorized", "device", "enforced"]);
-    expect(Object.keys(UPDATE_STATUS_KEYS).sort()).toEqual([
+    expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);
+    expect(Object.keys(UPDATE_STATUS_KEYS).toSorted()).toEqual([
       "bridgeStale",
       "checkedAt",
       "current",
@@ -368,7 +382,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "latestUrl",
       "releaseAvailable",
     ]);
-    expect(Object.keys(WORKSPACE_KEYS).sort()).toEqual([
+    expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
       "activeTabId",
       "focused",
       "label",
@@ -377,7 +391,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "tabCount",
       "workspaceId",
     ]);
-    expect(Object.keys(TAB_KEYS).sort()).toEqual([
+    expect(Object.keys(TAB_KEYS).toSorted()).toEqual([
       "focused",
       "label",
       "number",
@@ -400,6 +414,9 @@ describe("solo zero-tax — the snapshot body is byte-for-byte today's", () => {
   // Deep equality, not a subset match: an added key fails here even if the golden were regenerated
   // carelessly, because the parsed golden is compared BOTH ways.
   test("deep-equals the golden with no extra keys on either side", () => {
+    // SAFETY: the golden is this file's own committed output — written by `expectGolden` from a
+    // `satisfies SnapshotResponse` body — so its parse is a SnapshotResponse by construction. The
+    // two-way `toEqual` below is what actually checks that, key for key.
     const parsed = JSON.parse(golden("snapshot.json")) as SnapshotResponse;
     const actual = soloSnapshot(soloRegistry());
     expect(actual).toEqual(parsed);
@@ -416,10 +433,9 @@ describe("solo zero-tax — the snapshot body is byte-for-byte today's", () => {
       { name: "default", isPrimary: true, reachable: true, agents: 2, working: 1, blocked: 1 },
     ]);
     // hasSession is the flag; agentSession (a filesystem path for pi) must never reach the wire.
-    expect(snap.agents.map((p) => (p as Record<string, unknown>).agentSession)).toEqual([
-      undefined,
-      undefined,
-    ]);
+    // Asked with `hasOwn` rather than by reading the property, because it is not on PaneWire at all
+    // — which is the point: an absent key, not an undefined value.
+    expect(snap.agents.map((p) => Object.hasOwn(p, "agentSession"))).toEqual([false, false]);
     expect(snap.agents.map((p) => p.hasSession)).toEqual([true, undefined]);
   });
 });
@@ -465,7 +481,7 @@ function declaredRoutes(): string[] {
   const exact = [...src.matchAll(/pathname === "([^"]+)"/g)].map((m) => m[1]!);
   const prefixes = [...src.matchAll(/pathname\.startsWith\("([^"]+)"\)/g)].map((m) => `${m[1]}*`);
   const patterns = [...src.matchAll(/^const \w*ROUTE = (\/\^.+\/);$/gm)].map((m) => m[1]!);
-  return [...new Set([...exact, ...prefixes, ...patterns])].sort();
+  return [...new Set([...exact, ...prefixes, ...patterns])].toSorted();
 }
 
 describe("solo zero-tax — routes", () => {
@@ -500,7 +516,7 @@ describe("solo zero-tax — routes", () => {
 
 // ── 5. Config: no pack keys, no pack env ─────────────────────────────────────
 
-const CONFIG_KEYS: Record<keyof Config, true> = {
+const CONFIG_KEYS = {
   socketPath: true,
   dialMode: true,
   auditContent: true,
@@ -525,11 +541,11 @@ const CONFIG_KEYS: Record<keyof Config, true> = {
   stateDir: true,
   multiSession: true,
   skipServe: true,
-};
+} satisfies Record<keyof Config, true>;
 
 describe("solo zero-tax — config", () => {
   test("Config carries no pack/peer/lead key", () => {
-    const keys = Object.keys(CONFIG_KEYS).sort();
+    const keys = Object.keys(CONFIG_KEYS).toSorted();
     expect(keys).toEqual([
       "allowedOrigins",
       "auditContent",
@@ -561,10 +577,10 @@ describe("solo zero-tax — config", () => {
 
   test("loadConfig with a bare environment produces exactly those keys and one loopback port", () => {
     const cfg = loadConfig();
-    expect(Object.keys(cfg).sort()).toEqual(Object.keys(CONFIG_KEYS).sort());
+    expect(Object.keys(cfg).toSorted()).toEqual(Object.keys(CONFIG_KEYS).toSorted());
     // §11 "Ports opened": exactly one, loopback.
     expect(cfg.host).toBe("127.0.0.1");
-    expect(typeof cfg.port).toBe("number");
+    expect(Number.isInteger(cfg.port)).toBe(true);
   });
 
   test("the poll cadence defaults are unchanged — no second timer to configure", () => {
@@ -577,7 +593,7 @@ describe("solo zero-tax — config", () => {
 
   test("config.ts reads exactly today's COLLIE_* env keys — no pack enrollment key", () => {
     const src = readFileSync(join(import.meta.dir, "config.ts"), "utf8");
-    const keys = [...new Set([...src.matchAll(/COLLIE_[A-Z0-9_]+/g)].map((m) => m[0]))].sort();
+    const keys = [...new Set([...src.matchAll(/COLLIE_[A-Z0-9_]+/g)].map((m) => m[0]))].toSorted();
     expect(keys).toEqual([
       "COLLIE_ALLOWED_ORIGINS",
       "COLLIE_AUDIT_CONTENT",
@@ -672,7 +688,7 @@ function stateDirEntriesNamedBy(files: string[]): string[] {
       }
     }
   }
-  return [...named].sort();
+  return [...named].toSorted();
 }
 
 describe("solo zero-tax — the filesystem", () => {
@@ -709,7 +725,7 @@ describe("solo zero-tax — the filesystem", () => {
       expect(await new TrustStore(stateDir).load()).toBeNull();
       // The audit append is fire-and-forget; let its microtask + write land.
       await Bun.sleep(20);
-      const written = (await readdir(stateDir)).sort();
+      const written = (await readdir(stateDir)).toSorted();
       expect(written).toEqual(["activity.json", "audit.log", "notify-prefs.json", "snooze.json"]);
       expect(written.filter((f) => !STATE_DIR_ENTRIES.includes(f))).toEqual([]);
     } finally {

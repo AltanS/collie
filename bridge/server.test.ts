@@ -27,7 +27,7 @@ import {
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { AuditLog } from "./audit.ts";
+import { AuditLog, type AuditEntry } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { neverProxy } from "./pack/fixtures.ts";
@@ -38,12 +38,11 @@ import type { SnapshotResponse } from "./types.ts";
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
 
+// A real Request, not a fake: checkAccess reads only headers, and Bun's Headers already does the
+// case-insensitive lookup (and keeps `host`, which a browser would strip) — so there is nothing left
+// for a hand-rolled stub to get subtly wrong.
 function req(headers: Record<string, string>): Request {
-  const lower: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v;
-  return {
-    headers: { get: (name: string) => lower[name.toLowerCase()] ?? null },
-  } as unknown as Request;
+  return new Request("http://collie.invalid/api/snapshot", { headers });
 }
 
 function cfg(overrides: Partial<Config> = {}): Config {
@@ -330,6 +329,17 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
   });
 });
 
+/**
+ * HerdrClient carries private socket fields, so no fake can ever *be* one structurally.
+ * `Partial<HerdrClient>` keeps the compiler checking every method a fake DOES supply against the
+ * real client's signature — the only step asserted is "the rest is never reached".
+ */
+function asHerdrClient(fake: Partial<HerdrClient>): HerdrClient {
+  // SAFETY: the pane-write handlers under test call exactly readPane / sendPaneText / sendPaneKeys,
+  // all of which FakePaneClient implements; no other member is reachable from these code paths.
+  return fake as HerdrClient;
+}
+
 describe("pane write prompt binding", () => {
   type ReadArgs = Parameters<HerdrClient["readPane"]>;
 
@@ -365,7 +375,19 @@ describe("pane write prompt binding", () => {
     }
   }
 
-  function request(body: unknown): Request {
+  /**
+   * A pane-action body as the phone posts it. `expected_prompt` is deliberately wider than the
+   * handler's contract: two tests below post a non-string on purpose, and rejecting that IS the
+   * behaviour under test, so the fixture type has to be able to express it.
+   */
+  interface PaneActionBody {
+    keys?: string[];
+    text?: string;
+    submit?: boolean;
+    expected_prompt?: string | number | null;
+  }
+
+  function request(body: PaneActionBody): Request {
     return new Request("http://localhost/api/pane/w1%3Ap1/action", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -373,11 +395,16 @@ describe("pane write prompt binding", () => {
     });
   }
 
-  function auditEntries(): { audit: AuditLog; entries: Array<Record<string, unknown>> } {
-    const entries: Array<Record<string, unknown>> = [];
+  /** One audit line as `JSON.parse` returns it: the entry as written, plus formatAuditLine's stamp. */
+  type AuditLine = AuditEntry & { ts: string };
+
+  function auditEntries() {
+    const entries: AuditLine[] = [];
     return {
       audit: new AuditLog((line) => {
-        entries.push(JSON.parse(line));
+        // SAFETY: the appender is handed formatAuditLine's own output — this test never feeds it
+        // anything else — so the parse round-trips the AuditEntry it just serialised.
+        entries.push(JSON.parse(line) as AuditLine);
       }),
       entries,
     };
@@ -387,7 +414,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
     const res = await keysPane(
-      client as unknown as HerdrClient,
+      asHerdrClient(client),
       cfg(),
       "w1:p1",
       request({ keys: ["1"] }),
@@ -404,7 +431,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
     const res = await replyPane(
-      client as unknown as HerdrClient,
+      asHerdrClient(client),
       cfg(),
       "w1:p1",
       request({ text: "hello", submit: false }),
@@ -421,7 +448,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit, entries } = auditEntries();
     const res = await keysPane(
-      client as unknown as HerdrClient,
+      asHerdrClient(client),
       cfg({ readLines: 321 }),
       "w1:p1",
       request({ keys: ["1"], expected_prompt: "Approve this command?\n1. Yes\n2. No" }),
@@ -443,7 +470,7 @@ describe("pane write prompt binding", () => {
     client.text = expected;
     const { audit } = auditEntries();
     const res = await keysPane(
-      client as unknown as HerdrClient,
+      asHerdrClient(client),
       cfg({ readLines: 20 }),
       "w1:p1",
       request({ keys: ["1"], expected_prompt: expected }),
@@ -465,7 +492,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
     const res = await replyPane(
-      client as unknown as HerdrClient,
+      asHerdrClient(client),
       cfg({ readLines: 321 }),
       "w1:p1",
       request({
@@ -487,7 +514,7 @@ describe("pane write prompt binding", () => {
     client.text = "Command finished";
     const { audit, entries } = auditEntries();
     const res = await keysPane(
-      client as unknown as HerdrClient,
+      asHerdrClient(client),
       cfg(),
       "w1:p1",
       request({ keys: ["1"], expected_prompt: "Approve this command?\n1. Yes\n2. No" }),
@@ -513,7 +540,7 @@ describe("pane write prompt binding", () => {
     client.text = "Command finished";
     const { audit } = auditEntries();
     const res = await replyPane(
-      client as unknown as HerdrClient,
+      asHerdrClient(client),
       cfg(),
       "w1:p1",
       request({
@@ -536,7 +563,7 @@ describe("pane write prompt binding", () => {
       const client = new FakePaneClient();
       const { audit } = auditEntries();
       const res = await keysPane(
-        client as unknown as HerdrClient,
+        asHerdrClient(client),
         cfg(),
         "w1:p1",
         request({ keys: ["1"], expected_prompt }),
@@ -556,7 +583,7 @@ describe("pane write prompt binding", () => {
       const client = new FakePaneClient();
       const { audit } = auditEntries();
       const res = await replyPane(
-        client as unknown as HerdrClient,
+        asHerdrClient(client),
         cfg(),
         "w1:p1",
         request({ text: "hello", expected_prompt }),
@@ -717,8 +744,8 @@ describe("guard applies the device gate to writes only", () => {
   });
 
   test("feature on, allowlisted device: authorised and attributed (header is trimmed)", () => {
-    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone", "laptop"] });
-    expect(deviceAuth(req({ host: "h", "x-device-id": " phone " }), c)).toEqual({
+    const authCfg = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone", "laptop"] });
+    expect(deviceAuth(req({ host: "h", "x-device-id": " phone " }), authCfg)).toEqual({
       enforced: true,
       device: "phone",
       authorized: true,
@@ -726,8 +753,8 @@ describe("guard applies the device gate to writes only", () => {
   });
 
   test("feature on, non-allowlisted device: read-only (attributed but not authorised)", () => {
-    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
-    expect(deviceAuth(req({ host: "h", "x-device-id": "intruder" }), c)).toEqual({
+    const authCfg = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    expect(deviceAuth(req({ host: "h", "x-device-id": "intruder" }), authCfg)).toEqual({
       enforced: true,
       device: "intruder",
       authorized: false,
@@ -735,8 +762,8 @@ describe("guard applies the device gate to writes only", () => {
   });
 
   test("the 'unknown' sentinel is never authorised, even if it appears in the allowlist", () => {
-    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["unknown"] });
-    expect(deviceAuth(req({ host: "h", "x-device-id": "unknown" }), c)).toEqual({
+    const authCfg = cfg({ deviceHeader: HDR, deviceAllowlist: ["unknown"] });
+    expect(deviceAuth(req({ host: "h", "x-device-id": "unknown" }), authCfg)).toEqual({
       enforced: true,
       device: "unknown",
       authorized: false,
@@ -744,8 +771,8 @@ describe("guard applies the device gate to writes only", () => {
   });
 
   test("feature on with an empty allowlist: every header-carrying device is read-only (fail-closed)", () => {
-    const c = cfg({ deviceHeader: HDR, deviceAllowlist: [] });
-    expect(deviceAuth(req({ host: "h", "x-device-id": "phone" }), c)).toEqual({
+    const authCfg = cfg({ deviceHeader: HDR, deviceAllowlist: [] });
+    expect(deviceAuth(req({ host: "h", "x-device-id": "phone" }), authCfg)).toEqual({
       enforced: true,
       device: "phone",
       authorized: false,
