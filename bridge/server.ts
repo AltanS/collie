@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
-import { AuditLog } from "./audit.ts";
+import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
@@ -60,12 +60,14 @@ const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
 const MAX_READ_LINES = 10_000;
 const MAX_EXPECTED_PROMPT_CHARS = 8192;
 const PROMPT_BINDING_BLANK_LINE_HEADROOM = 6;
-const IMAGE_EXT: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
+// A Map, not an object literal: the key is a client-supplied MIME string, and a Map lookup can
+// never reach `Object.prototype`. The accepted set is unchanged.
+const IMAGE_EXT = new Map<string, string>([
+  ["image/png", "png"],
+  ["image/jpeg", "jpg"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+]);
 
 // The built PWA lives in web/dist (Vite output). If it's missing, the bridge still runs the API
 // — only the static UI 503s with a hint to build. Anchored on the resolved checkout root, NOT on
@@ -73,17 +75,18 @@ const IMAGE_EXT: Record<string, string> = {
 // served directory would vanish (see bridge/root.ts).
 const WEB_DIR = join(pluginRoot(), "web", "dist");
 
-const CONTENT_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff2": "font/woff2",
-};
+// A Map for the same reason {@link IMAGE_EXT} is one: the key is derived from a request path.
+const CONTENT_TYPES = new Map<string, string>([
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".css", "text/css; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".webmanifest", "application/manifest+json; charset=utf-8"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".ico", "image/x-icon"],
+  [".woff2", "font/woff2"],
+]);
 
 // Strict CSP. Scripts are external, hashed bundles (script-src 'self'); pane text is rendered by
 // React as text nodes, never markup, so terminal output can't inject. 'unsafe-inline' is allowed
@@ -95,10 +98,10 @@ const CSP =
 
 // Hardening headers set on EVERY response (static + API), applied centrally in the fetch wrapper.
 // nosniff stops content-type confusion; no-referrer keeps the tailnet URL out of any Referer.
-const SECURITY_HEADERS: Record<string, string> = {
+const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
-};
+} satisfies Record<string, string>;
 
 // Loopback Host/Origin forms (with an optional port). Loopback is always trusted — only tailscaled
 // (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
@@ -197,13 +200,16 @@ export function bridgeConfigBody(opts: {
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
   const mine = opts.operatorCommands ?? [];
-  return {
+  const wire: BridgeConfig = {
     push: opts.push,
     vapidPublicKey: opts.vapidPublicKey,
     build: opts.build,
-    ...(mode !== undefined ? { mode } : {}),
-    ...(mine.length > 0 ? { operatorCommands: [...mine] } : {}),
-  } satisfies BridgeConfig;
+  };
+  // Assigned, never conditionally spread: a solo instance's body must carry NEITHER key, byte for
+  // byte as before the pack existed (PACK_PROTOCOL.md §11).
+  if (mode !== undefined) wire.mode = mode;
+  if (mine.length > 0) wire.operatorCommands = [...mine];
+  return wire;
 }
 
 export function startServer(opts: {
@@ -300,10 +306,9 @@ export function startServer(opts: {
       const a = activity.get(rt.name, p.paneId);
       return a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
     };
-    return {
+    // `device` is ASSIGNED below, never conditionally spread: an off deployment sends no such key.
+    const body: SnapshotResponse = {
       bridge,
-      // Only report device state when the feature is on, so an off deployment sends nothing new.
-      ...(device !== null ? { device } : {}),
       // The one place a pane leaves the bridge: the session ref is stripped to a presence flag
       // here, so an agent-reported filesystem path never reaches a browser (see toPaneWire).
       // The flag is computed against the registry, so a harness Herdr detects but Collie has no
@@ -318,7 +323,10 @@ export function startServer(opts: {
       notifications: { snoozedUntil: snooze.until() },
       update: updateMonitor.status(),
       ts: Date.now(),
-    } satisfies SnapshotResponse;
+    };
+    // Only report device state when the feature is on, so an off deployment sends nothing new.
+    if (device !== null) body.device = device;
+    return body;
   };
 
   /**
@@ -464,19 +472,20 @@ export function startServer(opts: {
   // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
   // snooze-clears across every live session's coordinator.
 
+  // Present ONLY on a peer that pins its lead; ASSIGNED below rather than conditionally spread, so
+  // solo and lead keep the zero-tax shape — an absent key, not a disabled one.
+  // `ca` is copied out of its readonly array because Bun's `TLSOptions` wants a mutable one.
+  const listenerTls = opts.tls === undefined ? undefined : { ...opts.tls, ca: [...opts.tls.ca] };
+
   const server = Bun.serve({
     hostname: cfg.host,
     port: cfg.port,
     // Runtime cap on any request body — a chunked/lying client is cut off here even if its
     // Content-Length is absent or false. The upload handler still does its own precise check.
     maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
-    // Present ONLY on a peer that pins its lead (`bridge/pack/peerListenerTls`); `undefined` for
-    // solo and for a lead, which is the zero-tax shape — an absent key, not a disabled one. When it
-    // is present the handshake itself is the first factor: an unpinned or absent client certificate
-    // never reaches `fetch` at all, so nothing below has to defend against it.
-    // `ca` is copied out of its readonly array because Bun's `TLSOptions` wants a mutable one; the
-    // spread is the only reason this is not a bare `tls: opts.tls`.
-    ...(opts.tls === undefined ? {} : { tls: { ...opts.tls, ca: [...opts.tls.ca] } }),
+    // When TLS is present the handshake itself is the first factor: an unpinned or absent client
+    // certificate never reaches `fetch` at all, so nothing below has to defend against it.
+    tls: listenerTls,
 
     async fetch(req) {
       const url = new URL(req.url);
@@ -535,15 +544,19 @@ export function startServer(opts: {
             return secure(
               await packLead!.forward(req, url, resolved, {
                 device: whois(req).device,
-                audit: (entry) =>
-                  audit.record({
+                audit: (entry) => {
+                  // Assigned, never conditionally spread: an entry without a pane or session must
+                  // carry NO such key rather than record it as `undefined`.
+                  const row: AuditEntry = {
                     action: entry.action,
                     host: entry.host,
-                    ...(entry.paneId === undefined ? {} : { paneId: entry.paneId }),
-                    ...(entry.session === undefined ? {} : { session: entry.session }),
                     device: whois(req).device,
                     detail: { forwarded: entry.outcome },
-                  }),
+                  };
+                  if (entry.paneId !== undefined) row.paneId = entry.paneId;
+                  if (entry.session !== undefined) row.session = entry.session;
+                  audit.record(row);
+                },
               }),
             );
           }
@@ -614,9 +627,11 @@ export function startServer(opts: {
         // subscribe to notifications.
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
-        let body: unknown;
+        let body: JsonValue;
         try {
-          body = await req.json();
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `isPushSubscription`
+          // checks every field this route stores before a byte of it is persisted.
+          body = (await req.json()) as JsonValue;
         } catch {
           return text("bad subscription", 400);
         }
@@ -631,13 +646,15 @@ export function startServer(opts: {
         // Managing your own notification quiet-hours isn't terminal-driving — read-level, like subscribe.
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
-        let body: unknown;
+        let body: JsonValue;
         try {
-          body = await req.json();
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `snoozedUntil` is
+          // checked to be a number (or null) below before it is stored.
+          body = (await req.json()) as JsonValue;
         } catch {
           return text("bad request", 400);
         }
-        const until = (body as { snoozedUntil?: unknown }).snoozedUntil;
+        const until = asJsonRecord(body)?.snoozedUntil ?? null;
         if (until !== null && typeof until !== "number") return text("bad snoozedUntil", 400);
         await snooze.set(until);
         // Snoozing should also clear whatever's already on the lock screen — across every session,
@@ -665,9 +682,11 @@ export function startServer(opts: {
         if (req.method === "POST") {
           const denied = guard(req, cfg, "read", pairing);
           if (denied) return denied;
-          let body: unknown;
+          let body: JsonValue;
           try {
-            body = await req.json();
+            // SAFETY: `Request.json()` output IS a JsonValue by construction;
+            // `parseNotifyPrefsPatch` rejects anything that is not three optional booleans.
+            body = (await req.json()) as JsonValue;
           } catch {
             return text("bad request", 400);
           }
@@ -880,7 +899,7 @@ async function readPane(
       build,
     );
   } catch (err) {
-    return text(`herdr read failed: ${(err as Error).message}`, 502);
+    return text(`herdr read failed: ${errorText(err)}`, 502);
   }
 }
 
@@ -898,12 +917,19 @@ export function paneReadResponse(paneId: string, read: PaneRead): PaneReadRespon
  * `before` is an opaque cursor (a turn's uuid) that only ever reaches an in-memory `findIndex`, so it
  * needs no validation beyond length — it never touches the filesystem.
  */
-export function historyParams(url: URL): { limit: number; before?: string } {
+/** One page request off the query string: a clamped size and an optional opaque cursor. */
+export type HistoryParams = { limit: number; before?: string };
+
+export function historyParams(url: URL): HistoryParams {
   const raw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit =
     Number.isFinite(raw) && raw > 0 ? Math.min(raw, MAX_HISTORY_LIMIT) : DEFAULT_HISTORY_LIMIT;
   const before = url.searchParams.get("before");
-  return { limit, ...(before && before.length <= 100 ? { before } : {}) };
+  const params: HistoryParams = { limit };
+  // Assigned, never conditionally spread: an absent/oversized cursor must leave the key OFF, which
+  // is what the store reads as "newest page".
+  if (before && before.length <= 100) params.before = before;
+  return params;
 }
 
 /**
@@ -944,7 +970,7 @@ async function paneHistory(
     if (page === null) return unavailable("no-log");
     return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
   } catch (err) {
-    return text(`transcript read failed: ${(err as Error).message}`, 502);
+    return text(`transcript read failed: ${errorText(err)}`, 502);
   }
 }
 
@@ -1000,7 +1026,7 @@ export async function sendReplySteps(
         error: "typed into the pane but not submitted — check the pane before resending",
       };
     }
-    return { ok: false, textDelivered, error: (err as Error).message };
+    return { ok: false, textDelivered, error: errorText(err) };
   }
 }
 
@@ -1013,16 +1039,26 @@ export async function replyPane(
   device: string | null,
   session: string,
 ): Promise<Response> {
-  let body: { text?: string; submit?: boolean; expected_prompt?: unknown };
+  let body: JsonValue;
   try {
-    body = (await req.json()) as typeof body;
+    // SAFETY: `Request.json()` output IS a JsonValue by construction. Every field is checked below
+    // before it is used — which is the point: the shape this used to be *declared* as was the
+    // client's claim, never a fact.
+    body = (await req.json()) as JsonValue;
   } catch {
     return text("bad body", 400);
   }
-  const expected = expectedPrompt(body);
+  const fields = asJsonRecord(body) ?? {};
+  const expected = expectedPrompt(fields);
   if (!expected.ok) return text("bad expected_prompt", 400);
-  const txt = body.text ?? "";
-  const submit = body.submit ?? true;
+  // `text`/`submit` are CHECKED, not assumed. They used only to be declared string/boolean, so a
+  // body that lied handed a non-string to `pane.send_text` (herdr refused it one layer down) or
+  // made `submit ?? true` follow a truthiness path nobody wrote. A malformed write is refused here,
+  // with nothing typed and nothing submitted.
+  if (fields.text !== undefined && typeof fields.text !== "string") return text("bad text", 400);
+  if (fields.submit !== undefined && typeof fields.submit !== "boolean") return text("bad submit", 400);
+  const txt = fields.text ?? "";
+  const submit = fields.submit ?? true;
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
     ? await checkPromptBinding(herdr, cfg, paneId, expected.value)
@@ -1044,19 +1080,21 @@ export async function replyPane(
     return promptBindingFailure(binding, ae);
   }
   const outcome = await sendReplySteps(herdr, paneId, txt, submit, cfg.submitKeys);
+  const replyDetail: AuditDetail = {
+    text: txt,
+    submit,
+    submitted: outcome.ok,
+    textDelivered: outcome.textDelivered,
+  };
+  // Assigned, never conditionally spread: an unbound reply records no `promptBinding` key.
+  if (binding) replyDetail.promptBinding = binding.audit;
   // Audit the attempt regardless of outcome — text may have landed even when the submit failed.
   audit.record({
     action: "reply",
     paneId,
     session,
     device,
-    detail: {
-      text: txt,
-      submit,
-      submitted: outcome.ok,
-      textDelivered: outcome.textDelivered,
-      ...(binding ? { promptBinding: binding.audit } : {}),
-    },
+    detail: replyDetail,
   });
   if (outcome.ok) return json({ ok: true } satisfies ActionResponse, ae);
   return json(
@@ -1074,15 +1112,19 @@ export async function keysPane(
   device: string | null,
   session: string,
 ): Promise<Response> {
-  let body: { keys?: unknown; expected_prompt?: unknown };
+  let body: JsonValue;
   try {
-    body = (await req.json()) as typeof body;
+    // SAFETY: `Request.json()` output IS a JsonValue by construction. Every field is checked below
+    // before it is used — which is the point: the shape this used to be *declared* as was the
+    // client's claim, never a fact.
+    body = (await req.json()) as JsonValue;
   } catch {
     return text("bad body", 400);
   }
-  const expected = expectedPrompt(body);
+  const fields = asJsonRecord(body) ?? {};
+  const expected = expectedPrompt(fields);
   if (!expected.ok) return text("bad expected_prompt", 400);
-  const keys = Array.isArray(body.keys) ? body.keys.filter((k): k is string => typeof k === "string") : [];
+  const keys = Array.isArray(fields.keys) ? fields.keys.filter((k): k is string => typeof k === "string") : [];
   if (keys.length === 0) return text("no keys", 400);
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
@@ -1098,6 +1140,9 @@ export async function keysPane(
     });
     return promptBindingFailure(binding, ae);
   }
+  const keysDetail: AuditDetail = { keys };
+  // Assigned, never conditionally spread: an unbound send records no `promptBinding` key.
+  if (binding) keysDetail.promptBinding = binding.audit;
   try {
     await herdr.sendPaneKeys(paneId, keys);
     audit.record({
@@ -1105,7 +1150,7 @@ export async function keysPane(
       paneId,
       session,
       device,
-      detail: { keys, ...(binding ? { promptBinding: binding.audit } : {}) },
+      detail: keysDetail,
     });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
@@ -1118,7 +1163,7 @@ export async function keysPane(
         detail: { keys, sent: false, promptBinding: binding.audit },
       });
     }
-    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
   }
 }
 
@@ -1127,11 +1172,11 @@ type ExpectedPrompt =
   | { ok: true; present: true; value: string }
   | { ok: false };
 
-function expectedPrompt(body: object): ExpectedPrompt {
+function expectedPrompt(body: JsonObject): ExpectedPrompt {
   if (!Object.prototype.hasOwnProperty.call(body, "expected_prompt")) {
     return { ok: true, present: false };
   }
-  const value = (body as { expected_prompt?: unknown }).expected_prompt;
+  const value = body.expected_prompt;
   if (typeof value !== "string" || value.length > MAX_EXPECTED_PROMPT_CHARS) {
     return { ok: false };
   }
@@ -1184,7 +1229,7 @@ async function checkPromptBinding(
   } catch (err) {
     return {
       ok: false,
-      error: `herdr read failed: ${(err as Error).message}`,
+      error: `herdr read failed: ${errorText(err)}`,
       status: 502,
       audit: { checked: true, passed: false, expected, reason: "read_failed" },
     };
@@ -1214,12 +1259,11 @@ function promptBindingFailure(
   result: Extract<PromptBindingCheck, { ok: false }>,
   acceptEncoding: string | null,
 ): Response {
+  const failure: ActionResponse = { ok: false, error: result.error };
+  // Assigned, never conditionally spread: a refusal with no machine-readable code carries no key.
+  if (result.code) failure.code = result.code;
   return json(
-    {
-      ok: false,
-      error: result.error,
-      ...(result.code ? { code: result.code } : {}),
-    } satisfies ActionResponse,
+    failure,
     acceptEncoding,
     result.status,
   );
@@ -1241,7 +1285,7 @@ async function closePane(
     audit.record({ action: "pane.close", paneId, session, device, detail: {} });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
   }
 }
 
@@ -1258,21 +1302,25 @@ async function renamePane(
   session: string,
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
-  let body: { label?: unknown };
+  let body: JsonValue;
   try {
-    body = (await req.json()) as typeof body;
+    // SAFETY: `Request.json()` output IS a JsonValue by construction. Every field is checked below
+    // before it is used — which is the point: the shape this used to be *declared* as was the
+    // client's claim, never a fact.
+    body = (await req.json()) as JsonValue;
   } catch {
     return text("bad body", 400);
   }
-  if (body.label !== null && typeof body.label !== "string") return text("bad label", 400);
-  const trimmed = typeof body.label === "string" ? body.label.trim() : "";
+  const fields = asJsonRecord(body) ?? {};
+  if (fields.label !== null && typeof fields.label !== "string") return text("bad label", 400);
+  const trimmed = typeof fields.label === "string" ? fields.label.trim() : "";
   const label = trimmed.length > 0 ? trimmed : null;
   try {
     await herdr.renamePane(paneId, label);
     audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
   }
 }
 
@@ -1284,7 +1332,7 @@ async function renamePane(
  * Pure + exported so the rule is unit-testable without standing up Bun.serve.
  */
 export function normalizeTabLabel(
-  v: unknown,
+  v: JsonValue | undefined,
 ): { ok: true; label: string } | { ok: false; error: string } {
   if (typeof v !== "string") return { ok: false, error: "bad label" };
   const label = v.trim();
@@ -1304,20 +1352,23 @@ async function renameTab(
   session: string,
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
-  let body: { label?: unknown };
+  let body: JsonValue;
   try {
-    body = (await req.json()) as typeof body;
+    // SAFETY: `Request.json()` output IS a JsonValue by construction. Every field is checked below
+    // before it is used — which is the point: the shape this used to be *declared* as was the
+    // client's claim, never a fact.
+    body = (await req.json()) as JsonValue;
   } catch {
     return text("bad body", 400);
   }
-  const parsed = normalizeTabLabel(body.label);
+  const parsed = normalizeTabLabel(asJsonRecord(body)?.label);
   if (!parsed.ok) return text(parsed.error, 400);
   try {
     await herdr.renameTab(tabId, parsed.label);
     audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
   }
 }
 
@@ -1339,7 +1390,7 @@ async function closeTab(
     audit.record({ action: "tab.close", session, device, detail: { tabId } });
     return json({ ok: true } satisfies ActionResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies ActionResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
   }
 }
 
@@ -1354,18 +1405,26 @@ async function createTab(
   device: string | null,
   session: string,
 ): Promise<Response> {
-  let body: { workspaceId?: string; label?: string; cwd?: string };
+  let body: JsonValue;
   try {
-    body = (await req.json()) as typeof body;
+    // SAFETY: `Request.json()` output IS a JsonValue by construction. Every field is checked below
+    // before it is used — which is the point: the shape this used to be *declared* as was the
+    // client's claim, never a fact.
+    body = (await req.json()) as JsonValue;
   } catch {
     return text("bad body", 400);
   }
-  const workspaceId = body.workspaceId?.trim();
+  const fields = asJsonRecord(body) ?? {};
+  // Each field is CHECKED rather than declared: a non-string `workspaceId` used to reach `.trim()`
+  // and throw a TypeError out of the handler.
+  const workspaceId = typeof fields.workspaceId === "string" ? fields.workspaceId.trim() : undefined;
+  const tabLabel = typeof fields.label === "string" ? fields.label : undefined;
+  const cwd = typeof fields.cwd === "string" ? fields.cwd : undefined;
   const ae = req.headers.get("accept-encoding");
   if (!workspaceId) return json({ ok: false, error: "workspaceId required" } satisfies CreateResponse, ae);
   try {
-    const created = await herdr.createTab(workspaceId, { label: body.label, cwd: body.cwd });
-    const label =
+    const created = await herdr.createTab(workspaceId, { label: tabLabel, cwd });
+    const workspaceLabel =
       engine.current().workspaces.find((w) => w.workspaceId === created.workspaceId)?.label ??
       created.workspaceId;
     audit.record({
@@ -1373,14 +1432,14 @@ async function createTab(
       paneId: created.paneId,
       session,
       device,
-      detail: { workspaceId, label: body.label, cwd: body.cwd },
+      detail: { workspaceId, label: tabLabel, cwd },
     });
     return json({
       ok: true,
-      pane: { ...created, workspaceLabel: label },
+      pane: { ...created, workspaceLabel },
     } satisfies CreateResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies CreateResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies CreateResponse, ae);
   }
 }
 
@@ -1394,22 +1453,28 @@ async function createWorkspace(
   device: string | null,
   session: string,
 ): Promise<Response> {
-  let body: { cwd?: string; label?: string };
+  let body: JsonValue;
   try {
-    body = (await req.json()) as typeof body;
+    // SAFETY: `Request.json()` output IS a JsonValue by construction. Every field is checked below
+    // before it is used — which is the point: the shape this used to be *declared* as was the
+    // client's claim, never a fact.
+    body = (await req.json()) as JsonValue;
   } catch {
     return text("bad body", 400);
   }
-  const cwd = body.cwd?.trim() || homedir();
+  const fields = asJsonRecord(body) ?? {};
+  // Checked, not declared — see createTab.
+  const cwd = (typeof fields.cwd === "string" ? fields.cwd.trim() : "") || homedir();
+  const label = typeof fields.label === "string" ? fields.label : undefined;
   const ae = req.headers.get("accept-encoding");
   try {
-    const created = await herdr.createWorkspace({ cwd, label: body.label });
+    const created = await herdr.createWorkspace({ cwd, label });
     audit.record({
       action: "workspace.create",
       paneId: created.paneId,
       session,
       device,
-      detail: { label: body.label, cwd },
+      detail: { label, cwd },
     });
     return json({
       ok: true,
@@ -1422,7 +1487,7 @@ async function createWorkspace(
       },
     } satisfies CreateResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies CreateResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies CreateResponse, ae);
   }
 }
 
@@ -1462,7 +1527,7 @@ async function uploadPane(
   if (!(file instanceof File)) {
     return json({ ok: false, error: "no file" } satisfies UploadResponse, ae);
   }
-  const ext = IMAGE_EXT[file.type];
+  const ext = IMAGE_EXT.get(file.type);
   if (!ext) {
     return json({ ok: false, error: `unsupported type: ${file.type || "unknown"}` } satisfies UploadResponse, ae);
   }
@@ -1487,7 +1552,7 @@ async function uploadPane(
     });
     return json({ ok: true, path: fullPath } satisfies UploadResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: (err as Error).message } satisfies UploadResponse, ae);
+    return json({ ok: false, error: errorText(err) } satisfies UploadResponse, ae);
   }
 }
 
@@ -1673,7 +1738,7 @@ function secure(res: Response): Response {
   return res;
 }
 
-function json(data: unknown, acceptEncoding: string | null, status = 200): Response {
+function json<TBody>(data: TBody, acceptEncoding: string | null, status = 200): Response {
   const response = gzipJsonResponse(data, acceptEncoding);
   if (status === 200) return secure(response);
   return secure(new Response(response.body, { status, headers: response.headers }));
@@ -1692,6 +1757,19 @@ function jsonError(message: string, status: number, _acceptEncoding: string | nu
     }),
   );
 }
+
+/** The message of a thrown value, without assuming the `catch` handed us an Error. */
+function errorText<T>(err: T): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** The headers {@link serveStatic} composes. `.html` and `sw.js` each add one more. */
+type StaticHeaders = {
+  "content-type": string;
+  "cache-control": string;
+  "content-security-policy"?: string;
+  "service-worker-allowed"?: string;
+} & Record<string, string>;
 
 function text(body: string, status: number): Response {
   return secure(new Response(body, { status }));
@@ -1730,27 +1808,27 @@ export function parsePairRequest(v: JsonValue | undefined): PairRequest | null {
  * → 400). Unknown keys are ignored. An empty patch is valid (a no-op that echoes current prefs).
  * Pure + exported so the validation is unit-testable without Bun.serve.
  */
-export function parseNotifyPrefsPatch(v: unknown): Partial<NotifyPrefs> | null {
-  if (typeof v !== "object" || v === null) return null;
-  const o = v as Record<string, unknown>;
+export function parseNotifyPrefsPatch(v: JsonValue | undefined): Partial<NotifyPrefs> | null {
+  const o = asJsonRecord(v);
+  if (o === null) return null;
   const patch: Partial<NotifyPrefs> = {};
   for (const key of ["blocked", "done", "updates"] as const) {
     if (!(key in o)) continue;
-    if (typeof o[key] !== "boolean") return null;
-    patch[key] = o[key] as boolean;
+    const value = o[key];
+    if (typeof value !== "boolean") return null;
+    patch[key] = value;
   }
   return patch;
 }
 
 // Shape-check an untrusted /api/subscribe body before persisting it (a malformed sub would be
 // stored keyed on `undefined` and silently never fire).
-function isPushSubscription(v: unknown): v is PushSubscription {
-  if (typeof v !== "object" || v === null) return false;
-  const o = v as Record<string, unknown>;
-  const keys = o.keys as Record<string, unknown> | undefined;
+function isPushSubscription(v: JsonValue | undefined): v is JsonValue & PushSubscription {
+  const o = asJsonRecord(v);
+  if (o === null) return false;
+  const keys = asJsonRecord(o.keys);
   return (
     typeof o.endpoint === "string" &&
-    typeof keys === "object" &&
     keys !== null &&
     typeof keys.p256dh === "string" &&
     typeof keys.auth === "string"
@@ -1765,8 +1843,8 @@ function isPushSubscription(v: unknown): v is PushSubscription {
  * stored, and a client that got this field wrong would otherwise lose push entirely over a
  * housekeeping hint. The cap is only there so a junk field can't be persisted at length.
  */
-function supersededEndpoint(body: unknown): string | undefined {
-  const replaces = (body as { replaces?: unknown }).replaces;
+function supersededEndpoint(body: JsonValue | undefined): string | undefined {
+  const replaces = asJsonRecord(body)?.replaces;
   if (typeof replaces !== "string" || replaces === "" || replaces.length > 2048) return undefined;
   return replaces;
 }
@@ -1780,6 +1858,8 @@ async function buildId(): Promise<string> {
     const f = Bun.file(join(WEB_DIR, "build-info.json"));
     const mtime = f.lastModified;
     if (!buildCache || buildCache.mtime !== mtime) {
+      // SAFETY: `build-info.json` is written by this repo's own Vite build, next to the bundle it
+      // stamps; a missing/garbled file lands in the `catch` below and reads as "unknown".
       const data = (await f.json()) as { id?: string };
       buildCache = { id: data.id ?? "unknown", mtime };
     }
@@ -1892,8 +1972,8 @@ async function serveStatic(pathname: string): Promise<Response> {
   }
 
   const ext = extname(full);
-  const headers: Record<string, string> = {
-    "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream",
+  const headers: StaticHeaders = {
+    "content-type": CONTENT_TYPES.get(ext) ?? "application/octet-stream",
     [BUILD_HEADER]: await buildId(), // which bundle the server is serving (vs the client's stamp)
     "cache-control": cacheControlFor(rel),
   };
