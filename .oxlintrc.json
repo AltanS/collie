@@ -47,6 +47,12 @@
     "eslint/no-await-in-loop": "off",
     // Three unrenameable families: tooling-imposed globals (`__WB_MANIFEST` injected by vite-plugin-pwa, `__BUILD_INFO__` from Vite `define`), a `_x` backing field behind a same-named getter (bridge/push.ts `_enabled` / `get enabled()`), and the repo-wide `__resetX()` test-seam marker on module singletons where the dangle IS the "not public API" signal.
     "eslint/no-underscore-dangle": "off",
+    // Every keyed list in this app is positional-by-nature: terminal grid rows, ANSI segments within a row, parsed dialog option rows (whose synthetic ids are literally `opt-${i}`), markdown inline pieces, transcript parts. Position IS the identity — there is no stable id, and content-derived keys would remount every changed row of the mirror's hottest path on each poll and break ansi-output's scroll anchor.
+    "react/no-array-index-key": "off",
+    // The remaining roles are deliberate: `role="img"` on inline <svg>/initials <span> (an <img> needs a src), checkbox/radio roles on buttons that MIRROR terminal state and must never own their own checked state, and sheet surfaces where native <dialog>/<fieldset> semantics (top-layer, light-dismiss, form implication) collide with the app's gesture handling and ADR 0007's pause-not-gate idle lock. The four convertible `role="status"` banners were converted to <output> before this exemption.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // Side-effect imports have no assignable form: ./index.css, @testing-library/jest-dom/vitest, ./lib/pwa (SW registration). Same exemption ts-factory-stack records.
+    "import/no-unassigned-import": "off",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",
