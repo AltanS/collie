@@ -16,6 +16,7 @@ import {
   normalizeTabLabel,
   paneReadResponse,
   parsePairRequest,
+  parseSnoozeRequest,
   replyPane,
   requestDevice,
   resolveStaticPath,
@@ -939,6 +940,38 @@ describe("parsePairRequest — the bootstrap body", () => {
   test("the code is passed through unjudged — shape-checking it would be a free oracle", () => {
     // Not code-shaped at all, but it is the hash compare's job to say so, in constant time.
     expect(parsePairRequest({ code: "!!!!", label: "phone" })?.code).toBe("!!!!");
+  });
+});
+
+describe("parseSnoozeRequest — absence is not null", () => {
+  test("an explicit null clears the snooze", () => {
+    expect(parseSnoozeRequest({ snoozedUntil: null })).toEqual({ ok: true, until: null });
+  });
+
+  test("a number is passed through as the deadline", () => {
+    expect(parseSnoozeRequest({ snoozedUntil: 1_700_000_000_000 })).toEqual({
+      ok: true,
+      until: 1_700_000_000_000,
+    });
+  });
+
+  test("an OMITTED field is refused — it must never read as a clear", () => {
+    // The regression this pins: `{}` reaching `snooze.set(null)` would silently unmute every
+    // session's notifications on a body that asked for nothing.
+    expect(parseSnoozeRequest({})).toEqual({ ok: false });
+    expect(parseSnoozeRequest({ snoozed_until: null })).toEqual({ ok: false });
+    expect(parseSnoozeRequest({ snoozedUntil: undefined })).toEqual({ ok: false });
+  });
+
+  test("a body that is not an object is refused rather than dereferenced", () => {
+    expect(parseSnoozeRequest(null)).toEqual({ ok: false });
+    expect(parseSnoozeRequest("later")).toEqual({ ok: false });
+    expect(parseSnoozeRequest([null])).toEqual({ ok: false });
+  });
+
+  test("a non-numeric value is refused", () => {
+    expect(parseSnoozeRequest({ snoozedUntil: "1700000000000" })).toEqual({ ok: false });
+    expect(parseSnoozeRequest({ snoozedUntil: true })).toEqual({ ok: false });
   });
 });
 

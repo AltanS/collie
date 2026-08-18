@@ -654,9 +654,9 @@ export function startServer(opts: {
         } catch {
           return text("bad request", 400);
         }
-        const until = asJsonRecord(body)?.snoozedUntil ?? null;
-        if (until !== null && typeof until !== "number") return text("bad snoozedUntil", 400);
-        await snooze.set(until);
+        const parsed = parseSnoozeRequest(body);
+        if (!parsed.ok) return text("bad snoozedUntil", 400);
+        await snooze.set(parsed.until);
         // Snoozing should also clear whatever's already on the lock screen — across every session,
         // since snooze is bridge-wide. Each session owns its own notification slot (tag).
         if (snooze.isMuted()) {
@@ -1792,6 +1792,30 @@ function asJsonRecord(value: JsonValue | undefined): JsonObject | null {
 
 /** A `/api/pair/claim` body, once it is one. */
 type PairRequest = { code: string; label: string };
+
+/**
+ * Validate an untrusted /api/notifications/snooze body's `snoozedUntil`.
+ *
+ * ABSENCE IS NOT `null`, and the difference is the whole contract: an explicit `null` CLEARS the
+ * snooze, while an omitted field is a malformed request (400) — collapsing the two would let an
+ * empty body silently unmute every session's notifications. A number is a deadline in epoch ms and
+ * is passed through unjudged; `Snooze.set` already treats a past one as "not muted".
+ *
+ * Pure + exported because the handler lives inside `Bun.serve`, which `bun test` cannot stand up
+ * (CLAUDE.md) — same reason as {@link parsePairRequest} and {@link parseNotifyPrefsPatch}.
+ */
+export function parseSnoozeRequest(v: JsonValue | undefined): SnoozeRequest {
+  const record = asJsonRecord(v);
+  // A body that is not an object at all has no field to read, so it lands on the same refusal an
+  // omitted field does (and never on a property access against `null`, which used to throw).
+  const until = record === null ? undefined : record.snoozedUntil;
+  if (until === null) return { ok: true, until: null };
+  if (typeof until !== "number") return { ok: false };
+  return { ok: true, until };
+}
+
+/** {@link parseSnoozeRequest}'s answer. `until: null` is the explicit clear. */
+export type SnoozeRequest = { ok: true; until: number | null } | { ok: false };
 
 export function parsePairRequest(v: JsonValue | undefined): PairRequest | null {
   const o = asJsonRecord(v);
