@@ -2,6 +2,8 @@
 // adapter (herdr-client.ts) so the parsing/discrimination is importable and unit-testable without
 // touching Bun.connect. Protocol facts are documented in HERDR_API.md.
 
+import type { JsonValue } from "./json.ts";
+
 /**
  * Decode one reply line into its `result` payload, or throw a descriptive Error. Herdr replies are
  * `{"id", "result": {...}}` on success or `{"id", "error": {code, message}}` on failure; anything
@@ -9,20 +11,45 @@
  * decorates the message.
  */
 export function decodeReplyLine<T>(line: string, method: string): T {
-  let msg: unknown;
+  let msg: JsonValue;
   try {
-    msg = JSON.parse(line);
+    // SAFETY: `JSON.parse` returns exactly a JsonValue by construction — string, number, boolean,
+    // null, or an array/object of those. TS types it `any`; this names what it already is, and is
+    // what lets every field read below stay checked instead of re-asserted.
+    msg = JSON.parse(line) as JsonValue;
   } catch (e) {
-    throw new Error(`herdr ${method}: bad reply: ${(e as Error).message}`);
+    throw new Error(`herdr ${method}: bad reply: ${e instanceof Error ? e.message : String(e)}`, {
+      cause: e,
+    });
   }
-  if (msg !== null && typeof msg === "object") {
+  // An array is `typeof "object"` but can carry neither key, so it lands on the same throw below.
+  if (msg !== null && typeof msg === "object" && !Array.isArray(msg)) {
     if ("error" in msg) {
-      const err = (msg as { error: { code: string; message: string } }).error;
-      throw new Error(`herdr ${method}: ${err.code}: ${err.message}`);
+      const err = wireError(msg.error);
+      if (err) throw new Error(`herdr ${method}: ${err.code}: ${err.message}`);
+    } else if ("result" in msg) {
+      // SAFETY: `T` is the CALLER's declared shape for this method's `result` — the wire carries no
+      // type tag to check it against, so this cast is the documented boundary of the decoder
+      // (HERDR_API.md names the result shape per method). Nothing here can verify it.
+      return msg.result as T;
     }
-    if ("result" in msg) return (msg as { result: T }).result;
   }
   throw new Error(`herdr ${method}: unexpected reply shape: ${line}`);
+}
+
+/** Herdr's error object, as it appears on both a one-shot reply and a stream line. */
+type WireError = { code: string; message: string };
+
+/**
+ * Read `{code, message}` off a line's `error` field. Returns null when the field is not that shape,
+ * which leaves the caller on its "unrecognized line" path — a reply claiming `error` but carrying
+ * something else is a protocol violation, not an error to relay.
+ */
+function wireError(raw: JsonValue | undefined): WireError | null {
+  if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { code, message } = raw;
+  if (typeof code !== "string" || typeof message !== "string") return null;
+  return { code, message };
 }
 
 /**
@@ -34,8 +61,15 @@ export function decodeReplyLine<T>(line: string, method: string): T {
  */
 export type StreamLine =
   | { kind: "ack" }
-  | { kind: "event"; event: string; data: unknown }
+  | { kind: "event"; event: string; data: EventData }
   | { kind: "error"; code: string; message: string };
+
+/**
+ * The `data` an event line carries: whatever JSON herdr attached, or nothing. Deliberately not
+ * narrowed per event — Collie treats events purely as a poke to re-poll and never reads the payload
+ * (see herdr-client.ts's `subscribeEvents` doc), so there is no shape to parse against.
+ */
+export type EventData = JsonValue | undefined;
 
 /**
  * Decode one stream line. Subscription ack is `{"id","result":{"type":"subscription_started"}}`;
@@ -43,33 +77,36 @@ export type StreamLine =
  * Bad JSON or a shape that is none of those is a protocol violation and throws.
  */
 export function decodeStreamLine(line: string): StreamLine {
-  let msg: unknown;
+  let msg: JsonValue;
   try {
-    msg = JSON.parse(line);
+    // SAFETY: as in decodeReplyLine — `JSON.parse` output IS a JsonValue by construction.
+    msg = JSON.parse(line) as JsonValue;
   } catch (e) {
-    throw new Error(`herdr events: bad stream line: ${(e as Error).message}`);
+    throw new Error(`herdr events: bad stream line: ${e instanceof Error ? e.message : String(e)}`, {
+      cause: e,
+    });
   }
-  if (msg !== null && typeof msg === "object") {
+  // An array carries none of the three keys, so it lands on the same throw below.
+  if (msg !== null && typeof msg === "object" && !Array.isArray(msg)) {
     if ("error" in msg) {
-      const err = (msg as { error: { code: string; message: string } }).error;
-      return { kind: "error", code: err.code, message: err.message };
-    }
-    if ("result" in msg) {
-      const result = (msg as { result: unknown }).result;
+      const err = wireError(msg.error);
+      if (err) return { kind: "error", code: err.code, message: err.message };
+    } else if ("result" in msg) {
+      const result = msg.result;
       if (
         result !== null &&
+        result !== undefined &&
         typeof result === "object" &&
-        "type" in result &&
-        (result as { type: unknown }).type === "subscription_started"
+        !Array.isArray(result) &&
+        result.type === "subscription_started"
       ) {
         return { kind: "ack" };
       }
       throw new Error(`herdr events: unexpected ack shape: ${line}`);
-    }
-    if ("event" in msg) {
-      const event = (msg as { event: unknown }).event;
+    } else if ("event" in msg) {
+      const event = msg.event;
       if (typeof event !== "string") throw new Error(`herdr events: event name not a string: ${line}`);
-      return { kind: "event", event, data: (msg as { data?: unknown }).data };
+      return { kind: "event", event, data: msg.data };
     }
   }
   throw new Error(`herdr events: unrecognized stream line: ${line}`);

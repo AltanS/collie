@@ -140,24 +140,24 @@ export function dialHerdr(
       unix: socketPath,
       socket: {
         open(s) {
-          bunSock = s as unknown as BunSocket;
+          bunSock = s;
           handlers.open?.(handle);
         },
         data(s, chunk) {
-          bunSock = s as unknown as BunSocket;
+          bunSock = s;
           handlers.data?.(handle, chunk);
         },
         drain(s) {
-          bunSock = s as unknown as BunSocket;
+          bunSock = s;
           pump();
         },
         error(s, err) {
-          bunSock = s as unknown as BunSocket;
+          bunSock = s;
           pending = null;
           handlers.error?.(handle, err);
         },
         close(s) {
-          bunSock = s as unknown as BunSocket;
+          bunSock = s;
           // A connection that dies mid-write drops its remainder here; the close handler is what
           // rejects the caller, exactly as for any other transport failure.
           pending = null;
@@ -168,20 +168,16 @@ export function dialHerdr(
     // Bun.connect exposes no pre-open handle; best available cancellation is closing the socket
     // the moment the connect resolves. Callers already tolerate a late open followed by close.
     handlers.onDial?.(() => {
-      promise
-        .then((s) => {
-          try {
-            (s as unknown as BunSocket).end();
-          } catch {
-            /* ignore */
-          }
-        })
-        .catch(() => {
-          /* connect failed — nothing to close */
-        });
+      void (async () => {
+        try {
+          (await promise).end();
+        } catch {
+          /* connect failed (nothing to close), or end() threw — either way we are done */
+        }
+      })();
     });
     return promise.then((s) => {
-      bunSock = s as unknown as BunSocket;
+      bunSock = s;
       return handle;
     });
   }
@@ -213,7 +209,7 @@ export function dialHerdr(
     sock.on("data", (chunk: Buffer) => handlers.data?.(handle, chunk));
     sock.on("error", (err) => {
       if (!opened) reject(err);
-      handlers.error?.(handle, err as Error);
+      handlers.error?.(handle, err);
     });
     sock.on("close", () => {
       // A dial destroyed while still connecting emits close without error; settle the promise so
