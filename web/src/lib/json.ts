@@ -53,9 +53,9 @@ export function asJsonString(value: JsonValue | undefined): string | undefined {
 /** A JSON value narrowed to a number, or `undefined` when it is anything else (NaN included —
  *  `JSON.parse` never produces one, so a NaN here came from somewhere that isn't JSON). */
 export function asJsonNumber(value: JsonValue | undefined): number | undefined {
-  // SAFETY: as in `asJsonString` — the tag reports the value's own primitive class, and
-  // `[object Number]` cannot be produced by anything else `JSON.parse` returns.
   if (Object.prototype.toString.call(value) !== "[object Number]") return undefined;
+  // SAFETY: as in `asJsonString` — the tag reports the value's own primitive class, and the check
+  // above passed, so `[object Number]` means the value IS a number.
   const n = value as number;
   return Number.isNaN(n) ? undefined : n;
 }
