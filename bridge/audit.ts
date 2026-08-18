@@ -1,4 +1,4 @@
-import { appendFile } from "node:fs/promises";
+import { appendFile, rename, stat } from "node:fs/promises";
 
 // Append-only audit trail of write-level actions (a socket call can type into a real terminal, so
 // who-did-what-when is worth recording). One JSONL line per action at `<stateDir>/audit.log`
@@ -145,9 +145,94 @@ export function formatAuditLine(
   return JSON.stringify(line);
 }
 
-/** A real fs appender for `<stateDir>/audit.log`, owner-only (0600) on create. */
-export function fileAuditAppender(path: string): AppendFn {
-  return (line) => appendFile(path, line, { mode: 0o600 });
+/**
+ * Cap on the live `audit.log` before it rotates.
+ *
+ * The trail records lines that no factor has authenticated yet — a refused pack call is written
+ * before the link's factors pass (`bridge/pack/router.ts`), which is the point: a refusal nobody can
+ * see is not an audit trail. But it also means anyone who can reach the listener can make this file
+ * grow, so its growth must be bounded here rather than by who is calling. Not an env var and not a
+ * config key: a knob whose only wrong setting is "unbounded" is not a choice worth offering.
+ */
+export const AUDIT_MAX_BYTES = 5 * 1024 * 1024;
+
+/** The filesystem operations the appender needs, injected so rotation is testable without a disk. */
+export interface AuditFileIo {
+  /** Size of the file in bytes, or 0 when it does not exist. */
+  size(path: string): Promise<number>;
+  /** Replace `to` with `from`. Rejects like `rename(2)`. */
+  rotate(from: string, to: string): Promise<void>;
+  /** Append to the file, creating it owner-only (0600) — it may echo reply text. */
+  append(path: string, line: string): Promise<void>;
+}
+
+/** The real filesystem. A missing file is size 0, not an error — the first line creates it. */
+export function fsAuditFileIo(): AuditFileIo {
+  return {
+    async size(path) {
+      try {
+        return (await stat(path)).size;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+        throw err;
+      }
+    },
+    rotate: (from, to) => rename(from, to),
+    append: (path, line) => appendFile(path, line, { mode: 0o600 }),
+  };
+}
+
+/**
+ * A real fs appender for `<stateDir>/audit.log`, size-capped at {@link AUDIT_MAX_BYTES} with exactly
+ * one rotated generation: at the cap the live file becomes `audit.log.1`, replacing any previous one,
+ * and the line lands in a fresh `audit.log`.
+ *
+ * Appends are chained for the same reason `push.ts` chains its writes: the size is tracked in memory
+ * (seeded by one `stat`, incremented per write) rather than `stat`ed per line, and interleaved writes
+ * would make that counter fiction. A rejected link never wedges the next one.
+ *
+ * ⛔ A failed rotation still appends. An oversized trail beats a missing line — the cap is a bound on
+ * disk, not a reason to drop the record of an action that happened.
+ */
+export function fileAuditAppender(
+  path: string,
+  io: AuditFileIo = fsAuditFileIo(),
+  maxBytes: number = AUDIT_MAX_BYTES,
+): AppendFn {
+  // null ⇒ unknown (start of process, or a failed rotation left the size in doubt): re-`stat`.
+  let bytes: number | null = null;
+  let chain: Promise<void> = Promise.resolve();
+
+  const write = async (line: string): Promise<void> => {
+    if (bytes === null) {
+      try {
+        bytes = await io.size(path);
+      } catch {
+        bytes = 0; // Can't measure it — write the line rather than lose it.
+      }
+    }
+    if (bytes >= maxBytes) {
+      try {
+        await io.rotate(path, `${path}.1`);
+        bytes = 0;
+      } catch (err) {
+        bytes = null;
+        console.warn(`[audit] could not rotate ${path}: ${(err as Error).message}`);
+      }
+    }
+    await io.append(path, line);
+    if (bytes !== null) bytes += Buffer.byteLength(line, "utf8");
+  };
+
+  return (line) => {
+    const next = chain.then(
+      () => write(line),
+      () => write(line),
+    );
+    // The caller sees this line's own failure; the chain forgets it so the next line still runs.
+    chain = next.catch(() => {});
+    return next;
+  };
 }
 
 /**
