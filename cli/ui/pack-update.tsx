@@ -84,25 +84,25 @@ export function createUpdateStore(): UpdateStore {
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const LEG_WIDTH = 9;
 
-const TONE_COLOR: Record<AddNote["tone"], string | undefined> = {
+const TONE_COLOR = {
   info: undefined,
   warn: "yellow",
   error: "red",
-};
+} satisfies Record<AddNote["tone"], string | undefined>;
 
-const PLAN_COLOR: Record<NonNullable<UpdateMemberView["plan"]>["state"], string | undefined> = {
+const PLAN_COLOR = {
   ready: "cyan",
   current: undefined,
   skipped: undefined,
   blocked: "red",
-};
+} satisfies Record<NonNullable<UpdateMemberView["plan"]>["state"], string | undefined>;
 
-const OUTCOME_COLOR: Record<NonNullable<UpdateMemberView["outcome"]>, string> = {
+const OUTCOME_COLOR = {
   updated: "green",
   current: "gray",
   skipped: "gray",
   failed: "red",
-};
+} satisfies Record<NonNullable<UpdateMemberView["outcome"]>, string>;
 
 function Notes({ notes, indent = 2 }: { notes: readonly AddNote[]; indent?: number }): React.ReactElement | null {
   if (notes.length === 0) return null;
