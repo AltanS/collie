@@ -23,10 +23,10 @@ import {
 const laptop: PackLink = { memberId: "laptop", address: "laptop.example:8787" };
 
 /** A fetch that answers with `body`, stamped with the pack headers a healthy peer sends. */
-function replying(
-  body: unknown,
+function replying<TBody>(
+  body: TBody,
   init: { status?: number; protocol?: string | null; member?: string } = {},
-): { fetch: PackFetch; calls: Array<{ url: string; init: RequestInit }> } {
+) {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fetch: PackFetch = async (url, reqInit) => {
     calls.push({ url, init: reqInit });
@@ -177,6 +177,8 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     let aborted = false;
     const fetch: PackFetch = (_url, init) =>
       new Promise((_resolve, reject) => {
+        // SAFETY: PeerClient always attaches its budget's AbortSignal before dialling — the
+        // cancellation this test is checking for is exactly what that signal carries.
         const signal = init.signal as AbortSignal;
         signal.addEventListener("abort", () => {
           aborted = true;

@@ -4,6 +4,11 @@ import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 
 // All three helpers are pure (no I/O), so we drive them directly.
 
+/** The slice of a merged snapshot body this suite reads back: agents, each host-qualified. */
+interface HostTaggedAgents {
+  agents: Array<{ paneId: string; host: string }>;
+}
+
 describe("computeEtag", () => {
   test("returns a quoted hex string", () => {
     const etag = computeEtag("hello");
@@ -85,7 +90,9 @@ describe("computeEtag — the host dimension", () => {
     const serialized = JSON.stringify(merged);
     // A body that collapsed the two hosts would serialize identically to one with only one entry
     // repeated; assert the two entries actually carry distinct host values in the emitted bytes.
-    const parsed = JSON.parse(serialized) as { agents: Array<{ paneId: string; host: string }> };
+    // SAFETY: `serialized` is this test's own `JSON.stringify(merged)` two lines up, and `merged`
+    // is built here with exactly these two fields on each agent.
+    const parsed = JSON.parse(serialized) as HostTaggedAgents;
     expect(parsed.agents).toHaveLength(2);
     expect(new Set(parsed.agents.map((a) => a.host)).size).toBe(2);
 

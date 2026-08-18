@@ -4,9 +4,16 @@ import { tmpdir } from "node:os";
 
 import { isPiSessionId, parsePiTranscript, PiTranscriptSource } from "./pi.ts";
 
+/**
+ * Any JSON document — what a row of an agent's on-disk log actually is, before the adapter parses
+ * it. Object values admit `undefined` because `JSON.stringify` drops such a key entirely, which is
+ * how the fixtures below express "this field is absent".
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue | undefined };
+
 // Row builders mirroring the verified on-disk shape (pi session logs, session format v3, 2026-07-29).
 // Every row carries its own `id`, so unlike Codex there is nothing to synthesise for paging.
-const row = (id: string, message: Record<string, unknown>) =>
+const row = (id: string, message: Record<string, JsonValue>) =>
   JSON.stringify({
     type: "message",
     id,

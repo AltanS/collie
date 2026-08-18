@@ -104,7 +104,7 @@ describe("PackOpsStore", () => {
     const store = new PackOpsStore("/state", fakeIo());
     await store.record("nas", RECORD);
     await store.record("web", { ...RECORD, sshHost: "web.example" });
-    expect(Object.keys((await store.load()).data!.members).sort()).toEqual(["nas", "web"]);
+    expect(Object.keys((await store.load()).data!.members).toSorted()).toEqual(["nas", "web"]);
   });
 
   test("forget drops exactly one member, and says whether there was one", async () => {

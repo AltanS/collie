@@ -38,7 +38,13 @@ const body = {
   shellPanes: [],
 };
 
-function ok(value: unknown, at = NOW): PeerOutcome<unknown> {
+/** The `kind: "peer"` half of what {@link PackLead.resolve} returns: a link and its liveness. */
+interface ResolvedPeer {
+  link: PackLink;
+  state: PeerState;
+}
+
+function ok<T>(value: T, at = NOW): PeerOutcome<T> {
   return { ok: true, value, status: 200, member: null, receivedAt: at, date: null };
 }
 const down: PeerOutcome<unknown> = { ok: false, state: "unreachable", reason: "timed out", receivedAt: NOW };
@@ -131,7 +137,7 @@ describe("PackLead — the sweep rides the lead's poll, it does not arm a timer"
       return ok(body);
     });
     await h.lead.sweep();
-    expect(h.calls.sort()).toEqual(["a", "b", "c"]);
+    expect(h.calls.toSorted()).toEqual(["a", "b", "c"]);
     expect(Math.max(...started) - Math.min(...started)).toBeLessThan(50);
   });
 
@@ -347,7 +353,7 @@ describe("forward — the lead's per-pane hop (M4/05)", () => {
       members: () => [member({ memberId: "laptop" })],
     });
     const dials: string[] = [];
-    const lead = new PackLead({
+    const packLead = new PackLead({
       registry,
       snapshot: async () => ({ ok: false, state: "unreachable", reason: "unused", receivedAt: 0 }),
       proxy: async (_link, route) => {
@@ -365,9 +371,11 @@ describe("forward — the lead's per-pane hop (M4/05)", () => {
     });
 
     const url = new URL("https://lead.example/api/pane/w1:p1?host=laptop");
-    const resolved = lead.resolve({ kind: "member", id: "laptop" });
+    const resolved = packLead.resolve({ kind: "member", id: "laptop" });
     expect(resolved?.kind).toBe("peer");
-    const res = await lead.forward(new Request(url), url, resolved as { link: PackLink; state: PeerState });
+    // SAFETY: `resolved.kind` is asserted to be "peer" on the line above, which is the variant that
+    // carries the link + state pair.
+    const res = await packLead.forward(new Request(url), url, resolved as ResolvedPeer);
 
     expect(dials).toEqual(["pane/w1:p1"]);
     expect(res.status).toBe(200);

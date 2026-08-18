@@ -422,6 +422,8 @@ describe("commitPackChange — write first, audit second", () => {
         contents = d;
       },
     };
+    // SAFETY: the appender only ever sees formatAuditLine's own output, so the parse round-trips
+    // the AuditEntry just recorded.
     return { lines, io, audit: new AuditLog((l) => void lines.push(JSON.parse(l) as AuditEntry), { now: () => T0 }) };
   }
 

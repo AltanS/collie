@@ -110,7 +110,7 @@ describe("AuditLog", () => {
     const log = new AuditLog(append, { now: () => 0 });
     const warnings: string[] = [];
     const origWarn = console.warn;
-    console.warn = ((...args: unknown[]) => void warnings.push(args.map(String).join(" "))) as typeof console.warn;
+    console.warn = (...args: unknown[]) => void warnings.push(args.map(String).join(" "));
     try {
       expect(() => log.record({ action: "reply", detail: {} } satisfies AuditEntry)).not.toThrow();
       await Promise.resolve();
@@ -127,7 +127,7 @@ describe("AuditLog", () => {
     };
     const log = new AuditLog(append, { now: () => 0 });
     const origWarn = console.warn;
-    console.warn = (() => {}) as typeof console.warn;
+    console.warn = () => {};
     try {
       expect(() => log.record({ action: "upload", detail: {} })).not.toThrow();
     } finally {
@@ -143,7 +143,7 @@ function fakeIo(seed: Record<string, string> = {}): AuditFileIo & {
   files: Record<string, string>;
   failRotate?: boolean;
 } {
-  const files: Record<string, string> = { ...seed };
+  const files = { ...seed };
   const io = {
     files,
     failRotate: false,
@@ -182,7 +182,7 @@ describe("fileAuditAppender rotation", () => {
     await append("third\n");
     expect(io.files["/s/audit.log.1"]).toBe("second2\n");
     expect(io.files["/s/audit.log"]).toBe("third\n");
-    expect(Object.keys(io.files).sort()).toEqual(["/s/audit.log", "/s/audit.log.1"]);
+    expect(Object.keys(io.files).toSorted()).toEqual(["/s/audit.log", "/s/audit.log.1"]);
   });
 
   test("a failed rename still appends — an oversized trail beats a missing line", async () => {
@@ -191,7 +191,7 @@ describe("fileAuditAppender rotation", () => {
     const append = fileAuditAppender("/s/audit.log", io, 8);
     const warnings: string[] = [];
     const origWarn = console.warn;
-    console.warn = ((...args: unknown[]) => void warnings.push(args.map(String).join(" "))) as typeof console.warn;
+    console.warn = (...args: unknown[]) => void warnings.push(args.map(String).join(" "));
     try {
       await append("first-1\n");
       await append("second\n");
@@ -226,12 +226,14 @@ describe("fileAuditAppender rotation", () => {
 
 describe("pack attribution", () => {
   test("via + from ride next to device, and only when present", () => {
+    // SAFETY: `formatAuditLine` is the sole writer of this line, and it emits the entry it was
+    // handed plus its own `ts` — the key-order assertion right below re-checks that field for field.
     const line = JSON.parse(
       formatAuditLine(
         { action: "reply", paneId: "w1:p1", session: "work", device: "phone-7", via: "pack", from: "desk", detail: { text: "hi" } },
         0,
       ),
-    ) as Record<string, unknown>;
+    ) as AuditEntry & { ts: string };
     expect(Object.keys(line)).toEqual(["ts", "action", "paneId", "session", "device", "via", "from", "detail"]);
     expect(line.via).toBe("pack");
     expect(line.from).toBe("desk");

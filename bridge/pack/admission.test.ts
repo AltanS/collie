@@ -20,7 +20,12 @@ import { leadStore, member, PACK, peerStore } from "./fixtures.ts";
 function headerList(res: Response): string[] {
   const out: string[] = [];
   res.headers.forEach((value, key) => out.push(`${key}: ${value}`));
-  return out.sort();
+  return out.toSorted();
+}
+
+/** The §7 mismatch body: the version the receiver wants, and the one it was actually sent. */
+interface ProtocolMismatch {
+  received: number | null;
 }
 
 const nas = member({ memberId: "nas" });
@@ -153,7 +158,7 @@ describe("the refusal is indistinguishable — the RESPONSE, not just the decisi
       facts({ signedMember: null }),
       facts({ signedMember: "stranger", authorization: null }),
     ];
-    const shapes = await Promise.all(
+    const refusals = await Promise.all(
       causes.map(async (f) => {
         expect(admitPackRequest(store, f).ok).toBe(false);
         const res = unauthorizedResponse();
@@ -164,8 +169,8 @@ describe("the refusal is indistinguishable — the RESPONSE, not just the decisi
         });
       }),
     );
-    expect(new Set(shapes).size).toBe(1);
-    expect(JSON.parse(shapes[0]!).body).toBe('{"error":"unauthorized"}');
+    expect(new Set(refusals).size).toBe(1);
+    expect(JSON.parse(refusals[0]!).body).toBe('{"error":"unauthorized"}');
   });
 
   test("the 401 carries NO pack headers — nothing tells a prober what is listening (§8.5)", () => {
@@ -175,8 +180,7 @@ describe("the refusal is indistinguishable — the RESPONSE, not just the decisi
   });
 
   test("the body has no `code` and no cause — one shape, no hint at which factor failed", async () => {
-    const body = (await unauthorizedResponse().json()) as Record<string, unknown>;
-    expect(Object.keys(body)).toEqual(["error"]);
+    expect(Object.keys(await unauthorizedResponse().json())).toEqual(["error"]);
   });
 });
 
@@ -194,7 +198,10 @@ describe("the 409 body names both sides", () => {
   });
 
   test("an unreadable version is reported as null rather than guessed", async () => {
-    expect(((await protocolMismatchResponse(null).json()) as { received: unknown }).received).toBeNull();
+    // SAFETY: `protocolMismatchResponse` is the sole writer of this body and always states the
+    // version it received (null when it could not be read — which is what this asserts).
+    const mismatch = (await protocolMismatchResponse(null).json()) as ProtocolMismatch;
+    expect(mismatch.received).toBeNull();
   });
 });
 
@@ -215,7 +222,7 @@ describe("the transport seam", () => {
       },
     });
     const f = factsFrom(req, { transportPinned: false, signedMember: "nas" });
-    expect(Object.keys(f).sort()).toEqual(["authorization", "protocol", "signedMember", "transportPinned"]);
+    expect(Object.keys(f).toSorted()).toEqual(["authorization", "protocol", "signedMember", "transportPinned"]);
     // Browser credentials are present on this request and admit nothing on their own.
     expect(admitPackRequest(store, { ...f, authorization: null }).ok).toBe(false);
   });

@@ -411,7 +411,7 @@ describe("parsePeerSnapshot — a peer contributes rows, never claims", () => {
 describe("serverSummaryFor — §9.2's shape, exactly", () => {
   test("carries no field the protocol does not specify", () => {
     const summary = serverSummaryFor(contribution({ state: state({ memberId: "laptop" }), body: peerBody }));
-    expect(Object.keys(summary).sort()).toEqual([
+    expect(Object.keys(summary).toSorted()).toEqual([
       "id",
       "isLead",
       "lastSeenAt",

@@ -34,10 +34,17 @@ import {
   type PendingPairing,
 } from "./pairing.ts";
 
+/** What {@link memoryIo} keeps instead of the two on-disk files, plus a write counter. */
+interface MemoryPairingState {
+  pending: PendingPairing | null;
+  registry: PairedRegistry | null;
+  writes: number;
+}
+
 // A fully in-memory PairingIo. The store is written so that this is the ONLY thing standing between
 // `bun test` and every branch of enrolment/revocation — no temp dir, no Bun.serve.
 function memoryIo(seed: { pending?: PendingPairing | null; registry?: PairedRegistry } = {}) {
-  const state: { pending: unknown | null; registry: unknown | null; writes: number } = {
+  const state: MemoryPairingState = {
     pending: seed.pending ?? null,
     registry: seed.registry ?? null,
     writes: 0,

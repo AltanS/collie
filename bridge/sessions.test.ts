@@ -17,6 +17,17 @@ import type { AgentStatus, AgentView } from "./types.ts";
 // factory (no real socket/fs) so spawn/list/dispose lifecycle is verified purely, per the repo's
 // injected-fake convention (see state-engine.test.ts).
 
+/**
+ * Every member of {@link SessionParts} is a class with private fields, so no fake can ever *be* one
+ * structurally. `Partial<T>` keeps the compiler checking each method a fake DOES supply against the
+ * real class; only the "the rest is never reached" step is asserted.
+ */
+function stubPart<T>(impl: Partial<T>): T {
+  // SAFETY: the registry only ever calls `engine.current()` and the `stop()`/`clearAll()` disposal
+  // hooks — all implemented below. `herdr` is stored and handed back, never called, on these paths.
+  return impl as T;
+}
+
 // ── pure path helpers ─────────────────────────────────────────────────────────
 
 describe("deriveConfigRoot", () => {
@@ -119,10 +130,10 @@ class FakeSession {
     const poker = { stop: () => void this.disposed.poker++ };
     const notifications = { clearAll: () => void this.disposed.notifications++ };
     return {
-      herdr: {} as unknown as SessionParts["herdr"],
-      engine: engine as unknown as SessionParts["engine"],
-      poker: poker as unknown as SessionParts["poker"],
-      notifications: notifications as unknown as SessionParts["notifications"],
+      herdr: stubPart<SessionParts["herdr"]>({}),
+      engine: stubPart<SessionParts["engine"]>(engine),
+      poker: stubPart<SessionParts["poker"]>(poker),
+      notifications: stubPart<SessionParts["notifications"]>(notifications),
     };
   }
 }
