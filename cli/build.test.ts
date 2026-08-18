@@ -62,14 +62,15 @@ const servedBundle = (files: FakeFiles): SeededFiles =>
     [...files.entries].filter(([p]) => p.startsWith(`${DIST}/`)).map(([p, v]) => [p, v.text]),
   );
 
-describe("build: the five ordered steps", () => {
-  test("gate → install both trees → typecheck both sides → compile the CLI → build the web UI", () => {
+describe("build: the six ordered steps", () => {
+  test("gate → install both trees → lint → typecheck both sides → compile the CLI → build the web UI", () => {
     const h = harness();
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toEqual([
       `${ROOT}$ bash ${GATE}`,
       `${ROOT}$ bun install`,
       `${WEB}$ bun install`,
+      `${ROOT}$ bun run lint`,
       `${ROOT}$ bun run typecheck`,
       `${WEB}$ bun run typecheck`,
       `${ROOT}$ bun build --compile --target=bun ./cli/main.ts --outfile ${BINARY_NEW}`,
@@ -101,10 +102,13 @@ describe("build: the five ordered steps", () => {
     expect(h.files.ops).toContain(`mv ${BINARY_NEW} ${BINARY}`);
   });
 
-  test("SKIP_VERSION_CHECK=1 and SKIP_TYPECHECK=1 drop exactly their own step", () => {
-    const h = harness({ env: { SKIP_VERSION_CHECK: "1", SKIP_TYPECHECK: "1" } });
+  test("SKIP_VERSION_CHECK=1, SKIP_LINT=1 and SKIP_TYPECHECK=1 drop exactly their own step", () => {
+    const h = harness({
+      env: { SKIP_VERSION_CHECK: "1", SKIP_LINT: "1", SKIP_TYPECHECK: "1" },
+    });
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls.some((c) => c.includes("check-version.sh"))).toBe(false);
+    expect(h.exec.calls.some((c) => c.includes("run lint"))).toBe(false);
     expect(h.exec.calls.some((c) => c.includes("typecheck"))).toBe(false);
     expect(h.exec.calls).toContain(`${ROOT}$ bun install`);
     expect(h.exec.calls).toContain(`${WEB}$ bun run build -- --outDir dist-staging --emptyOutDir`);
@@ -123,6 +127,7 @@ describe("build: a failure never empties the live web/dist", () => {
   const cases: [name: string, prefix: string][] = [
     ["the version gate", `${ROOT}$ bash ${GATE}`],
     ["the root install", `${ROOT}$ bun install`],
+    ["the lint gate", `${ROOT}$ bun run lint`],
     ["the web typecheck", `${WEB}$ bun run typecheck`],
     ["the CLI compile", `${ROOT}$ bun build --compile`],
     ["the web build", `${WEB}$ bun run build --`],
