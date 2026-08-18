@@ -1,0 +1,21 @@
+{
+  // The editor is the fifth enforcement surface, and like the other four it reads the ONE
+  // `.oxlintrc.json` at the repo root — the same config the pre-commit hook, `collie build` and CI
+  // shell out to. No editor-only rule overrides: a finding you see here is a finding CI sees. That
+  // root config already covers `web/src`, so one config path serves both trees.
+  //
+  // What the editor is FOR here is latency — the finding lands while you are still in the file,
+  // instead of at commit time. It is a convenience, never the authority: the full-tree runs (CI and
+  // `collie build`) define "passing".
+  "oxc.enable": true,
+  "oxc.configPath": ".oxlintrc.json",
+  "oxc.lint.run": "onType",
+
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "explicit"
+  },
+
+  "files.exclude": {
+    "**/web/dist-staging": true
+  }
+}
