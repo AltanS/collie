@@ -11,7 +11,7 @@ import {
   PENDING_FILENAME,
   sha256Hex,
 } from "../bridge/pairing.ts";
-import { capture, context, type FakeFiles, fakeFiles, STATE } from "./fakes.ts";
+import { capture, context, type FakeFiles, fakeFiles, type SeededFiles, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdDevices,
@@ -49,7 +49,7 @@ function device(over: Partial<PairedDevice> = {}): PairedDevice {
   };
 }
 
-const registryFile = (...devices: PairedDevice[]): Record<string, string> => ({
+const registryFile = (...devices: PairedDevice[]): SeededFiles => ({
   [REGISTRY]: JSON.stringify({ devices }),
 });
 
@@ -174,6 +174,8 @@ describe("collie devices revoke", () => {
 
     const entry = d.files.entries.get(REGISTRY)!;
     expect(entry.mode).toBe(0o600);
+    // SAFETY: the file is the registry `cmdDevicesRevoke` just wrote — `{ devices: [...] }` is the
+    // only shape it serialises, and the labels read off it are what the next line asserts.
     const labels = (JSON.parse(entry.text) as { devices: PairedDevice[] }).devices.map((x) => x.label);
     expect(labels).toEqual(["ipad"]);
     const out = d.io.stdout.join("\n");

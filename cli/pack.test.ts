@@ -98,6 +98,8 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
     files,
     store,
     ops,
+    // SAFETY: `AuditLog` hands its sink exactly the line it just serialised from an `AuditEntry`,
+    // so parsing it back yields that entry — this is the log's own round trip, not foreign input.
     audit: new AuditLog((l) => void auditLines.push(JSON.parse(l) as AuditEntry), { now: () => T0 }),
     fetch: async (url, init) => {
       const headers: Record<string, string> = {};
@@ -108,7 +110,9 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
         url,
         method: init.method ?? "GET",
         headers,
-        body: typeof init.body === "string" ? init.body : "",
+        // Every pack verb sends a `JSON.stringify` string; anything else is recorded as its text so
+        // the assertion that follows fails loudly rather than silently reading "".
+        body: init.body === undefined || init.body === null ? "" : String(init.body),
       });
       const reply = replies[n++];
       if (reply === undefined) return jsonReply({});
@@ -175,7 +179,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
 }
 
 /** A pack response: 200, with the two headers §6 requires so `PeerClient` accepts it. */
-function jsonReply(body: unknown, status = 200, memberId = "peer"): Response {
+function jsonReply<TBody>(body: TBody, status = 200, memberId = "peer"): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -486,6 +490,8 @@ describe("collie join", () => {
     // abort before `deps.fetch` below has even registered its `abort` listener, since `cmdJoin` starts
     // the timer BEFORE calling `fetch`.
     const realSetTimeout = globalThis.setTimeout;
+    // SAFETY: the stand-in is only ever called by `cmdJoin`'s single `setTimeout(fn, ms)` — one
+    // callback, no handle read back — and the real timer it forwards to returns the real handle.
     globalThis.setTimeout = ((fn: () => void) => realSetTimeout(fn, 0)) as typeof setTimeout;
     let sawSignal = false;
     try {
@@ -493,6 +499,7 @@ describe("collie join", () => {
         fetch: (_url, init) => {
           sawSignal = init.signal instanceof AbortSignal;
           return new Promise((_resolve, reject) => {
+            // SAFETY: `sawSignal` two lines up is the `instanceof AbortSignal` check, asserted below.
             const signal = init.signal as AbortSignal;
             signal.addEventListener("abort", () => {
               const err = new Error("The operation was aborted");
@@ -571,6 +578,8 @@ describe("collie join", () => {
   test("the wire EnrollRequest.token is still just T — the fingerprint never leaves this machine", async () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
+    // SAFETY: the body is the `EnrollRequest` `cmdJoin` just serialised, whose `token` is the string
+    // read from stdin; the three assertions below are what that string is being read for.
     const wireToken = JSON.parse(h.requests[0]!.body).token as string;
     expect(wireToken).toBe("token-from-stdin");
     // The invited fingerprint rode alongside the token in the operator's paste, not on the wire.
@@ -945,7 +954,7 @@ describe("collie pack status", () => {
     ]);
     await cmdPackStatus(h.deps, []);
     const stamped = h.data()!.peers.find((p) => p.memberId === "nas")!;
-    expect(typeof stamped.contactedAt).toBe("number");
+    expect(stamped.contactedAt).toBeTypeOf("number");
     expect(stamped.contactedAt).toBe(T0);
     // Reachable now, so the provisional line is suppressed this run — it was cleared, not half-finished.
     expect(text(h.io)).not.toContain("provisional");
@@ -1186,7 +1195,7 @@ describe("collie promote", () => {
     expect(await cmdPromote(h.deps, [])).toBe(EXIT.OK);
     const data = h.data()!;
     expect(data.lead).toBeNull();
-    expect(data.peers.map((p) => p.memberId).sort()).toEqual(["desk", "nas"]);
+    expect(data.peers.map((p) => p.memberId).toSorted()).toEqual(["desk", "nas"]);
     // The role change reuses the pack identity and the pack secret — not a re-enrollment.
     expect(data.pack).toEqual(PACK);
     expect(data.self.memberId).toBe("laptop");

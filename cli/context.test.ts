@@ -18,6 +18,7 @@ import {
   resolveHome,
   instanceSuffix,
   resolveInstance,
+  type Environment,
 } from "./context.ts";
 
 // Ported behaviour, so these tests are written against the shell they replace: the config-dir
@@ -30,7 +31,7 @@ const LEGACY = join(HOME, ".config", "collie");
 const CONVENTIONAL = join(HOME, ".config", "herdr", "plugins", "config", PLUGIN_ID);
 
 function resolve(opts: {
-  env?: Record<string, string | undefined>;
+  env?: Environment;
   files?: string[];
   herdr?: string | null;
 }) {
@@ -100,7 +101,7 @@ describe("the legacy .env note", () => {
 describe("config dir for a named instance", () => {
   const V1 = join(HOME, ".config", "herdr", "plugins", "config", `${PLUGIN_ID}-v1`);
 
-  function resolveV1(opts: { env?: Record<string, string | undefined>; files?: string[] }) {
+  function resolveV1(opts: { env?: Environment; files?: string[] }) {
     const files = new Set(opts.files ?? []);
     let asks = 0;
     const r = resolveConfigDir({
@@ -129,6 +130,7 @@ describe("config dir for a named instance", () => {
       err = e;
     }
     expect(err).toBeInstanceOf(Error);
+    // SAFETY: the line above IS the check — this only reads the message off what it just proved.
     const message = (err as Error).message;
     expect(message).toContain(join(V1, ".env"));
     expect(message).toContain('COLLIE_INSTANCE="v1"');

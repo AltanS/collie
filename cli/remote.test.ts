@@ -10,6 +10,7 @@ import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, PACK, T0 } from "../bridge/pack/fixtures.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededOps } from "./fakes.ts";
+import type { Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdPack, type PackDeps } from "./pack.ts";
 import {
@@ -66,7 +67,7 @@ const REMOTE_HOME = "/home/pat";
 const REMOTE_CHECKOUT = `${REMOTE_HOME}/.collie`;
 const TAILSCALE_JSON = JSON.stringify({ Self: { DNSName: "desk.tail.ts.net." } });
 
-const PROBE_DEFAULTS: Record<string, string> = {
+const PROBE_DEFAULTS = {
   home: REMOTE_HOME,
   git: "/usr/bin/git",
   bun: "/home/pat/.bun/bin/bun",
@@ -82,7 +83,7 @@ const PROBE_DEFAULTS: Record<string, string> = {
   version: "",
   address: "100.64.0.9",
   port: "free",
-};
+} satisfies Record<string, string>;
 
 /** Leg 1's stdout, as the remote would print it. */
 function probeOut(over: Record<string, string> = {}): string {
@@ -159,6 +160,8 @@ function harness(opts: HarnessOptions = {}): Harness {
     files: fakeFiles(),
     store,
     ops,
+    // SAFETY: `AuditLog` hands its sink the line it just serialised from an `AuditEntry` — the
+    // log's own round trip, not foreign input.
     audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), { now: () => T0 }),
     fetch: async () =>
       opts.reachable === false
@@ -826,12 +829,17 @@ describe("dispatch", () => {
 // is not a REF, so `git bundle create - <sha>` refuses with "Refusing to create empty bundle")
 // survived. This suite spawns a real `git` against a throwaway repo instead.
 
+/** {@link PackDeps} whose `io` is the recording one, so a failure can print what the verb said. */
+interface RepoPackDeps extends PackDeps {
+  io: ReturnType<typeof capture>;
+}
+
 /** A repo-scoped env with no `PATH` surprises and no inherited `GIT_*` — see collie-cli.test.sh. */
-function gitEnv(): Record<string, string | undefined> {
+function gitEnv(): Environment {
   return { PATH: process.env.PATH };
 }
 
-function minimalPackDeps(root: string): PackDeps {
+function minimalPackDeps(root: string): RepoPackDeps {
   const storeIo: TrustStoreIo = { read: async () => null, write: async () => {} };
   return {
     ctx: context(gitEnv(), { root }),
@@ -880,7 +888,7 @@ describe("packAddDeps().gitBundle, against a real repo", () => {
       const freshDeps = minimalPackDeps(root);
       const encoded = await packAddDeps(freshDeps).gitBundle(second, freshDeps.io);
       if (encoded === null) {
-        throw new Error(`gitBundle returned null; stderr: ${(freshDeps.io as ReturnType<typeof capture>).stderr.join("\n")}`);
+        throw new Error(`gitBundle returned null; stderr: ${freshDeps.io.stderr.join("\n")}`);
       }
       const bundlePath = join(root, "bundle.out");
       writeFileSync(bundlePath, Buffer.from(encoded, "base64"));
@@ -914,7 +922,7 @@ describe("packAddDeps().gitBundle, against a real repo", () => {
       const deps = minimalPackDeps(root);
       const encoded = await packAddDeps(deps).gitBundle(head, deps.io);
       if (encoded === null) {
-        throw new Error(`gitBundle returned null; stderr: ${(deps.io as ReturnType<typeof capture>).stderr.join("\n")}`);
+        throw new Error(`gitBundle returned null; stderr: ${deps.io.stderr.join("\n")}`);
       }
       const bundlePath = join(nonRepoCwd, "bundle.part");
       writeFileSync(bundlePath, Buffer.from(encoded, "base64"));

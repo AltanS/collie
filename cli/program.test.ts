@@ -112,7 +112,13 @@ describe("the verb table", () => {
 // are asserted through `run` now — the parser is an implementation detail, "what does typing this
 // do" is the contract. Every verb below is a spy, so nothing here touches the world.
 describe("dispatch", () => {
-  function spy(name: string, sub?: readonly string[]): { command: Command; seen: string[][] } {
+  /** A stand-in verb and the argv rows it was dispatched with, newest last. */
+  interface Spy {
+    command: Command;
+    seen: string[][];
+  }
+
+  function spy(name: string, sub?: readonly string[]): Spy {
     const seen: string[][] = [];
     const command: Command = {
       name,

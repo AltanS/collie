@@ -14,6 +14,11 @@ import {
   type Scripted,
 } from "./fakes.ts";
 import { EXIT, type Io } from "./io.ts";
+
+/** The `Io` a nested `serve` was handed — `null` until it has been called. */
+interface SeenIo {
+  io: Io | null;
+}
 import {
   cmdLogs,
   cmdStart,
@@ -61,7 +66,7 @@ function harness(over: HarnessOptions = {}): Harness {
   const exec = fakeExec(over);
   // The binary exists unless a test deliberately removes it — every other test would otherwise be
   // asserting the "no binary" guard by accident.
-  const files = fakeFiles({ [BINARY]: "", ...(over.files ?? {}) });
+  const files = fakeFiles({ [BINARY]: "", ...over.files });
   const readyCalls: Array<{ port: number; host: string }> = [];
   const deps: LifecycleDeps = {
     ctx: context(over.env, over.instance === undefined ? {} : { instance: over.instance }),
@@ -186,7 +191,7 @@ describe("start, on systemd", () => {
     // that captured the original. A field-found leak (2026-08-13) shipped because `cli/program.ts`'s
     // `serve` closure ignored the swap — this pins the contract at the one place a fix has to hold:
     // `cmdStart` actually passing `deps.io` through.
-    const seen: { io: Io | null } = { io: null };
+    const seen: SeenIo = { io: null };
     const h = harness({
       serve: (io?: Io) => {
         seen.io = io ?? null;

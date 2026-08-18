@@ -82,7 +82,13 @@ describe("takePlainFlag", () => {
 // projection is pinned to its structure, because that is what `cli/ui/pack-add.tsx` draws.
 
 describe("plainAdd", () => {
-  const lines = (...events: AddEvent[]): { out: string[]; err: string[] } => {
+  /** What a plain replay printed, split by stream. */
+  interface PlainOutput {
+    out: string[];
+    err: string[];
+  }
+
+  const lines = (...events: AddEvent[]): PlainOutput => {
     const out: string[] = [];
     const err: string[] = [];
     for (const event of events) plainAdd({ out: (l) => out.push(l), err: (l) => err.push(l) }, event);

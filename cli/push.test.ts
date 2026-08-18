@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { JsonObject } from "../bridge/json.ts";
 import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { cmdPush, cmdPushForget, cmdPushList, cmdPushTest, type PushDeps } from "./push.ts";
@@ -57,7 +58,7 @@ function deps(stateDir: string): PushDeps & ReturnType<typeof capture> {
 
 const storeFile = (dir: string): string => join(dir, "push-subscriptions.json");
 
-const row = (endpoint: string, extra: Record<string, unknown> = {}) => ({
+const row = (endpoint: string, extra: JsonObject = {}) => ({
   endpoint,
   keys: { p256dh: "p", auth: "a" },
   ...extra,
@@ -67,6 +68,8 @@ async function seed(dir: string, rows: unknown[]): Promise<void> {
   await writeFile(storeFile(dir), JSON.stringify(rows, null, 2));
 }
 
+// SAFETY: the store is the array `cli/push.ts` just wrote back — every row of it carries the
+// `endpoint` these tests read, and a store that had lost the field would fail the assertion below.
 const endpointsOn = async (dir: string): Promise<string[]> =>
   (JSON.parse(await readFile(storeFile(dir), "utf8")) as { endpoint: string }[]).map((r) => r.endpoint);
 

@@ -18,7 +18,9 @@ import {
   fakeFiles,
   ROOT,
   type Scripted,
+  type SeededFiles,
 } from "./fakes.ts";
+import type { Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
 
 // `build` against the two seams. What is asserted here is ORDER and the swap invariant: the shell
@@ -40,7 +42,7 @@ interface Harness {
 }
 
 function harness(
-  over: Partial<Scripted & { env: Record<string, string | undefined>; files: Record<string, string> }> = {},
+  over: Partial<Scripted & { env: Environment; files: SeededFiles }> = {},
 ): Harness {
   const io = capture();
   const exec = fakeExec(over);
@@ -49,13 +51,13 @@ function harness(
     [`${DIST}/index.html`]: "<!doctype html>OLD",
     [`${DIST}/assets/app.js`]: "OLD BUNDLE",
     [BINARY]: "OLD BINARY",
-    ...(over.files ?? {}),
+    ...over.files,
   });
   return { deps: { ctx: context(over.env ?? {}), io, exec, files }, io, exec, files };
 }
 
 /** The live bundle, as a comparable snapshot. */
-const servedBundle = (files: FakeFiles): Record<string, string> =>
+const servedBundle = (files: FakeFiles): SeededFiles =>
   Object.fromEntries(
     [...files.entries].filter(([p]) => p.startsWith(`${DIST}/`)).map(([p, v]) => [p, v.text]),
   );
