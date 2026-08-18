@@ -163,14 +163,23 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const FIXTURE_DIR = join(import.meta.dir, "..", "web", "src", "fixtures", "panes");
+/** One committed expectation: which region of which pane fixture a given detector must bind to. */
+interface BindingRegion {
+  fixture: string;
+  detector: string;
+  region: string;
+}
+
+// SAFETY: the fixture file is committed alongside this test and is regenerated only by it; the
+// assertions below check every field of every row.
 const REGIONS = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "web", "src", "fixtures", "prompt-binding-regions.json"), "utf8"),
-) as { fixture: string; detector: string; region: string }[];
+) as BindingRegion[];
 
 describe("client/bridge binding contract", () => {
   test("the committed expectations cover every dialog detector", () => {
     expect(REGIONS.length).toBeGreaterThan(0);
-    expect([...new Set(REGIONS.map((r) => r.detector))].sort()).toEqual([
+    expect([...new Set(REGIONS.map((r) => r.detector))].toSorted()).toEqual([
       "menu",
       "multi-select",
       "preview-select",

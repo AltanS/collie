@@ -33,7 +33,7 @@ describe("sweepUploads", () => {
   function fakeFs(
     files: Record<string, number>,
     opts: { failStat?: Set<string>; failUnlink?: Set<string> } = {},
-  ): { fs: UploadFs; unlinked: string[] } {
+  ) {
     const unlinked: string[] = [];
     const fs: UploadFs = {
       readdir: () => Promise.resolve(Object.keys(files)),

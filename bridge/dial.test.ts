@@ -14,6 +14,11 @@ import { dialHerdr, toPipeName } from "./dial.ts";
 // unexercised on every machine that can review or merge it. The only genuinely win32-specific
 // step is the pipe-name mapping, covered by the pure toPipeName tests above.
 
+/** The one reassembled request line the fake server saw, or null until it has one. */
+interface SeenLine {
+  line: string | null;
+}
+
 describe("toPipeName", () => {
   test("prefixes a plain socket path with the pipe namespace", () => {
     expect(toPipeName("C:\\Users\\u\\AppData\\Roaming\\herdr\\herdr.sock")).toBe(
@@ -148,7 +153,7 @@ describe("dialHerdr over a live endpoint (node:net dialer, both platforms)", () 
       const request = `{"id":"t","method":"probe","params":{"text":"${filler}"}}\n`;
       const requestBytes = Buffer.byteLength(request, "utf-8");
 
-      const seen: { line: string | null } = { line: null };
+      const seen: SeenLine = { line: null };
       const server = net.createServer((conn) => {
         // Don't read for a beat: the kernel buffer fills and the client's write is forced short.
         conn.pause();

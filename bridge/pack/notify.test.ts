@@ -154,8 +154,8 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
     peer.observe("desktop", body([pane("p1", "blocked")]));
     clock.fireAll();
 
-    expect(push.tags.sort()).toEqual(["collie:herd@desktop", "collie:herd@laptop"]);
-    expect(push.sent.map((m) => m.host).sort()).toEqual(["desktop", "laptop"]);
+    expect(push.tags.toSorted()).toEqual(["collie:herd@desktop", "collie:herd@laptop"]);
+    expect(push.sent.map((m) => m.host).toSorted()).toEqual(["desktop", "laptop"]);
   });
 
   test("simultaneous blocks on ONE host batch into that host's single summary", () => {
@@ -241,7 +241,7 @@ describe("PeerNotifier — the lead's snooze and prefs are pack-wide by construc
     peer.observe("laptop", body([pane("p1", "blocked")]));
     peer.observe("desktop", body([pane("p1", "blocked")]));
     clock.fireAll();
-    expect(peer.tags().sort()).toEqual(["collie:herd@desktop", "collie:herd@laptop"]);
+    expect(peer.tags().toSorted()).toEqual(["collie:herd@desktop", "collie:herd@laptop"]);
   });
 
   test("disabling a kind in the lead's prefs retracts that kind on every host", () => {

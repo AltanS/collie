@@ -10,10 +10,17 @@ import {
   parseCodexTranscript,
 } from "./codex.ts";
 
+/**
+ * Any JSON document — what a row of an agent's on-disk log actually is, before the adapter parses
+ * it. Object values admit `undefined` because `JSON.stringify` drops such a key entirely, which is
+ * how the fixtures below express "this field is absent".
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue | undefined };
+
 // Row builders mirroring the verified on-disk shape (codex rollout logs, cli 0.32.0, 2026-07-29).
 // `{timestamp,type,payload}` are the only top-level keys — note the absence of any per-row id, which
 // is the whole reason this adapter synthesises a cursor.
-const item = (payload: Record<string, unknown>, ts = "2026-07-29T10:00:00.000Z") =>
+const item = (payload: Record<string, JsonValue>, ts = "2026-07-29T10:00:00.000Z") =>
   JSON.stringify({ timestamp: ts, type: "response_item", payload });
 
 const message = (role: "user" | "assistant", text: string) =>
@@ -23,7 +30,7 @@ const message = (role: "user" | "assistant", text: string) =>
     content: [{ type: role === "user" ? "input_text" : "output_text", text }],
   });
 
-const event = (payload: Record<string, unknown>) =>
+const event = (payload: Record<string, JsonValue>) =>
   JSON.stringify({ timestamp: "2026-07-29T10:00:00.000Z", type: "event_msg", payload });
 
 const meta = () =>
@@ -67,7 +74,7 @@ describe("parseCodexTranscript", () => {
       ].join("\n"),
     );
     expect(entries).toHaveLength(2);
-    expect(entries.map((e) => e.parts[0]).map((p) => (p as { text: string }).text)).toEqual([
+    expect(entries.map((e) => e.parts[0]).map((p) => (p?.kind === "text" ? p.text : p?.kind))).toEqual([
       "fix the types",
       "on it",
     ]);
@@ -141,7 +148,9 @@ describe("parseCodexTranscript", () => {
     const entries = parseCodexTranscript(
       item({ type: "function_call", name: "shell", arguments: '{"command": ["bash"', call_id: "c" }),
     );
-    expect((entries[0]!.parts[0] as { summary: string }).summary).not.toBe("");
+    const part = entries[0]!.parts[0]!;
+    expect(part.kind).toBe("tool");
+    expect(part.kind === "tool" ? part.summary : "").not.toBe("");
   });
 
   test("an output folds onto the call that produced it", () => {

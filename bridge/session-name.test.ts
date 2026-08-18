@@ -11,7 +11,10 @@ import { extractClaudeSessionName } from "./state-engine.ts";
 // use, ANSI-stripped to mirror the plain "text" read the bridge actually performs.
 
 const FIXTURES = join(import.meta.dir, "..", "web", "src", "fixtures", "panes");
-const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+// The escape byte is built rather than written literally: a raw control character in a regex
+// literal is unreadable in a diff and easy to corrupt in an editor.
+const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const stripAnsi = (s: string) => s.replace(SGR, "");
 const fixture = (name: string) => stripAnsi(readFileSync(join(FIXTURES, `${name}.txt`), "utf8"));
 
 describe("extractClaudeSessionName — named sessions", () => {

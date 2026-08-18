@@ -78,11 +78,11 @@ describe("resolvePackRuntime — a peer's own browser front door is an explicit 
 });
 
 describe("pack config pays no solo tax at the config layer", () => {
-  const RUNTIME_KEYS: Record<keyof PackRuntime, true> = {
+  const RUNTIME_KEYS = {
     mode: true,
     peerServesBrowser: true,
     conflict: true,
-  };
+  } satisfies Record<keyof PackRuntime, true>;
 
   test("nothing pack-shaped leaked onto Config", () => {
     // The solo baseline pins `keyof Config` exhaustively; this is the same claim from the pack
@@ -97,7 +97,7 @@ describe("pack config pays no solo tax at the config layer", () => {
   });
 
   test("the runtime carries exactly these three facts", () => {
-    expect(Object.keys(RUNTIME_KEYS).sort()).toEqual(["conflict", "mode", "peerServesBrowser"]);
+    expect(Object.keys(RUNTIME_KEYS).toSorted()).toEqual(["conflict", "mode", "peerServesBrowser"]);
   });
 });
 

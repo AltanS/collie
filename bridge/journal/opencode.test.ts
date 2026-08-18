@@ -16,12 +16,19 @@ import { MAX_RESULT_CHARS, MAX_TEXT_CHARS } from "./text.ts";
 // Builders mirroring the verified on-disk shape (opencode 1.18.9, 2026-08-03): a message row's `data`
 // json plus its parts' `data` json, composed by the source into one JSONL line per message.
 
+/**
+ * Any JSON document — what a row of an agent's on-disk log actually is, before the adapter parses
+ * it. Object values admit `undefined` because `JSON.stringify` drops such a key entirely, which is
+ * how the fixtures below express "this field is absent".
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue | undefined };
+
 const SID = "ses_03969c19cffeJrZCPOT6zG8Bm7";
 
 const line = (
   id: string,
-  data: unknown,
-  parts: unknown[],
+  data: JsonValue,
+  parts: JsonValue[],
   ts = 1785743162994,
 ): string => JSON.stringify({ id, ts, data, parts: parts.map((d, i) => ({ id: `prt_${id}_${i}`, data: d })) });
 
@@ -46,7 +53,7 @@ const assistantData = (created = 1785743163208) => ({
 
 const textPart = (text: string) => ({ type: "text", text, time: { start: 1, end: 2 } });
 const reasoningPart = (text: string) => ({ type: "reasoning", text, time: { start: 1, end: 2 }, metadata: {} });
-const toolPart = (tool: string, state: Record<string, unknown>) => ({
+const toolPart = (tool: string, state: Record<string, JsonValue>) => ({
   type: "tool",
   tool,
   callID: "call_1",
@@ -228,7 +235,8 @@ describe("parseOpencodeTranscript", () => {
       ].join("\n"),
     );
     expect(entries[0]!.parts[0]).toMatchObject({ truncated: true });
-    expect((entries[0]!.parts[0] as { text: string }).text).toHaveLength(MAX_TEXT_CHARS);
+    const first = entries[0]!.parts[0]!;
+    expect(first.kind === "text" ? first.text : "").toHaveLength(MAX_TEXT_CHARS);
     expect(entries[1]!.parts[0]).toMatchObject({ result: { truncated: true } });
   });
 
@@ -271,9 +279,9 @@ describe("OpencodeTranscriptSource", () => {
     db.run("insert into session values ('" + SID + "', null, 'root session', 1, 100)");
     // A subagent session — its rows are never queried, which is why no sidechain filtering exists.
     db.run("insert into session values ('" + SUB + "', '" + SID + "', 'subagent', 1, 100)");
-    const msg = (id: string, created: number, data: unknown) =>
+    const msg = (id: string, created: number, data: JsonValue) =>
       db.run("insert into message values (?, ?, ?, ?, ?)", [id, SID, created, created, JSON.stringify(data)]);
-    const part = (id: string, messageId: string, created: number, data: unknown) =>
+    const part = (id: string, messageId: string, created: number, data: JsonValue) =>
       db.run("insert into part values (?, ?, ?, ?, ?, ?)", [
         id,
         messageId,
