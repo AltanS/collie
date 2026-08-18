@@ -27,7 +27,7 @@ import {
  */
 export const MEMBER_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-export function isMemberId(value: unknown): value is string {
+export function isMemberId<T>(value: T): value is T & string {
   return typeof value === "string" && MEMBER_ID_RE.test(value);
 }
 
@@ -85,7 +85,7 @@ export function mintMemberId(
  */
 export const FINGERPRINT_RE = /^[0-9a-f]{64}$/;
 
-export function isFingerprint(value: unknown): value is string {
+export function isFingerprint<T>(value: T): value is T & string {
   return typeof value === "string" && FINGERPRINT_RE.test(value);
 }
 
@@ -252,6 +252,8 @@ export interface MintOptions {
  */
 export function mintIdentity(opts: MintOptions): MintedIdentity {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  // SAFETY: node's `KeyObject.export` returns `Buffer` for `format: "der"` and `string` only for
+  // `format: "pem"`; the union in its typings is over both formats, and this call fixes one.
   const spki = publicKey.export({ type: "spki", format: "der" }) as Buffer;
   const name = SEQ(SET(SEQ(OID("2.5.4.3"), UTF8(opts.commonName))));
   const from = opts.now ?? new Date();
@@ -280,6 +282,7 @@ export function mintIdentity(opts: MintOptions): MintedIdentity {
   const certDer = SEQ(tbs, ECDSA_SHA256, BITSTR(cryptoSign("sha256", tbs, privateKey)));
   return {
     certPem: pemOf("CERTIFICATE", certDer),
+    // SAFETY: the mirror of the `spki` cast above — `format: "pem"` returns a string, never a Buffer.
     keyPem: privateKey.export({ type: "pkcs8", format: "pem" }) as string,
     fingerprint: fingerprintFromDer(certDer),
   };

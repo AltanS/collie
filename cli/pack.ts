@@ -1,6 +1,7 @@
 import { hostname } from "node:os";
 import { join } from "node:path";
 
+import type { JsonObject } from "../bridge/json.ts";
 import type { AuditLog } from "../bridge/audit.ts";
 import {
   acceptEnrollment,
@@ -1225,7 +1226,7 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
     return EXIT.REFUSED;
   }
   if (handover.ok) {
-    const body = handover.value as Record<string, unknown> | null;
+    const body = handover.value as JsonObject | null;
     roster = parseRoster(body?.roster) ?? [];
     // The demoted lead is a member of this pack like any other, and it just told us its own pin is
     // still good — so it goes into the new roster rather than being dropped for having been the lead.

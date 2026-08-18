@@ -194,7 +194,7 @@ export function protocolMismatchResponse(received: number | null): Response {
 }
 
 /** Stamp the headers §6 requires on an admitted response: the version, and who is answering. */
-export function packResponseHeaders(memberId: string): Record<string, string> {
+export function packResponseHeaders(memberId: string) {
   return {
     "content-type": "application/json; charset=utf-8",
     [PROTOCOL_HEADER]: String(PACK_PROTOCOL_VERSION),

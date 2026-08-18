@@ -178,7 +178,7 @@ export class PackRegistry {
   list(): PeerState[] {
     return this.links()
       .map((l) => this.state(l.memberId))
-      .sort((a, b) => a.memberId.localeCompare(b.memberId));
+      .toSorted((a, b) => a.memberId.localeCompare(b.memberId));
   }
 
   /**
@@ -221,7 +221,7 @@ export class PackRegistry {
   prune(): string[] {
     const live = new Set(this.enrolled().map((m) => m.memberId));
     const dropped: string[] = [];
-    for (const id of [...this.peers.keys()]) {
+    for (const id of this.peers.keys()) {
       if (live.has(id)) continue;
       this.peers.delete(id);
       dropped.push(id);

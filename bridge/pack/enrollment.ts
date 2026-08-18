@@ -1,4 +1,5 @@
 import type { AuditEntry, AuditLog } from "../audit.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
 import {
   fingerprintOfCert,
   hashToken,
@@ -236,9 +237,11 @@ export interface EnrollResponse {
 // peer records the address it reached, and §8.2's "the address the peer will listen on" travels the
 // other way, in the request.
 
-export function parseEnrollRequest(value: unknown): EnrollRequest | null {
-  if (value === null || typeof value !== "object") return null;
-  const v = value as Record<string, unknown>;
+export function parseEnrollRequest(value: JsonValue | undefined): EnrollRequest | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const v: JsonObject = value;
   if (typeof v.token !== "string" || v.token.length === 0) return null;
   if (typeof v.fingerprint !== "string") return null;
   const fingerprint = normalizeFingerprint(v.fingerprint);
@@ -255,13 +258,15 @@ export function parseEnrollRequest(value: unknown): EnrollRequest | null {
     fingerprint,
     certPem: v.certPem,
     address: v.address,
-    label: (v.label as string | undefined) ?? null,
+    label: typeof v.label === "string" ? v.label : null,
   };
 }
 
-export function parseEnrollResponse(value: unknown): EnrollResponse | null {
-  if (value === null || typeof value !== "object") return null;
-  const v = value as Record<string, unknown>;
+export function parseEnrollResponse(value: JsonValue | undefined): EnrollResponse | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const v: JsonObject = value;
   const fingerprint = typeof v.leadFingerprint === "string" ? normalizeFingerprint(v.leadFingerprint) : null;
   if (
     typeof v.packId !== "string" ||
@@ -532,9 +537,11 @@ export function rosterEntryOf(member: TrustedMember): RosterEntry {
   };
 }
 
-export function parseRosterEntry(value: unknown): RosterEntry | null {
-  if (value === null || typeof value !== "object") return null;
-  const v = value as Record<string, unknown>;
+export function parseRosterEntry(value: JsonValue | undefined): RosterEntry | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const v: JsonObject = value;
   const fingerprint = typeof v.fingerprint === "string" ? normalizeFingerprint(v.fingerprint) : null;
   if (!isMemberId(v.memberId) || fingerprint === null) return null;
   // Same cross-check as the enrollment payloads: a row whose certificate is not the one its
@@ -544,7 +551,7 @@ export function parseRosterEntry(value: unknown): RosterEntry | null {
   return { memberId: v.memberId, fingerprint, certPem: v.certPem, address: v.address };
 }
 
-export function parseRoster(value: unknown): RosterEntry[] | null {
+export function parseRoster(value: JsonValue | undefined): RosterEntry[] | null {
   if (!Array.isArray(value)) return null;
   const out: RosterEntry[] = [];
   for (const row of value) {
