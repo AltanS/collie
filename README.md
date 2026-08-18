@@ -535,7 +535,7 @@ itself — that is deliberate, and the reasoning is
 
 ### Migrating from 0.x
 
-The last 0.x release is **0.28.0**. Going from there to 1.0 is the command you already have:
+The last 0.x release is **0.31.1**. Going from there to 1.0 is the command you already have:
 
 ```bash
 herdr plugin action invoke update --plugin herdr.collie   # or, in the checkout: bin/collie update
@@ -587,8 +587,8 @@ Check out the last 0.x tag in the same checkout and rebuild. A Herdr-managed che
 *and* tagless, so fetch the tag first:
 
 ```bash
-git fetch --depth 1 origin tag v0.28.0
-git checkout --detach --force v0.28.0
+git fetch --depth 1 origin tag v0.31.1
+git checkout --detach --force v0.31.1
 rm -f bin/collie    # 1.0's binary otherwise survives the rollback
 ```
 
@@ -612,7 +612,7 @@ froze and lands on the 1.0 shim, which builds its own binary on the way through:
 
 ```
 updating Collie (Herdr-managed checkout: fetch + detach onto origin HEAD)…
-→ now at 9b8e453 Merge remote-tracking branch 'origin/main' into v1
+→ now at b0949b4 fix(pack): a leg's progress line belongs under that leg, not under all three
 first run — building the collie binary…
 …
 note: Herdr-managed install — registry left alone (re-linking would block `herdr plugin install`)
