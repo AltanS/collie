@@ -291,6 +291,12 @@ export interface BridgeConfig {
   operatorCommands?: OperatorCommand[];
 }
 
+export interface SttStatus {
+  provider: string;
+  available: boolean;
+  reason?: string;
+}
+
 /**
  * Notification type preferences (GET/POST /api/notifications/prefs). Which agent statuses push, set
  * bridge-wide (fans out to every device, like the snooze). Mirrors NotifyPrefs in bridge/notify-prefs.ts.

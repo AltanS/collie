@@ -19,6 +19,8 @@ import {
 } from "./sessions.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
+import { CodexAppServerAuthBroker } from "./stt/codex-auth.ts";
+import { CodexSttProvider } from "./stt/codex.ts";
 import {
   bridgeStampSync,
   githubTagsFetcher,
@@ -62,6 +64,10 @@ await activity.load();
 const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")), {
   content: cfg.auditContent,
 });
+
+// Codex owns its OAuth lifecycle through app-server. Collie never reads auth.json/keyrings and
+// never sees the refresh token; the short-lived access token exists only inside this provider.
+const stt = new CodexSttProvider({ broker: new CodexAppServerAuthBroker() });
 
 // ── Update-availability monitor ───────────────────────────────────────────────
 // The running plugin version, captured NOW at module load — never re-read from disk later, or a
@@ -205,7 +211,7 @@ const sweepTimer = setInterval(() => {
 }, SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
-const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity });
+const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, stt });
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");
@@ -221,6 +227,7 @@ const shutdown = async () => {
   clearInterval(sweepTimer);
   clearTimeout(updateFirstCheck);
   clearInterval(updateTimer);
+  stt.close();
   process.exit(0);
 };
 process.on("SIGINT", shutdown);

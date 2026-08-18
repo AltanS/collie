@@ -18,6 +18,8 @@ import { herdTagFor, type SessionRegistry } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import type { UpdateMonitor } from "./update.ts";
 import type { StateEngine } from "./state-engine.ts";
+import { sttStatusResponse, transcribeAudio } from "./stt/http.ts";
+import type { SttProvider } from "./stt/provider.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
@@ -44,7 +46,7 @@ const MAX_UPLOAD_OVERHEAD = 64 * 1024; // 64 KB
 // Hard cap the runtime enforces on ANY request body (Bun.serve maxRequestBodySize). Bigger than the
 // upload cap + overhead so the handler's own 413 fires first for honest clients; this cuts off a
 // chunked or lying client that never sends an accurate Content-Length.
-const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
+const MAX_REQUEST_BODY_BYTES = 26 * 1024 * 1024; // 25 MB audio + request framing headroom
 // Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
 const MAX_READ_LINES = 10_000;
 const MAX_EXPECTED_PROMPT_CHARS = 8192;
@@ -142,8 +144,9 @@ export function startServer(opts: {
   updateMonitor: UpdateMonitor;
   audit: AuditLog;
   activity: ActivityLedger;
+  stt: SttProvider;
 }) {
-  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity } = opts;
+  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, stt } = opts;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
@@ -310,6 +313,19 @@ export function startServer(opts: {
           // ships the same payload as before.
           ...(mine.length > 0 ? { operatorCommands: mine } : {}),
         } satisfies BridgeConfig, req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/stt/status" && req.method === "GET") {
+        const denied = guard(req, cfg, "read");
+        if (denied) return denied;
+        return secure(await sttStatusResponse(stt));
+      }
+      if (pathname === "/api/stt/transcribe" && req.method === "POST") {
+        // Transcription does not drive a terminal. The browser receives only text; Codex auth stays
+        // inside the bridge. It does consume an external account's quota, however, so only devices
+        // authorised for writes may trigger it; status remains safe for read-only clients above.
+        const denied = guard(req, cfg, "write");
+        if (denied) return denied;
+        return secure(await transcribeAudio(stt, req));
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {
         // Read-level: registering for push isn't terminal-driving, so a read-only device may still

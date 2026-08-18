@@ -8,6 +8,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { loadDraft } from "@/lib/drafts";
+import { setHandsFree } from "@/lib/stt-prefs";
 import { server } from "@/test/setup";
 import { recordReply } from "@/test/handlers";
 import { Composer } from "./composer";
@@ -57,6 +58,142 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
   render(<RouterProvider router={router} />);
   return props;
 }
+
+class ComposerMediaRecorder {
+  static isTypeSupported = () => true;
+  ondataavailable: ((event: BlobEvent) => void) | null = null;
+  onstop: (() => void) | null = null;
+  state: RecordingState = "inactive";
+  readonly mimeType: string;
+
+  constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+    this.mimeType = options?.mimeType ?? "audio/webm";
+  }
+
+  start() {
+    this.state = "recording";
+  }
+
+  stop() {
+    if (this.state === "inactive") return;
+    this.state = "inactive";
+    this.ondataavailable?.({ data: new Blob(["voice"], { type: this.mimeType }) } as BlobEvent);
+    this.onstop?.();
+  }
+}
+
+function enableFakeRecording() {
+  const stopTrack = vi.fn();
+  let transcriptionRequests = 0;
+  vi.stubGlobal("MediaRecorder", ComposerMediaRecorder);
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }),
+    },
+  });
+  server.use(
+    http.get("/api/stt/status", () =>
+      HttpResponse.json({ provider: "codex", available: true }),
+    ),
+    http.post("/api/stt/transcribe", () => {
+      transcriptionRequests += 1;
+      return HttpResponse.json({ text: "spoken reply" });
+    }),
+  );
+  return { stopTrack, transcriptionRequests: () => transcriptionRequests };
+}
+
+describe("Composer — speech to text", () => {
+  it("places a transcript in the input without sending when Hands free is off", async () => {
+    enableFakeRecording();
+    setHandsFree(false);
+    const user = userEvent.setup();
+    const replies: string[] = [];
+    server.use(replyHandler((text) => replies.push(text)));
+    renderComposer();
+
+    const mic = await screen.findByRole("button", { name: "Start recording" });
+    await user.click(mic);
+    await user.click(await screen.findByRole("button", { name: "Stop recording" }));
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("spoken reply"),
+    );
+    expect(replies).toEqual([]);
+  });
+
+  it("sends a transcript through the existing programmatic send flow by default", async () => {
+    enableFakeRecording();
+    const user = userEvent.setup();
+    const replies: string[] = [];
+    server.use(replyHandler((text) => replies.push(text)));
+    const props = renderComposer();
+
+    const mic = await screen.findByRole("button", { name: "Start recording" });
+    await user.click(mic);
+    await user.click(await screen.findByRole("button", { name: "Stop recording" }));
+
+    await waitFor(() => expect(replies).toContain("spoken reply"));
+    await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
+  });
+
+  it("cancels an active recording before entering direct terminal typing", async () => {
+    const recording = enableFakeRecording();
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(await screen.findByRole("button", { name: "Start recording" }));
+    await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+
+    await waitFor(() => expect(recording.stopTrack).toHaveBeenCalled());
+    expect(recording.transcriptionRequests()).toBe(0);
+    expect(screen.getByRole("button", { name: "Stop typing into terminal" })).toBeInTheDocument();
+  });
+
+  it("does not send a transcription that resolves while direct typing is activated", async () => {
+    enableFakeRecording();
+    const user = userEvent.setup();
+    const replies: string[] = [];
+    let resolveTranscription!: () => void;
+    const transcriptionStarted = vi.fn();
+    server.use(
+      replyHandler((text) => replies.push(text)),
+      http.post("/api/stt/transcribe", async () => {
+        transcriptionStarted();
+        await new Promise<void>((resolve) => (resolveTranscription = resolve));
+        return HttpResponse.json({ text: "must not send" });
+      }),
+    );
+    renderComposer();
+
+    await user.click(await screen.findByRole("button", { name: "Start recording" }));
+    await user.click(screen.getByRole("button", { name: "Stop recording" }));
+    await waitFor(() => expect(transcriptionStarted).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+    resolveTranscription();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Stop typing into terminal" })).toBeInTheDocument(),
+    );
+    expect(replies).toEqual([]);
+  });
+
+  it("keeps recording when direct typing activation is refused by an existing draft", async () => {
+    const recording = enableFakeRecording();
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "keep this draft");
+    await user.click(await screen.findByRole("button", { name: "Start recording" }));
+    await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+
+    expect(recording.stopTrack).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Stop recording" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("keep this draft");
+  });
+});
 
 /**
  * Wait for a send that can never verify to reach its terminal `stalled` outcome.

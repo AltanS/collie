@@ -12,6 +12,7 @@ import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
+import { SttControl } from "@/components/stt-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
 import { usePushControl } from "@/hooks/use-push";
@@ -79,6 +80,8 @@ export function SettingsRoute() {
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}
         <HapticsControl />
+
+        <SttControl />
 
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">

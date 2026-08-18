@@ -7,8 +7,8 @@
 A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL, see
 which agent is waiting on you, and answer it with your phone's keyboard.
 
-The reply box is an ordinary text field, so your phone's own voice dictation works in it; Collie
-ships none of its own.
+The reply box is an ordinary text field, and can optionally record a voice reply through an existing
+Codex ChatGPT sign-in.
 
 It assumes a [Tailscale](https://tailscale.com) tailnet — your phone and the host on the same one —
 and it is **single-user**: one operator, one tailnet, no multi-tenant auth. If you need shared or
@@ -24,9 +24,10 @@ public access, Collie isn't built for it. Read the
 - **Special-keys pad** — `Esc`, `Ctrl+C`, arrows, combinable modifiers
 - **Find in output**, and **conversation history** the terminal can't scroll back to
 - **Send an image** from your camera roll
+- **Speech to text through Codex** — record a reply without copying OAuth credentials into Collie
 - **Switch between Herdr sessions** without touching the host
 - **Installs to your home screen** (PWA) and runs entirely on your own machine — loopback bind, no
-  cloud, no account
+  Collie account (the optional Codex transcription sends audio to ChatGPT)
 
 ## Contents
 
@@ -37,6 +38,7 @@ public access, Collie isn't built for it. Read the
 - [First run — what you'll see](#first-run--what-youll-see)
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
   [Multi-session](#multi-session)
+- [Speech to text (experimental)](#speech-to-text-experimental)
 - [Dark mode / light mode](#dark-mode--light-mode)
 - [Commands](#commands)
 - [Manage & update](#manage--update)
@@ -113,6 +115,7 @@ On the **host** (the tailnet node your agents run on). Need Herdr 0.7.0+ — che
 | Tool | Why |
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
+| [**Codex CLI**](https://developers.openai.com/codex/cli) | Optional — supplies an existing ChatGPT sign-in for speech to text. |
 | [**Herdr**](https://herdr.dev) ≥ 0.7.0 | The herd Collie mirrors; its CLI registers the plugin. |
 | [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, the bridge is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
@@ -309,6 +312,24 @@ first screen. Syntax error? `journalctl --user -u collie -n 20` names the line.
 config root, switchable from the header; `COLLIE_MULTI_SESSION=off` serves only the primary one. Every
 session it finds is drivable through the same URL — including a private or sandbox one, which is why
 [Security](#%EF%B8%8F-security--read-before-you-run-it) lists this as a sharp edge.
+
+## Speech to text (experimental)
+
+When the host's Codex CLI is signed in with ChatGPT, Collie automatically enables a microphone next
+to Send. Tap once to record and again to transcribe. **Hands free** sends the resulting text through
+the same guarded reply path as the other programmatic actions; turn it off in Settings to place the
+text at the input caret without sending. Both preferences are stored on that browser and default on.
+
+Collie asks a long-running `codex app-server` process for a short-lived access token, so it never
+reads or writes Codex's OAuth file, keyring entry, or refresh token. If Codex is missing, too old, or
+not signed in with ChatGPT, the Settings control stays visible but disabled. An API-key login is not
+sufficient for this provider. If a service manager cannot see a Codex installed by a shell version
+manager, set `COLLIE_CODEX_BIN` to its absolute path in Collie's `.env` and restart.
+
+This provider calls ChatGPT's private, undocumented transcription endpoint. Audio (up to 25 MB and
+two minutes) leaves the host and the integration may break when that endpoint or Codex's experimental
+app-server protocol changes. The recorder and UI depend only on Collie's internal STT provider
+interface so another provider can be added without rewriting them, but only Codex ships today.
 
 ## Dark mode / light mode
 

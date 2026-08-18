@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, Terminal, X, Zap } from "lucide-react";
+import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -27,6 +27,9 @@ import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
 import { NoEchoNotice } from "@/components/no-echo-notice";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
+import { useSttAvailability } from "@/hooks/use-stt-availability";
+import { useSttPrefs } from "@/lib/stt-prefs";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -285,6 +288,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const sttStatus = useSttAvailability();
+  const sttPrefs = useSttPrefs();
+  const recorder = useAudioRecorder({
+    scopeKey: `${session ?? ""}\0${paneId}`,
+    onTranscript: handleTranscript,
+    onError: (message) => setStatus(message, "error"),
+  });
+  const sttAvailable = Boolean(sttStatus?.available && sttPrefs.enabled && recorder.supported);
   const direct = useDirectTyping({
     paneKey: `${session ?? ""}\0${paneId}`,
     inputRef,
@@ -298,12 +309,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     suspended: locked,
     sendKeys: pressKeys,
     onActivate: () => {
+      // This callback runs only after the mode's draft/capability guards accept activation. Cancel
+      // synchronously here so a resolving hands-free transcript cannot cross into direct mode, but
+      // a refused activation does not discard an otherwise-valid recording.
+      recorder.cancel();
       sendConfirm.reset();
       forceConfirm.reset();
       noticeNoEcho(null); // the notice's whole job was to get you here
     },
     focusInput: focusInputEnd,
   });
+  useEffect(() => {
+    // Direct typing changes the input into a raw terminal keyboard. A recording started in reply
+    // mode must never finish into that different interaction mode.
+    if (direct.active) recorder.cancel();
+  }, [direct.active]);
   const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What we last sent, and when — so we can recognise our OWN reply momentarily echoing on the "❯"
@@ -369,7 +389,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
   useHoldReload(
     `composer:${paneId}`,
-    input.trim() !== "" || direct.active || direct.value !== "" || direct.busy || uploading,
+    input.trim() !== "" ||
+      direct.active ||
+      direct.value !== "" ||
+      direct.busy ||
+      uploading ||
+      recorder.state !== "idle",
   );
 
   // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
@@ -437,6 +462,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function focusInputEnd() {
     setTimeout(focusInputImmediately, 0);
+  }
+
+  function insertTranscript(transcript: string) {
+    const text = transcript.trim();
+    if (!text) return;
+    const current = inputValueRef.current;
+    const textarea = inputRef.current;
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? start;
+    const before = current.slice(0, start);
+    const after = current.slice(end);
+    const prefix = before.length > 0 && !/\s$/.test(before) ? " " : "";
+    const suffix = after.length > 0 && !/^\s/.test(after) ? " " : "";
+    const inserted = `${prefix}${text}${suffix}`;
+    updateInput(`${before}${inserted}${after}`);
+    setTimeout(() => {
+      const next = inputRef.current;
+      if (!next) return;
+      const caret = start + inserted.length;
+      next.focus();
+      next.setSelectionRange(caret, caret);
+    }, 0);
+  }
+
+  async function handleTranscript(transcript: string) {
+    if (!sttPrefs.handsFree) {
+      insertTranscript(transcript);
+      return;
+    }
+    // Voice replies use the same guarded programmatic-send seam as quick actions. If the live pane
+    // refuses or stalls the send, keep the transcript as a local draft so recorded speech is never
+    // silently lost.
+    if (!(await send(transcript, false))) insertTranscript(transcript);
   }
 
   // Resolves true only on a VERIFIED send (the text was seen in the pane's input box before the
@@ -998,6 +1056,43 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               )}
             </Button>
           </div>
+          {sttAvailable && !direct.active && (
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant={recorder.state === "recording" ? "destructive" : "outline"}
+                size="icon"
+                className={cn(
+                  "size-11 rounded-full",
+                  recorder.state === "recording" && "animate-pulse",
+                )}
+                disabled={locked || sending || recorder.state === "requesting" || recorder.state === "transcribing"}
+                onClick={recorder.state === "idle" ? recorder.start : recorder.stop}
+                aria-label={recorder.state === "recording" ? "Stop recording" : "Start recording"}
+                aria-pressed={recorder.state === "recording"}
+              >
+                {recorder.state === "requesting" || recorder.state === "transcribing" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : recorder.state === "recording" ? (
+                  <Square className="size-4 fill-current" />
+                ) : (
+                  <Mic className="size-4" />
+                )}
+              </Button>
+              {recorder.state !== "idle" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full text-muted-foreground"
+                  onClick={recorder.cancel}
+                  aria-label="Cancel recording"
+                >
+                  <X className="size-4" />
+                </Button>
+              )}
+            </div>
+          )}
           {!direct.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the

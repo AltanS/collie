@@ -6,6 +6,7 @@ import { setupServer } from "msw/node";
 import { handlers, resetTypedDraft } from "./handlers";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { __resetDraftPrune } from "@/lib/drafts";
+import { __resetSttPrefs } from "@/lib/stt-prefs";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`.
 export const server = setupServer(...handlers);
@@ -28,6 +29,7 @@ beforeEach(() => {
     // ignore
   }
   __resetDraftPrune();
+  __resetSttPrefs();
 });
 afterEach(() => {
   cleanup();

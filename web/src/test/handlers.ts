@@ -190,6 +190,9 @@ export const handlers = [
     }),
   ),
   http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
+  http.get("/api/stt/status", () =>
+    HttpResponse.json({ provider: "codex", available: false, reason: "Codex is not signed in" }),
+  ),
   http.post("/api/notifications/snooze", async ({ request }) => {
     const { snoozedUntil } = (await request.json()) as { snoozedUntil: number | null };
     return HttpResponse.json({ snoozedUntil });

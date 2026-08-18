@@ -12,6 +12,7 @@ import type {
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
+  SttStatus,
   UpdateInfo,
   UploadResponse,
 } from "./types";
@@ -69,6 +70,7 @@ const GET_TIMEOUT_MS = 10_000;
 const MUTATION_TIMEOUT_MS = 20_000;
 //   - Uploads carry a whole file over the phone's uplink — the most generous budget.
 const UPLOAD_TIMEOUT_MS = 60_000;
+const TRANSCRIPTION_TIMEOUT_MS = 150_000;
 
 /**
  * Compose the caller's abort signal (a loader's `request.signal`, used to supersede a stale poll)
@@ -401,6 +403,38 @@ export function createWorkspace(
 
 export function fetchConfig(): Promise<BridgeConfig> {
   return req<BridgeConfig>("/api/config");
+}
+
+export function fetchSttStatus(): Promise<SttStatus> {
+  return req<SttStatus>("/api/stt/status");
+}
+
+export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<{ text: string }> {
+  return trackBusy(
+    (async () => {
+      const res = await fetch("/api/stt/transcribe", {
+        method: "POST",
+        headers: {
+          "content-type": audio.type || "application/octet-stream",
+          [XHR_HEADER]: XHR_HEADER_VALUE,
+        },
+        body: audio,
+        signal: withTimeout(signal, TRANSCRIPTION_TIMEOUT_MS),
+      });
+      captureBuild(res);
+      if (!res.ok) {
+        let message = "Transcription failed";
+        try {
+          const body = (await res.json()) as { error?: unknown };
+          if (typeof body.error === "string") message = body.error;
+        } catch {
+          // Keep the safe fallback; do not surface an upstream HTML/proxy body.
+        }
+        throw new ApiError(message, res.status);
+      }
+      return (await res.json()) as { text: string };
+    })(),
+  );
 }
 
 /**
