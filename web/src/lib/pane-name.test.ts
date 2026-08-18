@@ -23,7 +23,7 @@ function pane(over: Partial<AgentView> = {}): AgentView {
  *  does, which a single joined string cannot express. */
 const join = (p: { project: string; tab: string | null }) =>
   p.tab ? `${p.project}${TITLE_SEP}${p.tab}` : p.project;
-const joined = (pane: AgentView) => join(paneParts(pane));
+const joined = (view: AgentView) => join(paneParts(view));
 
 describe("paneParts — the title line", () => {
   it("is project · tab when the tab has a label", () => {

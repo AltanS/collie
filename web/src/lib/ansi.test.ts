@@ -265,7 +265,7 @@ describe("parseAnsi — segment shape carries pre-computed style and muted flag"
   it("every segment has a style object and a muted boolean", () => {
     const segs = parseAnsi("hello");
     expect(segs[0]!.style).toBeDefined();
-    expect(typeof segs[0]!.muted).toBe("boolean");
+    expect([true, false]).toContain(segs[0]!.muted); // a real boolean, never undefined
   });
 
   it("plain text segment is not muted and has an empty style", () => {

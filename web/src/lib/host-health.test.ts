@@ -208,15 +208,30 @@ describe("tier 2 holds no clock and no state", () => {
   });
 });
 
+/** All this case needs of a callable export: the arity it declares. */
+interface Callable {
+  length: number;
+}
+
+/** A module export that is callable, or undefined. Only its arity is ever read. */
+function asCallable<TExport>(value: TExport): Callable | undefined {
+  // SAFETY: `Object.prototype.toString` reports the value's own class tag, and `[object Function]`
+  // means it is callable — so it has a `length`. The value is never invoked here.
+  return Object.prototype.toString.call(value) === "[object Function]"
+    ? (value as Callable)
+    : undefined;
+}
+
 describe("tier 1 stays single — connection-health.ts gains no host dimension", () => {
   it("exports nothing that takes a host argument", () => {
     for (const [name, value] of Object.entries(connectionHealth)) {
-      if (typeof value !== "function") continue;
+      const fn = asCallable(value);
+      if (!fn) continue;
       // Every mutator/reader is nullary; a host-keyed variant would have to take one.
       // `subscribeHealth(cb)` is the store's one unavoidable parameter and it is a callback, not a
       // key. Everything else is nullary — a `markLive(host)` or a `useConnectionHealth(host)` would
       // show up here as an arity nobody signed off on.
-      expect({ name, arity: value.length }).toEqual({
+      expect({ name, arity: fn.length }).toEqual({
         name,
         arity: name === "subscribeHealth" ? 1 : 0,
       });

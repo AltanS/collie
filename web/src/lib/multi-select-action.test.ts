@@ -422,6 +422,9 @@ describe("multiSelectEquals / multiSelectIdentity — wizard step identity", () 
   });
 
   it("separates a Next step from the Submit step even if everything else matches", () => {
+    // SAFETY: `q1` IS a MultiSelectModel and only `advanceLabel` — a declared string field — is
+    // overridden, so the spread result carries every other field unchanged. The assertion exists
+    // because a spread of a discriminated union widens the discriminant.
     const onSubmit = { ...q1, advanceLabel: "Submit" } as MultiSelectModel;
     expect(multiSelectEquals(q1, onSubmit)).toBe(false);
   });

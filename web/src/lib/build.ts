@@ -1,4 +1,4 @@
-import { asJsonString } from "./json";
+import { asJsonString, type JsonValue } from "./json";
 
 export interface BuildInfo {
   version: string;
@@ -34,10 +34,10 @@ const SEMVER = /^v?\d+\.\d+\.\d+(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
  * "not a tagged release" marker, NOT a SemVer prerelease from the version files, so it's stripped
  * before the test — otherwise every dev build of stable Collie would wear an alpha banner.
  */
-export function prereleaseLabel(version: string | undefined | null): string | undefined {
-  // Narrowed rather than trusted: this reads a version off `/api/config` and off the update check,
-  // both parsed JSON, so a number can arrive here despite the annotation — and `.trim()` would
-  // throw on one. `asJsonString` is the single place that question is asked.
+export function prereleaseLabel(version: JsonValue | undefined): string | undefined {
+  // Typed as what it actually receives — a field off `/api/config` or the update check, i.e. parsed
+  // JSON — rather than as the `string` it hopes for. A number really can arrive here, and `.trim()`
+  // would throw on one; `asJsonString` is the single place that question is asked.
   const raw = asJsonString(version);
   if (raw === undefined) return undefined;
   const tag = SEMVER.exec(raw.trim().replace(/-dev$/, ""))?.[1];

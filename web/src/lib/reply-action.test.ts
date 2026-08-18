@@ -21,8 +21,8 @@ function harness(screen: () => string) {
     http.get(/\/api\/pane\/[^/]+$/, () =>
       HttpResponse.json({ paneId: "w1:p1", text: screen(), truncated: false, revision: 1 }),
     ),
-    http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-      const body = (await request.json()) as { text: string; submit: boolean };
+    http.post<never, { text: string; submit: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+      const body = await request.json();
       calls.push(body);
       return HttpResponse.json({ ok: true });
     }),
@@ -391,8 +391,8 @@ describe("sendGuardedReply", () => {
   it("surfaces a failed type call without submitting", async () => {
     const calls: Array<{ submit: boolean }> = [];
     server.use(
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        calls.push((await request.json()) as { submit: boolean });
+      http.post<never, { submit: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        calls.push(await request.json());
         return HttpResponse.json({ ok: false, error: "herdr socket down" });
       }),
     );
@@ -418,8 +418,8 @@ describe("sendGuardedReply", () => {
           revision: 1,
         }),
       ),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { submit: boolean };
+      http.post<never, { submit: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = await request.json();
         return body.submit
           ? HttpResponse.json({ ok: false, error: "keys failed" })
           : HttpResponse.json({ ok: true });
@@ -466,8 +466,8 @@ describe("onComposerSeen — destructive pre-type work needs positive evidence",
           revision: 1,
         });
       }),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { submit?: boolean };
+      http.post<never, { submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = await request.json();
         log.push(body.submit ? "submit" : "type");
         return HttpResponse.json({ ok: true });
       }),
@@ -569,8 +569,8 @@ describe("onComposerSeen — destructive pre-type work needs positive evidence",
           revision: reads,
         });
       }),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = (await request.json()) as { submit?: boolean };
+      http.post<never, { submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = await request.json();
         log.push(body.submit ? "submit" : "type");
         return HttpResponse.json({ ok: true });
       }),
