@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.4] - 2026-08-18
+
+### Fixed
+
+- **The audit log is size-capped** — a pack refusal is audited before any factor authenticates, so a caller who can reach the listener could grow it without bound; the appender now rotates to `audit.log.1` at 5 MiB, keeping one generation, and a failed rotation still appends (3e1c286)
+
 ## [1.0.0-beta.3] - 2026-08-18
 
 Merges `main` 0.31.0 + 0.31.1 into v1 (entries below). v1-specific on top of them:
