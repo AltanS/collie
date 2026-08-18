@@ -40,6 +40,13 @@
     }
   ],
   "rules": {
+    // ── Triage pass (M8 S3, 2026-08-18). Rationale table: .tracker/M8-lint-gate/03-pay-down-the-findings.md ──
+    // Both tsconfigs set `"jsx": "react-jsx"` (automatic runtime) and web builds through @vitejs/plugin-react — a `React` import in scope is never required, and adding 1,427 of them would be dead code.
+    "react/react-in-jsx-scope": "off",
+    // Every non-test site is ordered-by-contract, never throughput-bound: pane choreography re-reads the terminal between keystrokes (web/src/lib/multi-select-action.ts, reply-action.ts, harness/guard.ts), journal adapters gate each candidate path through containedRealpath before the next (bridge/journal/*.ts), and pack/CLI loops serialise writes to one JSON store (cli/pack.ts commitPackChange). `Promise.all` here is a correctness regression — interleaved keys into one shared PTY — not an optimisation.
+    "eslint/no-await-in-loop": "off",
+    // Three unrenameable families: tooling-imposed globals (`__WB_MANIFEST` injected by vite-plugin-pwa, `__BUILD_INFO__` from Vite `define`), a `_x` backing field behind a same-named getter (bridge/push.ts `_enabled` / `get enabled()`), and the repo-wide `__resetX()` test-seam marker on module singletons where the dangle IS the "not public API" signal.
+    "eslint/no-underscore-dangle": "off",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",
@@ -87,6 +94,57 @@
       ],
       "rules": {
         "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
+      // HTTP request bodies + disk-backed state: the same boundary class as the wire/journal/pack overrides above. Every `typeof` in these files sits inside the module's own coercion function — server.ts's `expectedPrompt`/`normalizeTabLabel`/`parsePairRequest`/`parseNotifyPrefsPatch`/`isPushSubscription`/`supersededEndpoint` over `await req.json()`, `coercePending`/`coerceRegistry`/`normalizeLabel` (pairing.json + client labels), `coerceStored` + `describeSendError` (subscription store + an untyped web-push rejection), `coerceNotifyPrefs`, `coerceActivityFile`, the `JSON.parse` reloads in snooze/version/update, `commands.toml` rows (ADR 0018), and audit.ts's `sanitize()` walk of an arbitrary JSON value where `typeof` IS the dispatch. The only real fix is a schema validator, explicitly out of scope for M8.
+      "files": [
+        "**/bridge/server.ts",
+        "**/bridge/pairing.ts",
+        "**/bridge/push.ts",
+        "**/bridge/notify-prefs.ts",
+        "**/bridge/activity.ts",
+        "**/bridge/operator-commands.ts",
+        "**/bridge/audit.ts",
+        "**/bridge/snooze.ts",
+        "**/bridge/version.ts",
+        "**/bridge/update.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
+      // localStorage-backed preference stores: the browser's untyped string store is the phone's disk, and each file's `typeof` is either its own `coerce`/`load` parse of `JSON.parse(raw)` or the `typeof localStorage === "undefined"` probe these modules need to also evaluate under jsdom and in the service worker.
+      "files": [
+        "**/web/src/hooks/use-display-prefs.ts",
+        "**/web/src/hooks/use-dash-prefs.ts",
+        "**/web/src/hooks/use-theme.ts",
+        "**/web/src/lib/drafts.ts",
+        "**/web/src/lib/haptics.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off"
+      }
+    },
+    {
+      // A per-suite helper deliberately lives inside the `describe` it belongs to: hoisting 109 of them to module scope moves fixtures away from the test that owns them and lets one suite's helper leak into its neighbour. The rule's premise (reuse + per-call allocation) is a production concern; it stays at error in production code.
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "rules": {
+        "unicorn/consistent-function-scoping": "off"
+      }
+    },
+    {
+      // web/ has no DI container by design (CLAUDE.md: components import hooks and `lib/api.ts` directly, no TanStack Query). The HTTP seam is already faked faithfully at the network with MSW — never with `vi.mock` — and the residual mocks stage hooks/timers whose only alternative is threading providers through production components for the test's benefit. Bridge/CLI tests inject real fakes and stay at error.
+      "files": [
+        "**/web/src/**/*.test.ts",
+        "**/web/src/**/*.test.tsx"
+      ],
+      "rules": {
+        "anti-slop/no-module-mocking": "off"
       }
     }
   ]
