@@ -49,6 +49,12 @@ that row's confirm — re-describing a session wipe cannot make it one-tap.
 - "Why not merge?" issues get this document, not a debate. A future mode that merges anyway (an
   `append:` sigil, a `+` prefix) is the same proposal wearing a costume and is covered by the same
   refusal.
+- **The palette has no pack dimension** (2026-08-18). The phone fetches config from the lead alone —
+  `/pack/v1/*` carries no config route — so a peer's own `commands.toml` is inert, and the lead's
+  rows apply to every pane it serves, peer panes included; the only scoping is the agent/harness name
+  a row addresses. That is the v1 answer, not an oversight: a pack is one operator's machines, so it
+  is one operator's palette, and a peer-local list would put rows on the sheet the person holding the
+  phone never chose — the same half-chosen list the decision above refuses.
 - Revisit if the sheet's premise changes — if it grows groups or pages and stops being a handful of
   one-thumb shortcuts — or if harnesses grow a trustworthy, enumerable command registry, which
   would reopen *generation* of rows, not merging of lists.

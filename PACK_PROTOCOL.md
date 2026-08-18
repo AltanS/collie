@@ -7,9 +7,10 @@ contract *below* Collie (the Herdr socket); this documents the contract *between
 **Provenance convention**, mirroring `HERDR_API.md`:
 
 - **Verified** — read first-hand out of this repo at the cited `file:line`. Existing behaviour.
-- **Specified** — normative for v1, **not implemented yet**. Nothing federation-shaped exists in
-  `bridge/` today (searched for `peer`, `pack`, `federat`, `remote`: no hits). Every requirement
-  below is a promise this document makes to M3–M6, not a property you can probe.
+- **Specified** — normative for v1. The protocol **is implemented** on the v1 line (`bridge/pack/`,
+  `cli/`), so a requirement below is generally probeable — but only the spots carrying a **Verified**
+  marker have been read back against the code. Nothing here records a full document-wide
+  verification pass.
 
 Unmarked prose is Specified. Where a rule extends existing behaviour, the existing behaviour is
 cited so a reviewer can check the extension is faithful.
