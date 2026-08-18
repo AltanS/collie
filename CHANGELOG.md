@@ -13,6 +13,7 @@ Merges `main` 0.31.0 + 0.31.1 into v1 (entries below). v1-specific on top of the
 ### Added
 
 - **`push-keys` is a `bin/collie` verb** (`cli/push-keys.ts`, also spelled `collie push keys`) rather than shell in the bootstrap shim — main implemented it in `collie-ctl.sh` because it has no `cli/`; on v1 every verb is implemented once in `cli/` and the shim only delegates (ADR 0006). Behaviour is main's, unchanged: `--force`, subject-only update, symlink refusal, no placeholder subject, mode 600, `wx` temp file
+- **`collie push list|forget`** — the orphaned subscriptions already on disk get a surface: one line per row (service host, first-subscribed day, user agent, enough endpoint to retype) and `forget <substring>` / `--all` to drop them; neither goes through `init()`, so both answer with no VAPID keys configured (b62e7e7)
 - `scripts/collie-cli.test.sh` drives `push-keys` through the compiled binary — resolved `.env`, mode, the refusal to replace live keys, the subject-only update, `--force`, and the symlinked-`.env` refusal
 
 ### Changed
@@ -20,6 +21,10 @@ Merges `main` 0.31.0 + 0.31.1 into v1 (entries below). v1-specific on top of the
 - `AuditLog`'s options object carries v1's pack `defaults` alongside main's `content`, so scoped pack logs and `COLLIE_AUDIT_CONTENT` redaction compose; every call site passes `{ now }` instead of a positional clock
 - `/api/config` reports `operatorCommands` through `bridgeConfigBody()`, so the pack `mode` key and the operator's palette rows share one omit-when-empty body
 - Drafts' two tiers key off the `(host, session, paneId)` scope, so the memory tier cannot disagree with disk about which pane is which
+
+### Fixed
+
+- **Re-adding an enrolled peer restarts it there** — `pack add` on a member whose checkout is behind replaced the build and then reported the process it had superseded; a run that changed something on the far machine now runs that machine's own `collie restart` and states what the member reports over the pack link afterwards (4574af5)
 
 ## [1.0.0-beta.2] - 2026-08-15
 
