@@ -104,10 +104,10 @@ const OUTCOME_COLOR: Record<NonNullable<UpdateMemberView["outcome"]>, string> = 
   failed: "red",
 };
 
-function Notes({ notes }: { notes: readonly AddNote[] }): React.ReactElement | null {
+function Notes({ notes, indent = 2 }: { notes: readonly AddNote[]; indent?: number }): React.ReactElement | null {
   if (notes.length === 0) return null;
   return (
-    <Box flexDirection="column" paddingLeft={2}>
+    <Box flexDirection="column" paddingLeft={indent}>
       {notes.map((note, i) => (
         // Never re-indented: a line's own leading spaces align its continuation rows, as on the
         // plain path.
@@ -152,16 +152,21 @@ function Member({ member, frame }: { member: UpdateMemberView; frame: number }):
       {member.legs === null ? null : (
         <Box flexDirection="column" paddingLeft={2}>
           {member.legs.map((leg) => (
-            <Box key={leg.leg}>
-              <Box width={2} flexShrink={0}>
-                {legMark(leg.status, frame)}
+            // A column, so what was said while the leg ran is drawn UNDER its own row — `pack add`'s
+            // shape, and the fix for a `pushing …` that used to render below all three ✓ rows.
+            <Box key={leg.leg} flexDirection="column">
+              <Box>
+                <Box width={2} flexShrink={0}>
+                  {legMark(leg.status, frame)}
+                </Box>
+                <Box width={LEG_WIDTH} flexShrink={0}>
+                  <Text dimColor={leg.status === "pending"}>{leg.leg}</Text>
+                </Box>
+                <Box flexGrow={1}>
+                  <Text dimColor>{leg.detail}</Text>
+                </Box>
               </Box>
-              <Box width={LEG_WIDTH} flexShrink={0}>
-                <Text dimColor={leg.status === "pending"}>{leg.leg}</Text>
-              </Box>
-              <Box flexGrow={1}>
-                <Text dimColor>{leg.detail}</Text>
-              </Box>
+              <Notes notes={leg.notes} indent={2} />
             </Box>
           ))}
         </Box>
