@@ -1,3 +1,4 @@
+import type { JsonValue } from "./json.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
@@ -21,8 +22,12 @@ export class Snooze {
 
   async load(): Promise<void> {
     try {
-      const raw = (await Bun.file(this.file).json()) as { mutedUntil?: unknown };
-      this.mutedUntil = typeof raw.mutedUntil === "number" ? raw.mutedUntil : null;
+      // SAFETY: `Bun.file().json()` output IS a JsonValue by construction; `mutedUntil` is checked
+      // before it is believed, and anything else leaves the store muted-until-never.
+      const raw = (await Bun.file(this.file).json()) as JsonValue;
+      const mutedUntil =
+        raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw.mutedUntil : undefined;
+      this.mutedUntil = typeof mutedUntil === "number" ? mutedUntil : null;
     } catch {
       /* none saved yet */
     }

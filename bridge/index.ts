@@ -142,6 +142,9 @@ const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")), {
 // The bridge-source stamp is snapshotted here too, so a rebuilt-but-not-restarted process reads stale.
 const rootDir = pluginRoot();
 const bridgeDir = join(rootDir, "bridge");
+// SAFETY: this is the plugin's OWN package.json, shipped in the same checkout as this file, and
+// `scripts/check-version.sh` gates every build on its `version` being present and agreeing with the
+// manifest — so the field is guaranteed by the release process, not hoped for.
 const currentVersion = (
   JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as { version: string }
 ).version;
@@ -280,14 +283,12 @@ refreshTimer.unref();
 // (Herdr reads them by path when the message is sent), so nothing else reclaims them. unref() so the
 // timer never keeps the process alive; it's also cleared on shutdown.
 const uploadsDir = join(cfg.stateDir, "uploads");
-void sweepUploads(uploadsDir).then((removed) => {
-  if (removed.length) console.log(`[uploads] swept ${removed.length} expired image(s) at startup`);
-});
-const sweepTimer = setInterval(() => {
-  void sweepUploads(uploadsDir).then((removed) => {
-    if (removed.length) console.log(`[uploads] swept ${removed.length} expired image(s)`);
-  });
-}, SWEEP_INTERVAL_MS);
+const sweepNow = async (when: string): Promise<void> => {
+  const removed = await sweepUploads(uploadsDir);
+  if (removed.length) console.log(`[uploads] swept ${removed.length} expired image(s)${when}`);
+};
+void sweepNow(" at startup");
+const sweepTimer = setInterval(() => void sweepNow(""), SWEEP_INTERVAL_MS);
 sweepTimer.unref();
 
 // ── The lead runtime ─────────────────────────────────────────────────────────
