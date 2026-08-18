@@ -157,9 +157,15 @@ const packedWithQuietPeer = () =>
     agents: fixturePackAgents,
     shellPanes: fixturePackShellPanes,
     sessions: fixturePackSessions,
-    servers: fixtureServers.map((s) =>
-      s.id === "workshop" ? { ...s, reachable: false, lastSeenAt: 1_000 } : s,
-    ),
+    servers: fixtureServers.map((s) => {
+      if (s.id !== "workshop") return s;
+      // Mutate a clone rather than spread in the map body — one copy, and the two fields being
+      // changed are the whole point of the fixture.
+      const quiet = structuredClone(s);
+      quiet.reachable = false;
+      quiet.lastSeenAt = 1_000;
+      return quiet;
+    }),
     ts: 60_000, // the lead's clock, well past the 3 × 1500ms tolerance
   });
 

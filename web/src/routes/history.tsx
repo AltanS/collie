@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useNavigate, useParams, useRouteLoaderData } from "react-router";
+import { useLoaderData, useNavigate, useParams } from "react-router";
 import { ArrowUpToLine, ChevronDown, ChevronUp, Loader2, ScrollText, Search, X } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
@@ -7,11 +7,12 @@ import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/cha
 import { FindBar } from "@/components/find-bar";
 import { TranscriptView } from "@/components/transcript-view";
 import { fetchHistory } from "@/lib/api";
-import { HISTORY_PAGE_SIZE, ROOT_ROUTE_ID, type HistoryData, type HomeData } from "@/lib/loaders";
+import { HISTORY_PAGE_SIZE, type HistoryData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
 import { setStatus } from "@/lib/status";
 import { matchingEntries, step, userTurnIndices } from "@/lib/transcript-search";
 import type { TranscriptEntry } from "@/lib/types";
+import { useRootData } from "@/lib/route-data";
 
 // Pane history route — the agent's own transcript, which is the ONLY conversation history a Claude
 // pane can have. Its terminal runs on the alternate screen, so Herdr retains no scrollback ring at
@@ -28,12 +29,12 @@ import type { TranscriptEntry } from "@/lib/types";
 // poll never re-pulls a several-hundred-turn transcript out from under the reader.
 
 /** Why the strip is empty, in the user's terms. Each is an ordinary state, not an error. */
-const UNAVAILABLE_COPY: Record<NonNullable<HistoryData["unavailable"]>, string> = {
+const UNAVAILABLE_COPY = {
   disabled: "Transcript history is switched off on this bridge (COLLIE_TRANSCRIPT).",
   "no-session": "This pane has no agent session, so there's no transcript to read.",
   "no-log": "No transcript file was found for this pane's session yet.",
   error: "Couldn't read the transcript. Pull back and try again.",
-};
+} satisfies Record<NonNullable<HistoryData["unavailable"]>, string>;
 
 /** Turns rendered on open — a few screens, so first paint stays instant on the longest threads. */
 const INITIAL_RENDER = 60;
@@ -43,8 +44,10 @@ const RENDER_STEP = 120;
 const GROW_THRESHOLD = 800;
 
 export function HistoryRoute() {
+  // SAFETY: this is the `/pane/:paneId/history` route's element and `historyLoader` returns
+  // `HistoryData`; React Router types a data-mode `useLoaderData()` as `unknown`.
   const data = useLoaderData() as HistoryData;
-  const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
+  const root = useRootData();
   const { paneId = "" } = useParams();
   const navigate = useNavigate();
   const scope = data.scope;

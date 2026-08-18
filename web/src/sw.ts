@@ -88,6 +88,9 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
 self.addEventListener("install", () => void self.skipWaiting());
 clientsClaim();
 self.addEventListener("message", (event: ExtendableMessageEvent) => {
+  // SAFETY: `ExtendableMessageEvent.data` is `any` — a structured clone from an arbitrary client.
+  // Only the same-origin page can reach this worker, and lib/pwa.ts is the one thing that posts to
+  // it; the optional chain means any other payload simply fails the comparison.
   if ((event.data as { type?: string } | null)?.type === "SKIP_WAITING") void self.skipWaiting();
 });
 
@@ -108,6 +111,10 @@ async function anyVisibleClient(): Promise<boolean> {
 async function handlePush(event: PushEvent): Promise<void> {
   let payload: PushPayload = {};
   try {
+    // SAFETY: `PushMessageData.json()` is typed `any` — it is the bridge's own push body, which
+    // bridge/push.ts builds as a `PushPayload`. A body that isn't JSON at all throws into the catch
+    // below; every field read downstream is optional, so a JSON body of another shape degrades to
+    // the plain-text fallback rather than crashing the worker.
     payload = (event.data?.json() as PushPayload) ?? {};
   } catch {
     // Non-JSON / empty push — fall back to a plain-text body so we never silently drop it.
@@ -151,6 +158,8 @@ async function handlePush(event: PushEvent): Promise<void> {
 // compared in openPath below is byte-identical to the one the router produces for that scope.
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
+  // SAFETY: `Notification.data` is `any` — but it is OUR data: the only writer is `handlePush`
+  // above, in this same file, which attaches a `NotifData`. Every field is optional and defaulted.
   const data = (event.notification.data as NotifData | null) ?? {};
   event.waitUntil(openPath(notificationPath(data)));
 });

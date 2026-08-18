@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Bell, Loader2 } from "lucide-react";
-import { useLoaderData, useNavigate, useRouteLoaderData } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { BuildStamp } from "@/components/build-stamp";
@@ -16,10 +16,11 @@ import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
 import { usePushControl } from "@/hooks/use-push";
-import { ROOT_ROUTE_ID, type DevicesData, type HomeData } from "@/lib/loaders";
+import { type DevicesData } from "@/lib/loaders";
 import { homePath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import type { PushAvailability } from "@/lib/push";
+import { useOptionalRootData } from "@/lib/route-data";
 
 const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: [], error: false };
 
@@ -31,11 +32,12 @@ export function SettingsRoute() {
   const { state, busy, setEnabled } = usePushControl();
   const [error, setError] = useState<string | null>(null);
 
-  // Settings lives under the root route, so the live snapshot (bridge + device auth) is right here.
-  const root = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
+  const root = useOptionalRootData();
   // This route's OWN loader: the paired-device registry (lib/loaders.ts devicesLoader).
   // Defaulted rather than asserted: a harness that mounts this route without the loader (or a
   // navigation whose loader threw) must still render the rest of Settings, not crash the page.
+  // SAFETY: `devicesLoader` returns `DevicesData` for this route; `undefined` is the case the
+  // default below exists for. React Router types a data-mode `useLoaderData()` as `unknown`.
   const devices = (useLoaderData() as DevicesData | undefined) ?? EMPTY_DEVICES;
   // The build the bridge reports it's serving — handy in the diagnostics panel alongside the local
   // stamp in the footer. Best-effort: stays undefined if the bridge is unreachable.
