@@ -35,18 +35,18 @@ function emit(): void {
 export function loadOperatorCommands(): Promise<void> {
   if (loaded) return Promise.resolve();
   if (inflight) return inflight;
-  inflight = fetchConfig()
-    .then((cfg) => {
+  inflight = (async () => {
+    try {
+      const cfg = await fetchConfig();
       current = cfg.operatorCommands ?? [];
       loaded = true;
       emit();
-    })
-    .catch(() => {
+    } catch {
       // Additive feature — see the header. Leave the list empty and allow a later retry.
-    })
-    .finally(() => {
+    } finally {
       inflight = null;
-    });
+    }
+  })();
   return inflight;
 }
 

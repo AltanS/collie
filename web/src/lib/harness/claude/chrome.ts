@@ -42,9 +42,9 @@ const MAX_FOOTER_LINES = 8;
 const MAX_DRAFT_LINES = 100;
 
 // Text Claude draws on the "❯" prompt line that is NOT a real user draft — it's a hint the TUI paints
-// when the box is otherwise empty. Must never be surfaced as a recoverable draft. Kept as an array so
+// when the box is otherwise empty. Must never be surfaced as a recoverable draft. Kept as a set so
 // more variants can be added without touching the extraction logic.
-const INPUT_PLACEHOLDERS = ["Press up to edit queued messages"];
+const INPUT_PLACEHOLDERS = new Set(["Press up to edit queued messages"]);
 
 /**
  * Return `lines` with any confidently-matched trailing chrome removed. When nothing matches the
@@ -141,7 +141,7 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
     if (t.length > 0) parts.push(t);
   }
   const draft = parts.join(" ").trim();
-  if (draft.length === 0 || INPUT_PLACEHOLDERS.includes(draft)) return null;
+  if (draft.length === 0 || INPUT_PLACEHOLDERS.has(draft)) return null;
   return draft;
 }
 

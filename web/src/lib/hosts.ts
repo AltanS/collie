@@ -11,6 +11,7 @@
 // React-free on purpose (same reason as lib/scope.ts): the pieces that need React live in
 // components/pack-provider.tsx.
 
+import type { Scope } from "./scope";
 import type { AgentView, ServerSummary } from "./types";
 
 // NUL-joined, exactly as lib/scope.ts joins its cache keys: a member id and a workspace id are both
@@ -102,7 +103,7 @@ export function paneScope<S extends { host?: string; session?: string }>(
   scope: S,
   pane: { host?: string } | undefined,
   servers: readonly ServerSummary[] | undefined,
-): { host?: string; session?: string } {
+): Scope {
   const host = pane?.host;
   if (host === undefined) return scope;
   return { host: host === leadHost(servers) ? undefined : host, session: scope.session };

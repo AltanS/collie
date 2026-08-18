@@ -22,7 +22,7 @@ export function shortCwd(cwd: string, max = 32): string {
 
   const kept = [last];
   let len = last.length + 1; // + the leading "…/"
-  for (const seg of segments.reverse()) {
+  for (const seg of segments.toReversed()) {
     if (len + seg.length + 1 > max) break;
     kept.unshift(seg);
     len += seg.length + 1;

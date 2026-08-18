@@ -47,19 +47,27 @@ export type DialogKind = keyof DialogModels;
  *  place that knows which field name each block uses for its payload. */
 export function dialogModelOf<K extends DialogKind>(block: Block, kind: K): DialogModels[K] | null {
   if (block.kind !== kind) return null;
-  // The switch narrows `block` per kind; the cast is on the RESULT only (TS can't relate the
-  // narrowed block back to the generic K), and every arm returns that kind's own payload.
+  // SAFETY: `block.kind === kind` was just checked, and `dialogPayload` returns exactly the payload
+  // of the kind it was handed — which is `DialogModels[block.kind]`, i.e. `DialogModels[K]`. The
+  // assertion exists only because TS cannot relate the narrowed `block` back to the generic `K`;
+  // the per-kind field names it depends on are all checked in `dialogPayload` itself.
+  return dialogPayload(block) as DialogModels[K] | null;
+}
+
+/** The payload of whatever kind `block` is — the one place each block's field name is written down.
+ *  Every arm is fully typechecked against `DialogModels`, so a renamed field fails to compile. */
+function dialogPayload(block: Block): DialogModels[DialogKind] | null {
   switch (block.kind) {
     case "prompt-select":
-      return block.prompt as DialogModels[K];
+      return block.prompt;
     case "wizard":
-      return block.wizard as DialogModels[K];
+      return block.wizard;
     case "preview-select":
-      return block.preview as DialogModels[K];
+      return block.preview;
     case "multi-select":
-      return block.multi as DialogModels[K];
+      return block.multi;
     case "menu":
-      return block.menu as DialogModels[K];
+      return block.menu;
     default:
       return null;
   }
@@ -84,8 +92,11 @@ export interface DialogComparators<M> {
   region(m: M): string;
 }
 
+/** The shape of the contract table: one row of comparators per interactive block kind. */
+export type DialogContract = { [K in DialogKind]: DialogComparators<DialogModels[K]> };
+
 /** kind → comparators. The whole table is the contract; adding a block kind means adding a row. */
-export const DIALOG_CONTRACT: { [K in DialogKind]: DialogComparators<DialogModels[K]> } = {
+export const DIALOG_CONTRACT: DialogContract = {
   "prompt-select": {
     // Every ANSWER key commits (the digit IS the answer). The feedback flow is the one multi-step
     // recipe here (digit → verify focus → type → Enter), and it moves the pointer and fills the input
@@ -128,3 +139,19 @@ export const DIALOG_CONTRACT: { [K in DialogKind]: DialogComparators<DialogModel
     region: (m) => m.signature,
   },
 };
+
+/**
+ * The comparators for a kind known only at runtime, erased to the union of every model.
+ *
+ * The conformance suite (harness/conformance.ts) walks `DialogKind` in one generic pass; addressing
+ * the table with a union key would otherwise INTERSECT the five model types into a parameter type no
+ * value can satisfy. Erasing once, here, keeps that erasure in the module that owns the table
+ * instead of at each call site — and callers only ever pair these comparators with models the same
+ * table produced for the same kind.
+ */
+export function dialogComparators(kind: DialogKind): DialogComparators<DialogModels[DialogKind]> {
+  // SAFETY: every row of `DIALOG_CONTRACT` compares models of exactly one kind. Widening the model
+  // parameter to the union is sound for the only use there is — comparing two derivations of the
+  // SAME screen, which are the same kind by construction (`modelsOf(adapter, name, kind)`).
+  return DIALOG_CONTRACT[kind] as DialogComparators<DialogModels[DialogKind]>;
+}

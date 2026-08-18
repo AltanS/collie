@@ -77,10 +77,17 @@ function rememberEndpoint(endpoint: string | null): void {
  *  PushSubscription whole: the bridge stores what it is sent, so the shape is a contract. `replaces`
  *  is present only when this device held a DIFFERENT endpoint before — re-registering the same one
  *  supersedes nothing. Pure, and exported, because `enablePush` itself needs a real PushManager. */
+export interface SubscribeBody {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  /** The endpoint this registration supersedes — absent when there is nothing to supersede. */
+  replaces?: string;
+}
+
 export function subscribeBody(
   json: PushSubscriptionJSON,
   previous: string | null,
-): { endpoint: string; keys: { p256dh: string; auth: string }; replaces?: string } {
+): SubscribeBody {
   const endpoint = json.endpoint ?? "";
   const body = {
     endpoint,

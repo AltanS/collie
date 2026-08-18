@@ -103,7 +103,9 @@ function onServerBuild(): void {
     setBanner(false);
     return;
   }
-  const id = server as string; // isStaleBuild guarantees a defined, non-"unknown" id here
+  // SAFETY: `isStaleBuild` returned true, which it only does for a defined server build id that is
+  // neither "unknown" nor equal to ours — so `server` is a string here.
+  const id = server as string;
   if (id === confirmedStale) {
     act(id); // already confirmed — re-evaluate (a hold or the SW state may have changed)
     return;

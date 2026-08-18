@@ -29,7 +29,13 @@ const URL_SCAN = /https?:\/\/[^\s<>"'`\\{}|^[\]]+/gi;
 // Sentence punctuation that is almost never the last character of a real URL.
 const TRAILING_PUNCT = ".,;:!?*_~'\"’”";
 
-const CLOSERS: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+// A Map, not an object literal: `ch` comes from arbitrary page text, and an object lookup would
+// answer for inherited names ("constructor", "toString") that are not closers at all.
+const CLOSERS = new Map([
+  [")", "("],
+  ["]", "["],
+  ["}", "{"],
+]);
 
 function count(s: string, ch: string): number {
   let n = 0;
@@ -62,7 +68,7 @@ function trimTrailing(url: string): string {
       end--;
       continue;
     }
-    const opener = CLOSERS[ch];
+    const opener = CLOSERS.get(ch);
     if (opener) {
       const slice = url.slice(0, end);
       if (count(slice, opener) < count(slice, ch)) {

@@ -57,7 +57,7 @@ export function step(stops: number[], from: number, dir: 1 | -1): number | null 
     const next = stops.find((i) => i > from);
     return next ?? stops[0]!;
   }
-  const prev = [...stops].reverse().find((i) => i < from);
+  const prev = stops.toReversed().find((i) => i < from);
   return prev ?? stops[stops.length - 1]!;
 }
 

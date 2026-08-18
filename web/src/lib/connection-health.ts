@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { hasDocument } from "./env";
 
 // The ONE connection-health clock, shared by every consumer (the header pill, the outage banner, the
 // in-pane header, the boot splash). Module-scoped store in the lib/busy.ts + lib/server-build.ts
@@ -138,7 +139,7 @@ export function useConnectionHealth(): number {
 // A phone backgrounds Collie (screen off, app switch) far more than it truly disconnects; timers
 // freeze while it's away. On return, grant a fresh grace window rather than escalating on the stale,
 // pre-sleep anchor. Module-level (registered once) so it's independent of any component's lifecycle.
-if (typeof document !== "undefined") {
+if (hasDocument()) {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") markWake();
   });

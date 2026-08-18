@@ -221,13 +221,16 @@ const OMP: readonly AgentCommand[] = [
   { command: "/resume", description: "Open the session picker", takesArg: false, argHint: "", common: false, dangerous: false },
 ];
 
-const CATALOG: Record<string, readonly AgentCommand[]> = {
-  claude: CLAUDE,
-  codex: CODEX,
-  pi: PI,
-  opencode: OPENCODE,
-  omp: OMP,
-};
+// A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
+// what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
+// ("constructor", "toString") that ship no catalog at all.
+const CATALOG = new Map<string, readonly AgentCommand[]>([
+  ["claude", CLAUDE],
+  ["codex", CODEX],
+  ["pi", PI],
+  ["opencode", OPENCODE],
+  ["omp", OMP],
+]);
 
 /**
  * Commands for a Herdr-detected agent (`pane.agent`, e.g. "claude" / "codex") — the operator's own
@@ -311,10 +314,10 @@ function specificity(row: OperatorCommand, paneKey: string, paneFamily: string):
   if (paneKey === "") return MISSES;
   const scope = row.agent.toLowerCase().trim();
   if (scope === paneKey) return EXACT;
-  // `Object.hasOwn`, not `canonicalAgent(scope) === paneFamily`: only the catalog's own name for a
-  // family addresses the whole family. Anything else stays exact, so a narrow operator scope can
-  // never be widened by the lookup's prefix tolerance.
-  return Object.hasOwn(CATALOG, scope) && scope === paneFamily ? FAMILY : MISSES;
+  // A catalog membership test, not `canonicalAgent(scope) === paneFamily`: only the catalog's own
+  // name for a family addresses the whole family. Anything else stays exact, so a narrow operator
+  // scope can never be widened by the lookup's prefix tolerance.
+  return CATALOG.has(scope) && scope === paneFamily ? FAMILY : MISSES;
 }
 
 /**
@@ -325,7 +328,7 @@ function specificity(row: OperatorCommand, paneKey: string, paneFamily: string):
  */
 function canonicalAgent(key: string): string {
   if (key === "") return "";
-  if (Object.hasOwn(CATALOG, key)) return key;
+  if (CATALOG.has(key)) return key;
   if (key.startsWith("claude")) return "claude";
   if (key.startsWith("codex")) return "codex";
   if (key.startsWith("opencode")) return "opencode";
@@ -339,5 +342,5 @@ function canonicalAgent(key: string): string {
 function catalogFor(agent: string | undefined | null): readonly AgentCommand[] {
   if (!agent) return [];
   const key = canonicalAgent(agent.toLowerCase().trim());
-  return Object.hasOwn(CATALOG, key) ? CATALOG[key] : [];
+  return CATALOG.get(key) ?? [];
 }

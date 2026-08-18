@@ -1,3 +1,5 @@
+import { graphemeSegmenter } from "./env";
+
 // East-Asian-aware display width — no dependency.
 //
 // A terminal lays CJK ideographs, Hangul, and fullwidth forms out at TWO column cells;
@@ -163,10 +165,7 @@ function inRanges(cp: number, ranges: ReadonlyArray<readonly [number, number]>):
 // Feature-detected: an engine without it must lose grapheme-cluster precision (falling back to
 // iterating code points, which still handles surrogate pairs correctly via `for...of`), never
 // white-screen the app at module-evaluation time.
-const GRAPHEMES =
-  typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
-    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
-    : null;
+const GRAPHEMES = graphemeSegmenter();
 
 function clusters(text: string): string[] {
   if (GRAPHEMES === null) return [...text];
