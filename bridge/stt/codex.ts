@@ -3,6 +3,7 @@ import type { SttAudio, SttProvider, SttStatus } from "./provider.ts";
 
 const TRANSCRIBE_URL = "https://chatgpt.com/backend-api/transcribe";
 const ACCOUNT_ID_CLAIM = "https://api.openai.com/auth.chatgpt_account_id";
+const AUTH_NAMESPACE_CLAIM = "https://api.openai.com/auth";
 const REQUEST_TIMEOUT_MS = 120_000;
 
 interface CodexProviderOptions {
@@ -99,7 +100,12 @@ function accountIdFromJwt(token: string): string {
       string,
       unknown
     >;
-    const accountId = claims[ACCOUNT_ID_CLAIM];
+    const namespacedAuth = claims[AUTH_NAMESPACE_CLAIM];
+    const accountId =
+      claims[ACCOUNT_ID_CLAIM] ??
+      (typeof namespacedAuth === "object" && namespacedAuth !== null
+        ? (namespacedAuth as Record<string, unknown>).chatgpt_account_id
+        : undefined);
     if (typeof accountId !== "string" || !accountId) {
       throw new Error("missing account id");
     }

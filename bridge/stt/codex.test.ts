@@ -10,6 +10,15 @@ function jwt(accountId: string): string {
   return `header.${payload}.signature`;
 }
 
+function currentJwt(accountId: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      "https://api.openai.com/auth": { chatgpt_account_id: accountId },
+    }),
+  ).toString("base64url");
+  return `header.${payload}.signature`;
+}
+
 describe("CodexSttProvider", () => {
   test("uploads audio with Codex auth and refreshes once after a 401", async () => {
     const token = jwt("acct-123");
@@ -55,5 +64,30 @@ describe("CodexSttProvider", () => {
     expect(file).toBeInstanceOf(Blob);
     expect((file as File).name).toBe("recording.webm");
     expect((file as Blob).type).toBe("audio/webm;codecs=opus");
+  });
+
+  test("reads the ChatGPT account id from the current namespaced auth claim", async () => {
+    const token = currentJwt("acct-current");
+    const broker: CodexAuthBroker = {
+      status: async () => ({ available: true }),
+      accessToken: async () => ({ accessToken: token, authMethod: "chatgpt" }),
+      close() {},
+    };
+    const accountHeaders: Array<string | null> = [];
+    const provider = new CodexSttProvider({
+      broker,
+      fetch: async (_input, init) => {
+        accountHeaders.push(new Headers(init?.headers).get("chatgpt-account-id"));
+        return Response.json({ text: "Merhaba" });
+      },
+    });
+
+    await provider.transcribe({
+      audio: new Uint8Array([1]),
+      mimeType: "audio/ogg",
+      filename: "recording.ogg",
+    });
+
+    expect(accountHeaders).toEqual(["acct-current"]);
   });
 });
