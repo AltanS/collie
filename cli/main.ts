@@ -48,7 +48,7 @@ export function bootstrapVerb(argv: readonly string[]): (typeof BOOTSTRAP_VERBS)
 }
 
 /** The one-liner a missing dependency tree gets, instead of a module-resolution stack trace. */
-export function loadFailure(err: unknown): string {
+export function loadFailure<TThrown>(err: TThrown): string {
   const message = err instanceof Error ? err.message : String(err);
   return /Cannot find (package|module)/i.test(message)
     ? "error: dependencies are not installed — run `collie build` (or bun install) first"

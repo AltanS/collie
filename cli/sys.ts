@@ -12,6 +12,7 @@ import {
 import { dirname } from "node:path";
 import { connect } from "node:net";
 
+import type { Environment } from "./context.ts";
 import { findTool } from "./tools.ts";
 
 // The two seams every lifecycle verb reaches the outside world through: running a system tool, and
@@ -84,14 +85,14 @@ export interface Files {
   rename(from: string, to: string): void;
 }
 
-export function realExec(env: Record<string, string | undefined>, home: string): Exec {
+export function realExec(env: Environment, home: string): Exec {
   const resolve = (tool: string): string | null => findTool(tool, env, home);
   return {
     which: resolve,
     capture(tool, args) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
-      const r = Bun.spawnSync([bin, ...args], { env: env as Record<string, string> });
+      const r = Bun.spawnSync([bin, ...args], { env });
       return {
         code: r.exitCode,
         stdout: r.stdout.toString(),
@@ -103,7 +104,7 @@ export function realExec(env: Record<string, string | undefined>, home: string):
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
       const r = Bun.spawnSync([bin, ...args], {
-        env: env as Record<string, string>,
+        env,
         stdout: "inherit",
         stderr: "inherit",
       });
@@ -114,7 +115,7 @@ export function realExec(env: Record<string, string | undefined>, home: string):
       if (bin === null) return NOT_FOUND;
       const r = Bun.spawnSync([bin, ...args], {
         cwd,
-        env: env as Record<string, string>,
+        env,
         stdout: "inherit",
         stderr: "inherit",
       });
@@ -144,7 +145,7 @@ export function realExec(env: Record<string, string | undefined>, home: string):
       const bin = resolve("ps");
       if (bin === null) return null;
       const r = Bun.spawnSync([bin, "-p", String(pid), "-o", "command="], {
-        env: env as Record<string, string>,
+        env,
       });
       if (r.exitCode !== 0) return null;
       const out = r.stdout.toString().trim();

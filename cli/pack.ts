@@ -1226,6 +1226,9 @@ export async function cmdPromote(deps: PackDeps, args: readonly string[]): Promi
     return EXIT.REFUSED;
   }
   if (handover.ok) {
+    // SAFETY: `value` is the old lead's HTTP body after `res.json()` — a JsonValue by construction,
+    // and an object or null is the only shape §14.3 defines. `parseRoster` re-checks every field of
+    // `roster` below, so a body that disagrees yields an empty roster rather than a trusted one.
     const body = handover.value as JsonObject | null;
     roster = parseRoster(body?.roster) ?? [];
     // The demoted lead is a member of this pack like any other, and it just told us its own pin is

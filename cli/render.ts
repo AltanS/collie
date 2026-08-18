@@ -42,6 +42,12 @@ export function renderInputs(
   return { isTTY, ci: ci !== "" && ci !== "false" && ci !== "0", plain };
 }
 
+/** An argv with `--plain` taken out of it, and whether it had been there. */
+export interface PlainFlag {
+  plain: boolean;
+  rest: string[];
+}
+
 /**
  * The global `--plain` escape hatch, taken out of argv before the parser ever sees it.
  *
@@ -50,7 +56,7 @@ export function renderInputs(
  * having to redeclare it. Nothing else in the CLI's grammar spells a bare `--plain`, so there is no
  * value it could be shadowing.
  */
-export function takePlainFlag(argv: readonly string[]): { plain: boolean; rest: string[] } {
+export function takePlainFlag(argv: readonly string[]): PlainFlag {
   const rest = argv.filter((a) => a !== "--plain");
   return { plain: rest.length !== argv.length, rest };
 }
@@ -171,12 +177,12 @@ function addRow(label: string, value: string): string {
 }
 
 /** The `✓` label a finished leg wears. `probe` has none — its facts are its output. */
-const ADD_LEG_LABEL: Record<AddLeg, string | null> = {
+const ADD_LEG_LABEL = {
   probe: null,
   install: "install",
   configure: "bind",
   enroll: "enrolled",
-};
+} satisfies Record<AddLeg, string | null>;
 
 /**
  * The plain reader: replay one event as the exact line(s) `pack add` printed before it had a
@@ -240,6 +246,13 @@ export interface AddView {
 
 const ADD_LEGS: readonly AddLeg[] = ["probe", "install", "configure", "enroll"];
 
+/** One leg's accumulating slot while a fold is running — {@link AddLegView} before it is frozen. */
+interface AddLegSlot {
+  status: AddLegView["status"];
+  detail: string;
+  notes: AddNote[];
+}
+
 /**
  * Fold the event stream into what the terminal draws. Pure, and deliberately outside `cli/ui/`: the
  * whole of the rich view's behaviour is testable without mounting anything.
@@ -249,7 +262,7 @@ export function projectAdd(events: readonly AddEvent[]): AddView {
   const facts: { name: string; value: string }[] = [];
   const preamble: AddNote[] = [];
   let verdict: { ok: boolean; text: string } | null = null;
-  const legs = new Map<AddLeg, { status: AddLegView["status"]; detail: string; notes: AddNote[] }>(
+  const legs = new Map<AddLeg, AddLegSlot>(
     ADD_LEGS.map((leg) => [leg, { status: "pending", detail: "", notes: [] }]),
   );
   let current: AddLeg | null = null;
@@ -312,7 +325,10 @@ export function projectAdd(events: readonly AddEvent[]): AddView {
     facts,
     preamble,
     verdict,
-    legs: ADD_LEGS.map((leg) => ({ leg, ...legs.get(leg)! })),
+    legs: ADD_LEGS.map((leg) => {
+      const slot = legs.get(leg)!;
+      return { leg, status: slot.status, detail: slot.detail, notes: slot.notes };
+    }),
   };
 }
 
@@ -388,19 +404,19 @@ function updateRow(mark: string, label: string, detail: string): string {
 }
 
 /** The mark a planned member wears: it is going to be touched, or it is not. */
-const PLAN_MARK: Record<UpdatePlanState, string> = {
+const PLAN_MARK = {
   ready: "→",
   current: "·",
   skipped: "·",
   blocked: "✗",
-};
+} satisfies Record<UpdatePlanState, string>;
 
-const UPDATE_OUTCOME_WORD: Record<UpdateOutcome, string> = {
+const UPDATE_OUTCOME_WORD = {
   updated: "updated",
   current: "current",
   skipped: "skipped",
   failed: "FAILED",
-};
+} satisfies Record<UpdateOutcome, string>;
 
 /**
  * The plain reader: one event, as the line(s) `pack update` prints without a terminal. This is the
@@ -486,6 +502,21 @@ export interface UpdateView {
 
 const UPDATE_LEGS: readonly UpdateLeg[] = ["push", "restart", "verify"];
 
+/** One leg's accumulating slot — {@link UpdateLegView} before the member's `leg` is stamped on it. */
+interface UpdateLegSlot {
+  status: UpdateLegView["status"];
+  detail: string;
+  notes: AddNote[];
+}
+
+/** One member's accumulating slot while {@link projectUpdate} folds the stream. */
+interface UpdateMemberSlot {
+  plan: { state: UpdatePlanState; detail: string } | null;
+  outcome: UpdateOutcome | null;
+  legs: Map<UpdateLeg, UpdateLegSlot> | null;
+  notes: AddNote[];
+}
+
 /** Fold the event stream into what the terminal draws. Pure, and outside `cli/ui/` on purpose. */
 export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
   let version: string | null = null;
@@ -493,15 +524,7 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
   const preamble: AddNote[] = [];
   let summary: UpdateView["summary"] = null;
   // Insertion-ordered, which is the order the members were planned and then worked in.
-  const members = new Map<
-    string,
-    {
-      plan: { state: UpdatePlanState; detail: string } | null;
-      outcome: UpdateOutcome | null;
-      legs: Map<UpdateLeg, { status: UpdateLegView["status"]; detail: string; notes: AddNote[] }> | null;
-      notes: AddNote[];
-    }
-  >();
+  const members = new Map<string, UpdateMemberSlot>();
   let current: string | null = null;
   // The leg a line belongs to: set by `leg-start`, cleared the moment that leg finishes. A line said
   // between legs — or after the last one — is the member's, not the previous leg's.
@@ -510,7 +533,7 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
   const slot = (memberId: string) => {
     const existing = members.get(memberId);
     if (existing !== undefined) return existing;
-    const fresh = { plan: null, outcome: null, legs: null, notes: [] as AddNote[] };
+    const fresh: UpdateMemberSlot = { plan: null, outcome: null, legs: null, notes: [] };
     members.set(memberId, fresh);
     return fresh;
   };
@@ -539,8 +562,8 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
       case "member-start": {
         current = event.memberId;
         currentLeg = null;
-        slot(event.memberId).legs = new Map(
-          UPDATE_LEGS.map((leg) => [leg, { status: "pending" as const, detail: "", notes: [] as AddNote[] }]),
+        slot(event.memberId).legs = new Map<UpdateLeg, UpdateLegSlot>(
+          UPDATE_LEGS.map((leg) => [leg, { status: "pending", detail: "", notes: [] }]),
         );
         break;
       }
@@ -588,7 +611,15 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
       memberId,
       plan: m.plan,
       outcome: m.outcome,
-      legs: m.legs === null ? null : [...m.legs.entries()].map(([leg, view]) => ({ leg, ...view })),
+      legs:
+        m.legs === null
+          ? null
+          : [...m.legs.entries()].map(([leg, view]) => ({
+              leg,
+              status: view.status,
+              detail: view.detail,
+              notes: view.notes,
+            })),
       notes: m.notes,
     })),
   };

@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { resolveBridgeHost } from "../bridge/config.ts";
 import { ensureBuild } from "./build.ts";
-import { collieVersion, type CliContext } from "./context.ts";
+import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, type ServeDeps } from "./serve.ts";
@@ -77,10 +77,11 @@ const TIERS: readonly Tier[] = ["systemd", "launchd", "unsupervised"];
 export function supervisionTier(
   exec: Exec,
   platform: NodeJS.Platform,
-  env: Record<string, string | undefined> = {},
+  env: Environment = {},
 ): Tier {
   const pinned = env.COLLIE_SUPERVISOR?.trim();
-  if (pinned !== undefined && TIERS.includes(pinned as Tier)) return pinned as Tier;
+  const named = TIERS.find((tier) => tier === pinned);
+  if (named !== undefined) return named;
   const probe = exec.capture("systemctl", ["--user", "show-environment"]);
   if (probe.found && probe.code === 0) return "systemd";
   if (platform === "darwin" && exec.which("launchctl") !== null) return "launchd";
@@ -526,8 +527,8 @@ async function printStatusBanner(deps: LifecycleDeps): Promise<void> {
   for (const line of bannerLines(view)) deps.io.out(line);
 }
 
-function stringEnv(env: Record<string, string | undefined>): Record<string, string> {
-  const out: Record<string, string> = {};
+function stringEnv(env: Environment): EnvVars {
+  const out: EnvVars = {};
   for (const [k, v] of Object.entries(env)) if (v !== undefined) out[k] = v;
   return out;
 }

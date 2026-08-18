@@ -28,7 +28,7 @@ export interface CliContext {
   /** Resolved home dir — `$HOME` when set, the passwd entry otherwise (there may be no env). */
   home: string;
   /** `.env`-merged environment. The one env any verb should consult. */
-  env: Record<string, string | undefined>;
+  env: Environment;
   port: number;
   serveMode: ServeMode;
   socket: string;
@@ -43,6 +43,22 @@ export interface CliContext {
 
 export type ServeMode = "https" | "http";
 
+/**
+ * A process environment: variable names to values, an unset name reading `undefined`. Named rather
+ * than written out as a bare dictionary at each site, so the CLI has one word for "the env".
+ */
+export interface Environment {
+  [name: string]: string | undefined;
+}
+
+/**
+ * Environment variables with a value for every name: a parsed `.env`, or the exact set a
+ * supervised process is launched with — as opposed to {@link Environment}, where a name may be unset.
+ */
+export interface EnvVars {
+  [name: string]: string;
+}
+
 // ── .env ─────────────────────────────────────────────────────────────────────
 // Parsed in process, never `source`d. The shell had to `. "${CONFIG_DIR}/.env"`, which executes it:
 // a `bun()` function defined in there would shadow the real binary and poison every later lookup
@@ -55,8 +71,8 @@ export type ServeMode = "https" | "http";
  * common `\n`/`\t`/`\"`/`\\` escapes; single quotes are literal). Anything that is not an
  * assignment is ignored rather than executed.
  */
-export function parseEnvFile(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
+export function parseEnvFile(text: string): EnvVars {
+  const out: EnvVars = {};
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) continue;
@@ -86,7 +102,7 @@ export function parseEnvFile(text: string): Record<string, string> {
 // ── Config dir ───────────────────────────────────────────────────────────────
 
 export interface ConfigDirDeps {
-  env: Record<string, string | undefined>;
+  env: Environment;
   home: string;
   fileExists: (p: string) => boolean;
   /** `herdr plugin config-dir <id>`, or null when herdr is absent / said nothing. */
@@ -173,7 +189,7 @@ function readIfPresent(p: string): string | null {
  * service on one port and the banner on another.
  */
 export function deriveSettings(
-  env: Record<string, string | undefined>,
+  env: Environment,
   home: string,
 ): Pick<CliContext, "port" | "serveMode" | "socket"> {
   const rawPort = env.COLLIE_PORT?.trim();
@@ -219,7 +235,7 @@ export const instanceSuffix = (instance: string | null): string =>
  *    not of an instance, so two instances taking it would fight for the same listener and the second
  *    would restart-loop. Naming a second instance is exactly the moment to have decided its port.
  */
-export function resolveInstance(env: Record<string, string | undefined>): string | null {
+export function resolveInstance(env: Environment): string | null {
   const raw = env.COLLIE_INSTANCE?.trim();
   if (raw === undefined || raw === "") return null;
   if (!INSTANCE_PATTERN.test(raw)) {
@@ -241,7 +257,7 @@ export function resolveInstance(env: Record<string, string | undefined>): string
 // ── Assembly ─────────────────────────────────────────────────────────────────
 
 /** The home dir, with no environment to read it from: `$HOME`, else the passwd entry. */
-export function resolveHome(env: Record<string, string | undefined>): string {
+export function resolveHome(env: Environment): string {
   const h = env.HOME?.trim();
   if (h) return h;
   try {
@@ -267,7 +283,7 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
   if (note !== null) warn(note);
 
   // `.env` overrides the ambient environment, exactly as `set -a; . .env` did.
-  const env: Record<string, string | undefined> = { ...process.env };
+  const env: Environment = { ...process.env };
   const dotenv = readIfPresent(join(configDir, ".env"));
   if (dotenv !== null) Object.assign(env, parseEnvFile(dotenv));
 
@@ -290,7 +306,7 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
   };
 }
 
-function askHerdrConfigDir(env: Record<string, string | undefined>, home: string): string | null {
+function askHerdrConfigDir(env: Environment, home: string): string | null {
   const herdr = findTool("herdr", env, home);
   if (herdr === null) return null;
   try {

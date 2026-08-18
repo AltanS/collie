@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import type { CliContext } from "./context.ts";
+import type { CliContext, EnvVars } from "./context.ts";
 import { instanceSuffix, PLUGIN_ID } from "./context.ts";
 
 // The service definition, as a pure function of where things are. The shell wrote these with a
@@ -98,8 +98,8 @@ export function bridgeCommand(spec: ServiceSpec): string[] {
  * cannot derive the checkout from its own module path (bridge/root.ts) and `web/dist` is served
  * from disk.
  */
-export function bridgeEnvironment(spec: ServiceSpec): Record<string, string> {
-  const env: Record<string, string> = {
+export function bridgeEnvironment(spec: ServiceSpec): EnvVars {
+  const env: EnvVars = {
     HERDR_SOCKET_PATH: spec.socket,
     COLLIE_PORT: String(spec.port),
     HERDR_PLUGIN_CONFIG_DIR: spec.configDir,

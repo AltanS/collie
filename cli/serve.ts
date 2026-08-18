@@ -84,9 +84,14 @@ export function handlerName(record: OwnershipRecord): string {
 
 // ── `tailscale serve status --json` ──────────────────────────────────────────
 
+/** One mount point's handler, keyed by mount path (`/`, `/api`, …) in {@link ServeHandlers}. */
+export interface ServeHandlers {
+  [mount: string]: { Proxy?: string } | undefined;
+}
+
 export interface ServeStatus {
   TCP?: Record<string, { HTTP?: boolean; HTTPS?: boolean } | undefined>;
-  Web?: Record<string, { Handlers?: Record<string, { Proxy?: string } | undefined> } | undefined>;
+  Web?: Record<string, { Handlers?: ServeHandlers } | undefined>;
   /** Foreground serve sessions nest arbitrarily deep, each a serve config in its own right. */
   Foreground?: Record<string, ServeStatus>;
 }
@@ -97,10 +102,13 @@ export interface ServeStatus {
  * the same message. Empty output parses as `{}`, exactly as `JSON.parse(data || "{}")` did.
  */
 export function parseServeStatus(text: string): ServeStatus {
+  // SAFETY: the shape `tailscale serve status --json` documents. Every field is optional and every
+  // read below goes through `?.` with a fallback, so a status that disagrees fingerprints as
+  // `absent`/`other` — a refusal — rather than being trusted.
   return JSON.parse(text.trim() === "" ? "{}" : text) as ServeStatus;
 }
 
-const hasRoot = (handlers: object): boolean => Object.prototype.hasOwnProperty.call(handlers, "/");
+const hasRoot = (handlers: ServeHandlers): boolean => Object.prototype.hasOwnProperty.call(handlers, "/");
 
 /**
  * What currently owns the root mount we recorded: `absent`, or `<protocol>|proxy:<target>`. This is
@@ -113,7 +121,7 @@ export function fingerprintRoot(status: ServeStatus, hostPort: string, port: num
   const protocol =
     listener?.HTTP === true ? "http" : listener?.HTTPS === true ? "https" : "other";
   const proxy = handlers["/"]?.Proxy;
-  return typeof proxy === "string" && proxy !== ""
+  return proxy !== undefined && proxy.length > 0
     ? `${protocol}|proxy:${proxy}`
     : `${protocol}|other`;
 }

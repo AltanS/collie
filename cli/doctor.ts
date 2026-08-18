@@ -216,7 +216,7 @@ function herdrSocket(deps: DoctorDeps): Finding {
 /** A bind that only loopback can reach. Not loopback itself — `127.0.0.1` is the right answer solo. */
 function isLoopbackBind(host: string): boolean {
   const h = host.trim().toLowerCase();
-  return h === "localhost" || h === "::1" || h === "[::1]" || /^127\./.test(h);
+  return h === "localhost" || h === "::1" || h === "[::1]" || h.startsWith("127.");
 }
 
 /**

@@ -251,7 +251,7 @@ describe("start, on launchd", () => {
       answers: [
         [
           "launchctl bootstrap",
-          (n) => (n > 1 ? {} : { code: 5, stderr: "Bootstrap failed: 5: Input/output error" }),
+          { perCall: (n) => (n > 1 ? {} : { code: 5, stderr: "Bootstrap failed: 5: Input/output error" }) },
         ],
       ],
     });
