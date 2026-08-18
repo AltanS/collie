@@ -1,45 +1,83 @@
 #!/usr/bin/env bash
-# Versioning guard. Install with: scripts/install-hooks.sh (sets core.hooksPath).
-# 1) versions must be consistent (check-version.sh)
-# 2) if functional code changed, the canonical version must differ from HEAD (i.e. you bumped it)
-# Override a single commit with: SKIP_VERSION_CHECK=1 git commit …
+# Two independent guards. Install with: scripts/install-hooks.sh (sets core.hooksPath).
+#
+# A) Versioning guard — override with: SKIP_VERSION_CHECK=1 git commit …
+#    1) versions must be consistent (check-version.sh)
+#    2) if functional code changed, the canonical version must differ from HEAD (i.e. you bumped it)
+#
+# B) Lint guard — override with: SKIP_LINT_CHECK=1 git commit …
+#    oxlint over the STAGED lintable files only. This is a convenience, not the authority: the
+#    full-tree runs (CI and `collie build`) define "passing". Both shell out to the same
+#    `.oxlintrc.json` at the repo root — no surface passes its own rule flags.
+#
+# The two are skippable independently: SKIP_VERSION_CHECK=1 does not disarm the lint guard.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
+# The one staged-file list, shared by both guards.
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+# ---- (A) versioning ---------------------------------------------------------------------------
 if [ "${SKIP_VERSION_CHECK:-}" = "1" ]; then
   echo "pre-commit: SKIP_VERSION_CHECK=1 — skipping version guard" >&2
-  exit 0
-fi
+else
+  # (1) consistency
+  "$ROOT/scripts/check-version.sh" >/dev/null
 
-# (1) consistency
-"$ROOT/scripts/check-version.sh" >/dev/null
-
-# (2) bump-on-change — any functional path in this set requires a version bump.
-staged="$(git diff --cached --name-only)"
-if echo "$staged" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
-  read_ver() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
-  cur="$(read_ver < "$ROOT/herdr-plugin.toml")"
-  prev="$(git show HEAD:herdr-plugin.toml 2>/dev/null | read_ver || true)"
-  if [ -n "${prev:-}" ]; then
-    if [ "$cur" = "$prev" ]; then
-      cat >&2 <<EOF
+  # (2) bump-on-change — any functional path in this set requires a version bump.
+  if echo "$staged" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
+    read_ver() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
+    cur="$(read_ver < "$ROOT/herdr-plugin.toml")"
+    prev="$(git show HEAD:herdr-plugin.toml 2>/dev/null | read_ver || true)"
+    if [ -n "${prev:-}" ]; then
+      if [ "$cur" = "$prev" ]; then
+        cat >&2 <<EOF
 ✗ pre-commit: functional code changed but the version is still $cur.
   Bump version in herdr-plugin.toml, package.json, web/package.json and add a CHANGELOG entry.
   (Doc-only changes don't need a bump. Override once with SKIP_VERSION_CHECK=1 git commit.)
 EOF
-      exit 1
-    fi
-    # Monotonicity: the new version must sort STRICTLY ABOVE the previous one — no downgrades or
-    # typo'd versions. `sort -V` orders semver; the higher of {prev,cur} must be cur.
-    higher="$(printf '%s\n%s\n' "$prev" "$cur" | sort -V | tail -1)"
-    if [ "$higher" != "$cur" ]; then
-      cat >&2 <<EOF
+        exit 1
+      fi
+      # Monotonicity: the new version must sort STRICTLY ABOVE the previous one — no downgrades or
+      # typo'd versions. `sort -V` orders semver; the higher of {prev,cur} must be cur.
+      higher="$(printf '%s\n%s\n' "$prev" "$cur" | sort -V | tail -1)"
+      if [ "$higher" != "$cur" ]; then
+        cat >&2 <<EOF
 ✗ pre-commit: version went backwards ($prev → $cur). The new version must be greater than the last.
 EOF
-      exit 1
+        exit 1
+      fi
     fi
   fi
 fi
+
+# ---- (B) lint ---------------------------------------------------------------------------------
+if [ "${SKIP_LINT_CHECK:-}" = "1" ]; then
+  echo "pre-commit: SKIP_LINT_CHECK=1 — skipping lint guard" >&2
+  exit 0
+fi
+
+# Lintable staged files, minus the vendored plugin sources (.oxlintrc.json ignores them too, but
+# naming one explicitly on the command line would override that ignore).
+lintable="$(echo "$staged" \
+  | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' \
+  | grep -vE '^(tools/oxlint/anti-slop/|contrib/)' || true)"
+
+# Fast path: nothing lintable staged (doc-only commits, config-only commits) — don't spawn oxlint.
+[ -z "$lintable" ] || {
+  # Same config, same flags as `bun run lint`; only the file set narrows.
+  if ! out="$(cd "$ROOT" && echo "$lintable" | xargs bun run --silent lint -- 2>&1)"; then
+    {
+      echo "✗ pre-commit: oxlint found issues in staged files."
+      echo
+      echo "$out"
+      echo
+      echo "  Fix the code — do not downgrade a rule or add a suppression comment."
+      echo "  (Override once with SKIP_LINT_CHECK=1 git commit.)"
+    } >&2
+    exit 1
+  fi
+}
 
 exit 0
