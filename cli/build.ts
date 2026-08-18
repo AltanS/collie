@@ -5,7 +5,7 @@ import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 
-// `build` and the lazy `ensure_build`, ported from the pre-shim `collie-ctl.sh`. The five ordered
+// `build` and the lazy `ensure_build`, ported from the pre-shim `collie-ctl.sh`. The six ordered
 // steps and their reasons come along with the code, because every one of them is a production
 // incident someone already paid for:
 //
@@ -13,11 +13,13 @@ import { collieBinary } from "./unit.ts";
 //   2. install BOTH     — the root typecheck resolves @types/bun from the ROOT node_modules; a fresh
 //      trees              Herdr checkout ships neither tree, so without the root install the very
 //                         first build dies with TS2688 and Herdr rolls the install back (issue #9).
-//   3. typecheck BOTH   — the Vite build does not typecheck, so a type error would ship silently.
+//   3. lint the tree    — one `.oxlintrc.json`, shared by every enforcement surface; the full-tree
+//                         run is the authoritative one, and it is the cheapest step that can fail.
+//   4. typecheck BOTH   — the Vite build does not typecheck, so a type error would ship silently.
 //      sides
-//   4. compile the CLI  — `bin/collie` is a build product, so an `update` that changed cli/ produces
+//   5. compile the CLI  — `bin/collie` is a build product, so an `update` that changed cli/ produces
 //                         a binary matching the checkout it was built from.
-//   5. build the web    — into `web/dist-staging`, never into `web/dist`: Vite empties its output
+//   6. build the web    — into `web/dist-staging`, never into `web/dist`: Vite empties its output
 //      bundle             dir first, and the bridge serves `web/dist` FROM DISK at request time, so
 //                         building in place would leave the served directory empty with no rollback.
 //
@@ -97,14 +99,24 @@ export function cmdBuild(deps: BuildDeps): number {
     if (!step(deps, `bun install in ${dir}`, "bun", ["install"], dir)) return EXIT.FAIL;
   }
 
-  // 3. Both typechecks. Same escape hatch the pre-push hook documents.
+  // 3. The lint gate. Full tree, from the root, through the ONE `.oxlintrc.json` — the same config
+  // the pre-commit hook, the CI job and the editor read; no surface carries its own rule flags, and
+  // this full-tree run is the authority when a narrower run disagrees. It sits before the
+  // typechecks because it is the cheapest step that can fail (<1s over the whole repo), and after
+  // the installs only because oxlint itself lives in the root node_modules. Same escape hatch the
+  // pre-commit hook documents (there it is SKIP_LINT_CHECK).
+  if (deps.ctx.env.SKIP_LINT !== "1") {
+    if (!step(deps, "the lint gate", "bun", ["run", "lint"], root)) return EXIT.FAIL;
+  }
+
+  // 4. Both typechecks. Same escape hatch the pre-push hook documents.
   if (deps.ctx.env.SKIP_TYPECHECK !== "1") {
     for (const dir of [root, web]) {
       if (!step(deps, `typecheck in ${dir}`, "bun", ["run", "typecheck"], dir)) return EXIT.FAIL;
     }
   }
 
-  // 4. The CLI, into its staging path. Compiled BEFORE the web bundle so the cheaper failure
+  // 5. The CLI, into its staging path. Compiled BEFORE the web bundle so the cheaper failure
   // (a broken binary) is found first, but swapped in only at the end with everything else.
   const binaryStaging = collieBinaryStaging(root);
   deps.files.remove(binaryStaging);
@@ -121,7 +133,7 @@ export function cmdBuild(deps: BuildDeps): number {
     return EXIT.FAIL;
   }
 
-  // 5. The web bundle, into staging.
+  // 6. The web bundle, into staging.
   const staging = webStaging(root);
   deps.files.removeTree(staging);
   const built = step(
@@ -138,7 +150,7 @@ export function cmdBuild(deps: BuildDeps): number {
     return EXIT.FAIL;
   }
 
-  // 6. The swaps, last. The binary first because it is the smaller window, then the served bundle.
+  // 7. The swaps, last. The binary first because it is the smaller window, then the served bundle.
   deps.files.rename(binaryStaging, collieBinary(root));
   deps.files.removeTree(webDist(root));
   deps.files.rename(staging, webDist(root));

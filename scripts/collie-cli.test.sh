@@ -845,7 +845,7 @@ esac
 rm -f "$RECORD" "${FD_CONFIG}/collie.pid" "$FD_UNIT"
 
 # ── build ────────────────────────────────────────────────────────────────────
-# The five ordered steps, and the invariant they exist for: a build that fails leaves the previously
+# The six ordered steps, and the invariant they exist for: a build that fails leaves the previously
 # served `web/dist` byte-identical, because the swap is a same-filesystem rename performed LAST.
 #
 # SAFETY: `bun` here is a FAKE on a scratch PATH, and the checkout is a throwaway tree under $TMP_ROOT
@@ -907,12 +907,13 @@ bld() {
     COLLIE_PLUGIN_ROOT="$B_ROOT" "$@"
 }
 
-# The happy path: five steps, in order, each in the right tree.
+# The happy path: six steps, in order, each in the right tree.
 bld "$BIN" build || fail "\`collie build\` failed: ${STDERR}"
 assert_eq "$(cat "$B_CALLS")" "$(cat <<EOF
 gate
 ${B_ROOT}\$ bun install
 ${B_ROOT}/web\$ bun install
+${B_ROOT}\$ bun run lint
 ${B_ROOT}\$ bun run typecheck
 ${B_ROOT}/web\$ bun run typecheck
 ${B_ROOT}\$ bun build --compile --target=bun ./cli/main.ts --outfile ${B_ROOT}/bin/collie.new
@@ -1478,7 +1479,7 @@ echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, confi
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
 echo "✓ collie CLI two instances: COLLIE_INSTANCE refusals, two units, two records, uninstall isolation"
-echo "✓ collie CLI build: five ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
+echo "✓ collie CLI build: six ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
 echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull re-exec, the managed re-link refusal"
 echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny-all warning"
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
