@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import { stubPart } from "@/test/stub";
 
 import type { UseThemeReturn } from "./use-theme";
 
@@ -12,7 +13,13 @@ import type { UseThemeReturn } from "./use-theme";
 
 const STORAGE_KEY = "collie:theme:v1";
 
-let media: { matches: boolean; emit: (matches: boolean) => void };
+/** The controllable half of the local `matchMedia` fake: read the state, drive a change. */
+interface MediaControl {
+  matches: boolean;
+  emit: (matches: boolean) => void;
+}
+
+let media: MediaControl;
 
 function installMatchMedia(initialDark: boolean) {
   const listeners = new Set<(e: MediaQueryListEvent) => void>();
@@ -33,7 +40,7 @@ function installMatchMedia(initialDark: boolean) {
     },
     emit(matches: boolean) {
       mql.matches = matches;
-      for (const fn of listeners) fn({ matches } as MediaQueryListEvent);
+      for (const fn of listeners) fn(stubPart<MediaQueryListEvent>({ matches }));
     },
   };
   vi.stubGlobal("matchMedia", () => mql);
@@ -42,7 +49,7 @@ function installMatchMedia(initialDark: boolean) {
 /** Fresh module instance, so module-scope state doesn't leak between cases. */
 async function loadModule(): Promise<{ useTheme: () => UseThemeReturn }> {
   vi.resetModules();
-  return (await import("./use-theme")) as { useTheme: () => UseThemeReturn };
+  return await import("./use-theme");
 }
 
 /** The hook's non-React surface is what matters here; drive it through the store it exports. */

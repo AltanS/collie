@@ -18,6 +18,9 @@ function fixtureDraft(name: string): string | null {
 
 const INFLIGHT = fixtureDraft("claude--send-inflight.txt"); // "/rename"
 const STRANDED = fixtureDraft("claude--done.txt"); // "cat hello.txt to verify"
+// The hook's input is `string | null`; a case that later rerenders with `null` needs the initial
+// props typed for the whole domain, not narrowed to the first value.
+const strandedOrNull: string | null = STRANDED;
 
 const MIN_AGE = 1_500;
 
@@ -71,7 +74,7 @@ describe("useStableTerminalDraft — cross-poll debounce (mitigation B)", () => 
     // raw string made every such wobble restart the 1.5s clock, so the chip never promoted for a
     // draft the user was staring at. Stability keys on the NORMALISED text, so only a real edit resets.
     const { result, rerender } = renderHook(({ raw }) => useStableTerminalDraft(raw), {
-      initialProps: { raw: STRANDED as string | null },
+      initialProps: { raw: strandedOrNull },
     });
     act(() => vi.advanceTimersByTime(MIN_AGE - 500)); // 500ms shy of promoting
     expect(result.current).toBeNull();
@@ -97,7 +100,7 @@ describe("useStableTerminalDraft — cross-poll debounce (mitigation B)", () => 
 
   it("clears immediately when the draft goes away", () => {
     const { result, rerender } = renderHook(({ raw }) => useStableTerminalDraft(raw), {
-      initialProps: { raw: STRANDED as string | null },
+      initialProps: { raw: strandedOrNull },
     });
     act(() => vi.advanceTimersByTime(MIN_AGE));
     expect(result.current).toBe(STRANDED);

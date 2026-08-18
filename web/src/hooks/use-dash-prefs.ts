@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { asJsonBoolean, asJsonObject, type JsonValue } from "@/lib/json";
 
 import type { RecentDir } from "@/lib/triage";
 
@@ -51,13 +52,13 @@ export function openForCount(pref: boolean | null, count: number): boolean {
  * Coerce an untrusted parsed value into {@link DashPrefs}, filling anything missing or wrong-typed
  * from the defaults. Pure + exported so the file-shape handling is unit-tested.
  */
-export function coerceDashPrefs(raw: unknown): DashPrefs {
-  if (typeof raw !== "object" || raw === null) return { ...DEFAULTS };
-  const p = raw as Record<string, unknown>;
+export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
+  const p = asJsonObject(raw);
+  if (!p) return { ...DEFAULTS };
   return {
-    spacesOpen: typeof p.spacesOpen === "boolean" ? p.spacesOpen : DEFAULTS.spacesOpen,
-    shellsOpen: typeof p.shellsOpen === "boolean" ? p.shellsOpen : DEFAULTS.shellsOpen,
-    recentOpen: typeof p.recentOpen === "boolean" ? p.recentOpen : DEFAULTS.recentOpen,
+    spacesOpen: asJsonBoolean(p.spacesOpen) ?? DEFAULTS.spacesOpen,
+    shellsOpen: asJsonBoolean(p.shellsOpen) ?? DEFAULTS.shellsOpen,
+    recentOpen: asJsonBoolean(p.recentOpen) ?? DEFAULTS.recentOpen,
     recentDir: p.recentDir === "oldest" || p.recentDir === "newest" ? p.recentDir : DEFAULTS.recentDir,
   };
 }

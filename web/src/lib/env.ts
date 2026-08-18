@@ -12,24 +12,28 @@
 // module is first imported (a test installing a `ResizeObserver`, a polyfill loading late), and a
 // constant captured at import time would answer for the wrong runtime forever.
 //
-// Each probe asks `"name" in <its owner>` rather than `typeof name`: the question really is whether
-// the runtime PROVIDES the capability, and the owner (`globalThis`, `Intl`, `AbortSignal`) is the
-// thing that would provide it — so the check names what it means instead of inspecting a
-// representation, and works unchanged in the page, the worker and jsdom.
+// Each probe asks whether the runtime PROVIDES the capability rather than inspecting the
+// representation of a name: the owner (`globalThis`, `Intl`, `AbortSignal`) is the thing that would
+// provide it, and reading a missing property off it yields `undefined` without throwing. That also
+// answers correctly for a test that stubs a global TO `undefined`, which a bare presence check
+// would not. Works unchanged in the page, the service worker and jsdom.
+//
+// NOTE: this module must stay out of `src/sw.ts`'s import graph — `globalThis.window` /
+// `globalThis.document` do not typecheck under the WebWorker lib (tsconfig.worker.json).
 
 /** True in a page (`window` exists). False in the service worker. */
 export function hasWindow(): boolean {
-  return "window" in globalThis;
+  return globalThis.window !== undefined;
 }
 
 /** True where a DOM document exists — a page, but not the service worker. */
 export function hasDocument(): boolean {
-  return "document" in globalThis;
+  return globalThis.document !== undefined;
 }
 
 /** True where element resizes can be observed. jsdom has no `ResizeObserver`. */
 export function hasResizeObserver(): boolean {
-  return "ResizeObserver" in globalThis;
+  return globalThis.ResizeObserver !== undefined;
 }
 
 /**
@@ -38,8 +42,8 @@ export function hasResizeObserver(): boolean {
  * constructing one at module evaluation, which would white-screen the whole PWA at boot.
  */
 export function graphemeSegmenter(): Intl.Segmenter | null {
-  if (!("Intl" in globalThis)) return null;
-  if (!("Segmenter" in Intl)) return null;
+  if (globalThis.Intl === undefined) return null;
+  if (!("Segmenter" in Intl) || Intl.Segmenter === undefined) return null;
   return new Intl.Segmenter(undefined, { granularity: "grapheme" });
 }
 
@@ -48,7 +52,7 @@ export function graphemeSegmenter(): Intl.Segmenter | null {
  * `AbortSignal.timeout` — where the caller degrades to no timeout rather than crashing.
  */
 export function abortSignalAfter(ms: number): AbortSignal | null {
-  if (!("timeout" in AbortSignal)) return null;
+  if (!("timeout" in AbortSignal) || AbortSignal.timeout === undefined) return null;
   return AbortSignal.timeout(ms);
 }
 
@@ -57,6 +61,6 @@ export function abortSignalAfter(ms: number): AbortSignal | null {
  * engine without `AbortSignal.any`.
  */
 export function abortSignalAny(signals: AbortSignal[]): AbortSignal | null {
-  if (!("any" in AbortSignal)) return null;
+  if (!("any" in AbortSignal) || AbortSignal.any === undefined) return null;
   return AbortSignal.any(signals);
 }

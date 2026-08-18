@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { asJsonBoolean, asJsonNumber, parseJsonObject } from "@/lib/json";
 
 // Terminal mirror display preferences, persisted in localStorage.
 // Safe to call in SSR contexts (localStorage guarded throughout).
@@ -48,14 +49,14 @@ function loadPrefs(): DisplayPrefs {
   try {
     const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     if (!raw) return DEFAULTS;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return DEFAULTS;
-    const p = parsed as Record<string, unknown>;
+    const p = parseJsonObject(raw);
+    if (!p) return DEFAULTS;
+    const fontSize = asJsonNumber(p.fontSize);
     return {
-      wrap: typeof p.wrap === "boolean" ? p.wrap : DEFAULTS.wrap,
-      fontSize: typeof p.fontSize === "number" ? clampFont(p.fontSize) : DEFAULTS.fontSize,
-      rawTerminal: typeof p.rawTerminal === "boolean" ? p.rawTerminal : DEFAULTS.rawTerminal,
-      tapToFocus: typeof p.tapToFocus === "boolean" ? p.tapToFocus : DEFAULTS.tapToFocus,
+      wrap: asJsonBoolean(p.wrap) ?? DEFAULTS.wrap,
+      fontSize: fontSize === undefined ? DEFAULTS.fontSize : clampFont(fontSize),
+      rawTerminal: asJsonBoolean(p.rawTerminal) ?? DEFAULTS.rawTerminal,
+      tapToFocus: asJsonBoolean(p.tapToFocus) ?? DEFAULTS.tapToFocus,
     };
   } catch {
     return DEFAULTS;

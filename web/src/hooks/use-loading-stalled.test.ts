@@ -4,10 +4,11 @@ import { useLoadingStalled } from "./use-loading-stalled";
 
 // Drive useRevalidator/useNavigation directly (hoisted so the vi.mock factory can close over the
 // holder), so we can pin each into "loading"/"idle" without a real router.
-const h = vi.hoisted(() => ({
-  rev: "idle" as "idle" | "loading",
-  nav: "idle" as "idle" | "loading" | "submitting",
-}));
+interface RouterStates {
+  rev: "idle" | "loading";
+  nav: "idle" | "loading" | "submitting";
+}
+const h = vi.hoisted((): RouterStates => ({ rev: "idle", nav: "idle" }));
 vi.mock("react-router", () => ({
   useRevalidator: () => ({ state: h.rev }),
   useNavigation: () => ({ state: h.nav }),

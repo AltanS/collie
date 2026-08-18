@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { hasResizeObserver } from "@/lib/env";
 
 interface UseAutoScrollOptions {
   /** Px distance from the bottom still considered "at bottom". */
@@ -63,7 +64,7 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
   // Guarded for jsdom, which has no ResizeObserver.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el || !hasResizeObserver()) return;
 
     const ro = new ResizeObserver(() => {
       pinToBottom();
