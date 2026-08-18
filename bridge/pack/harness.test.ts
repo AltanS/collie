@@ -16,7 +16,7 @@ import {
   type PackDeps,
 } from "../../cli/pack.ts";
 import type { CliContext } from "../../cli/context.ts";
-import type { Exec, ExecResult, Files } from "../../cli/sys.ts";
+import type { Exec, ExecResult } from "../../cli/sys.ts";
 import { realFiles } from "../../cli/sys.ts";
 import { PackOpsStore } from "./ops-store.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
@@ -24,7 +24,7 @@ import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
 import { mintIdentity, randomToken } from "./identity.ts";
 import { PACK_HELLO_PATH, PACK_LEAVE_PATH } from "./router.ts";
 import { bodyDigest, canonicalRequest, signRequest, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
-import { peerListenerTls, type PackRequestInit } from "./transport.ts";
+import { peerListenerTls, type PackRequestInit, type PackTlsOptions } from "./transport.ts";
 import { parseTrustStore, TrustStore, TRUST_STORE_FILENAME, type TrustStoreData } from "./trust-store.ts";
 import { collieVersionBare } from "../version.ts";
 
@@ -201,6 +201,38 @@ const noExec: Exec = {
   kill: () => {},
 };
 
+/**
+ * A {@link PackRequestInit} whose `tls` half may be partial: one test below dials with no client
+ * certificate at all, which is the refusal it is checking for.
+ */
+type TestPackRequestInit = Omit<PackRequestInit, "tls"> & { tls?: Partial<PackTlsOptions> };
+
+/**
+ * Bun's `fetch` understands a per-request `tls` option that the DOM `RequestInit` type has no room
+ * for — `PackRequestInit` (transport.ts) is the bridge's name for that superset. This is the one
+ * place in this file where the wider init meets the platform signature.
+ */
+function packFetch(url: string, init: TestPackRequestInit): Promise<Response> {
+  // SAFETY: `tls` is a real field Bun reads off the init at runtime; only the DOM lib's type is
+  // narrower. Nothing about the init is changed on the way through.
+  return fetch(url, init as RequestInit);
+}
+
+/** The slice of the lead's merged `/api/snapshot` these tests read back. */
+interface MergedSnapshot {
+  servers?: Array<{ id: string; reachable: boolean }>;
+  sessions?: Array<{ host?: string }>;
+}
+
+/** GET a collie's `/api/snapshot` and read it as {@link MergedSnapshot}. */
+async function snapshotOf(origin: string): Promise<MergedSnapshot> {
+  const res = await fetch(`${origin}/api/snapshot`);
+  // SAFETY: the handler emits its body `satisfies SnapshotResponse` (server.ts), and MergedSnapshot
+  // is a structural subset of that type with every field optional — it claims nothing the handler
+  // does not already promise.
+  return (await res.json()) as MergedSnapshot;
+}
+
 interface Captured {
   readonly out: string[];
   readonly err: string[];
@@ -223,12 +255,12 @@ function depsFor(instance: Instance, captured: Captured): PackDeps {
     ctx,
     io: { out: (l) => captured.out.push(l), err: (l) => captured.err.push(l) },
     exec: noExec,
-    files: realFiles as Files,
+    files: realFiles,
     store: freshStore(instance),
     ops: new PackOpsStore(instance.stateDir),
     audit: null,
     // The REAL platform fetch, so a pinned handshake is a pinned handshake.
-    fetch: (url, init) => fetch(url, init as RequestInit),
+    fetch: packFetch,
     now: () => Date.now(),
     random: randomToken,
     mintIdentity: () =>
@@ -400,7 +432,7 @@ describe("invite → join, end to end", () => {
 describe("the TLS factor is enforced at the handshake", () => {
   test("an unpinned client certificate is refused before any handler runs", async () => {
     const stranger = mintIdentity({ commonName: "stranger", sans: ["127.0.0.1"] });
-    const attempt = fetch(`${peer.origin()}${PACK_HELLO_PATH}`, {
+    const attempt = packFetch(`${peer.origin()}${PACK_HELLO_PATH}`, {
       tls: {
         cert: stranger.certPem,
         key: stranger.keyPem,
@@ -408,14 +440,14 @@ describe("the TLS factor is enforced at the handshake", () => {
         checkServerIdentity: () => undefined,
       },
       headers: { authorization: `Bearer ${peer.store()!.pack!.secret}` },
-    } as PackRequestInit as RequestInit);
+    });
     await expect(attempt).rejects.toThrow();
   });
 
   test("no client certificate at all is refused the same way", async () => {
-    const attempt = fetch(`${peer.origin()}${PACK_HELLO_PATH}`, {
+    const attempt = packFetch(`${peer.origin()}${PACK_HELLO_PATH}`, {
       tls: { ca: [peer.store()!.self.certPem], checkServerIdentity: () => undefined },
-    } as unknown as RequestInit);
+    });
     await expect(attempt).rejects.toThrow();
   });
 
@@ -443,23 +475,19 @@ describe("the TLS factor is enforced at the handshake", () => {
 
 describe("the lead speaks for the pack", () => {
   test("the merged snapshot carries both hosts' sessions, host-tagged", async () => {
-    const body = (await (await fetch(`${lead.origin()}/api/snapshot`)).json()) as {
-      servers?: Array<{ id: string; reachable: boolean }>;
-      sessions?: Array<{ host?: string }>;
-    };
+    const body = await snapshotOf(lead.origin());
     await waitFor(
-      async () => {
-        const snap = (await (await fetch(`${lead.origin()}/api/snapshot`)).json()) as typeof body;
-        return (snap.servers ?? []).length === 2;
-      },
+      async () => (await snapshotOf(lead.origin())).servers?.length === 2,
       10_000,
       `the lead never merged the peer in (saw ${JSON.stringify(body.servers)})`,
     );
-    const snap = (await (await fetch(`${lead.origin()}/api/snapshot`)).json()) as typeof body;
-    const hosts = (snap.servers ?? []).map((s) => s.id).sort();
-    expect(hosts).toEqual([lead.store()!.self.memberId, peer.store()!.self.memberId].sort());
+    const snap = await snapshotOf(lead.origin());
+    const hosts = (snap.servers ?? []).map((s) => s.id).toSorted();
+    expect(hosts).toEqual(
+      [lead.store()!.self.memberId, peer.store()!.self.memberId].toSorted(),
+    );
     // Every session is host-qualified once a pack exists (§9.2) — including the lead's own.
-    expect((snap.sessions ?? []).every((s) => typeof s.host === "string")).toBe(true);
+    expect((snap.sessions ?? []).every((s) => s.host !== undefined && s.host !== "")).toBe(true);
   }, 60_000);
 
   test("a proxied pane read is byte-identical and keeps its ETag and its 304", async () => {
@@ -493,7 +521,7 @@ describe("the lead speaks for the pack", () => {
   test("the lead performs no filesystem access for a peer's pane", () => {
     // The peer's uploads dir is the observable: a lead that served a peer pane locally would have
     // had to materialise something under its own state dir.
-    expect(readdirSync(lead.stateDir).sort()).not.toContain("uploads");
+    expect(readdirSync(lead.stateDir).toSorted()).not.toContain("uploads");
   });
 });
 
@@ -523,16 +551,15 @@ describe("a peer that is not there", () => {
     try {
       const res = await fetch(`${lead.origin()}/api/snapshot`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { servers?: Array<{ id: string; reachable: boolean }> };
       await waitFor(
         async () => {
-          const snap = (await (await fetch(`${lead.origin()}/api/snapshot`)).json()) as typeof body;
+          const snap = await snapshotOf(lead.origin());
           return (snap.servers ?? []).some((s) => s.id !== lead.store()!.self.memberId && !s.reachable);
         },
         10_000,
         async () =>
           `the lead never marked the downed peer degraded (last: ${JSON.stringify(
-            ((await (await fetch(`${lead.origin()}/api/snapshot`)).json()) as typeof body).servers,
+            (await snapshotOf(lead.origin())).servers,
           )}, port open: ${await portOpen(peer.port)})`,
       );
     } finally {
@@ -701,7 +728,7 @@ describe("teardown", () => {
     // The two state dirs are siblings under one mkdtemp root, and every path either process was
     // given points inside its own. A writer that escaped would land in the other's tree or in the
     // root itself — both observable here.
-    expect(readdirSync(root).sort()).toEqual(["desk", "laptop"]);
+    expect(readdirSync(root).toSorted()).toEqual(["desk", "laptop"]);
     for (const inst of [lead, peer]) {
       const other = inst === lead ? peer : lead;
       expect(readdirSync(other.stateDir)).not.toContain(`${inst.name}.json`);
@@ -734,6 +761,33 @@ describe("teardown", () => {
 // silently fossilised. These probes stand up a minimal real `Bun.serve` over mutual TLS with certs this
 // build mints, and assert the CURRENT limitation still holds — so they PASS today and FAIL loudly the
 // day Bun gains the capability, pointing the next engineer at transport.ts / signing.ts / §8.6.
+/**
+ * Every per-request surface a client certificate could plausibly appear on, enumerated as a type.
+ * All optional, and all expected to be `undefined` — the canaries below assert exactly that, so this
+ * is the list of things Bun does NOT expose, not a claim that it does.
+ */
+declare const opaqueCertificate: unique symbol;
+/**
+ * Whatever a future Bun would hand back for a presented client certificate. Deliberately opaque —
+ * the canaries only ever ask whether the value is `undefined`, never what is inside it, and
+ * inventing a shape here would be a guess about an API that does not exist.
+ */
+type OpaqueCertificate = { readonly [opaqueCertificate]: never };
+
+interface RequestCertProbe {
+  socket?: unknown;
+  getPeerCertificate?: unknown;
+  peerCertificate?: unknown;
+  clientCertificate?: unknown;
+}
+
+/** The same enumeration for the `Server` handed to a `fetch` handler. */
+interface ServerCertProbe {
+  getPeerCertificate?: (req: Request) => OpaqueCertificate;
+  requestClientCertificate?: (req: Request) => OpaqueCertificate;
+  peerCertificate?: unknown;
+}
+
 describe("Bun-capability canaries (the pin can be enforced but not read; a reload cannot re-pin)", () => {
   test("CANARY — the receiving side still cannot read the presented client certificate per request", async () => {
     const serverId = mintIdentity({ commonName: "canary-server", sans: ["127.0.0.1", "localhost"] });
@@ -743,7 +797,7 @@ describe("Bun-capability canaries (the pin can be enforced but not read; a reloa
     // captured from INSIDE the handler, on the enforced path — the handshake below only completes for a
     // pinned client, so if any of these is non-`undefined` the certificate is readable, which is exactly
     // the capability this canary guards against.
-    let surfaces: Record<string, unknown> = {};
+    let surfaces: Array<[name: string, value: unknown]> = [];
     const server = Bun.serve({
       port: 0,
       hostname: "127.0.0.1",
@@ -755,39 +809,43 @@ describe("Bun-capability canaries (the pin can be enforced but not read; a reloa
         rejectUnauthorized: true,
       },
       fetch(req, srv) {
-        const r = req as unknown as Record<string, unknown>;
-        const s = srv as unknown as Record<string, (req: Request) => unknown>;
-        surfaces = {
+        // SAFETY: every member of both probes is optional, so neither assertion claims a property
+        // exists — the point of the canary is that they are all still `undefined`. Reading one that
+        // Bun has not (yet) added is exactly the question being asked.
+        const r = req as RequestCertProbe;
+        // SAFETY: as above — every member of ServerCertProbe is optional, so this asserts nothing
+        // about what Bun's `Server` actually carries.
+        const s = srv as ServerCertProbe;
+        surfaces = [
           // On the `Request`…
-          "req.socket": r.socket,
-          "req.getPeerCertificate": r.getPeerCertificate,
-          "req.peerCertificate": r.peerCertificate,
-          "req.clientCertificate": r.clientCertificate,
+          ["req.socket", r.socket],
+          ["req.getPeerCertificate", r.getPeerCertificate],
+          ["req.peerCertificate", r.peerCertificate],
+          ["req.clientCertificate", r.clientCertificate],
           // …on the `Server` handed to the handler.
-          "server.getPeerCertificate": typeof s.getPeerCertificate === "function" ? s.getPeerCertificate(req) : s.getPeerCertificate,
-          "server.requestClientCertificate":
-            typeof s.requestClientCertificate === "function" ? s.requestClientCertificate(req) : s.requestClientCertificate,
-          "server.peerCertificate": s.peerCertificate,
-        };
+          ["server.getPeerCertificate", s.getPeerCertificate?.(req) ?? s.getPeerCertificate],
+          ["server.requestClientCertificate", s.requestClientCertificate?.(req) ?? s.requestClientCertificate],
+          ["server.peerCertificate", s.peerCertificate],
+        ];
         return new Response("ok");
       },
     });
     try {
-      const res = await fetch(`https://127.0.0.1:${server.port}/`, {
+      const res = await packFetch(`https://127.0.0.1:${server.port}/`, {
         tls: {
           cert: clientId.certPem,
           key: clientId.keyPem,
           ca: [serverId.certPem],
           checkServerIdentity: () => undefined,
         },
-      } as PackRequestInit as RequestInit);
+      });
       // The handshake completed → the pin was ENFORCED and the handler ran. That half must keep working.
       expect(res.status).toBe(200);
 
       // CANARY — when any of these becomes readable, Bun gained the capability; dismantle the workaround
       // (transport.ts's boolean `transportPinned` / signing.ts's §8.6 signatures / §8.6 itself), because
       // the receiver could then read the peer identity directly instead of re-deriving it from a signature.
-      for (const [name, value] of Object.entries(surfaces)) {
+      for (const [name, value] of surfaces) {
         expect(value, `${name} must stay absent — see transport.ts / signing.ts / PACK_PROTOCOL §8.6`).toBeUndefined();
       }
     } finally {
@@ -814,9 +872,9 @@ describe("Bun-capability canaries (the pin can be enforced but not read; a reloa
     });
     const server = Bun.serve(serveOpts([pinned.certPem]));
     const dial = (who: { certPem: string; keyPem: string }): Promise<Response> =>
-      fetch(`https://127.0.0.1:${server.port}/`, {
+      packFetch(`https://127.0.0.1:${server.port}/`, {
         tls: { cert: who.certPem, key: who.keyPem, ca: [serverId.certPem], checkServerIdentity: () => undefined },
-      } as PackRequestInit as RequestInit);
+      });
     try {
       // Baseline: the pinned client is admitted; a client the listener never anchored is refused at the
       // handshake (BoringSSL rejects it before any handler) — establishing that enforcement is real.
@@ -846,10 +904,10 @@ async function dialAsLead(path: string, init: RequestInit, secret?: string): Pro
   const from = lead.store()!;
   const to = peer.store()!;
   const target = from.peers.find((p) => p.memberId === to.self.memberId) ?? to.lead!;
-  return fetch(`https://127.0.0.1:${peer.port}${path}`, {
+  return packFetch(`https://127.0.0.1:${peer.port}${path}`, {
     ...init,
     headers: {
-      ...(init.headers ?? {}),
+      ...init.headers,
       authorization: `Bearer ${secret ?? from.pack!.secret}`,
       "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
       "x-pack-member": from.self.memberId,
@@ -860,7 +918,7 @@ async function dialAsLead(path: string, init: RequestInit, secret?: string): Pro
       ca: [target.certPem],
       checkServerIdentity: () => undefined,
     },
-  } as PackRequestInit as RequestInit);
+  });
 }
 
 /**
