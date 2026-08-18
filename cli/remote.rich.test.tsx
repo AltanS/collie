@@ -39,7 +39,7 @@ const VERSION = "1.2.3";
 const REMOTE_HOME = "/home/pat";
 const REMOTE_CHECKOUT = `${REMOTE_HOME}/.collie`;
 
-const PROBE_DEFAULTS: Record<string, string> = {
+const PROBE_DEFAULTS = {
   home: REMOTE_HOME,
   git: "/usr/bin/git",
   bun: "/home/pat/.bun/bin/bun",
@@ -55,7 +55,7 @@ const PROBE_DEFAULTS: Record<string, string> = {
   version: "",
   address: "100.64.0.9",
   port: "free",
-};
+} satisfies Record<string, string>;
 
 function probeOut(over: Record<string, string> = {}): string {
   const all = { ...PROBE_DEFAULTS, ...over };
@@ -145,6 +145,8 @@ function harness(opts: {
     files: fakeFiles(),
     store: new TrustStore("/state", storeIo),
     ops: fakeOps(),
+    // SAFETY: `AuditLog` hands its sink the line it just serialised from an `AuditEntry` — the
+    // log's own round trip, not foreign input.
     audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), { now: () => T0 }),
     fetch: async () =>
       opts.reachable === false
@@ -191,7 +193,7 @@ function harness(opts: {
               : leg === "install"
                 ? `collie-install:root=${REMOTE_CHECKOUT}\ncollie-install:version=${VERSION}`
                 : "";
-        return { code: 0, stdout, stderr: "", spawned: true, ...(opts.answers?.[leg] ?? {}) };
+        return { code: 0, stdout, stderr: "", spawned: true, ...opts.answers?.[leg] };
       },
       close: () => {},
     }),

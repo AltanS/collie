@@ -6,7 +6,17 @@ import { markerFor } from "../bridge/pack/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { cmdDoctor, type DoctorDeps, type Finding } from "./doctor.ts";
 import type { DoctorView, Ui } from "./render.ts";
-import { capture, context, CONFIG, fakeExec, fakeFiles, ROOT, STATE, type Scripted } from "./fakes.ts";
+import {
+  capture,
+  context,
+  CONFIG,
+  fakeExec,
+  fakeFiles,
+  ROOT,
+  type Scripted,
+  type SeededFiles,
+  STATE,
+} from "./fakes.ts";
 import { EXIT } from "./io.ts";
 
 // `collie doctor`, against fakes for every seam. Like cli/pack.test.ts, NOTHING here reaches a
@@ -48,7 +58,7 @@ const HEALTHY_ANSWERS: Scripted["answers"] = [
 ];
 
 /** The files a healthy install has: a built bundle, a Herdr socket, an ownership record. */
-function healthyFiles(): Record<string, string> {
+function healthyFiles(): SeededFiles {
   return {
     [`${ROOT}/web/dist/index.html`]: "<!doctype html>",
     [`${ROOT}/web/dist/assets/app.js`]: "//",
@@ -69,11 +79,17 @@ interface Harness {
  * Build a harness. `initial` is the trust store on disk (`null` = never enrolled), `replies` answers
  * each `hello` in order, and `over` replaces any seam or the seeded filesystem.
  */
+/** What {@link fakeUi} hands back: the renderer seam, and the views it was handed. */
+interface FakeUi {
+  ui: Ui;
+  views: DoctorView[];
+}
+
 /**
  * A recording stand-in for the terminal renderer. Its presence is the whole of the seam: `doctor`
  * hands it the findings it would otherwise have formatted, and prints nothing itself.
  */
-function fakeUi(): { ui: Ui; views: DoctorView[] } {
+function fakeUi(): FakeUi {
   const views: DoctorView[] = [];
   return {
     views,
@@ -130,30 +146,42 @@ function harness(
   };
 }
 
+/** §5's body: the two required fields, and the version a member may or may not name. */
+interface HelloBody {
+  protocol: number;
+  member: string;
+  version?: string;
+}
+
 /** A `hello` answer: §6's two headers, the optional §5 `version`, and an HTTP `Date` the clock reads. */
 function hello(
   over: { version?: string | null; date?: number | null; memberId?: string } = {},
 ): Response {
-  const headers: Record<string, string> = {
+  const headers = new Headers({
     "content-type": "application/json",
     "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
     "x-pack-member": over.memberId ?? "laptop",
-  };
-  if (over.date !== null) headers.date = new Date(over.date ?? T0).toUTCString();
+  });
+  if (over.date !== null) headers.set("date", new Date(over.date ?? T0).toUTCString());
   const version = over.version === undefined ? "1.0.0-alpha.12" : over.version;
-  return new Response(
-    JSON.stringify({
-      protocol: PACK_PROTOCOL_VERSION,
-      member: over.memberId ?? "laptop",
-      ...(version === null ? {} : { version }),
-    }),
-    { status: 200, headers },
-  );
+  const body: HelloBody = { protocol: PACK_PROTOCOL_VERSION, member: over.memberId ?? "laptop" };
+  if (version !== null) body.version = version;
+  return new Response(JSON.stringify(body), { status: 200, headers });
+}
+
+/** A `--json` run read back: its exit code, its findings in order, and the same keyed by check. */
+interface JsonRun {
+  code: number;
+  byCheck: Map<string, Finding>;
+  raw: Finding[];
 }
 
 /** The `--json` findings, keyed by check. Every assertion below reads the contract, not the prose. */
-async function findings(h: Harness): Promise<{ code: number; byCheck: Map<string, Finding>; raw: Finding[] }> {
+async function findings(h: Harness): Promise<JsonRun> {
   const code = await cmdDoctor(h.deps, ["--json"]);
+  // SAFETY: `--json` prints exactly the `Finding[]` `cmdDoctor` serialised, on stdout, and nothing
+  // else — which is what the "prints an array on stdout and nothing else" test below pins. A run
+  // that printed anything else fails to parse here, which is the failure this suite wants.
   const raw = JSON.parse(h.io.stdout.join("\n")) as Finding[];
   return { code, byCheck: new Map(raw.map((f) => [f.check, f])), raw };
 }
@@ -161,9 +189,16 @@ async function findings(h: Harness): Promise<{ code: number; byCheck: Map<string
 const LEAD = leadStore({ peers: [member({ memberId: "laptop" })] });
 
 /** A boot marker that matches a store exactly — the "the running bridge holds this roster" case. */
-const markerFile = (data: TrustStoreData): Record<string, string> => ({
+const markerFile = (data: TrustStoreData): SeededFiles => ({
   [`${STATE}/pack-runtime.json`]: JSON.stringify(markerFor(data, T0, 42)),
 });
+
+/** A seed with one path taken out of it — the "that file is simply not there" cases. */
+function without(files: SeededFiles, path: string): SeededFiles {
+  const rest = { ...files };
+  delete rest[path];
+  return rest;
+}
 
 // ── The contract ─────────────────────────────────────────────────────────────
 
@@ -219,8 +254,7 @@ describe("collie doctor — the contract", () => {
     expect(warnRun.raw.some((f) => f.status === "error")).toBe(false);
     expect(warnRun.code).toBe(EXIT.OK);
 
-    const broken = harness(null, [], { files: { ...healthyFiles(), [SOCKET]: undefined as never } });
-    broken.files.entries.delete(SOCKET);
+    const broken = harness(null, [], { files: without(healthyFiles(), SOCKET) });
     const badRun = await findings(broken);
     expect(badRun.byCheck.get("herdr-socket")?.status).toBe("error");
     expect(badRun.code).toBe(EXIT.FAIL);
@@ -231,10 +265,12 @@ describe("collie doctor — the contract", () => {
     const code = await cmdDoctor(h.deps, ["--json"]);
     expect(code).toBe(EXIT.OK);
     expect(h.io.stderr).toEqual([]);
+    // SAFETY: this test IS the check that stdout holds nothing but that array — `Array.isArray` on
+    // the next line and the key/status assertions below are what the assertion is being trusted for.
     const parsed = JSON.parse(h.io.stdout.join("\n")) as Finding[];
     expect(Array.isArray(parsed)).toBe(true);
     for (const f of parsed) {
-      expect(Object.keys(f).sort()).toEqual(["check", "detail", "remedy", "status"]);
+      expect(Object.keys(f).toSorted()).toEqual(["check", "detail", "remedy", "status"]);
       expect(["ok", "warn", "error", "skipped"]).toContain(f.status);
     }
   });
@@ -243,7 +279,7 @@ describe("collie doctor — the contract", () => {
     const h = harness(LEAD, [hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } });
     const before = new Map(h.files.entries);
     await cmdDoctor(h.deps, []);
-    expect([...h.files.entries.keys()].sort()).toEqual([...before.keys()].sort());
+    expect([...h.files.entries.keys()].toSorted()).toEqual([...before.keys()].toSorted());
     expect(h.files.ops).toEqual([]);
   });
 });
@@ -270,7 +306,7 @@ describe("collie doctor — the section sets", () => {
     const asPeer = await findings(
       harness(peer, [hello({ memberId: "desk" })], {
         env: { COLLIE_HOST: "laptop.tail.ts.net" },
-        files: { ...healthyFiles(), ...markerFile(peer), [HANDLER]: undefined as never },
+        files: without({ ...healthyFiles(), ...markerFile(peer) }, HANDLER),
       }),
     );
     expect(asPeer.byCheck.has("lead-reach")).toBe(true);
@@ -305,7 +341,7 @@ describe("collie doctor — the local checks", () => {
     const peer = peerStore();
     const { code, byCheck } = await findings(
       harness(peer, [hello({ memberId: "desk" })], {
-        files: { ...healthyFiles(), ...markerFile(peer), [HANDLER]: undefined as never },
+        files: without({ ...healthyFiles(), ...markerFile(peer) }, HANDLER),
       }),
     );
     const bind = byCheck.get("bind");
@@ -578,5 +614,6 @@ describe("the terminal renderer", () => {
 async function plainFindings(): Promise<Finding[]> {
   const fresh = harness(null);
   await cmdDoctor(fresh.deps, ["--json"]);
+  // SAFETY: as in `findings` above — `--json` prints the serialised `Finding[]` and nothing else.
   return JSON.parse(fresh.io.stdout.join("\n")) as Finding[];
 }

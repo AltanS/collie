@@ -34,7 +34,7 @@ const VERSION = "1.2.3";
 const OLD_VERSION = "1.2.2";
 const CHECKOUT = "/home/pat/.collie";
 
-const PROBE_DEFAULTS: Record<string, string> = {
+const PROBE_DEFAULTS = {
   home: "/home/pat",
   git: "/usr/bin/git",
   bun: "/home/pat/.bun/bin/bun",
@@ -50,7 +50,7 @@ const PROBE_DEFAULTS: Record<string, string> = {
   version: OLD_VERSION,
   address: "100.64.0.9",
   port: "busy",
-};
+} satisfies Record<string, string>;
 
 function probeOut(over: Record<string, string> = {}): string {
   const all = { ...PROBE_DEFAULTS, ...over };
@@ -117,10 +117,12 @@ function harness(opts: HarnessOptions = {}) {
     files: fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: `id = "herdr.collie"\nversion = "${VERSION}"\n` }),
     store: new TrustStore("/state", storeIo),
     ops,
+    // SAFETY: `AuditLog` hands its sink the line it just serialised from an `AuditEntry` — the
+    // log's own round trip, not foreign input.
     audit: new AuditLog((l: string) => void audit.push(JSON.parse(l) as AuditEntry), { now: () => T0 }),
     fetch: async (url) => {
       // Every dial in this verb is a `hello` at a member's own address; the member is named by it.
-      const who = [...Object.keys(opts.hello ?? {})].find((id) => url.includes(addressOf(initial, id))) ?? "nas";
+      const who = Object.keys(opts.hello ?? {}).find((id) => url.includes(addressOf(initial, id))) ?? "nas";
       const answer = opts.hello?.[who];
       if (answer === false) throw new Error("connection refused");
       const version = answer ?? VERSION;
@@ -151,7 +153,7 @@ function harness(opts: HarnessOptions = {}) {
             : leg === "install"
               ? `collie-install:root=${CHECKOUT}\ncollie-install:version=${VERSION}`
               : "";
-        return { code: 0, stdout, stderr: "", spawned: true, ...(opts.answers?.[host]?.[leg] ?? {}) };
+        return { code: 0, stdout, stderr: "", spawned: true, ...opts.answers?.[host]?.[leg] };
       },
       close: () => {},
     }),

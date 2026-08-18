@@ -85,6 +85,11 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
   };
 }
 
+/** Files to seed a {@link fakeFiles} with: absolute path → contents. */
+export interface SeededFiles {
+  [path: string]: string;
+}
+
 export interface FakeFiles extends Files {
   entries: Map<string, { text: string; mode?: number }>;
   /** Paths `remove` refuses to delete — the `rm -f` failures teardown must survive. */
@@ -93,7 +98,7 @@ export interface FakeFiles extends Files {
   ops: string[];
 }
 
-export function fakeFiles(seed: Record<string, string> = {}): FakeFiles {
+export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
   const entries = new Map<string, { text: string; mode?: number }>();
   for (const [p, text] of Object.entries(seed)) entries.set(p, { text });
   const undeletable = new Set<string>();
