@@ -18,8 +18,8 @@ beforeEach(() => {
   revalidate.mockClear();
   lastBody = undefined;
   server.use(
-    http.post("/api/notifications/snooze", async ({ request }) => {
-      lastBody = (await request.json()) as { snoozedUntil: number | null };
+    http.post<never, { snoozedUntil: number | null }>("/api/notifications/snooze", async ({ request }) => {
+      lastBody = await request.json();
       return HttpResponse.json(lastBody);
     }),
   );

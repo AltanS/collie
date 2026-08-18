@@ -220,7 +220,7 @@ describe("TabStrip — long-press actions", () => {
 });
 
 describe("TabStrip — status on the chips", () => {
-  const tabs: TabView[] = [
+  const chipTabs: TabView[] = [
     { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "code", focused: false, paneCount: 1 },
     { tabId: "w1:t2", workspaceId: "w1", number: 2, label: "empty", focused: false, paneCount: 0 },
   ];
@@ -241,7 +241,7 @@ describe("TabStrip — status on the chips", () => {
     render(
       <TabStrip
         workspaceId="w1"
-        tabs={tabs}
+        tabs={chipTabs}
         agents={agents}
         selected={null}
         onSelect={vi.fn()}

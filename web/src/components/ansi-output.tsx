@@ -261,9 +261,9 @@ export const AnsiOutput = memo(function AnsiOutput({
   // A run of plain text at global offset `start` → nodes, with find matches split out and
   // highlighted. `currentAssigned` refs only the first slice of the focused match (a match can span
   // segments on a colour change) so scrollIntoView targets one stable node.
-  const renderFind = (text: string, start: number): ReactNode => {
-    if (matches.length === 0) return text;
-    return splitSegment(text, start, matches).map((p, j) => {
+  const renderFind = (run: string, start: number): ReactNode => {
+    if (matches.length === 0) return run;
+    return splitSegment(run, start, matches).map((p, j) => {
       if (p.matchIndex === null) return p.text;
       const isCurrent = p.matchIndex === currentMatch;
       const attach = isCurrent && !currentAssigned;
@@ -300,10 +300,10 @@ export const AnsiOutput = memo(function AnsiOutput({
   // A segment's text → nodes: autolinked URLs as anchors, wrapping find-highlighted runs. Two
   // splits over one coordinate space, links outermost, so a find hit *inside* a URL still lights up.
   // A URL that straddles a colour change yields one <a> per segment slice, each with the same href.
-  const renderSegment = (text: string, start: number): ReactNode => {
-    if (links.length === 0) return renderFind(text, start);
+  const renderSegment = (run: string, start: number): ReactNode => {
+    if (links.length === 0) return renderFind(run, start);
     let at = start;
-    return splitSegment(text, start, links).map((p, i) => {
+    return splitSegment(run, start, links).map((p, i) => {
       const pieceStart = at;
       at += p.text.length;
       if (p.matchIndex === null) return <Fragment key={i}>{renderFind(p.text, pieceStart)}</Fragment>;

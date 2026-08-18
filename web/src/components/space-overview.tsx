@@ -32,10 +32,14 @@ interface SpaceOverviewProps {
 // The dashboard's navigator, and the LAST section on the page: everything you might act on comes
 // first. It folds to a single line — with 45 spaces that's the difference between a dashboard and a
 // scroll — and expands to a recency-ordered, filterable list.
+// A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
+// every render is a new reference, which defeats memoisation downstream for no benefit here.
+const NO_PANES: AgentView[] = [];
+
 export function SpaceOverview({
   workspaces,
   agents,
-  shellPanes = [],
+  shellPanes = NO_PANES,
   onOpen,
   onNewSpace,
   host,

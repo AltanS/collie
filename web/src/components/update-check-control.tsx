@@ -22,6 +22,9 @@ function describe(update: UpdateInfo | undefined): string {
 }
 
 export function UpdateCheckControl() {
+  // SAFETY: `ROOT_ROUTE_ID` names the root route, whose loader returns `HomeData`; `undefined`
+  // covers the render before it resolves. React Router types this `unknown` — the id is a runtime
+  // string, so it cannot relate the two.
   const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData | undefined;
   const update = data?.update;
   const revalidator = useRevalidator();

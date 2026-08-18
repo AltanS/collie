@@ -86,6 +86,8 @@ describe("the herd list — one cross-host 'Needs you', labelled not split", () 
   });
 
   it("triage itself stays host-blind — the same rows bucket the same way, host or no host", () => {
+    // SAFETY: `host` is optional on AgentView, so a row with it destructured away IS one — TS just
+    // types the rest object as the exact remainder rather than relating it back to the interface.
     const stripped = fixturePackAgents.map(({ host: _host, ...rest }) => rest as AgentView);
     const withHosts = triage(fixturePackAgents).map((s) => [s.key, s.agents.map((a) => a.paneId)]);
     const without = triage(stripped).map((s) => [s.key, s.agents.map((a) => a.paneId)]);

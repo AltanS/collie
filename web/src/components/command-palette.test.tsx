@@ -5,10 +5,13 @@ import { CommandPalette } from "./command-palette";
 import type { OperatorCommand } from "@/lib/types";
 
 function setup(overrides?: { agent?: string | null; mine?: OperatorCommand[] }) {
+  // Widened at the binding, not asserted at the literal: the overrides below hand `null` and
+  // `undefined` for the same prop, so the base value has to carry the whole domain.
+  const agentProp: string | null | undefined = "claude";
   const props = {
     open: true,
     onClose: vi.fn(),
-    agent: "claude" as string | null | undefined,
+    agent: agentProp,
     onInsert: vi.fn(),
     onSubmit: vi.fn(),
     ...overrides,

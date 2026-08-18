@@ -32,9 +32,13 @@ interface ThreadSidebarProps {
 // This sheet sees the WHOLE herd, so it has the same problem the dashboard had: the two long tails
 // (Recent, and 30-odd bare shells) bury the handful of agents you actually came to switch to. Both
 // fold, and both remember it, using the dashboard's own header primitive.
+// A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
+// every render is a new reference, which defeats memoisation downstream for no benefit here.
+const NO_PANES: AgentView[] = [];
+
 export function ThreadSidebar({
   agents,
-  shellPanes = [],
+  shellPanes = NO_PANES,
   currentPaneId,
   onSelect,
   recentOpen = true,

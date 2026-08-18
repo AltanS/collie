@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, MessageSquarePlus } from "lucide-react";
 
 import type { PromptFamily, PromptModel, PromptOption } from "@/lib/blocks";
@@ -26,12 +26,12 @@ export interface PromptSelectBlockProps {
 
 // Family-aware caption above the options — orients the reader ("the terminal is asking you
 // something") without repeating the question, which stays in the raw scrollback just above.
-const FAMILY_CAPTION: Record<PromptFamily, string> = {
+const FAMILY_CAPTION = {
   select: "Choose an option",
   permission: "Permission required",
   trust: "Trust this folder?",
   plan: "Review the plan",
-};
+} satisfies Record<PromptFamily, string>;
 
 // Native, tappable rendering of a Claude single-choice dialog. Every visible string — the option
 // label and its description — is a React text node (the XSS boundary is unchanged; nothing is ever
@@ -57,6 +57,14 @@ const FAMILY_CAPTION: Record<PromptFamily, string> = {
 export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBlockProps) {
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
+  // mount of the element, so re-opening the editor after a cancel would leave the field unfocused —
+  // and it gives assistive tech no chance to announce the surrounding panel first.
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (editorOpen) editorRef.current?.focus();
+  }, [editorOpen]);
+
   const [draft, setDraft] = useState("");
   const feedback = prompt.feedback;
   const terminalFocused = feedback?.focused ?? false;
@@ -143,16 +151,20 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
         </div>
       ) : feedback && editorOpen ? (
         <div className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
-          <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <label
+            htmlFor="plan-feedback-text"
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+          >
             <MessageSquarePlus className="size-3.5 shrink-0" />
             What should Claude change?
           </label>
           <textarea
+            id="plan-feedback-text"
+            ref={editorRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             maxLength={FEEDBACK_MAX_LENGTH}
             rows={3}
-            autoFocus
             aria-label="Feedback text"
             placeholder="Say what to do differently…"
             className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary/60"

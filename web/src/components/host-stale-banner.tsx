@@ -41,8 +41,7 @@ export function HostStaleBanner({
       : "Showing the last known screen — replies and keys are refused until it answers.";
 
   return (
-    <div
-      role="status"
+    <output
       className={cn(
         "flex items-start gap-2 border-b border-status-info/40 bg-status-info/15 px-4 py-2 text-xs font-medium text-status-info",
         className,
@@ -55,6 +54,6 @@ export function HostStaleBanner({
         {reason}. {detail}
         {health.incompatible && health.protocolDetail ? ` ${health.protocolDetail}` : ""}
       </span>
-    </div>
+    </output>
   );
 }

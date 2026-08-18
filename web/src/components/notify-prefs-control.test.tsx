@@ -10,17 +10,26 @@ import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 // it through MSW: the GET seeds the switches, the POST captures the single-key partial and echoes the
 // merged prefs back; a failing POST must leave the switch where it started (revert).
 
-let lastPatch: Record<string, unknown> | undefined;
-let currentPrefs: { blocked: boolean; done: boolean; updates: boolean };
+/** The bridge-wide notification prefs, exactly as `/api/notifications/prefs` carries them. */
+interface Prefs {
+  blocked: boolean;
+  done: boolean;
+  updates: boolean;
+}
+
+// The control sends ONE key per toggle, so a patch is a partial of the same contract — which is
+// also what the cases assert (`toEqual({ updates: false })`).
+let lastPatch: Partial<Prefs> | undefined;
+let currentPrefs: Prefs;
 
 beforeEach(() => {
   lastPatch = undefined;
   currentPrefs = { blocked: true, done: false, updates: true };
   server.use(
     http.get("/api/notifications/prefs", () => HttpResponse.json(currentPrefs)),
-    http.post("/api/notifications/prefs", async ({ request }) => {
-      lastPatch = (await request.json()) as Record<string, unknown>;
-      currentPrefs = { ...currentPrefs, ...(lastPatch as Partial<typeof currentPrefs>) };
+    http.post<never, Partial<Prefs>>("/api/notifications/prefs", async ({ request }) => {
+      lastPatch = await request.json();
+      currentPrefs = { ...currentPrefs, ...lastPatch };
       return HttpResponse.json(currentPrefs);
     }),
   );

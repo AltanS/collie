@@ -437,6 +437,8 @@ describe("NavTray — hold to repeat", () => {
 
   /** Total keys delivered across every call, and the per-call arrays. */
   function delivered(onSend: ReturnType<typeof vi.fn>) {
+    // SAFETY: `onSend` is the tray's `(keys: string[]) => Promise<boolean>` prop, so argument 0 of
+    // every recorded call is that array. Vitest types a mock's recorded arguments loosely.
     const calls = onSend.mock.calls.map((c) => c[0] as string[]);
     return { calls, total: calls.reduce((n, a) => n + a.length, 0) };
   }
@@ -546,8 +548,9 @@ describe("NavTray — hold to repeat", () => {
     const onSend = vi.fn(async () => true);
     render(<NavTray onSend={onSend} />);
 
-    for (const name of [/Enter/, "Esc", "Space"]) {
-      const btn = screen.getByRole("button", { name: name as string | RegExp });
+    const names: (string | RegExp)[] = [/Enter/, "Esc", "Space"];
+    for (const name of names) {
+      const btn = screen.getByRole("button", { name });
       fireEvent.pointerDown(btn);
       await vi.advanceTimersByTimeAsync(HOLD_DELAY + REPEAT * 5);
       fireEvent.pointerUp(btn);

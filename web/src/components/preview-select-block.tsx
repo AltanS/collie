@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronRight,
@@ -53,6 +53,14 @@ export interface PreviewSelectBlockProps {
 export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelectBlockProps) {
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
+  // mount of the element, so re-opening the editor after a cancel would leave the field unfocused —
+  // and it gives assistive tech no chance to announce the surrounding panel first.
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (editorOpen) editorRef.current?.focus();
+  }, [editorOpen]);
+
   const [draft, setDraft] = useState("");
   const terminalEditing = preview.note.state === "editing";
   const locked = disabled || sending !== null || terminalEditing;
@@ -162,16 +170,20 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
         </div>
       ) : editorOpen ? (
         <div className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
-          <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <label
+            htmlFor="preview-note-text"
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+          >
             <StickyNote className="size-3.5 shrink-0" />
             Note for this question
           </label>
           <textarea
+            id="preview-note-text"
+            ref={editorRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             maxLength={NOTE_MAX_LENGTH}
             rows={2}
-            autoFocus
             aria-label="Note text"
             placeholder="Add context for your answer…"
             className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary/60"
