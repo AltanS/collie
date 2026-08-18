@@ -179,7 +179,7 @@ export class SessionRegistry {
         blocked: agents.filter((a) => a.status === "blocked").length,
       };
     });
-    return summaries.sort((a, b) => {
+    return summaries.toSorted((a, b) => {
       if (a.isPrimary) return -1;
       if (b.isPrimary) return 1;
       return a.name.localeCompare(b.name);
@@ -201,7 +201,7 @@ export class SessionRegistry {
       if (this.runtimes.has(name)) continue;
       this.runtimes.set(name, this.spawn(name, socketPath, false));
     }
-    for (const [name, rt] of [...this.runtimes]) {
+    for (const [name, rt] of this.runtimes) {
       if (seen.has(name)) continue; // primaryName is always in `seen` → never disposed
       this.dispose(rt);
       this.runtimes.delete(name);

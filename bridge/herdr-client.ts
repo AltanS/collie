@@ -134,6 +134,25 @@ export interface PaneRead {
 type ReadSource = "visible" | "recent" | "recent_unwrapped";
 type ReadFormat = "text" | "ansi";
 
+/**
+ * A pane's `agent_session`, accepted only when it is a usable session ref.
+ *
+ * Parsed HERE because this file is the wire boundary — everything downstream branches on the domain
+ * value instead of re-narrowing the raw record. `agent` is carried through so the caller can check
+ * the ref still belongs to the agent currently in the pane; it is `undefined` both when the server
+ * omits it and when it is empty, which is the "stay permissive with older servers" case.
+ */
+export type PaneAgentSession = { kind: "id" | "path"; value: string; agent?: string };
+
+/** {@link PaneAgentSession} off a raw pane record, or null when the record can't produce one. */
+export function paneAgentSession(raw: WirePane["agent_session"]): PaneAgentSession | null {
+  if (raw === null || raw === undefined) return null;
+  if (raw.kind !== "id" && raw.kind !== "path") return null;
+  if (typeof raw.value !== "string" || raw.value === "") return null;
+  const agent = typeof raw.agent === "string" && raw.agent !== "" ? raw.agent : undefined;
+  return { kind: raw.kind, value: raw.value, agent };
+}
+
 /** Wire params of `tab.create`. `focus` is always false — never yank the desktop TUI's focus. */
 type TabCreateParams = { workspace_id: string; focus: false; label?: string; cwd?: string };
 

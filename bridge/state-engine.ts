@@ -1,5 +1,5 @@
 import { meaningfulTabLabel, meaningfulTerminalTitle } from "./activity.ts";
-import type { HerdrClient } from "./herdr-client.ts";
+import { type HerdrClient, paneAgentSession } from "./herdr-client.ts";
 import {
   type AgentStatus,
   type AgentView,
@@ -61,6 +61,16 @@ export function extractClaudeSessionName(text: string): string | undefined {
     return m ? m[1]!.trim() || undefined : undefined;
   }
   return undefined;
+}
+
+/**
+ * Panes carrying an agent. Narrowing predicate so the agent name is `string` (not
+ * `string | null | undefined`) at the map site — no cast needed. Hoisted out of `poll` because it
+ * captures nothing; `.length > 0` rather than a `typeof` check, which for the declared
+ * `string | null | undefined` accepts and rejects exactly the same values.
+ */
+function hasAgent<T extends { agent?: string | null }>(p: T): p is T & { agent: string } {
+  return p.agent !== null && p.agent !== undefined && p.agent.length > 0;
 }
 
 export interface EngineSnapshot {
@@ -243,7 +253,7 @@ export class StateEngine {
           agent,
           workspaceLabel,
         );
-        return {
+        const view: AgentView = {
           paneId: p.pane_id,
           workspaceId: p.workspace_id,
           workspaceLabel,
@@ -254,49 +264,43 @@ export class StateEngine {
           cwd: p.cwd,
           focused: p.focused,
           kind,
-          // A user-set pane label (herdr pane.rename); omitted when unset so "absent stays absent".
-          ...(typeof p.label === "string" && p.label.length > 0 ? { paneLabel: p.label } : {}),
-          ...(tabLabel ? { tabLabel } : {}),
-          ...(terminalTitle ? { terminalTitle } : {}),
-          // How the agent named its session. BOTH kinds are kept: Claude and Codex report an `id`,
-          // while pi reports a `path` (its herdr integration prefers `agent_session_path` whenever
-          // the session manager has a file open). Keeping only `id` — as this did until journals
-          // became per-agent — silently denied pi any history at all. Which kinds are meaningful is
-          // now the adapter's call, not this function's; anything else is omitted, so "no history
-          // for this pane" stays simply the field being absent.
-          //
-          // The ref must also BELONG to the agent currently in the pane. Herdr keeps reporting the
-          // last session announced for a pane, so relaunching a pane's agent as a different harness
-          // leaves the old one's ref behind — live-observed: a pane running `pi` still advertising
-          // `{source:"herdr:claude", kind:"id"}` from the claude that had been there before. Serving
-          // that would hand pi's adapter a Claude uuid; harmless today (it resolves to nothing) but
-          // only by luck. `agent_session.agent` is compared when Herdr reports it, and absence stays
-          // permissive so an older server that omits the field still works.
-          ...((p.agent_session?.kind === "id" || p.agent_session?.kind === "path") &&
-          typeof p.agent_session.value === "string" &&
-          p.agent_session.value !== "" &&
-          (typeof p.agent_session.agent !== "string" ||
-            p.agent_session.agent === "" ||
-            p.agent_session.agent === agent)
-            ? { agentSession: { kind: p.agent_session.kind, value: p.agent_session.value } }
-            : {}),
-          // Scrollback depth + viewport = what a `recent` read can yield. Omitted when the server
-          // predates `scroll`, so an older Herdr simply reads as "unknown" rather than "zero".
-          ...(p.scroll
-            ? { readableLines: p.scroll.max_offset_from_bottom + p.scroll.viewport_rows }
-            : {}),
         };
+        // Optional fields are ASSIGNED, never conditionally spread: absent stays absent, and each
+        // condition below stays readable as the one rule it encodes.
+        //
+        // A user-set pane label (herdr pane.rename); omitted when unset.
+        if (p.label !== null && p.label !== undefined && p.label.length > 0) view.paneLabel = p.label;
+        if (tabLabel) view.tabLabel = tabLabel;
+        if (terminalTitle) view.terminalTitle = terminalTitle;
+        // How the agent named its session. BOTH kinds are kept: Claude and Codex report an `id`,
+        // while pi reports a `path` (its herdr integration prefers `agent_session_path` whenever
+        // the session manager has a file open). Keeping only `id` — as this did until journals
+        // became per-agent — silently denied pi any history at all. Which kinds are meaningful is
+        // now the adapter's call, not this function's; anything else is omitted, so "no history
+        // for this pane" stays simply the field being absent. The shape check itself lives at the
+        // wire boundary (`paneAgentSession` in herdr-client.ts).
+        //
+        // The ref must also BELONG to the agent currently in the pane. Herdr keeps reporting the
+        // last session announced for a pane, so relaunching a pane's agent as a different harness
+        // leaves the old one's ref behind — live-observed: a pane running `pi` still advertising
+        // `{source:"herdr:claude", kind:"id"}` from the claude that had been there before. Serving
+        // that would hand pi's adapter a Claude uuid; harmless today (it resolves to nothing) but
+        // only by luck. `agent_session.agent` is compared when Herdr reports it, and absence stays
+        // permissive so an older server that omits the field still works.
+        const session = paneAgentSession(p.agent_session);
+        if (session !== null && (session.agent === undefined || session.agent === agent)) {
+          view.agentSession = { kind: session.kind, value: session.value };
+        }
+        // Scrollback depth + viewport = what a `recent` read can yield. Omitted when the server
+        // predates `scroll`, so an older Herdr simply reads as "unknown" rather than "zero".
+        if (p.scroll) view.readableLines = p.scroll.max_offset_from_bottom + p.scroll.viewport_rows;
+        return view;
       };
-
-      // Narrowing predicate so the agent name is `string` (not `string | null | undefined`) at the
-      // map site below — no cast needed.
-      const hasAgent = (p: (typeof panes)[number]): p is (typeof panes)[number] & { agent: string } =>
-        typeof p.agent === "string" && p.agent.length > 0;
 
       const agents: AgentView[] = panes
         .filter(hasAgent)
         .map((p) => toView(p, p.agent, "agent"))
-        .sort(
+        .toSorted(
           (a, b) =>
             STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
             a.workspaceNumber - b.workspaceNumber ||
@@ -307,7 +311,7 @@ export class StateEngine {
       const shellPanes: AgentView[] = panes
         .filter((p) => !p.agent)
         .map((p) => toView(p, "shell", "shell"))
-        .sort((a, b) => a.workspaceNumber - b.workspaceNumber || a.paneId.localeCompare(b.paneId));
+        .toSorted((a, b) => a.workspaceNumber - b.workspaceNumber || a.paneId.localeCompare(b.paneId));
 
       const workspaceViews: WorkspaceView[] = workspaces
         .map((w) => ({
@@ -319,7 +323,7 @@ export class StateEngine {
           tabCount: w.tab_count,
           paneCount: w.pane_count,
         }))
-        .sort((a, b) => a.number - b.number);
+        .toSorted((a, b) => a.number - b.number);
 
       const tabViews: TabView[] = tabs.map((t) => ({
         tabId: t.tab_id,
@@ -340,7 +344,7 @@ export class StateEngine {
         this.prevStatus.set(a.paneId, a.status);
       }
       const live = new Set(agents.map((a) => a.paneId));
-      for (const id of [...this.prevStatus.keys()]) {
+      for (const id of this.prevStatus.keys()) {
         if (live.has(id)) continue;
         this.prevStatus.delete(id);
         this.sessionNames.delete(id); // drop the cached name so a reused pane id starts clean
@@ -362,7 +366,7 @@ export class StateEngine {
       for (const fn of this.updateListeners) fn(snap);
     } catch (err) {
       if (this.bridge === "connected") {
-        console.warn(`[state] poll failed, marking disconnected: ${(err as Error).message}`);
+        console.warn(`[state] poll failed, marking disconnected: ${err instanceof Error ? err.message : String(err)}`);
       }
       this.bridge = "disconnected";
     } finally {
@@ -373,7 +377,7 @@ export class StateEngine {
         try {
           fn();
         } catch (err) {
-          console.warn(`[state] tick listener failed: ${(err as Error).message}`);
+          console.warn(`[state] tick listener failed: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
       // Run the single follow-up an event-poke asked for while this poll was in flight.
@@ -394,7 +398,7 @@ export class StateEngine {
    * herdr client without `readPane` (the unit-test fake) short-circuits, so it's a no-op there.
    */
   private async enrichSessionNames(agents: AgentView[]): Promise<void> {
-    if (typeof this.herdr.readPane !== "function") return;
+    if (this.herdr.readPane === undefined) return;
     const claude = agents.filter((a) => a.agent === "claude");
     if (claude.length === 0) return;
     await Promise.all(
