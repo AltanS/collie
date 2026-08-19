@@ -16,6 +16,8 @@ import type { HomeData } from "@/lib/loaders";
 // routes (home + pane detail) via the router's loader data. Mounted only while unlocked (the
 // idle-lock in App swaps the whole RouterProvider out), so polling pauses when the app is locked.
 export function RootLayout() {
+  // SAFETY: this component IS the element of the route whose `loader` is rootLoader (router.tsx pairs
+  // the two), and it renders only after that loader settles — so useLoaderData returns its HomeData.
   const data = useLoaderData() as HomeData;
   // useParams accumulates params from matched child routes, so `paneId` is set when the
   // `/pane/:paneId` child is active. useAgentTransitions uses it to suppress a notification for the
@@ -43,7 +45,12 @@ export function RootLayout() {
           in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
           red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
           same shared-clock signals as the header dog, so the two always agree. */}
-      <ConnectionBanner bridge={data.bridge} error={data.error} authError={data.authError} />
+      <ConnectionBanner
+        bridge={data.bridge}
+        error={data.error}
+        authError={data.authError}
+        lastSeenAt={data.lastSeenAt}
+      />
       <Outlet />
     </div>
   );
