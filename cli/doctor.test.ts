@@ -5,6 +5,7 @@ import { leadStore, member, PACK, peerStore, T0 } from "../bridge/pack/fixtures.
 import { markerFor } from "../bridge/pack/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { cmdDoctor, type DoctorDeps, type Finding } from "./doctor.ts";
+import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
 import {
   capture,
@@ -12,6 +13,8 @@ import {
   CONFIG,
   fakeExec,
   fakeFiles,
+  fakeLinkFs,
+  HOME,
   ROOT,
   type Scripted,
   type SeededFiles,
@@ -27,6 +30,9 @@ import { EXIT } from "./io.ts";
 // this verb is safe to run on a machine that is already misbehaving.
 
 const HANDLER = `${CONFIG}/tailscale-managed-handler`;
+/** The name `collie link` publishes, and the directory it lives in (ADR 0021). */
+const LINK_DIR = `${HOME}/.local/bin`;
+const LINK_AT = `${LINK_DIR}/collie`;
 const SOCKET = "/home/pat/.config/herdr/herdr.sock";
 const HOSTPORT = "laptop.tail.ts.net:443";
 const PROXY = "http://127.0.0.1:8787";
@@ -109,6 +115,8 @@ function harness(
     files?: Record<string, string>;
     answers?: Scripted["answers"];
     absent?: string[];
+    /** What is at `~/.local/bin/collie`; absent — nothing linked — is the default. */
+    link?: Record<string, LinkProbe>;
   } = {},
 ): Harness {
   const contents = initial === null ? null : serializeTrustStore(initial);
@@ -130,6 +138,7 @@ function harness(
       io: out,
       exec: fakeExec({ answers: over.answers ?? HEALTHY_ANSWERS, absent: over.absent }),
       files,
+      link: fakeLinkFs(over.link),
       store: new TrustStore(STATE, io),
       fetch: async (url) => {
         requests.push(url);
@@ -209,6 +218,7 @@ describe("collie doctor — the contract", () => {
     expect(code).toBe(EXIT.OK);
     expect([...byCheck.keys()]).toEqual([
       "web-dist",
+      "path-link",
       "herdr-socket",
       "bind",
       "bind-wildcard",
@@ -326,6 +336,57 @@ describe("collie doctor — the local checks", () => {
     expect(byCheck.get("web-dist")?.status).toBe("error");
     expect(byCheck.get("web-dist")?.remedy).toContain("collie build");
     expect(code).toBe(EXIT.FAIL);
+  });
+
+  // ── path-link (ADR 0021) ───────────────────────────────────────────────────
+  // Reported, never repaired: `doctor` holds a `LinkReader`, which has no way to publish or remove a
+  // name. Not being linked is an ordinary state, so it is `ok`; a name that reaches somewhere else is
+  // what earns a warning.
+  test("path-link: not linked is ok, and names the verb that would publish it", async () => {
+    const { code, byCheck } = await findings(harness(null));
+    const f = byCheck.get("path-link");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail).toContain("not linked");
+    expect(f?.detail).toContain(LINK_AT);
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("path-link: linked here, with the directory on PATH, is ok", async () => {
+    const h = harness(null, [], {
+      env: { PATH: `/usr/bin:${LINK_DIR}` },
+      link: { [LINK_AT]: { kind: "symlink", target: `${ROOT}/bin/collie` } },
+    });
+    const f = (await findings(h)).byCheck.get("path-link");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail).toContain("this checkout");
+  });
+
+  test("path-link: linked here but the directory is off PATH warns — the shell cannot find it", async () => {
+    const h = harness(null, [], {
+      env: { PATH: "/usr/bin" },
+      link: { [LINK_AT]: { kind: "symlink", target: `${ROOT}/bin/collie` } },
+    });
+    const f = (await findings(h)).byCheck.get("path-link");
+    expect(f?.status).toBe("warn");
+    expect(f?.remedy).toContain(LINK_DIR);
+  });
+
+  test("path-link: another checkout's link warns, naming the checkout a bare `collie` reaches", async () => {
+    const h = harness(null, [], {
+      link: { [LINK_AT]: { kind: "symlink", target: "/opt/collie-v1/bin/collie" } },
+    });
+    const f = (await findings(h)).byCheck.get("path-link");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail).toContain("/opt/collie-v1/bin/collie");
+    expect(f?.remedy).toContain("collie link");
+  });
+
+  test("path-link: anything else at the name warns and is left alone", async () => {
+    const h = harness(null, [], { link: { [LINK_AT]: { kind: "other", what: "a regular file" } } });
+    const f = (await findings(h)).byCheck.get("path-link");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail).toContain("a regular file");
+    expect(f?.detail).toContain("will not touch it");
   });
 
   test("herdr-socket: a missing socket is an error naming the path it looked for", async () => {

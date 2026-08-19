@@ -54,6 +54,10 @@ const PACK_VERBS = ["join", "leave", "pack", "promote", "reconnect"];
 // because that is where they are declared — the usage line's order is the table's order.
 const DIAGNOSTIC_VERBS = ["doctor"];
 
+// The PATH-name verbs (ADR 0021). No shell ancestor either, and declared right after the
+// diagnostics — they answer "where does the binary live", not "is the service healthy".
+const LINK_VERBS = ["link", "unlink"];
+
 // The device-pairing verbs. Declared between the diagnostics and the pack, because that is where
 // they sit in the table, and grouped separately for the same reason as the two above.
 const PAIRING_VERBS = ["pair", "devices"];
@@ -74,6 +78,7 @@ describe("the verb table", () => {
     expect(COMMANDS.map((c) => c.name)).toEqual([
       ...SHELL_VERBS,
       ...DIAGNOSTIC_VERBS,
+      ...LINK_VERBS,
       ...PAIRING_VERBS,
       ...PUSH_VERBS,
       ...PACK_VERBS,
@@ -305,6 +310,9 @@ describe("exit codes", () => {
       // `doctor` writes nothing, but it is not runnable here either: it shells out to `tailscale`
       // and would dial this host's real pack members. cli/doctor.test.ts drives it against fakes.
       ...DIAGNOSTIC_VERBS,
+      // `link`/`unlink` write into the developer's own `~/.local/bin` — the one place a test must
+      // not publish a name. cli/link.test.ts drives both against a fake symlink seam.
+      ...LINK_VERBS,
       // `pair` writes a pending pairing into the developer's own state dir, and `devices` resolves
       // that same real dir before it decides anything. cli/pairing.test.ts drives both against fakes.
       ...PAIRING_VERBS,

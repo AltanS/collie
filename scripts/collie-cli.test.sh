@@ -1544,6 +1544,122 @@ assert_contains "$STDERR" "a previous run left it behind"
 # Not one of these shelled out.
 assert_eq "$(cat "$PAIR_CALLS")" ""
 
+# ── link / unlink ────────────────────────────────────────────────────────────
+# The one verb pair whose whole subject is a REAL filesystem object — a symlink, its target, and what
+# `lstat` says is at the destination. `cli/link.test.ts` pins the decisions against a fake seam; only
+# this file can prove that the seam under them really creates a symlink (not a copy), really refuses a
+# regular file, and really leaves another checkout's link alone.
+LINK_HOME="${TMP_ROOT}/link-home"
+LINK_BIN="${LINK_HOME}/.local/bin/collie"
+OURS="${TMP_ROOT}/checkout-a"
+THEIRS="${TMP_ROOT}/checkout-b"
+mkdir -p "$LINK_HOME" "${OURS}/bin" "${THEIRS}/bin"
+printf '#!/bin/sh\n' > "${OURS}/bin/collie"
+printf '#!/bin/sh\n' > "${THEIRS}/bin/collie"
+: > "$PAIR_CALLS"
+link_env() {
+  local root="$1"; shift
+  run_stripped HOME="$LINK_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$root" \
+    PATH="$BIN_DIR" "$BIN" "$@"
+}
+
+# Nothing linked yet: `unlink` says so and succeeds — an absent name is not a failure.
+link_env "$OURS" unlink || fail "\`collie unlink\` failed with nothing linked: ${STDERR}"
+assert_contains "$STDOUT" "not linked"
+
+# A checkout with no binary cannot publish a name for one.
+rc=0
+link_env "$EMPTY_ROOT" link || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "run the build first"
+[ ! -e "$LINK_BIN" ] || fail "\`collie link\` published a name for a checkout with no binary"
+
+# The link itself: a symlink, whose target is the checkout's binary — never a copy of it.
+link_env "$OURS" link || fail "\`collie link\` failed: ${STDERR}"
+[ -L "$LINK_BIN" ] || fail "${LINK_BIN} is not a symlink"
+assert_eq "$(readlink "$LINK_BIN")" "${OURS}/bin/collie"
+assert_contains "$STDOUT" "not a copy"
+# ~/.local/bin is not on the scratch PATH, so the warning is the fact — and nothing more than a fact:
+# no profile of any kind may have been touched.
+assert_contains "$STDOUT" "not on your PATH"
+[ ! -e "${LINK_HOME}/.bashrc" ] || fail "\`collie link\` wrote a shell profile"
+[ ! -e "${LINK_HOME}/.profile" ] || fail "\`collie link\` wrote a shell profile"
+
+# Idempotent: a second run writes nothing and says the name is already ours. With the directory on
+# PATH, the warning is gone.
+run_stripped HOME="$LINK_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$OURS" \
+  PATH="${BIN_DIR}:${LINK_HOME}/.local/bin" "$BIN" link || fail "a second \`collie link\` failed: ${STDERR}"
+assert_contains "$STDOUT" "already links"
+case "$STDOUT" in *"not on your PATH"*) fail "warned about PATH with the directory on PATH" ;; esac
+assert_eq "$(readlink "$LINK_BIN")" "${OURS}/bin/collie"
+
+# Another checkout takes the name over — loudly, naming what it pointed at before.
+link_env "$THEIRS" link || fail "\`collie link\` from a second checkout failed: ${STDERR}"
+assert_eq "$(readlink "$LINK_BIN")" "${THEIRS}/bin/collie"
+assert_contains "$STDOUT" "${OURS}/bin/collie"
+assert_contains "$STDOUT" "no longer owns the name"
+
+# …and the first checkout may not take it back down: that instance owns the name now.
+rc=0
+link_env "$OURS" unlink || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "${THEIRS}/bin/collie"
+[ -L "$LINK_BIN" ] || fail "\`collie unlink\` removed another checkout's link"
+
+# The owner removes its own, and the checkout is untouched.
+link_env "$THEIRS" unlink || fail "\`collie unlink\` failed on its own link: ${STDERR}"
+[ ! -e "$LINK_BIN" ] || fail "\`collie unlink\` left the name behind"
+[ -f "${THEIRS}/bin/collie" ] || fail "\`collie unlink\` removed the checkout's binary"
+
+# Anything that is not a symlink is refused untouched — this is where a `~/.local/bin/collie` an
+# operator installed by hand, or another tool's binary, must survive.
+printf 'not ours\n' > "$LINK_BIN"
+rc=0
+link_env "$OURS" link || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "a regular file"
+assert_eq "$(cat "$LINK_BIN")" "not ours"
+rc=0
+link_env "$OURS" unlink || rc=$?
+assert_eq "$rc" "1"
+assert_eq "$(cat "$LINK_BIN")" "not ours"
+rm -f "$LINK_BIN"
+
+# A symlink to something that is not a collie binary is refused the same way — the destination's
+# SHAPE is the record, and only a `…/bin/collie` matches it.
+ln -s "${BIN_DIR}/git" "$LINK_BIN"
+rc=0
+link_env "$OURS" link || rc=$?
+assert_eq "$rc" "1"
+assert_eq "$(readlink "$LINK_BIN")" "${BIN_DIR}/git"
+rm -f "$LINK_BIN"
+
+# Not one of `link`/`unlink`'s paths shelled out to anything: publishing a name is one filesystem
+# entry and nothing else. (Asserted before the `doctor` runs below, which DO call `tailscale`.)
+assert_eq "$(cat "$PAIR_CALLS")" ""
+
+# `doctor` reports the state and repairs nothing. Linked here reads ✓; another checkout's link warns.
+ln -s "${OURS}/bin/collie" "$LINK_BIN"
+DOCTOR_LINK_STATE="${TMP_ROOT}/doctor-link-state"
+mkdir -p "$DOCTOR_LINK_STATE"
+doctor_link() {
+  set +e
+  env -i HOME="$LINK_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$DOCTOR_LINK_STATE" \
+    COLLIE_PLUGIN_ROOT="$1" PATH="$BIN_DIR" "$BIN" doctor --json 2>/dev/null
+  set -e
+}
+assert_contains "$(doctor_link "$OURS")" '"check": "path-link"'
+case "$(doctor_link "$OURS")" in
+  *'"check": "path-link",'*'"status": "ok"'*) ;;
+  *) fail "doctor did not report path-link ok for the checkout that owns the link" ;;
+esac
+case "$(doctor_link "$THEIRS")" in
+  *'"check": "path-link",'*'"status": "warn"'*) ;;
+  *) fail "doctor did not warn about a link owned by a different checkout" ;;
+esac
+[ -L "$LINK_BIN" ] || fail "\`collie doctor\` changed the link"
+assert_eq "$(readlink "$LINK_BIN")" "${OURS}/bin/collie"
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
@@ -1556,3 +1672,4 @@ echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one
 echo "✓ collie CLI pairing: 0600 pending file with no code in it, re-mint, list/revoke, exit codes"
 echo "✓ collie CLI push: list/forget answer with no VAPID and no environment, no keys on screen, exit codes"
 echo "✓ collie CLI push-keys: writes the resolved .env at 0600, refuses live keys / a bad subject / a symlink"
+echo "✓ collie CLI link: a real symlink not a copy, idempotent, take-over, every refusal untouched, doctor reports"

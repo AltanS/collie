@@ -2,6 +2,7 @@ import { type OpsRecord, PackOpsStore } from "../bridge/pack/ops-store.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
+import type { LinkProbe, LinkWriter } from "./link.ts";
 import type { Exec, ExecResult, Files } from "./sys.ts";
 
 // Fakes for the two seams every verb reaches the world through (cli/sys.ts), shared by the verb
@@ -137,6 +138,42 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
         entries.delete(k);
         entries.set(to + k.slice(from.length), value);
       }
+    },
+  };
+}
+
+export interface FakeLinkFs extends LinkWriter {
+  /** The destination, as this fake models it: absolute path → what is there. */
+  entries: Map<string, LinkProbe>;
+  /** `mkdirp <p>` / `symlink <target> <at>` / `rm <at>`, in order. */
+  ops: string[];
+  /** Paths whose write fails — the `~/.local/bin` an operator cannot write to. */
+  readonly: Set<string>;
+}
+
+/**
+ * The symlink seam over a map. A "directory" is not modelled: `mkdirp` is recorded and nothing else,
+ * because every decision this seam feeds is made from the destination alone.
+ */
+export function fakeLinkFs(seed: Record<string, LinkProbe> = {}): FakeLinkFs {
+  const entries = new Map<string, LinkProbe>(Object.entries(seed));
+  const ops: string[] = [];
+  const readonlyPaths = new Set<string>();
+  return {
+    entries,
+    ops,
+    readonly: readonlyPaths,
+    probe: (p) => entries.get(p) ?? { kind: "absent" },
+    mkdirp: (p) => void ops.push(`mkdirp ${p}`),
+    symlink(target, at) {
+      ops.push(`symlink ${target} ${at}`);
+      if (readonlyPaths.has(at)) throw new Error("EACCES: permission denied");
+      entries.set(at, { kind: "symlink", target });
+    },
+    remove(at) {
+      ops.push(`rm ${at}`);
+      if (readonlyPaths.has(at)) throw new Error("EACCES: permission denied");
+      entries.delete(at);
     },
   };
 }

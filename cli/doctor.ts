@@ -8,11 +8,13 @@ import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/stalen
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs } from "./link.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, parsePackArgs, probeMembers, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { tailnetInboundBlocked, tailnetName } from "./tailnet.ts";
+import { collieBinary } from "./unit.ts";
 
 // `collie doctor` — one read-only pass over the traps that fail silently (M7/02).
 //
@@ -59,6 +61,8 @@ export interface DoctorDeps {
   readonly io: Io;
   readonly exec: Exec;
   readonly files: Files;
+  /** Reading the published PATH name, and nothing else — {@link LinkReader} cannot write one. */
+  readonly link: LinkReader;
   /** Read-only use: `load()` and nothing else. */
   readonly store: TrustStore;
   /** The injected transport — the `hello` probe, and no other call. */
@@ -105,6 +109,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
 
   const local: Finding[] = [
     webDist(deps),
+    pathLink(deps),
     herdrSocket(deps),
     bindCheck(deps, mode),
     bindWildcard(deps),
@@ -195,6 +200,46 @@ function webDist(deps: DoctorDeps): Finding {
     return bad("web-dist", `${dist} has no index.html — a half-finished build`, "`collie build`");
   }
   return ok("web-dist", `${entries.length} entries, index.html present`);
+}
+
+/**
+ * The name on PATH (`collie link`, ADR 0021). Not being linked is a perfectly good state — the verb
+ * is opt-in — so it reads `ok` and merely names what would publish it. What is worth a warning is a
+ * name that exists and does NOT reach this checkout: another instance's link, or something Collie
+ * never published. The verdict comes from `classifyLink`, the same pure function `link` decides on,
+ * so `doctor` cannot disagree with the verb about what it is looking at.
+ */
+function pathLink(deps: DoctorDeps): Finding {
+  const at = linkPath(deps.ctx.home);
+  const own = collieBinary(deps.ctx.root);
+  const verdict = classifyLink(deps.link.probe(at), own);
+  switch (verdict.action) {
+    case "create":
+      return ok("path-link", `not linked — \`collie link\` would publish ${at} → ${own}`);
+    case "keep": {
+      const dir = linkDir(deps.ctx.home);
+      if (!onPath(dir, deps.ctx.env.PATH)) {
+        return warn(
+          "path-link",
+          `${at} → ${own} (this checkout), but ${dir} is not on PATH — the name is published and the shell cannot find it`,
+          `add ${dir} to your shell profile's PATH`,
+        );
+      }
+      return ok("path-link", `${at} → ${own} (this checkout)`);
+    }
+    case "replace":
+      return warn(
+        "path-link",
+        `${at} → ${verdict.previous} — a DIFFERENT checkout owns the name, so a bare \`collie\` runs that one`,
+        "`collie link` here to take it over, or leave it to that instance",
+      );
+    case "refuse":
+      return warn(
+        "path-link",
+        `${at} is ${verdict.reason} — Collie will not touch it`,
+        `move it aside yourself, then \`collie link\``,
+      );
+  }
 }
 
 /**
@@ -622,6 +667,7 @@ export function doctorDeps(base: {
 }): DoctorDeps {
   return {
     ...base,
+    link: realLinkFs,
     store: new TrustStore(base.ctx.stateDir),
     fetch: (url, init) => fetch(url, init),
     now: () => Date.now(),
