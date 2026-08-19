@@ -57,6 +57,11 @@ const CONTROL: CtrlDef[] = [
 
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
+// F1–F12 — Herdr's send_keys grammar accepts them bare (HERDR_API.md), and harnesses bind them to
+// real actions (tmux windows, CLI hotkeys, agent-extension views like pi's CE Workflow: F7 opens
+// its orchestrator). Without buttons for them, a phone-only user has no route to any such keybind.
+const FN_KEYS = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"];
+
 // Two views behind a segmented toggle: the keys pad (arrows/Esc, Tab/Space/Enter, modifiers, Ctrl
 // presets) and a phone-dialer digit grid. Digits were a cramped nine-across sliver row; on their own
 // tab they get large, thumb-sized targets. The tab is component state only (resets to "keys" each
@@ -67,6 +72,7 @@ type Tab = "keys" | "digits";
 export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
   const [tab, setTab] = useState<Tab>("keys");
   const [ctrlOpen, setCtrlOpen] = useState(false);
+  const [fkeysOpen, setFkeysOpen] = useState(false);
   const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take } =
     useKeyQueue();
   const { pending, confirm, reset } = usePendingConfirm(); // danger ctrl two-tap (immediate path only)
@@ -306,6 +312,23 @@ export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
                   );
                 })}
               </div>
+            )}
+          </div>
+          {/* Function keys (#119) — same collapsible shape as Presets: collapsed by default so the
+              tray doesn't grow, expanding to a 4×3 grid. They ride the ordinary navBtn path, so the
+              press echo, key-queue staging, and chords with armed modifiers (ctrl+F7, …) all come
+              for free — no special-casing. */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setFkeysOpen((o) => !o)}
+              className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              F keys
+              <ChevronDown className={cn("size-3 transition-transform", fkeysOpen && "rotate-180")} />
+            </button>
+            {fkeysOpen && (
+              <div className="mt-1 grid grid-cols-4 gap-1.5">{FN_KEYS.map((k) => navBtn(k, [k]))}</div>
             )}
           </div>
         </>
