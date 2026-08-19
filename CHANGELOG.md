@@ -6,6 +6,20 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.7] - 2026-08-20
+
+### Added
+
+- **The mux contract** — one Collie-owned port for everything a multiplexer must answer (`bridge/mux/`), capabilities declared per adapter and never inferred from a name, the evidence matrix in [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) ([ADR 0022](./.adr/0022-the-mux-seam-is-a-port-collie-owns.md), c516cfd)
+- **A conformance suite every mux adapter must pass** — 7 read-only + 10 world checks run against every registered adapter by iterating the registry; live layer in `scripts/mux-probe.ts`; contributor doc [`MUX_CONTRIBUTING.md`](./MUX_CONTRIBUTING.md) (b184767)
+- **The tmux adapter** — `COLLIE_MUX=tmux` lists, reads (colour preserved) and types into a tmux server; session→space, window→tab; events via read-only control mode with a bounded census backstop (74bb86c)
+- **The zellij adapter** — `COLLIE_MUX=zellij` drives one zellij session; content streams over `zellij subscribe`, topology polls a bounded 3s→12s census; scrollback via `dump-screen --full`, never called history (8bf0951)
+- **The UI reads capabilities, never a multiplexer name** — the active adapter's declaration rides `GET /api/config`; absent capabilities hide the meaningless and explain the expected in the adapter's own words; `scripts/check-mux-names.sh` keeps mux-name literals out of `web/src` (e9f7c83)
+
+### Changed
+
+- **Herdr is now the reference mux adapter** behind the port — every bridge consumer depends on `MuxAdapter`, construction goes through the registry with Herdr the default, no operator-visible change (1ef399c)
+
 ## [1.0.0-beta.6] - 2026-08-19
 
 ### Added
