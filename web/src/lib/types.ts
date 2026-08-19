@@ -397,6 +397,51 @@ export interface OperatorKeyRow {
   danger?: boolean;
 }
 
+/**
+ * Every capability a multiplexer adapter may declare. Mirrors `MUX_CAPABILITIES` in
+ * bridge/mux/capabilities.ts, which is where each one's meaning and its backing route are written
+ * down — the two trees do not share a module, so this list is a copy the way `STATUS_RANK` is.
+ *
+ * A name here is only ever used to ASK. Nothing in `web/src` may key off which multiplexer answered
+ * (scripts/check-mux-names.sh), and that is the difference this list exists to keep.
+ */
+export const MUX_CAPABILITIES = [
+  "paneGrid",
+  "gridScrollback",
+  "agentDetection",
+  "agentSessionRef",
+  "typeText",
+  "sendKeys",
+  "renamePane",
+  "closePane",
+  "createTab",
+  "renameTab",
+  "closeTab",
+  "createSpace",
+  "pushTopologyEvents",
+  "pushPaneEvents",
+] as const;
+
+export type MuxCapability = (typeof MUX_CAPABILITIES)[number];
+
+/**
+ * What the bridge says about the multiplexer underneath (`/api/config`). Mirrors `MuxConfig` in
+ * bridge/types.ts.
+ *
+ * `name` is for display and support — the subject of a sentence, never a branch. Read the
+ * capabilities through lib/mux-capability.ts rather than reaching in here: that module owns the one
+ * rule that an unanswered capability counts as PRESENT.
+ */
+export interface MuxConfig {
+  name: string;
+  /** Total over {@link MUX_CAPABILITIES} on any bridge that knows the capability. */
+  capabilities: Partial<Record<MuxCapability, boolean>>;
+  /** Neutral key spellings this multiplexer refuses. */
+  unsupportedKeys: string[];
+  /** The adapter's own words for the capabilities it lacks — the text an explanation renders. */
+  notes: Partial<Record<MuxCapability, string>>;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
@@ -412,6 +457,12 @@ export interface BridgeConfig {
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent when there is no `keys.toml`. */
   operatorKeys?: OperatorKeyRow[];
+  /**
+   * The multiplexer and its declared capabilities. **Absent on a bridge older than this field**, and
+   * that absence is read as "everything is supported" — a mid-upgrade Herdr operator must never
+   * watch controls disappear while a cached config is in flight (lib/mux-capability.ts).
+   */
+  mux?: MuxConfig;
 }
 
 /**

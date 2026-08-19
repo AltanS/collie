@@ -17,6 +17,7 @@ import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
+import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-config";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
@@ -165,7 +166,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Every write affordance is off when the pane is gone, this device is read-only, OR the pane's
   // machine is unreachable from the lead. All three are "the write cannot land"; only the copy below
   // differs, because only the copy tells you what to do about it.
-  const locked = gone || readOnly || hostBlock !== undefined;
+  // …plus a fourth: the multiplexer underneath cannot type into a pane at all (M10/06). It is a
+  // FOURTH reason, ANDed in rather than folded into any of the three, because capability gating
+  // composes with the app's locks and never substitutes for one — a pane that is gone stays gone
+  // however capable the multiplexer is, and vice versa.
+  //
+  // Two capabilities, one lock: a reply is `typeText` then `sendKeys` (bridge/mux/capabilities.ts),
+  // and half a reply is not a feature. `typeText`'s reason is preferred when both are missing —
+  // it is the half that fails first.
+  const canType = useMuxCapability("typeText");
+  const canSendKeys = useMuxCapability("sendKeys");
+  const missingSend = !canType.capable ? canType : !canSendKeys.capable ? canSendKeys : null;
+  const locked = gone || readOnly || hostBlock !== undefined || missingSend !== null;
   // The machine every write on this row lands on. The pane view addresses one host (the pane's own,
   // carried in `?h=` since the row was opened), so the ambient scope IS the target here. Undefined on
   // a solo install, which renders no chip and leaves every confirm string unchanged.
@@ -474,6 +486,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const commands = commandsFor(agent, operatorCommands);
   // The Keys tray's preset row, resolved the same way from the same one-shot read of /api/config.
   const keyPresets = ctrlPresetsFor(agent, useOperatorKeys());
+  // Empty on every adapter that refuses nothing, and empty for Herdr's six as far as this tray is
+  // concerned — it offers none of the paging/edit keys Herdr rejects, so nothing greys out there.
+  const unsupportedKeys = useMuxUnsupportedKeys();
 
   function focusInputImmediately() {
     const el = inputRef.current;
@@ -801,6 +816,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {drawer === "keys" && (
           <ComposerDock title="Keys" host={writeHost} onClose={closeDrawer}>
             <NavTray
+              // The chords THIS multiplexer refuses (M10/06). A key is not a capability: the Keys
+              // door is `sendKeys` (the lock above), and this is the list of holes behind it, so a
+              // refused chord greys its own button instead of being discovered by a failed send.
+              unsupportedKeys={unsupportedKeys}
               onSend={pressKeys}
               presets={keyPresets}
               onQueueChange={setQueuedKeys}
@@ -1018,6 +1037,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     // answers and only one of them is about this device.
                     hostBlock
                     ? hostBlock
+                    : // The multiplexer cannot type here at all — its own words where it gave any, so
+                      // the placeholder says what is true of THIS terminal rather than blaming the app.
+                      missingSend !== null
+                      ? missingSend.note || "This terminal can't be typed into from here"
                     : direct.active
                       ? "Type into the terminal…"
                       : isShell

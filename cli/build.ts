@@ -107,6 +107,12 @@ export function cmdBuild(deps: BuildDeps): number {
   // pre-commit hook documents (there it is SKIP_LINT_CHECK).
   if (deps.ctx.env.SKIP_LINT !== "1") {
     if (!step(deps, "the lint gate", "bun", ["run", "lint"], root)) return EXIT.FAIL;
+    // Rides the same gate and the same escape hatch, deliberately: it is a lint — a shape banned in
+    // one directory — and oxlint has no rule that can express "this string literal, in these files".
+    // No new SKIP_* name, because a second hatch here would be a second thing to disarm by accident
+    // (CLAUDE.md's escape-hatch table is the whole list, and this adds no row to it).
+    const muxNames = join(root, "scripts", "check-mux-names.sh");
+    if (!step(deps, "the mux-name gate", "bash", [muxNames], root)) return EXIT.FAIL;
   }
 
   // 4. Both typechecks. Same escape hatch the pre-push hook documents.

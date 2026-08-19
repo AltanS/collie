@@ -5,6 +5,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
+import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
@@ -47,6 +48,7 @@ import type {
   CreateResponse,
   DeviceAuth,
   OperatorCommand,
+  MuxConfig,
   OperatorKeyRow,
   PaneHistoryResponse,
   PaneReadResponse,
@@ -189,11 +191,44 @@ interface RouteCaller {
   readonly audit: AuditLog;
 }
 
+/**
+ * One adapter's declaration, as the phone reads it (M10/06).
+ *
+ * Takes the two fields off {@link MuxAdapter} rather than the adapter itself, so this stays a pure
+ * function `bun test` can call — and so it is obvious that publishing capabilities cannot reach into
+ * a multiplexer.
+ *
+ * `notes` is filtered to the ABSENT capabilities. A note on a supported one explains nothing to an
+ * operator (Herdr ships one, about how its scrollback depth is known), and shipping it would put
+ * developer prose on the wire for every page load of the reference adapter.
+ */
+export function muxConfigBody(mux: { readonly mux: string; readonly capabilities: MuxCapabilityDeclaration }): MuxConfig {
+  const decl = mux.capabilities;
+  const notes: Partial<Record<MuxCapability, string>> = {};
+  for (const cap of MUX_CAPABILITIES) {
+    if (decl.supports[cap]) continue;
+    const note = decl.notes[cap];
+    if (note !== undefined) notes[cap] = note;
+  }
+  return {
+    name: mux.mux,
+    capabilities: { ...decl.supports },
+    unsupportedKeys: [...decl.unsupportedKeys],
+    notes,
+  };
+}
+
 export function bridgeConfigBody(opts: {
   push: boolean;
   vapidPublicKey: string;
   build: string;
   mode: PackRuntime["mode"];
+  /**
+   * The active adapter, when there is one. Optional so the pack-mode assertions below (and any
+   * caller that has no session registry) stay about the pack and nothing else; the real handler
+   * always passes it.
+   */
+  mux?: { readonly mux: string; readonly capabilities: MuxCapabilityDeclaration };
   /**
    * The operator's own palette rows. Omitted entirely when there are none, so an operator who never
    * wrote a `commands.toml` ships the same payload as before — the same reasoning `mode` follows.
@@ -215,6 +250,11 @@ export function bridgeConfigBody(opts: {
   if (mode !== undefined) wire.mode = mode;
   if (mine.length > 0) wire.operatorCommands = [...mine];
   if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
+  // Appended last, and unconditional once an adapter is in hand: unlike `mode`, this is not
+  // omit-when-default. There is no default to omit — "no mux key" already means something on the
+  // phone (an older bridge, read as fully capable), so a Herdr bridge staying silent here would be
+  // indistinguishable from one that cannot answer.
+  if (opts.mux !== undefined) wire.mux = muxConfigBody(opts.mux);
   return wire;
 }
 
@@ -620,6 +660,11 @@ export function startServer(opts: {
         // with no restart. The path is cfg's, never the request's.
         const mine = await operatorCommands();
         const myKeys = await operatorKeys();
+        // The PRIMARY session's adapter, because one collie drives one multiplexer: every session in
+        // the registry is built by the same factory off the same `cfg.mux`, so which runtime answers
+        // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
+        // eagerly in the constructor and never disposed.
+        const activeMux = registry.get();
         return json(
           bridgeConfigBody({
             push: push.enabled,
@@ -628,6 +673,7 @@ export function startServer(opts: {
             mode: pack.mode,
             operatorCommands: mine,
             operatorKeys: myKeys,
+            mux: activeMux?.herdr,
           }),
           req.headers.get("accept-encoding"),
         );

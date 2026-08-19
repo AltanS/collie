@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderPlus, LayoutGrid, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { StatusDot } from "@/components/status-badge";
 import { filterSpaces, sortSpacesByRecency, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
@@ -49,6 +50,8 @@ export function SpaceOverview({
   // Ephemeral view state, like SpaceRoute's tab selection — a filter you typed yesterday should not
   // greet you today with most of your spaces missing.
   const [query, setQuery] = useState("");
+  // Whether this multiplexer can open a new space at all. See the two decision sites below.
+  const newSpace = useMuxCapability("createSpace");
 
   const panes = [...agents, ...shellPanes];
   // One pass over the panes, then map lookups — this component re-renders on every poll.
@@ -81,20 +84,34 @@ export function SpaceOverview({
                 {blockedSpaces}
               </span>
             )}
-            <button
-              type="button"
-              onClick={onNewSpace}
-              aria-label="New space"
-              className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
-            >
-              <FolderPlus className="size-4" />
-            </button>
+            {/* HIDDEN, and explained one line further down (M10/06). An icon has nowhere to put a
+                sentence, and a "+" that always refuses is worse than no "+" at all — the pane sheet
+                makes the same argument about greying out a control that cannot work. But an
+                operator looking at a list of spaces WILL go looking for how to add one, so the
+                reason cannot simply vanish with the button: it moves into the body, where there is
+                room for words. Present on Herdr, which declares the capability. */}
+            {newSpace.capable && (
+              <button
+                type="button"
+                onClick={onNewSpace}
+                aria-label="New space"
+                className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+              >
+                <FolderPlus className="size-4" />
+              </button>
+            )}
           </>
         }
       />
 
       {open && (
         <div id="spaces-body" className="flex flex-col divide-y divide-border/60">
+          {/* The other half of the hidden "+" above: the adapter's own reason, where the operator
+              who went looking for it is already reading. Renders nothing on a multiplexer that can
+              create a space, and nothing on one that declined without saying why. */}
+          {!newSpace.capable && newSpace.note !== "" && (
+            <p className="px-1 py-2 text-xs leading-snug text-muted-foreground">{newSpace.note}</p>
+          )}
           {/* Deliberately NOT autofocused: on a phone that would throw the keyboard over the list
               you just asked to see. */}
           {/* Sticky: at 45 spaces the list is five screens, and a filter that scrolls away turns

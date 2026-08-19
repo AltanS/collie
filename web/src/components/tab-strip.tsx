@@ -7,6 +7,7 @@ import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { worstTriage } from "@/lib/triage";
 import { hostKey } from "@/lib/hosts";
 import type { AgentView, TabView } from "@/lib/types";
+import { useMuxCapability } from "@/lib/mux-capability";
 import type { Scope } from "@/lib/scope";
 
 interface TabStripProps {
@@ -53,6 +54,7 @@ export function TabStrip({
   onClosed,
 }: TabStripProps) {
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
+  const newTab = useMuxCapability("createTab");
   // Actions need both callbacks wired (revalidate on rename, fall back on close); without them the
   // chips stay plain tap-to-switch — long-press is inert.
   const actionsEnabled = !!onRenamed && !!onClosed;
@@ -86,14 +88,21 @@ export function TabStrip({
             onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
           />
         ))}
-        <button
-          type="button"
-          onClick={() => onNewTab(workspaceId)}
-          aria-label="New tab"
-          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
-        >
-          <Plus className="size-4" />
-        </button>
+        {/* HIDE, don't explain (M10/06). A "+" at the end of the tab row is an affordance, not a
+            promise: nobody arrives at Collie needing to know why a particular multiplexer will not
+            open a tab, the way they arrive needing to know where their agent's history went. Every
+            adapter shipped today declares `createTab`, so this hides on none of them — it asks
+            anyway, because the alternative is a fourth adapter discovering the answer by 500ing. */}
+        {newTab.capable && (
+          <button
+            type="button"
+            onClick={() => onNewTab(workspaceId)}
+            aria-label="New tab"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
+          >
+            <Plus className="size-4" />
+          </button>
+        )}
       </div>
 
       {actionsEnabled && (

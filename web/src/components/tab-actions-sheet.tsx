@@ -7,6 +7,7 @@ import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostWriteBlock } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
+import { useMuxCapability } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
 import type { TabView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
@@ -118,6 +119,9 @@ export function TabActionsSheet({
   // …and the same host is what decides whether either write may be attempted at all (§10.3). Same
   // gate as the pane sheet, one dimension up: undefined on a solo install and on a reachable host.
   const hostBlock = useHostWriteBlock(host);
+  // The tab verbs the multiplexer underneath declares (M10/06) — asked per row, below.
+  const canRename = useMuxCapability("renameTab");
+  const canClose = useMuxCapability("closeTab");
   // Closing a tab kills every pane in it — name the blast radius on the confirm so it's honest. The
   // count rides on the tab record (snapshot `pane_count`); fall back to a plain confirm if it's 0.
   const paneCount = tab?.paneCount ?? 0;
@@ -139,20 +143,32 @@ export function TabActionsSheet({
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
           <HostChip host={host} variant="target" className="mb-1 self-start" />
-          <ActionRow
-            icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
-            label="Rename"
-            onClick={() => setMode("rename")}
-          />
-          <DestructiveActionRow
-            icon={<XCircle className="size-4 shrink-0" />}
-            label="Close tab"
-            confirmLabel={confirmLabel}
-            closingLabel="Closing…"
-            armed={confirming}
-            closing={closing}
-            onClick={() => void requestClose()}
-          />
+          {/* Per-row capability gating, one dimension up from the pane sheet and for exactly the
+              same reasons — see the note there. The two sheets must stay identical in shape, which
+              is why the rows themselves are shared components. */}
+          {canRename.capable && (
+            <ActionRow
+              icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+              label="Rename"
+              onClick={() => setMode("rename")}
+            />
+          )}
+          {canClose.capable && (
+            <DestructiveActionRow
+              icon={<XCircle className="size-4 shrink-0" />}
+              label="Close tab"
+              confirmLabel={confirmLabel}
+              closingLabel="Closing…"
+              armed={confirming}
+              closing={closing}
+              onClick={() => void requestClose()}
+            />
+          )}
+          {!canRename.capable && !canClose.capable && (
+            <p className="py-2 text-sm leading-snug text-muted-foreground">
+              {canRename.note || canClose.note || "This multiplexer offers no actions for a tab."}
+            </p>
+          )}
         </div>
       ) : (
         <RenameView

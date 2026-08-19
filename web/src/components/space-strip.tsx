@@ -3,6 +3,7 @@ import { ChevronLeft, Plus } from "lucide-react";
 import { Chip } from "@/components/ui/chip";
 import { SectionLabel } from "@/components/ui/section-label";
 import { worstTriage } from "@/lib/triage";
+import { useMuxCapability } from "@/lib/mux-capability";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
 interface SpaceStripProps {
@@ -29,6 +30,7 @@ export function SpaceStrip({
   onNewSpace,
   onBack,
 }: SpaceStripProps) {
+  const newSpace = useMuxCapability("createSpace");
   // shrink-0: this strip is a child of the space route's `flex-1 flex-col` scroller, so without it
   // the strip flex-shrinks to 16px while its 32px chips overflow — the tab row below then paints
   // straight over the chips.
@@ -60,14 +62,20 @@ export function SpaceStrip({
           onClick={() => onSelect(w.workspaceId)}
         />
       ))}
-      <button
-        type="button"
-        onClick={onNewSpace}
-        aria-label="New space"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
-      >
-        <Plus className="size-4" />
-      </button>
+      {/* Hidden when the multiplexer cannot open a space (M10/06). No explanation HERE: this strip
+          is a one-line row of chips with no room for a sentence, and the dashboard's Spaces section
+          — the other place this "+" appears — carries the adapter's reason in full. Saying it twice
+          in two shapes is how one wording rule turns into two. */}
+      {newSpace.capable && (
+        <button
+          type="button"
+          onClick={onNewSpace}
+          aria-label="New space"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
+        >
+          <Plus className="size-4" />
+        </button>
+      )}
     </div>
   );
 }

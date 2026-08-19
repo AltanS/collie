@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   bridgeConfigBody,
+  muxConfigBody,
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
@@ -30,7 +31,8 @@ import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
 import type { Config } from "./config.ts";
-import { HerdrMux } from "./mux/herdr/adapter.ts";
+import { declareCapabilities, MUX_CAPABILITIES } from "./mux/capabilities.ts";
+import { HerdrMux, herdrMuxFactory } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import { muxAck, type MuxAck, type MuxAdapter, type MuxGrid } from "./mux/types.ts";
 import { neverProxy } from "./pack/fixtures.ts";
@@ -1182,6 +1184,96 @@ describe("bridgeConfigBody — /api/config reports the pack mode", () => {
   });
 });
 
+// The mux block (M10/06) — how the phone learns what the multiplexer underneath can do, without
+// ever learning to branch on which one it is. Same reason as above: the handler is inside Bun.serve,
+// so the shape is asserted through the pure builder it calls.
+describe("muxConfigBody — the capability declaration, as the phone reads it", () => {
+  const everything = declareCapabilities({
+    supports: [...MUX_CAPABILITIES],
+    unsupportedKeys: ["PageUp", "End"],
+    notes: { gridScrollback: "developer prose about a capability this adapter HAS" },
+  });
+  const partial = declareCapabilities({
+    supports: ["paneGrid", "typeText", "sendKeys"],
+    notes: {
+      agentSessionRef: "a multiplexer keeps no agent session log for Collie to read.",
+      createSpace: "one collie drives one session here, so a new one would not appear at all.",
+    },
+  });
+
+  test("capabilities are TOTAL — every name answered, so nothing reads as absent by omission", () => {
+    const wire = muxConfigBody({ mux: "reference", capabilities: everything });
+    expect(Object.keys(wire.capabilities).toSorted()).toEqual([...MUX_CAPABILITIES].toSorted());
+    for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(true);
+  });
+
+  test("an adapter missing capabilities says false, never omits the key", () => {
+    const wire = muxConfigBody({ mux: "partial", capabilities: partial });
+    expect(wire.capabilities.agentSessionRef).toBe(false);
+    expect(wire.capabilities.createSpace).toBe(false);
+    expect(wire.capabilities.paneGrid).toBe(true);
+    expect("agentSessionRef" in wire.capabilities).toBe(true);
+  });
+
+  test("notes ride only for the capabilities the adapter LACKS", () => {
+    expect(muxConfigBody({ mux: "reference", capabilities: everything }).notes).toEqual({});
+    const notes = muxConfigBody({ mux: "partial", capabilities: partial }).notes;
+    expect(Object.keys(notes).toSorted()).toEqual(["agentSessionRef", "createSpace"]);
+  });
+
+  test("the name and the refused keys ride verbatim", () => {
+    const wire = muxConfigBody({ mux: "reference", capabilities: everything });
+    expect(wire.name).toBe("reference");
+    expect(wire.unsupportedKeys).toEqual(["PageUp", "End"]);
+  });
+
+  test("the wire is a copy — mutating it cannot reach the adapter's declaration", () => {
+    const wire = muxConfigBody({ mux: "reference", capabilities: everything });
+    wire.capabilities.paneGrid = false;
+    wire.unsupportedKeys.push("Home");
+    expect(everything.supports.paneGrid).toBe(true);
+    expect(everything.unsupportedKeys).toEqual(["PageUp", "End"]);
+  });
+
+  test("the real Herdr adapter publishes every capability — nothing changes for its operators", () => {
+    const wire = muxConfigBody(herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} }));
+    for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(true);
+    expect(wire.notes).toEqual({});
+  });
+});
+
+describe("bridgeConfigBody — the mux block is appended, never reordering what came before", () => {
+  const base = { push: true, vapidPublicKey: "BKey", build: "abc123", mode: "solo" } as const;
+  const mux = { mux: "reference", capabilities: declareCapabilities({ supports: ["paneGrid"] }) };
+
+  test("no adapter in hand: no key at all, which a client reads as an older bridge", () => {
+    expect("mux" in bridgeConfigBody({ ...base })).toBe(false);
+  });
+
+  test("with one, it lands last", () => {
+    expect(Object.keys(bridgeConfigBody({ ...base, mux }))).toEqual([
+      "push",
+      "vapidPublicKey",
+      "build",
+      "mux",
+    ]);
+    expect(Object.keys(bridgeConfigBody({ ...base, mode: "peer", mux }))).toEqual([
+      "push",
+      "vapidPublicKey",
+      "build",
+      "mode",
+      "mux",
+    ]);
+  });
+
+  test("it carries the declaration, not the adapter", () => {
+    const body = bridgeConfigBody({ ...base, mux });
+    expect(body.mux?.name).toBe("reference");
+    expect(body.mux?.capabilities.paneGrid).toBe(true);
+    expect(body.mux?.capabilities.createSpace).toBe(false);
+  });
+});
+
 // ── The merged snapshot route (M4/04) ────────────────────────────────────────
 // `/api/snapshot` is `packLead ? packLead.merge(body) : body`, inside Bun.serve — which bun test
 // cannot stand up (CLAUDE.md). So the two halves are asserted where they actually live: the
@@ -1280,10 +1372,15 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // All four session-scoped routes (tab create, workspace create, tab action, the pane family)
     // reach their runtime through the caller's resolver and nothing else.
     expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(4);
-    // Exactly two `registry.get(` calls remain, and both are the sanctioned ones: assembling THIS
-    // collie's own body, and `localRuntime`, the single "(session) → runtime, or 404" helper both
-    // callers share. A third would be a route reaching past the gate.
-    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(2);
+    // Exactly three `registry.get(` calls remain, and each is a sanctioned one, named here rather
+    // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
+    // "(session) → runtime, or 404" helper both callers share; and `/api/config`, which reports
+    // THIS collie's own multiplexer (M10/06) and is not session-scoped at all. A fourth would be a
+    // route reaching past the gate.
+    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(3);
+    // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
+    // are its own business and reach the lead over the pack API, never out of this registry.
+    expect(src).toContain("const activeMux = registry.get();");
     // An unknown or ill-formed host is a 404, mirroring unknownSession() (§4)…
     expect(src).toMatch(/`unknown host: \$\{host\.kind === "member" \? host\.id : host\.raw\}`/);
     // …and a KNOWN peer is forwarded, with the peer's own response handed back (§5, §9.1). The

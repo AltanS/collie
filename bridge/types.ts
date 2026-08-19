@@ -2,6 +2,7 @@
 // (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
+import type { MuxCapability } from "./mux/capabilities.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
 // entry shape from here too, without reaching into an adapter module.
@@ -392,6 +393,37 @@ export interface OperatorKeyRow {
   danger: boolean;
 }
 
+/**
+ * What the phone is told about the multiplexer underneath — the config surface's half of M10/06.
+ *
+ * THE UI READS `capabilities`, NEVER `name`. `name` rides so the app can SAY which multiplexer it is
+ * (a support question, and the subject of a sentence like "zellij keeps no agent session log") and
+ * for nothing else: a component that branches on it has re-welded Collie to one multiplexer, which
+ * is the whole thing this milestone exists to undo. `scripts/check-mux-names.sh` enforces that.
+ *
+ * `capabilities` is TOTAL — every capability answered true or false, the same shape the adapter
+ * declares (bridge/mux/capabilities.ts). Total rather than a list of the supported ones so a client
+ * that knows a capability this bridge has never heard of can tell "absent" from "not answered": an
+ * unanswered capability reads as CAPABLE on the phone, because the alternative is a mid-upgrade
+ * Herdr operator watching controls vanish for the length of a page cache.
+ */
+export interface MuxConfig {
+  /** Registry name of the multiplexer. For display and support, never a branch. */
+  name: string;
+  /** Every capability, answered. Mirrors the adapter's own declaration. */
+  capabilities: Record<MuxCapability, boolean>;
+  /** Neutral key spellings (bridge/mux/keys.ts) this multiplexer refuses, canonicalised. */
+  unsupportedKeys: string[];
+  /**
+   * The adapter's own operator-facing reason, for the capabilities it does NOT have.
+   *
+   * Only the absent ones: a note explaining a capability the adapter HAS is developer
+   * documentation, and the phone has nothing to render it on. This is where an explanation's words
+   * come from — the adapter wrote them, they name the multiplexer, and they never blame Collie.
+   */
+  notes: Partial<Record<MuxCapability, string>>;
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;
@@ -409,6 +441,11 @@ export interface BridgeConfig {
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent/empty when there is no `keys.toml`. */
   operatorKeys?: OperatorKeyRow[];
+  /**
+   * The multiplexer this collie drives, and what it can do. Absent only on a bridge older than
+   * M10/06 — which a client reads as "every capability present", i.e. exactly today's Herdr app.
+   */
+  mux?: MuxConfig;
 }
 
 /** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */

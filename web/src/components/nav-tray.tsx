@@ -10,6 +10,7 @@ import { useKeyQueue } from "@/hooks/use-key-queue";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useHoldRepeat } from "@/hooks/use-hold-repeat";
 import { KeyQueueStrip } from "@/components/key-queue-strip";
+import { keysSendable } from "@/lib/mux-capability";
 import { CONTROL_PRESETS, type CtrlDef } from "@/lib/operator-keys";
 
 // The inline navigation tray: the keys you need to drive an interactive agent prompt (selection
@@ -45,7 +46,18 @@ interface NavTrayProps {
    *  sequence. Reports 0 on unmount. Must be referentially stable (a setState fn is ideal). */
   onQueueChange?: (staged: number) => void;
   disabled?: boolean;
+  /**
+   * Neutral key spellings this multiplexer refuses (`/api/config`, M10/06). A button whose chord
+   * uses one is greyed — the door is open (`sendKeys`), this key is simply not behind it.
+   *
+   * Deliberately a prop rather than a hook call in here: the tray is the fixed keyboard and gets
+   * everything it renders from its parent, so a test can drive it without a config fetch.
+   */
+  unsupportedKeys?: readonly string[];
 }
+
+/** Stable default so an omitted prop never re-renders the pad. */
+const NO_REFUSED_KEYS: readonly string[] = [];
 
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
@@ -61,7 +73,13 @@ const FN_KEYS = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F
 // Ctrl-expand persist across the toggle so a composed sequence survives switching to the digit pad.
 type Tab = "keys" | "digits";
 
-export function NavTray({ onSend, presets = CONTROL_PRESETS, onQueueChange, disabled }: NavTrayProps) {
+export function NavTray({
+  onSend,
+  presets = CONTROL_PRESETS,
+  onQueueChange,
+  disabled,
+  unsupportedKeys = NO_REFUSED_KEYS,
+}: NavTrayProps) {
   const [tab, setTab] = useState<Tab>("keys");
   const [ctrlOpen, setCtrlOpen] = useState(false);
   const [fkeysOpen, setFkeysOpen] = useState(false);
@@ -133,12 +151,17 @@ export function NavTray({ onSend, presets = CONTROL_PRESETS, onQueueChange, disa
     const phase = echo.phaseOf(id);
     const held = repeatable && repeat.holding === keys[0];
     const bind = repeatable ? repeat.bind(keys[0], () => fire(keys, id)) : undefined;
+    // Greyed rather than removed: the pad's geometry IS its usability (Esc top-left, arrows as an
+    // inverted-T), and pulling a key out of the grid would move every key after it. A dead button in
+    // its own place is the lesser harm here — the opposite call from the action sheets, and for a
+    // reason those sheets do not have.
+    const refused = !keysSendable(keys, unsupportedKeys);
     return (
       <Button
         type="button"
         variant={held || phase !== "idle" ? "default" : "outline"}
         size="sm"
-        disabled={disabled}
+        disabled={disabled || refused}
         {...(bind ?? { onClick: () => fire(keys, id) })}
         aria-label={aria}
         // touch-action/select-none: without them a held button on iOS starts a text selection and
@@ -244,7 +267,7 @@ export function NavTray({ onSend, presets = CONTROL_PRESETS, onQueueChange, disa
             type="button"
             variant={echo.phaseOf("Space") === "idle" ? "outline" : "default"}
             size="sm"
-            disabled={disabled}
+            disabled={disabled || !keysSendable(["Space"], unsupportedKeys)}
             onClick={() => fire(["Space"], "Space")}
             className="h-10 w-full text-sm font-medium"
           >
@@ -288,7 +311,7 @@ export function NavTray({ onSend, presets = CONTROL_PRESETS, onQueueChange, disa
                       type="button"
                       variant={variant}
                       size="sm"
-                      disabled={disabled}
+                      disabled={disabled || !keysSendable(item.keys, unsupportedKeys)}
                       onClick={() => pressCtrl(item)}
                       className={cn(
                         "h-10 text-sm font-medium",

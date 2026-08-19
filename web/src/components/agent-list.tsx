@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Check, Inbox, WifiOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { clockTime } from "@/lib/format";
+import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
@@ -61,6 +62,9 @@ export function AgentList({
   error = false,
   lastSeenAt,
 }: AgentListProps) {
+  // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
+  // sit behind the early return below, and the answer is only consulted in the empty branch.
+  const agentDetection = useMuxCapability("agentDetection");
   if (agents.length === 0) {
     if (!emptyState) return null;
     // "No agents running." is a claim about the herd, and only the bridge can make it. A stale render
@@ -85,6 +89,17 @@ export function AgentList({
         <span className="text-sm">
           {bridge === "connected" ? "No agents running." : "Waiting for Herdr…"}
         </span>
+        {/* PRESENTATION, not a gate (M10/06). Without `agentDetection` every pane arrives as a
+            shell with an unknown status, so this list is empty on a machine that may be running
+            plenty — and "No agents running." is then a claim the bridge cannot actually make. The
+            adapter's own sentence says why, and the second line says where the panes went, so the
+            dashboard reads as one coherent screen instead of an empty one. Renders nothing on a
+            multiplexer that reports agents, i.e. nothing on Herdr. */}
+        {bridge === "connected" && !agentDetection.capable && agentDetection.note !== "" && (
+          <p className="max-w-xs px-6 text-center text-xs leading-snug">
+            {agentDetection.note} Your panes are under Spaces.
+          </p>
+        )}
       </div>
     );
   }
