@@ -16,6 +16,7 @@ import {
   cmdUrl,
   type LifecycleDeps,
 } from "./lifecycle.ts";
+import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
 import {
   cmdJoin,
   cmdLeave,
@@ -168,6 +169,15 @@ function pushDeps(io: Io): PushDeps {
   return { ctx: loadContext(io.err), io };
 }
 
+/**
+ * `link` / `unlink`: where the checkout is, the output seam, the filesystem (only to answer "has this
+ * been built?"), and the symlink seam. No service manager and no network — publishing a name touches
+ * one entry in `~/.local/bin` and nothing else.
+ */
+function linkDeps(io: Io): LinkDeps {
+  return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
 function lifecycleCommand(
   name: string,
@@ -283,6 +293,21 @@ export const COMMANDS: readonly Command[] = [
         args,
       );
     },
+  },
+  // ── The name on PATH (ADR 0021) ────────────────────────────────────────────
+  // The other publish/tear-down pair: `serve` publishes a URL, `link` publishes a NAME. Both only
+  // ever tear down what matches their own record — the handler file there, the link's target here
+  // (ADR 0001). Declared beside `doctor` rather than beside `serve` because, like it, they are verbs
+  // the shell dispatcher never had.
+  {
+    name: "link",
+    summary: "put `collie` on your PATH: ~/.local/bin/collie → this checkout's binary",
+    run: (_args, s) => cmdLink(linkDeps(s.io)),
+  },
+  {
+    name: "unlink",
+    summary: "remove that name again (only when it points at THIS checkout)",
+    run: (_args, s) => cmdUnlink(linkDeps(s.io)),
   },
   // ── Device pairing ─────────────────────────────────────────────────────────
   // The operator's terminal is the out-of-band channel enrolment bootstraps from — see the header of
