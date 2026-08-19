@@ -201,7 +201,8 @@ function announceMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
  * checkout is detached, so it can be pointed straight at a release TAG and the gate is target
  * selection itself. A linked clone is on a branch and keeps fast-forwarding it (detaching it onto a
  * tag would undo its shape, and re-linking it is what ADR 0006 forbids for managed installs), so its
- * gate is a pre-flight: fetch, read the manifest at the fetched tip, and refuse before pulling.
+ * gate is a pre-flight: fetch, read the manifest at the branch's OWN upstream, and refuse before
+ * pulling.
  */
 export function updateCheckout(deps: UpdateDeps, opts: { crossMajor: boolean } = { crossMajor: false }): number {
   const root = deps.ctx.root;
@@ -234,18 +235,33 @@ function updateLinked(
   crossMajor: boolean,
 ): number {
   const root = deps.ctx.root;
-  // Fetch first so there is something to read the target manifest out of. `git pull` fetches again;
-  // that second fetch is a no-op against a remote that has not moved in between.
-  if (git(["fetch", "origin", "HEAD"]) !== EXIT.OK) return EXIT.FAIL;
-  const fetched = manifestVersionFrom(
-    deps.exec.capture("git", gitArgs(root, ["show", "FETCH_HEAD:herdr-plugin.toml"])).stdout,
+  // Plain `git fetch origin` — the configured refspec, so every remote-tracking ref advances. NOT
+  // `fetch origin HEAD`: that resolves the remote's DEFAULT branch, and the pull below takes the
+  // current branch's own upstream. On a clone kept on a maintenance or integration branch those are
+  // different commits, and a gate that judged one while the pull took the other would refuse a
+  // fast-forward that never leaves the major (and, after 1.0 lands on `main`, would refuse EVERY
+  // pull on a 0.x branch). Judge exactly the commit the pull will land on.
+  if (git(["fetch", "origin"]) !== EXIT.OK) return EXIT.FAIL;
+  const upstream = deps.exec.capture(
+    "git",
+    gitArgs(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]),
   );
-  if (!crossMajor && majorVerdict(installed, fetched) === "crosses") {
-    deps.io.out(`refusing to update: ${installed} → ${fetched} crosses a MAJOR version.`);
-    deps.io.out("A major means you have to change something — so it is never taken by a routine update.");
-    deps.io.out(`Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
-    deps.io.out("(nothing was pulled — this checkout is unchanged)");
-    return EXIT.OK;
+  const ref = upstream.found && upstream.code === 0 ? upstream.stdout.trim() : "";
+  // No upstream at all: there is nothing for the gate to judge, and nothing for the pull to take
+  // either — `git pull --ff-only` fails with its own "no tracking information" message, which says
+  // more about the checkout than anything we could add. Let it speak; a pull that cannot happen
+  // cannot cross a major.
+  if (ref !== "") {
+    const fetched = manifestVersionFrom(
+      deps.exec.capture("git", gitArgs(root, ["show", `${ref}:herdr-plugin.toml`])).stdout,
+    );
+    if (!crossMajor && majorVerdict(installed, fetched) === "crosses") {
+      deps.io.out(`refusing to update: ${installed} → ${fetched} (${ref}) crosses a MAJOR version.`);
+      deps.io.out("A major means you have to change something — so it is never taken by a routine update.");
+      deps.io.out(`Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
+      deps.io.out("(nothing was pulled — this checkout is unchanged)");
+      return EXIT.OK;
+    }
   }
   deps.io.out("updating Collie (git pull --ff-only)…");
   return git(["pull", "--ff-only"]);
