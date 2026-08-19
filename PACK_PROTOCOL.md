@@ -755,7 +755,8 @@ never crosses a pack link.
 - **Peer fetches are concurrent, not serial.** N peers must not add N round trips of latency.
 - **Each peer gets a timeout budget strictly below the lead's poll interval** — default
   `COLLIE_PACK_TIMEOUT_MS = 1200` against a 1500 ms poll — so a slow peer can never stall the lead's
-  own snapshot. A missed budget is an unreachable poll, not a delayed one.
+  own snapshot. A missed budget is a **stale** poll (§10.4), and the *verdict* that a member is gone
+  is decided by a probe on its own budget, never by this one.
 - The peer sweep is a *part of* the existing poll, not a second timer. A solo lead runs no sweep at
   all (§11).
 
@@ -803,6 +804,32 @@ is JSON with `{ok: false, code, error, host}` and a distinct status — `host_un
 `route_not_federated` (501, for a route outside §5's table). Never a bare 500,
 and never a silent success. A peer's *own* answer is never given one of these: it is passed through
 as itself (§9.1), including its 403 when the peer's write gate refuses.
+
+### 10.4 The verdict is a probe, not a poll *(added 2026-08-18)*
+
+A healthy peer behind a Tailscale DERP relay (≈350 ms RTT, TLS handshake measured at 1.9 s) read
+`unreachable` forever. The arithmetic was at fault, not the peer, and the measurement says why:
+Bun's `fetch` **does** reuse a pinned-TLS connection (five sequential dials, one TCP accept), but an
+**aborted** attempt leaves none behind — so when the cold handshake alone costs more than the whole
+per-request budget, every attempt aborts mid-handshake and the link never bootstraps. One patient
+call breaks the deadlock and every strict-budget request after it rides the warm connection.
+
+So the two questions are budgeted separately:
+
+- **Per-poll data requests keep the strict clamped budget of §10.1**, and a miss keeps meaning
+  *stale this poll* — never *peer gone*.
+- **The reachability verdict comes from a `hello` probe with its own budget** —
+  `COLLIE_PACK_HELLO_TIMEOUT_MS`, default 5000 ms, **not** clamped by the poll fraction (clamping it
+  would restore the deadlock) and floored at the data budget. It runs **off the poll's hot path**:
+  the lead starts one, never awaited, for a sweep that died on its own clock, at most one per member
+  in flight, and arms no timer — §10.1's "no second timer" is untouched. Its answer is also what
+  warms the connection the next data request rides.
+
+A member that answers the probe but misses the data budget is **reachable with a slow-link reason**,
+beside the `lastSeenAt` of its last real snapshot — the honest rendering of "the machine is there,
+its data is old". A probe never stamps `lastSeenAt`: a `hello` carries no snapshot. A failure that
+is *not* a timeout (refused, DNS, TLS) is never re-probed patiently — those are answers from the
+world, and asking them again slowly is only slower.
 
 ---
 

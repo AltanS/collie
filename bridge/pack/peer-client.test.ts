@@ -3,9 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
 import { PACK } from "./fixtures.ts";
 import {
+  DEFAULT_PACK_HELLO_TIMEOUT_MS,
   DEFAULT_PACK_TIMEOUT_MS,
+  PACK_HELLO_TIMEOUT_ENV,
   PACK_TIMEOUT_ENV,
   PeerClient,
+  packHelloBudget,
   packTimeoutBudget,
   packUrl,
   sweepPeers,
@@ -42,11 +45,15 @@ function replying<TBody>(
   return { fetch, calls };
 }
 
-function client(fetch: PackFetch, over: { timeoutMs?: number; secret?: string | null; device?: string | null } = {}) {
+function client(
+  fetch: PackFetch,
+  over: { timeoutMs?: number; helloTimeoutMs?: number; secret?: string | null; device?: string | null } = {},
+) {
   return new PeerClient({
     self: "desk",
     secret: () => (over.secret === undefined ? PACK.secret : over.secret),
     timeoutMs: over.timeoutMs ?? 50,
+    helloTimeoutMs: over.helloTimeoutMs,
     fetch,
     now: () => 1_000,
     device: over.device === undefined ? undefined : () => over.device ?? null,
@@ -73,6 +80,40 @@ describe("packTimeoutBudget — strictly below the lead's poll (§10.1)", () => 
   test("garbage and non-positive values fall back to the default, then clamp", () => {
     for (const raw of ["", "abc", "0", "-5"]) {
       expect(packTimeoutBudget(10_000, { [PACK_TIMEOUT_ENV]: raw })).toBe(DEFAULT_PACK_TIMEOUT_MS);
+    }
+  });
+});
+
+describe("packHelloBudget — the VERDICT budget, which the poll fraction must not clamp (§10.4)", () => {
+  test("the default is patient enough for a cold pinned-TLS handshake over a relay", () => {
+    // The live finding: a peer behind a DERP relay handshakes in ~1.9 s. A verdict budget below that
+    // can only ever say "gone" about a machine that is there.
+    expect(packHelloBudget(1500, {})).toBe(DEFAULT_PACK_HELLO_TIMEOUT_MS);
+    expect(DEFAULT_PACK_HELLO_TIMEOUT_MS).toBeGreaterThan(1900);
+  });
+
+  test("it is NOT clamped by the poll fraction — that clamp is the deadlock", () => {
+    // packTimeoutBudget(1500) is 1200. If the probe were clamped the same way, every attempt would
+    // abort mid-handshake, leave no pooled connection, and the link would never bootstrap.
+    expect(packHelloBudget(1500, {})).toBeGreaterThan(packTimeoutBudget(1500, {}));
+    expect(packHelloBudget(300, {})).toBe(DEFAULT_PACK_HELLO_TIMEOUT_MS);
+  });
+
+  test("an operator override is honoured, and capped only against a typo", () => {
+    expect(packHelloBudget(1500, { [PACK_HELLO_TIMEOUT_ENV]: "20000" })).toBe(20_000);
+    expect(packHelloBudget(1500, { [PACK_HELLO_TIMEOUT_ENV]: "50000000" })).toBe(60_000);
+  });
+
+  test("it is floored at the data budget: the verdict is never the more impatient of the two", () => {
+    expect(packHelloBudget(1500, { [PACK_HELLO_TIMEOUT_ENV]: "10" })).toBe(packTimeoutBudget(1500, {}));
+    // …including when the operator has widened the data budget itself.
+    const env = { [PACK_TIMEOUT_ENV]: "1400", [PACK_HELLO_TIMEOUT_ENV]: "200" };
+    expect(packHelloBudget(2000, env)).toBe(packTimeoutBudget(2000, env));
+  });
+
+  test("garbage and non-positive values fall back to the default", () => {
+    for (const raw of ["", "abc", "0", "-5"]) {
+      expect(packHelloBudget(1500, { [PACK_HELLO_TIMEOUT_ENV]: raw })).toBe(DEFAULT_PACK_HELLO_TIMEOUT_MS);
     }
   });
 });
@@ -472,5 +513,41 @@ describe("the forwarded device identity (§12)", () => {
     expect(sent.get("authorization")).toBe(`Bearer ${PACK.secret}`);
     expect(sent.get(PROTOCOL_HEADER)).toBe("1");
     expect(sent.get(MEMBER_HEADER)).toBe("desk");
+  });
+});
+
+describe("two budgets, and which call runs on which (§10.4)", () => {
+  /** A transport that answers nothing and dies only when the client's own budget aborts it. */
+  const stalling: PackFetch = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new Error("The operation was aborted.")));
+    });
+
+  test("`hello` runs on the patient budget and says so in its reason", async () => {
+    const outcome = await client(stalling, { timeoutMs: 5, helloTimeoutMs: 40 }).hello(laptop);
+    expect(!outcome.ok && outcome.reason).toBe("hello: timed out after 40ms");
+  });
+
+  test("every DATA call keeps the strict one — the patient budget must not leak onto the poll", async () => {
+    const patient = client(stalling, { timeoutMs: 5, helloTimeoutMs: 40 });
+    const snapshot = await patient.snapshot(laptop);
+    expect(!snapshot.ok && snapshot.reason).toBe("snapshot: timed out after 5ms");
+    const forwarded = await patient.proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+    expect(!forwarded.ok && forwarded.reason).toBe("pane/w1:p1/reply: timed out after 5ms");
+  });
+
+  test("with no patient budget wired, `hello` is as impatient as the poll — the old behaviour", async () => {
+    const outcome = await client(stalling, { timeoutMs: 5 }).hello(laptop);
+    expect(!outcome.ok && outcome.reason).toBe("hello: timed out after 5ms");
+  });
+
+  test("`timedOut` separates our own clock from an answer the world gave us", async () => {
+    const budgeted = await client(stalling, { timeoutMs: 5 }).snapshot(laptop);
+    expect(!budgeted.ok && budgeted.state === "unreachable" && budgeted.timedOut).toBe(true);
+    // A refusal is an answer, not a slow link — and `PackLead` must not re-probe it patiently.
+    const refused: PackFetch = () => Promise.reject(new Error("connect ECONNREFUSED"));
+    const dead = await client(refused).snapshot(laptop);
+    expect(!dead.ok && dead.state === "unreachable" && dead.timedOut).toBe(false);
+    expect(!dead.ok && dead.reason).toBe("snapshot: connect ECONNREFUSED");
   });
 });
