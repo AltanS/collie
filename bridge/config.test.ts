@@ -201,8 +201,10 @@ describe("loadConfig", () => {
   test("commands.toml is resolved in the plugin config dir the launcher passed", () => {
     process.env.HERDR_PLUGIN_CONFIG_DIR = "/srv/herdr/plugins/collie";
     expect(loadConfig().commandsFile).toBe(join("/srv/herdr/plugins/collie", "commands.toml"));
+    expect(loadConfig().keysFile).toBe(join("/srv/herdr/plugins/collie", "keys.toml"));
     delete process.env.HERDR_PLUGIN_CONFIG_DIR;
     expect(loadConfig().commandsFile).toBe(join(homedir(), ".config", "collie", "commands.toml"));
+    expect(loadConfig().keysFile).toBe(join(homedir(), ".config", "collie", "keys.toml"));
   });
 
   test("reads the per-device auth header and allowlist", () => {

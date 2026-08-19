@@ -184,7 +184,10 @@ app. Closing this needs the server-side blocking-message capture described above
 - **The operator's slash-command rows ride `/api/config`** too, read from their `commands.toml`
   behind an mtime check (`bridge/operator-commands.ts`), so editing the file is live like a web
   rebuild. On a pane they address they **replace** the shipped catalog rather than merging into it —
-  [ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md).
+  [ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md). Their **Keys-tray presets**
+  ride the same request on the same terms, from `keys.toml` (`bridge/operator-keys.ts`); the two
+  files share one reader (`bridge/operator-file.ts`) and one scope ladder
+  (`web/src/lib/operator-scope.ts`).
 
 ## 6. Security model
 

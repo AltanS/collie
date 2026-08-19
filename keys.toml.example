@@ -1,0 +1,39 @@
+# Your own rows for Collie's Keys tray presets. Copy to your plugin config dir, next to `.env`:
+#   cp keys.toml.example "$(herdr plugin config-dir herdr.collie)/keys.toml"
+#
+# This file configures ONE thing: the labelled chords under "Presets". The tray's keyboard — Esc,
+# the arrows, Enter/Tab/Space, the modifiers, the digits, F1–F12 — is fixed, because it is the
+# phone's only route to keys the phone does not have.
+#
+# On a pane your rows address, YOUR rows are the whole preset list — the shipped six (Ctrl C/D/U/R/
+# L/Z) are replaced, not merged into (ADR 0018). A pane none of them address keeps them untouched,
+# and this file with every row commented out (as shipped) leaves every pane exactly as shipped.
+#
+# Edits are picked up live — no restart. Reload the page to see them.
+#
+# Fields: `label` (required, the button's text and its identity), `keys` (required, one or more
+# chords sent as ONE ordered batch), `scope` (a herdr agent name — omit it and the row addresses
+# every pane), `danger` (two-tap before it fires).
+#
+# A chord is herdr's `pane.send_keys` spelling, NOT tmux's: `ctrl+c` (never `C-c`), `shift+tab`,
+# `alt+Up`, `ctrl+shift+p`, `F7`, `ctrl+F7`, a bare `Up` / `Escape` / `Enter` / `Tab` / `Space` /
+# `Backspace`, or any single character. `PageUp`, `PageDown`, `Home`, `End` and `Delete` are NOT
+# accepted by herdr — a row naming one is dropped, with the reason in the log.
+
+# A row scoped to one agent.
+# [[keys]]
+# scope = "claude"
+# label = "Back"
+# keys = ["shift+tab"]
+
+# No scope: every pane. Several chords go out as one ordered batch — the same call a composed key
+# queue makes.
+# [[keys]]
+# label = "Yes"
+# keys = ["Down", "Enter"]
+
+# Your own brake on your own row: `danger` puts it behind the tray's two-tap confirm.
+# [[keys]]
+# label = "Quit"
+# keys = ["ctrl+d"]
+# danger = true

@@ -12,7 +12,8 @@ import {
   getOperatorCommands,
   loadOperatorCommands,
   useOperatorCommands,
-} from "./operator-commands";
+  useOperatorKeys,
+} from "./operator-config";
 
 const asked = vi.mocked(fetchConfig);
 
@@ -84,5 +85,26 @@ describe("the operator's palette rows are read once, not polled", () => {
     asked.mockResolvedValue(config());
     await loadOperatorCommands();
     expect(getOperatorCommands()).toEqual([]);
+  });
+});
+
+describe("the Keys-tray presets ride the same one read", () => {
+  it("one fetch answers both hooks", async () => {
+    const interrupt = { label: "Interrupt", keys: ["ctrl+c"], danger: false };
+    asked.mockResolvedValue({ ...config([forkIn]), operatorKeys: [interrupt] });
+
+    const keys = renderHook(() => useOperatorKeys());
+    const commands = renderHook(() => useOperatorCommands());
+    await waitFor(() => expect(keys.result.current).toEqual([interrupt]));
+    expect(commands.result.current).toEqual([forkIn]);
+    // The two hooks are two views of ONE /api/config call — never a second channel.
+    expect(asked).toHaveBeenCalledTimes(1);
+  });
+
+  it("a bridge that sends no keys.toml rows leaves the list empty", async () => {
+    asked.mockResolvedValue(config());
+    const keys = renderHook(() => useOperatorKeys());
+    await waitFor(() => expect(asked).toHaveBeenCalled());
+    expect(keys.result.current).toEqual([]);
   });
 });
