@@ -89,6 +89,10 @@ the unit name; the Herdr action runs from anywhere.
   the action set cached at install time
   ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)). Teach the binary; don't
   add logic to the shim.
+- **`collie link` publishes `~/.local/bin/collie` as a SYMLINK to the checkout's binary** — never a
+  copy, never a wrapper script, and never as a side effect of `build`/`update`
+  ([ADR 0021](./.adr/0021-the-path-name-is-a-pointer-never-a-copy.md)). `unlink` removes that name
+  only when it points at this checkout.
 - **There are two checkout shapes, and `update` handles both.** `herdr plugin install` does not clone
   — it leaves a **detached, shallow** checkout, so `git pull` cannot run there; a linked clone sits on
   a branch. One predicate (`git symbolic-ref -q HEAD`) picks the strategy, and the same predicate
