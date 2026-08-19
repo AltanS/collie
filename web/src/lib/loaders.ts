@@ -55,6 +55,11 @@ function isAbortError<TThrown>(e: TThrown): boolean {
 // silent runtime `undefined` from a stale string literal.
 export const ROOT_ROUTE_ID = "root";
 
+// The pane route's id, paired with paneLoader. Named for the same reason ROOT_ROUTE_ID is — and used
+// by exactly one thing: RootLayout reads this route's data (undefined unless a pane is the active
+// route) so the connection bar can date the MIRROR on screen rather than the herd behind it.
+export const PANE_ROUTE_ID = "pane";
+
 // The session a loader run was scoped to, read from the request URL's `?s=`. Extracted once per run
 // and threaded into every fetch + cache key so a session switch (a plain URL change picked up by the
 // revalidator) is automatically correct. Undefined = primary.
