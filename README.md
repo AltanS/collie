@@ -448,6 +448,18 @@ By hand: frontend (`web/`) → `collie-ctl.sh build` (live, no restart — serve
 (`bridge/`) → `systemctl --user restart collie`. Run `scripts/install-hooks.sh` once to enable the
 repo's pre-commit / pre-push checks.
 
+## When 1.0 arrives
+
+Collie 1.0.0 will be a MAJOR release: something about your setup will need your attention before
+you take it. This release is the gatekeeper that makes that safe:
+
+- A routine `update` now follows release tags **within major 0** — it will never carry you into
+  1.0 on its own. (Older versions update straight to whatever the default branch holds; staying
+  below 0.32.0 means staying unprotected.)
+- When 1.0.0 is published, the update banner announces it separately from routine updates. Read
+  its release notes first, then consent to the crossing with:
+  `herdr plugin action invoke update-major --plugin herdr.collie`
+
 ### Surviving reboots
 
 A `systemd --user` service only runs while you have a login session. On a host that should serve
