@@ -32,6 +32,7 @@ import {
   type MuxAdapterFactory,
 } from "../bridge/mux/registry.ts";
 import { TMUX_BINARY_OPTION } from "../bridge/mux/tmux/adapter.ts";
+import { ZELLIJ_BINARY_OPTION } from "../bridge/mux/zellij/adapter.ts";
 
 /** Per-call budget for a probe. Generous — a real multiplexer under load is not a failure. */
 const TIMEOUT_MS = 10_000;
@@ -68,7 +69,11 @@ async function probe(factory: MuxAdapterFactory, endpoint: string, dialMode: str
     timeoutMs: TIMEOUT_MS,
     // Every adapter's private knobs at once — each one reads its own key and ignores the rest, which
     // is exactly what `MuxTarget.options` being opaque to the registry buys.
-    options: { [HERDR_DIAL_MODE_OPTION]: dialMode, [TMUX_BINARY_OPTION]: process.env.COLLIE_TMUX_BIN ?? "" },
+    options: {
+      [HERDR_DIAL_MODE_OPTION]: dialMode,
+      [TMUX_BINARY_OPTION]: process.env.COLLIE_TMUX_BIN ?? "",
+      [ZELLIJ_BINARY_OPTION]: process.env.COLLIE_ZELLIJ_BIN ?? "",
+    },
   });
 
   // Reachability first and separately: an unreachable multiplexer is "not here", not "broken", and

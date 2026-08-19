@@ -32,6 +32,10 @@ If your multiplexer has no socket and its client is a **binary**, copy
 subprocess seam (and the only place that spawns), `protocol.ts` is the argv it builds and the text it
 parses, `watch.ts` owns the long-lived child, and `adapter.ts` is still the whole translation. The
 seam being an interface is what lets the fixture drive it with a scripted exec.
+[`bridge/mux/zellij/`](./bridge/mux/zellij/) is the same split plus `session.ts`, because that
+multiplexer's every verb is scoped to one session and resolving which one is a decision two modules
+need — and it is the worked example of a **hybrid** watch: a real stream for content, a bounded
+census for the topology events its CLI does not have.
 
 ## Probe first, declare second
 
@@ -91,9 +95,14 @@ A fixture is a `MuxConformanceFixture`: `create()` hands back a **world** — yo
 | `close()` | tear it down; idempotent |
 
 A world is single-use (half the checks end by destroying something) and must start **non-trivial**:
-at least three live panes across two spaces and two tabs, with a real agent pane when you declare
-`agentDetection`, and a session ref when you declare `agentSessionRef`. A world of one bare shell lets
-half the suite pass vacuously.
+at least three live panes across two tabs, with a real agent pane when you declare `agentDetection`,
+and a session ref when you declare `agentSessionRef`. A world of one bare shell lets half the suite
+pass vacuously.
+
+Two **spaces** as well, wherever your multiplexer has two — Herdr and tmux do. Where it genuinely
+cannot (zellij's every verb is scoped to one session, so one adapter instance is one space), seed one
+and say why in the fixture's header. The rule is "as many spaces as the multiplexer can actually
+have", never a faked level.
 
 Herdr's is [`bridge/mux/herdr/fixture.ts`](./bridge/mux/herdr/fixture.ts) — an in-memory `HerdrRpc`
 that answers exactly what the documented server answers, including its `pane_not_found` codes and its
