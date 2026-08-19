@@ -409,8 +409,18 @@ scripts/collie-ctl.sh update    # or: herdr plugin action invoke update --plugin
 
 It advances the checkout, rebuilds the UI and restarts the bridge (re-execing itself, so it's safe
 even when the update rewrites the script). Confirm via the footer build stamp. Pinned to a version
-with `--ref`? Keep refreshing with `herdr plugin install --ref …` — `update` always goes to the
-latest.
+with `--ref`? Keep refreshing with `herdr plugin install --ref …`.
+
+**`update` goes to the newest release of the major you are on, and never crosses one.** A major
+means you have to change something, so it is never inherited from a routine update: the command says
+a new major is out and names the one that takes it —
+
+```bash
+herdr plugin action invoke update-major --plugin herdr.collie   # or: scripts/collie-ctl.sh update --major
+```
+
+The flag is the whole consent; there is no prompt, because a Herdr action has no terminal to answer
+one on. The reasoning is [ADR 0020](./.adr/0020-a-major-upgrade-is-consented-by-flag.md).
 
 Fails with *"You are not currently on a branch"*? That's a GitHub install made before 0.23.1, and
 [Troubleshooting](#troubleshooting) has the one-time repair.

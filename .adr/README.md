@@ -74,8 +74,10 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | [0010](./0010-long-sends-are-verified-via-the-paste-placeholder.md) | Long sends are verified via the paste placeholder, not by chunking them | Accepted |
 | [0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) | Recognising a password prompt changes what Collie says, never what it sends | Accepted |
 | [0018](./0018-operator-command-rows-replace-the-catalog.md) | The operator's command rows replace the catalog, never merge into it | Accepted |
+| [0020](./0020-a-major-upgrade-is-consented-by-flag.md) | A major upgrade is consented by flag; routine update follows tags within the major | Accepted |
 
-**0011–0016 are not missing** — they are the pack/federation decisions, accepted on the `v1`
+**0011–0016 and 0019 are not missing** — they are the pack/federation and lint-gate decisions,
+accepted on the `v1`
 integration branch and arriving here when it merges. Numbers are claimed across *both* branches, so
 the next ADR written on `main` continues from the highest number in use anywhere, not from the highest
 one in this table.
