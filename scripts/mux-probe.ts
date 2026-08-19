@@ -28,28 +28,29 @@ import {
   createMux,
   DEFAULT_MUX,
   MUX_ADAPTERS,
+  muxEndpointVar,
   type MuxAdapterFactory,
 } from "../bridge/mux/registry.ts";
+import { TMUX_BINARY_OPTION } from "../bridge/mux/tmux/adapter.ts";
 
 /** Per-call budget for a probe. Generous — a real multiplexer under load is not a failure. */
 const TIMEOUT_MS = 10_000;
 
-/** The env var carrying an adapter's live endpoint: `COLLIE_MUX_ENDPOINT_TMUX`, `…_ZELLIJ`, … */
-function endpointVar(mux: string): string {
-  return `COLLIE_MUX_ENDPOINT_${mux.toUpperCase().replaceAll(/[^A-Z0-9]/gu, "_")}`;
-}
+/** The env var carrying an adapter's live endpoint. One rule, shared with `bridge/config.ts`. */
+const endpointVar = muxEndpointVar;
 
 /**
- * Where this adapter's multiplexer lives, or null when nothing said.
+ * Where this adapter's multiplexer lives.
  *
  * The env var wins, then — for the DEFAULT adapter only — Collie's own configured socket path, so
- * running the probe on the deployment host needs no arguments at all. Every other adapter must be
- * told, because the registry deliberately does not know how any of them addresses itself.
+ * running the probe on the deployment host needs no arguments at all. Anything else falls to the
+ * empty string, which every adapter reads as "your own default target": tmux's default server, and
+ * for an adapter that has no such thing, a `reachable()` of false and a loud skip below.
  */
-function endpointFor(factory: MuxAdapterFactory, configured: string): string | null {
+function endpointFor(factory: MuxAdapterFactory, configured: string): string {
   const fromEnv = process.env[endpointVar(factory.mux)];
   if (fromEnv !== undefined && fromEnv !== "") return fromEnv;
-  return factory.mux === DEFAULT_MUX ? configured : null;
+  return factory.mux === DEFAULT_MUX ? configured : "";
 }
 
 let skipped = 0;
@@ -65,7 +66,9 @@ async function probe(factory: MuxAdapterFactory, endpoint: string, dialMode: str
   const adapter = createMux(buildMuxRegistry(), factory.mux, {
     endpoint,
     timeoutMs: TIMEOUT_MS,
-    options: { [HERDR_DIAL_MODE_OPTION]: dialMode },
+    // Every adapter's private knobs at once — each one reads its own key and ignores the rest, which
+    // is exactly what `MuxTarget.options` being opaque to the registry buys.
+    options: { [HERDR_DIAL_MODE_OPTION]: dialMode, [TMUX_BINARY_OPTION]: process.env.COLLIE_TMUX_BIN ?? "" },
   });
 
   // Reachability first and separately: an unreachable multiplexer is "not here", not "broken", and
@@ -118,12 +121,7 @@ async function main(): Promise<void> {
 
   let failed = 0;
   for (const factory of factories) {
-    const endpoint = endpointFor(factory, cfg.socketPath);
-    if (endpoint === null) {
-      skip(factory.mux, `no endpoint known — set ${endpointVar(factory.mux)} to where its multiplexer listens`);
-      continue;
-    }
-    failed += await probe(factory, endpoint, cfg.dialMode ?? "auto");
+    failed += await probe(factory, endpointFor(factory, cfg.socketPath), cfg.dialMode ?? "auto");
   }
 
   const probed = factories.length - skipped;

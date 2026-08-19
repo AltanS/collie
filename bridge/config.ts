@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
 import type { JournalRoots } from "./journal/registry.ts";
+import { DEFAULT_MUX, muxEndpointVar } from "./mux/registry.ts";
 
 // All bridge configuration, resolved once at startup. Env-driven so the systemd unit and the
 // plugin launcher can configure it without code changes. Defaults are safe for a single-user,
@@ -93,6 +94,26 @@ export function envBool(
 }
 
 export interface Config {
+  /**
+   * Which multiplexer this collie drives — a name in `bridge/mux/registry.ts`. `herdr` by default,
+   * so an existing deployment that sets nothing behaves exactly as it always has. Set via
+   * `COLLIE_MUX`; an unknown name refuses to start with the valid ones in the message (`createMux`).
+   */
+  mux: string;
+  /**
+   * Where that multiplexer lives, in the ADAPTER's own terms — opaque here, exactly as a
+   * `MuxTarget`'s endpoint is. Herdr reads {@link socketPath}; every other adapter reads its own
+   * `COLLIE_MUX_ENDPOINT_<NAME>` (`muxEndpointVar`), and an empty value means "the adapter's default":
+   * for tmux, tmux's own default server. Documented per adapter, never guessed here.
+   */
+  muxEndpoint: string;
+  /**
+   * Absolute path to the `tmux` binary, when the operator has one somewhere unusual. Empty (the
+   * default) probes a short list of fixed paths — never `PATH`, which a systemd unit and a Herdr
+   * plugin action do not share with the operator's shell (`bridge/mux/tmux/exec.ts`). Set via
+   * `COLLIE_TMUX_BIN`. Inert unless {@link mux} is `tmux`.
+   */
+  tmuxBin: string;
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
   /**
@@ -280,8 +301,16 @@ export function loadConfig(): Config {
   // that is. ~/.config/collie is the same last-resort default the shim ends on.
   const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), ".config", "collie");
 
+  const mux = (process.env.COLLIE_MUX ?? "").trim() || DEFAULT_MUX;
+  const socketPath = process.env.HERDR_SOCKET_PATH ?? defaultSocketPath();
+
   return {
-    socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),
+    mux,
+    // Herdr's endpoint IS its socket path, so the default adapter keeps reading exactly the setting
+    // it always read and nothing about an existing deployment moves.
+    muxEndpoint: mux === DEFAULT_MUX ? socketPath : (process.env[muxEndpointVar(mux)] ?? "").trim(),
+    tmuxBin: (process.env.COLLIE_TMUX_BIN ?? "").trim(),
+    socketPath,
     dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto"),
     port: envInt("COLLIE_PORT", DEFAULT_PORT, { min: 1, max: 65535 }),
     host: resolveBridgeHost(),

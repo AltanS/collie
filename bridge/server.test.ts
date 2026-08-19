@@ -50,6 +50,9 @@ function req(headers: Record<string, string>): Request {
 
 function cfg(overrides: Partial<Config> = {}): Config {
   return {
+    mux: "herdr",
+    muxEndpoint: "/tmp/herdr.sock",
+    tmuxBin: "",
     socketPath: "/tmp/herdr.sock",
     port: 8787,
     host: "127.0.0.1",

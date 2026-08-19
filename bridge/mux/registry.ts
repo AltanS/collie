@@ -19,6 +19,7 @@
 // that and neither axis is pluggable any more.
 
 import { herdrMuxFactory } from "./herdr/adapter.ts";
+import { tmuxMuxFactory } from "./tmux/adapter.ts";
 import type { MuxAdapter } from "./types.ts";
 
 /**
@@ -61,10 +62,23 @@ export interface MuxAdapterFactory {
  * Deliberately a list of factories and not a map — the map is derived below, so a key can never
  * drift from the factory it points at.
  */
-export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory];
+export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory, tmuxMuxFactory];
 
 /** The name used when the operator configured none. Herdr, so nothing changes for anyone. */
 export const DEFAULT_MUX = "herdr";
+
+/**
+ * The env var carrying one adapter's endpoint: `COLLIE_MUX_ENDPOINT_TMUX`, `…_ZELLIJ`, …
+ *
+ * Per-adapter rather than one shared key, because {@link MuxTarget.endpoint} means something
+ * different to each of them — a socket PATH to Herdr, a server socket NAME to tmux — and one key
+ * holding two meanings is a key an operator cannot move between muxes without re-reading its docs.
+ * Defined here so `bridge/config.ts` and `scripts/mux-probe.ts` derive the same name from the same
+ * rule instead of spelling it twice.
+ */
+export function muxEndpointVar(mux: string): string {
+  return `COLLIE_MUX_ENDPOINT_${mux.toUpperCase().replaceAll(/[^A-Z0-9]/gu, "_")}`;
+}
 
 /**
  * Build the registry.
