@@ -20,6 +20,7 @@
 
 import { herdrMuxFactory } from "./herdr/adapter.ts";
 import { tmuxMuxFactory } from "./tmux/adapter.ts";
+import { zellijMuxFactory } from "./zellij/adapter.ts";
 import type { MuxAdapter } from "./types.ts";
 
 /**
@@ -62,7 +63,7 @@ export interface MuxAdapterFactory {
  * Deliberately a list of factories and not a map — the map is derived below, so a key can never
  * drift from the factory it points at.
  */
-export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory, tmuxMuxFactory];
+export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory, tmuxMuxFactory, zellijMuxFactory];
 
 /** The name used when the operator configured none. Herdr, so nothing changes for anyone. */
 export const DEFAULT_MUX = "herdr";

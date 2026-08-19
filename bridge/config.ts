@@ -114,6 +114,13 @@ export interface Config {
    * `COLLIE_TMUX_BIN`. Inert unless {@link mux} is `tmux`.
    */
   tmuxBin: string;
+  /**
+   * Absolute path to the `zellij` binary, when the operator has one somewhere unusual. Empty (the
+   * default) probes fixed paths — `~/.local/bin` first, because that is where zellij's own installer
+   * puts it — and never `PATH` (`bridge/mux/zellij/exec.ts`). Set via `COLLIE_ZELLIJ_BIN`. Inert
+   * unless {@link mux} is `zellij`.
+   */
+  zellijBin: string;
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
   /**
@@ -310,6 +317,7 @@ export function loadConfig(): Config {
     // it always read and nothing about an existing deployment moves.
     muxEndpoint: mux === DEFAULT_MUX ? socketPath : (process.env[muxEndpointVar(mux)] ?? "").trim(),
     tmuxBin: (process.env.COLLIE_TMUX_BIN ?? "").trim(),
+    zellijBin: (process.env.COLLIE_ZELLIJ_BIN ?? "").trim(),
     socketPath,
     dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto"),
     port: envInt("COLLIE_PORT", DEFAULT_PORT, { min: 1, max: 65535 }),

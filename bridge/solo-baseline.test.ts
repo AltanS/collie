@@ -526,6 +526,7 @@ const CONFIG_KEYS = {
   mux: true,
   muxEndpoint: true,
   tmuxBin: true,
+  zellijBin: true,
   socketPath: true,
   dialMode: true,
   auditContent: true,
@@ -585,6 +586,7 @@ describe("solo zero-tax — config", () => {
       "vapidPrivate",
       "vapidPublic",
       "vapidSubject",
+      "zellijBin",
     ]);
     expect(keys.filter((k) => /pack|peer|lead|federat/i.test(k))).toEqual([]);
   });
@@ -638,6 +640,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_VAPID_PRIVATE",
       "COLLIE_VAPID_PUBLIC",
       "COLLIE_VAPID_SUBJECT",
+      "COLLIE_ZELLIJ_BIN",
     ]);
   });
 });

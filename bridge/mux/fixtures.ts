@@ -11,11 +11,13 @@
 import type { MuxConformanceFixture } from "./conformance.ts";
 import { herdrConformanceFixture } from "./herdr/fixture.ts";
 import { tmuxConformanceFixture } from "./tmux/fixture.ts";
+import { zellijConformanceFixture } from "./zellij/fixture.ts";
 
 /** One fixture per registered adapter. Keyed by nothing — the suite matches on `fixture.mux`. */
 export const MUX_CONFORMANCE_FIXTURES: readonly MuxConformanceFixture[] = [
   herdrConformanceFixture,
   tmuxConformanceFixture,
+  zellijConformanceFixture,
 ];
 
 /** The fixture for `mux`, or undefined when the adapter has not contributed one. */

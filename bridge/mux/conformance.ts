@@ -72,10 +72,16 @@ export interface MuxWrite {
  * A world is SINGLE-USE. Checks that close panes, kill tabs or end the multiplexer get their own,
  * which is why {@link MuxConformanceFixture.create} is what the engine holds rather than a world.
  *
- * A conforming world starts non-trivial: **at least three live panes across at least two spaces and
- * two tabs**, at least one of which reports an agent (when the adapter declares `agentDetection`) and
- * an agent session (when it declares `agentSessionRef`). A world of one bare shell would let half the
- * suite pass vacuously.
+ * A conforming world starts non-trivial: **at least three live panes across at least two tabs**, at
+ * least one of which reports an agent (when the adapter declares `agentDetection`) and an agent
+ * session (when it declares `agentSessionRef`). A world of one bare shell would let half the suite
+ * pass vacuously — nothing about ids staying unique across two containers.
+ *
+ * TWO SPACES TOO, WHEREVER THE MULTIPLEXER HAS TWO. Herdr and tmux do, and their fixtures seed them.
+ * zellij does NOT — every one of its verbs is scoped to one session, so an adapter instance is one
+ * space by construction (M10/05) — and requiring two there would be requiring an adapter to fake a
+ * level its multiplexer has no way to show. The rule is therefore "as many spaces as the multiplexer
+ * can actually have, and never one when it can have two".
  */
 export interface MuxConformanceWorld {
   readonly adapter: MuxAdapter;

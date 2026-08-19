@@ -11,6 +11,7 @@ import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
 import { buildMuxRegistry, createMux, DEFAULT_MUX } from "./mux/registry.ts";
 import { TMUX_BINARY_OPTION } from "./mux/tmux/adapter.ts";
+import { ZELLIJ_BINARY_OPTION } from "./mux/zellij/adapter.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
@@ -214,7 +215,11 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   const herdr = createMux(muxRegistry, cfg.mux, {
     endpoint: cfg.mux === DEFAULT_MUX ? socketPath : cfg.muxEndpoint,
     timeoutMs: DEFAULT_TIMEOUT_MS,
-    options: { [HERDR_DIAL_MODE_OPTION]: cfg.dialMode ?? "auto", [TMUX_BINARY_OPTION]: cfg.tmuxBin },
+    options: {
+      [HERDR_DIAL_MODE_OPTION]: cfg.dialMode ?? "auto",
+      [TMUX_BINARY_OPTION]: cfg.tmuxBin,
+      [ZELLIJ_BINARY_OPTION]: cfg.zellijBin,
+    },
   });
   const engine = new StateEngine(herdr, cfg.pollMs);
 

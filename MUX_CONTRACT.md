@@ -26,9 +26,9 @@ there is nothing to declare.
 
 | Port method | Herdr | tmux | zellij |
 | --- | --- | --- | --- |
-| `reachable()` | any one-shot RPC answers (**API** § Transport) | `list-panes` exits 0 against the server (**T**) | `list-sessions` enumerates sessions (**Z**) |
-| `snapshot()` — panes, spaces, tabs | `session.snapshot`, one round trip (**API** § session.snapshot) | `list-panes -a -F '…'` → `%0 probe 0 bluefin bash 80x24 0` (**T**) | `list-panes` JSON + `list-tabs` (**Z**) |
-| `watch()` — notify me to re-read | `events.subscribe` (**API** § Event stream) | control mode `tmux -C` (**T**) | per-pane stream + topology poll (**Z**) |
+| `reachable()` | any one-shot RPC answers (**API** § Transport) | `list-panes` exits 0 against the server (**T**) | `list-panes --json` parses for the configured session (**Z**) |
+| `snapshot()` — panes, spaces, tabs | `session.snapshot`, one round trip (**API** § session.snapshot) | `list-panes -a -F '…'` → `%0 probe 0 bluefin bash 80x24 0` (**T**) | `list-panes --all --json` + `list-tabs --all --json`, two calls (**Z**); plugin panes — tab bar, status bar, overlays — are dropped, and they are why the id is namespaced (`plugin_0` and `terminal_0` both existed in the probe) |
+| `watch()` — notify me to re-read | `events.subscribe` (**API** § Event stream) | control mode `tmux -C` (**T**) | `subscribe` for content + a bounded census for structure (**Z**) — the hybrid, and the only one of the three |
 
 `watch()` is on the floor because the *promise* is — "tell me to look again". Whether it is kept by a
 push or a poll is what the two `push*Events` capabilities below declare.
@@ -37,20 +37,20 @@ push or a poll is what the two `push*Events` capabilities below declare.
 
 | Capability | Consumed by | Herdr | tmux | zellij |
 | --- | --- | --- | --- | --- |
-| `paneGrid` | `GET /api/pane/:id` | `pane.read` with `format:"ansi"` (**API**) | `capture-pane -p -e` — SGR intact (**T**) | `dump-screen -a -p <id>` (**Z**) |
-| `gridScrollback` | the mirror's "Load older" | yes, bounded by the pane's ring; an alt-screen pane reports its viewport only (**API**, `bridge/types.ts` `readableLines`) | `capture-pane -S -N` — 51 lines behind a 24-line viewport (**T**); depth is `history_size + pane_height` | `dump-screen --full` (**Z**) — screen scrollback, **not** history; see below |
-| `agentDetection` | the `agents`/`shellPanes` split, triage sort | agent name + status + status-change events (**API** § Object shapes, § Event stream) | **no** — only `pane_current_command` / `pane_title` (**T**) | **no** — nothing in the probe reports an agent (**Z**) |
+| `paneGrid` | `GET /api/pane/:id` | `pane.read` with `format:"ansi"` (**API**) | `capture-pane -p -e` — SGR intact (**T**) | `dump-screen --ansi --pane-id <id>` — SGR intact, no padding (**Z**) |
+| `gridScrollback` | the mirror's "Load older" | yes, bounded by the pane's ring; an alt-screen pane reports its viewport only (**API**, `bridge/types.ts` `readableLines`) | `capture-pane -S -N` — 51 lines behind a 24-line viewport (**T**); depth is `history_size + pane_height` | `dump-screen --full` (**Z**) — 294 lines behind a 22-line viewport in the probe. Screen scrollback, **not** the agent's log; see below. `readableLines` is the pane's rows plus zellij's own default `scroll_buffer_size` (10 000), because no verb reports the real depth |
+| `agentDetection` | the `agents`/`shellPanes` split, triage sort | agent name + status + status-change events (**API** § Object shapes, § Event stream) | **no** — only `pane_current_command` / `pane_title` (**T**) | **no** — the listing reports a pane's title and its launch command, and neither is an agent (**Z**) |
 | `agentSessionRef` | `GET /api/pane/:id/history` | the pane record carries the session an agent named (**API** § Object shapes) | **no** (**T**) — history is declared absent, not empty | **no** (**Z**) |
-| `typeText` | `POST …/reply` step 1 | `pane.send_text` (**API**) | `send-keys -t <pane> 'text'` (**T**) | `write-chars <CHARS> -p <id>` (**Z**) |
-| `sendKeys` | `POST …/reply` step 2, `POST …/keys` | `+`-joined, e.g. `ctrl+c`; paging/edit keys refused (**API** § key grammar) | `C-c`, `BTab`, `PPage`, `DC` — its own names, and it sends the whole alphabet including the six Herdr refuses (**T**); it has no Super/Command key, so a `meta` chord is refused | `send-keys "Ctrl a"`, space-separated (**Z**) |
-| `renamePane` | `POST …/rename` | `pane.rename`, `null` clears (**API** § Rename) | `select-pane -T <label>`, and `-T ""` clears (**T**) — tmux's ONE title slot, which is why `terminalTitle` is never reported on tmux | `rename-pane` (**Z**); clearing unprobed |
-| `closePane` | `POST …/close` | `pane.close` (**API** § Close) | `kill-pane` (**T**) | `close-pane` (**Z**) |
-| `createTab` | `POST /api/tab` | `tab.create`, returns the fresh shell (**API**) | `new-window -d -P -F` returns the fresh pane's ids (**T**); `-d` so nothing the operator is looking at moves | **?** `new-pane` exists; a new *tab* is unprobed (**Z**) |
-| `renameTab` | `POST /api/tab/:id/rename` | `tab.rename`, non-null only (**API** § Rename) | `rename-window -t @N -- <label>` (**T**) | `rename-tab-by-id` (**Z**) |
-| `closeTab` | `POST /api/tab/:id/close` | `tab.close` — a bulk pane-close (**API** § Close) | `kill-window` (**T**) — and it ends the session too when it was the last window, exactly as tmux itself does | `close-tab-by-id` (**Z**) |
-| `createSpace` | `POST /api/workspace` | `workspace.create` (**API**) | `new-session -d -P -F` (**T**) — claimed: it is one verb, it is detached, and a duplicate name comes back as `refused` with tmux's own sentence | **?** same shape — a zellij session is configuration (**Z**) |
-| `pushTopologyEvents` | `bridge/event-poker.ts` | full event catalog: workspace/tab/pane created, closed, renamed (**API** § Event stream) | control mode pushes `%window-add`, `%session-changed` (**T**) | **no** — nothing announces topology; the adapter runs a bounded poll (**Z**) |
-| `pushPaneEvents` | `bridge/event-poker.ts` | `pane.agent_status_changed`, pane-scoped (**API** § Event stream) | `%output`, but only for the panes of the session a control client is ATTACHED to (**T**) — so the adapter attaches one per watched session, capped, and a 5-second listing is the floor | `subscribe --ansi -f json -p <id>` (**Z**) |
+| `typeText` | `POST …/reply` step 1 | `pane.send_text` (**API**) | `send-keys -t <pane> 'text'` (**T**) | `write-chars --pane-id <id> -- <text>` (**Z**). Refused past 128 KiB: zellij takes the text as an argv element with no stdin path, and 200 000 characters answered `Argument list too long` — the message is refused, never split (ADR 0010). **`paste` is deliberately not used**: probed, it wraps the text in `ESC[200~ … ESC[201~`, an input path neither other adapter takes |
+| `sendKeys` | `POST …/reply` step 2, `POST …/keys` | `+`-joined, e.g. `ctrl+c`; paging/edit keys refused (**API** § key grammar) | `C-c`, `BTab`, `PPage`, `DC` — its own names, and it sends the whole alphabet including the six Herdr refuses (**T**); it has no Super/Command key, so a `meta` chord is refused | `send-keys "Ctrl a"`, space-separated (**Z**); `Esc` is the one renamed key and every other name in the alphabet was accepted, so `unsupportedKeys` is empty. It REFUSES a name it does not know (exit 2) rather than typing it. `Super a` exits 0 and delivers a bare `a`, so a `meta` chord is refused |
+| `renamePane` | `POST …/rename` | `pane.rename`, `null` clears (**API** § Rename) | `select-pane -T <label>`, and `-T ""` clears (**T**) — tmux's ONE title slot, which is why `terminalTitle` is never reported on tmux | `rename-pane --pane-id <id> -- <label>` (**Z**); an empty label restores zellij's own name, which is how `null` clears. zellij's ONE title slot, which is why `terminalTitle` is never reported on zellij |
+| `closePane` | `POST …/close` | `pane.close` (**API** § Close) | `kill-pane` (**T**) | `close-pane --pane-id <id>` (**Z**) |
+| `createTab` | `POST /api/tab` | `tab.create`, returns the fresh shell (**API**) | `new-window -d -P -F` returns the fresh pane's ids (**T**); `-d` so nothing the operator is looking at moves | `new-tab [--name] [--cwd]` prints the new tab's stable id; the fresh pane comes from the listing straight after, which the probe found already populated (**Z**) |
+| `renameTab` | `POST /api/tab/:id/rename` | `tab.rename`, non-null only (**API** § Rename) | `rename-window -t @N -- <label>` (**T**) | `rename-tab-by-id <n> <label>` (**Z**) |
+| `closeTab` | `POST /api/tab/:id/close` | `tab.close` — a bulk pane-close (**API** § Close) | `kill-window` (**T**) — and it ends the session too when it was the last window, exactly as tmux itself does | `close-tab-by-id <n>` (**Z**) — and zellij closes a tab whose last pane goes away, exactly as it does by hand |
+| `createSpace` | `POST /api/workspace` | `workspace.create` (**API**) | `new-session -d -P -F` (**T**) — claimed: it is one verb, it is detached, and a duplicate name comes back as `refused` with tmux's own sentence | **no** (**Z**) — `zellij attach --create-background` does make a detached session, but every zellij verb is scoped to ONE session, so a session created here would be invisible to the adapter that made it |
+| `pushTopologyEvents` | `bridge/event-poker.ts` | full event catalog: workspace/tab/pane created, closed, renamed (**API** § Event stream) | control mode pushes `%window-add`, `%session-changed` (**T**) | **no** (**Z**) — no CLI verb announces one. `zellij watch` is a read-only attach, `zellij pipe` needs a WASM plugin on the other end, and `action --help` has no event verb. The adapter censuses `list-panes` instead: 3 s after any change, doubling to 12 s while nothing moves |
+| `pushPaneEvents` | `bridge/event-poker.ts` | `pane.agent_status_changed`, pane-scoped (**API** § Event stream) | `%output`, but only for the panes of the session a control client is ATTACHED to (**T**) — so the adapter attaches one per watched session, capped, and a 5-second listing is the floor | `subscribe --ansi --format json --pane-id <id> …` — several panes per stream, newline-delimited JSON `pane_update` frames (**Z**). It also emits one `pane_closed`, the single topology fact zellij does push, which shortens the census rather than replacing it |
 
 ### Deliberately not capabilities
 
@@ -72,6 +72,17 @@ at startup and `bridge/index.ts` is the only place they become an adapter.
 | `COLLIE_MUX` | `herdr` | Which adapter drives this collie. An unknown name refuses to start, with the valid ones in the message. |
 | `COLLIE_MUX_ENDPOINT_<NAME>` | — | Where that adapter's multiplexer lives, in **its** words. Herdr reads `HERDR_SOCKET_PATH` instead, so nothing about an existing deployment moves. For tmux: `COLLIE_MUX_ENDPOINT_TMUX` is a server **socket name** (`-L`) when it has no `/`, a **socket path** (`-S`) when it does, and **empty means tmux's own default server**. |
 | `COLLIE_TMUX_BIN` | — | Absolute path to `tmux`, when it is somewhere unusual. Empty probes fixed paths — never `PATH`, which a systemd unit and a Herdr plugin action do not share with the operator's shell. |
+| `COLLIE_ZELLIJ_BIN` | — | The same, for `zellij`. The fixed-path probe tries `~/.local/bin` first, because that is where zellij's own installer puts it. |
+
+For zellij, `COLLIE_MUX_ENDPOINT_ZELLIJ` is a **session name**, and **empty means the single running
+session** — with none, or with two, Collie refuses to start driving one rather than guessing, and the
+message names what it found. A configured session that has exited is refused by name; it is never
+silently replaced by a neighbour.
+
+**One environment variable is load-bearing for zellij and easy to lose.** zellij finds its running
+sessions through a socket directory under `XDG_RUNTIME_DIR`. Probed: the same `list-sessions` under
+`env -i` reported a live session as `(EXITED …)`. A collie that sees every zellij session as exited is
+looking at a unit file with no `XDG_RUNTIME_DIR`.
 
 Multi-session discovery (`COLLIE_MULTI_SESSION`) walks Herdr's config root for Herdr sockets, so it is
 Herdr's own shape and is inert under any other multiplexer: a tmux collie fronts the one tmux server
@@ -84,12 +95,27 @@ the answer is part of the adapter's header rather than folklore:
 
 | Collie | Herdr | tmux | zellij |
 | --- | --- | --- | --- |
-| space | workspace (`w6`) | **session** (`$0`) | **?** |
-| tab | tab (`t3`) | **window** (`@3`) | tab (**Z**) |
-| pane | pane (`w6:p3`) | **pane** (`%7`) | terminal (`terminal_1`) |
+| space | workspace (`w6`) | **session** (`$0`) | **the session, and there is exactly one** — a constant id, never the session's name |
+| tab | tab (`t3`) | **window** (`@3`) | **tab** (`tab_3`, off zellij's stable `tab_id`) |
+| pane | pane (`w6:p3`) | **pane** (`%7`) | **terminal** (`terminal_7`, carried through unchanged) |
 
 tmux's three levels are Collie's three levels, and every id is carried through unchanged — which is
 what makes them stable across a rename (a `session_id` survives what a `session_name` does not).
+
+**zellij has the same three levels and does not get the same mapping**, and the reason is its CLI
+rather than taste: every zellij verb is scoped to one session (`action --session`, and no verb lists
+panes across sessions), so one adapter instance drives one session and its world has exactly one
+space. That space's id is a **constant** rather than the session's name — a name is the one thing
+about a session an operator could change, and identity rule 2 says an id may not move under them. The
+tab id is prefixed (`tab_3`) because zellij's tab ids and pane ids are both bare integers and the two
+namespaces are unrelated. One consequence to know about: zellij hands a new tab the lowest free tab
+id, so tab ids **are** recycled — pane ids are not, which is where identity rule 4 actually bites.
+
+**An exited zellij session reads as UNREACHABLE, not as an empty herd.** zellij keeps a stopped
+session listed as `(EXITED - attach to resurrect)`; probed, `action` against one answers
+`Session 'x' not found` and exits 1, so Collie says the same: `reachable()` is false, the snapshot
+throws with a message naming the session, and the operator gets the disconnected banner. Resurrecting
+it re-runs the session's commands, so it stays the operator's own `attach` to make.
 
 ## Contract-owned rules
 

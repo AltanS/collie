@@ -53,6 +53,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     mux: "herdr",
     muxEndpoint: "/tmp/herdr.sock",
     tmuxBin: "",
+    zellijBin: "",
     socketPath: "/tmp/herdr.sock",
     port: 8787,
     host: "127.0.0.1",
