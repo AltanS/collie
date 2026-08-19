@@ -1,12 +1,21 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchConfig } from "@/lib/api";
-import type { OperatorCommand, OperatorKeyRow } from "@/lib/types";
+import type { MuxConfig, OperatorCommand, OperatorKeyRow } from "@/lib/types";
 
-// The operator's own rows — their `commands.toml` palette AND their `keys.toml` tray presets — read
-// from ONE /api/config call and held in module state. Both files ride the same request because both
-// are the same kind of thing: startup-resolved operator config the client reads once. Modelled on the lib/server-build.ts store idiom: plain module state + subscribe +
-// a useSyncExternalStore hook, so the composer participates without prop-drilling through the route
+// The startup-resolved half of /api/config, read ONCE and held in module state: the operator's own
+// rows (their `commands.toml` palette and their `keys.toml` tray presets) and the multiplexer's
+// declared capabilities (M10/06). All three ride the same request because all three are the same
+// kind of thing — config the bridge resolves at startup and the client reads once.
+//
+// THE CAPABILITIES BELONG HERE RATHER THAN IN A SECOND STORE for the reason the header already
+// gives: this is ONE /api/config call, never a second channel. A capability store with its own
+// fetch would double the request and could disagree with this one about what the same response
+// said. lib/mux-capability.ts holds the POLICY (what an absent answer means, which control asks
+// what); this file holds only the bytes.
+//
+// Modelled on the lib/server-build.ts store idiom: plain module state + subscribe + a
+// useSyncExternalStore hook, so the composer participates without prop-drilling through the route
 // tree.
 //
 // THE CONTRACT: one SUCCESSFUL read is cached for the life of the page; a failed attempt is not
@@ -25,6 +34,10 @@ import type { OperatorCommand, OperatorKeyRow } from "@/lib/types";
 
 let current: readonly OperatorCommand[] = [];
 let currentKeys: readonly OperatorKeyRow[] = [];
+// `null` until a read succeeds, AND on a bridge that publishes none — the two are deliberately the
+// same value, because both mean "nothing said otherwise" and mux-capability.ts answers both the
+// same way: capable.
+let currentMux: MuxConfig | null = null;
 let inflight: Promise<void> | null = null;
 let loaded = false;
 const listeners = new Set<() => void>();
@@ -42,6 +55,7 @@ export function loadOperatorCommands(): Promise<void> {
       const cfg = await fetchConfig();
       current = cfg.operatorCommands ?? [];
       currentKeys = cfg.operatorKeys ?? [];
+      currentMux = cfg.mux ?? null;
       loaded = true;
       emit();
     } catch {
@@ -59,6 +73,15 @@ export function getOperatorCommands(): readonly OperatorCommand[] {
 
 export function getOperatorKeys(): readonly OperatorKeyRow[] {
   return currentKeys;
+}
+
+/**
+ * The multiplexer block, or `null` when nothing has said otherwise (no read yet, a failed read, or a
+ * bridge older than the field). Every consumer goes through lib/mux-capability.ts, which is where
+ * `null` is turned into an answer.
+ */
+export function getMuxConfig(): MuxConfig | null {
+  return currentMux;
 }
 
 export function subscribeOperatorConfig(cb: () => void): () => void {
@@ -89,6 +112,7 @@ export function useOperatorKeys(): readonly OperatorKeyRow[] {
 export function __resetOperatorCommands(): void {
   current = [];
   currentKeys = [];
+  currentMux = null;
   inflight = null;
   loaded = false;
   listeners.clear();

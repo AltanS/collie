@@ -433,6 +433,15 @@ export function createWorkspace(
   });
 }
 
+/**
+ * The bridge's startup config: push setup, the build id, the operator's own rows, and the
+ * multiplexer's declared capabilities (M10/06 — read them through lib/mux-capability.ts, never by
+ * reaching into `mux.name`).
+ *
+ * Read once per page load by lib/operator-config.ts, which is the only caller that should exist:
+ * every field here is startup-resolved on the bridge, so a second channel would be a second answer
+ * to the same question.
+ */
 export function fetchConfig(): Promise<BridgeConfig> {
   return req<BridgeConfig>("/api/config");
 }

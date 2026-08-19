@@ -877,6 +877,16 @@ exit 0
 EOF
 chmod +x "${B_ROOT}/scripts/check-version.sh"
 
+# The mux-name gate rides the lint step and is likewise read from the checkout, never compiled in.
+# Same fake-script proof as the version gate above.
+cat > "${B_ROOT}/scripts/check-mux-names.sh" <<EOF
+#!/bin/sh
+echo "mux-names" >> "$B_CALLS"
+echo "✓ no multiplexer name is branched on in web/src"
+exit 0
+EOF
+chmod +x "${B_ROOT}/scripts/check-mux-names.sh"
+
 # The fake Bun: records every invocation WITH ITS WORKING DIRECTORY (the cwd is the difference
 # between installing the root tree and installing web/), and produces the artifacts the real one
 # would, so the swap has something to swap.
@@ -907,13 +917,15 @@ bld() {
     COLLIE_PLUGIN_ROOT="$B_ROOT" "$@"
 }
 
-# The happy path: six steps, in order, each in the right tree.
+# The happy path: the steps, in order, each in the right tree. The mux-name gate sits INSIDE the
+# lint step (M10/06) — same escape hatch, so it is one gate with two greps, not a seventh step.
 bld "$BIN" build || fail "\`collie build\` failed: ${STDERR}"
 assert_eq "$(cat "$B_CALLS")" "$(cat <<EOF
 gate
 ${B_ROOT}\$ bun install
 ${B_ROOT}/web\$ bun install
 ${B_ROOT}\$ bun run lint
+mux-names
 ${B_ROOT}\$ bun run typecheck
 ${B_ROOT}/web\$ bun run typecheck
 ${B_ROOT}\$ bun build --compile --target=bun ./cli/main.ts --outfile ${B_ROOT}/bin/collie.new
@@ -993,6 +1005,9 @@ mkdir -p "${ORIGIN}/scripts" "${ORIGIN}/web"
 printf '#!/bin/sh\necho "✓ version 9.9.9 consistent across manifest, package.json, web/package.json, CHANGELOG"\n' \
   > "${ORIGIN}/scripts/check-version.sh"
 chmod +x "${ORIGIN}/scripts/check-version.sh"
+printf '#!/bin/sh\necho "✓ no multiplexer name is branched on in web/src"\n' \
+  > "${ORIGIN}/scripts/check-mux-names.sh"
+chmod +x "${ORIGIN}/scripts/check-mux-names.sh"
 printf '{"name":"web","version":"9.9.9"}\n' > "${ORIGIN}/web/package.json"
 git_q -C "$ORIGIN" add -A
 git_q -C "$ORIGIN" commit -q -m "first"

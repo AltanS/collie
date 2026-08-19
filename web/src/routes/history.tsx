@@ -8,6 +8,7 @@ import { FindBar } from "@/components/find-bar";
 import { TranscriptView } from "@/components/transcript-view";
 import { fetchHistory } from "@/lib/api";
 import { HISTORY_PAGE_SIZE, type HistoryData } from "@/lib/loaders";
+import { useMuxCapability } from "@/lib/mux-capability";
 import { panePath } from "@/lib/nav";
 import { setStatus } from "@/lib/status";
 import { matchingEntries, step, userTurnIndices } from "@/lib/transcript-search";
@@ -50,6 +51,9 @@ export function HistoryRoute() {
   const root = useRootData();
   const { paneId = "" } = useParams();
   const navigate = useNavigate();
+  // Whether an agent session log can exist here at all — a property of the multiplexer, not of this
+  // pane. See the empty-state branch below for what it changes.
+  const sessionLog = useMuxCapability("agentSessionRef");
   const scope = data.scope;
 
   const agent =
@@ -251,8 +255,16 @@ export function HistoryRoute() {
       <div className="relative min-h-0 min-w-0 flex-1">
         <ChatMessageList ref={listRef} className="px-3 py-3">
           {entries.length === 0 ? (
-            <div className="px-2 py-16 text-center text-sm text-muted-foreground">
-              {UNAVAILABLE_COPY[data.unavailable ?? "no-log"]}
+            <div className="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground">
+              {/* The route is reachable by URL — a bookmark, a back button, an older cached bundle
+                  whose entry points had not yet learned to hide. So it EXPLAINS rather than 404s
+                  (M10/06). When the multiplexer keeps no agent session log at all, its own words
+                  replace the generic per-pane copy: "this pane has no agent session" is true but
+                  reads as something the operator could fix by starting an agent, which here they
+                  cannot. Empty on Herdr, so this is exactly today's copy there. */}
+              {sessionLog.capable || sessionLog.note === ""
+                ? UNAVAILABLE_COPY[data.unavailable ?? "no-log"]
+                : sessionLog.note}
             </div>
           ) : (
             <>

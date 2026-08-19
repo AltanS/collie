@@ -41,6 +41,7 @@ import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
+import { useMuxCapability } from "@/lib/mux-capability";
 import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
@@ -283,8 +284,19 @@ export function AgentChat({
   // `moreScrollback`: Herdr says this pane can still yield lines beyond the window we've asked for,
   // AND we're under the cap Herdr's own read clamp imposes. `readableLines` is undefined on an older
   // bridge/Herdr; treat that as "no idea" and stay hidden rather than offer a tap that fetches nothing.
-  const historyAvailable = Boolean(agent?.hasSession);
+  // A THIRD state joins those two on a multiplexer that keeps no agent session log at all
+  // (M10/06). It is not the same fact as `hasSession`: that one says "this pane never named a
+  // session", which is a per-pane answer an operator can act on by starting an agent; this one says
+  // "nothing here will ever name one", which is a property of the multiplexer and needs saying out
+  // loud. Hiding it is what leaves someone wondering whether Collie is broken.
+  const sessionLog = useMuxCapability("agentSessionRef");
+  const historyAvailable = Boolean(agent?.hasSession) && sessionLog.capable;
+  // Scrollback has its own capability, and it is a genuinely different one: a multiplexer can keep
+  // screen history while knowing nothing about agents. Hidden rather than explained when absent —
+  // "there is nothing older to load" is not a fact anyone comes looking for.
+  const scrollback = useMuxCapability("gridScrollback");
   const moreScrollback =
+    scrollback.capable &&
     agent?.readableLines !== undefined &&
     requestedLines < agent.readableLines &&
     canGrowRequestedLines(paneId, scope);
@@ -656,7 +668,7 @@ export function AgentChat({
                   <Search className="size-4" />
                 </button>
               )}
-              {agent.hasSession && (
+              {historyAvailable && (
                 <button
                   type="button"
                   onClick={() => navigate(historyPath(paneId, scope))}
@@ -841,6 +853,21 @@ export function AgentChat({
                     {loadingOlder ? "Loading…" : "Load older"}
                   </button>
                 ) : null}
+                {/* EXPLAIN, don't hide (M10/06): on a multiplexer that keeps no agent session log,
+                    "Show entire history" is not merely unavailable — it can never appear, and a
+                    button that is simply absent reads as a bug. One muted line, in the ADAPTER's
+                    own words (it names the multiplexer; Collie is not at fault and does not say it
+                    is), at the exact place the missing button would have been.
+
+                    It renders under "Load older" rather than instead of it: screen scrollback and
+                    an agent's transcript are different capabilities, and a multiplexer can perfectly
+                    well have the first while lacking the second. Nothing renders on Herdr, which
+                    declares the capability — this whole branch is dead code there. */}
+                {!sessionLog.capable && sessionLog.note !== "" && (
+                  <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
+                    {sessionLog.note}
+                  </p>
+                )}
                 <AnsiOutput
                   text={display}
                   wrap={prefs.wrap}

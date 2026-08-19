@@ -7,6 +7,7 @@ import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
+import { useMuxCapability } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
 import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -57,6 +58,9 @@ export function PaneActionsSheet({
   // says where closing it kills a terminal. Undefined on a solo install and on a reachable host, so
   // this sheet is byte-identical to today everywhere except a pack with a quiet member.
   const hostBlock = useHostWriteBlock(pane?.host);
+  // What the multiplexer underneath can actually do to a pane (M10/06) — asked per row, below.
+  const canRename = useMuxCapability("renamePane");
+  const canClose = useMuxCapability("closePane");
 
   // Reset to the action list — and reprefill the label — whenever the sheet opens on a (new) pane,
   // AND whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the
@@ -135,20 +139,38 @@ export function PaneActionsSheet({
           {/* Close kills a real terminal; on a pack the sheet says which machine's before you arm
               the two-tap. Renders nothing on a single-host install. */}
           <HostChip host={pane?.host} variant="target" className="mb-1 self-start" />
-          <ActionRow
-            icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
-            label="Rename"
-            onClick={() => setMode("rename")}
-          />
-          <DestructiveActionRow
-            icon={<XCircle className="size-4 shrink-0" />}
-            label="Close pane"
-            confirmLabel="Tap again to close"
-            closingLabel="Closing…"
-            armed={confirming}
-            closing={closing}
-            onClick={() => void requestClose()}
-          />
+          {/* Each row asks its OWN capability, not one "can this sheet do things" flag: a
+              multiplexer that renames but will not close is an ordinary shape, and a single gate
+              would take the other row down with it. A row a multiplexer cannot back is HIDDEN — the
+              sheet is a list of things you can do, and a permanently dead entry in it is worse than
+              a shorter list (the same argument the host block above makes about greying out). Both
+              rows are present on every adapter shipped today. */}
+          {canRename.capable && (
+            <ActionRow
+              icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+              label="Rename"
+              onClick={() => setMode("rename")}
+            />
+          )}
+          {canClose.capable && (
+            <DestructiveActionRow
+              icon={<XCircle className="size-4 shrink-0" />}
+              label="Close pane"
+              confirmLabel="Tap again to close"
+              closingLabel="Closing…"
+              armed={confirming}
+              closing={closing}
+              onClick={() => void requestClose()}
+            />
+          )}
+          {/* An EMPTY sheet is the one case that must speak. Long-pressing a pane and being handed
+              a blank box says nothing at all, so when every row is gone the adapter's own reason
+              takes their place — hide the meaningless, explain the expected. */}
+          {!canRename.capable && !canClose.capable && (
+            <p className="py-2 text-sm leading-snug text-muted-foreground">
+              {canRename.note || canClose.note || "This multiplexer offers no actions for a pane."}
+            </p>
+          )}
         </div>
       ) : (
         <RenameView
