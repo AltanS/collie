@@ -18,6 +18,8 @@ const upToDate: UpdateInfo = {
   latest: "0.11.0",
   latestUrl: null,
   releaseAvailable: false,
+  majorAvailable: null,
+  majorUrl: null,
   bridgeStale: false,
   checkedAt: 1_700_000_000_000,
 };
