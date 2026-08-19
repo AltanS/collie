@@ -368,6 +368,36 @@ describe("NavTray", () => {
     expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+d"]);
   });
 
+  // ── Function keys (#119): F1–F12 behind their own disclosure, same fire/stage path as base keys ──
+
+  it("F keys stay behind their disclosure; expanded, F7/F12 fire as bare keys", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} />);
+
+    // Collapsed by default — the tray's height is unchanged until you ask for F keys.
+    expect(screen.queryByRole("button", { name: "F7" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "F keys" }));
+
+    await user.click(screen.getByRole("button", { name: "F7" }));
+    await user.click(screen.getByRole("button", { name: "F12" }));
+    expect(onSend.mock.calls).toEqual([[["F7"]], [["F12"]]]);
+  });
+
+  it("an armed modifier composes with an F key — Ctrl + F7 stages ctrl+F7 for review", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} />);
+
+    await user.click(screen.getByRole("button", { name: "Ctrl" })); // arm → composing
+    await user.click(screen.getByRole("button", { name: "F keys" }));
+    await user.click(screen.getByRole("button", { name: "F7" }));
+
+    expect(onSend).not.toHaveBeenCalled(); // staged, not fired
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+F7"]);
+  });
+
   // ── Press echo: the tray used to be silent on success, and the mirror it deferred to can be ~2s
   //    behind, so a key press looked like it went nowhere. ────────────────────────────────────────
 
