@@ -617,3 +617,79 @@ describe("NavTray — hold to repeat", () => {
     expect(settled).toBeLessThan(5); // stopped early, nowhere near 20 ticks
   });
 });
+
+// ── Operator presets (`keys.toml`, ADR 0018): the rows REPLACE the shipped six on a pane they
+// address, and ride the ordinary preset path, so nothing about the two-tap, the staging or the
+// batching is special-cased for them. ──
+
+describe("NavTray — operator preset rows", () => {
+  const openPresets = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole("button", { name: "Presets" }));
+  };
+
+  it("shows the operator's rows INSTEAD of the shipped presets", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <NavTray onSend={onSend} presets={[{ label: "Interrupt", keys: ["ctrl+c"] }]} />,
+    );
+    await openPresets(user);
+
+    expect(screen.queryByRole("button", { name: "Ctrl U" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Interrupt" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
+  });
+
+  it("a danger row needs the same two taps a shipped danger preset does", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} presets={[{ label: "Quit", keys: ["ctrl+d"], danger: true }]} />);
+    await openPresets(user);
+
+    await user.click(screen.getByRole("button", { name: "Quit" }));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Confirm?" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirm?" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+d"]);
+  });
+
+  it("a multi-chord row goes out as ONE ordered batch", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} presets={[{ label: "Yes", keys: ["Down", "Enter"] }]} />);
+    await openPresets(user);
+
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["Down", "Enter"]);
+  });
+
+  it("an armed modifier stages the row instead of firing it", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} presets={[{ label: "Yes", keys: ["Down", "Enter"] }]} />);
+    await openPresets(user);
+
+    await user.click(screen.getByRole("button", { name: /Shift/ }));
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    expect(onSend).not.toHaveBeenCalled();
+    // Every chord of the row is composed with the armed modifier, in order.
+    expect(screen.getByRole("button", { name: "Remove ⇧ Down" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove ⇧ ⏎" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["shift+Down", "shift+Enter"]);
+  });
+
+  it("a danger row while composing just stages — the Send review IS the confirm", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} presets={[{ label: "Quit", keys: ["ctrl+d"], danger: true }]} />);
+    await openPresets(user);
+
+    await user.click(screen.getByRole("button", { name: "Ctrl" }));
+    await user.click(screen.getByRole("button", { name: "Quit" }));
+    expect(screen.queryByRole("button", { name: "Confirm?" })).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});
