@@ -1,5 +1,7 @@
 import { join } from "node:path";
 
+import { compareSemver, majorOf, parseSemverTag } from "../bridge/update.ts";
+import { manifestVersionFrom } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
 import { EXIT } from "./io.ts";
 import type { Exec } from "./sys.ts";
@@ -22,6 +24,139 @@ export interface UpdateDeps extends BuildDeps {
 }
 
 const gitArgs = (root: string, args: readonly string[]): string[] => ["-C", root, ...args];
+
+/** The command that consents to a major crossing — printed wherever one is refused. */
+export const MAJOR_ACTION = "herdr plugin action invoke update-major --plugin herdr.collie";
+
+// ── Target selection (pure — ADR 0020) ───────────────────────────────────────
+// A routine `update` no longer means "the tip of the default branch": it means "the newest RELEASE
+// of the major this install is already on". Crossing a major is a separate act, consented to by
+// `--major`. Everything that decides WHICH commit to land on is a pure function over the remote's
+// tag list, so `bun test` covers the whole decision without a git remote.
+
+/** One strict `vX.Y.Z` release tag, as the remote reports it. */
+export interface ReleaseTag {
+  /** The ref name (`v1.2.3`) — what we fetch by, because a bare sha may not be a valid want. */
+  tag: string;
+  /** Dotted version, no leading `v`. */
+  version: string;
+  major: number;
+  /** The commit the tag resolves to — the PEELED one for an annotated tag. */
+  commit: string;
+}
+
+/**
+ * Strict release tags out of `git ls-remote --tags origin`. Prereleases and every non-release ref are
+ * dropped by the same anchor the banner uses (`bridge/update.ts`'s `SEMVER_TAG`), so the verb can
+ * never land on something the banner would not have announced.
+ *
+ * An ANNOTATED tag is listed twice — once at the tag object, once peeled (`^{}`) at the commit. The
+ * peeled line is the one that names a commit, so it wins wherever both appear.
+ */
+export function parseRemoteTags(stdout: string): ReleaseTag[] {
+  const byTag = new Map<string, { commit: string; peeled: boolean }>();
+  for (const line of stdout.split("\n")) {
+    const [commit, ref] = line.trim().split(/\s+/);
+    if (commit === undefined || ref === undefined) continue;
+    if (!ref.startsWith("refs/tags/")) continue;
+    const raw = ref.slice("refs/tags/".length);
+    const peeled = raw.endsWith("^{}");
+    const name = peeled ? raw.slice(0, -3) : raw;
+    if (parseSemverTag(name) === null) continue;
+    const seen = byTag.get(name);
+    if (seen !== undefined && seen.peeled && !peeled) continue;
+    byTag.set(name, { commit, peeled });
+  }
+  return [...byTag].map(([tag, { commit }]) => ({
+    tag,
+    version: tag.slice(1),
+    major: parseSemverTag(tag)![0],
+    commit,
+  }));
+}
+
+/** The highest release among `tags`, or null when there is none. */
+export function highestRelease(tags: readonly ReleaseTag[]): ReleaseTag | null {
+  let best: ReleaseTag | null = null;
+  for (const t of tags) if (best === null || compareSemver(t.version, best.version) > 0) best = t;
+  return best;
+}
+
+/** The highest release inside `major` — the target of a routine update. */
+export function releaseInMajor(tags: readonly ReleaseTag[], major: number): ReleaseTag | null {
+  return highestRelease(tags.filter((t) => t.major === major));
+}
+
+/**
+ * The highest release of the NEXT major that has one — the target of `update --major`.
+ *
+ * The next major, not the highest: an install two majors behind crosses one at a time, so each
+ * crossing is the one the operator consented to and its release notes are the ones that apply.
+ */
+export function nextMajorRelease(tags: readonly ReleaseTag[], major: number): ReleaseTag | null {
+  const above = tags.filter((t) => t.major > major);
+  if (above.length === 0) return null;
+  const next = Math.min(...above.map((t) => t.major));
+  return releaseInMajor(above, next);
+}
+
+/**
+ * What `update` should do with this checkout, given the remote's tags and the version the checkout's
+ * manifest names. `higher` rides along on every routine outcome so the caller can always say a major
+ * is out — announcing it is not the same as taking it.
+ */
+export type UpdatePlan =
+  | { kind: "advance"; target: ReleaseTag; crossesMajor: boolean; higher: ReleaseTag | null }
+  | { kind: "current"; at: ReleaseTag; higher: ReleaseTag | null }
+  | { kind: "no-release"; major: number; higher: ReleaseTag | null }
+  | { kind: "no-higher-major"; major: number }
+  /** The manifest named no version we can read a major out of — the caller falls back to origin HEAD
+   *  rather than strand an install on a parse failure. */
+  | { kind: "unknown-version" };
+
+export function planUpdate(a: {
+  tags: readonly ReleaseTag[];
+  /** The version in the checkout's `herdr-plugin.toml` — the canonical one Herdr reads. */
+  installed: string | null;
+  /** The commit the checkout is on, or "" when git could not say. */
+  head: string;
+  /** `--major` was passed: the operator consents to one crossing. */
+  crossMajor: boolean;
+}): UpdatePlan {
+  const major = a.installed === null ? null : majorOf(a.installed);
+  if (major === null || a.installed === null) return { kind: "unknown-version" };
+  const higher = nextMajorRelease(a.tags, major);
+  if (a.crossMajor) {
+    return higher === null
+      ? { kind: "no-higher-major", major }
+      : { kind: "advance", target: higher, crossesMajor: true, higher };
+  }
+  const best = releaseInMajor(a.tags, major);
+  if (best === null) return { kind: "no-release", major, higher };
+  // Already there — by commit (the usual case) or by version (a rebuilt tag, a rolled-forward
+  // manifest). Either answer means there is nothing in this major left to take.
+  if (best.commit === a.head || compareSemver(best.version, a.installed) <= 0) {
+    return { kind: "current", at: best, higher };
+  }
+  return { kind: "advance", target: best, crossesMajor: false, higher };
+}
+
+/**
+ * The gate on the LINKED-CLONE path, where the target is the branch tip rather than a tag: compare
+ * the major of the manifest we just fetched against the installed one. `unknown` when either side
+ * names no readable version — we proceed there, for the same reason `planUpdate` falls back.
+ */
+export function majorVerdict(installed: string | null, fetched: string | null): "same" | "crosses" | "unknown" {
+  const a = installed === null ? null : majorOf(installed);
+  const b = fetched === null ? null : majorOf(fetched);
+  if (a === null || b === null) return "unknown";
+  return b > a ? "crosses" : "same";
+}
+
+/** `--major` anywhere in the verb's argv. The flag IS the consent — there is no prompt (ADR 0020). */
+export function wantsMajor(args: readonly string[]): boolean {
+  return args.includes("--major");
+}
 
 /**
  * True when the checkout has no branch — exactly how `herdr plugin install` leaves it.
@@ -46,8 +181,29 @@ function isShallow(exec: Exec, root: string): boolean {
   return r.found && r.code === 0 && r.stdout.trim() === "true";
 }
 
-/** Advance the checkout to the newest upstream commit, in whichever shape it was installed. */
-export function updateCheckout(deps: UpdateDeps): number {
+/** The version in the checkout's own `herdr-plugin.toml` — the installed major is read from here. */
+function installedVersion(deps: UpdateDeps): string | null {
+  return manifestVersionFrom(deps.files.read(join(deps.ctx.root, "herdr-plugin.toml")));
+}
+
+/** Say a higher major is out, and name the one command that takes it. Never acts. */
+function announceMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
+  if (higher === null) return;
+  deps.io.out(`note: Collie ${higher.version} is out — a NEW MAJOR, which a routine update never takes.`);
+  deps.io.out(`      Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
+}
+
+/**
+ * Advance the checkout, in whichever shape it was installed — and never across a major without
+ * `--major` (ADR 0020).
+ *
+ * The two shapes take the gate differently, because their targets are different things. A managed
+ * checkout is detached, so it can be pointed straight at a release TAG and the gate is target
+ * selection itself. A linked clone is on a branch and keeps fast-forwarding it (detaching it onto a
+ * tag would undo its shape, and re-linking it is what ADR 0006 forbids for managed installs), so its
+ * gate is a pre-flight: fetch, read the manifest at the fetched tip, and refuse before pulling.
+ */
+export function updateCheckout(deps: UpdateDeps, opts: { crossMajor: boolean } = { crossMajor: false }): number {
   const root = deps.ctx.root;
   const git = (args: readonly string[]): number => {
     const r = deps.exec.runIn("git", gitArgs(root, args), root);
@@ -64,18 +220,94 @@ export function updateCheckout(deps: UpdateDeps): number {
     return EXIT.FAIL;
   }
 
-  if (!isManagedCheckout(deps.exec, root)) {
-    deps.io.out("updating Collie (git pull --ff-only)…");
-    return git(["pull", "--ff-only"]);
-  }
+  const installed = installedVersion(deps);
+  return isManagedCheckout(deps.exec, root)
+    ? updateManaged(deps, git, installed, opts.crossMajor)
+    : updateLinked(deps, git, installed, opts.crossMajor);
+}
 
-  // Detached: re-detach onto the default branch tip the same way Herdr got us here.
-  deps.io.out("updating Collie (Herdr-managed checkout: fetch + detach onto origin HEAD)…");
+/** A linked clone keeps its branch and its `--ff-only` pull; the gate runs BEFORE the pull. */
+function updateLinked(
+  deps: UpdateDeps,
+  git: (args: readonly string[]) => number,
+  installed: string | null,
+  crossMajor: boolean,
+): number {
+  const root = deps.ctx.root;
+  // Fetch first so there is something to read the target manifest out of. `git pull` fetches again;
+  // that second fetch is a no-op against a remote that has not moved in between.
+  if (git(["fetch", "origin", "HEAD"]) !== EXIT.OK) return EXIT.FAIL;
+  const fetched = manifestVersionFrom(
+    deps.exec.capture("git", gitArgs(root, ["show", "FETCH_HEAD:herdr-plugin.toml"])).stdout,
+  );
+  if (!crossMajor && majorVerdict(installed, fetched) === "crosses") {
+    deps.io.out(`refusing to update: ${installed} → ${fetched} crosses a MAJOR version.`);
+    deps.io.out("A major means you have to change something — so it is never taken by a routine update.");
+    deps.io.out(`Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
+    deps.io.out("(nothing was pulled — this checkout is unchanged)");
+    return EXIT.OK;
+  }
+  deps.io.out("updating Collie (git pull --ff-only)…");
+  return git(["pull", "--ff-only"]);
+}
+
+/**
+ * A Herdr-managed checkout is detached, so `update` re-detaches it — onto the newest RELEASE TAG of
+ * the major it is on, never onto whatever the default branch says right now.
+ */
+function updateManaged(
+  deps: UpdateDeps,
+  git: (args: readonly string[]) => number,
+  installed: string | null,
+  crossMajor: boolean,
+): number {
+  const root = deps.ctx.root;
+  const ls = deps.exec.capture("git", gitArgs(root, ["ls-remote", "--tags", "origin"]));
+  if (!ls.found || ls.code !== 0) {
+    deps.io.err("error: could not list the upstream release tags — is the remote reachable?");
+    return EXIT.FAIL;
+  }
+  const head = deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
+  const plan = planUpdate({ tags: parseRemoteTags(ls.stdout), installed, head, crossMajor });
+
+  if (plan.kind === "unknown-version") {
+    // No readable version on disk: fall back to the pre-0.32 behaviour rather than refuse to update
+    // at all. A checkout that cannot name its major cannot be gated on one either.
+    deps.io.out("updating Collie (Herdr-managed checkout: no readable version — following origin HEAD)…");
+    return detachOnto(deps, git, "HEAD");
+  }
+  if (plan.kind === "no-higher-major") {
+    deps.io.out(`no release above major ${plan.major} exists yet — nothing to cross to.`);
+    return EXIT.OK;
+  }
+  if (plan.kind === "no-release") {
+    deps.io.out(`no release of major ${plan.major} yet — leaving this checkout where it is.`);
+    announceMajor(deps, plan.higher);
+    return EXIT.OK;
+  }
+  if (plan.kind === "current") {
+    deps.io.out(`already current — v${plan.at.version} is the newest release of major ${plan.at.major}.`);
+    announceMajor(deps, plan.higher);
+    return EXIT.OK;
+  }
+  deps.io.out(
+    plan.crossesMajor
+      ? `crossing to Collie ${plan.target.version} (--major given: consented)…`
+      : `updating Collie (Herdr-managed checkout: fetch + detach onto ${plan.target.tag})…`,
+  );
+  const code = detachOnto(deps, git, `refs/tags/${plan.target.tag}`);
+  if (code === EXIT.OK && !plan.crossesMajor) announceMajor(deps, plan.higher);
+  return code;
+}
+
+/** Fetch `ref` and re-detach onto it, the way Herdr got this checkout here. */
+function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, ref: string): number {
+  const root = deps.ctx.root;
   // `--depth 1` ONLY when we are already shallow, so an update never truncates the history of a full
   // clone someone happens to have detached.
   const fetch = isShallow(deps.exec, root)
-    ? ["fetch", "--depth", "1", "origin", "HEAD"]
-    : ["fetch", "origin", "HEAD"];
+    ? ["fetch", "--depth", "1", "origin", ref]
+    : ["fetch", "origin", ref];
   if (git(fetch) !== EXIT.OK) return EXIT.FAIL;
   // `--force` because `build` runs `bun install`, which can rewrite the TRACKED lockfiles: a plain
   // checkout would then refuse on the dirty tree and re-break the very update path this fixes.
@@ -143,8 +375,9 @@ export async function cmdApplyUpdate(deps: UpdateDeps): Promise<number> {
 }
 
 /**
- * Update to the latest release: advance the checkout, then hand the rest to the code we just
- * fetched.
+ * Update to the newest release of the major this install is on: advance the checkout, then hand the
+ * rest to the code we just fetched. `--major` — the whole consent, since a Herdr plugin action has no
+ * TTY to prompt on (ADR 0020) — targets the next major instead.
  *
  * The handoff is the whole subtlety. The shell re-exec'd itself because bash reads a script by byte
  * offset and the pull rewrites that very file. A binary has the harder version of the problem: the
@@ -153,9 +386,12 @@ export async function cmdApplyUpdate(deps: UpdateDeps): Promise<number> {
  * already requires and which is therefore not a new dependency. That build compiles the new
  * `bin/collie` and swaps it in; the restart that follows is what puts it into service.
  */
-export async function cmdUpdate(deps: UpdateDeps): Promise<number> {
-  const advanced = updateCheckout(deps);
+export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []): Promise<number> {
+  const advanced = updateCheckout(deps, { crossMajor: wantsMajor(args) });
   if (advanced !== EXIT.OK) return advanced;
+  // The rebuild runs even when the checkout did not move: an update whose BUILD failed last time is
+  // re-run by exactly this command, and skipping the handoff there would leave the fix on disk and
+  // out of service forever.
   if (deps.exec.which("bun") === null) {
     deps.io.err("error: bun not found — the checkout advanced, but rebuilding needs Bun.");
     deps.io.err("       Install it from https://bun.sh and re-run update.");

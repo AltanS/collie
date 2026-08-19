@@ -86,6 +86,8 @@
     "latest": null,
     "latestUrl": null,
     "releaseAvailable": false,
+    "majorAvailable": null,
+    "majorUrl": null,
     "bridgeStale": false,
     "checkedAt": null
   },

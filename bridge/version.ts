@@ -32,8 +32,17 @@ function resolve(buildInfo: string | null, manifest: string | null): ResolvedVer
     const stamp = readBuildInfo(buildInfo);
     if (stamp !== null) return { version: stamp, manifestOnly: false };
   }
+  return { version: manifestVersionFrom(manifest), manifestOnly: true };
+}
+
+/**
+ * The `version = "…"` line of `herdr-plugin.toml`, or null. The CANONICAL version — the one Herdr
+ * reads and `scripts/check-version.sh` gates on — so it is also the one `update` reads the installed
+ * MAJOR out of (ADR 0020). Exported so there is one parser, never a second that agrees today.
+ */
+export function manifestVersionFrom(manifest: string | null): string | null {
   const v = manifest === null ? null : /^version[ \t]*=[ \t]*"([^"]*)"/m.exec(manifest)?.[1];
-  return { version: v === undefined || v === "" ? null : v, manifestOnly: true };
+  return v === undefined || v === "" ? null : v;
 }
 
 /**

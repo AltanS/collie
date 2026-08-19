@@ -214,8 +214,8 @@ export const COMMANDS: readonly Command[] = [
   ),
   {
     name: "update",
-    summary: "advance the checkout, rebuild, restart",
-    run: (_args, s) => cmdUpdate(updateDeps(s.io)),
+    summary: "advance to the newest release of this major, rebuild, restart (--major crosses one)",
+    run: (args, s) => cmdUpdate(updateDeps(s.io), args),
   },
   {
     name: "_apply-update",

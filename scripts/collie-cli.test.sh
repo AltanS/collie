@@ -996,10 +996,15 @@ chmod +x "${ORIGIN}/scripts/check-version.sh"
 printf '{"name":"web","version":"9.9.9"}\n' > "${ORIGIN}/web/package.json"
 git_q -C "$ORIGIN" add -A
 git_q -C "$ORIGIN" commit -q -m "first"
+# Releases are TAGS now, not "whatever the default branch says" (ADR 0020): `update` resolves the
+# newest strict `vX.Y.Z` INSIDE the installed major. The first tag is annotated on purpose — the
+# remote lists an annotated tag twice and only the peeled line names a commit.
+git_q -C "$ORIGIN" tag -a v9.9.9 -m "9.9.9"
 advance_origin() {
   printf 'v2\n' > "${ORIGIN}/VERSION"
   git_q -C "$ORIGIN" add -A
   git_q -C "$ORIGIN" commit -q -m "second"
+  git_q -C "$ORIGIN" tag v9.10.0
 }
 
 # The fake Bun for this section records the `_apply-update` handoff — the ONE thing `update` does
@@ -1062,6 +1067,7 @@ printf 'rewritten-by-bun-install\n' > "${MANAGED}/bun.lock"
 
 upd "$MANAGED" "$BIN" update || fail "\`collie update\` failed on a managed checkout: ${STDERR}"
 assert_contains "$STDOUT" "Herdr-managed checkout"
+assert_contains "$STDOUT" "detach onto v9.10.0"          # the release tag, never the branch tip
 assert_contains "$STDOUT" "→ now at"
 assert_eq "$(git -C "$MANAGED" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HEAD)"
 assert_eq "$(cat "${MANAGED}/VERSION")" "v2"
@@ -1096,6 +1102,39 @@ assert_contains "$STDERR" "herdr plugin install AltanS/collie --yes"
 case "$(cat "$U_CALLS")" in
   *_apply-update*) fail "a checkout that could not advance still tried to rebuild" ;;
 esac
+
+# A MAJOR appears upstream (ADR 0020). A routine `update` must not take it — in EITHER shape — and
+# must name the action that does; `--major` is the whole consent, because a Herdr plugin action has
+# no TTY to prompt on.
+printf 'v10\n' > "${ORIGIN}/VERSION"
+printf 'id = "herdr.collie"\nversion = "10.0.0"\n' > "${ORIGIN}/herdr-plugin.toml"
+git_q -C "$ORIGIN" add -A
+git_q -C "$ORIGIN" commit -q -m "the major"
+git_q -C "$ORIGIN" tag v10.0.0
+
+# Managed: the target is a tag, so the gate IS target selection — the 10.0.0 tag is simply not a
+# major-9 install's to take.
+MANAGED_AT="$(git -C "$MANAGED" rev-parse HEAD)"
+upd "$MANAGED" "$BIN" update || fail "a routine update refusing a major must still succeed: ${STDERR}"
+assert_contains "$STDOUT" "Collie 10.0.0 is out — a NEW MAJOR"
+assert_contains "$STDOUT" "update-major --plugin herdr.collie"
+assert_eq "$(git -C "$MANAGED" rev-parse HEAD)" "$MANAGED_AT"
+upd "$MANAGED" "$BIN" update --major || fail "\`collie update --major\` failed: ${STDERR}"
+assert_contains "$STDOUT" "crossing to Collie 10.0.0"
+assert_eq "$(git -C "$MANAGED" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse "v10.0.0^{commit}")"
+assert_eq "$(cat "${MANAGED}/VERSION")" "v10"
+git -C "$MANAGED" symbolic-ref -q HEAD >/dev/null 2>&1 &&
+  fail "crossing a major must leave the managed checkout detached"
+
+# Linked: the target is the branch tip, so the gate is a pre-flight read of the manifest at
+# FETCH_HEAD — and a refusal pulls NOTHING.
+CLONE_AT="$(git -C "$CLONE" rev-parse HEAD)"
+upd "$CLONE" "$BIN" update || fail "a routine update refusing a major must still succeed: ${STDERR}"
+assert_contains "$STDOUT" "crosses a MAJOR version"
+assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$CLONE_AT"
+upd "$CLONE" "$BIN" update --major || fail "\`collie update --major\` failed on a clone: ${STDERR}"
+assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HEAD)"
+assert_eq "$(git -C "$CLONE" symbolic-ref --short HEAD)" "main"   # still a branch, never detached
 
 # The suite must not damage the repository it is run FROM. Git hands every hook a `GIT_DIR`, this
 # suite runs from pre-push, and an exported `GIT_DIR` beats `-C` for every git command in the tree —
@@ -1480,7 +1519,7 @@ echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, 
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
 echo "✓ collie CLI two instances: COLLIE_INSTANCE refusals, two units, two records, uninstall isolation"
 echo "✓ collie CLI build: six ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
-echo "✓ collie CLI update: both checkout shapes on real repos, the post-pull re-exec, the managed re-link refusal"
+echo "✓ collie CLI update: both checkout shapes on real repos, tag targeting + the major gate, the post-pull re-exec, the managed re-link refusal"
 echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny-all warning"
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
 echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one line per check"

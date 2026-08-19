@@ -156,6 +156,8 @@ const updateStatus: UpdateStatus = {
   latest: null,
   latestUrl: null,
   releaseAvailable: false,
+  majorAvailable: null,
+  majorUrl: null,
   bridgeStale: false,
   checkedAt: null,
 };
@@ -296,6 +298,8 @@ const UPDATE_STATUS_KEYS = {
   latest: true,
   latestUrl: true,
   releaseAvailable: true,
+  majorAvailable: true,
+  majorUrl: true,
   bridgeStale: true,
   checkedAt: true,
 } satisfies Record<keyof UpdateStatus, true>;
@@ -380,6 +384,8 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "current",
       "latest",
       "latestUrl",
+      "majorAvailable",
+      "majorUrl",
       "releaseAvailable",
     ]);
     expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
