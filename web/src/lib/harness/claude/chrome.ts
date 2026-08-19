@@ -47,6 +47,72 @@ const MAX_DRAFT_LINES = 100;
 const INPUT_PLACEHOLDERS = new Set(["Press up to edit queued messages"]);
 
 /**
+ * GHOST TEXT — the generated "suggested next prompt" a newer Claude Code paints inside an otherwise
+ * empty input box (a whole plausible message: "fix it", "run the tests", …). It is NOT a draft: it is
+ * a suggestion the operator has not written and, until they act on it, the box is empty.
+ *
+ * Content cannot tell the two apart — the suggestion is arbitrary generated prose and changes every
+ * turn, so INPUT_PLACEHOLDERS (which knows one fixed literal) can never grow to cover it. STYLE can.
+ * Measured on a live Claude Code v2.1.235 pane through the bridge (2026-08-19): the prompt line comes
+ * over the wire as
+ *
+ *     ❯ \x1b[0m\x1b[2mfix it\x1b[0m
+ *
+ * — the suggestion is a run of SGR 2 (faint) with no colour of its own, while the "❯" marker and every
+ * real draft on the same line carry no SGR at all (`dim: false`). Typing replaces the suggestion
+ * outright, so a box never holds both at once; that is what makes "EVERY visible run is faint" sound
+ * as the whole-box test rather than a per-run one.
+ *
+ * Three consequences follow from misreading one as a draft, and all three are fixed by classifying it
+ * here, at the single place a draft is derived (lib/reply-action.ts and composer.tsx both take their
+ * draft from `extractInputDraft`, so neither needs its own ghost test):
+ *
+ *  1. the app offered to "recover" a stranded draft the operator never wrote;
+ *  2. the composer's pre-clear sweep fired `ctrl+k` + a burst of Backspaces at it — and the ghost is
+ *     not editable text, so it clears NOTHING (verified live: after a full sweep the same faint run is
+ *     still on the line). Destructive keys, no effect, every send;
+ *  3. worst, it could VOUCH FOR A SEND THAT NEVER LANDED. `draftCarriesSend` accepts a draft whose
+ *     visible characters appear contiguously in the sent text, so a suggestion that happens to be an
+ *     8-character substring of the message ("fix the parser…" vs a ghost "fix the ") would satisfy the
+ *     guard against a box our text never reached — Collie then fires the submit key and reports
+ *     `sent`, and the message is lost. Returning null here keeps a ghost out of that comparison
+ *     entirely, which is the defense in depth: the guard never sees a ghost to be fooled by.
+ *
+ * A false POSITIVE is survivable in the one direction that matters: if a genuine draft were ever
+ * painted faint we would neither preview nor sweep it, `pane.send_text` would append to it, and the
+ * appended line would then fail `draftCarriesSend` — the send stalls with nothing submitted, which is
+ * this module's designed failure mode. A false NEGATIVE (treating a ghost as a draft) is the bug above.
+ *
+ * `hasInputBox`/`composerReady` deliberately do NOT consult this: a box holding ghost text is a real,
+ * typeable box, and refusing to type into it would break every send after the first turn.
+ */
+function inputBoxHoldsGhostText(lines: StyledLine[], box: InputBox): boolean {
+  let sawContent = false;
+  for (let j = box.prompt; j < box.bottomBorder; j++) {
+    // The "❯" marker is unstyled and may share a segment with the text that follows it (a real draft
+    // arrives as one segment, "❯ hello"), so it is stripped from the text rather than skipped as a
+    // segment — otherwise the marker's own non-faint run would answer "not a ghost" every time.
+    let beforeMarker = j === box.prompt;
+    for (const seg of lines[j]!.segments) {
+      let text = seg.text;
+      if (beforeMarker) {
+        const head = text.trimStart();
+        if (!head.startsWith("❯")) {
+          if (head.length === 0) continue; // indent ahead of the marker
+        } else {
+          text = head.slice(1);
+          beforeMarker = false;
+        }
+      }
+      if (text.trim().length === 0) continue;
+      if (seg.dim !== true) return false;
+      sawContent = true;
+    }
+  }
+  return sawContent;
+}
+
+/**
  * Return `lines` with any confidently-matched trailing chrome removed. When nothing matches the
  * input is returned as-is (same reference), so callers can treat an unchanged result as "no chrome".
  */
@@ -120,7 +186,8 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
  * WRAPS onto continuation lines inside the box; those are folded back in (each trimmed of its
  * alignment indent, joined with a single space — Claude soft-wraps at word boundaries, so the dropped
  * break was a space). Returns `null` when there's no input box at the tail, the box is empty (bare
- * "❯"), or the line is a known TUI placeholder (INPUT_PLACEHOLDERS) rather than a real draft.
+ * "❯"), the box holds GHOST TEXT (a generated suggestion — see inputBoxHoldsGhostText), or the line is
+ * a known TUI placeholder (INPUT_PLACEHOLDERS) rather than a real draft.
  */
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const texts = lines.map(lineText);
@@ -130,6 +197,9 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
 
   const box = locateInputBox(texts, end);
   if (box === null) return null;
+  // Style first, content second: a generated suggestion is arbitrary prose, so only how it is PAINTED
+  // separates it from a draft (see inputBoxHoldsGhostText).
+  if (inputBoxHoldsGhostText(lines, box)) return null;
 
   let head = texts[box.prompt]!.trimStart();
   if (head.startsWith("❯")) head = head.slice(1);

@@ -10,14 +10,20 @@ import { isSelfEcho, useStableTerminalDraft } from "./use-terminal-draft";
 // The stabiliser is what makes the parse's transient false positive (our own reply flashing on the
 // "❯" line during the bridge's send_text→Enter gap) non-actionable, while still surfacing a genuinely
 // stranded draft that persists. Drive it with the REAL captures the parse reads, so the two can't
-// drift: send-inflight → "/rename" (the flash), rename-resolved → null, done → a real stranded draft.
+// drift: send-inflight → "/rename" (the flash), rename-resolved → null, draft-footer-single → a real
+// stranded draft.
+//
+// The stranded draft used to come from claude--done.txt. It no longer can: that capture's "❯" line is
+// FAINT (SGR 2), i.e. it was a generated suggestion Claude painted into an empty box, not text the
+// operator wrote — extractInputDraft now classifies it as ghost and returns null (harness/claude/
+// chrome.ts). draft-footer-single carries a genuine, unstyled draft, which is what this file needs.
 const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
 function fixtureDraft(name: string): string | null {
   return extractInputDraft(splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8"))));
 }
 
 const INFLIGHT = fixtureDraft("claude--send-inflight.txt"); // "/rename"
-const STRANDED = fixtureDraft("claude--done.txt"); // "cat hello.txt to verify"
+const STRANDED = fixtureDraft("claude--draft-footer-single.txt"); // a real, unstyled stranded draft
 // The hook's input is `string | null`; a case that later rerenders with `null` needs the initial
 // props typed for the whole domain, not narrowed to the first value.
 const strandedOrNull: string | null = STRANDED;

@@ -271,10 +271,12 @@ describe("extractStatusLines — recovers the stripped statusline run", () => {
 // message that stripChrome would otherwise hide) — the marker + separator stripped, trimmed; null
 // for an empty box, a TUI placeholder, or no box at the tail.
 describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
-  it("done: returns the draft left in the input box (the text stripChrome hides)", () => {
-    // The same fixture whose draft stripChrome removes as chrome — here we surface it instead.
-    const draft = extractInputDraft(fixtureLines("claude--done.txt"));
-    expect(draft).toBe("cat hello.txt to verify");
+  it("draft-footer-single: returns the draft left in the input box (the text stripChrome hides)", () => {
+    // A fixture whose draft stripChrome removes as chrome — here we surface it instead. Not
+    // claude--done.txt any more: that capture's "❯" line is faint, so it was a generated suggestion
+    // rather than a draft (see the ghost-text block below and the `done` row in the pinned table).
+    const draft = extractInputDraft(fixtureLines("claude--draft-footer-single.txt"));
+    expect(draft).toContain("remember to update the changelog");
   });
 
   it("returns null for an empty box (bare ❯)", () => {
@@ -289,6 +291,56 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
   it("returns null when there's no input box at the tail", () => {
     expect(extractInputDraft(splitLines(parseAnsi("just some output\nmore output")))).toBeNull();
     expect(extractInputDraft(fixtureLines("claude--trust-prompt.txt"))).toBeNull();
+  });
+
+  // GHOST TEXT: a newer Claude Code paints a generated "suggested next prompt" inside an otherwise
+  // empty box. Both fixtures below are REAL captures of the same live pane (Claude Code v2.1.235,
+  // through the bridge): the suggestion, and the same box after typing over it. The wire form of the
+  // suggestion is `❯ \x1b[0m\x1b[2mfix it\x1b[0m` — SGR 2 (faint) and no colour — while the
+  // marker and every real draft carry no SGR at all. Content cannot separate the two; style can.
+  describe("ghost text (a generated suggestion) is not a draft", () => {
+    // Faithful to the capture: the marker is unstyled, an SGR reset opens the run, SGR 2 paints it.
+    const ghostBox = (ghost: string) =>
+      splitLines(parseAnsi(`earlier output\n${"─".repeat(40)}\n❯ \x1b[0m\x1b[2m${ghost}\x1b[0m\n${"─".repeat(40)}`));
+
+    it("ghost-suggestion fixture: the faint suggestion is not surfaced as a stranded draft", () => {
+      expect(extractInputDraft(fixtureLines("claude--ghost-suggestion.txt"))).toBeNull();
+    });
+
+    it("ghost-typed-over fixture: text typed over the suggestion IS a draft", () => {
+      expect(extractInputDraft(fixtureLines("claude--ghost-typed-over.txt"))).toBe("hello real draft text");
+    });
+
+    // The consequence that matters most for the composer: a null draft is what makes the pre-clear
+    // sweep (ctrl+k + a Backspace burst, fired only when the derived draft is non-null) stay home.
+    // Firing it at a ghost clears nothing — verified live: after a full sweep the same faint run is
+    // still on the line — so the keys were destructive for no gain, every send.
+    it("a box holding only faint text yields no draft, so nothing is there to sweep", () => {
+      expect(extractInputDraft(ghostBox("fix it"))).toBeNull();
+      expect(extractInputDraft(ghostBox("run the tests and report back"))).toBeNull();
+    });
+
+    // The box never holds both at once (typing replaces the suggestion outright), so "every visible
+    // run is faint" is the whole-box test. A line mixing faint and normal runs is therefore the
+    // operator's text and must stay recoverable.
+    it("keeps a draft whose line also carries a non-faint run", () => {
+      const mixed = splitLines(
+        parseAnsi(`${"─".repeat(40)}\n❯ \x1b[2mfix\x1b[0m the parser\n${"─".repeat(40)}`),
+      );
+      expect(extractInputDraft(mixed)).toBe("fix the parser");
+    });
+
+    it("still detects the box: composerReady must stay true, a ghost box is typeable", () => {
+      expect(hasInputBox(fixtureLines("claude--ghost-suggestion.txt"))).toBe(true);
+      expect(hasInputBox(ghostBox("fix it"))).toBe(true);
+    });
+
+    // The queue placeholder keeps its own (content) test above; this pins that the style rule did not
+    // change what an UNSTYLED placeholder line does.
+    it("leaves the queued-messages placeholder handling unchanged", () => {
+      expect(extractInputDraft(boxBuffer("❯ Press up to edit queued messages"))).toBeNull();
+      expect(extractInputDraft(boxBuffer("❯ a perfectly ordinary draft"))).toBe("a perfectly ordinary draft");
+    });
   });
 
   it("returns the draft even when a statusline sits below the box", () => {
@@ -691,7 +743,15 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
   // in this corpus is 2 rows (statusline + hint), and pinning the count is what would have caught the
   // first-row-only truncation this table used to tolerate.
   const PINNED: { fixture: string; statusRows: number; draft: string | null; stripped: number }[] = [
-    { fixture: "done", statusRows: 2, draft: "cat hello.txt to verify", stripped: 28 },
+    // `done` was pinned as a draft ("cat hello.txt to verify") until the ghost rule landed. Its "❯"
+    // line is FAINT on the wire, exactly like the ghost-suggestion capture — so the capture was always
+    // a generated suggestion after the hello.txt turn, read as a stranded draft. It is a NULL draft
+    // and the corpus is unanimous: every genuinely-typed draft in this corpus is unstyled, and the
+    // only two faint ones are this and the ghost capture. `stripped` is unchanged — stripChrome peels
+    // the whole box either way.
+    { fixture: "done", statusRows: 2, draft: null, stripped: 28 },
+    { fixture: "ghost-suggestion", statusRows: 4, draft: null, stripped: 21 },
+    { fixture: "ghost-typed-over", statusRows: 4, draft: "hello real draft text", stripped: 21 },
     { fixture: "draft-footer-empty", statusRows: 2, draft: null, stripped: 9 },
     { fixture: "draft-footer-single", statusRows: 2, draft: "remember to update the changelo", stripped: 9 },
     { fixture: "draft-footer-wrapped", statusRows: 2, draft: "this stranded draft is long eno", stripped: 11 },
