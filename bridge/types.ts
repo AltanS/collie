@@ -208,6 +208,14 @@ export interface UpdateStatus {
   latestUrl: string | null;
   /** `latest` is strictly newer than `current`. */
   releaseAvailable: boolean;
+  /**
+   * Newest release of a major ABOVE the running one (dotted `X.Y.Z`), or null. Reported apart from
+   * `latest` because a routine `update` never crosses a major — the crossing is consented to by
+   * `update --major` (ADR 0020), and the banner names that command instead.
+   */
+  majorAvailable: string | null;
+  /** GitHub release page for `majorAvailable`, or null when there is none. */
+  majorUrl: string | null;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */

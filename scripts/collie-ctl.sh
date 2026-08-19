@@ -545,44 +545,239 @@ is_managed_checkout() {
   ! git -C "$PLUGIN_ROOT" symbolic-ref -q HEAD >/dev/null 2>&1
 }
 
-# Advance the checkout to the newest upstream commit, in whichever shape it was installed.
-# `git pull --ff-only` alone was the bug in #63: with no branch there is nothing to pull into, so
-# every turnkey install failed with "You are not currently on a branch" and could never self-update.
-update_checkout() {
-  if ! git -C "$PLUGIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    echo "error: ${PLUGIN_ROOT} is not a git checkout — refresh it with:" >&2
-    echo "       herdr plugin install AltanS/collie --yes" >&2
-    return 1
-  fi
-  if ! is_managed_checkout; then
-    echo "updating Collie (git pull --ff-only)…"
-    git -C "$PLUGIN_ROOT" pull --ff-only
-    return
-  fi
-  # Detached: re-detach onto the default branch tip the same way Herdr got us here. `--depth 1` only
-  # when we are ALREADY shallow, so an update never truncates the history of a full clone someone
-  # happens to have detached. `--force` because cmd_build runs `bun install`, which can rewrite the
-  # TRACKED lockfiles: a plain checkout would then refuse on the dirty tree and re-break the very
-  # update path this fixes. Discarding local edits here matches Herdr's own refresh semantics — its
-  # reinstall replaces the managed checkout wholesale.
-  echo "updating Collie (Herdr-managed checkout: fetch + detach onto origin HEAD)…"
+# ── Target selection: a routine update stays inside its major (ADR 0020) ─────────────────────────
+# A routine `update` no longer means "the tip of the default branch": it means "the newest RELEASE of
+# the major this install is already on". Crossing a major is a separate act, consented to by
+# `--major` — a flag and never a prompt, because a Herdr plugin action runs with no TTY and the phone
+# banner that announces the major has no terminal at all.
+
+# The command that consents to a major crossing — printed wherever one is refused.
+MAJOR_ACTION="herdr plugin action invoke update-major --plugin herdr.collie"
+
+# `--major` anywhere in the verb's argv. The flag IS the consent.
+wants_major() {
+  local a
+  for a in "$@"; do
+    if [ "$a" = "--major" ]; then return 0; fi
+  done
+  return 1
+}
+
+# The `version = "…"` line of a herdr-plugin.toml read on STDIN, or nothing. The CANONICAL version —
+# the one Herdr reads and scripts/check-version.sh gates on — so it is also the one `update` reads
+# the installed MAJOR out of. One parser, used for the checkout's own manifest and for the manifest
+# at the commit a pull is about to take.
+manifest_version_from() {
+  sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+}
+
+# The version in the checkout's own herdr-plugin.toml, or nothing when there is none to read.
+installed_version() {
+  [ -f "${PLUGIN_ROOT}/herdr-plugin.toml" ] || return 0
+  manifest_version_from < "${PLUGIN_ROOT}/herdr-plugin.toml"
+}
+
+# The major of a dotted version (`1.0.0-beta.5` → 1), or nothing when it names none ("unknown").
+major_of() {
+  printf '%s' "${1-}" | sed -n 's/^\([0-9][0-9]*\)\..*/\1/p'
+}
+
+# True when dotted version $1 sorts strictly above $2. Prerelease-aware in the one direction that
+# matters: `1.0.0-beta.5` sorts BELOW `1.0.0`, so the release that follows a beta reads as an
+# upgrade. Mirrors bridge/update.ts's compareSemver, which the banner uses on the same two strings.
+version_gt() {
+  awk -v A="${1-}" -v B="${2-}" '
+    function pre(v) { return (v ~ /^[0-9]+\.[0-9]+\.[0-9]+-./) ? 1 : 0 }
+    function num(v, i,   p, core) { core = v; sub(/[-+].*$/, "", core); split(core, p, "."); return p[i] + 0 }
+    BEGIN {
+      for (i = 1; i <= 3; i++) if (num(A, i) != num(B, i)) exit !(num(A, i) > num(B, i))
+      exit !(pre(A) == 0 && pre(B) == 1)
+    }'
+}
+
+# Strict release tags out of `git ls-remote --tags origin` (read on STDIN), one per line as
+# "<major> <minor> <patch> <tag> <commit>".
+#
+# Prereleases and every non-release ref are dropped by the same anchor the banner uses
+# (bridge/update.ts's SEMVER_TAG), so the verb can never land on something the banner would not have
+# announced. Remote ref names are untrusted input.
+#
+# An ANNOTATED tag is listed twice — once at the tag object, once peeled (`^{}`) at the commit. The
+# peeled line is the one that names a commit, so it wins wherever both appear.
+release_tags() {
+  awk '
+    {
+      ref = $2; sha = $1
+      if (index(ref, "refs/tags/") != 1) next
+      name = substr(ref, 11); peeled = 0
+      if (length(name) > 3 && substr(name, length(name) - 2) == "^{}") {
+        peeled = 1; name = substr(name, 1, length(name) - 3)
+      }
+      if (name !~ /^v[0-9]+\.[0-9]+\.[0-9]+$/) next
+      if ((name in was) && was[name] == 1 && peeled == 0) next
+      was[name] = peeled; at[name] = sha
+    }
+    END {
+      for (n in at) { split(substr(n, 2), p, "."); print p[1], p[2], p[3], n, at[n] }
+    }'
+}
+
+# The highest release inside major $1 — the target of a routine update. Tag lines on STDIN.
+release_in_major() {
+  awk -v m="$1" '$1 == m' | sort -k1,1n -k2,2n -k3,3n | tail -1
+}
+
+# The highest release of the NEXT major that has one — the target of `update --major`. Tag lines on
+# STDIN.
+#
+# The next major, not the highest: an install two majors behind crosses one at a time, so each
+# crossing is the one the operator consented to and its release notes are the ones that apply.
+next_major_release() {
+  awk -v m="$1" '$1 > m' | sort -k1,1n -k2,2n -k3,3n | awk 'NR == 1 { n = $1 } $1 == n' | tail -1
+}
+
+# Fields of one tag line, so no caller has to know the column order.
+tag_name()    { printf '%s' "${1-}" | awk '{ print $4 }'; }
+tag_version() { printf '%s' "${1-}" | awk '{ print substr($4, 2) }'; }
+tag_commit()  { printf '%s' "${1-}" | awk '{ print $5 }'; }
+
+# Say a higher major is out, and name the one command that takes it. Never acts.
+announce_major() {
+  [ -n "${1-}" ] || return 0
+  echo "note: Collie $(tag_version "$1") is out — a NEW MAJOR, which a routine update never takes."
+  echo "      Read its release notes, then consent to it with:  ${MAJOR_ACTION}"
+}
+
+# True when the target's major is ABOVE the installed one. False when EITHER side names no readable
+# version — we proceed there, for the same reason the managed path falls back: a checkout that cannot
+# name its major cannot be gated on one either.
+major_crosses() {
+  local a b
+  a="$(major_of "${1-}")"; b="$(major_of "${2-}")"
+  [ -n "$a" ] && [ -n "$b" ] && [ "$b" -gt "$a" ]
+}
+
+# Fetch $1 and re-detach onto it, the way Herdr got this checkout here.
+detach_onto() {
+  # `--depth 1` ONLY when we are already shallow, so an update never truncates the history of a full
+  # clone someone happens to have detached.
   if [ "$(git -C "$PLUGIN_ROOT" rev-parse --is-shallow-repository)" = true ]; then
-    git -C "$PLUGIN_ROOT" fetch --depth 1 origin HEAD
+    git -C "$PLUGIN_ROOT" fetch --depth 1 origin "$1"
   else
-    git -C "$PLUGIN_ROOT" fetch origin HEAD
+    git -C "$PLUGIN_ROOT" fetch origin "$1"
   fi
+  # `--force` because cmd_build runs `bun install`, which can rewrite the TRACKED lockfiles: a plain
+  # checkout would then refuse on the dirty tree and re-break the very update path this fixes.
+  # Discarding local edits here matches Herdr's own refresh semantics — its reinstall replaces the
+  # managed checkout wholesale.
   # -q: without it checkout warns "you are leaving 1 commit behind" on every single update — true,
   # alarming, and useless here, since the commit we leave is the release we just replaced.
   git -C "$PLUGIN_ROOT" checkout -q --detach --force FETCH_HEAD
   echo "→ now at $(git -C "$PLUGIN_ROOT" log -1 --format='%h %s')"
 }
 
-# Update to the latest release. Collie is a link-mode Herdr plugin, so the checkout on disk IS the
-# plugin (Herdr has no `plugin update`) — this is the turnkey refresh: advance the checkout, rebuild
-# the UI, restart the backend. That can rewrite THIS script, and bash reads scripts by byte offset,
-# so we re-exec the fresh copy (via the internal `_apply-update` step) to run build + restart.
+# A Herdr-managed checkout is detached, so `update` re-detaches it — onto the newest RELEASE TAG of
+# the major it is on, never onto whatever the default branch says right now. Here target selection
+# IS the gate: a detached checkout has nothing to keep.
+# $1 = the installed version (may be empty); $2 = 1 when --major was given.
+update_managed() {
+  local installed="$1" cross="$2" ls tags major best higher head
+  if ! ls="$(git -C "$PLUGIN_ROOT" ls-remote --tags origin 2>/dev/null)"; then
+    echo "error: could not list the upstream release tags — is the remote reachable?" >&2
+    return 1
+  fi
+  major="$(major_of "$installed")"
+  if [ -z "$major" ]; then
+    # No readable version on disk: fall back to the pre-gate behaviour rather than refuse to update
+    # at all — loudly, so the fallback is never a silent no-op.
+    echo "updating Collie (Herdr-managed checkout: no readable version — following origin HEAD)…"
+    detach_onto HEAD
+    return
+  fi
+  tags="$(printf '%s\n' "$ls" | release_tags)"
+  higher="$(printf '%s\n' "$tags" | next_major_release "$major")"
+  if [ "$cross" = 1 ]; then
+    if [ -z "$higher" ]; then
+      echo "no release above major ${major} exists yet — nothing to cross to."
+      return 0
+    fi
+    echo "crossing to Collie $(tag_version "$higher") (--major given: consented)…"
+    detach_onto "refs/tags/$(tag_name "$higher")"
+    return
+  fi
+  best="$(printf '%s\n' "$tags" | release_in_major "$major")"
+  if [ -z "$best" ]; then
+    echo "no release of major ${major} yet — leaving this checkout where it is."
+    announce_major "$higher"
+    return 0
+  fi
+  head="$(git -C "$PLUGIN_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  # Already there — by commit (the usual case) or by version (a rebuilt tag, a rolled-forward
+  # manifest). Either answer means there is nothing in this major left to take.
+  if [ "$(tag_commit "$best")" = "$head" ] || ! version_gt "$(tag_version "$best")" "$installed"; then
+    echo "already current — v$(tag_version "$best") is the newest release of major ${major}."
+    announce_major "$higher"
+    return 0
+  fi
+  echo "updating Collie (Herdr-managed checkout: fetch + detach onto $(tag_name "$best"))…"
+  detach_onto "refs/tags/$(tag_name "$best")"
+  announce_major "$higher"
+}
+
+# A linked clone keeps its branch and its `--ff-only` pull: detaching it onto a tag would undo the
+# shape it was installed in, and re-linking it is what ADR 0006 forbids for managed installs. So its
+# gate is a PRE-FLIGHT — fetch, read the manifest at the fetched tip, and refuse before pulling.
+# $1 = the installed version (may be empty); $2 = 1 when --major was given.
+update_linked() {
+  local installed="$1" cross="$2" fetched
+  # Fetch first so there is something to read the target manifest out of. `git pull` fetches again;
+  # that second fetch is a no-op against a remote that has not moved in between.
+  git -C "$PLUGIN_ROOT" fetch origin HEAD
+  # `|| true`: a target with no manifest at all is an unreadable version, not an error — the gate
+  # then reads "unknown" and proceeds, exactly as the managed path's fallback does.
+  fetched="$(git -C "$PLUGIN_ROOT" show FETCH_HEAD:herdr-plugin.toml 2>/dev/null | manifest_version_from || true)"
+  if [ "$cross" != 1 ] && major_crosses "$installed" "$fetched"; then
+    echo "refusing to update: ${installed} → ${fetched} crosses a MAJOR version."
+    echo "A major means you have to change something — so it is never taken by a routine update."
+    echo "Read its release notes, then consent to it with:  ${MAJOR_ACTION}"
+    echo "(nothing was pulled — this checkout is unchanged)"
+    return 0
+  fi
+  echo "updating Collie (git pull --ff-only)…"
+  git -C "$PLUGIN_ROOT" pull --ff-only
+}
+
+# Advance the checkout, in whichever shape it was installed — and never across a major without
+# `--major` (ADR 0020).
+# `git pull --ff-only` alone was the bug in #63: with no branch there is nothing to pull into, so
+# every turnkey install failed with "You are not currently on a branch" and could never self-update.
+#
+# The two shapes take the gate differently, because their targets are different things — see
+# update_managed and update_linked. Two mechanisms, one rule: no install crosses a major unasked.
+update_checkout() {
+  local cross=0
+  if wants_major "$@"; then cross=1; fi
+  if ! git -C "$PLUGIN_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "error: ${PLUGIN_ROOT} is not a git checkout — refresh it with:" >&2
+    echo "       herdr plugin install AltanS/collie --yes" >&2
+    return 1
+  fi
+  local installed; installed="$(installed_version)"
+  if is_managed_checkout; then
+    update_managed "$installed" "$cross"
+  else
+    update_linked "$installed" "$cross"
+  fi
+}
+
+# Update to the newest release of the major this install is on. Collie is a link-mode Herdr plugin,
+# so the checkout on disk IS the plugin (Herdr has no `plugin update`) — this is the turnkey refresh:
+# advance the checkout, rebuild the UI, restart the backend. That can rewrite THIS script, and bash
+# reads scripts by byte offset, so we re-exec the fresh copy (via the internal `_apply-update` step)
+# to run build + restart. `--major` — the whole consent, since a Herdr plugin action has no TTY to
+# prompt on (ADR 0020) — targets the next major instead.
 cmd_update() {
-  update_checkout
+  update_checkout "$@"
   exec bash "${PLUGIN_ROOT}/scripts/collie-ctl.sh" _apply-update
 }
 
@@ -970,7 +1165,7 @@ case "${1:-}" in
   stop)    cmd_stop ;;
   restart) cmd_restart ;;
   uninstall) cmd_uninstall ;;
-  update)  cmd_update ;;
+  update)  shift || true; cmd_update "$@" ;;
   _apply-update) cmd_apply_update ;;  # internal: second half of `update`, run post-pull
   _exec-bridge) cmd_exec_bridge ;;    # internal: the process the launchd agent supervises
   build)   cmd_build ;;
