@@ -726,22 +726,34 @@ update_managed() {
 
 # A linked clone keeps its branch and its `--ff-only` pull: detaching it onto a tag would undo the
 # shape it was installed in, and re-linking it is what ADR 0006 forbids for managed installs. So its
-# gate is a PRE-FLIGHT — fetch, read the manifest at the fetched tip, and refuse before pulling.
+# gate is a PRE-FLIGHT — fetch, read the manifest at the branch's OWN upstream, and refuse before
+# pulling.
 # $1 = the installed version (may be empty); $2 = 1 when --major was given.
 update_linked() {
-  local installed="$1" cross="$2" fetched
-  # Fetch first so there is something to read the target manifest out of. `git pull` fetches again;
-  # that second fetch is a no-op against a remote that has not moved in between.
-  git -C "$PLUGIN_ROOT" fetch origin HEAD
-  # `|| true`: a target with no manifest at all is an unreadable version, not an error — the gate
-  # then reads "unknown" and proceeds, exactly as the managed path's fallback does.
-  fetched="$(git -C "$PLUGIN_ROOT" show FETCH_HEAD:herdr-plugin.toml 2>/dev/null | manifest_version_from || true)"
-  if [ "$cross" != 1 ] && major_crosses "$installed" "$fetched"; then
-    echo "refusing to update: ${installed} → ${fetched} crosses a MAJOR version."
-    echo "A major means you have to change something — so it is never taken by a routine update."
-    echo "Read its release notes, then consent to it with:  ${MAJOR_ACTION}"
-    echo "(nothing was pulled — this checkout is unchanged)"
-    return 0
+  local installed="$1" cross="$2" fetched ref
+  # Plain `git fetch origin` — the configured refspec, so every remote-tracking ref advances. NOT
+  # `fetch origin HEAD`: that resolves the remote's DEFAULT branch, and the pull below takes the
+  # current branch's own upstream. On a clone kept on a maintenance or integration branch those are
+  # different commits, and a gate that judged one while the pull took the other would refuse a
+  # fast-forward that never leaves the major (and, after 1.0 lands on `main`, would refuse EVERY
+  # pull on a 0.x branch). Judge exactly the commit the pull will land on.
+  git -C "$PLUGIN_ROOT" fetch origin
+  ref="$(git -C "$PLUGIN_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+  # No upstream at all: there is nothing for the gate to judge, and nothing for the pull to take
+  # either — `git pull --ff-only` fails with its own "no tracking information" message, which says
+  # more about the checkout than anything we could add. Let it speak; a pull that cannot happen
+  # cannot cross a major.
+  if [ -n "$ref" ]; then
+    # `|| true`: a target with no manifest at all is an unreadable version, not an error — the gate
+    # then reads "unknown" and proceeds, exactly as the managed path's fallback does.
+    fetched="$(git -C "$PLUGIN_ROOT" show "${ref}:herdr-plugin.toml" 2>/dev/null | manifest_version_from || true)"
+    if [ "$cross" != 1 ] && major_crosses "$installed" "$fetched"; then
+      echo "refusing to update: ${installed} → ${fetched} (${ref}) crosses a MAJOR version."
+      echo "A major means you have to change something — so it is never taken by a routine update."
+      echo "Read its release notes, then consent to it with:  ${MAJOR_ACTION}"
+      echo "(nothing was pulled — this checkout is unchanged)"
+      return 0
+    fi
   fi
   echo "updating Collie (git pull --ff-only)…"
   git -C "$PLUGIN_ROOT" pull --ff-only

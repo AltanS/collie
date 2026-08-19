@@ -1066,6 +1066,52 @@ test_update_refuses_a_major_on_a_linked_clone() {
   assert_eq "$(git -C "$root" rev-parse HEAD)" "$at"
 }
 
+# A clone kept on a NON-DEFAULT branch is judged by ITS OWN upstream, never by the remote's default
+# tip. `origin/main` is a major ahead here; `origin/maint` is not, and it is the only thing
+# `git pull --ff-only` would ever take — reading the gate off the wrong one would refuse every pull
+# on a maintenance branch (this repo's own deployment host is a clone on `v1`).
+test_update_judges_a_clones_own_upstream() {
+  setup_case update-maintenance-branch
+  stage_tagged_origin
+  git_q -C "$ORIGIN_DIR" branch maint v9.10.0
+  local root="${CASE_DIR}/maint"
+  git_q clone -q -b maint "$ORIGIN_DIR" "$root"
+  origin_release 10.0.0                       # main crosses a major; maint does not
+  git_q -C "$ORIGIN_DIR" checkout -q maint
+  printf '9-maint\n' > "${ORIGIN_DIR}/VERSION"
+  git_q -C "$ORIGIN_DIR" add -A
+  git_q -C "$ORIGIN_DIR" commit -qm "a 9.x fix"
+  git_q -C "$ORIGIN_DIR" checkout -q main
+
+  local out; out="$(run_update_checkout "$root")" ||
+    fail "update refused a within-major pull on a maintenance branch: $out"
+  assert_contains "$out" "git pull --ff-only"
+  assert_eq "$(cat "${root}/VERSION")" "9-maint"
+  assert_eq "$(git -C "$root" symbolic-ref --short HEAD)" "maint"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(git -C "$ORIGIN_DIR" rev-parse maint)"
+}
+
+# A branch with NO upstream: nothing to gate, and nothing to pull either — git's own "no tracking
+# information" is the whole answer, and a pull that cannot happen cannot cross a major.
+test_update_leaves_a_branch_without_an_upstream_to_git() {
+  setup_case update-no-upstream
+  stage_tagged_origin
+  local root="${CASE_DIR}/no-upstream"
+  git_q clone -q -b main "$ORIGIN_DIR" "$root"
+  git_q -C "$root" checkout -q -b local-only
+  origin_release 10.0.0
+  local at; at="$(git -C "$root" rev-parse HEAD)"
+
+  set +e
+  local out; out="$(run_update_checkout "$root")"; local rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a branch with no upstream reported a successful update"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$at"
+  case "$out" in
+    *MAJOR*) fail "a branch with no upstream was refused by the major gate instead of by git" ;;
+  esac
+}
+
 # `herdr plugin link` re-registers the plugin as source.kind=local, and Herdr then REFUSES
 # `herdr plugin install` — which is the only other way a managed install can be refreshed. So the
 # re-link must fire for a linked clone and never for a managed checkout.
@@ -1215,6 +1261,8 @@ test_update_holds_at_a_major_boundary
 test_update_major_crosses_exactly_one_major
 test_update_falls_back_loudly_without_a_readable_version
 test_update_refuses_a_major_on_a_linked_clone
+test_update_judges_a_clones_own_upstream
+test_update_leaves_a_branch_without_an_upstream_to_git
 test_registry_refresh_skips_a_managed_checkout
 
 echo "collie-ctl lifecycle tests: passed"
