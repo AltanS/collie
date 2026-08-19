@@ -7,7 +7,9 @@ import { ActivityLedger } from "./activity.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { loadConfig } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
-import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
+import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
+import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
+import { buildMuxRegistry, createMux } from "./mux/registry.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
@@ -191,18 +193,31 @@ updateFirstCheck.unref();
 const updateTimer = setInterval(() => void updateMonitor.checkRelease(), UPDATE_INTERVAL_MS);
 updateTimer.unref();
 
+// The multiplexers this build can drive. Built once — the map is derived from each factory's own
+// name, so a key can never drift from the adapter it resolves to.
+const muxRegistry = buildMuxRegistry();
+
 // ── Per-session runtime factory ──────────────────────────────────────────────
-// One HerdrClient + StateEngine + EventPoker + NotificationCoordinator per herdr session. The
+// One mux adapter + StateEngine + EventPoker + NotificationCoordinator per herd session. The
 // registry calls this for the primary at construction and for each session discovered later. Push,
 // snooze, notify-prefs, the audit log and the uploads dir stay process-global (shared here).
+//
+// THE ADAPTER IS BUILT THROUGH THE MUX REGISTRY and this is the only place that happens. No mux is
+// configured yet, so every session gets the default — Herdr — and nothing changes for anyone; the
+// operator's choice is M10/06's to add. `dialMode` rides in the target's opaque options because it
+// is Herdr's knob (which LOCAL dialer opens a filesystem-path endpoint), never the registry's.
 const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
-  const herdr = new HerdrClient(socketPath, DEFAULT_TIMEOUT_MS, cfg.dialMode);
+  const herdr = createMux(muxRegistry, undefined, {
+    endpoint: socketPath,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    options: { [HERDR_DIAL_MODE_OPTION]: cfg.dialMode ?? "auto" },
+  });
   const engine = new StateEngine(herdr, cfg.pollMs);
 
-  // Event-poked polling: a long-lived events.subscribe stream pokes an immediate re-poll on any herd
-  // change, and while it's healthy the interval relaxes to the safety-net cadence. Events are ONLY a
-  // poke — the snapshot poll stays the source of truth — so a missed event costs one interval, not
-  // correctness. The fresh snapshot after any pane lifecycle change re-scopes the subscriptions.
+  // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
+  // herd change, and while it's healthy the interval relaxes to the safety-net cadence. Events are
+  // ONLY a poke — the snapshot poll stays the source of truth — so a missed one costs one interval,
+  // not correctness. The fresh snapshot after any pane lifecycle change re-scopes the watch.
   const poker = new EventPoker(herdr);
   poker.onPoke(() => engine.pokeNow());
   poker.onHealth((h) => engine.setCadence(h ? cfg.pollIdleMs : cfg.pollMs));
@@ -265,7 +280,7 @@ const registry = new SessionRegistry({
 // Fail soft with a clear message if the PRIMARY Herdr isn't reachable at startup. Other sessions come
 // up lazily via refresh(); an unreachable one just reads `reachable:false` in the sessions list.
 const primary = registry.get();
-if (primary && !(await primary.herdr.ping())) {
+if (primary && !(await primary.herdr.reachable())) {
   console.warn(
     `[bridge] cannot reach Herdr socket at ${cfg.socketPath} yet — ` +
       `will keep retrying on the poll loop. Is the Herdr server running?`,

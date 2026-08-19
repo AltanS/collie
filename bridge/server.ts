@@ -5,7 +5,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
-import type { HerdrClient, PaneRead } from "./herdr-client.ts";
+import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
@@ -865,7 +865,7 @@ export function startupWarnings(cfg: Config): string[] {
 }
 
 async function readPane(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   cfg: Config,
   paneId: string,
   url: URL,
@@ -882,9 +882,10 @@ async function readPane(
     // have probed, why this read leaves the operator's terminal alone: a `recent` read only harvests
     // an alt-screen pane — scrolling it up and back — in `text` format. `lines` here is whatever the
     // web app asked for (600 for the history view), well past any pane's height, so switching this
-    // to "text" would move someone's screen on every revalidate. See HERDR_API.md → `pane.read`.
-    const read = await herdr.readPane(paneId, "recent", lines, "ansi");
-    const data = paneReadResponse(paneId, read);
+    // to `strip` would move someone's screen on every revalidate — see the adapter's `readGrid`.
+    const read = await herdr.readGrid(paneId, { scope: "recent", lines, styling: "preserve" });
+    if (!read.ok) return text(`${herdr.mux} read failed: ${read.detail}`, 502);
+    const data = paneReadResponse(paneId, read.value);
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
     // and skips the whole transfer (the big win on a cellular link).
     const bodyStr = JSON.stringify(data);
@@ -909,16 +910,16 @@ async function readPane(
       build,
     );
   } catch (err) {
-    return text(`herdr read failed: ${errorText(err)}`, 502);
+    return text(`${herdr.mux} read failed: ${errorText(err)}`, 502);
   }
 }
 
 /**
- * Map a Herdr pane read to the REST response body. Pure + exported so the `revision` passthrough
+ * Map a multiplexer's grid to the REST response body. Pure + exported so the `revision` passthrough
  * (the client's prompt-select race guard depends on it) is covered by the bridge unit tests without
- * standing up Bun.serve / the socket client.
+ * standing up Bun.serve / a socket.
  */
-export function paneReadResponse(paneId: string, read: PaneRead): PaneReadResponse {
+export function paneReadResponse(paneId: string, read: MuxGrid): PaneReadResponse {
   return { paneId, text: read.text, truncated: read.truncated, revision: read.revision };
 }
 
@@ -984,10 +985,10 @@ async function paneHistory(
   }
 }
 
-/** Just the two one-shot RPCs a reply needs — real HerdrClient in the bridge, fake in tests. */
+/** Just the two port calls a reply needs — the real adapter in the bridge, a fake in tests. */
 export interface ReplySender {
-  sendPaneText(paneId: string, text: string): Promise<void>;
-  sendPaneKeys(paneId: string, keys: string[]): Promise<void>;
+  typeText(paneId: string, text: string): Promise<MuxAck>;
+  sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck>;
 }
 
 /** Outcome of the two-step send. `textDelivered` is only meaningful on the failure branch. */
@@ -1016,32 +1017,37 @@ export async function sendReplySteps(
   sleep: SleepFn = defaultSleep,
 ): Promise<ReplyOutcome> {
   let textDelivered = false;
+  // One shape for both ways a step can fail — a refusal the adapter returned and an exception it
+  // let escape — so the partial-delivery branch cannot drift between them.
+  const failed = (error: string): ReplyOutcome =>
+    textDelivered && submit
+      ? {
+          // Text is already in the pane — only the submit failed. Tell the operator to check/submit
+          // it by hand rather than resend, and flag textDelivered so a resend-on-error UI holds off.
+          ok: false,
+          textDelivered: true,
+          error: "typed into the pane but not submitted — check the pane before resending",
+        }
+      : { ok: false, textDelivered, error };
   try {
     if (txt) {
-      await client.sendPaneText(paneId, txt);
+      const typed = await client.typeText(paneId, txt);
+      if (!typed.ok) return failed(typed.detail);
       textDelivered = true;
     }
     if (submit) {
       if (txt) await sleep(REPLY_SETTLE_MS);
-      await client.sendPaneKeys(paneId, submitKeys);
+      const sent = await client.sendKeys(paneId, submitKeys);
+      if (!sent.ok) return failed(sent.detail);
     }
     return { ok: true, textDelivered };
   } catch (err) {
-    if (textDelivered && submit) {
-      // Text is already in the pane — only the submit failed. Tell the operator to check/submit it
-      // by hand rather than resend, and flag textDelivered so a resend-on-error UI can hold off.
-      return {
-        ok: false,
-        textDelivered: true,
-        error: "typed into the pane but not submitted — check the pane before resending",
-      };
-    }
-    return { ok: false, textDelivered, error: errorText(err) };
+    return failed(errorText(err));
   }
 }
 
 export async function replyPane(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   cfg: Config,
   paneId: string,
   req: Request,
@@ -1114,7 +1120,7 @@ export async function replyPane(
 }
 
 export async function keysPane(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   cfg: Config,
   paneId: string,
   req: Request,
@@ -1153,8 +1159,8 @@ export async function keysPane(
   const keysDetail: AuditDetail = { keys };
   // Assigned, never conditionally spread: an unbound send records no `promptBinding` key.
   if (binding) keysDetail.promptBinding = binding.audit;
-  try {
-    await herdr.sendPaneKeys(paneId, keys);
+  const sent = await herdr.sendKeys(paneId, keys);
+  if (sent.ok) {
     audit.record({
       action: "keys",
       paneId,
@@ -1163,18 +1169,17 @@ export async function keysPane(
       detail: keysDetail,
     });
     return json({ ok: true } satisfies ActionResponse, ae);
-  } catch (err) {
-    if (binding) {
-      audit.record({
-        action: "keys",
-        paneId,
-        session,
-        device,
-        detail: { keys, sent: false, promptBinding: binding.audit },
-      });
-    }
-    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
   }
+  if (binding) {
+    audit.record({
+      action: "keys",
+      paneId,
+      session,
+      device,
+      detail: { keys, sent: false, promptBinding: binding.audit },
+    });
+  }
+  return json({ ok: false, error: sent.detail } satisfies ActionResponse, ae);
 }
 
 type ExpectedPrompt =
@@ -1211,17 +1216,34 @@ type PromptBindingCheck =
       };
     };
 
+/**
+ * The binding check's "the read didn't happen" answer, for both ways it can not happen — a refusal
+ * the adapter returned and an exception it let escape. One shape, one wording, one audit reason.
+ */
+function readFailed(
+  herdr: MuxAdapter,
+  expected: string,
+  detail: string,
+): Extract<PromptBindingCheck, { ok: false }> {
+  return {
+    ok: false,
+    error: `${herdr.mux} read failed: ${detail}`,
+    status: 502,
+    audit: { checked: true, passed: false, expected, reason: "read_failed" },
+  };
+}
+
 // There is deliberately no expected_blocked flag. agent_status is not carried by pane.read, only by
 // session.snapshot, so checking it would cost a second RPC before the write and widen the very
 // window this feature exists to shrink. The region check already subsumes it: if the exact prompt
 // text is still on screen, that prompt is still what the pane is showing.
 async function checkPromptBinding(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   cfg: Config,
   paneId: string,
   expected: string,
 ): Promise<PromptBindingCheck> {
-  let fresh: PaneRead;
+  let fresh: MuxGrid;
   try {
     const expectedRawLines = expected.split(/\r\n?|\n/).length;
     const bindingReadLines = Math.min(
@@ -1231,18 +1253,19 @@ async function checkPromptBinding(
         expectedRawLines + DEFAULT_PROMPT_TAIL_LINES + PROMPT_BINDING_BLANK_LINE_HEADROOM,
       ),
     );
-    // Keep this coupled to readPane(): use its recent source and ANSI format so the bridge verifies
-    // the same kind of pane data the GET handler serves. The line count deliberately does not follow
-    // cfg.readLines alone because a small legal setting may not contain the expected region; include
-    // room for the accepted tail and for blank separator lines that normalization drops.
-    fresh = await herdr.readPane(paneId, "recent", bindingReadLines, "ansi");
+    // Keep this coupled to readPane(): use its recent scope and preserved styling so the bridge
+    // verifies the same kind of pane data the GET handler serves. The line count deliberately does
+    // not follow cfg.readLines alone because a small legal setting may not contain the expected
+    // region; include room for the accepted tail and for blank separator lines normalization drops.
+    const read = await herdr.readGrid(paneId, {
+      scope: "recent",
+      lines: bindingReadLines,
+      styling: "preserve",
+    });
+    if (!read.ok) return readFailed(herdr, expected, read.detail);
+    fresh = read.value;
   } catch (err) {
-    return {
-      ok: false,
-      error: `herdr read failed: ${errorText(err)}`,
-      status: 502,
-      audit: { checked: true, passed: false, expected, reason: "read_failed" },
-    };
+    return readFailed(herdr, expected, errorText(err));
   }
 
   const result = verifyExpectedPrompt(fresh.text, expected);
@@ -1282,7 +1305,7 @@ function promptBindingFailure(
 // Close a pane ("kill the agent"). Structural op — strictly less powerful than the text/keys
 // injection the bridge already allows, so it stays within the existing remote-shell threat model.
 async function closePane(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   paneId: string,
   req: Request,
   audit: AuditLog,
@@ -1290,13 +1313,10 @@ async function closePane(
   session: string,
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
-  try {
-    await herdr.closePane(paneId);
-    audit.record({ action: "pane.close", paneId, session, device, detail: {} });
-    return json({ ok: true } satisfies ActionResponse, ae);
-  } catch (err) {
-    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
-  }
+  const closed = await herdr.closePane(paneId);
+  if (!closed.ok) return json({ ok: false, error: closed.detail } satisfies ActionResponse, ae);
+  audit.record({ action: "pane.close", paneId, session, device, detail: {} });
+  return json({ ok: true } satisfies ActionResponse, ae);
 }
 
 // Set or clear a pane's label. Structural metadata op — strictly less powerful than the text/keys
@@ -1304,7 +1324,7 @@ async function closePane(
 // The body's `label` must be a string or null; a blank string clears (so a user can wipe a label by
 // saving an empty field), which we send to Herdr as `label: null`.
 async function renamePane(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   paneId: string,
   req: Request,
   audit: AuditLog,
@@ -1325,13 +1345,10 @@ async function renamePane(
   if (fields.label !== null && typeof fields.label !== "string") return text("bad label", 400);
   const trimmed = typeof fields.label === "string" ? fields.label.trim() : "";
   const label = trimmed.length > 0 ? trimmed : null;
-  try {
-    await herdr.renamePane(paneId, label);
-    audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
-    return json({ ok: true } satisfies ActionResponse, ae);
-  } catch (err) {
-    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
-  }
+  const renamed = await herdr.renamePane(paneId, label);
+  if (!renamed.ok) return json({ ok: false, error: renamed.detail } satisfies ActionResponse, ae);
+  audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
+  return json({ ok: true } satisfies ActionResponse, ae);
 }
 
 /**
@@ -1354,7 +1371,7 @@ export function normalizeTabLabel(
 // bridge already allows, so it stays within the existing remote-shell threat model. A tab has no
 // "clear" (see normalizeTabLabel): a blank label is a 400, not a reset to the tab number.
 async function renameTab(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   tabId: string,
   req: Request,
   audit: AuditLog,
@@ -1373,13 +1390,10 @@ async function renameTab(
   }
   const parsed = normalizeTabLabel(asJsonRecord(body)?.label);
   if (!parsed.ok) return text(parsed.error, 400);
-  try {
-    await herdr.renameTab(tabId, parsed.label);
-    audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
-    return json({ ok: true } satisfies ActionResponse, ae);
-  } catch (err) {
-    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
-  }
+  const renamed = await herdr.renameTab(tabId, parsed.label);
+  if (!renamed.ok) return json({ ok: false, error: renamed.detail } satisfies ActionResponse, ae);
+  audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
+  return json({ ok: true } satisfies ActionResponse, ae);
 }
 
 // Close a tab, killing every pane inside it (live-verified 2026-07-19: the tab's panes disappear with
@@ -1387,7 +1401,7 @@ async function renameTab(
 // the bridge already allows via pane.close — so it stays within the existing remote-shell threat
 // model. No body: the tab id is in the path.
 async function closeTab(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   tabId: string,
   req: Request,
   audit: AuditLog,
@@ -1395,20 +1409,17 @@ async function closeTab(
   session: string,
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
-  try {
-    await herdr.closeTab(tabId);
-    audit.record({ action: "tab.close", session, device, detail: { tabId } });
-    return json({ ok: true } satisfies ActionResponse, ae);
-  } catch (err) {
-    return json({ ok: false, error: errorText(err) } satisfies ActionResponse, ae);
-  }
+  const closed = await herdr.closeTab(tabId);
+  if (!closed.ok) return json({ ok: false, error: closed.detail } satisfies ActionResponse, ae);
+  audit.record({ action: "tab.close", session, device, detail: { tabId } });
+  return json({ ok: true } satisfies ActionResponse, ae);
 }
 
 // Create a new tab in a workspace, opening a fresh shell pane (you then launch your own agent in
 // it). Structural — no more privilege than typing into an existing pane (you can already spawn a
 // shell that way). `cwd` omitted => inherits the workspace dir. session.* stays unexposed.
 async function createTab(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   engine: StateEngine,
   req: Request,
   audit: AuditLog,
@@ -1432,32 +1443,38 @@ async function createTab(
   const cwd = typeof fields.cwd === "string" ? fields.cwd : undefined;
   const ae = req.headers.get("accept-encoding");
   if (!workspaceId) return json({ ok: false, error: "workspaceId required" } satisfies CreateResponse, ae);
-  try {
-    const created = await herdr.createTab(workspaceId, { label: tabLabel, cwd });
-    const workspaceLabel =
-      engine.current().workspaces.find((w) => w.workspaceId === created.workspaceId)?.label ??
-      created.workspaceId;
-    audit.record({
-      action: "tab.create",
+  const outcome = await herdr.createTab({ spaceId: workspaceId, label: tabLabel, cwd });
+  if (!outcome.ok) return json({ ok: false, error: outcome.detail } satisfies CreateResponse, ae);
+  const created = outcome.value;
+  // The adapter answers with the space id when the create call doesn't carry a label back; the
+  // snapshot we already hold knows the real one, and that lookup is cheaper than a round trip.
+  const workspaceLabel =
+    engine.current().workspaces.find((w) => w.workspaceId === created.spaceId)?.label ??
+    created.spaceLabel;
+  audit.record({
+    action: "tab.create",
+    paneId: created.paneId,
+    session,
+    device,
+    detail: { workspaceId, label: tabLabel, cwd },
+  });
+  return json({
+    ok: true,
+    pane: {
       paneId: created.paneId,
-      session,
-      device,
-      detail: { workspaceId, label: tabLabel, cwd },
-    });
-    return json({
-      ok: true,
-      pane: { ...created, workspaceLabel },
-    } satisfies CreateResponse, ae);
-  } catch (err) {
-    return json({ ok: false, error: errorText(err) } satisfies CreateResponse, ae);
-  }
+      workspaceId: created.spaceId,
+      workspaceLabel,
+      tabId: created.tabId,
+      cwd: created.cwd,
+    },
+  } satisfies CreateResponse, ae);
 }
 
 // Create a new workspace ("space") with a fresh shell pane. `cwd` defaults to the user's home dir
 // when the client doesn't specify one (typing a path on a phone is painful) — it's a shell, so you
 // can cd from there. Same structural-only threat model as createTab.
 async function createWorkspace(
-  herdr: HerdrClient,
+  herdr: MuxAdapter,
   req: Request,
   audit: AuditLog,
   device: string | null,
@@ -1477,28 +1494,26 @@ async function createWorkspace(
   const cwd = (typeof fields.cwd === "string" ? fields.cwd.trim() : "") || homedir();
   const label = typeof fields.label === "string" ? fields.label : undefined;
   const ae = req.headers.get("accept-encoding");
-  try {
-    const created = await herdr.createWorkspace({ cwd, label });
-    audit.record({
-      action: "workspace.create",
+  const outcome = await herdr.createSpace({ cwd, label });
+  if (!outcome.ok) return json({ ok: false, error: outcome.detail } satisfies CreateResponse, ae);
+  const created = outcome.value;
+  audit.record({
+    action: "workspace.create",
+    paneId: created.paneId,
+    session,
+    device,
+    detail: { label, cwd },
+  });
+  return json({
+    ok: true,
+    pane: {
       paneId: created.paneId,
-      session,
-      device,
-      detail: { label, cwd },
-    });
-    return json({
-      ok: true,
-      pane: {
-        paneId: created.paneId,
-        workspaceId: created.workspaceId,
-        workspaceLabel: created.workspaceLabel ?? created.workspaceId,
-        tabId: created.tabId,
-        cwd: created.cwd,
-      },
-    } satisfies CreateResponse, ae);
-  } catch (err) {
-    return json({ ok: false, error: errorText(err) } satisfies CreateResponse, ae);
-  }
+      workspaceId: created.spaceId,
+      workspaceLabel: created.spaceLabel,
+      tabId: created.tabId,
+      cwd: created.cwd,
+    },
+  } satisfies CreateResponse, ae);
 }
 
 // Save an uploaded image to a host file and return its absolute path. The client then references

@@ -7,8 +7,8 @@ import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 
 // The LEAD side of a pack link: the client that dials a peer's `/pack/v1/*` surface.
 //
-// It is the mirror image of `bridge/pack/router.ts` and the sibling of `bridge/herdr-client.ts` one
-// level up. herdr-client is the only module that knows Herdr method names (ARCHITECTURE.md §5); this
+// It is the mirror image of `bridge/pack/router.ts` and the sibling of `bridge/mux/herdr/client.ts`.
+// That module is the only one that knows Herdr method names (ARCHITECTURE.md §5); this
 // one knows **Collie's HTTP routes and no Herdr method at all** — that is the mux-driver seam
 // (ADR 0011, PACK_PROTOCOL.md §2 rule 1), and it is mechanically checked by spec M4/03's grep for a
 // dotted method literal in this file.

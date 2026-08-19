@@ -30,7 +30,9 @@ import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
 import type { Config } from "./config.ts";
-import type { HerdrClient, PaneRead } from "./herdr-client.ts";
+import { HerdrMux } from "./mux/herdr/adapter.ts";
+import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
+import { muxAck, type MuxAck, type MuxAdapter, type MuxGrid } from "./mux/types.ts";
 import { neverProxy } from "./pack/fixtures.ts";
 import { PackLead } from "./pack/lead.ts";
 import { PackRegistry } from "./pack/registry.ts";
@@ -279,13 +281,13 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
   class FakeClient implements ReplySender {
     readonly calls: string[] = [];
     constructor(private readonly failOn?: "text" | "keys") {}
-    sendPaneText(_paneId: string, _text: string): Promise<void> {
+    typeText(_paneId: string, _text: string): Promise<MuxAck> {
       this.calls.push("text");
-      return this.failOn === "text" ? Promise.reject(new Error("text rejected")) : Promise.resolve();
+      return this.failOn === "text" ? Promise.reject(new Error("text rejected")) : Promise.resolve(muxAck());
     }
-    sendPaneKeys(_paneId: string, _keys: string[]): Promise<void> {
+    sendKeys(_paneId: string, _keys: readonly string[]): Promise<MuxAck> {
       this.calls.push("keys");
-      return this.failOn === "keys" ? Promise.reject(new Error("keys rejected")) : Promise.resolve();
+      return this.failOn === "keys" ? Promise.reject(new Error("keys rejected")) : Promise.resolve(muxAck());
     }
   }
 
@@ -336,10 +338,10 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
  * `Partial<HerdrClient>` keeps the compiler checking every method a fake DOES supply against the
  * real client's signature — the only step asserted is "the rest is never reached".
  */
-function asHerdrClient(fake: Partial<HerdrClient>): HerdrClient {
-  // SAFETY: the pane-write handlers under test call exactly readPane / sendPaneText / sendPaneKeys,
+function asMux(fake: Partial<HerdrClient>): MuxAdapter {
+  // SAFETY: the pane-write handlers under test reach exactly readPane / sendPaneText / sendPaneKeys,
   // all of which FakePaneClient implements; no other member is reachable from these code paths.
-  return fake as HerdrClient;
+  return new HerdrMux(fake as HerdrClient);
 }
 
 describe("pane write prompt binding", () => {
@@ -416,7 +418,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
     const res = await keysPane(
-      asHerdrClient(client),
+      asMux(client),
       cfg(),
       "w1:p1",
       request({ keys: ["1"] }),
@@ -433,7 +435,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
     const res = await replyPane(
-      asHerdrClient(client),
+      asMux(client),
       cfg(),
       "w1:p1",
       request({ text: "hello", submit: false }),
@@ -450,7 +452,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit, entries } = auditEntries();
     const res = await keysPane(
-      asHerdrClient(client),
+      asMux(client),
       cfg({ readLines: 321 }),
       "w1:p1",
       request({ keys: ["1"], expected_prompt: "Approve this command?\n1. Yes\n2. No" }),
@@ -472,7 +474,7 @@ describe("pane write prompt binding", () => {
     client.text = expected;
     const { audit } = auditEntries();
     const res = await keysPane(
-      asHerdrClient(client),
+      asMux(client),
       cfg({ readLines: 20 }),
       "w1:p1",
       request({ keys: ["1"], expected_prompt: expected }),
@@ -494,7 +496,7 @@ describe("pane write prompt binding", () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
     const res = await replyPane(
-      asHerdrClient(client),
+      asMux(client),
       cfg({ readLines: 321 }),
       "w1:p1",
       request({
@@ -516,7 +518,7 @@ describe("pane write prompt binding", () => {
     client.text = "Command finished";
     const { audit, entries } = auditEntries();
     const res = await keysPane(
-      asHerdrClient(client),
+      asMux(client),
       cfg(),
       "w1:p1",
       request({ keys: ["1"], expected_prompt: "Approve this command?\n1. Yes\n2. No" }),
@@ -542,7 +544,7 @@ describe("pane write prompt binding", () => {
     client.text = "Command finished";
     const { audit } = auditEntries();
     const res = await replyPane(
-      asHerdrClient(client),
+      asMux(client),
       cfg(),
       "w1:p1",
       request({
@@ -565,7 +567,7 @@ describe("pane write prompt binding", () => {
       const client = new FakePaneClient();
       const { audit } = auditEntries();
       const res = await keysPane(
-        asHerdrClient(client),
+        asMux(client),
         cfg(),
         "w1:p1",
         request({ keys: ["1"], expected_prompt }),
@@ -585,7 +587,7 @@ describe("pane write prompt binding", () => {
       const client = new FakePaneClient();
       const { audit } = auditEntries();
       const res = await replyPane(
-        asHerdrClient(client),
+        asMux(client),
         cfg(),
         "w1:p1",
         request({ text: "hello", expected_prompt }),
@@ -604,7 +606,7 @@ describe("pane write prompt binding", () => {
 
 describe("paneReadResponse — pane read → REST body", () => {
   test("passes text, truncated, and the monotonic revision through", () => {
-    const read: PaneRead = { pane_id: "w1:p1", text: "hello", truncated: true, revision: 42 };
+    const read: MuxGrid = { paneId: "w1:p1", text: "hello", truncated: true, revision: 42 };
     expect(paneReadResponse("w1:p1", read)).toEqual({
       paneId: "w1:p1",
       text: "hello",
@@ -614,7 +616,7 @@ describe("paneReadResponse — pane read → REST body", () => {
   });
 
   test("carries a zero revision unchanged (fresh pane) rather than dropping the field", () => {
-    const read: PaneRead = { pane_id: "w2:p1", text: "", truncated: false, revision: 0 };
+    const read: MuxGrid = { paneId: "w2:p1", text: "", truncated: false, revision: 0 };
     expect(paneReadResponse("w2:p1", read)).toEqual({
       paneId: "w2:p1",
       text: "",

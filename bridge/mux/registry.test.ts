@@ -48,10 +48,9 @@ describe("buildMuxRegistry", () => {
     expect(muxNames(registry)).toEqual(["herdr", "tmux"]);
   });
 
-  // Spec 02 registers Herdr; 04 and 05 append one entry each. Until then the shipped list is empty
-  // and that must be an ordinary answer, not a crash — the contract lands before any adapter moves.
+  // Herdr landed behind the contract in spec 02; 04 and 05 append one entry each.
   test("the shipped list builds", () => {
-    expect(muxNames(buildMuxRegistry())).toEqual([]);
+    expect(muxNames(buildMuxRegistry())).toEqual(["herdr"]);
   });
 });
 

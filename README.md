@@ -937,7 +937,7 @@ A small Bun process sits between your phone and Herdr — the browser never touc
 Under [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) a
 reverse proxy replaces the `tailscale serve` box; everything below the front door is identical.
 
-- **One module touches the socket** (`bridge/herdr-client.ts`); everything else speaks the bridge's HTTP API.
+- **One module touches the socket** (`bridge/mux/herdr/client.ts`); everything else speaks the bridge's HTTP API.
 - **Polling is still the model** — the bridge polls Herdr (via `session.snapshot`, one RPC per tick) and the browser polls `/api/snapshot`; a long-lived Herdr event stream only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
 - **Actions are plain HTTP** — a reply or key `POST`s to `/api/pane/:id/{reply,keys}` → Herdr `pane.send_keys`, which types into a real terminal (hence the security posture).
 - **The UI is a static PWA** — Vite builds `web/dist`, served from disk, so a rebuild is live with no restart.

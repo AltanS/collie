@@ -1,5 +1,4 @@
-import { meaningfulTabLabel, meaningfulTerminalTitle } from "./activity.ts";
-import { type HerdrClient, paneAgentSession } from "./herdr-client.ts";
+import type { MuxAdapter, MuxPane } from "./mux/types.ts";
 import {
   type AgentStatus,
   type AgentView,
@@ -9,20 +8,25 @@ import {
   type WorkspaceView,
 } from "./types.ts";
 
-// Polls Herdr on an interval, builds the snapshot (agents + shell panes + spaces/tabs), and emits
-// transition events. Polling (vs the per-pane event subscription) keeps this resync-free: a failed
-// poll just retries next tick, and reconnection needs no special handling. See HERDR_API.md.
+// Polls the multiplexer on an interval, builds the snapshot (agents + shell panes + spaces/tabs),
+// and emits transition events. Polling (vs the per-pane event subscription) keeps this resync-free:
+// a failed poll just retries next tick, and reconnection needs no special handling.
+//
+// It talks the mux port (mux/types.ts) and no multiplexer's own vocabulary: every Herdr-shaped
+// derivation this file used to do inline — the workspace join, the meaningful tab label, the
+// terminal-title strip, the agent-session ownership check, the session.snapshot fallback — moved
+// into the adapter, where the multiplexer that knows those facts lives (bridge/mux/herdr/adapter.ts).
 
 // How many lines to read per claude pane when sniffing its `/rename` session name. Claude's input
 // box (and the named rule above it) sits at the very tail, so a small window is plenty and keeps the
 // extra per-poll reads cheap.
 //
-// The source MUST stay `visible`. A `recent` text read asking for more rows than the pane currently
+// The scope MUST stay `viewport`. A `recent` text read asking for more rows than the pane currently
 // shows makes Herdr harvest the pages above the viewport, and on a full-screen agent (Claude runs on
 // the alternate screen, which has no host scrollback) the only way to reach them is to drive the
 // agent's own mouse-scroll interface: Herdr scrolls the pane up page by page, then restores it. The
 // operator watches their terminal jump and snap back — once per poll, per idle claude pane.
-// `visible` cannot do that whatever this count is: it is the rendered viewport, clamped to it. Which
+// `viewport` cannot do that whatever this count is: it is the rendered screen, clamped to it. Which
 // is also why this number is free to stay generous — the run below the ❯ prompt is a statusline of
 // unknown height ([ADR 0004](../.adr/0004-the-statusline-run-is-bounded.md)), so headroom is worth
 // more here than a smaller read. See HERDR_API.md → `pane.read`.
@@ -64,13 +68,44 @@ export function extractClaudeSessionName(text: string): string | undefined {
 }
 
 /**
- * Panes carrying an agent. Narrowing predicate so the agent name is `string` (not
- * `string | null | undefined`) at the map site — no cast needed. Hoisted out of `poll` because it
- * captures nothing; `.length > 0` rather than a `typeof` check, which for the declared
- * `string | null | undefined` accepts and rejects exactly the same values.
+ * The name the port gives a pane holding no agent. A pane reads as a bare shell exactly when its
+ * adapter says so — never by this file inspecting a process name (see MuxPane.agent).
  */
-function hasAgent<T extends { agent?: string | null }>(p: T): p is T & { agent: string } {
-  return p.agent !== null && p.agent !== undefined && p.agent.length > 0;
+const SHELL = "shell";
+
+/**
+ * One pane the multiplexer reported, as the view Collie's clients read.
+ *
+ * Almost a rename, and that is the point: the port already carries everything a pane IS, so this
+ * only re-labels the fields the wire has always used (`workspaceId`, not `spaceId` — nothing
+ * phone-visible renames) and adds the two things the multiplexer cannot know. `kind` is one
+ * (Collie's split of the herd into agents and bare shells); `sessionName` is the other, filled in
+ * afterwards from the pane's own text (see {@link StateEngine.enrichSessionNames}).
+ */
+function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
+  const view: AgentView = {
+    paneId: pane.paneId,
+    workspaceId: pane.spaceId,
+    workspaceLabel: pane.spaceLabel,
+    workspaceNumber: pane.spaceNumber,
+    tabId: pane.tabId,
+    agent: pane.agent,
+    status: pane.status,
+    cwd: pane.cwd,
+    focused: pane.focused,
+    kind,
+  };
+  // Optional fields are ASSIGNED, never conditionally spread: absent stays absent, and each
+  // condition below stays readable as the one rule it encodes.
+  if (pane.paneLabel) view.paneLabel = pane.paneLabel;
+  // Denormalised alongside workspaceLabel so no client has to join tabs[].
+  if (pane.tabLabel) view.tabLabel = pane.tabLabel;
+  if (pane.terminalTitle) view.terminalTitle = pane.terminalTitle;
+  // How the agent named its session — SERVER-SIDE ONLY (stripped by toPaneWire). Whether a ref is
+  // meaningful is the journal adapter's call; absent simply means "no history for this pane".
+  if (pane.agentSession) view.agentSession = pane.agentSession;
+  if (pane.readableLines !== undefined) view.readableLines = pane.readableLines;
+  return view;
 }
 
 export interface EngineSnapshot {
@@ -109,12 +144,8 @@ export class StateEngine {
   private queuedPoll = false;
   // Current interval cadence; setCadence swaps it (relaxed while the event stream is healthy).
   private cadenceMs: number;
-  // session.snapshot is the fast path; flipped off PERMANENTLY once a server proves it predates the
-  // method (see poll()), after which every tick uses the legacy three-call path.
-  private supportsSnapshot = true;
-
   constructor(
-    private readonly herdr: HerdrClient,
+    private readonly mux: MuxAdapter,
     private readonly pollMs: number,
   ) {
     this.cadenceMs = pollMs;
@@ -200,106 +231,17 @@ export class StateEngine {
     this.timer = setInterval(() => void this.poll(), ms);
   }
 
-  /**
-   * Fetch the herd, preferring the single `session.snapshot` round-trip. Only an "unknown variant"
-   * error (the server predates the method) trips a PERMANENT fallback — and we fall through to the
-   * legacy three list calls in the SAME tick so there's no missed poll. Any other failure (timeout,
-   * closed socket) is transient: it propagates so the tick fails as before, snapshot mode intact.
-   */
-  private async fetchWire() {
-    if (this.supportsSnapshot) {
-      try {
-        const snap = await this.herdr.sessionSnapshot();
-        return { workspaces: snap.workspaces, panes: snap.panes, tabs: snap.tabs };
-      } catch (err) {
-        if (!(err instanceof Error && err.message.includes("unknown variant"))) throw err;
-        this.supportsSnapshot = false;
-        console.log("[state] herdr predates session.snapshot — using list-call polling");
-      }
-    }
-    const [workspaces, panes, tabs] = await Promise.all([
-      this.herdr.listWorkspaces(),
-      this.herdr.listPanes(),
-      this.herdr.listTabs(),
-    ]);
-    return { workspaces, panes, tabs };
-  }
-
   private async poll(): Promise<void> {
     // Skip the tick if the previous poll is still running — against a slow Herdr, back-to-back
     // ticks would otherwise stack overlapping in-flight polls.
     if (this.polling) return;
     this.polling = true;
     try {
-      const { workspaces, panes, tabs } = await this.fetchWire();
-      const wsById = new Map(workspaces.map((w) => [w.workspace_id, w]));
-      const tabById = new Map(tabs.map((t) => [t.tab_id, t]));
-
-      const toView = (
-        p: (typeof panes)[number],
-        agent: string,
-        kind: "agent" | "shell",
-      ): AgentView => {
-        const ws = wsById.get(p.workspace_id);
-        // The tab's label, denormalised alongside workspaceLabel so no client has to join tabs[].
-        // Dropped when it's Herdr's positional default in a single-tab space — see meaningfulTabLabel.
-        const tabLabel = meaningfulTabLabel(tabById.get(p.tab_id)?.label, ws?.tab_count ?? 0);
-        const workspaceLabel = ws?.label ?? p.workspace_id;
-        // What the pane says it is doing. Dropped when it only repeats the agent name or the
-        // project already on line one — see meaningfulTerminalTitle.
-        const terminalTitle = meaningfulTerminalTitle(
-          p.terminal_title,
-          p.terminal_title_stripped,
-          agent,
-          workspaceLabel,
-        );
-        const view: AgentView = {
-          paneId: p.pane_id,
-          workspaceId: p.workspace_id,
-          workspaceLabel,
-          workspaceNumber: ws?.number ?? 0,
-          tabId: p.tab_id,
-          agent,
-          status: p.agent_status,
-          cwd: p.cwd,
-          focused: p.focused,
-          kind,
-        };
-        // Optional fields are ASSIGNED, never conditionally spread: absent stays absent, and each
-        // condition below stays readable as the one rule it encodes.
-        //
-        // A user-set pane label (herdr pane.rename); omitted when unset.
-        if (p.label !== null && p.label !== undefined && p.label.length > 0) view.paneLabel = p.label;
-        if (tabLabel) view.tabLabel = tabLabel;
-        if (terminalTitle) view.terminalTitle = terminalTitle;
-        // How the agent named its session. BOTH kinds are kept: Claude and Codex report an `id`,
-        // while pi reports a `path` (its herdr integration prefers `agent_session_path` whenever
-        // the session manager has a file open). Keeping only `id` — as this did until journals
-        // became per-agent — silently denied pi any history at all. Which kinds are meaningful is
-        // now the adapter's call, not this function's; anything else is omitted, so "no history
-        // for this pane" stays simply the field being absent. The shape check itself lives at the
-        // wire boundary (`paneAgentSession` in herdr-client.ts).
-        //
-        // The ref must also BELONG to the agent currently in the pane. Herdr keeps reporting the
-        // last session announced for a pane, so relaunching a pane's agent as a different harness
-        // leaves the old one's ref behind — live-observed: a pane running `pi` still advertising
-        // `{source:"herdr:claude", kind:"id"}` from the claude that had been there before. Serving
-        // that would hand pi's adapter a Claude uuid; harmless today (it resolves to nothing) but
-        // only by luck. `agent_session.agent` is compared when Herdr reports it, and absence stays
-        // permissive so an older server that omits the field still works.
-        const session = paneAgentSession(p.agent_session);
-        if (session !== null && (session.agent === undefined || session.agent === agent)) {
-          view.agentSession = { kind: session.kind, value: session.value };
-        }
-        // Scrollback depth + viewport = what a `recent` read can yield. Omitted when the server
-        // predates `scroll`, so an older Herdr simply reads as "unknown" rather than "zero".
-        if (p.scroll) view.readableLines = p.scroll.max_offset_from_bottom + p.scroll.viewport_rows;
-        return view;
-      };
+      const { panes, spaces, tabs } = await this.mux.snapshot();
 
       const agents: AgentView[] = panes
-        .filter(hasAgent)
-        .map((p) => toView(p, p.agent, "agent"))
+        .filter((p) => p.agent !== SHELL)
+        .map((p) => toView(p, "agent"))
         .toSorted(
           (a, b) =>
             STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
@@ -309,29 +251,29 @@ export class StateEngine {
 
       // Bare shell panes (no agent), ordered by space then pane so a space's panes read top-down.
       const shellPanes: AgentView[] = panes
-        .filter((p) => !p.agent)
-        .map((p) => toView(p, "shell", "shell"))
+        .filter((p) => p.agent === SHELL)
+        .map((p) => toView(p, "shell"))
         .toSorted((a, b) => a.workspaceNumber - b.workspaceNumber || a.paneId.localeCompare(b.paneId));
 
-      const workspaceViews: WorkspaceView[] = workspaces
-        .map((w) => ({
-          workspaceId: w.workspace_id,
-          number: w.number,
-          label: w.label,
-          focused: w.focused,
-          activeTabId: w.active_tab_id,
-          tabCount: w.tab_count,
-          paneCount: w.pane_count,
+      const workspaceViews: WorkspaceView[] = spaces
+        .map((s) => ({
+          workspaceId: s.spaceId,
+          number: s.number,
+          label: s.label,
+          focused: s.focused,
+          activeTabId: s.activeTabId,
+          tabCount: s.tabCount,
+          paneCount: s.paneCount,
         }))
         .toSorted((a, b) => a.number - b.number);
 
       const tabViews: TabView[] = tabs.map((t) => ({
-        tabId: t.tab_id,
-        workspaceId: t.workspace_id,
+        tabId: t.tabId,
+        workspaceId: t.spaceId,
         number: t.number,
         label: t.label,
         focused: t.focused,
-        paneCount: t.pane_count,
+        paneCount: t.paneCount,
       }));
 
       // Detect transitions against the previous poll. First sighting of a pane never fires a
@@ -395,21 +337,27 @@ export class StateEngine {
    * place all panes can pick it up (the web app only holds text for the open pane). Reads run in
    * parallel and are individually best-effort: a read that fails or times out keeps the last-known
    * name (sticky cache) and never fails the poll. Claude-only; other harnesses never set it. A
-   * herdr client without `readPane` (the unit-test fake) short-circuits, so it's a no-op there.
+   * multiplexer that cannot hand over a rendered grid declines the read, which reads here as
+   * "keep whatever's cached" — exactly like a read that failed.
    */
   private async enrichSessionNames(agents: AgentView[]): Promise<void> {
-    if (this.herdr.readPane === undefined) return;
     const claude = agents.filter((a) => a.agent === "claude");
     if (claude.length === 0) return;
     await Promise.all(
       claude.map(async (a) => {
         try {
-          // `visible` — never `recent`; see SESSION_NAME_READ_LINES for what a `recent` read does
-          // to the operator's screen. The visible grid is also strictly safer to parse: `recent`
-          // hands back transcript scrollback, where Claude echoes past user messages as `❯ …` lines
-          // that the prompt anchor below would have to discriminate against.
-          const read = await this.herdr.readPane(a.paneId, "visible", SESSION_NAME_READ_LINES, "text");
-          const name = extractClaudeSessionName(read.text);
+          // `viewport` — never `recent`; see SESSION_NAME_READ_LINES for what a `recent` read does
+          // to the operator's screen. The viewport is also strictly safer to parse: `recent` hands
+          // back transcript scrollback, where Claude echoes past user messages as `❯ …` lines that
+          // the prompt anchor would have to discriminate against. `strip` because this wants words:
+          // colour escapes would only have to be undone before the rules below could match.
+          const read = await this.mux.readGrid(a.paneId, {
+            scope: "viewport",
+            lines: SESSION_NAME_READ_LINES,
+            styling: "strip",
+          });
+          if (!read.ok) return;
+          const name = extractClaudeSessionName(read.value.text);
           if (name) this.sessionNames.set(a.paneId, name);
         } catch {
           // Keep whatever's cached (if anything) — a transient read failure must not blank the name.

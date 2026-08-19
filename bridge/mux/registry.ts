@@ -18,6 +18,7 @@
 // answered by a harness lookup, and a harness question must never be answered by the mux name — do
 // that and neither axis is pluggable any more.
 
+import { herdrMuxFactory } from "./herdr/adapter.ts";
 import type { MuxAdapter } from "./types.ts";
 
 /**
@@ -56,11 +57,11 @@ export interface MuxAdapterFactory {
 /**
  * The multiplexers this build can drive.
  *
- * Empty until M10/02 registers Herdr behind the contract; tmux (M10/04) and zellij (M10/05) append
- * one entry each. Deliberately a list of factories and not a map — the map is derived below, so a
- * key can never drift from the factory it points at.
+ * Herdr is the reference adapter (M10/02); tmux (M10/04) and zellij (M10/05) append one entry each.
+ * Deliberately a list of factories and not a map — the map is derived below, so a key can never
+ * drift from the factory it points at.
  */
-export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [];
+export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory];
 
 /** The name used when the operator configured none. Herdr, so nothing changes for anyone. */
 export const DEFAULT_MUX = "herdr";
