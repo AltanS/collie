@@ -523,6 +523,9 @@ describe("solo zero-tax — routes", () => {
 // ── 5. Config: no pack keys, no pack env ─────────────────────────────────────
 
 const CONFIG_KEYS = {
+  mux: true,
+  muxEndpoint: true,
+  tmuxBin: true,
   socketPath: true,
   dialMode: true,
   auditContent: true,
@@ -564,6 +567,8 @@ describe("solo zero-tax — config", () => {
       "journalRoots",
       "keysFile",
       "multiSession",
+      "mux",
+      "muxEndpoint",
       "notifyDelayMs",
       "pollIdleMs",
       "pollMs",
@@ -574,6 +579,7 @@ describe("solo zero-tax — config", () => {
       "socketPath",
       "stateDir",
       "submitKeys",
+      "tmuxBin",
       "transcript",
       "trustedUser",
       "vapidPrivate",
@@ -611,6 +617,8 @@ describe("solo zero-tax — config", () => {
       "COLLIE_HERDR_DIAL",
       "COLLIE_HOST",
       "COLLIE_MULTI_SESSION",
+      "COLLIE_MUX",
+      "COLLIE_MUX_ENDPOINT_",
       "COLLIE_NOTIFY_DELAY_MS",
       "COLLIE_OPENCODE_ROOT",
       "COLLIE_PI_ROOT",
@@ -623,6 +631,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_SKIP_SERVE",
       "COLLIE_STATE_DIR",
       "COLLIE_SUBMIT_KEYS",
+      "COLLIE_TMUX_BIN",
       "COLLIE_TRANSCRIPT",
       "COLLIE_TRANSCRIPT_ROOT",
       "COLLIE_TRUSTED_USER",

@@ -27,6 +27,12 @@ owns outright and you do not get to redecide: the **refusal shape**
 the transport and the only file that knows the multiplexer's own wire, `adapter.ts` is the whole
 translation, `keys.ts` and `events.ts` are the two tables.
 
+If your multiplexer has no socket and its client is a **binary**, copy
+[`bridge/mux/tmux/`](./bridge/mux/tmux/) instead — same split, one file more: `exec.ts` is the
+subprocess seam (and the only place that spawns), `protocol.ts` is the argv it builds and the text it
+parses, `watch.ts` owns the long-lived child, and `adapter.ts` is still the whole translation. The
+seam being an interface is what lets the fixture drive it with a scripted exec.
+
 ## Probe first, declare second
 
 **An unprobed cell is never declared supported.** Every `true` in your declaration must trace to a

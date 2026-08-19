@@ -9,7 +9,8 @@ import { loadConfig } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
-import { buildMuxRegistry, createMux } from "./mux/registry.ts";
+import { buildMuxRegistry, createMux, DEFAULT_MUX } from "./mux/registry.ts";
+import { TMUX_BINARY_OPTION } from "./mux/tmux/adapter.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
@@ -202,15 +203,18 @@ const muxRegistry = buildMuxRegistry();
 // registry calls this for the primary at construction and for each session discovered later. Push,
 // snooze, notify-prefs, the audit log and the uploads dir stay process-global (shared here).
 //
-// THE ADAPTER IS BUILT THROUGH THE MUX REGISTRY and this is the only place that happens. No mux is
-// configured yet, so every session gets the default — Herdr — and nothing changes for anyone; the
-// operator's choice is M10/06's to add. `dialMode` rides in the target's opaque options because it
-// is Herdr's knob (which LOCAL dialer opens a filesystem-path endpoint), never the registry's.
+// THE ADAPTER IS BUILT THROUGH THE MUX REGISTRY and this is the only place that happens. `COLLIE_MUX`
+// picks it and defaults to Herdr, so a deployment that sets nothing behaves exactly as it always has.
+// The endpoint fork is the one thing this site knows: Herdr's endpoint IS the discovered session
+// socket, and every other adapter is told where it lives by its own `COLLIE_MUX_ENDPOINT_<NAME>`
+// (config.ts). Both per-adapter knobs ride the target's OPAQUE options — which local dialer opens a
+// filesystem-path endpoint is Herdr's question, where the tmux binary is, is tmux's, and the registry
+// reads neither key.
 const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
-  const herdr = createMux(muxRegistry, undefined, {
-    endpoint: socketPath,
+  const herdr = createMux(muxRegistry, cfg.mux, {
+    endpoint: cfg.mux === DEFAULT_MUX ? socketPath : cfg.muxEndpoint,
     timeoutMs: DEFAULT_TIMEOUT_MS,
-    options: { [HERDR_DIAL_MODE_OPTION]: cfg.dialMode ?? "auto" },
+    options: { [HERDR_DIAL_MODE_OPTION]: cfg.dialMode ?? "auto", [TMUX_BINARY_OPTION]: cfg.tmuxBin },
   });
   const engine = new StateEngine(herdr, cfg.pollMs);
 
@@ -272,18 +276,21 @@ const registry = new SessionRegistry({
   configRoot: deriveConfigRoot(cfg.socketPath),
   primarySocketPath: cfg.socketPath,
   factory: makeSession,
-  multiSession: cfg.multiSession,
+  // Multi-session discovery walks HERDR's config root for herdr sockets — it is that adapter's own
+  // shape, not the port's, so it is off for any other multiplexer rather than scanning for sockets
+  // nothing there would answer. A tmux collie fronts one tmux server, which is what its endpoint names.
+  multiSession: cfg.multiSession && cfg.mux === DEFAULT_MUX,
   listSessionDirs,
   exists: (p) => existsSync(p),
 });
 
-// Fail soft with a clear message if the PRIMARY Herdr isn't reachable at startup. Other sessions come
-// up lazily via refresh(); an unreachable one just reads `reachable:false` in the sessions list.
+// Fail soft with a clear message if the PRIMARY multiplexer isn't reachable at startup. Other
+// sessions come up lazily via refresh(); an unreachable one just reads `reachable:false` in the list.
 const primary = registry.get();
 if (primary && !(await primary.herdr.reachable())) {
   console.warn(
-    `[bridge] cannot reach Herdr socket at ${cfg.socketPath} yet — ` +
-      `will keep retrying on the poll loop. Is the Herdr server running?`,
+    `[bridge] cannot reach ${cfg.mux} at ${cfg.mux === DEFAULT_MUX ? cfg.socketPath : cfg.muxEndpoint || "its default server"} yet — ` +
+      `will keep retrying on the poll loop. Is it running?`,
   );
 }
 

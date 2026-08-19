@@ -38,19 +38,19 @@ push or a poll is what the two `push*Events` capabilities below declare.
 | Capability | Consumed by | Herdr | tmux | zellij |
 | --- | --- | --- | --- | --- |
 | `paneGrid` | `GET /api/pane/:id` | `pane.read` with `format:"ansi"` (**API**) | `capture-pane -p -e` — SGR intact (**T**) | `dump-screen -a -p <id>` (**Z**) |
-| `gridScrollback` | the mirror's "Load older" | yes, bounded by the pane's ring; an alt-screen pane reports its viewport only (**API**, `bridge/types.ts` `readableLines`) | **?** `capture-pane` documents `-S`; unprobed | `dump-screen --full` (**Z**) — screen scrollback, **not** history; see below |
+| `gridScrollback` | the mirror's "Load older" | yes, bounded by the pane's ring; an alt-screen pane reports its viewport only (**API**, `bridge/types.ts` `readableLines`) | `capture-pane -S -N` — 51 lines behind a 24-line viewport (**T**); depth is `history_size + pane_height` | `dump-screen --full` (**Z**) — screen scrollback, **not** history; see below |
 | `agentDetection` | the `agents`/`shellPanes` split, triage sort | agent name + status + status-change events (**API** § Object shapes, § Event stream) | **no** — only `pane_current_command` / `pane_title` (**T**) | **no** — nothing in the probe reports an agent (**Z**) |
 | `agentSessionRef` | `GET /api/pane/:id/history` | the pane record carries the session an agent named (**API** § Object shapes) | **no** (**T**) — history is declared absent, not empty | **no** (**Z**) |
 | `typeText` | `POST …/reply` step 1 | `pane.send_text` (**API**) | `send-keys -t <pane> 'text'` (**T**) | `write-chars <CHARS> -p <id>` (**Z**) |
-| `sendKeys` | `POST …/reply` step 2, `POST …/keys` | `+`-joined, e.g. `ctrl+c`; paging/edit keys refused (**API** § key grammar) | `C-c`, `S-Tab` — its own names (**T**) | `send-keys "Ctrl a"`, space-separated (**Z**) |
-| `renamePane` | `POST …/rename` | `pane.rename`, `null` clears (**API** § Rename) | **?** `pane_title` exists; the setting verb is unprobed | `rename-pane` (**Z**); clearing unprobed |
-| `closePane` | `POST …/close` | `pane.close` (**API** § Close) | **?** unprobed | `close-pane` (**Z**) |
-| `createTab` | `POST /api/tab` | `tab.create`, returns the fresh shell (**API**) | **?** unprobed | **?** `new-pane` exists; a new *tab* is unprobed (**Z**) |
-| `renameTab` | `POST /api/tab/:id/rename` | `tab.rename`, non-null only (**API** § Rename) | **?** unprobed | `rename-tab-by-id` (**Z**) |
-| `closeTab` | `POST /api/tab/:id/close` | `tab.close` — a bulk pane-close (**API** § Close) | **?** unprobed | `close-tab-by-id` (**Z**) |
-| `createSpace` | `POST /api/workspace` | `workspace.create` (**API**) | **?** a tmux *session* is the operator's configuration, so creating one may be out of scope (**T**, decision 1) | **?** same shape — a zellij session is configuration (**Z**) |
+| `sendKeys` | `POST …/reply` step 2, `POST …/keys` | `+`-joined, e.g. `ctrl+c`; paging/edit keys refused (**API** § key grammar) | `C-c`, `BTab`, `PPage`, `DC` — its own names, and it sends the whole alphabet including the six Herdr refuses (**T**); it has no Super/Command key, so a `meta` chord is refused | `send-keys "Ctrl a"`, space-separated (**Z**) |
+| `renamePane` | `POST …/rename` | `pane.rename`, `null` clears (**API** § Rename) | `select-pane -T <label>`, and `-T ""` clears (**T**) — tmux's ONE title slot, which is why `terminalTitle` is never reported on tmux | `rename-pane` (**Z**); clearing unprobed |
+| `closePane` | `POST …/close` | `pane.close` (**API** § Close) | `kill-pane` (**T**) | `close-pane` (**Z**) |
+| `createTab` | `POST /api/tab` | `tab.create`, returns the fresh shell (**API**) | `new-window -d -P -F` returns the fresh pane's ids (**T**); `-d` so nothing the operator is looking at moves | **?** `new-pane` exists; a new *tab* is unprobed (**Z**) |
+| `renameTab` | `POST /api/tab/:id/rename` | `tab.rename`, non-null only (**API** § Rename) | `rename-window -t @N -- <label>` (**T**) | `rename-tab-by-id` (**Z**) |
+| `closeTab` | `POST /api/tab/:id/close` | `tab.close` — a bulk pane-close (**API** § Close) | `kill-window` (**T**) — and it ends the session too when it was the last window, exactly as tmux itself does | `close-tab-by-id` (**Z**) |
+| `createSpace` | `POST /api/workspace` | `workspace.create` (**API**) | `new-session -d -P -F` (**T**) — claimed: it is one verb, it is detached, and a duplicate name comes back as `refused` with tmux's own sentence | **?** same shape — a zellij session is configuration (**Z**) |
 | `pushTopologyEvents` | `bridge/event-poker.ts` | full event catalog: workspace/tab/pane created, closed, renamed (**API** § Event stream) | control mode pushes `%window-add`, `%session-changed` (**T**) | **no** — nothing announces topology; the adapter runs a bounded poll (**Z**) |
-| `pushPaneEvents` | `bridge/event-poker.ts` | `pane.agent_status_changed`, pane-scoped (**API** § Event stream) | `%output` (**T**) | `subscribe --ansi -f json -p <id>` (**Z**) |
+| `pushPaneEvents` | `bridge/event-poker.ts` | `pane.agent_status_changed`, pane-scoped (**API** § Event stream) | `%output`, but only for the panes of the session a control client is ATTACHED to (**T**) — so the adapter attaches one per watched session, capped, and a 5-second listing is the floor | `subscribe --ansi -f json -p <id>` (**Z**) |
 
 ### Deliberately not capabilities
 
@@ -61,6 +61,35 @@ push or a poll is what the two `push*Events` capabilities below declare.
 - **A single key.** `sendKeys` is one door; the keys behind it that a given multiplexer refuses are
   listed in that adapter's `unsupportedKeys` (Herdr's are enumerated in **API** § key grammar). One
   missing key must not close the door.
+
+## Pointing a collie at a multiplexer
+
+Three keys, and the default is that nothing changes for anyone. `bridge/config.ts` resolves them once
+at startup and `bridge/index.ts` is the only place they become an adapter.
+
+| Key | Default | What it says |
+| --- | --- | --- |
+| `COLLIE_MUX` | `herdr` | Which adapter drives this collie. An unknown name refuses to start, with the valid ones in the message. |
+| `COLLIE_MUX_ENDPOINT_<NAME>` | — | Where that adapter's multiplexer lives, in **its** words. Herdr reads `HERDR_SOCKET_PATH` instead, so nothing about an existing deployment moves. For tmux: `COLLIE_MUX_ENDPOINT_TMUX` is a server **socket name** (`-L`) when it has no `/`, a **socket path** (`-S`) when it does, and **empty means tmux's own default server**. |
+| `COLLIE_TMUX_BIN` | — | Absolute path to `tmux`, when it is somewhere unusual. Empty probes fixed paths — never `PATH`, which a systemd unit and a Herdr plugin action do not share with the operator's shell. |
+
+Multi-session discovery (`COLLIE_MULTI_SESSION`) walks Herdr's config root for Herdr sockets, so it is
+Herdr's own shape and is inert under any other multiplexer: a tmux collie fronts the one tmux server
+its endpoint names.
+
+### What a space and a tab ARE, per multiplexer
+
+The contract's nouns are space → tab → pane. Each adapter says which of its own levels those are, and
+the answer is part of the adapter's header rather than folklore:
+
+| Collie | Herdr | tmux | zellij |
+| --- | --- | --- | --- |
+| space | workspace (`w6`) | **session** (`$0`) | **?** |
+| tab | tab (`t3`) | **window** (`@3`) | tab (**Z**) |
+| pane | pane (`w6:p3`) | **pane** (`%7`) | terminal (`terminal_1`) |
+
+tmux's three levels are Collie's three levels, and every id is carried through unchanged — which is
+what makes them stable across a rename (a `session_id` survives what a `session_name` does not).
 
 ## Contract-owned rules
 
