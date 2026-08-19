@@ -28,6 +28,7 @@ import { declareCapabilities } from "../capabilities.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxAck,
+  muxGone,
   muxOk,
   muxRefused,
   muxUnreachable,
@@ -38,6 +39,7 @@ import {
   type MuxGridRequest,
   type MuxOutcome,
   type MuxPane,
+  type MuxRefusalOutcome,
   type MuxSnapshot,
   type MuxSpace,
   type MuxSpaceRequest,
@@ -51,6 +53,7 @@ import {
   HerdrClient,
   paneAgentSession,
   type CreatedShell,
+  type HerdrRpc,
   type WirePane,
   type WireTab,
   type WireWorkspace,
@@ -113,6 +116,22 @@ function reason<T>(err: T): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * The Herdr error codes that mean "it existed and does not any more" (HERDR_API.md § Errors).
+ *
+ * Matched on the message because `client.ts` folds Herdr's `{code, message}` into one Error — the
+ * code is the first token of what it throws (`herdr pane.close: pane_not_found: …`). This is the one
+ * transport failure the contract distinguishes: `gone` tells the operator their screen is stale and
+ * to go back, where `unreachable` invites a retry that can only fail the same way (types.ts).
+ */
+const GONE_CODES: readonly string[] = ["pane_not_found", "tab_not_found", "workspace_not_found"];
+
+/** Which refusal an exception off the socket is: a dead pane/tab, or a multiplexer that did not answer. */
+function transportRefusal<T>(err: T): MuxRefusalOutcome {
+  const detail = reason(err);
+  return GONE_CODES.some((code) => detail.includes(code)) ? muxGone(detail) : muxUnreachable(detail);
+}
+
 export class HerdrMux implements MuxAdapter {
   readonly mux = HERDR_MUX;
   readonly capabilities = HERDR_CAPABILITIES;
@@ -122,7 +141,7 @@ export class HerdrMux implements MuxAdapter {
   // rather than engine state: which methods a server has is a fact about this multiplexer.
   private supportsSessionSnapshot = true;
 
-  constructor(private readonly client: HerdrClient) {}
+  constructor(private readonly client: HerdrRpc) {}
 
   /** Reachability for the connected/disconnected banner — one cheap list call. */
   reachable(): Promise<boolean> {
@@ -195,7 +214,7 @@ export class HerdrMux implements MuxAdapter {
         revision: read.revision,
       });
     } catch (err) {
-      return muxUnreachable(reason(err));
+      return transportRefusal(err);
     }
   }
 
@@ -250,7 +269,7 @@ export class HerdrMux implements MuxAdapter {
       const created = await this.client.createTab(request.spaceId, opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
-      return muxUnreachable(reason(err));
+      return transportRefusal(err);
     }
   }
 
@@ -270,7 +289,7 @@ export class HerdrMux implements MuxAdapter {
       const created = await this.client.createWorkspace(opts);
       return muxOk(toCreatedPane(created));
     } catch (err) {
-      return muxUnreachable(reason(err));
+      return transportRefusal(err);
     }
   }
 
@@ -301,7 +320,7 @@ export class HerdrMux implements MuxAdapter {
       await call();
       return muxAck();
     } catch (err) {
-      return muxUnreachable(reason(err));
+      return transportRefusal(err);
     }
   }
 }
