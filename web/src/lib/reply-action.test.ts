@@ -202,6 +202,33 @@ describe("sendGuardedReply", () => {
     ]);
   });
 
+  // GHOST TEXT must never vouch for a send. A newer Claude Code paints a generated "suggested next
+  // prompt" into an otherwise empty box, faint (SGR 2). `draftCarriesSend` accepts any draft whose
+  // visible characters appear contiguously in the sent text, so a suggestion that happens to be an
+  // 8+-character substring of the message would satisfy the guard against a box our text never
+  // reached — Collie would fire the submit key and report `sent` for a message that was lost.
+  //
+  // The defense is that the ghost never becomes a draft at all: the adapter classifies it by STYLE
+  // and returns null, so `draftCarriesSend` is never handed one to be fooled by. This drives the whole
+  // guard rather than the predicate, because the predicate on its own would still say `true` here —
+  // the fix has to hold at the seam that produces its argument.
+  it("a faint suggestion that is a substring of the send never verifies it", async () => {
+    const SENT = "fix the parser bug in the tokenizer";
+    // The suggestion is a clean 14-character prefix of what we typed: it clears MIN_MATCH_CHARS and
+    // matches contiguously, so nothing but the ghost classification rejects it.
+    expect(draftCarriesSend(SENT, "fix the parser")).toBe(true);
+    const calls = harness(
+      () => `some output\n${BOX_RULE}\n❯ \x1b[0m\x1b[2mfix the parser\x1b[0m\n${BOX_RULE}`,
+    );
+
+    const out = await sendGuardedReply({ paneId: "w1:p1", text: SENT, agent: "claude", ...instant });
+
+    expect(out.status).toBe("stalled");
+    // The text was typed (the pre-flight sees a real, typeable box — a ghost box IS one), but the
+    // submit key was withheld and the caller keeps the draft.
+    expect(calls).toEqual([{ text: SENT, submit: false }]);
+  });
+
   // The PRE-FLIGHT (.adr/0009). The verify-after guard below already kept Enter from answering a
   // dialog; this keeps the MESSAGE from being deposited in one, which is what the `/model` picker
   // exposed — no input box at all, so the text went into the picker before anything noticed.

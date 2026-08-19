@@ -47,6 +47,12 @@ const NEUTRAL = new Set([
   // negative control for the generic menu grammar — its statusline is `·`-separated like a key-hint
   // footer, and the input-box gate is the only thing that keeps it raw.
   "claude--menu-model-picker-dismissed.txt",
+  // GHOST TEXT: an input box holding the generated "suggested next prompt" Claude paints when the box
+  // is empty, and the same box after typing over it. Both are ordinary idle screens — composer chrome,
+  // never a dialog. They exist to pin how the suggestion is PAINTED (faint, SGR 2), which is the only
+  // thing separating it from a draft; see harness/claude/chrome.ts.
+  "claude--ghost-suggestion.txt",
+  "claude--ghost-typed-over.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)
