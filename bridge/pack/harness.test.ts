@@ -24,7 +24,8 @@ import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
 import { mintIdentity, randomToken } from "./identity.ts";
 import { PACK_HELLO_PATH, PACK_LEAVE_PATH } from "./router.ts";
 import { bodyDigest, canonicalRequest, signRequest, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
-import { peerListenerTls, type PackRequestInit, type PackTlsOptions } from "./transport.ts";
+import { PeerClient, type PackLink } from "./peer-client.ts";
+import { dialTls, peerListenerTls, type PackRequestInit, type PackTlsOptions } from "./transport.ts";
 import { parseTrustStore, TrustStore, TRUST_STORE_FILENAME, type TrustStoreData } from "./trust-store.ts";
 import { collieVersionBare } from "../version.ts";
 
@@ -568,6 +569,133 @@ describe("a peer that is not there", () => {
   }, 60_000);
 });
 
+// ── §10.4: what a cold handshake costs, and what it costs to abort one ───────
+//
+// THE LIVE FINDING THIS PINS. A healthy peer behind a Tailscale DERP relay (≈350 ms RTT, TLS
+// handshake measured at 1.9 s) read `unreachable · hello: timed out after 1200ms` forever. These
+// tests reproduce that hermetically — a real pinned peer, dialled through a TCP proxy that counts
+// accepts and injects one-way latency — and pin the three facts the fix rests on.
+
+/** A counting, latency-injecting TCP proxy in front of `port`. Every accept is one new handshake. */
+function startLatencyProxy(port: number, delayMs: number) {
+  interface Pipe {
+    up: { write: (b: Uint8Array) => void; end: () => void } | null;
+    pending: Uint8Array[];
+  }
+  const pipes = new Map<object, Pipe>();
+  const state = { accepts: 0 };
+  const later = (fn: () => void): void => {
+    if (delayMs === 0) fn();
+    else setTimeout(fn, delayMs);
+  };
+  const listener = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      open(sock) {
+        state.accepts += 1;
+        const pipe: Pipe = { up: null, pending: [] };
+        pipes.set(sock, pipe);
+        void Bun.connect({
+          hostname: "127.0.0.1",
+          port,
+          socket: {
+            data: (_s, d) => {
+              const copy = new Uint8Array(d);
+              later(() => sock.write(copy));
+            },
+            close: () => {
+              sock.end();
+            },
+            error: () => {
+              sock.end();
+            },
+          },
+        }).then((up) => {
+          pipe.up = up;
+          for (const chunk of pipe.pending) up.write(chunk);
+          pipe.pending = [];
+          return undefined;
+        });
+      },
+      data(sock, d) {
+        const pipe = pipes.get(sock);
+        if (pipe === undefined) return;
+        const copy = new Uint8Array(d);
+        later(() => {
+          if (pipe.up === null) pipe.pending.push(copy);
+          else pipe.up.write(copy);
+        });
+      },
+      close(sock) {
+        const pipe = pipes.get(sock);
+        pipes.delete(sock);
+        pipe?.up?.end();
+      },
+      error() {},
+    },
+  });
+  return { state, port: listener.port ?? 0, stop: () => listener.stop(true) };
+}
+
+/** A real lead-side client aimed at `address`, with the two budgets under test. */
+function clientForBudgets(timeoutMs: number, helloTimeoutMs?: number): PeerClient {
+  const from = lead.store()!;
+  const to = peer.store()!;
+  return new PeerClient({
+    self: from.self.memberId,
+    secret: () => from.pack!.secret,
+    timeoutMs,
+    helloTimeoutMs,
+    fetch: packFetch,
+    // The SHIPPED pin, built the way bridge/index.ts builds it — including the fresh object per
+    // dial, which is the thing that could plausibly have defeated connection reuse.
+    tls: () => dialTls(from, { certPem: to.self.certPem }) ?? undefined,
+  });
+}
+
+describe("a cold handshake priced above the budget", () => {
+  test("Bun's fetch REUSES a pinned-TLS connection, even with a fresh `tls` object per dial", async () => {
+    const proxy = startLatencyProxy(peer.port, 0);
+    const link: PackLink = { memberId: peer.store()!.self.memberId, address: `127.0.0.1:${proxy.port}` };
+    try {
+      const client = clientForBudgets(5000);
+      for (let i = 0; i < 5; i++) expect((await client.hello(link)).ok).toBe(true);
+      // Five requests, ONE handshake. This is why the fix is not "make the wiring pool" — it does.
+      expect(proxy.state.accepts).toBe(1);
+    } finally {
+      proxy.stop();
+    }
+  }, 60_000);
+
+  test("…but an ABORTED handshake leaves nothing pooled, so a strict budget never bootstraps", async () => {
+    // 1 s of injected RTT prices the cold handshake above the 1200 ms poll budget — the DERP case.
+    const proxy = startLatencyProxy(peer.port, 500);
+    const link: PackLink = { memberId: peer.store()!.self.memberId, address: `127.0.0.1:${proxy.port}` };
+    try {
+      const strict = clientForBudgets(1200);
+      for (let i = 0; i < 3; i++) {
+        const outcome = await strict.hello(link);
+        expect(outcome.ok).toBe(false);
+        expect(!outcome.ok && outcome.state === "unreachable" && outcome.timedOut).toBe(true);
+      }
+      // Three attempts, three fresh handshakes, no progress: "unreachable forever", reproduced.
+      expect(proxy.state.accepts).toBe(3);
+
+      // One patient probe breaks the deadlock — and the connection it warms is the one the strict
+      // budget then rides. Both halves of §10.4 in two assertions.
+      const patient = clientForBudgets(1200, 5000);
+      expect((await patient.hello(link)).ok).toBe(true);
+      expect(proxy.state.accepts).toBe(4);
+      expect((await strict.hello(link)).ok).toBe(true);
+      expect((await strict.snapshot(link)).ok).toBe(true);
+      expect(proxy.state.accepts).toBe(4);
+    } finally {
+      proxy.stop();
+    }
+  }, 60_000);
+});
+
 // ── §8.6: signed membership requests ─────────────────────────────────────────
 
 describe("signed membership requests", () => {
@@ -896,6 +1024,7 @@ describe("Bun-capability canaries (the pin can be enforced but not read; a reloa
     }
   });
 });
+
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

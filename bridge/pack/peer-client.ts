@@ -53,6 +53,52 @@ export function packTimeoutBudget(
   return Math.min(wanted, ceiling);
 }
 
+/** How long a `hello` PROBE may take before the lead calls a member gone (§10.4), by default. */
+export const DEFAULT_PACK_HELLO_TIMEOUT_MS = 5000;
+/** Operator override for the probe budget. A pack key, so it lives here and not on `Config`. */
+export const PACK_HELLO_TIMEOUT_ENV = "COLLIE_PACK_HELLO_TIMEOUT_MS";
+/**
+ * A hard stop on the probe budget. It exists only so a typo (`50000000`) cannot wedge a one-shot verb
+ * like `pack status` for the rest of the afternoon; nothing on the poll path waits on this budget, so
+ * it is a usability bound and not a safety one.
+ */
+const HELLO_BUDGET_CEILING_MS = 60_000;
+
+/**
+ * The budget for a `hello` PROBE — the call that decides §10.2's **verdict**, and the one budget in
+ * this file that the poll fraction does NOT clamp.
+ *
+ * ── WHY THIS EXISTS (measured, 2026-08-18) ───────────────────────────────────
+ * A healthy peer behind a Tailscale DERP relay (≈350 ms RTT, TLS handshake measured at 1.9 s) read
+ * `unreachable · hello: timed out after 1200ms` forever. The arithmetic, not the peer, was the fault:
+ *
+ *   • Bun's `fetch` DOES pool a pinned-TLS connection, even though `tls` rides each init and this
+ *     module hands it a fresh object per dial — 5 sequential dials cost 1 TCP accept, measured
+ *     through a counting proxy (`harness.test.ts`, "a cold handshake priced above the budget").
+ *   • But an ABORTED attempt leaves no pooled connection behind. So when the cold handshake alone
+ *     costs more than the whole per-request budget, every attempt aborts mid-handshake, the next one
+ *     starts cold again, and the link never bootstraps. Four attempts, four accepts, four timeouts.
+ *   • One patient call breaks the deadlock: it completes the handshake, and every strict-budget
+ *     request after it rides the warm connection at one RTT.
+ *
+ * So the verdict gets its own budget and the poll keeps the strict one. A data request that misses
+ * {@link packTimeoutBudget} still means "stale this poll" — never "peer gone" — and the probe that
+ * decides "gone" is allowed to pay for a handshake. Clamping it to the poll fraction would restore
+ * the deadlock, which is precisely why it is not clamped.
+ *
+ * It is floored at the data budget so an operator cannot make the verdict MORE impatient than the
+ * poll it is meant to outlast.
+ */
+export function packHelloBudget(
+  pollMs: number,
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env[PACK_HELLO_TIMEOUT_ENV];
+  const parsed = raw === undefined ? NaN : Number.parseInt(raw.trim(), 10);
+  const wanted = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PACK_HELLO_TIMEOUT_MS;
+  return Math.max(packTimeoutBudget(pollMs, env), Math.min(wanted, HELLO_BUDGET_CEILING_MS));
+}
+
 /** Where a member is dialled. `address` is the trust store's hint — never a client-supplied value. */
 export interface PackLink {
   readonly memberId: string;
@@ -82,6 +128,16 @@ export type PeerFailure =
        * and the operator sends it twice. Reads ignore this field; nothing changed either way.
        */
       readonly attempted?: boolean;
+      /**
+       * `true` when this call died on its own budget rather than on the network — the difference
+       * between "the link is slow" and "the host is not there".
+       *
+       * It is the one distinction §10.4 can make CHEAPLY: the abort is this process's own doing, so
+       * no extra probe, no extra socket and no guess is involved. A refused connection, a DNS
+       * failure and a TLS refusal all leave it absent, because those are answers from the world.
+       * `PackLead` reads it to decide which failures deserve a patient re-probe.
+       */
+      readonly timedOut?: boolean;
     }
   /** `X-Pack-Protocol` skew (§7) — NOT retried on the cadence; probed on a slow backoff. */
   | {
@@ -154,6 +210,12 @@ export interface PeerClientDeps {
   readonly secret: () => string | null;
   /** Per-peer budget in ms. Build it with {@link packTimeoutBudget}, never by hand. */
   readonly timeoutMs: number;
+  /**
+   * The budget for {@link PeerClient.hello} alone. Build it with {@link packHelloBudget}, never by
+   * hand. Absent ⇒ `hello` shares the strict data budget, which is the pre-2026-08-18 behaviour and
+   * the deadlock that doc describes — so every production wiring supplies it.
+   */
+  readonly helloTimeoutMs?: number;
   readonly fetch: PackFetch;
   readonly now?: () => number;
   /** The operator's device id, forwarded for the peer's audit trail (§6, §12). Off ⇒ `null`. */
@@ -225,9 +287,17 @@ export class PeerClient {
     this.now = deps.now ?? Date.now;
   }
 
-  /** `GET /pack/v1/hello` — liveness, version and the peer's member id (§5). */
+  /**
+   * `GET /pack/v1/hello` — liveness, version and the peer's member id (§5).
+   *
+   * **The one call that runs on the patient budget** ({@link packHelloBudget}). It is the verdict
+   * probe: `pack status` renders it, `reconnect` confirms with it, and the lead re-probes a
+   * timed-out peer with it. It is never on the poll's hot path, so paying for a cold handshake here
+   * costs the phone nothing — and the connection it warms is the one the next strict-budget snapshot
+   * rides.
+   */
   async hello(link: PackLink): Promise<PeerOutcome<HelloResult>> {
-    const outcome = await this.json(link, "hello");
+    const outcome = await this.json(link, "hello", undefined, {}, this.deps.helloTimeoutMs);
     if (!outcome.ok) return outcome;
     const body = asRecord(outcome.value);
     const member = typeof body?.member === "string" ? body.member : null;
@@ -255,8 +325,9 @@ export class PeerClient {
     route: string,
     params?: Record<string, string>,
     init: PackRequestInit = {},
+    budgetMs?: number,
   ): Promise<PeerOutcome<JsonValue>> {
-    const outcome = await this.raw(link, route, params, init);
+    const outcome = await this.raw(link, route, params, init, budgetMs);
     if (!outcome.ok) return outcome;
     try {
       const value: JsonValue = await outcome.value.json();
@@ -305,8 +376,9 @@ export class PeerClient {
     route: string,
     params?: Record<string, string>,
     init: PackRequestInit = {},
+    budgetMs?: number,
   ): Promise<PeerOutcome<Response>> {
-    return this.dial(link, route, params, init, "consumed");
+    return this.dial(link, route, params, init, "consumed", budgetMs);
   }
 
   /**
@@ -320,7 +392,12 @@ export class PeerClient {
     params: Record<string, string> | undefined,
     init: PackRequestInit,
     mode: "consumed" | "passthrough",
+    // The one knob a caller may widen, and only `hello` does: the verdict probe's patient budget
+    // (§10.4). Everything else runs on the strict per-poll one, which is what keeps a slow peer from
+    // stalling the lead's snapshot — a rule this parameter must never be used to bend.
+    budgetMs?: number,
   ): Promise<PeerOutcome<Response>> {
+    const timeoutMs = budgetMs ?? this.deps.timeoutMs;
     const secret = this.deps.secret();
     if (secret === null || secret === "") {
       // Never send an unauthenticated pack request. A missing secret is a local fault (not in a pack,
@@ -357,7 +434,7 @@ export class PeerClient {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.deps.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
     try {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
@@ -371,13 +448,15 @@ export class PeerClient {
       // Timeout, connection refused, DNS, TLS — one state, because the phone's answer is the same in
       // all of them: last-good state, marked stale (§10.2). The peer's address is named; the secret
       // never appears in a reason string, and nothing here interpolates one.
-      const reason = controller.signal.aborted
-        ? `timed out after ${this.deps.timeoutMs}ms`
-        : errorReason(err);
+      const aborted = controller.signal.aborted;
+      const reason = aborted ? `timed out after ${timeoutMs}ms` : errorReason(err);
       // `attempted` is left absent, i.e. "possibly sent". The runtime does not tell us whether the
       // request had already been written when the socket died, and §10.3 is explicit that an
       // unresolvable ambiguity is surfaced rather than guessed.
-      return this.fail({ state: "unreachable", reason: `${route}: ${reason}` });
+      //
+      // `timedOut` is NOT the same ambiguity: the abort is this process's own clock firing, so it is
+      // known rather than guessed, and it is what lets §10.4 tell a slow link from a dead host.
+      return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
     } finally {
       clearTimeout(timer);
     }

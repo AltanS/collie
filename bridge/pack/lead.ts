@@ -98,6 +98,14 @@ export interface PackLeadDeps {
    * peer's own status codes reach the phone intact (§9.1).
    */
   readonly proxy: ForwardTransport;
+  /**
+   * `PeerClient.hello` — the VERDICT probe (§10.4), on the patient budget.
+   *
+   * Injected and optional for the same reason `snapshot` is injected: the decision logic must be
+   * exercisable without a socket, and a lead built without one simply keeps the pre-2026-08-18
+   * behaviour (a timed-out sweep is the whole verdict). Every production wiring supplies it.
+   */
+  readonly hello?: (link: PackLink) => Promise<PeerOutcome<{ readonly version: string | null }>>;
   /** This collie's member id and label — the `servers[0]` entry (§9.2). */
   readonly self: { readonly id: string; readonly name: string };
   /**
@@ -122,6 +130,8 @@ export class PackLead {
   private readonly memory = new Map<string, PeerMemory>();
   private readonly now: () => number;
   private sweeping = false;
+  /** Members with a verdict probe in flight. At most one per member, ever — see {@link probe}. */
+  private readonly probing = new Set<string>();
 
   constructor(private readonly deps: PackLeadDeps) {
     this.now = deps.now ?? Date.now;
@@ -154,8 +164,16 @@ export class PackLead {
       if (due.length === 0) return;
 
       const outcomes = await sweepPeers(due, (link) => this.deps.snapshot(link));
-      for (const [memberId, outcome] of outcomes) {
+      for (const link of due) {
+        const outcome = outcomes.get(link.memberId);
+        if (outcome === undefined) continue;
+        const memberId = link.memberId;
         this.deps.registry.record(memberId, outcome);
+        // A sweep that died on its OWN clock has learned nothing about the machine (§10.4). Re-ask on
+        // the patient budget, off this tick — never awaited, so the strict budget still bounds the
+        // poll exactly as §10.1 requires. A refusal, a reset or a DNS failure is skipped: those are
+        // answers from the world, and re-asking them slowly would only be slower.
+        if (!outcome.ok && outcome.state === "unreachable" && outcome.timedOut === true) this.probe(link);
         const previous = this.memory.get(memberId);
         const next = foldPeerMemory(previous, outcome, this.now());
         this.memory.set(memberId, next);
@@ -173,6 +191,44 @@ export class PackLead {
       console.warn(`[pack] sweep failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.sweeping = false;
+    }
+  }
+
+  /**
+   * Ask one member the verdict question, patiently, off the poll's hot path (§10.4).
+   *
+   * **Not a second timer** (§10.1, §11): nothing here arms a clock. The probe is started by a sweep
+   * that just timed out and is never awaited by it, so a tick still costs one strict budget. At most
+   * one probe per member is in flight — the patient budget outlasts several polls, and stacking one
+   * probe per tick would turn a slow peer into a fan-out of dials at exactly the wrong moment.
+   *
+   * A probe that lands after the member has been pruned is dropped: a `leave` mid-flight must not
+   * resurrect a row the registry has already forgotten.
+   */
+  private probe(link: PackLink): void {
+    const hello = this.deps.hello;
+    if (hello === undefined || this.probing.has(link.memberId)) return;
+    this.probing.add(link.memberId);
+    void this.runProbe(hello, link);
+  }
+
+  /** The probe's body. Separate so {@link probe} can start it without awaiting it. */
+  private async runProbe(
+    hello: NonNullable<PackLeadDeps["hello"]>,
+    link: PackLink,
+  ): Promise<void> {
+    try {
+      const outcome = await hello(link);
+      if (this.deps.registry.links().some((l) => l.memberId === link.memberId)) {
+        this.deps.registry.recordProbe(link.memberId, outcome, { version: outcome.ok ? outcome.value.version : null });
+      }
+    } catch (err) {
+      // Defensive, exactly as `sweep` is: failure is a value everywhere in the pack client, so a
+      // throw here is a bug in an injected transport — and it must not become an unhandled rejection
+      // that takes the bridge down.
+      console.warn(`[pack] probe failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.probing.delete(link.memberId);
     }
   }
 

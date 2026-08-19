@@ -70,7 +70,11 @@ function localBody(): SnapshotResponse {
 }
 
 /** A lead over `members`, with a scripted per-call outcome and a call log. */
-function lead(members: TrustedMember[], script: (link: PackLink, call: number) => PeerOutcome<unknown>) {
+function lead(
+  members: TrustedMember[],
+  script: (link: PackLink, call: number) => PeerOutcome<unknown>,
+  opts: { hello?: (link: PackLink) => Promise<PeerOutcome<{ readonly version: string | null }>> } = {},
+) {
   const roster = [...members];
   const calls: string[] = [];
   let clock = NOW;
@@ -86,6 +90,7 @@ function lead(members: TrustedMember[], script: (link: PackLink, call: number) =
       return script(link, calls.filter((c) => c === link.memberId).length);
     },
     proxy: neverProxy,
+    hello: opts.hello,
     self: { id: "desk", name: "the herd" },
     now: () => clock,
   });
@@ -382,5 +387,109 @@ describe("forward — the lead's per-pane hop (M4/05)", () => {
     // The peer's ETag, not one this build computed — the lead adds nothing (§9.1).
     expect(res.headers.get("etag")).toBe('"peer"');
     expect(await res.json()).toEqual({ lines: ["hi"] });
+  });
+});
+
+// ── §10.4: the verdict probe ─────────────────────────────────────────────────
+
+describe("a sweep that died on its own clock earns a patient re-ask (§10.4)", () => {
+  /** The sweep outcome the DERP finding produces: our own budget fired, the peer said nothing. */
+  const budgetMissed: PeerOutcome<unknown> = {
+    ok: false,
+    state: "unreachable",
+    reason: "snapshot: timed out after 1200ms",
+    timedOut: true,
+    receivedAt: NOW,
+  };
+  const helloOk: PeerOutcome<{ version: string | null }> = {
+    ok: true,
+    value: { version: "1.0.0" },
+    status: 200,
+    member: "laptop",
+    receivedAt: NOW,
+    date: null,
+  };
+
+  test("the probe's answer turns a slow member back into a reachable one", async () => {
+    const probed: string[] = [];
+    const h = lead([member({ memberId: "laptop" })], (_l, call) => (call === 1 ? ok(body) : budgetMissed), {
+      hello: (link) => {
+        probed.push(link.memberId);
+        return Promise.resolve(helloOk);
+      },
+    });
+    await h.lead.sweep(); // a good poll first, so there is a real `lastSeenAt` to protect
+    await h.lead.sweep(); // …then the timeout that produced the live "unreachable forever"
+
+    await Bun.sleep(5); // the probe is never awaited by the sweep — that is the point of it
+    expect(probed).toEqual(["laptop"]);
+    const state = h.registry.state("laptop");
+    expect(state.health).toBe("reachable");
+    expect(state.version).toBe("1.0.0");
+    // Reachable, but NOT refreshed: the phone still renders this peer's panes as stale.
+    expect(state.lastSeenAt).toBe(NOW);
+  });
+
+  test("a failure that is NOT our own clock is never re-asked slowly", async () => {
+    // A refusal, a reset or a DNS failure is an answer from the world. Asking it again patiently
+    // would only be slower, and would spend the patient budget on a peer that already answered.
+    const probed: string[] = [];
+    const h = lead([member({ memberId: "laptop" })], () => down, {
+      hello: (link) => {
+        probed.push(link.memberId);
+        return Promise.resolve(helloOk);
+      },
+    });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(probed).toEqual([]);
+  });
+
+  test("at most one probe per member is in flight, however many ticks time out", async () => {
+    // The patient budget outlasts several polls. One probe per tick would turn a slow peer into a
+    // fan-out of dials at exactly the moment the link is least able to carry them.
+    let resolveHello: (v: PeerOutcome<{ version: string | null }>) => void = () => {};
+    const probed: string[] = [];
+    const h = lead([member({ memberId: "laptop" })], () => budgetMissed, {
+      hello: (link) => {
+        probed.push(link.memberId);
+        return new Promise((resolve) => {
+          resolveHello = resolve;
+        });
+      },
+    });
+    await h.lead.sweep();
+    await h.lead.sweep();
+    await h.lead.sweep();
+    expect(probed).toEqual(["laptop"]);
+
+    resolveHello(helloOk);
+    await Bun.sleep(5);
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(probed).toEqual(["laptop", "laptop"]);
+  });
+
+  test("a probe that lands after the member is gone does not resurrect its row", async () => {
+    let resolveHello: (v: PeerOutcome<{ version: string | null }>) => void = () => {};
+    const h = lead([member({ memberId: "laptop" })], () => budgetMissed, {
+      hello: () =>
+        new Promise((resolve) => {
+          resolveHello = resolve;
+        }),
+    });
+    await h.lead.sweep();
+    h.roster.length = 0; // a `leave` mid-flight
+    await h.lead.sweep();
+    resolveHello(helloOk);
+    await Bun.sleep(5);
+    expect(h.registry.list()).toEqual([]);
+  });
+
+  test("a lead wired without a probe keeps the pre-amendment behaviour", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => budgetMissed);
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.registry.state("laptop").health).toBe("unreachable");
   });
 });

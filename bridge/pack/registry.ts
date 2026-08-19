@@ -79,7 +79,14 @@ export interface PeerState {
   readonly health: PeerHealth;
   /** The lead's receipt time of the last successful call. `null` until one lands (§10). */
   readonly lastSeenAt: number | null;
-  /** The failure reason, verbatim, for the operator. `null` while reachable. */
+  /**
+   * The failure reason, verbatim, for the operator. `null` while reachable **and keeping up**.
+   *
+   * A member can be reachable and still carry one: {@link PackRegistry.recordProbe}'s slow-link note
+   * (§10.4), for a peer that answers a patient `hello` but whose snapshot misses the strict poll
+   * budget. That is not a failure — it is the honest sentence for "the machine is there, its data is
+   * old", which is exactly what `reachable: true` beside an old `lastSeenAt` renders.
+   */
   readonly reason: string | null;
   /**
    * The version this member last reported over `hello` (§5), or `null` when it has reported none —
@@ -214,6 +221,39 @@ export class PackRegistry {
   }
 
   /**
+   * Fold a **verdict probe**'s outcome — a patient `hello` (§10.4) — into the lead's belief.
+   *
+   * Two rules separate it from {@link PackRegistry.record}, and both exist because a probe learns
+   * about the MACHINE while the sweep learns about its DATA:
+   *
+   *   • **A successful probe never stamps `lastSeenAt`.** Freshness is the receipt time of a call
+   *     that carried a snapshot (§10.2). A `hello` carries none, so crediting it would render a peer
+   *     whose data is minutes old as live — the one thing the stale badge exists to prevent.
+   *   • **A successful probe after a failed sweep is `reachable` with a slow-link reason.** The
+   *     machine answered on a budget that allows a cold handshake; its snapshot did not fit the
+   *     poll's. That is a link too slow for the cadence, not a peer that is gone, and §10.2's own
+   *     table says the phone shows last-good-marked-stale either way.
+   *
+   * A FAILED probe is the ordinary failure fold: it had the patient budget and still did not answer,
+   * which is the strongest evidence this lead can cheaply get that the host is not there.
+   */
+  recordProbe(memberId: string, outcome: PeerOutcome<unknown>, observed?: PeerObservation): PeerState {
+    if (!outcome.ok) return this.record(memberId, outcome, observed);
+    const previous = this.peers.get(memberId);
+    const version = observed !== undefined ? observed.version : (previous?.version ?? null);
+    const keepingUp = previous !== undefined && previous.health === "reachable" && previous.reason === null;
+    const next: PeerState = {
+      memberId,
+      health: "reachable",
+      lastSeenAt: previous?.lastSeenAt ?? null,
+      reason: keepingUp ? null : SLOW_LINK_REASON,
+      version,
+    };
+    this.peers.set(memberId, next);
+    return next;
+  }
+
+  /**
    * Drop the state of every member no longer in the roster — a `leave`, a revocation, or a member
    * dropped by a rotation. Mirrors `SessionRegistry.dispose()`'s contract (`bridge/sessions.ts:222`):
    * what a vanished member owned stops existing rather than lingering as a stale row.
@@ -238,6 +278,16 @@ export class PackRegistry {
     return this.deps.members().filter((m) => m.status === "enrolled");
   }
 }
+
+/**
+ * What the operator reads for a member that is there but cannot keep up with the poll (§10.4).
+ *
+ * It names both halves on purpose — the machine answered, the data did not arrive in time — because
+ * the sentence it replaces ("timed out after 1200ms") reads as "your peer is down" and sent at least
+ * one operator hunting a healthy laptop across a DERP relay.
+ */
+export const SLOW_LINK_REASON =
+  "slow link — it answers, but its snapshot misses the poll budget; showing its last-good state";
 
 /** A member record becomes a dialable link — the ONLY place an address enters the client's hands. */
 function linkFor(member: TrustedMember): PackLink {

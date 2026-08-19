@@ -35,6 +35,7 @@ import { dialTls } from "../bridge/pack/transport.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
 import { PackOpsStore } from "../bridge/pack/ops-store.ts";
 import {
+  packHelloBudget,
   packTimeoutBudget,
   PeerClient,
   sweepPeers,
@@ -149,10 +150,27 @@ const JOIN_DIAL_TIMEOUT_MS = 15_000;
 
 // ── Shared plumbing ──────────────────────────────────────────────────────────
 
+/** The poll interval a one-shot verb prices its budgets against — the operator's, or the default. */
+function pollFor(ctx: CliContext): number {
+  const pollMs = Number.parseInt(ctx.env.COLLIE_POLL_MS?.trim() ?? "", 10);
+  return Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 1500;
+}
+
 /** The pack timeout budget for a one-shot verb: the default, clamped by the poll interval as usual. */
 function timeoutFor(ctx: CliContext): number {
-  const pollMs = Number.parseInt(ctx.env.COLLIE_POLL_MS?.trim() ?? "", 10);
-  return packTimeoutBudget(Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 1500, ctx.env);
+  return packTimeoutBudget(pollFor(ctx), ctx.env);
+}
+
+/**
+ * The patient budget a verb's `hello` runs on (§10.4).
+ *
+ * A verb is a FRESH PROCESS with an empty connection pool, so every `hello` it sends pays a cold
+ * pinned-TLS handshake — which over a relay costs more than the whole poll budget. On the strict
+ * budget `pack status` therefore printed `unreachable` for a healthy member categorically, no matter
+ * how many times the operator ran it. Nothing on a phone waits for a verb, so it can afford to wait.
+ */
+function helloTimeoutFor(ctx: CliContext): number {
+  return packHelloBudget(pollFor(ctx), ctx.env);
 }
 
 /**
@@ -168,6 +186,7 @@ function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerC
     self: data.self.memberId,
     secret: () => secret,
     timeoutMs: timeoutFor(deps.ctx),
+    helloTimeoutMs: helloTimeoutFor(deps.ctx),
     fetch: deps.fetch,
     now: deps.now,
     // Pin whichever member this dial is aimed at (§8.1). A verb only ever dials a member already in

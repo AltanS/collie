@@ -16,7 +16,7 @@ import { dialTls, peerListenerTls } from "./pack/transport.ts";
 import { PackLead } from "./pack/lead.ts";
 import { leadLabel } from "./pack/merge.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
-import { packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
+import { packHelloBudget, packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
 import { formatMarker, markerFor, packRuntimePath, rosterDrift } from "./pack/staleness.ts";
@@ -374,6 +374,11 @@ const packLead = (() => {
     // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
     // (§10.1). The clamp lives in packTimeoutBudget; nothing here is allowed to widen it.
     timeoutMs: packTimeoutBudget(cfg.pollMs),
+    // …and the VERDICT probe's patient one, which the poll fraction deliberately does not clamp
+    // (§10.4). A cold pinned-TLS handshake over a relay costs more than a whole poll budget, so the
+    // strict budget can decide "this poll is stale" but must never be what decides "this peer is
+    // gone" — see packHelloBudget's own doc for the measurement that produced this pair.
+    helloTimeoutMs: packHelloBudget(cfg.pollMs),
     fetch: (url, init) => fetch(url, init),
     // Pinned mutual TLS, per member, read through the store on every dial for the same reason the
     // secret and the roster are: `pack remove`, a re-join and a rotation all change what this lead
@@ -388,6 +393,10 @@ const packLead = (() => {
   return new PackLead({
     registry: packRegistry,
     snapshot: (link) => client.snapshot(link),
+    // The re-ask a timed-out sweep earns (§10.4). Off the tick, on the patient budget — and the
+    // connection it warms is the one the next strict-budget snapshot rides, which is what makes a
+    // high-latency member converge on `reachable` instead of never bootstrapping at all.
+    hello: (link) => client.hello(link),
     // The per-pane forward (§5, §9.1). `proxy`, not `raw`: the peer's own status codes — its 304
     // above all — are the answer, and flattening them would cost the conditional-GET win end to end.
     proxy: (link, route, params, init) => client.proxy(link, route, params, init),
