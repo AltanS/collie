@@ -8,6 +8,7 @@ import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
+import { createOperatorKeys } from "./operator-keys.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -150,6 +151,8 @@ export function startServer(opts: {
   // journal/registry.ts, never here.
   // One reader per process; it owns the mtime cache that keeps commands.toml off the hot path.
   const operatorCommands = createOperatorCommands(cfg.commandsFile);
+  // Its sibling, on the same contract: one reader, one mtime cache, keys.toml off the hot path.
+  const operatorKeys = createOperatorKeys(cfg.keysFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -302,6 +305,7 @@ export function startServer(opts: {
         // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
         // with no restart. The path is cfg's, never the request's.
         const mine = await operatorCommands();
+        const myKeys = await operatorKeys();
         return json({
           push: push.enabled,
           vapidPublicKey: push.publicKey,
@@ -309,6 +313,8 @@ export function startServer(opts: {
           // Omitted entirely when there are none, so an operator who never wrote a commands.toml
           // ships the same payload as before.
           ...(mine.length > 0 ? { operatorCommands: mine } : {}),
+          // Same omit-when-empty rule: an operator with no keys.toml ships the payload they had.
+          ...(myKeys.length > 0 ? { operatorKeys: myKeys } : {}),
         } satisfies BridgeConfig, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {
