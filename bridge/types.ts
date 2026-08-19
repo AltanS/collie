@@ -1,5 +1,5 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
-// (which live only in herdr-client.ts). The rest of the app talks in these terms.
+// (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 

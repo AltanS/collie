@@ -42,7 +42,7 @@ The browser never touches the socket directly; the bridge is the only thing that
         ▼
    Collie (this project)
      • static web app + small JSON API (browser polls /api/snapshot)
-     • herdr-client adapter (the ONLY code that knows socket method names)
+     • mux adapter (bridge/mux/ — the ONLY code that knows socket method names)
      • snapshot poll, event-poked (see §5)
         │  newline-delimited JSON over Unix socket
         ▼
@@ -127,10 +127,12 @@ app. Closing this needs the server-side blocking-message capture described above
 
 ## 5. Architecture notes
 
-- **The `herdr-client` adapter is the only module that knows socket method names** (`pane.read`,
-  `agent.send`, `events.subscribe`, …). It translates to/from an internal domain model
-  (`AgentStatus`, `AgentView`, `SnapshotResponse` — `bridge/types.ts`), so a Herdr API rename is a
-  one-file fix, not a shatter.
+- **The mux adapter is the only module that knows socket method names** (`pane.read`, `agent.send`,
+  `events.subscribe`, …). The rest of the bridge depends on the **mux port** (`bridge/mux/types.ts`),
+  a Collie-owned contract each multiplexer implements — Herdr's implementation is
+  `bridge/mux/herdr/`, built through `bridge/mux/registry.ts` (ADR 0022). It translates to/from an
+  internal domain model (`AgentStatus`, `AgentView`, `SnapshotResponse` — `bridge/types.ts`), so a
+  Herdr API rename is a one-file fix, not a shatter.
 - **One protocol, two dialers.** Herdr's control socket is AF_UNIX on Linux/macOS and a *named pipe*
   on Windows (named after the full socket path). `bridge/dial.ts` is the only place that knows the
   difference: `Bun.connect({unix})` on POSIX, `node:net` on Windows. The wire protocol is identical —

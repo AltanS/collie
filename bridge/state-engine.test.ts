@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import { StateEngine, type EngineSnapshot } from "./state-engine.ts";
-import type { HerdrClient, PaneRead } from "./herdr-client.ts";
+import { HerdrMux } from "./mux/herdr/adapter.ts";
+import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
+import type { MuxAdapter } from "./mux/types.ts";
 import type { AgentStatus } from "./types.ts";
 
 // HerdrClient carries private socket fields, so no fake can ever *be* one structurally — every fake
@@ -9,15 +11,19 @@ import type { AgentStatus } from "./types.ts";
 // that gap is bridged: `Partial<HerdrClient>` keeps the compiler checking each method's signature
 // against the real client (a renamed or re-typed method still breaks these tests), and only the
 // "the rest is never reached" step is asserted.
-function asHerdrClient(fake: Partial<HerdrClient>): HerdrClient {
-  // SAFETY: a StateEngine poll only ever calls sessionSnapshot / listWorkspaces / listPanes /
-  // listTabs, plus readPane behind its own `typeof … === "function"` feature check. Nothing these
-  // tests drive reaches any other member, so the missing ones are unobservable.
-  return fake as HerdrClient;
+//
+// The engine talks the mux port, so the fake socket client is wrapped in the REAL Herdr adapter —
+// the wire→port mapping the engine's views are built out of is exercised here rather than mocked.
+function asMux(fake: Partial<HerdrClient>): MuxAdapter {
+  // SAFETY: a StateEngine poll only ever reaches sessionSnapshot / listWorkspaces / listPanes /
+  // listTabs, plus readPane for a claude pane's session-name scrape (whose failure the engine
+  // already treats as "keep the cached name"). Nothing these tests drive reaches any other member,
+  // so the missing ones are unobservable.
+  return new HerdrMux(fake as HerdrClient);
 }
 
-// The state engine polls Herdr, shapes the snapshot, and fires status transitions (which drive push
-// notifications). We exercise it with a fake HerdrClient whose returned panes change between polls.
+// The state engine polls the multiplexer, shapes the snapshot, and fires status transitions (which
+// drive push notifications). We exercise it with a fake whose returned panes change between polls.
 
 interface FakePane {
   pane_id: string;
@@ -131,7 +137,7 @@ class FakeHerdr {
 
 function makeEngine() {
   const herdr = new FakeHerdr();
-  const engine = new StateEngine(asHerdrClient(herdr), 1500);
+  const engine = new StateEngine(asMux(herdr), 1500);
   const transitions: Array<{ pane: string; from: AgentStatus; to: AgentStatus }> = [];
   engine.onTransition((a, from, to) => transitions.push({ pane: a.paneId, from, to }));
   const removed: string[] = [];
@@ -217,7 +223,7 @@ describe("StateEngine — in-flight guard", () => {
 
   test("skips a tick while the previous poll is still in flight", async () => {
     const herdr = new GatedHerdr([pane("w1:p1", "w1", "idle", "claude")]);
-    const engine = new StateEngine(asHerdrClient(herdr), 1500);
+    const engine = new StateEngine(asMux(herdr), 1500);
     const poll = () => engine["poll"]();
 
     const first = poll(); // starts the poll, hangs on the gate
@@ -322,7 +328,7 @@ describe("StateEngine — snapshot vs legacy path", () => {
       listPanes: () => ((listCalls++), Promise.resolve([])),
       listTabs: () => ((listCalls++), Promise.resolve([])),
     };
-    const engine = new StateEngine(asHerdrClient(herdr), 1500);
+    const engine = new StateEngine(asMux(herdr), 1500);
     await drivePoll(engine);
     expect(listCalls).toBe(0);
     expect(engine.current().agents.map((a) => a.paneId)).toEqual(["w1:p1"]);
@@ -345,7 +351,7 @@ describe("StateEngine — snapshot vs legacy path", () => {
       listPanes: () => Promise.resolve([pane("w1:p1", "w1", "idle", "claude")]),
       listTabs: () => Promise.resolve([]),
     };
-    const engine = new StateEngine(asHerdrClient(herdr), 1500);
+    const engine = new StateEngine(asMux(herdr), 1500);
     await drivePoll(engine);
     // Same-tick fallback: one snapshot attempt, then the list path, connected with real data.
     expect(snapCalls).toBe(1);
@@ -370,7 +376,7 @@ describe("StateEngine — snapshot vs legacy path", () => {
       listPanes: () => Promise.resolve([]),
       listTabs: () => Promise.resolve([]),
     };
-    const engine = new StateEngine(asHerdrClient(herdr), 1500);
+    const engine = new StateEngine(asMux(herdr), 1500);
     await drivePoll(engine);
     expect(snapCalls).toBe(1);
     expect(listCalls).toBe(0); // no fallback on a transient error
@@ -409,7 +415,7 @@ describe("StateEngine — session name enrichment", () => {
 
   function makeNameEngine() {
     const herdr = new NameHerdr();
-    const engine = new StateEngine(asHerdrClient(herdr), 1500);
+    const engine = new StateEngine(asMux(herdr), 1500);
     const poll = () => engine["poll"]();
     const agent = (id: string) => engine.current().agents.find((a) => a.paneId === id)!;
     return { herdr, engine, poll, agent };
@@ -515,7 +521,7 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
 
   test("pokeNow queues exactly one follow-up poll when one is already in flight", async () => {
     const herdr = new GatedSnapshot();
-    const engine = new StateEngine(asHerdrClient(herdr), 1500);
+    const engine = new StateEngine(asMux(herdr), 1500);
     // Mark started without the interval firing: drive polls by hand.
     engine["started"] = true;
     const poll = () => engine["poll"]();
@@ -533,7 +539,7 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
 
   test("pokeNow is a no-op once stopped", async () => {
     const herdr = new GatedSnapshot();
-    const engine = new StateEngine(asHerdrClient(herdr), 1500);
+    const engine = new StateEngine(asMux(herdr), 1500);
     engine.pokeNow(); // never started → no-op
     expect(herdr.calls).toBe(0);
   });

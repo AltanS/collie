@@ -1,50 +1,19 @@
-import type { HerdrClient } from "./herdr-client.ts";
+import type { MuxAdapter, MuxSubscription } from "./mux/types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Event-poked polling. A long-lived events.subscribe stream whose ONLY job is to
-// trigger immediate (debounced) re-polls. While the stream is healthy the engine
+// Event-poked polling. A long-lived watch on the multiplexer whose ONLY job is to
+// trigger immediate (debounced) re-polls. While the watch is healthy the engine
 // relaxes to a safety-net cadence; when it's down the engine falls back to fast
-// polling. Events are never state here — a missed event costs one interval, never
+// polling. Events are never state here — a missed one costs one interval, never
 // correctness — so the snapshot poll stays the single source of truth. See index.ts.
+//
+// This file owns the LIFECYCLE (debounce, backoff, health) and nothing else: which
+// events exist, and whether they arrive as a push or a poll, is the adapter's — a
+// multiplexer with no event stream keeps the same promise by polling, and the poker
+// cannot tell (mux/types.ts → MuxWatchOptions). Both of the contract's callbacks land
+// on the same debounced poke, because "something changed, re-read" is the whole
+// signal this class carries.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** A subscription request entry: global (just `type`) or pane-scoped (needs `pane_id`). */
-export type Subscription = { type: string; pane_id?: string };
-
-// Global events that change what Collie's snapshot renders. We deliberately DROP layout.*,
-// worktree.*, pane.scroll_changed and pane.output_matched — none of them alter the herd view we
-// poll for, so subscribing would only add pokes that re-fetch identical state. Also NO
-// workspace.moved / tab.moved: they're new in herdr 0.7.2, and one unknown subscription type
-// rejects the whole subscribe — which would keep the stream permanently down on exactly the older
-// servers the session.snapshot fallback supports. Moves are rare and the safety-net poll covers
-// them within one COLLIE_POLL_IDLE_MS.
-const GLOBAL_SUBSCRIPTIONS: readonly string[] = [
-  "workspace.created",
-  "workspace.updated",
-  "workspace.renamed",
-  "workspace.closed",
-  "workspace.focused",
-  "tab.created",
-  "tab.closed",
-  "tab.focused",
-  "tab.renamed",
-  "pane.created",
-  "pane.closed",
-  "pane.focused",
-  "pane.moved",
-  "pane.exited",
-  "pane.agent_detected",
-];
-
-/**
- * The full subscription list for the current set of agent panes: every global above, plus one
- * pane-scoped `pane.agent_status_changed` per agent pane (the status flips that drive triage).
- */
-export function buildSubscriptions(agentPaneIds: string[]): Subscription[] {
-  const subs: Subscription[] = GLOBAL_SUBSCRIPTIONS.map((type) => ({ type }));
-  for (const id of agentPaneIds) subs.push({ type: "pane.agent_status_changed", pane_id: id });
-  return subs;
-}
 
 /** Order-insensitive, duplicate-insensitive comparison — the subscription set only cares which ids. */
 export function sameIdSet(a: string[], b: string[]): boolean {
@@ -69,16 +38,16 @@ export class EventPoker {
   private started = false;
   private healthy = false;
   private backoffIdx = 0;
-  // The active stream handle; identity-compared in callbacks so a superseded stream's late `onDown`
+  // The active watch handle; identity-compared in callbacks so a superseded watch's late `onDown`
   // (from a deliberate close during reconnect/stop) is ignored instead of flapping health.
-  private stream: { close(): void } | null = null;
+  private stream: MuxSubscription | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly pokeListeners = new Set<() => void>();
   private readonly healthListeners = new Set<(healthy: boolean) => void>();
 
   constructor(
-    private readonly client: HerdrClient,
+    private readonly mux: MuxAdapter,
     opts: EventPokerOpts = {},
   ) {
     this.debounceMs = opts.debounceMs ?? 200;
@@ -117,7 +86,7 @@ export class EventPoker {
     if (s) s.close();
   }
 
-  /** The fresh snapshot after any pane lifecycle event feeds this; a changed set means re-subscribe. */
+  /** The fresh snapshot after any pane lifecycle event feeds this; a changed set means re-watch. */
   setAgentPanes(ids: string[]): void {
     if (sameIdSet(ids, this.agentPanes)) return;
     this.agentPanes = [...ids];
@@ -125,25 +94,27 @@ export class EventPoker {
   }
 
   private connect(): void {
-    const subs = buildSubscriptions(this.agentPanes);
-    const handle = this.client.subscribeEvents({
-      subscriptions: subs,
+    const watched = this.agentPanes.length;
+    const changed = () => {
+      if (this.stream !== handle) return;
+      this.schedulePoke();
+    };
+    const handle: MuxSubscription = this.mux.watch({
+      panes: this.agentPanes,
       onUp: () => {
         if (this.stream !== handle) return;
         this.backoffIdx = 0;
-        // A resubscribe acks while already healthy, so setHealthy dedupes it silently — but it's
-        // the only journal evidence that the per-pane subscriptions followed the herd. Log it.
-        if (this.healthy) console.log(`[events] resubscribed (${subs.length} subscriptions)`);
-        this.setHealthy(true, subs.length);
+        // A re-watch acks while already healthy, so setHealthy dedupes it silently — but it's the
+        // only journal evidence that the per-pane watch followed the herd. Log it.
+        if (this.healthy) console.log(`[events] resubscribed (${watched} panes watched)`);
+        this.setHealthy(true, watched);
       },
-      onEvent: () => {
-        if (this.stream !== handle) return;
-        this.schedulePoke();
-      },
+      onTopologyChange: changed,
+      onPaneChange: changed,
       onDown: (reason) => {
         if (this.stream !== handle) return;
         this.stream = null;
-        this.setHealthy(false, subs.length, reason);
+        this.setHealthy(false, watched, reason);
         if (this.started) this.scheduleReconnect();
       },
     });
@@ -179,10 +150,10 @@ export class EventPoker {
     }, this.debounceMs);
   }
 
-  private setHealthy(healthy: boolean, subCount: number, reason?: string): void {
+  private setHealthy(healthy: boolean, watched: number, reason?: string): void {
     if (this.healthy === healthy) return;
     this.healthy = healthy;
-    if (healthy) console.log(`[events] stream up (${subCount} subscriptions)`);
+    if (healthy) console.log(`[events] stream up (${watched} panes watched)`);
     else console.log(`[events] stream down: ${reason ?? "unknown"} — fast polling until it recovers`);
     for (const cb of this.healthListeners) cb(healthy);
   }

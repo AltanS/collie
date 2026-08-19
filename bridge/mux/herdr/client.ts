@@ -1,19 +1,21 @@
-import type { JsonObject } from "./json.ts";
-import type { AgentStatus } from "./types.ts";
-import { dialHerdr, type DialMode, type SockHandle } from "./dial.ts";
-import { decodeReplyLine, decodeStreamLine, type EventData } from "./wire.ts";
+import type { JsonObject } from "../../json.ts";
+import type { AgentStatus } from "../../types.ts";
+import { dialHerdr, type DialMode, type SockHandle } from "../../dial.ts";
+import { decodeReplyLine, decodeStreamLine, type EventData } from "../../wire.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The Herdr socket adapter. THIS IS THE ONLY FILE that knows Herdr's method names
-// and wire shapes. Everything else talks to the typed methods below, so a Herdr
-// API change is a one-file fix. Protocol facts are documented in HERDR_API.md.
+// The Herdr socket TRANSPORT. THIS IS THE ONLY FILE that knows Herdr's method
+// names and wire shapes; `adapter.ts` next to it is the only file that knows
+// these typed methods, and everything above that talks the mux port
+// (bridge/mux/types.ts). So a Herdr API change is still a one-file fix.
+// Protocol facts are documented in HERDR_API.md.
 //
 // Key fact: RPC is ONE-SHOT — the server closes the connection after a single
 // response. So every request opens a fresh connection, reads one line, closes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Raw wire shape of a workspace from `workspace.list`. */
-interface WireWorkspace {
+export interface WireWorkspace {
   workspace_id: string;
   number: number;
   label: string;
@@ -25,7 +27,7 @@ interface WireWorkspace {
 }
 
 /** Raw wire shape of a tab from `tab.list`. */
-interface WireTab {
+export interface WireTab {
   tab_id: string;
   workspace_id: string;
   number: number;
@@ -36,7 +38,7 @@ interface WireTab {
 }
 
 /** Raw wire shape of a pane from `pane.list` (and, identically, inside `session.snapshot`). */
-interface WirePane {
+export interface WirePane {
   pane_id: string;
   terminal_id: string;
   workspace_id: string;

@@ -1,5 +1,5 @@
 // Pure decoders for Herdr's newline-delimited JSON wire protocol. Kept separate from the socket
-// adapter (herdr-client.ts) so the parsing/discrimination is importable and unit-testable without
+// transport (mux/herdr/client.ts) so the parsing/discrimination is importable and unit-testable without
 // touching Bun.connect. Protocol facts are documented in HERDR_API.md.
 
 import type { JsonValue } from "./json.ts";
@@ -67,9 +67,24 @@ export type StreamLine =
 /**
  * The `data` an event line carries: whatever JSON herdr attached, or nothing. Deliberately not
  * narrowed per event — Collie treats events purely as a poke to re-poll and never reads the payload
- * (see herdr-client.ts's `subscribeEvents` doc), so there is no shape to parse against.
+ * (see mux/herdr/client.ts's `subscribeEvents` doc), so there is no shape to parse against.
  */
 export type EventData = JsonValue | undefined;
+
+/**
+ * The pane an event's payload names, or null when it names none.
+ *
+ * The ONE field Collie ever reads out of {@link EventData}, and it is read here rather than at the
+ * adapter because this file is the wire boundary. It decides which half of a mux watch an event
+ * pokes (bridge/mux/herdr/events.ts) — never what the state is, which stays the poll's job.
+ */
+export function eventPaneId(data: EventData): string | null {
+  if (data === null || data === undefined || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+  const paneId = data.pane_id;
+  return typeof paneId === "string" && paneId !== "" ? paneId : null;
+}
 
 /**
  * Decode one stream line. Subscription ack is `{"id","result":{"type":"subscription_started"}}`;

@@ -2,7 +2,7 @@
 // handles it. On Windows (herdr Windows beta) the ".sock" path is a pointer file — the actual
 // transport is a named pipe whose name is the full socket path (\\.\pipe\C:\...\herdr.sock).
 // Bun.connect({unix}) cannot open named pipes, but Bun's node:net can, so we adapt it to the
-// same handler shape the two call sites in herdr-client.ts use (write/flush/end only).
+// same handler shape the two call sites in mux/herdr/client.ts use (write/flush/end only).
 //
 // There is NO application-level handshake on either transport — herdr's `interprocess` local
 // sockets carry the raw bytes ("Interprocess never inserts its own message framing or any other

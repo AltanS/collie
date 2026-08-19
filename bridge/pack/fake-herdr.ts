@@ -9,7 +9,7 @@ import { unlinkSync } from "node:fs";
 // has one. What a Collie needs from Herdr to serve a snapshot and a pane read is small and stable
 // enough (`HERDR_API.md`) to answer honestly here.
 //
-// It implements the protocol's two shapes exactly as `bridge/herdr-client.ts` expects them:
+// It implements the protocol's two shapes exactly as `bridge/mux/herdr/client.ts` expects them:
 //   • RPC is ONE-SHOT — read one line, write one reply, close the connection;
 //   • `events.subscribe` is the exception: ack, then hold the connection open forever.
 // Getting either wrong would make the harness fail for a reason that has nothing to do with a pack.
