@@ -1136,6 +1136,36 @@ upd "$CLONE" "$BIN" update --major || fail "\`collie update --major\` failed on 
 assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HEAD)"
 assert_eq "$(git -C "$CLONE" symbolic-ref --short HEAD)" "main"   # still a branch, never detached
 
+# A clone kept on a NON-DEFAULT branch is judged by ITS OWN upstream, never by the remote's default
+# tip. `origin/main` is a major ahead here; `origin/maint` is not, and it is the only thing
+# `git pull --ff-only` would ever take — reading the gate off the wrong one would refuse every pull
+# on a maintenance branch (this repo's own deployment host is a clone on `v1`).
+git_q -C "$ORIGIN" branch maint v9.10.0
+MAINT="${U_DIR}/maint"
+git_q clone -q -b maint "$ORIGIN" "$MAINT"
+git_q -C "$ORIGIN" checkout -q maint
+printf 'v9-maint\n' > "${ORIGIN}/VERSION"
+git_q -C "$ORIGIN" add -A
+git_q -C "$ORIGIN" commit -q -m "a 9.x fix"
+git_q -C "$ORIGIN" checkout -q main
+upd "$MAINT" "$BIN" update || fail "update refused a within-major pull on a maintenance branch: ${STDERR}"
+assert_contains "$STDOUT" "git pull --ff-only"
+assert_eq "$(cat "${MAINT}/VERSION")" "v9-maint"
+assert_eq "$(git -C "$MAINT" symbolic-ref --short HEAD)" "maint"
+assert_eq "$(git -C "$MAINT" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse maint)"
+
+# A branch with NO upstream: nothing to gate, and nothing to pull either — git's own "no tracking
+# information" is the whole answer, and a pull that cannot happen cannot cross a major.
+NOUP="${U_DIR}/no-upstream"
+git_q clone -q "$ORIGIN" "$NOUP"
+git_q -C "$NOUP" checkout -q -b local-only
+NOUP_AT="$(git -C "$NOUP" rev-parse HEAD)"
+if upd "$NOUP" "$BIN" update; then fail "a branch with no upstream reported a successful update"; fi
+assert_eq "$(git -C "$NOUP" rev-parse HEAD)" "$NOUP_AT"
+case "$STDOUT" in
+  *"MAJOR"*) fail "a branch with no upstream was refused by the major gate instead of by git" ;;
+esac
+
 # The suite must not damage the repository it is run FROM. Git hands every hook a `GIT_DIR`, this
 # suite runs from pre-push, and an exported `GIT_DIR` beats `-C` for every git command in the tree —
 # so `git -C "$sandbox" init` re-initialised the caller's repo instead. From a linked worktree that

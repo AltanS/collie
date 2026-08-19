@@ -230,43 +230,75 @@ describe("updateCheckout", () => {
       ],
     });
 
-  test("a linked clone fast-forwards its branch, after reading the manifest it would land on", () => {
-    const h = harness({
-      installed: "0.31.1",
+  /**
+   * A linked clone on `branch`, whose upstream manifest names `upstreamVersion`. The manifest is
+   * answered AT THE UPSTREAM REF, never at the remote's default tip — that distinction is the whole
+   * point of the gate (see below).
+   */
+  const linked = (branch: string, upstreamVersion: string, installed = "0.31.1") =>
+    harness({
+      installed,
       answers: [
         ...LINKED,
-        [`${GIT} show FETCH_HEAD:herdr-plugin.toml`, { stdout: 'version = "0.32.0"\n' }],
+        [`${GIT} rev-parse --abbrev-ref --symbolic-full-name @{u}`, { stdout: `origin/${branch}\n` }],
+        [`${GIT} show origin/${branch}:herdr-plugin.toml`, { stdout: `version = "${upstreamVersion}"\n` }],
+        // The remote's DEFAULT branch is a major ahead. Reading the gate off it would refuse a pull
+        // that never leaves the major — so nothing may ever consult it.
+        [`${GIT} show FETCH_HEAD:herdr-plugin.toml`, { stdout: 'version = "9.0.0"\n' }],
       ],
     });
+
+  test("a linked clone fast-forwards its branch, after reading the manifest it would land on", () => {
+    const h = linked("main", "0.32.0");
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
-    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin HEAD`, `${GIT} pull --ff-only`]);
+    // Plain `fetch origin` (the configured refspec), so the remote-tracking ref the pull uses is the
+    // one that advanced — `fetch origin HEAD` would only have moved FETCH_HEAD.
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
     expect(h.io.stdout.join("\n")).toContain("git pull --ff-only");
   });
 
-  test("a linked clone refuses to be pulled across a major, and pulls NOTHING", () => {
-    const h = harness({
-      installed: "0.31.1",
-      answers: [
-        ...LINKED,
-        [`${GIT} show FETCH_HEAD:herdr-plugin.toml`, { stdout: 'version = "1.0.0"\n' }],
-      ],
-    });
+  test("the gate reads the BRANCH'S OWN upstream, not the remote's default tip", () => {
+    // The regression: this repo's own deployment host is a clone on `v1`, and after 1.0 lands on
+    // `main` a clone kept on a 0.x maintenance branch would see main's major and refuse a pull that
+    // only ever fast-forwards within major 0.
+    const h = linked("v0.x", "0.32.0");
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
-    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin HEAD`]); // fetched to look; never pulled
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
+    expect(h.exec.calls).toContain(`${GIT} show origin/v0.x:herdr-plugin.toml`);
+    expect(h.exec.calls.some((c) => c.includes("FETCH_HEAD:herdr-plugin.toml"))).toBe(false);
+    expect(h.io.stdout.join("\n")).not.toContain("MAJOR");
+  });
+
+  test("a linked clone refuses to be pulled across a major, and pulls NOTHING", () => {
+    const h = linked("main", "1.0.0");
+    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`]); // fetched to look; never pulled
     expect(h.io.stdout.join("\n")).toContain("crosses a MAJOR version");
+    expect(h.io.stdout.join("\n")).toContain("(origin/main)");
     expect(h.io.stdout.join("\n")).toContain("update-major --plugin herdr.collie");
   });
 
   test("--major lets the same clone through, on its branch and with its ff-only pull", () => {
+    const h = linked("main", "1.0.0");
+    expect(updateCheckout(h.deps, { crossMajor: true })).toBe(EXIT.OK);
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
+  });
+
+  test("a branch with no upstream is left to git: no gate, and the pull reports its own refusal", () => {
+    // Nothing to judge and nothing to take — `git pull --ff-only` fails with "no tracking
+    // information", which says more about the checkout than we could. A pull that cannot happen
+    // cannot cross a major.
     const h = harness({
       installed: "0.31.1",
       answers: [
         ...LINKED,
-        [`${GIT} show FETCH_HEAD:herdr-plugin.toml`, { stdout: 'version = "1.0.0"\n' }],
+        [`${GIT} rev-parse --abbrev-ref --symbolic-full-name @{u}`, { code: 128 }],
+        [`${ROOT}$ ${GIT} pull`, { code: 1 }],
       ],
     });
-    expect(updateCheckout(h.deps, { crossMajor: true })).toBe(EXIT.OK);
-    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin HEAD`, `${GIT} pull --ff-only`]);
+    expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
+    expect(h.exec.calls.some((c) => c.includes("herdr-plugin.toml"))).toBe(false);
   });
 
   test("a managed checkout detaches onto the newest TAG of its major, shallow and forced", () => {
