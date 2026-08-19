@@ -240,6 +240,11 @@ export interface UpdateInfo {
   latestUrl: string | null;
   /** A newer release than `current` exists upstream — the update action will fetch it. */
   releaseAvailable: boolean;
+  /** Newest release of a HIGHER major than `current`, or null. A routine update never crosses it —
+   *  `update --major` is the consent (ADR 0020), so the banner names that command. */
+  majorAvailable: string | null;
+  /** GitHub release page for `majorAvailable`, or null when there is none. */
+  majorUrl: string | null;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */

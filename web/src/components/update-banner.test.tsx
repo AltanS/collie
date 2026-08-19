@@ -13,6 +13,8 @@ const someUpdate = (over: Partial<UpdateInfo>): UpdateInfo => ({
   latest: "0.10.3",
   latestUrl: RELEASE_URL,
   releaseAvailable: false,
+  majorAvailable: null,
+  majorUrl: null,
   bridgeStale: false,
   checkedAt: null,
   ...over,
@@ -42,6 +44,23 @@ describe("updateNotice", () => {
       line: "Collie 0.10.3 available",
       href: RELEASE_URL,
     });
+  });
+
+  it("names the consent command for a major, and ranks it below a routine release", () => {
+    // A major is the one thing the plain update action will NOT take (ADR 0020), so its line carries
+    // the `update-major` command rather than leaving the operator to tap update and stay behind.
+    const major = "https://github.com/AltanS/collie/releases/tag/v1.0.0";
+    expect(updateNotice(someUpdate({ majorAvailable: "1.0.0", majorUrl: major }))).toEqual({
+      line: "Collie 1.0.0 — a new major",
+      href: major,
+      command: "herdr plugin action invoke update-major --plugin herdr.collie",
+    });
+    // Both pending: take the one a routine update can actually deliver first.
+    expect(
+      updateNotice(
+        someUpdate({ releaseAvailable: true, latest: "0.32.0", majorAvailable: "1.0.0", majorUrl: major }),
+      ),
+    ).toEqual({ line: "Collie 0.32.0 available", href: RELEASE_URL });
   });
 
   it("stays silent when a release is flagged but no version is known", () => {

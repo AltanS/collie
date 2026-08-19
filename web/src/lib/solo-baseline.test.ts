@@ -109,6 +109,8 @@ const UPDATE_INFO_KEYS = {
   latest: true,
   latestUrl: true,
   releaseAvailable: true,
+  majorAvailable: true,
+  majorUrl: true,
   bridgeStale: true,
   checkedAt: true,
 } satisfies Record<keyof UpdateInfo, true>;
@@ -174,6 +176,8 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "current",
       "latest",
       "latestUrl",
+      "majorAvailable",
+      "majorUrl",
       "releaseAvailable",
     ]);
   });
