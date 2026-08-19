@@ -860,6 +860,7 @@ advance_origin() {
 # repointed at it (sourcing computes PLUGIN_ROOT from BASH_SOURCE, so it must be overridden after).
 run_update_checkout() {
   local root="$1" harness="${CASE_DIR}/update-harness.sh"
+  shift
   cat > "$harness" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -868,9 +869,55 @@ export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
 export PATH="$BIN_DIR:$BASE_PATH"
 source "$CTL"
 PLUGIN_ROOT="$root"
-update_checkout
+update_checkout "\$@"
 EOF
-  bash "$harness" 2>&1
+  bash "$harness" "$@" 2>&1
+}
+
+# One release on ORIGIN_DIR: a commit that carries the manifest version target selection reads, plus
+# its `v<x.y.z>` tag. `-a` makes it annotated — the remote lists an annotated tag TWICE (once at the
+# tag object, once peeled at the commit) and only the peeled line names a commit, so at least one
+# fixture tag must be annotated or that half of the parser is never exercised.
+origin_release() {
+  printf '%s\n' "$1" > "${ORIGIN_DIR}/VERSION"
+  printf 'id = "herdr.collie"\nversion = "%s"\n' "$1" > "${ORIGIN_DIR}/herdr-plugin.toml"
+  git_q -C "$ORIGIN_DIR" add -A
+  git_q -C "$ORIGIN_DIR" commit -qm "release $1"
+  if [ "${2-}" = "-a" ]; then
+    git_q -C "$ORIGIN_DIR" tag -a "v$1" -m "$1"
+  else
+    git_q -C "$ORIGIN_DIR" tag "v$1"
+  fi
+}
+
+# A local origin carrying real releases in major 9, plus refs the strict filter must ignore. The tip
+# is left ABOVE the newest release tag, so a target selection that lands on the branch tip instead of
+# a tag is visible rather than accidentally right.
+stage_tagged_origin() {
+  ORIGIN_DIR="${CASE_DIR}/origin"
+  mkdir -p "$ORIGIN_DIR"
+  git_q -C "$ORIGIN_DIR" init -q -b main
+  origin_release 9.9.9 -a
+  origin_release 9.10.0
+  printf 'junk\n' > "${ORIGIN_DIR}/VERSION"
+  git_q -C "$ORIGIN_DIR" add -A
+  git_q -C "$ORIGIN_DIR" commit -qm "not a release"
+  # A prerelease, a two-part tag and a moving name — none of them a release. Each sits ABOVE
+  # v9.10.0, so taking one would show up as the wrong VERSION on disk.
+  git_q -C "$ORIGIN_DIR" tag v9.11.0-beta.1
+  git_q -C "$ORIGIN_DIR" tag v9.11
+  git_q -C "$ORIGIN_DIR" tag latest
+}
+
+# A Herdr-managed (detached, shallow) checkout of ORIGIN_DIR at ref $1. Echoes its path.
+stage_managed_at() {
+  local root="${CASE_DIR}/managed"
+  mkdir -p "$root"
+  git_q -C "$root" init -q
+  git_q -C "$root" remote add origin "$ORIGIN_DIR"
+  git_q -C "$root" fetch -q --depth 1 origin "$1"
+  git_q -C "$root" checkout -q --detach FETCH_HEAD
+  printf '%s' "$root"
 }
 
 # The #63 regression: a Herdr-managed checkout must advance — even with a tracked file dirtied by the
@@ -929,6 +976,94 @@ test_update_reports_a_non_git_checkout() {
   set -e
   [ "$rc" -ne 0 ] || fail "update_checkout on a non-git tree reported success"
   assert_contains "$out" "herdr plugin install AltanS/collie"
+}
+
+# ── The major gate (ADR 0020) ────────────────────────────────────────────────────────────────────
+# `update` no longer follows the default branch: it follows RELEASE TAGS, inside the installed major.
+# These drive the real git grammar against throwaway repos, because that grammar — which ref is
+# fetched, which commit a clone's pull would actually take — is the whole of the decision.
+
+# A routine update takes the newest release INSIDE the installed major: not the branch tip, not the
+# globally-highest tag, and not any of the refs that merely look like one.
+test_update_targets_the_highest_release_in_the_major() {
+  setup_case update-in-major
+  stage_tagged_origin
+  origin_release 10.0.0          # a major is out — and is not this install's to take
+  local root; root="$(stage_managed_at refs/tags/v9.9.9)"
+
+  local out; out="$(run_update_checkout "$root")" || fail "update_checkout failed: $out"
+  assert_contains "$out" "detach onto v9.10.0"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(git -C "$ORIGIN_DIR" rev-parse 'v9.10.0^{commit}')"
+  assert_eq "$(cat "${root}/VERSION")" "9.10.0"
+  # …and it SAYS the major exists, naming the one command that takes it.
+  assert_contains "$out" "Collie 10.0.0 is out — a NEW MAJOR"
+  assert_contains "$out" "update-major --plugin herdr.collie"
+}
+
+# At the top of its major with a major out: nothing to take, said out loud, and nothing moved. This
+# is the state every 0.x install in the field lands in the day 1.0 ships.
+test_update_holds_at_a_major_boundary() {
+  setup_case update-major-hold
+  stage_tagged_origin
+  origin_release 10.0.0
+  local root; root="$(stage_managed_at refs/tags/v9.10.0)"
+  local at; at="$(git -C "$root" rev-parse HEAD)"
+
+  local out; out="$(run_update_checkout "$root")" || fail "a routine update at a boundary must succeed: $out"
+  assert_contains "$out" "already current — v9.10.0"
+  assert_contains "$out" "Collie 10.0.0 is out — a NEW MAJOR"
+  assert_contains "$out" "herdr plugin action invoke update-major --plugin herdr.collie"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$at"
+}
+
+# `--major` is the consent, and it buys exactly ONE crossing: an install two majors behind lands on
+# the next major that has a release, so the notes that apply are the ones the operator just read.
+test_update_major_crosses_exactly_one_major() {
+  setup_case update-major-cross
+  stage_tagged_origin
+  origin_release 10.0.0
+  origin_release 11.0.0
+  local root; root="$(stage_managed_at refs/tags/v9.10.0)"
+
+  local out; out="$(run_update_checkout "$root" --major)" || fail "update --major failed: $out"
+  assert_contains "$out" "crossing to Collie 10.0.0"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(git -C "$ORIGIN_DIR" rev-parse 'v10.0.0^{commit}')"
+  assert_eq "$(cat "${root}/VERSION")" "10.0.0"
+  git -C "$root" symbolic-ref -q HEAD >/dev/null 2>&1 &&
+    fail "crossing a major must leave the managed checkout detached"
+  # And from major 10, `--major` again takes the next one — never two at a time.
+  out="$(run_update_checkout "$root" --major)" || fail "second crossing failed: $out"
+  assert_contains "$out" "crossing to Collie 11.0.0"
+}
+
+# A manifest we cannot read a major out of must never strand the install: fall back to the pre-gate
+# behaviour (origin HEAD), and SAY that is what happened.
+test_update_falls_back_loudly_without_a_readable_version() {
+  setup_case update-unknown-version
+  stage_tagged_origin
+  local root; root="$(stage_managed_at refs/tags/v9.9.9)"
+  rm -f "${root}/herdr-plugin.toml"
+
+  local out; out="$(run_update_checkout "$root")" || fail "update_checkout failed: $out"
+  assert_contains "$out" "no readable version — following origin HEAD"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(git -C "$ORIGIN_DIR" rev-parse HEAD)"
+}
+
+# The linked clone's gate is a PRE-FLIGHT, because its target is a branch tip rather than a tag: read
+# the manifest at the commit the pull would take, refuse before pulling, and pull nothing.
+test_update_refuses_a_major_on_a_linked_clone() {
+  setup_case update-linked-major
+  stage_tagged_origin
+  local root="${CASE_DIR}/clone"
+  git_q clone -q -b main "$ORIGIN_DIR" "$root"   # its manifest still says 9.10.0
+  origin_release 10.0.0                          # …and origin/main now says 10.0.0
+  local at; at="$(git -C "$root" rev-parse HEAD)"
+
+  local out; out="$(run_update_checkout "$root")" || fail "a refusal must still succeed: $out"
+  assert_contains "$out" "crosses a MAJOR version"
+  assert_contains "$out" "herdr plugin action invoke update-major --plugin herdr.collie"
+  assert_contains "$out" "nothing was pulled"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$at"
 }
 
 # `herdr plugin link` re-registers the plugin as source.kind=local, and Herdr then REFUSES
@@ -1075,6 +1210,11 @@ test_missing_bun_still_reports
 test_update_advances_a_herdr_managed_checkout
 test_update_fast_forwards_a_linked_clone
 test_update_reports_a_non_git_checkout
+test_update_targets_the_highest_release_in_the_major
+test_update_holds_at_a_major_boundary
+test_update_major_crosses_exactly_one_major
+test_update_falls_back_loudly_without_a_readable_version
+test_update_refuses_a_major_on_a_linked_clone
 test_registry_refresh_skips_a_managed_checkout
 
 echo "collie-ctl lifecycle tests: passed"
