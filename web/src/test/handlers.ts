@@ -207,6 +207,8 @@ export const handlers = [
       latest: "0.11.0",
       latestUrl: null,
       releaseAvailable: false,
+      majorAvailable: null,
+      majorUrl: null,
       bridgeStale: false,
       checkedAt: Date.now(),
     }),
