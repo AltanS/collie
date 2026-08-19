@@ -6,6 +6,18 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.6] - 2026-08-19
+
+### Added
+
+- **A routine `update` now stays inside its installed major and follows release tags** — a managed checkout resolves the newest `vX.Y.Z` inside its major and detaches onto it; a linked clone keeps its ff-only pull, gated by a pre-flight read of the manifest. Crossing a major needs `update --major`, also wired as the `update-major` plugin action, because a Herdr action has no TTY to prompt on ([ADR 0020](./.adr/0020-a-major-upgrade-is-consented-by-flag.md), fcb48a9)
+- The update banner distinguishes a routine release from a pending major, ranked below it so the operator takes what a plain tap can actually deliver first (76b2813)
+- **`collie link` / `collie unlink` publish the binary on PATH as a symlink, never a copy** — the pointer is never stale because it is never refreshed, and `link`/`unlink` only ever touch a name Collie itself published; `doctor` gains a `path-link` line ([ADR 0021](./.adr/0021-the-path-name-is-a-pointer-never-a-copy.md), 3287194)
+
+### Fixed
+
+- **The linked-clone major gate judged the wrong commit** — it read the manifest at the remote's default branch while `--ff-only` advances the current branch from its own upstream, so a clone on a maintenance branch judged a major it would never actually pull; it now fetches the configured refspec and reads the manifest at `@{u}` (f8ad03d)
+
 ## [1.0.0-beta.5] - 2026-08-18
 
 Adds a lint gate; changes no operator workflow. Reasoning:
