@@ -56,8 +56,10 @@ flagged act.**
    nothing to keep, so it is pointed straight at the release tag and target selection *is* the gate. A
    linked clone keeps its branch and its `git pull --ff-only`: detaching it onto a tag would undo the
    shape it was installed in and cost it the re-link ADR 0006 reserves for exactly that shape. Its
-   gate is therefore a pre-flight — fetch, read `herdr-plugin.toml` at `FETCH_HEAD`, compare majors,
-   and refuse before anything is pulled. Two mechanisms, one rule: no install crosses a major
+   gate is therefore a pre-flight — fetch, read `herdr-plugin.toml` at the branch's own upstream
+   (`@{u}`, exactly the commit the pull will take — never `FETCH_HEAD` of `fetch origin HEAD`, which
+   names the remote's *default* branch and diverges from `@{u}` on any clone kept on another branch),
+   compare majors, and refuse before anything is pulled. Two mechanisms, one rule: no install crosses a major
    unasked.
 4. **The gate ships in one final 0.x release — 0.32.0, cut from `main` *before* `v1` merges.** Only
    code in the **old** binary can protect an old install; a guard that first exists in 1.0.0 has
