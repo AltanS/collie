@@ -172,6 +172,34 @@ export type SubscribeOptions = {
 /** The handle {@link HerdrClient.subscribeEvents} hands back. `close()` is idempotent. */
 export type EventStream = { close(): void };
 
+/**
+ * The RPCs the adapter next door actually calls — the shape it depends on, rather than this class.
+ *
+ * Written as a `Pick` of {@link HerdrClient} so it cannot drift from the real transport: a method
+ * renamed here stops compiling, and nothing can be added to the port's surface without being added
+ * to the client too. The real client is what the bridge constructs (`herdrMuxFactory`); a fake of
+ * this shape is what the conformance fixture drives, which is how the reference adapter is proved
+ * with no Herdr on the box (M10/03). The same narrowing `server.ts` already does for the reply path.
+ */
+export type HerdrRpc = Pick<
+  HerdrClient,
+  | "ping"
+  | "sessionSnapshot"
+  | "listWorkspaces"
+  | "listPanes"
+  | "listTabs"
+  | "readPane"
+  | "sendPaneText"
+  | "sendPaneKeys"
+  | "renamePane"
+  | "closePane"
+  | "createTab"
+  | "renameTab"
+  | "closeTab"
+  | "createWorkspace"
+  | "subscribeEvents"
+>;
+
 let idCounter = 0;
 
 /** Per-request wall-clock budget. Exported so callers can pass it explicitly alongside a dial mode. */

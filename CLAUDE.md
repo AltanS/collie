@@ -6,7 +6,8 @@ talks to Herdr's Unix socket, letting you monitor and reply to agents from a pho
 plugin id is `herdr.collie` (manifest: `herdr-plugin.toml`). Orientation:
 [`README.md`](./README.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · verified API
 [`HERDR_API.md`](./HERDR_API.md) · decisions [`.adr/`](./.adr/) · adding a harness
-[`HARNESS_CONTRIBUTING.md`](./HARNESS_CONTRIBUTING.md).
+[`HARNESS_CONTRIBUTING.md`](./HARNESS_CONTRIBUTING.md) · adding a multiplexer
+[`MUX_CONTRIBUTING.md`](./MUX_CONTRIBUTING.md).
 
 ## Decision records — read before reopening a settled question
 
