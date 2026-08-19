@@ -35,7 +35,8 @@ ships none of its own.
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
   [Multi-session](#multi-session)
 - [Dark mode / light mode](#dark-mode--light-mode)
-- [Commands](#commands) · [Herdr actions](#herdr-actions)
+- [Commands](#commands) · [Put `collie` on your PATH](#put-collie-on-your-path) ·
+  [Herdr actions](#herdr-actions)
 - [Manage & update](#manage--update) · [Migrating from 0.x](#migrating-from-0x)
 - [Deployment variants](#deployment-variants) · [B–E in `DEPLOYMENT.md`](./DEPLOYMENT.md)
 - [Windows (experimental)](#windows-experimental)
@@ -406,6 +407,7 @@ as `invoke <cmd>`). The ones you'll actually use:
 | **Uninstall** — remove the service; keep `.env` + checkout | `collie uninstall` | `invoke uninstall` |
 | **Pair** — mint a code so a phone can be [paired](#pair-a-device--the-write-credential) | `collie pair` | — (CLI only) |
 | **Devices** — list / revoke paired devices | `collie devices list` · `collie devices revoke <label>` | — (CLI only) |
+| **Link** — put `collie` on your PATH ([below](#put-collie-on-your-path)) | `collie link` · `collie unlink` | — (CLI only) |
 | **Logs** — tail the journal / log file | `collie logs` | — (CLI only) |
 | **Push keys** — generate the VAPID keypair into your `.env` | `collie push-keys` | `invoke push-keys` |
 | **Push test** — send one notification to prove it works | `collie push-test` | `invoke push-test` |
@@ -426,6 +428,24 @@ banner** — the human-readable output is the action's *captured stdout*, read w
 > script — a Herdr <0.8.0 install invokes the action set cached at install time, so that path is
 > frozen ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)). Every verb is
 > implemented once, in the binary (`cli/`).
+
+### Put `collie` on your PATH
+
+Tired of typing the checkout path? `collie link` publishes `~/.local/bin/collie`:
+
+```bash
+bin/collie link          # ~/.local/bin/collie → <checkout>/bin/collie
+collie status            # from anywhere
+bin/collie unlink        # take the name back down
+```
+
+It is a **symlink to the checkout's binary**, so every later `collie build` is live through it with
+nothing to re-run ([ADR 0021](./.adr/0021-the-path-name-is-a-pointer-never-a-copy.md)). It replaces a
+link another Collie checkout published — saying which — and refuses anything else that is sitting at
+that name. `unlink` removes it only if it points at *your* checkout.
+
+If `~/.local/bin` isn't on your `PATH`, `link` says so and leaves it to you; it never edits a shell
+profile. `collie doctor`'s `path-link` line tells you which checkout a bare `collie` currently reaches.
 
 ### Herdr actions
 
