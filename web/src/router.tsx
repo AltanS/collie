@@ -6,7 +6,14 @@ import { SpaceRoute } from "@/routes/space";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { SettingsRoute } from "@/routes/settings";
-import { devicesLoader, historyLoader, rootLoader, paneLoader, ROOT_ROUTE_ID } from "@/lib/loaders";
+import {
+  devicesLoader,
+  historyLoader,
+  rootLoader,
+  paneLoader,
+  PANE_ROUTE_ID,
+  ROOT_ROUTE_ID,
+} from "@/lib/loaders";
 
 // We don't use view transitions. React Router persists an "applied view transitions" map to
 // sessionStorage ("remix-router-transitions") and replays a phantom same-location transition on every
@@ -39,7 +46,9 @@ export const router = createBrowserRouter([
       // Settings carries the paired-device registry, so it gets its own loader — a revoke or a pair
       // is then the app's standard mutation shape (api call → revalidate), with no second data path.
       { path: "settings", loader: devicesLoader, element: <SettingsRoute /> },
-      { path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
+      // Named, so RootLayout can ask for THIS route's data by id (react-router hands back undefined
+      // whenever it isn't the active route) — see the "last seen" note there.
+      { id: PANE_ROUTE_ID, path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
       {
         path: "pane/:paneId/history",
         loader: historyLoader,

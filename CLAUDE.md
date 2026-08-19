@@ -191,6 +191,10 @@ lint guard.
 - **The operator's rows in `commands.toml` replace the shipped command catalog on the panes they
   address, never merge into it** ([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md));
   the bridge re-reads the file behind an mtime check, so edits are live and need no restart.
+- **`keys.toml` is `commands.toml`'s sibling** — the operator's rows replace the Keys tray's shipped
+  Ctrl presets on the panes they address (ADR 0018 again), and only those presets: the tray's
+  keyboard is fixed. Both files share one reader (`bridge/operator-file.ts`) and one scope ladder
+  (`web/src/lib/operator-scope.ts`); teach both, never one.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).

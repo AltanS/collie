@@ -117,6 +117,26 @@ describe("AgentList — sections", () => {
     render(<AgentList agents={[]} bridge="disconnected" onOpen={vi.fn()} />);
     expect(screen.getByText(/waiting for herdr/i)).toBeInTheDocument();
   });
+
+  // The cold-boot-offline bug: the herd is empty because the fetch failed, not because nothing is
+  // running — and a cached snapshot still reports `bridge: "connected"`, so `bridge` alone would let
+  // "No agents running." through. Only a real answer may make that claim.
+  it("never claims an empty herd on a stale render", () => {
+    render(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} error />);
+    expect(screen.queryByText(/no agents running/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/disconnected/i)).toBeInTheDocument();
+  });
+
+  it("dates the disconnected placeholder when the cache can date it", () => {
+    const at = new Date(2026, 0, 2, 14, 32).getTime();
+    render(<AgentList agents={[]} onOpen={vi.fn()} error lastSeenAt={at} />);
+    expect(screen.getByText(/last seen/i)).toHaveTextContent(/\d{1,2}[:.]\d{2}/);
+  });
+
+  it("says only 'Disconnected' when it cannot date the data", () => {
+    render(<AgentList agents={[]} onOpen={vi.fn()} error />);
+    expect(screen.getByText("Disconnected")).toBeInTheDocument();
+  });
 });
 
 describe("AgentList — the attention sections are pinned", () => {

@@ -1,6 +1,7 @@
-import { ArrowDown, ArrowUp, Check, Inbox } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Inbox, WifiOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { clockTime } from "@/lib/format";
 import { SectionHeader } from "@/components/section-header";
 import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
@@ -22,6 +23,14 @@ interface AgentListProps {
   onRecentOpenChange?: (open: boolean) => void;
   /** Show the "no agents" placeholder when the herd is empty (default true). */
   emptyState?: boolean;
+  /**
+   * The snapshot on screen is stale — the last fetch failed, or this is a cold boot rendering from the
+   * write-through cache. An EMPTY herd then means "we don't know", never "nothing is running", so the
+   * placeholder must not claim the latter.
+   */
+  error?: boolean;
+  /** When the stale data was fetched, for the "last seen HH:MM" half of the disconnected placeholder. */
+  lastSeenAt?: number;
 }
 
 /** Which timestamp a section's rows date themselves by. Attention rows show none — a blocked
@@ -49,9 +58,27 @@ export function AgentList({
   recentOpen = true,
   onRecentOpenChange,
   emptyState = true,
+  error = false,
+  lastSeenAt,
 }: AgentListProps) {
   if (agents.length === 0) {
     if (!emptyState) return null;
+    // "No agents running." is a claim about the herd, and only the bridge can make it. A stale render
+    // (failed fetch, or a cold boot with nothing cached) knows nothing about the herd — saying the
+    // herd is empty there is the bug this branch exists to prevent, so the outage is named instead.
+    // `bridge` is no help on its own: a cached snapshot still says "connected".
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+          <WifiOff className="size-7" />
+          <span className="text-sm">
+            {lastSeenAt === undefined
+              ? "Disconnected"
+              : `Disconnected — last seen ${clockTime(lastSeenAt)}`}
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
         <Inbox className="size-7" />

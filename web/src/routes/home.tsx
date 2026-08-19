@@ -88,6 +88,8 @@ export function HomeRoute() {
             onRecentDirChange={setRecentDir}
             recentOpen={prefs.recentOpen}
             onRecentOpenChange={setRecentOpen}
+            error={data.error}
+            lastSeenAt={data.lastSeenAt}
           />
           <SpaceOverview
             workspaces={data.workspaces}

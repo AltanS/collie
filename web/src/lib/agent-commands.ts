@@ -11,6 +11,7 @@
 //
 // To regenerate: re-run the per-agent doc-fetch agents (see CHANGELOG) and replace the arrays.
 
+import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
 import type { OperatorCommand } from "@/lib/types";
 
 export interface AgentCommand {
@@ -243,52 +244,28 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
  * command-palette.tsx then calls `.filter` on it and throws, taking the palette down. Same hardening
  * quick-replies.ts applies to its twin lookup, and adapterFor() to the registry.
  *
- * Four rules:
+ * Which of your rows address a pane is decided in lib/operator-scope.ts (`keys.toml` resolves the
+ * same way, ADR 0018). What that leaves to this function is the CATALOG half:
  *
  * 1. YOUR LIST IS THE PALETTE. A pane addressed by even one of your rows shows your rows for that
  *    pane and nothing else. This surface is a handful of one-thumb shortcuts, and the value of the
  *    shipped catalog is that someone chose those ten; a list half-chosen by you and half-guessed
  *    for you is worse than either. Discovery is not lost by this — the agent's own `/` completion
  *    renders in the mirrored pane, complete and live, which no copy here could stay.
- * 2. A PANE YOU DID NOT ADDRESS KEEPS ITS CATALOG. Scoping rows to `omp:` says nothing about your
- *    claude panes, so they are left alone. Declaring nothing at all leaves every pane as shipped.
- * 3. DANGER IS INHERITED, NOT RESET. A row naming a shipped command keeps that row's `dangerous`
+ * 2. DANGER IS INHERITED, NOT RESET. A row naming a shipped command keeps that row's `dangerous`
  *    classification, so re-describing a session wipe cannot turn a two-tap command into a one-tap
  *    one. A row that names nothing shipped is not dangerous — nothing out here knows otherwise.
- * 4. THE MORE SPECIFIC SCOPE WINS, and one `/name` is one row. Exact (`claude-code:` on a
- *    claude-code pane) beats family (`claude:` on the same pane) beats unscoped;
- *    `/deploy=Global,omp:/deploy=On omp` is the obvious way to write "this everywhere, except
- *    here" and must not render as two identically named buttons (which also collide on the
- *    palette's `key={c.command}`). Declaration order decides only between rows of equal
- *    specificity, where the later one wins — the same rule the parser uses for exact duplicates.
- *    A family scope is only ever the catalog's own name for the family: `claude:` reaches a
- *    "claude-code" pane because CLAUDE's shipped rows do; `claude-local:` does NOT, even though
- *    the catalog lookup would fold it onto CLAUDE. Folding an arbitrary operator string through
- *    that ladder turns a scope written to be narrow into a family-wide one.
  */
 export function commandsFor(
   agent: string | undefined | null,
   mine: readonly OperatorCommand[] = [],
 ): readonly AgentCommand[] {
   const shipped = catalogFor(agent);
-  if (mine.length === 0) return shipped;
-  const paneKey = agent?.toLowerCase().trim() ?? "";
-  const paneFamily = canonicalAgent(paneKey);
-  // One entry per `/name`, keyed by how specifically it was aimed. Insertion order is declaration
-  // order and Map.set on an existing key keeps that position, so a scoped row correcting a global
-  // one lands where the global one was.
-  const aimed = new Map<string, { row: OperatorCommand; aim: number }>();
-  for (const row of mine) {
-    const aim = specificity(row, paneKey, paneFamily);
-    if (aim === MISSES) continue;
-    const prev = aimed.get(row.command);
-    if (prev !== undefined && prev.aim > aim) continue;
-    aimed.set(row.command, { row, aim });
-  }
+  const aimed = rowsFor(mine, agent, (row) => row.command);
   // Rule 2: nothing of yours points here, so this pane was never part of what you were choosing.
-  if (aimed.size === 0) return shipped;
+  if (aimed.length === 0) return shipped;
   const byName = new Map(shipped.map((c) => [c.command, c] as const));
-  return [...aimed.values()].map(({ row }) => ({
+  return aimed.map((row) => ({
     command: row.command,
     description: row.description,
     takesArg: row.takesArg,
@@ -301,43 +278,8 @@ export function commandsFor(
   }));
 }
 
-const MISSES = 0;
-const UNSCOPED = 1;
-const FAMILY = 2;
-const EXACT = 3;
-
-/** How narrowly one of your rows was aimed at this pane — see rule 4 on {@link commandsFor}. */
-function specificity(row: OperatorCommand, paneKey: string, paneFamily: string): number {
-  // An unscoped row applies everywhere, including to an agent with no catalog at all (and to a
-  // pane with no agent, where the palette button would otherwise never appear).
-  if (row.agent === undefined) return UNSCOPED;
-  if (paneKey === "") return MISSES;
-  const scope = row.agent.toLowerCase().trim();
-  if (scope === paneKey) return EXACT;
-  // A catalog membership test, not `canonicalAgent(scope) === paneFamily`: only the catalog's own
-  // name for a family addresses the whole family. Anything else stays exact, so a narrow operator
-  // scope can never be widened by the lookup's prefix tolerance.
-  return CATALOG.has(scope) && scope === paneFamily ? FAMILY : MISSES;
-}
-
-/**
- * Fold a PANE's agent name onto the name its catalog is filed under ("claude-code" -> "claude"),
- * or onto itself when nothing ships for it. This is the lookup's variant tolerance, and it is
- * deliberately applied to what Herdr reports, never to what the operator typed as a scope: it is
- * a widening rule, and widening a scope is the one thing rule 4 on {@link commandsFor} forbids.
- */
-function canonicalAgent(key: string): string {
-  if (key === "") return "";
-  if (CATALOG.has(key)) return key;
-  if (key.startsWith("claude")) return "claude";
-  if (key.startsWith("codex")) return "codex";
-  if (key.startsWith("opencode")) return "opencode";
-  if (key === "pi" || key.startsWith("pi-") || key.startsWith("pi.")) return "pi";
-  // `omp` is its own prefix — no other agent string in this file starts with it, and it must NOT be
-  // reached by the `pi` rules above: oh-my-pi ships a different command set from pi.dev's.
-  if (key.startsWith("omp")) return "omp";
-  return key;
-}
+/** The agent names the shipped catalog is filed under — pinned against AGENT_FAMILIES in the tests. */
+export const CATALOG_AGENTS: readonly string[] = [...CATALOG.keys()];
 
 function catalogFor(agent: string | undefined | null): readonly AgentCommand[] {
   if (!agent) return [];

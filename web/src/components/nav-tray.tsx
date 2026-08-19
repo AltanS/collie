@@ -10,6 +10,7 @@ import { useKeyQueue } from "@/hooks/use-key-queue";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useHoldRepeat } from "@/hooks/use-hold-repeat";
 import { KeyQueueStrip } from "@/components/key-queue-strip";
+import { CONTROL_PRESETS, type CtrlDef } from "@/lib/operator-keys";
 
 // The inline navigation tray: the keys you need to drive an interactive agent prompt (selection
 // menus, multi-select forms, numbered choices) WITHOUT covering the terminal mirror — it docks
@@ -34,28 +35,24 @@ import { KeyQueueStrip } from "@/components/key-queue-strip";
 interface NavTrayProps {
   /** Resolves true when the bridge accepted the keys — drives the ✓ echo on the pressed button. */
   onSend: (keys: string[]) => Promise<boolean>;
+  /**
+   * The labelled preset chords under "Presets" — the operator's own `keys.toml` rows when any of
+   * them address this pane, otherwise the shipped six (resolved by `ctrlPresetsFor`). Only this
+   * list is configurable; everything else in the tray is the fixed keyboard.
+   */
+  presets?: readonly CtrlDef[];
   /** How many keys are staged, reported up so the Composer can guard closing the dock on a composed
    *  sequence. Reports 0 on unmount. Must be referentially stable (a setState fn is ideal). */
   onQueueChange?: (staged: number) => void;
   disabled?: boolean;
 }
 
-interface CtrlDef {
-  label: string;
-  keys: string[];
-  danger?: boolean;
-}
-
-const CONTROL: CtrlDef[] = [
-  { label: "Ctrl C", keys: ["ctrl+c"] },
-  { label: "Ctrl D", keys: ["ctrl+d"], danger: true },
-  { label: "Ctrl U", keys: ["ctrl+u"] },
-  { label: "Ctrl R", keys: ["ctrl+r"] },
-  { label: "Ctrl L", keys: ["ctrl+l"] },
-  { label: "Ctrl Z", keys: ["ctrl+z"], danger: true },
-];
-
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+// F1–F12 — Herdr's send_keys grammar accepts them bare (HERDR_API.md), and harnesses bind them to
+// real actions (tmux windows, CLI hotkeys, agent-extension views like pi's CE Workflow: F7 opens
+// its orchestrator). Without buttons for them, a phone-only user has no route to any such keybind.
+const FN_KEYS = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"];
 
 // Two views behind a segmented toggle: the keys pad (arrows/Esc, Tab/Space/Enter, modifiers, Ctrl
 // presets) and a phone-dialer digit grid. Digits were a cramped nine-across sliver row; on their own
@@ -64,9 +61,10 @@ const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 // Ctrl-expand persist across the toggle so a composed sequence survives switching to the digit pad.
 type Tab = "keys" | "digits";
 
-export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
+export function NavTray({ onSend, presets = CONTROL_PRESETS, onQueueChange, disabled }: NavTrayProps) {
   const [tab, setTab] = useState<Tab>("keys");
   const [ctrlOpen, setCtrlOpen] = useState(false);
+  const [fkeysOpen, setFkeysOpen] = useState(false);
   const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take } =
     useKeyQueue();
   const { pending, confirm, reset } = usePendingConfirm(); // danger ctrl two-tap (immediate path only)
@@ -263,9 +261,11 @@ export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
             {modBtn("alt", "Alt")}
           </div>
 
-          {/* Ctrl presets (collapsed by default; expanding keeps everything inline, never covering
-              the mirror). On the immediate path Ctrl-D / Ctrl-Z need a second tap; while composing a
-              tap just stages the chord for review. */}
+          {/* Presets (collapsed by default; expanding keeps everything inline, never covering the
+              mirror). On the immediate path a danger preset needs a second tap; while composing a
+              tap just stages its chords for review. An operator's `keys.toml` rows arrive here as
+              the same CtrlDef list, so a multi-chord row sends as one batch and an armed modifier
+              stages it — no special-casing. */}
           <div>
             <button
               type="button"
@@ -277,7 +277,7 @@ export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
             </button>
             {ctrlOpen && (
               <div className="mt-1 grid grid-cols-3 gap-1.5">
-                {CONTROL.map((item) => {
+                {presets.map((item) => {
                   const isPending = pending === item.label;
                   const phase = echo.phaseOf(item.label);
                   // The armed two-tap confirm outranks the echo — it's the thing you must read.
@@ -306,6 +306,23 @@ export function NavTray({ onSend, onQueueChange, disabled }: NavTrayProps) {
                   );
                 })}
               </div>
+            )}
+          </div>
+          {/* Function keys (#119) — same collapsible shape as Presets: collapsed by default so the
+              tray doesn't grow, expanding to a 4×3 grid. They ride the ordinary navBtn path, so the
+              press echo, key-queue staging, and chords with armed modifiers (ctrl+F7, …) all come
+              for free — no special-casing. */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setFkeysOpen((o) => !o)}
+              className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              F keys
+              <ChevronDown className={cn("size-3 transition-transform", fkeysOpen && "rotate-180")} />
+            </button>
+            {fkeysOpen && (
+              <div className="mt-1 grid grid-cols-4 gap-1.5">{FN_KEYS.map((k) => navBtn(k, [k]))}</div>
             )}
           </div>
         </>

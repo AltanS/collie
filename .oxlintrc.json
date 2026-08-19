@@ -103,7 +103,7 @@
       }
     },
     {
-      // HTTP request bodies + disk-backed state: the same boundary class as the wire/journal/pack overrides above. Every `typeof` in these files sits inside the module's own coercion function — server.ts's `expectedPrompt`/`normalizeTabLabel`/`parsePairRequest`/`parseNotifyPrefsPatch`/`isPushSubscription`/`supersededEndpoint` over `await req.json()`, `coercePending`/`coerceRegistry`/`normalizeLabel` (pairing.json + client labels), `coerceStored` + `describeSendError` (subscription store + an untyped web-push rejection), `coerceNotifyPrefs`, `coerceActivityFile`, the `JSON.parse` reloads in snooze/version/update, `commands.toml` rows (ADR 0018), and audit.ts's `sanitize()` walk of an arbitrary JSON value where `typeof` IS the dispatch. The only real fix is a schema validator, explicitly out of scope for M8.
+      // HTTP request bodies + disk-backed state: the same boundary class as the wire/journal/pack overrides above. Every `typeof` in these files sits inside the module's own coercion function — server.ts's `expectedPrompt`/`normalizeTabLabel`/`parsePairRequest`/`parseNotifyPrefsPatch`/`isPushSubscription`/`supersededEndpoint` over `await req.json()`, `coercePending`/`coerceRegistry`/`normalizeLabel` (pairing.json + client labels), `coerceStored` + `describeSendError` (subscription store + an untyped web-push rejection), `coerceNotifyPrefs`, `coerceActivityFile`, the `JSON.parse` reloads in snooze/version/update, `commands.toml` rows (ADR 0018), the same checks copied verbatim into `keys.toml`'s row validator (operator-keys.ts) and the shared TOML reader they both sit behind (operator-file.ts), and audit.ts's `sanitize()` walk of an arbitrary JSON value where `typeof` IS the dispatch. The only real fix is a schema validator, explicitly out of scope for M8.
       "files": [
         "**/bridge/server.ts",
         "**/bridge/pairing.ts",
@@ -111,6 +111,8 @@
         "**/bridge/notify-prefs.ts",
         "**/bridge/activity.ts",
         "**/bridge/operator-commands.ts",
+        "**/bridge/operator-keys.ts",
+        "**/bridge/operator-file.ts",
         "**/bridge/audit.ts",
         "**/bridge/snooze.ts",
         "**/bridge/version.ts",

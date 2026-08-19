@@ -34,7 +34,12 @@ function setOnline(value: boolean) {
 let rerenderBanner: () => void = () => {};
 
 function renderBanner(
-  props: { bridge?: "connected" | "disconnected"; error?: boolean; authError?: boolean } = {},
+  props: {
+    bridge?: "connected" | "disconnected";
+    error?: boolean;
+    authError?: boolean;
+    lastSeenAt?: number;
+  } = {},
 ) {
   function Harness() {
     const [, setN] = useState(0);
@@ -44,6 +49,7 @@ function renderBanner(
         bridge={props.bridge ?? "disconnected"}
         error={props.error ?? false}
         authError={props.authError ?? false}
+        lastSeenAt={props.lastSeenAt}
       />
     );
   }
@@ -137,6 +143,25 @@ describe("ConnectionBanner — the single connection surface", () => {
     renderBanner();
     await act(async () => {});
     expect(screen.getByText("Can't reach Collie")).toBeInTheDocument();
+  });
+
+  // A cold boot with the tunnel down re-renders the whole herd from cache, which looks exactly like a
+  // live one. The red row is where that gets named.
+  it("dates the red row when the data on screen came from the cache", async () => {
+    h.lost = true;
+    cfg.reachable = false;
+    setOnline(true);
+    renderBanner({ error: true, lastSeenAt: new Date(2026, 0, 2, 14, 32).getTime() });
+    await act(async () => {});
+    expect(screen.getByRole("alert")).toHaveTextContent(/Can't reach Collie — last seen \d/);
+  });
+
+  it("leaves the red row undated when nothing can date it", async () => {
+    h.lost = true;
+    cfg.reachable = false;
+    renderBanner({ error: true });
+    await act(async () => {});
+    expect(screen.getByRole("alert")).not.toHaveTextContent(/last seen/);
   });
 
   it("Retry re-probes the bridge", async () => {
