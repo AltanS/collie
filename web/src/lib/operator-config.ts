@@ -1,10 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchConfig } from "@/lib/api";
-import type { OperatorCommand } from "@/lib/types";
+import type { OperatorCommand, OperatorKeyRow } from "@/lib/types";
 
-// The operator's own palette rows (their `commands.toml`), read from /api/config and held in
-// module state. Modelled on the lib/server-build.ts store idiom: plain module state + subscribe +
+// The operator's own rows — their `commands.toml` palette AND their `keys.toml` tray presets — read
+// from ONE /api/config call and held in module state. Both files ride the same request because both
+// are the same kind of thing: startup-resolved operator config the client reads once. Modelled on the lib/server-build.ts store idiom: plain module state + subscribe +
 // a useSyncExternalStore hook, so the composer participates without prop-drilling through the route
 // tree.
 //
@@ -23,6 +24,7 @@ import type { OperatorCommand } from "@/lib/types";
 // snapshot, so a render-phase kick would turn one refusal into a request per tick, forever.
 
 let current: readonly OperatorCommand[] = [];
+let currentKeys: readonly OperatorKeyRow[] = [];
 let inflight: Promise<void> | null = null;
 let loaded = false;
 const listeners = new Set<() => void>();
@@ -39,6 +41,7 @@ export function loadOperatorCommands(): Promise<void> {
     try {
       const cfg = await fetchConfig();
       current = cfg.operatorCommands ?? [];
+      currentKeys = cfg.operatorKeys ?? [];
       loaded = true;
       emit();
     } catch {
@@ -54,7 +57,11 @@ export function getOperatorCommands(): readonly OperatorCommand[] {
   return current;
 }
 
-export function subscribeOperatorCommands(cb: () => void): () => void {
+export function getOperatorKeys(): readonly OperatorKeyRow[] {
+  return currentKeys;
+}
+
+export function subscribeOperatorConfig(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
@@ -67,12 +74,21 @@ export function useOperatorCommands(): readonly OperatorCommand[] {
   useEffect(() => {
     void loadOperatorCommands();
   }, []);
-  return useSyncExternalStore(subscribeOperatorCommands, getOperatorCommands, getOperatorCommands);
+  return useSyncExternalStore(subscribeOperatorConfig, getOperatorCommands, getOperatorCommands);
+}
+
+/** Reactive read of the Keys-tray presets. Same one-shot fetch, same contract. */
+export function useOperatorKeys(): readonly OperatorKeyRow[] {
+  useEffect(() => {
+    void loadOperatorCommands();
+  }, []);
+  return useSyncExternalStore(subscribeOperatorConfig, getOperatorKeys, getOperatorKeys);
 }
 
 /** Test helper — reset module state between cases. */
 export function __resetOperatorCommands(): void {
   current = [];
+  currentKeys = [];
   inflight = null;
   loaded = false;
   listeners.clear();

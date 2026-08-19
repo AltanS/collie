@@ -10,6 +10,7 @@ import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
+import { createOperatorKeys } from "./operator-keys.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -46,6 +47,7 @@ import type {
   CreateResponse,
   DeviceAuth,
   OperatorCommand,
+  OperatorKeyRow,
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
@@ -197,9 +199,12 @@ export function bridgeConfigBody(opts: {
    * wrote a `commands.toml` ships the same payload as before — the same reasoning `mode` follows.
    */
   operatorCommands?: readonly OperatorCommand[];
+  /** The operator's own Keys-tray rows. Same omit-when-empty rule as `operatorCommands`. */
+  operatorKeys?: readonly OperatorKeyRow[];
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
   const mine = opts.operatorCommands ?? [];
+  const myKeys = opts.operatorKeys ?? [];
   const wire: BridgeConfig = {
     push: opts.push,
     vapidPublicKey: opts.vapidPublicKey,
@@ -209,6 +214,7 @@ export function bridgeConfigBody(opts: {
   // byte as before the pack existed (PACK_PROTOCOL.md §11).
   if (mode !== undefined) wire.mode = mode;
   if (mine.length > 0) wire.operatorCommands = [...mine];
+  if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
   return wire;
 }
 
@@ -279,6 +285,8 @@ export function startServer(opts: {
   // journal/registry.ts, never here.
   // One reader per process; it owns the mtime cache that keeps commands.toml off the hot path.
   const operatorCommands = createOperatorCommands(cfg.commandsFile);
+  // Its sibling, on the same contract: one reader, one mtime cache, keys.toml off the hot path.
+  const operatorKeys = createOperatorKeys(cfg.keysFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -611,6 +619,7 @@ export function startServer(opts: {
         // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
         // with no restart. The path is cfg's, never the request's.
         const mine = await operatorCommands();
+        const myKeys = await operatorKeys();
         return json(
           bridgeConfigBody({
             push: push.enabled,
@@ -618,6 +627,7 @@ export function startServer(opts: {
             build: await buildId(),
             mode: pack.mode,
             operatorCommands: mine,
+            operatorKeys: myKeys,
           }),
           req.headers.get("accept-encoding"),
         );

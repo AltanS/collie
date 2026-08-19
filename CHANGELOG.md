@@ -292,6 +292,22 @@ Merges `main` 0.31.0 + 0.31.1 into v1 (entries below). v1-specific on top of the
 
 - **`PACK_PROTOCOL.md` §11's files-written row omitted `update-state.json`** — the baseline found it;
   the row now lists the real set
+
+## [0.32.0] - 2026-08-19
+
+### Added
+
+- **F1–F12 in the Keys tray, behind an "F keys" disclosure** — chords with armed modifiers included (#119 by @martin-tahli) (09b0571)
+- **`keys.toml`: your own Keys-tray preset rows** (label + chords + optional `danger`), live-reloaded, replacing the shipped presets on the panes they address per ADR 0018 (c02ab19)
+- **The update gate (ADR 0020)**: a routine `update` follows release tags within the installed major; crossing a major takes explicit consent — `update --major`, wired as the `update-major` plugin action (633b2a1)
+- **The update banner says which kind of behind you are** — an in-major release, or a pending new major with the consent command (a38df8c)
+
+### Fixed
+
+- **A cold boot with no network renders the cached last screen**, dated "last seen HH:MM" — never a false "No agents" (0f4c651, c473aa0)
+- **A stale pane mirror is dated by its own stamp, not the herd's** (1042fe0)
+- **The linked-clone major gate judges the branch's own upstream (`@{u}`), not the remote default branch** (99910cf)
+
 ## [0.31.1] - 2026-08-18
 
 ### Fixed

@@ -354,6 +354,29 @@ A pane your rows match shows only your rows (narrowest row wins,
 two-tap confirm. No restart — edits are live. Verify: open a pane, tap **/**, your rows are on the
 first screen. Syntax error? `journalctl --user -u collie -n 20` names the line.
 
+### Your own key presets
+
+The Keys tray's **Presets** row is yours to replace, in `keys.toml` next to `commands.toml`:
+
+```bash
+cp keys.toml.example "$(herdr plugin config-dir herdr.collie)/keys.toml"
+```
+
+```toml
+[[keys]]
+scope = "claude"             # optional; omit for every pane
+label = "Yes"
+keys = ["Down", "Enter"]     # several chords go out as one batch
+```
+
+A pane your rows match shows only your presets, in place of the shipped Ctrl C/D/U/R/L/Z
+([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md)). Add `danger = true` for a
+two-tap confirm. The rest of the tray — Esc, arrows, Enter/Tab/Space, modifiers, digits, F1–F12 —
+is fixed and not configurable. Chords are herdr's spelling: `ctrl+c` (never `C-c`), `shift+tab`,
+`ctrl+F7`; `PageUp`/`Home`/`End`/`Delete` are not accepted. No restart — edits are live. Verify:
+open a pane, tap **Keys → Presets**, your buttons are there. Rejected row?
+`journalctl --user -u collie -n 20` names it and why.
+
 ### Multi-session
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your

@@ -1,4 +1,4 @@
-import { Outlet, useLoaderData, useParams, useRouteError } from "react-router";
+import { Outlet, useLoaderData, useParams, useRouteError, useRouteLoaderData } from "react-router";
 
 import { intervalFor, usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
@@ -11,7 +11,27 @@ import { PackProvider } from "@/components/pack-provider";
 import { DogGallop } from "@/components/dog-gallop";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
-import type { HomeData } from "@/lib/loaders";
+import { PANE_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
+
+/**
+ * The "last seen" stamp the ONE connection surface should show — the stamp of the data actually on
+ * screen, which is not always the snapshot's.
+ *
+ * A cold boot straight into a pane re-renders that pane's mirror from the write-through cache, and
+ * the two stamps can be hours apart: the operator last opened the pane at 12:05 and left the
+ * dashboard polling until 14:32. Dating that 12:05 terminal text "last seen 14:32" is the same
+ * dishonesty this whole change removes, one level down — so while a stale mirror is the thing being
+ * read, the mirror's own stamp wins, undated included (an undatable mirror says nothing rather than
+ * borrowing a number that isn't about it).
+ *
+ * A stale pane with NO text is not a case: nothing old is on screen, so the herd's stamp is the
+ * honest one. Live pane data likewise falls through — the pane is current, and the banner is then
+ * describing whatever the snapshot is doing.
+ */
+export function shownLastSeenAt(home: HomeData, pane: PaneData | undefined): number | undefined {
+  if (pane?.error && pane.text) return pane.lastSeenAt;
+  return home.lastSeenAt;
+}
 
 // The data root: owns the snapshot loader, drives polling, and fans the herd out to the child
 // routes (home + pane detail) via the router's loader data. Mounted only while unlocked (the
@@ -25,6 +45,11 @@ export function RootLayout() {
   // `/pane/:paneId` child is active. useAgentTransitions uses it to suppress a notification for the
   // pane you're already looking at.
   const { paneId } = useParams();
+  // The active pane's loader data, or undefined when a pane isn't the active route — the router
+  // already carries both stamps, so dating the bar by what's on screen needs no store of its own.
+  // SAFETY: PANE_ROUTE_ID names the route whose `loader` is paneLoader (router.tsx pairs the two),
+  // so the only value that can appear under that id is the PaneData that loader returned.
+  const pane = useRouteLoaderData(PANE_ROUTE_ID) as PaneData | undefined;
 
   usePolling(data, paneId);
   // Surface the busy bar when a navigation or a poll runs slow, each against its own threshold —
@@ -56,7 +81,12 @@ export function RootLayout() {
             in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
             red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
             same shared-clock signals as the header dog, so the two always agree. */}
-        <ConnectionBanner bridge={data.bridge} error={data.error} authError={data.authError} />
+        <ConnectionBanner
+          bridge={data.bridge}
+          error={data.error}
+          authError={data.authError}
+          lastSeenAt={shownLastSeenAt(data, pane)}
+        />
         <Outlet />
       </div>
     </PackProvider>
