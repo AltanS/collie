@@ -479,7 +479,18 @@ herdr plugin action invoke update --plugin herdr.collie   # or, in the checkout:
 It advances the checkout, rebuilds the UI and restarts the bridge (re-execing itself from the
 fetched source, so it's safe even when the update rewrites the code that's running). Confirm via the
 footer build stamp. Pinned to a version with `--ref`? Keep refreshing with
-`herdr plugin install --ref …` — `update` always goes to the latest.
+`herdr plugin install --ref …`.
+
+**`update` goes to the newest release of the major you are on, and never crosses one.** A major
+means you have to change something, so it is never inherited from a routine update: the command says
+a new major is out and names the one that takes it —
+
+```bash
+herdr plugin action invoke update-major --plugin herdr.collie   # or: bin/collie update --major
+```
+
+The flag is the whole consent; there is no prompt, because a Herdr action has no terminal to answer
+one on. The reasoning is [ADR 0020](./.adr/0020-a-major-upgrade-is-consented-by-flag.md).
 
 #### If that fails with *"You are not currently on a branch"*
 
@@ -535,10 +546,11 @@ itself — that is deliberate, and the reasoning is
 
 ### Migrating from 0.x
 
-The last 0.x release is **0.31.1**. Going from there to 1.0 is the command you already have:
+The last 0.x release is **0.31.1**. Going from there to 1.0 crosses a major, so a routine `update`
+will not do it — it will tell you 1.0 is out and name this command instead:
 
 ```bash
-herdr plugin action invoke update --plugin herdr.collie   # or, in the checkout: bin/collie update
+herdr plugin action invoke update-major --plugin herdr.collie   # or: bin/collie update --major
 ```
 
 No reinstall, no re-link, no config edit, no manual `bun install`.

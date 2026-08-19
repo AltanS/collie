@@ -52,6 +52,13 @@ flagged act.**
    advance freely without shipping itself to anybody, an install deliberately rolled back no longer
    snaps forward to the tip on its next routine update, and prerelease tags stay out of reach — the
    same strictness the banner already applies, now applied by the verb that acts on it.
+   **Tag-following is the MANAGED shape's mechanism; the gate covers both.** A detached checkout has
+   nothing to keep, so it is pointed straight at the release tag and target selection *is* the gate. A
+   linked clone keeps its branch and its `git pull --ff-only`: detaching it onto a tag would undo the
+   shape it was installed in and cost it the re-link ADR 0006 reserves for exactly that shape. Its
+   gate is therefore a pre-flight — fetch, read `herdr-plugin.toml` at `FETCH_HEAD`, compare majors,
+   and refuse before anything is pulled. Two mechanisms, one rule: no install crosses a major
+   unasked.
 4. **The gate ships in one final 0.x release — 0.32.0, cut from `main` *before* `v1` merges.** Only
    code in the **old** binary can protect an old install; a guard that first exists in 1.0.0 has
    already been crossed by the time it runs. Sequence, in order: ship 0.32.0 → an adoption window

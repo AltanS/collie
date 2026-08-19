@@ -62,6 +62,16 @@ title = "Update plugin"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "update"]
 
+# The consent for a MAJOR upgrade (ADR 0020). `update` stays inside the major this install is on, so
+# crossing one is a separate, deliberate invocation — and it has to be invokable from HERE, because a
+# plugin action runs with no TTY and the phone banner that announces the major has no terminal at
+# all. The flag IS the consent; there is no prompt behind it. See cli/update.ts → cmdUpdate.
+[[actions]]
+id = "update-major"
+title = "Update across a major version"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "update", "--major"]
+
 [[actions]]
 id = "url"
 title = "Show Collie URL"
