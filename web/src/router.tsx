@@ -6,7 +6,7 @@ import { SpaceRoute } from "@/routes/space";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { SettingsRoute } from "@/routes/settings";
-import { historyLoader, rootLoader, paneLoader, ROOT_ROUTE_ID } from "@/lib/loaders";
+import { historyLoader, rootLoader, paneLoader, PANE_ROUTE_ID, ROOT_ROUTE_ID } from "@/lib/loaders";
 
 // We don't use view transitions. React Router persists an "applied view transitions" map to
 // sessionStorage ("remix-router-transitions") and replays a phantom same-location transition on every
@@ -37,7 +37,9 @@ export const router = createBrowserRouter([
       { index: true, element: <HomeRoute /> },
       { path: "space/:spaceId", element: <SpaceRoute /> },
       { path: "settings", element: <SettingsRoute /> },
-      { path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
+      // Named, so RootLayout can ask for THIS route's data by id (react-router hands back undefined
+      // whenever it isn't the active route) — see the "last seen" note there.
+      { id: PANE_ROUTE_ID, path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
       {
         path: "pane/:paneId/history",
         loader: historyLoader,
