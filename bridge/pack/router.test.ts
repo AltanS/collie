@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import type { SnapshotResponse } from "../types.ts";
+import { MEMBER_HEADER } from "./admission.ts";
 import { HANDOVER_TTL_MS, mintInvite, type EnrollResponse } from "./enrollment.ts";
 import { counterRandom, fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
 import {
@@ -955,5 +956,290 @@ describe("onMembershipChange", () => {
     expect(fired).toBe(1);
     // …and the router itself did NOT act on it: no restart, no re-wire, no front-door change.
     expect(h.data().lead!.memberId).toBe("nas");
+  });
+});
+
+// ── Each factor, refused ALONE, on the routes that would otherwise write ─────
+//
+// `admission.test.ts` pins the DECISION matrix; what these pin is what the HANDLER does with a
+// refusal. Every case below satisfies one factor completely and fails the other, so the thing being
+// measured is the surviving factor carrying the refusal on its own — never the two of them failing
+// together, which is what the older "an unadmitted caller …" tests exercise (they carry the correct
+// secret and no certificate at all).
+//
+// And the assertion is the THREAT PROPERTY, not the status code. Alongside the 401, each test proves
+// the store did not move: nothing pinned, nothing rotated, no crown moved, no roster entry dropped,
+// no §8.6 replay floor advanced — and, in `h.writes()`, not one trip to the disk. That last one is
+// the same shape as F4 and as `audit.test.ts`'s "a flood of refusals stays bounded": a caller who
+// cannot pass both factors must not be able to make this process re-serialize the file holding its
+// private key and the pack secret, however many times it asks.
+//
+// All material here is fixture-minted and obviously fake — `wrong-secret`, an all-zero fingerprint,
+// a `stranger` label no store in this file pins.
+
+/** A secret no pack could have minted. `PACK.secret` is the only correct value in this file. */
+const WRONG_SECRET = "wrong-secret";
+
+/**
+ * A §8.6-signed POST whose credential is chosen by the caller: `secret: null` omits `Authorization`
+ * entirely. `signedPost` always sends the correct one, which is exactly what these tests must vary.
+ */
+function signedPostWith<TBody>(
+  memberLabel: string,
+  path: string,
+  body: TBody,
+  timestamp: number,
+  secret: string | null,
+  claimedMember?: string,
+): RequestInit {
+  const json = JSON.stringify(body);
+  const base = {
+    "x-pack-protocol": "1",
+    "content-type": "application/json",
+    ...signed(memberLabel, "POST", path, json, timestamp),
+  };
+  const claiming = claimedMember === undefined ? base : { ...base, [MEMBER_HEADER]: claimedMember };
+  const headers = secret === null ? claiming : { ...claiming, authorization: `Bearer ${secret}` };
+  return { method: "POST", headers, body: json };
+}
+
+/** The `Authorization`-carrying half of `authed`, replaced with a value of the test's choosing. */
+const withSecret = (secret: string) => ({
+  "x-pack-protocol": "1",
+  "content-type": "application/json",
+  authorization: `Bearer ${secret}`,
+});
+
+describe("N1 — the pack secret alone: a wrong or missing one refuses, and changes nothing", () => {
+  const claim = { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" };
+
+  test("a correctly-signed `leave` with the WRONG secret removes nobody, and never touches the disk", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    // Load once up front so the baseline is "loaded, not written" — the same framing as F4's.
+    await h.store.load();
+    const before = h.contents();
+    const res = (await call(handler, PACK_LEAVE_PATH, signedPostWith("nas", PACK_LEAVE_PATH, {}, T0, WRONG_SECRET)))!;
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+    // The roster is exactly as it was, and so are the bytes on disk. This is the strong half: the
+    // signature verified, so §8.6's replay floor was one line away from being committed — but the
+    // floor advances only AFTER admission, so a caller refused on the secret cannot move it either.
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas", "laptop"]);
+    expect(h.writes()).toBe(0);
+    expect(h.contents()).toBe(before);
+    await Bun.sleep(5);
+    // One audit line, and it is the refusal — no membership line claiming a change that did not happen.
+    expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([["pack.refused", "secret"]]);
+  });
+
+  test("NO secret at all is the same refusal, with the same nothing behind it", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    await h.store.load();
+    const res = (await call(handler, PACK_LEAVE_PATH, signedPostWith("nas", PACK_LEAVE_PATH, {}, T0, null)))!;
+    expect(res.status).toBe(401);
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas"]);
+    expect(h.writes()).toBe(0);
+    // …and the honest call that follows still works, so the refusal is the secret and nothing else.
+    const ok = (await call(handler, PACK_LEAVE_PATH, signedPost("nas", PACK_LEAVE_PATH, {}, T0)))!;
+    expect(ok.status).toBe(200);
+    expect(h.data().peers).toEqual([]);
+  });
+
+  test("this collie's own lead, on the PINNED transport, cannot rotate the secret without it (§8.4)", async () => {
+    // Factor 1 is satisfied the strongest way this surface allows — the request arrived on a listener
+    // BoringSSL built pin-enforcing, so the caller can only be this peer's lead — and it is still
+    // refused. A rotation is the one route where a single-factor slip would hand the pack away.
+    const h = harness(peerStore());
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => T0 });
+    await h.store.load();
+    const res = (await call(handler, PACK_SECRET_PATH, {
+      method: "POST",
+      headers: withSecret(WRONG_SECRET),
+      body: JSON.stringify({ secret: "attacker-chosen-value-000000", generation: 99 }),
+    }))!;
+    expect(res.status).toBe(401);
+    expect(h.data().pack!.secret).toBe(PACK.secret);
+    expect(h.data().pack!.secretGeneration).toBe(1);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("an APPROVED handover still needs the secret — the operator's consent is not a factor (§14)", async () => {
+    // Everything else about this request is right: the operator armed the approval on this machine,
+    // the claimant is pinned, and it signed for itself. The secret is the only thing missing.
+    const h = harness(
+      leadStore({
+        peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })],
+        pendingHandover: { memberId: "nas", createdAt: T0, expiresAt: T0 + HANDOVER_TTL_MS },
+      }),
+    );
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    await h.store.load();
+    const res = (await call(
+      handler,
+      PACK_LEAD_PATH,
+      signedPostWith("nas", PACK_LEAD_PATH, { lead: claim }, T0, WRONG_SECRET),
+    ))!;
+    // Not even §14.3's legible 403 — that one is for a caller who cleared both factors. This is the
+    // uniform 401, and the crown did not move.
+    expect(res.status).toBe(401);
+    expect(h.data().lead).toBeNull();
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas", "laptop"]);
+    // The ten minutes are still the operator's: a refused claim does not spend the consent.
+    expect(h.data().pendingHandover).toMatchObject({ memberId: "nas" });
+    expect(h.writes()).toBe(0);
+  });
+
+  test("a wrong secret never reaches the dispatched handlers — nothing types into a terminal", async () => {
+    // The §5 half. `reply` and `keys` end at a real PTY, so "refused before dispatch" is the property
+    // that keeps a one-factor caller off the pane surface entirely.
+    const h = harness(peerStore());
+    const seen: string[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      dispatch: (_req, url) => {
+        seen.push(url.pathname);
+        return Promise.resolve(new Response("{}"));
+      },
+    });
+    for (const route of ["pane/w1:p1", "pane/w1:p1/reply", "pane/w1:p1/keys"]) {
+      const init: RequestInit = { method: "POST", headers: withSecret(WRONG_SECRET), body: "{}" };
+      expect((await call(handler, `${PACK_PREFIX}${route}`, init))!.status).toBe(401);
+    }
+    expect(seen).toEqual([]);
+    expect(h.writes()).toBe(0);
+  });
+});
+
+describe("N2 — the pinned certificate alone: an identity this collie does not pin refuses", () => {
+  // The TLS handshake itself needs a live `Bun.serve` and cannot run here (bridge/pack/transport.ts
+  // records why Bun exposes no way to read a presented certificate at all). So the factor is pinned
+  // where it is DECIDED instead, in two places that between them cover both directions:
+  //   • peer → lead, the direction that cannot pin at the transport: §8.6's signature, verified
+  //     against the pinned member's certificate (`verifyRequestSignature`, signing.test.ts pins that
+  //     another member's certificate does not verify one). What is added here is the ROUTER path that
+  //     consumes it — a wrong key refuses, and writes nothing.
+  //   • lead → peer: the boolean attestation the pin-enforcing listener sets. `transportPinned`
+  //     defaults to FALSE and is settable only by the code that built the listener, so a peer whose
+  //     pin could not be built is down rather than single-factor (transport.test.ts pins the `null`).
+
+  test("a signature from a certificate this collie does not pin admits nothing, and writes nothing", async () => {
+    // `stranger` is real, well-formed, self-consistent material. It is simply not in the roster —
+    // which is the whole of what "pinned" means here.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    await h.store.load();
+    const before = h.contents();
+    const res = (await call(
+      handler,
+      PACK_LEAVE_PATH,
+      signedPostWith("stranger", PACK_LEAVE_PATH, {}, T0, PACK.secret),
+    ))!;
+    expect(res.status).toBe(401);
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas", "laptop"]);
+    expect(h.writes()).toBe(0);
+    expect(h.contents()).toBe(before);
+    await Bun.sleep(5);
+    expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([["pack.refused", "certificate"]]);
+  });
+
+  test("`X-Pack-Member` is a hint, never an identity — naming a pinned member does not admit a stranger", async () => {
+    // The header narrows which pinned key is TRIED first (§6). A claim that names an enrolled member
+    // while the signature was made by a key nobody pins must fall through to the same refusal.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    await h.store.load();
+    const res = (await call(
+      handler,
+      PACK_LEAVE_PATH,
+      signedPostWith("stranger", PACK_LEAVE_PATH, {}, T0, PACK.secret, "nas"),
+    ))!;
+    expect(res.status).toBe(401);
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas"]);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("the admitted member is the KEY that signed, never the member the header claims", async () => {
+    // The positive control for the test above, and a threat property in its own right: "laptop" signs
+    // and names "nas", and what leaves the roster is LAPTOP. A member can drop itself and nobody else,
+    // so the header cannot be turned into a remote eviction of a third party.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "laptop" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(
+      handler,
+      PACK_LEAVE_PATH,
+      signedPostWith("laptop", PACK_LEAVE_PATH, {}, T0, PACK.secret, "nas"),
+    ))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ removed: "laptop" });
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas"]);
+  });
+
+  test("an `unenrolled` pin is not an identity — a member dropped by a rotation cannot sign its way back", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas", status: "unenrolled" })] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    await h.store.load();
+    const res = (await call(handler, PACK_LEAVE_PATH, signedPost("nas", PACK_LEAVE_PATH, {}, T0)))!;
+    expect(res.status).toBe(401);
+    // The tombstone survives — a refusal must not quietly tidy the roster it was refused against.
+    expect(h.data().peers.map((p) => [p.memberId, p.status])).toEqual([["nas", "unenrolled"]]);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("an unpinned transport admits nobody, however correct the secret — and a pinned one admits", async () => {
+    // `transportPinned: false` is what `peerListenerTls` returning `null` becomes at the router, i.e.
+    // "the pin could not be built". Fail-closed: the correct pack secret buys nothing on its own.
+    const h = harness(peerStore());
+    await h.store.load();
+    const unpinned = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const rotation = {
+      method: "POST",
+      headers: withSecret(PACK.secret),
+      body: JSON.stringify({ secret: "would-be-new-value-0000000", generation: 2 }),
+    } satisfies RequestInit;
+    expect((await call(unpinned, PACK_SECRET_PATH, rotation))!.status).toBe(401);
+    expect(h.data().pack!.secret).toBe(PACK.secret);
+    expect(h.writes()).toBe(0);
+    // The one difference between refused and admitted is the attestation the listener sets — nothing
+    // on the request, and nothing configurable.
+    const pinned = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => T0 });
+    expect((await call(pinned, PACK_SECRET_PATH, rotation))!.status).toBe(200);
+    expect(h.data().pack!.secret).toBe("would-be-new-value-0000000");
+  });
+
+  test("a valid token cannot pin a certificate that does not hash to the claimed fingerprint (§8.2)", async () => {
+    // Enrollment is the one route where the certificate arrives in the PAYLOAD, so the cross-check
+    // `fingerprint === sha256(certPem)` is the whole of factor 1 at that instant. A joiner that could
+    // have the lead pin fingerprint A while presenting certificate B would be pinned to nothing real.
+    for (const wrong of ["0".repeat(64), fp("nas")]) {
+      const minted = mintInvite(leadStore({ peers: [] }), { now: T0, label: "laptop", random: counterRandom("r") });
+      const h = harness(minted.next);
+      const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
+      await h.store.load();
+      const res = (await call(handler, PACK_ENROLL_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-pack-protocol": "1" },
+        body: JSON.stringify({
+          protocol: 1,
+          token: minted.result.token,
+          fingerprint: wrong,
+          certPem: material("laptop").certPem,
+          address: "laptop.ts.net:8787",
+          label: "laptop",
+        }),
+      }))!;
+      expect(res.status).toBe(401);
+      // Nothing was pinned — not the claimed fingerprint, not the certificate that came with it.
+      expect(h.data().peers).toEqual([]);
+      // The cross-check lives in `parseEnrollRequest`, which is what "SPEND FIRST" spends AGAINST:
+      // a payload that will not parse yields no token to consume, so this lands on F4's no-op path —
+      // 401, no store write, and the operator's live invite still there to be used honestly. (The
+      // spend-on-failure rule covers failures AFTER the parse, e.g. the version mismatch above.)
+      expect(h.writes()).toBe(0);
+      expect(h.data().invites).toHaveLength(1);
+    }
   });
 });
