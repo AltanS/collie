@@ -25,6 +25,7 @@ import {
   cmdPackInvite,
   cmdPackRemove,
   cmdPackRotate,
+  cmdPackSetAddress,
   cmdPackStatus,
   cmdPromote,
   cmdReconnect,
@@ -1293,6 +1294,80 @@ describe("collie promote", () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdPromote(h.deps, [])).toBe(EXIT.STATE);
     expect(h.requests).toEqual([]);
+  });
+});
+
+// ── pack set-address ─────────────────────────────────────────────────────────
+
+describe("collie pack set-address", () => {
+  test("rewrites the row, prints before → after, and restarts this lead", async () => {
+    const h = harness(
+      leadStore({ peers: [member({ memberId: "nas", address: "https://collie.example.com" })] }),
+    );
+    expect(await cmdPackSetAddress(h.deps, ["nas", "nas.tail.ts.net:8788"])).toBe(EXIT.OK);
+    expect(h.data()!.peers[0]!.address).toBe("nas.tail.ts.net:8788");
+    // The pin is untouched — an address is a hint, never an identity (§4).
+    expect(h.data()!.peers[0]!.fingerprint).toBe(fp("nas"));
+    const said = text(h.io);
+    expect(said).toContain("from  https://collie.example.com");
+    expect(said).toContain("to    nas.tail.ts.net:8788");
+    expect(h.restarts).toHaveLength(1);
+    // Local by construction: correcting where we dial a member sends that member nothing.
+    expect(h.requests).toEqual([]);
+    expect(h.audit.map((a) => a.action)).toContain("pack.address");
+  });
+
+  test("a scheme is refused with the reason, and nothing is written", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdPackSetAddress(h.deps, ["nas", "https://collie.example.com"])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("an address with a scheme is a front door's");
+    expect(h.data()!.peers[0]!.address).toBe("nas.example:8787");
+    expect(h.restarts).toEqual([]);
+  });
+
+  test("a portless address is refused — it would dial :443, not the peer's listener", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdPackSetAddress(h.deps, ["nas", "nas.tail.ts.net"])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("there is no port");
+  });
+
+  test("the four refusals: not the lead, unknown member, this machine, and no arguments", async () => {
+    const peer = harness(peerStore());
+    expect(await cmdPackSetAddress(peer.deps, ["desk", "desk.other:8787"])).toBe(EXIT.STATE);
+    expect(text(peer.io)).toContain("collie reconnect <address>");
+
+    const lead = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdPackSetAddress(lead.deps, ["ghost", "ghost.example:1"])).toBe(EXIT.STATE);
+    expect(await cmdPackSetAddress(lead.deps, ["desk", "desk.example:1"])).toBe(EXIT.STATE);
+    expect(text(lead.io)).toContain("is this machine");
+    expect(await cmdPackSetAddress(lead.deps, ["nas"])).toBe(EXIT.USAGE);
+    expect(lead.restarts).toEqual([]);
+  });
+
+  test("the address it already has is a no-op, not a write and not a restart", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdPackSetAddress(h.deps, ["nas", "nas.example:8787"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("already at");
+    expect(h.restarts).toEqual([]);
+    expect(h.audit).toEqual([]);
+  });
+
+  test("`pack status` points an unreachable scheme'd member at the verb", async () => {
+    const h = harness(
+      leadStore({ peers: [member({ memberId: "nas", address: "https://collie.example.com" })] }),
+      [new Error("getaddrinfo ENOTFOUND")],
+    );
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("collie pack set-address nas <host:port>");
+  });
+
+  test("…and says nothing about an address that is answering", async () => {
+    const h = harness(
+      leadStore({ peers: [member({ memberId: "nas", address: "https://collie.example.com" })] }),
+      [jsonReply({ protocol: 1, member: "nas" }, 200, "nas")],
+    );
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).not.toContain("set-address");
   });
 });
 

@@ -8,8 +8,17 @@ import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, resolveConfigDir } from "./config.ts";
+import type { PackMode } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
+import {
+  instanceSuffixOf,
+  managedHandlerPath,
+  realFrontDoorExec,
+  realFrontDoorFiles,
+  releaseManagedFrontDoor,
+  shouldReleaseFrontDoor,
+} from "./front-door.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
 import { buildMuxRegistry, createMux, DEFAULT_MUX, factoryFor, type MuxTarget } from "./mux/registry.ts";
@@ -159,6 +168,43 @@ function selfAddress(data: TrustStoreData): string {
 let deposed: DeposedState | null = null;
 
 /**
+ * Take THIS machine's own managed `tailscale serve` mapping down, when it is no longer a machine
+ * that may hold one (ADR 0001, ADR 0013; `bridge/front-door.ts` has the whole argument).
+ *
+ * Two callers, one rule: the boot below, once the mode has resolved to `peer`, and a deposition that
+ * arrives on the wire. It is deliberately SYNCHRONOUS at boot — tailscaled owns the serve port until
+ * the mapping is gone, so a peer listener that binds first crash-loops, which is precisely what the
+ * live drill saw.
+ *
+ * **Never fatal.** A missing `tailscale`, a refusal, a `tailscale` that errors: all of them are one
+ * warning and the bridge comes up anyway. A peer that failed to unpublish is a routing problem the
+ * operator can still fix from a keyboard; a peer that refused to start is not.
+ */
+let frontDoorReleased = false;
+function releaseFrontDoor(mode: PackMode, isDeposed: boolean, why: string): void {
+  if (frontDoorReleased) return;
+  const handlerFile = managedHandlerPath(
+    resolveConfigDir(),
+    instanceSuffixOf(process.env.COLLIE_INSTANCE),
+  );
+  // The record — and nothing else — decides whether there is anything of ours to take down. An
+  // unrecorded mapping is by definition not ours and is never touched.
+  if (!shouldReleaseFrontDoor({ mode, deposed: isDeposed, hasRecord: existsSync(handlerFile) })) return;
+  frontDoorReleased = true;
+  console.warn(`[pack] ${why} — taking this machine's own tailscale serve mapping down.`);
+  try {
+    releaseManagedFrontDoor({
+      handlerFile,
+      io: { out: (l) => console.log(`[pack] ${l}`), err: (l) => console.warn(`[pack] ${l}`) },
+      exec: realFrontDoorExec(process.env, homedir()),
+      files: realFrontDoorFiles,
+    });
+  } catch (err) {
+    console.warn(`[pack] could not take the front door down: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+/**
  * The last pairing sync this LEAD had refused for a label collision (§18.14), or `null`.
  *
  * Reassigned on every *decided* outcome of the sweep's sync — set on a refusal, cleared on a success
@@ -227,7 +273,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     console.warn(
       `[pack] DEPOSED — ${reason}. This machine has demoted itself to a peer of "${state.leadMemberId}" ` +
         `(warrant generation ${state.generation}) on materials both machines already held. Its front door ` +
-        "is down and its health check now fails; run `collie unserve` here when convenient.",
+        "is down and its health check now fails.",
     );
   } else {
     audit.record({
@@ -239,6 +285,11 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
         `${heal.reason}. Recover it with \`collie pack add\` from the new lead, or \`collie join\`.`,
     );
   }
+  // Either outcome ends this machine's claim on the pack's front door, so the door comes down here
+  // rather than at the mode check below: a machine that PARKED never reaches `peer` mode at all, and
+  // a parked ex-lead holding a live mapping is the "public hostname routes into a void" half of what
+  // the drill found. Healing reaches this too, and the flag makes the second call a no-op.
+  releaseFrontDoor(resolvePackRuntime(enrollmentOf(trustStore.current())).mode, true, "the crown has moved");
   return state;
 }
 
@@ -273,6 +324,11 @@ const enrollment = enrollmentOf(trustStore.current());
 const pack = resolvePackRuntime(enrollment);
 if (pack.conflict) console.warn(`[pack] ${pack.conflict}`);
 if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
+
+// A peer publishes nothing (§3, ADR 0013) — including a mapping it published back when it was a
+// lead. BEFORE any listener binds: tailscaled holds the serve port until this returns, and the peer
+// listener that tried to bind it first is what crash-looped in the drill.
+releaseFrontDoor(pack.mode, deposed !== null, "this collie is a peer");
 
 // The roster THIS PROCESS wired, left on disk for `collie pack status` to compare the store against
 // (bridge/pack/staleness.ts). A membership change can arrive over the wire — the first enrollment

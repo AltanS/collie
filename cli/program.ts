@@ -34,6 +34,7 @@ import {
   cmdPackInvite,
   cmdPackRemove,
   cmdPackRotate,
+  cmdPackSetAddress,
   cmdPackStatus,
   cmdPromote,
   cmdReconnect,
@@ -476,6 +477,11 @@ export const COMMANDS: readonly Command[] = [
         cmdPackRotate(deps),
       ),
       packSubcommand("remove", "unpin and forget a member (on the lead)", cmdPackRemove),
+      packSubcommand(
+        "set-address",
+        "correct where this lead dials a member: `pack set-address <member> <host:port>`",
+        cmdPackSetAddress,
+      ),
       packSubcommand(
         "deputy",
         "name the ONE peer that may take over and arm it over ssh: `pack deputy <member> | --revoke`",

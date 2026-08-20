@@ -1002,6 +1002,9 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
       emit("            certificate or a secret this member no longer holds. The local column above", "dim");
       emit("            says which is likelier — a member a generation behind is the secret.", "dim");
     }
+    // …and the one cause the address itself gives away. Below the reason, not instead of it: the
+    // scheme is a strong suspicion about an unreachable member, never a diagnosis of the failure.
+    for (const l of schemedAddressLines(m.memberId, m.address)) emit(l.text, l.tone);
   }
   if (deps.ui != null) await deps.ui.packMembers(banked);
   return EXIT.OK;
@@ -1263,6 +1266,123 @@ export async function cmdPackRemove(deps: PackDeps, args: readonly string[]): Pr
   deps.io.out("  own copy of the pack until its operator runs `collie leave` there. Either side alone ends");
   deps.io.out("  the link (§8.4) — this side is now ended.");
   await applyLocally(deps, "the shortened roster");
+  return EXIT.OK;
+}
+
+// ── pack set-address (on the lead) ───────────────────────────────────────────
+
+/**
+ * Why this address is not one a pack link may be dialled at — one line, or `null` when it is fine.
+ *
+ * A pack address is **bare `host:port`**, and the two refusals below are the two ways a real roster
+ * row has gone wrong:
+ *
+ *  - **A scheme.** The pack builds its own request from the address (`packUrl`) and dials pinned
+ *    mutual TLS itself (§8.1), so a `https://…` value is dialled as a *hostname* containing slashes
+ *    and never resolves. Where such a row comes from is worth naming: a takeover ADOPTS the deposed
+ *    lead's roster, and that row holds the address the pack knew the old lead by — its FRONT DOOR
+ *    URL. A peer publishes no front door (ADR 0013), so after the crown moves that value names a
+ *    door that no longer exists, in a form that could not be dialled even if it did.
+ *  - **No port.** A portless address dials :443, which is right for a front door and silently wrong
+ *    for a peer's listener — the member simply stays unreachable with nothing naming the cause
+ *    (see {@link selfAddress}'s `pack-listener` note, which is the same trap on the minting side).
+ */
+export function packAddressRefusal(address: string): string | null {
+  if (address.trim() !== address || address === "") return "it is empty or padded with whitespace";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(address)) {
+    return "an address with a scheme is a front door's, not a pack listener's — the pack dials pinned TLS itself, so it wants a bare host:port";
+  }
+  if (address.includes("/")) return "a pack address is a host and a port, never a path";
+  // `[::1]:8787` as well as `host:8787` — the port is the last colon-separated field either way.
+  const port = /:(\d+)$/.exec(address);
+  if (port === null) {
+    return "there is no port — a peer answers on its own COLLIE_PORT, and a portless address dials :443";
+  }
+  const n = Number(port[1]);
+  if (n < 1 || n > 65535) return `port ${n} is not a port`;
+  if (address.slice(0, address.length - port[0].length) === "") return "there is no host before the port";
+  return null;
+}
+
+/**
+ * The hint `pack status` appends to an unreachable member whose stored address carries a scheme.
+ *
+ * Render-only, and deliberately conditional on BOTH facts: a scheme'd address that is answering is
+ * somebody's working reverse-proxy front door, and telling them to change it would be wrong.
+ */
+export function schemedAddressLines(memberId: string, address: string): TonedLine[] {
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(address)) return [];
+  return [
+    { text: "            an address with a scheme is a front door's, not a pack listener's —", tone: "dim" },
+    { text: `            \`collie pack set-address ${memberId} <host:port>\``, tone: "dim" },
+  ];
+}
+
+/**
+ * `collie pack set-address <member> <host:port>` — correct where this lead dials a member.
+ *
+ * The verb exists because a takeover leaves a row nobody minted: the new lead adopts the roster it
+ * was handed, including the deposed lead's own entry, and that entry holds a front-door URL
+ * ({@link packAddressRefusal} says why that cannot be dialled). Before this verb the only repair was
+ * hand-editing `pack-trust.json`.
+ *
+ * **It is not `collie reconnect`, and neither replaces the other.** `reconnect` is the "it moved —
+ * re-point me and probe it" verb, and it takes whatever it is given; this one is the lead's
+ * *correction* of a member's address and refuses a value the pack could not dial. A wrong address is
+ * a hint, never an identity (§4) — the pin is untouched either way, so the cost of a bad one is
+ * exactly one more run of this verb.
+ */
+export async function cmdPackSetAddress(deps: PackDeps, args: readonly string[]): Promise<number> {
+  const { positional } = parsePackArgs(args);
+  const [memberId, address] = positional;
+  if (memberId === undefined || address === undefined) {
+    deps.io.err("usage: collie pack set-address <member-id> <host:port>");
+    return EXIT.USAGE;
+  }
+  const data = await deps.store.load();
+  if (data === null || data.pack === null) {
+    deps.io.err("error: this collie is not in a pack — there is no roster to correct.");
+    return EXIT.STATE;
+  }
+  if (data.lead !== null) {
+    deps.io.err(`error: this collie is a peer of "${data.lead.memberId}" — a member's address is corrected on`);
+    deps.io.err("       the lead, which is the machine that dials it. To re-point THIS machine at its own");
+    deps.io.err("       lead, run `collie reconnect <address>` here.");
+    return EXIT.STATE;
+  }
+  if (memberId === data.self.memberId) {
+    deps.io.err(`error: "${memberId}" is this machine. A member's address is where OTHERS dial it, so it is`);
+    deps.io.err("       set on the machine doing the dialling — there is nothing here to correct.");
+    return EXIT.STATE;
+  }
+  const member = data.peers.find((p) => p.memberId === memberId);
+  if (member === undefined) {
+    deps.io.err(`error: no member "${memberId}" in this roster — \`collie pack status\` lists them.`);
+    return EXIT.STATE;
+  }
+  const refusal = packAddressRefusal(address);
+  if (refusal !== null) {
+    deps.io.err(`error: "${address}" is not a pack address — ${refusal}.`);
+    deps.io.err("       usage: collie pack set-address <member-id> <host:port>");
+    return EXIT.USAGE;
+  }
+  if (member.address === address) {
+    deps.io.out(`"${memberId}" is already at ${address} — nothing to change.`);
+    return EXIT.OK;
+  }
+
+  const moved = await commitPackChange(deps.store, deps.audit, (current) =>
+    current === null ? null : updateMemberAddress(current, memberId, address),
+  );
+  if (moved === null) {
+    deps.io.err(`error: no member "${memberId}" to move — the roster changed under this verb.`);
+    return EXIT.STATE;
+  }
+  deps.io.out(`✓ "${memberId}" — its pinned certificate is unchanged.`);
+  deps.io.out(`    from  ${moved.from === "" ? "(none)" : moved.from}`);
+  deps.io.out(`    to    ${address}`);
+  await applyLocally(deps, "the new address");
+  deps.io.out("  `collie pack status` dials it there.");
   return EXIT.OK;
 }
 
@@ -1538,6 +1658,7 @@ export const PACK_SUBCOMMANDS = [
   "status",
   "rotate",
   "remove",
+  "set-address",
   "deputy",
   "approve-promote",
 ] as const;
@@ -1577,6 +1698,8 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       return cmdPackRotate(deps);
     case "remove":
       return cmdPackRemove(deps, rest);
+    case "set-address":
+      return cmdPackSetAddress(deps, rest);
     case "approve-promote":
       return cmdPackApprovePromote(deps, rest);
     default:
@@ -1590,6 +1713,7 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       deps.io.err("  status   mode, members, reachability, secret pickup and why a link is refused");
       deps.io.err("  rotate   reissue the pack secret and hand it to every reachable peer");
       deps.io.err("  remove   unpin and forget a member (on the lead)");
+      deps.io.err("  set-address  correct where this lead dials a member: `pack set-address <member> <host:port>`");
       deps.io.err("  deputy   name the ONE peer that may take over, and arm it: `pack deputy <member>`");
       deps.io.err("           (on the lead); `--revoke` names nobody");
       deps.io.err("  approve-promote  consent, on the lead, for one member to take over (10 minutes,");

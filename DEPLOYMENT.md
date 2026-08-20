@@ -406,6 +406,12 @@ record. The ingress in front of it is yours, exactly as under
 [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) and
 [Variant E](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel).
 
+> ⚠️ **Pick a port `tailscale serve` has never served on that machine.** Observed live: a port that
+> was once in a serve mapping can stay black-holed for *direct* tailnet dials to that machine even
+> after the mapping is removed — tailscaled keeps intercepting it, and a `tailscaled` restart is what
+> clears it. Nothing in Collie can see that from the outside, and it looks exactly like a peer that
+> is up and unreachable. A port that was never served has none of this history.
+
 ### The prerequisite: one hostname, two backends
 
 **The phone must reach the lead and the deputy on the same origin.** The pairing credential and the
@@ -488,13 +494,21 @@ anything.
 
 A takeover **commits its store and then exits**, deliberately: the operator asked from a phone, and a
 machine whose store says `lead` while its process still runs a peer's pinned listener is a machine
-nobody can reach. So it commits, says so, and calls `process.exit(0)` about a second later
-(`performTakeover` in [`bridge/index.ts`](./bridge/index.ts) — the one place the bridge restarts
-itself, and the comment there says why).
+nobody can reach. So it commits, says so, and exits about a second later (`performTakeover` in
+[`bridge/index.ts`](./bridge/index.ts) — the one place the bridge restarts itself, and the comment
+there says why).
 
-A supervised install — `systemd --user` with `Restart=always`, or the Herdr plugin — comes straight
-back up as the new lead. An unsupervised one is left with a correct store and a stopped process. Put
-**both** the lead and the deputy under supervision.
+**It exits `75`, and the non-zero status is load-bearing.** `75` is `EX_TEMPFAIL` (`sysexits.h`):
+*temporary failure, the user is invited to retry* — which is exactly what this is. `Restart=always`
+and `Restart=on-failure` both revive a non-zero exit; **`Restart=on-failure` does NOT revive a clean
+`0`**, and a live drill found precisely that: a unit with the common `on-failure` policy took over,
+exited zero, and systemd correctly treated it as a service that had finished. The store said `lead`,
+the service said `inactive`, and the operator holding the phone had no shell. In `journalctl` a
+completed takeover therefore reads `status=75/n/a` — that is the takeover, not a crash.
+
+A supervised install — `systemd --user` with `Restart=always` **or** `Restart=on-failure`, or the
+Herdr plugin — comes straight back up as the new lead. An unsupervised one is left with a correct
+store and a stopped process. Put **both** the lead and the deputy under supervision.
 
 ### The bad day — the runbook
 
@@ -514,15 +528,25 @@ back up as the new lead. An unsupervised one is left with a correct store and a 
 
 **Afterwards, most of the cleanup does itself.** When the old machine comes back it finds the warrant,
 **deposes itself and heals to `peer`** on materials both machines already hold — no command, no token,
-nothing minted. It stops polling, fails its health check so the proxy stops routing to it, and serves
-one page saying which state it is in. `collie pack status` on the new lead names what is genuinely
-left, and it is three decisions rather than three repairs:
+nothing minted. It stops polling, fails its health check so the proxy stops routing to it, **takes its
+own `tailscale serve` mapping down** (only the one it recorded as its own — ADR 0001 is unchanged),
+and serves one page saying which state it is in. `collie pack status` on the new lead names what is
+genuinely left, and it is two decisions rather than two repairs:
 
 1. **Name a new deputy** — the takeover spent the warrant, so the pack has none.
-2. **`collie unserve` on the old machine**, the one thing Collie will not do for another machine's
-   operator ([ADR 0001](./.adr/0001-one-managed-front-door.md)). Its failing health check is what
-   keeps the un-torn-down door harmless meanwhile.
-3. **Re-point the phone**, if you have no failover proxy.
+2. **Re-point the phone**, if you have no failover proxy.
+
+Two things about that comeback are by design and are not bugs:
+
+- **The old lead publishes as lead for about one sweep before it is deposed.** It boots into silence,
+  finds nothing to contradict its own store, and comes up leading — until the new lead's warrant
+  reaches it and it deposes itself. Measured at ~25 s in a live drill. Fail-open at boot is
+  deliberate ([`PACK_PROTOCOL.md` §8.4](./PACK_PROTOCOL.md)): a machine that refused to lead on
+  silence alone would strand a pack whose peers are simply offline.
+- **A member's address does not follow it into its new role.** The new lead adopts the roster it was
+  handed, and the old lead's row in it holds that machine's *front-door URL* — un-dialable now that
+  it is a peer with no front door. `collie pack status` says so under that member, and
+  `collie pack set-address <member> <host:port>` corrects it.
 
 > ⚠️ **Do not `collie pack rotate` until the old machine is back.** Rotation marks a member that
 > missed it `unenrolled`, and a deposed machine that heals into a rotated pack is stranded and needs a
