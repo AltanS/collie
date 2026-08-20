@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DEFAULT_PORT, defaultSocketPath, resolveStateDir } from "../bridge/config.ts";
 import { pluginRoot } from "../bridge/root.ts";
+import { instanceSuffixOf, managedHandlerPath, type ServeMode } from "../bridge/front-door.ts";
 import { findTool } from "./tools.ts";
 
 export const PLUGIN_ID = "herdr.collie";
@@ -41,7 +42,9 @@ export interface CliContext {
   stateDir: string;
 }
 
-export type ServeMode = "https" | "http";
+// Defined beside the ownership record that stores it (`bridge/front-door.ts`), so the record's
+// `mode` field and this context's `serveMode` are one type rather than two that happen to agree.
+export type { ServeMode };
 
 /**
  * A process environment: variable names to values, an unset name reading `undefined`. Named rather
@@ -220,8 +223,7 @@ export function deriveSettings(
 export const INSTANCE_PATTERN = /^[a-z0-9-]{1,16}$/;
 
 /** `""` for the unsuffixed instance, `-v1` for `COLLIE_INSTANCE=v1`. The one place the join is written. */
-export const instanceSuffix = (instance: string | null): string =>
-  instance === null ? "" : `-${instance}`;
+export const instanceSuffix = (instance: string | null): string => instanceSuffixOf(instance);
 
 /**
  * `COLLIE_INSTANCE` → the suffix, or `null`.
@@ -300,7 +302,7 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
     env,
     // Suffixed, so a second instance can never tear down the first's `tailscale serve` mapping —
     // even if the operator points both at one config dir (ADR 0001: we touch only what we recorded).
-    handlerFile: join(configDir, `tailscale-managed-handler${instanceSuffix(instance)}`),
+    handlerFile: managedHandlerPath(configDir, instanceSuffix(instance)),
     stateDir: resolveStateDir(env, home),
     ...deriveSettings(env, home),
   };

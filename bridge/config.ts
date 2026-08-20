@@ -296,6 +296,25 @@ export function resolveStateDir(
   return env.HERDR_PLUGIN_STATE_DIR ?? env.COLLIE_STATE_DIR ?? join(home, ".local", "state", "collie");
 }
 
+/**
+ * The operator's config dir — where their `.env` lives, their `commands.toml` beside it, and the
+ * `tailscale serve` ownership record beside that.
+ *
+ * Resolved exactly the way scripts/collie-ctl.sh resolves it MINUS the `herdr` shell-out: the
+ * launcher passes HERDR_PLUGIN_CONFIG_DIR into the unit (and the launchd plist) precisely so this
+ * process never has to ask the CLI, and the two entry points must not disagree about which dir that
+ * is. ~/.config/collie is the same last-resort default the shim ends on.
+ *
+ * Exported for the front-door teardown (`bridge/front-door.ts`), which must find the record file the
+ * CLI wrote. It names no key `loadConfig` did not already name.
+ */
+export function resolveConfigDir(
+  env: Record<string, string | undefined> = process.env,
+  home: string = homedir(),
+): string {
+  return env.HERDR_PLUGIN_CONFIG_DIR ?? join(home, ".config", "collie");
+}
+
 export function loadConfig(): Config {
   const stateDir = resolveStateDir();
 
@@ -306,7 +325,7 @@ export function loadConfig(): Config {
   // launcher passes HERDR_PLUGIN_CONFIG_DIR into the unit (and the launchd plist) precisely so this
   // process never has to ask the CLI, and the two entry points must not disagree about which dir
   // that is. ~/.config/collie is the same last-resort default the shim ends on.
-  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), ".config", "collie");
+  const configDir = resolveConfigDir();
 
   const mux = (process.env.COLLIE_MUX ?? "").trim() || DEFAULT_MUX;
   const socketPath = process.env.HERDR_SOCKET_PATH ?? defaultSocketPath();
