@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Two independent guards. Install with: scripts/install-hooks.sh (sets core.hooksPath).
+# Three independent guards. Install with: scripts/install-hooks.sh (sets core.hooksPath).
 #
 # A) Versioning guard — override with: SKIP_VERSION_CHECK=1 git commit …
 #    1) versions must be consistent (check-version.sh)
@@ -10,12 +10,15 @@
 #    full-tree runs (CI and `collie build`) define "passing". Both shell out to the same
 #    `.oxlintrc.json` at the repo root — no surface passes its own rule flags.
 #
-# The two are skippable independently: SKIP_VERSION_CHECK=1 does not disarm the lint guard.
+# C) Pack-wire guard — override with: SKIP_PACK_WIRE_CHECK=1 git commit …
+#    A staged change to the pack wire surface must record a protocol decision (check-pack-wire.sh).
+#
+# The three are skippable independently: SKIP_VERSION_CHECK=1 does not disarm the lint guard.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
-# The one staged-file list, shared by both guards.
+# The one staged-file list, shared by all three guards.
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
 # ---- (A) versioning ---------------------------------------------------------------------------
@@ -51,6 +54,10 @@ EOF
     fi
   fi
 fi
+
+# ---- (C) pack wire ----------------------------------------------------------------------------
+# The script owns the file list and the message; it reads the staged list we already computed.
+STAGED_FILES="$staged" "$ROOT/scripts/check-pack-wire.sh" >/dev/null
 
 # ---- (B) lint ---------------------------------------------------------------------------------
 if [ "${SKIP_LINT_CHECK:-}" = "1" ]; then

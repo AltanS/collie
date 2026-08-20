@@ -164,12 +164,13 @@ a single command; never export one.
 | --- | --- | --- |
 | `SKIP_VERSION_CHECK=1` | `git commit` (pre-commit hook) | the version-consistency + bump-on-change guard |
 | `SKIP_LINT_CHECK=1` | `git commit` (pre-commit hook) | oxlint over the staged files |
+| `SKIP_PACK_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the pack-wire decision guard |
 | `SKIP_LINT=1` | `bun run build` / `collie build` | the full-tree lint step |
 | `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
 | `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
 
-The pre-commit hook's two guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the
-lint guard.
+The pre-commit hook's three guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the
+lint guard or the pack-wire guard.
 
 ## Frontend data layer (React Router, not TanStack)
 
@@ -290,6 +291,12 @@ door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
 **The pack link (lead↔peer, `/pack/v1/*`) is specified in [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md)**
 — two factors gate it (pinned mutual TLS + pack secret), and a peer publishes no front door
 ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
+
+**Touching the pack wire surface forces a protocol decision** — a commit staging one of the
+wire-shape files in `bridge/pack/` must also stage `PACK_PROTOCOL.md` (additive-optional, §7.1) or
+bump `PACK_PROTOCOL_VERSION` (not expressible that way). `scripts/check-pack-wire.sh` is guard C of
+the pre-commit hook; a pure refactor takes the `SKIP_PACK_WIRE_CHECK=1` hatch
+([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md)).
 
 **Code reaches a peer over the operator's own SSH, never over the pack link** — `pack add` installs
 it and `pack update` levels it, both pushing the lead's own commit as a `git bundle`; the link
