@@ -654,6 +654,10 @@ describe("solo zero-tax — config", () => {
 const STATE_DIR_ENTRIES = [
   "activity.json",
   "audit.log",
+  // Agent beacons (M11/01) — a directory, and one no bridge module ever writes: the bridge only ever
+  // READS it, and the emitter that fills it is a CLI verb the operator installs a hook for. An
+  // instance whose operator never ran `collie hooks install` never has this directory at all.
+  "beacons",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.
