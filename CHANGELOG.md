@@ -6,6 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.10] - 2026-08-20
+
+### Added
+
+- The brand header says which multiplexer this collie drives — "Collie on tmux" — from the config's display name, never a name branch (4fc2a73)
+- **Peer panes are gzipped on the lead→phone hop again** — as a stream transform over the peer's identity bytes, ETag untouched, `vary` merged; restores the ~20x cellular saving the beta.9 honesty fix gave up ([ADR 0023](./.adr/0023-compression-is-hop-local-on-the-pack-link.md), 44d8de3)
+
+### Fixed
+
+- **The "unreachable" banner flapped on a healthy watched peer** — the phone's staleness tolerance was measured against a receipt only the lead's 12 s idle sweep refreshed; every landed proxied call now stamps the receipt (successes only, monotone), and the UI splits the facts: staleness is a receipt age, "unreachable" and refusal claims gate on `writable` alone, across banner, host chip and switcher (c97e434)
+
 ## [1.0.0-beta.9] - 2026-08-20
 
 ### Fixed
