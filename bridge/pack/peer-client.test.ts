@@ -286,7 +286,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
         version: null,
         warrantGeneration: null,
         warrantActiveGeneration: null,
-        pairingDigest: null,
+        pairingDigest: null, pairingCollision: null,
       },
       status: 200,
       member: "laptop",
@@ -810,7 +810,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   });
 
   test("hello reads the warrant generation, absent-means-closed", async () => {
-    const withGen = replying({ protocol: 1, member: "laptop", warrantGeneration: 4, pairingDigest: null });
+    const withGen = replying({ protocol: 1, member: "laptop", warrantGeneration: 4, pairingDigest: null, pairingCollision: null });
     expect((await client(withGen.fetch).hello(laptop)).ok).toBe(true);
     const outcome = await client(withGen.fetch).hello(laptop);
     expect(outcome.ok && outcome.value.warrantGeneration).toBe(4);

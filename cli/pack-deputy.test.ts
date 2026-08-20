@@ -1147,8 +1147,12 @@ describe("pack status prints the deputy's own arming state", () => {
 
 // ── `pack status` on the lead: the refused pairing sync (RFC §6.5, §18.14) ───
 
-describe("pack status names a pairing sync the deputy refused", () => {
-  test("it names the labels, what it costs, and how to free the name", async () => {
+describe("pack status names a pairing LABEL CLASH at the deputy", () => {
+  // ── THE LIVE DRILL, THE REVOCATION ─────────────────────────────────────────
+  // This used to read "pairing sync REFUSED", and the sync really was refused — which froze the
+  // deputy's copy, so a device revoked on the lead stayed valid at that machine's standby door. The
+  // sync lands now; what the clash blocks is the TAKEOVER, and the words have to say which.
+  test("it names the labels, what it actually blocks, and how to free the name", async () => {
     const data = withWarrant(twoPeers(), "nas");
     const h = harness({
       store: data,
@@ -1157,8 +1161,12 @@ describe("pack status names a pairing sync the deputy refused", () => {
     });
     await cmdPackStatus(h.deps, ["--no-probe"]);
     const said = text(h.io);
-    expect(said).toContain('⚠ pairing sync REFUSED 5s ago — the deputy already has "phone"');
-    expect(said).toContain("refuses to arm");
+    expect(said).toContain('⚠ pairing LABEL CLASH (seen 5s ago) — the deputy already has "phone"');
+    // The credential half is HEALTHY and must not read as broken — that is the whole correction.
+    expect(said).toContain("The sync itself is landing");
+    expect(said).toContain("What");
+    expect(said).toContain("this blocks is the TAKEOVER");
+    expect(said).not.toContain("REFUSED");
     expect(said).toContain("collie devices");
   });
 

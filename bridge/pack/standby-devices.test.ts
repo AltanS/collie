@@ -9,8 +9,10 @@ import { T0 } from "./fixtures.ts";
 import {
   adoptedRegistry,
   collidingLabels,
+  collisionReportOf,
   noStandbyDevices,
   pairingPushNeeded,
+  parseCollisionReport,
   pairingReportOf,
   parsePairingReport,
   parsePairingSync,
@@ -182,6 +184,43 @@ describe("the deputy reports what it holds, so the lead's decision survives a re
     // …but it is bounded, so a hostile peer cannot hand over a megabyte.
     expect(parsePairingReport({ pairingDigest: "x".repeat(129) })).toBeNull();
     expect(parsePairingReport({ pairingDigest: "x".repeat(128) })).toBe("x".repeat(128));
+  });
+});
+
+// ── THE LIVE DRILL, THE REVOCATION ───────────────────────────────────────────
+// `collie devices revoke` on the lead reported success, and 35 seconds later the deputy's copy still
+// listed the revoked device — so the credential was still takeover-capable at the standby door. The
+// sync was being REFUSED on a label collision, which froze the deputy's copy for ever.
+describe("a revocation reaches the deputy, and a collision cannot stop it", () => {
+  test("a revoked device leaves the projection, so the digest diverges and a push is needed", () => {
+    const before = syncedDevicesOf(registry("phone", "drill"));
+    const after = syncedDevicesOf(registry("phone"));
+    expect(after.map((d) => d.label)).toEqual(["phone"]);
+    expect(syncDigest(after)).not.toBe(syncDigest(before));
+    // The deputy still reports the OLD set, so the lead knows it is behind without a dial to decide.
+    expect(pairingPushNeeded(syncDigest(after), syncDigest(before))).toBe(true);
+  });
+
+  test("revoking the LAST device still diverges — an empty registry must reach the deputy too", () => {
+    expect(pairingPushNeeded(syncDigest([]), syncDigest(syncedDevicesOf(registry("phone"))))).toBe(true);
+  });
+
+  test("the collision is a REPORT derived from disk, not something a sync answer carried once", () => {
+    const held = { ...noStandbyDevices("p", "desk"), devices: devices(device("phone", HASH_A)) };
+    // The deputy's own registry shares the label — the ordinary shape for any former lead.
+    expect(collisionReportOf(registry("phone"), held)).toEqual(["phone"]);
+    // …and it is EMPTY the moment the operator renames or revokes one of the two, with no push.
+    expect(collisionReportOf(registry("phone-old"), held)).toEqual([]);
+    expect(collisionReportOf(EMPTY_REGISTRY, held)).toEqual([]);
+    // A member holding no synced registry has nothing to collide with.
+    expect(collisionReportOf(registry("phone"), null)).toEqual([]);
+  });
+
+  test("the finding's wire reading is absent-means-closed", () => {
+    expect(parseCollisionReport({ pairingCollision: ["phone"] })).toEqual(["phone"]);
+    const none: JsonValue[] = [{}, { pairingCollision: [] }, { pairingCollision: "phone" }, null, []];
+    for (const body of none) expect(parseCollisionReport(body)).toBeNull();
+    expect(parseCollisionReport({ pairingCollision: ["phone", 7, ""] })).toEqual(["phone"]);
   });
 });
 

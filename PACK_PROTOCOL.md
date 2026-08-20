@@ -253,6 +253,14 @@ answering build:
   reason, being already knowable to anyone who has cleared both factors. The value is **opaque to its
   reader**, which only ever compares it for equality with its own.
 
+- `pairingCollision` is **OPTIONAL**, added 2026-08-20 (§18.14): the labels this member's own paired
+  devices share with the synced registry it holds. **Absent or empty means "no finding"** (§7.1), and
+  it is re-derived from disk on every answer, so it appears while it is true and clears the moment the
+  operator frees the name. It rides `/pack/v1/snapshot` too, beside `pairingDigest`. It names labels
+  the operator chose and nothing else — no hash, no token, no count — and it is a **finding, never a
+  refusal**: the sync it describes has already been applied, because a receiver that refused it would
+  be holding a revoked credential live at its own standby door.
+
 `hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
 become a place to learn something an unadmitted caller wants; a version is admissible there for the
 same reason `member` is — it is already knowable to anyone who has cleared both factors. A warrant
@@ -2130,11 +2138,29 @@ token the *lead* minted, so the lead pushes its registry.
   that machine directly. The synced entries are adopted into the deputy's own registry **at takeover
   commit and only then** (§18.16), because after the commit that machine *is* the lead and the phone
   must keep working against the credential it already holds.
-- **A label collision refuses the sync and reports it** — `409` with `code:
-  "pairing_label_collision"` and the colliding labels — and it is re-offered on the next sweep, so
-  the operator's rename takes effect without a restart. Labels are the revoke handle
-  (`pairing.ts` → `removeDevice`); a silently renamed device is one the operator cannot revoke by the
-  name they know it by.
+- **A label collision is a FINDING, and it never refuses the sync** *(amended 2026-08-20, after a
+  live drill)*. The receiver applies the sync and reports the clashing labels on the exchange —
+  `pairingCollision`, an additive-optional field on `hello` and `snapshot` beside `pairingDigest`,
+  with absent or empty meaning *no finding*.
+
+  **Refusing it was a security bug, not a stricter reading.** The refusal froze the deputy's copy at
+  whatever it held when the clash first appeared, so a device revoked on the lead stayed valid at that
+  machine's standby door **indefinitely** — observed on a live pack: `collie devices revoke` succeeded,
+  and thirty-five seconds and many sweeps later the deputy's file still listed the revoked device. It
+  protected nothing, either: **a sync never touches the receiver's own registry.** It replaces
+  `standby-devices.json`, a separate file holding the hashes the *door* checks against.
+
+  RFC §16 decision 6 is intact and its refusal is where it belongs: labels are the revoke handle
+  (`pairing.ts` → `removeDevice`), and a silently renamed device is one the operator cannot revoke by
+  the name they know it by — so **the ADOPTION refuses**. That is the takeover commit (§18.16), where
+  entries actually enter `paired-devices.json` under a name; it is guarded twice there, and either
+  guard aborts the whole takeover and writes nothing. The finding rides the exchange rather than the
+  sync's answer for the same reason the digest does: a finding delivered once, on whichever push
+  happened to land, is invisible on every sweep that has nothing to push.
+
+  **Compatibility.** A pre-amendment receiver still answers `409 pairing_label_collision`; a lead
+  reads it and surfaces the finding, but that build's copy stays frozen until it is updated — a
+  capability gap the lead cannot close from its side, and one `pack status` names.
   **The lead reads that `code` and those `labels` off the refusal**, exactly as it reads §18.10's
   `lead_conflict` off the same status. This `409` is a *refusal* and not §7's version skew: the
   deputy read the body perfectly and declined it for a fact on its own disk. Classifying it as a skew

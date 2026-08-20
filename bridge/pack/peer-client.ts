@@ -5,7 +5,7 @@ import { LEAD_CONFLICT, PACK_PREFIX, PAIRING_LABEL_COLLISION } from "./router.ts
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
-import { parsePairingReport, type PairingSync } from "./standby-devices.ts";
+import { parseCollisionReport, parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 
@@ -348,6 +348,14 @@ export interface HelloResult {
    * operator can see a deputy whose door has no credential to check against.
    */
   readonly pairingDigest: string | null;
+  /**
+   * Labels that member's OWN paired devices share with the registry it was synced (§18.14), or `null`.
+   *
+   * A finding for the operator on THIS machine — the one who can rename or revoke one of the two —
+   * and never a refusal: the sync itself always lands, or a device revoked here would stay valid at
+   * that machine's standby door.
+   */
+  readonly pairingCollision: readonly string[] | null;
 }
 
 export interface PeerClientDeps {
@@ -506,9 +514,20 @@ export class PeerClient {
     // integer is "nothing active there", which never refuses a link and never reads as armed.
     const warrantActiveGeneration = parseWarrantActiveReport(outcome.value);
     const pairingDigest = parsePairingReport(outcome.value);
+    // §18.14's finding, read the same way: absent or empty is "no finding", which is the closed
+    // reading — a lead that invented one would send the operator chasing a device that is not there.
+    const pairingCollision = parseCollisionReport(outcome.value);
     return {
       ...outcome,
-      value: { protocol, member, version, warrantGeneration, warrantActiveGeneration, pairingDigest },
+      value: {
+        protocol,
+        member,
+        version,
+        warrantGeneration,
+        warrantActiveGeneration,
+        pairingDigest,
+        pairingCollision,
+      },
     };
   }
 

@@ -1941,7 +1941,7 @@ describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY on
 
   function router(
     h: ReturnType<typeof harness>,
-    over: { warrantsSelf?: boolean; own?: string[]; digest?: string } = {},
+    over: { warrantsSelf?: boolean; own?: string[]; digest?: string; clash?: string[] } = {},
   ) {
     const synced: unknown[] = [];
     const handler = createPackRouter({
@@ -1956,6 +1956,7 @@ describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY on
         collidingLabels: (devices) => devices.filter((d) => (over.own ?? []).includes(d.label)).map((d) => d.label),
         applySync: async (sync) => void synced.push(sync),
         syncedDigest: () => over.digest ?? null,
+        syncedCollision: () => over.clash ?? [],
       },
     });
     return { handler, synced };
@@ -1984,12 +1985,31 @@ describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY on
     expect((await call(handler, PACK_PAIRING_PATH, post(body())))!.status).toBe(401);
   });
 
-  test("a LABEL COLLISION refuses and REPORTS — never namespace-and-merge (RFC §16, decision 6)", async () => {
+  // ── THE LIVE DRILL, THE REVOCATION ─────────────────────────────────────────
+  // This route used to `return` a 409 before applying, so the deputy's copy FROZE the moment any
+  // label collided — and a device revoked on the lead stayed valid at that machine's standby door for
+  // ever. The refusal protected nothing: a sync never touches this collie's own registry.
+  test("a LABEL COLLISION still APPLIES the sync — a frozen copy is a revoked credential still live", async () => {
     const r = router(harness(deputy()), { own: ["phone"] });
     const res = (await call(r.handler, PACK_PAIRING_PATH, post(body())))!;
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ code: "pairing_label_collision", labels: ["phone"] });
-    expect(r.synced).toEqual([]);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ devices: 1, applied: true });
+    expect(r.synced).toEqual([{ packId: PACK.packId, leadMemberId: "desk", devices: [DEVICE] }]);
+  });
+
+  test("the collision is REPORTED on the exchange, so the lead sees it while it is true", async () => {
+    // Decision 6 intact: refuse and report, never namespace-and-merge — with the refusal at the
+    // ADOPTION (the takeover, which `PairingStore.adopt` and the takeover's own pre-flight guard) and
+    // the report here, on the answer the lead already reads every sweep.
+    const h = harness(deputy());
+    const r = router(h, { clash: ["phone"] });
+    const hello = (await call(r.handler, PACK_HELLO_PATH, { headers: authed }))!;
+    expect(await hello.json()).toMatchObject({ pairingCollision: ["phone"] });
+    // …and no finding is an ABSENT field, never an empty one.
+    const clean = (await call(router(h).handler, PACK_HELLO_PATH, { headers: authed }))!;
+    // An ABSENT key, never an empty list: `hello`'s body is read field-by-field by name, and an empty
+    // array would be a finding with nothing in it for `pack status` to name.
+    expect(await clean.text()).not.toContain("pairingCollision");
   });
 
   test("a sync for another pack, or claiming another lead, is a 400 and lands nothing", async () => {
@@ -2049,6 +2069,7 @@ describe("POST /pack/v1/takeover — the witness question and the re-pin (RFC §
         collidingLabels: () => [],
         applySync: async () => {},
         syncedDigest: () => null,
+        syncedCollision: () => [],
       },
     });
   }
