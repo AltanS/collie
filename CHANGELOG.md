@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.9] - 2026-08-20
+
+### Fixed
+
+- **Peer panes rendered "(no recent output)" in the app** — the lead re-emitted the peer's `Content-Encoding: gzip` over a body Bun had already decompressed, so the browser failed every peer body read (curl ignored the header, which is why shell checks stayed green); the peer hop is now explicitly identity and the header left the proxied list, with a harness test pinning "the headers describe the bytes" (bc718fb)
+
 ## [1.0.0-beta.8] - 2026-08-20
 
 ### Fixed
