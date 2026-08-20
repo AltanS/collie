@@ -290,7 +290,10 @@ door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
 
 **The pack link (lead↔peer, `/pack/v1/*`) is specified in [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md)**
 — two factors gate it (pinned mutual TLS + pack secret), and a peer publishes no front door
-([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
+([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)); the one exception is the
+**deputy's standby door** — bound, never published, armed by silence and spent by the operator's
+pairing credential ([ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md) ·
+[ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md)).
 
 **Touching the pack wire surface forces a protocol decision** — a commit staging one of the
 wire-shape files in `bridge/pack/` must also stage `PACK_PROTOCOL.md` (additive-optional, §7.1) or

@@ -93,6 +93,8 @@ the pointer, it was a supersede.
 | [0024](./0024-a-beacon-is-a-hint-never-a-control-channel.md) | A beacon is a hint, never a control channel | Accepted |
 | [0025](./0025-the-wire-guard-forces-a-decision-never-a-bump.md) | The pack-wire guard forces a decision, never a bump | Accepted |
 | [0026](./0026-the-operator-is-the-quorum.md) | The operator is the quorum | Accepted |
+| [0027](./0027-the-deputy-is-named-ahead-of-time.md) | The deputy is named ahead of time, and takes over on the operator's word | Accepted |
+| [0028](./0028-the-standby-door-is-a-second-listener.md) | The standby door is a second listener that arms on silence (amends 0013) | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
