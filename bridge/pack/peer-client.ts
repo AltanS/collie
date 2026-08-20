@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
 import { LEAD_CONFLICT, PACK_PREFIX } from "./router.ts";
-import { SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
+import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parseWarrant, type WarrantPush } from "./warrant.ts";
@@ -366,6 +366,20 @@ export interface PeerClientDeps {
    * pull a streamed upload into memory on the security path.
    */
   readonly sign?: (parts: { method: string; path: string; body: string; timestamp: number }) => string;
+  /**
+   * Attest **every** dial with this collie's own identity key (§8.6's dial attestation) — the
+   * lead → peer direction's answer to "which of my two anchors is calling?".
+   *
+   * Unlike {@link PeerClientDeps.sign} it never touches the body, so a streamed upload (§13) stays a
+   * stream: what it binds is the method, the path, the timestamp and **the member being dialled**.
+   * That last field is what stops a lead-signed dial the deputy legitimately received being presented
+   * at a sibling peer (`signing.ts` → `canonicalDial`).
+   *
+   * **Every production wiring supplies it**, on both sides of the CLI/bridge split, because a peer
+   * that has anchored a deputy refuses a dial without one. Absent ⇒ the header is simply not sent,
+   * which a single-anchor peer reads exactly as it always has.
+   */
+  readonly dialSign?: (parts: DialParts) => string;
 }
 
 /**
@@ -598,12 +612,21 @@ export class PeerClient {
     // sent** — hence the requirement that `init.body` be a string here: a stream could not be hashed
     // without consuming it, and a signature over bytes other than the ones on the wire is worse than
     // none. Every signed route's body is a small JSON literal built by a verb, so this costs nothing.
+    // Both signatures share ONE timestamp, because they share the header that carries it and a
+    // second stamp would be a second freshness claim about one request.
+    const stampedAt = this.now();
+    const method = init.method ?? "GET";
+    const path = new URL(url).pathname;
     if (this.deps.sign !== undefined) {
-      const timestamp = this.now();
       const body = typeof init.body === "string" ? init.body : "";
-      const path = new URL(url).pathname;
-      headers.set(TIMESTAMP_HEADER, String(timestamp));
-      headers.set(SIGNATURE_HEADER, this.deps.sign({ method: init.method ?? "GET", path, body, timestamp }));
+      headers.set(TIMESTAMP_HEADER, String(stampedAt));
+      headers.set(SIGNATURE_HEADER, this.deps.sign({ method, path, body, timestamp: stampedAt }));
+    }
+    // The dial attestation rides EVERY call, not a closed set: it hashes no body, so there is no
+    // streamed upload to pull into memory and therefore no reason to confine it (§8.6).
+    if (this.deps.dialSign !== undefined) {
+      headers.set(TIMESTAMP_HEADER, String(stampedAt));
+      headers.set(DIAL_HEADER, this.deps.dialSign({ method, path, timestamp: stampedAt, to: link.memberId }));
     }
 
     const controller = new AbortController();

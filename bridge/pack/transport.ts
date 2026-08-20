@@ -106,7 +106,19 @@ export function peerListenerTls(
  * anchor, which is the pre-amendment behaviour and the fail-closed reading of "the warrant could not
  * be believed". **Never fewer anchors than today** — the lead's own certificate is not in question
  * here and is never dropped, so an existing lead's handshake is unaffected by any of this.
+ *
+ * Exported as {@link deputyAnchorOf} because the admission gate needs the SAME answer this listener
+ * was built from: a two-anchored peer must resolve its caller by signature rather than by the
+ * transport boolean (§8.1's amendment), and the certificate to check a deputy's signature against is
+ * this one. Both callers read it once, off one clock, so the listener and the gate cannot disagree.
  */
+export function deputyAnchorOf(mode: PackMode, data: TrustStoreData | null, now: number = Date.now()): string | null {
+  if (mode !== "peer" || data === null) return null;
+  const lead = data.lead;
+  if (lead === null || lead.status !== "enrolled" || lead.certPem === "") return null;
+  return deputyAnchor(data, lead, now);
+}
+
 function deputyAnchor(data: TrustStoreData, lead: TrustedMember, now: number): string | null {
   const stored = data.warrant ?? null;
   if (stored === null || data.pack === null) return null;

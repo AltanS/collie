@@ -9,7 +9,7 @@ import {
   unauthorizedResponse,
   type PackRequestFacts,
 } from "./admission.ts";
-import { leadStore, member, PACK, peerStore } from "./fixtures.ts";
+import { leadStore, material, member, PACK, peerStore } from "./fixtures.ts";
 
 // The two-factor gate (PACK_PROTOCOL.md §8.1) is the whole of federation's security posture, so it
 // is tested as a MATRIX rather than as a set of happy paths: every combination of "which factor did
@@ -35,6 +35,10 @@ function facts(over: Partial<PackRequestFacts> = {}): PackRequestFacts {
   return {
     transportPinned: false,
     signedMember: "nas",
+    // Absent by default, which is every single-anchor peer, every lead and solo: the two fields the
+    // 2026-08-20 amendment added read as "one anchor, no dial attestation", i.e. exactly today.
+    deputy: null,
+    dial: null,
     authorization: `Bearer ${PACK.secret}`,
     protocol: "1",
     ...over,
@@ -45,7 +49,7 @@ describe("admitPackRequest — the failure matrix", () => {
   test("both factors correct admits, and names who called", () => {
     const verdict = admitPackRequest(store, facts());
     expect(verdict.ok).toBe(true);
-    if (!verdict.ok) throw new Error("unreachable");
+    if (!verdict.ok || verdict.caller !== "member") throw new Error("unreachable");
     expect(verdict.member.memberId).toBe("nas");
     expect(verdict.self).toBe("desk");
   });
@@ -102,7 +106,7 @@ describe("admitPackRequest — the failure matrix", () => {
     const peer = peerStore();
     const verdict = admitPackRequest(peer, facts({ transportPinned: true, signedMember: null }));
     expect(verdict.ok).toBe(true);
-    if (!verdict.ok) throw new Error("unreachable");
+    if (!verdict.ok || verdict.caller !== "member") throw new Error("unreachable");
     expect(verdict.member.role).toBe("lead");
   });
 
@@ -222,7 +226,18 @@ describe("the transport seam", () => {
       },
     });
     const f = factsFrom(req, { transportPinned: false, signedMember: "nas" });
-    expect(Object.keys(f).toSorted()).toEqual(["authorization", "protocol", "signedMember", "transportPinned"]);
+    // The two 2026-08-20 fields are here and both default CLOSED — no second anchor, no attestation —
+    // which is the reading that leaves a single-anchor peer behaving exactly as it always has.
+    expect(Object.keys(f).toSorted()).toEqual([
+      "authorization",
+      "deputy",
+      "dial",
+      "protocol",
+      "signedMember",
+      "transportPinned",
+    ]);
+    expect(f.deputy).toBeNull();
+    expect(f.dial).toBeNull();
     // Browser credentials are present on this request and admit nothing on their own.
     expect(admitPackRequest(store, { ...f, authorization: null }).ok).toBe(false);
   });
@@ -235,5 +250,68 @@ describe("admitted responses state their version and who answered (§6)", () => 
       "x-pack-protocol": "1",
       "x-pack-member": "desk",
     });
+  });
+});
+
+describe("a two-anchored peer resolves its caller by SIGNATURE, never by the TLS boolean (§8.1, 2026-08-20)", () => {
+  const peer = peerStore();
+  const deputy = { memberId: "nas", certPem: material("nas").certPem };
+  /** Facts as they arrive at a peer dialled over a pin-enforcing handshake, with no attestation. */
+  const dialled = (over: Partial<PackRequestFacts> = {}): PackRequestFacts =>
+    facts({ transportPinned: true, signedMember: null, ...over });
+
+  test("ONE anchor: an unsigned dial is still admitted as the lead — today, byte for byte", () => {
+    const verdict = admitPackRequest(peer, dialled());
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok || verdict.caller !== "member") throw new Error("unreachable");
+    expect(verdict.member.memberId).toBe("desk");
+  });
+
+  test("TWO anchors: an UNSIGNED dial is refused — a listener that cannot tell must not guess", () => {
+    // This is the whole closure. Without it the boolean resolves to the lead, and a compromised
+    // deputy that completed the handshake would be read as the lead on every route.
+    expect(admitPackRequest(peer, dialled({ deputy }))).toEqual({
+      ok: false,
+      refusal: "unauthorized",
+      factor: "certificate",
+    });
+  });
+
+  test("TWO anchors: a LEAD-attested dial is admitted, and resolves to the lead", () => {
+    const verdict = admitPackRequest(peer, dialled({ deputy, dial: { memberId: "desk", isDeputy: false } }));
+    if (!verdict.ok || verdict.caller !== "member") throw new Error("expected the lead");
+    expect(verdict.member.memberId).toBe("desk");
+    expect(verdict.member.role).toBe("lead");
+  });
+
+  test("TWO anchors: a DEPUTY-attested dial is admitted AS THE DEPUTY, never as the lead", () => {
+    const verdict = admitPackRequest(peer, dialled({ deputy, dial: { memberId: "nas", isDeputy: true } }));
+    if (!verdict.ok || verdict.caller !== "deputy") throw new Error("expected the deputy");
+    expect(verdict.deputy).toEqual(deputy);
+    // It is NOT a roster member and no roster entry is invented for it: this peer never enrolled it.
+    expect(peer.peers).toEqual([]);
+  });
+
+  test("an attestation naming a member this collie does not pin admits nothing", () => {
+    expect(admitPackRequest(peer, dialled({ deputy, dial: { memberId: "attic", isDeputy: false } })).ok).toBe(false);
+    // …and a deputy-shaped claim with no second anchor to back it is nobody at all.
+    expect(admitPackRequest(peer, dialled({ dial: { memberId: "nas", isDeputy: true } })).ok).toBe(false);
+  });
+
+  test("the §8.6 request signature still wins outright — the more specific claim is checked first", () => {
+    const verdict = admitPackRequest(peer, dialled({ deputy, signedMember: "desk" }));
+    if (!verdict.ok || verdict.caller !== "member") throw new Error("expected the lead");
+    expect(verdict.member.memberId).toBe("desk");
+  });
+
+  test("an attestation admits nothing WITHOUT the handshake — it is a second factor, not a first", () => {
+    // A lead pins nothing inbound, so `transportPinned` is false there; an attestation alone must not
+    // become a way in. §8.6's request signature is the peer→lead mechanism and it is unchanged.
+    expect(admitPackRequest(peer, facts({ transportPinned: false, signedMember: null, deputy, dial: { memberId: "desk", isDeputy: false } })).ok).toBe(false);
+  });
+
+  test("the secret is still required of both — one factor never admits anything", () => {
+    const attested = dialled({ deputy, dial: { memberId: "desk", isDeputy: false }, authorization: null });
+    expect(admitPackRequest(peer, attested)).toEqual({ ok: false, refusal: "unauthorized", factor: "secret" });
   });
 });

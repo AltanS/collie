@@ -30,7 +30,7 @@ import {
 } from "../bridge/pack/enrollment.ts";
 import { bindIsWildcard } from "../bridge/pack/config.ts";
 import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } from "../bridge/pack/identity.ts";
-import { signRequest } from "../bridge/pack/signing.ts";
+import { signDial, signRequest } from "../bridge/pack/signing.ts";
 import { dialTls } from "../bridge/pack/transport.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
 import { PackOpsStore } from "../bridge/pack/ops-store.ts";
@@ -201,6 +201,12 @@ function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerC
     // whole set means `pack status` and `reconnect` can probe a lead at all, and it costs one ECDSA
     // signature per one-shot command. The receiver only *requires* one on the membership routes.
     sign: (parts) => signRequest(data.self.keyPem, parts),
+    // …and every one carries a DIAL ATTESTATION too (§8.6). The signature above answers "may this
+    // member do this?" on the routes that ask; this one answers "which of my anchors are you?" at a
+    // peer that has anchored a deputy, which refuses an unattested dial whoever it claims to be from.
+    // A verb that dialled such a peer without one — `pack rotate`, `pack status` — would read the
+    // whole pack as unauthorized.
+    dialSign: (parts) => signDial(data.self.keyPem, parts),
   });
 }
 

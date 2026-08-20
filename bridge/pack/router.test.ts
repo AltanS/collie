@@ -17,7 +17,7 @@ import {
   PACK_WARRANT_PATH,
   type SnapshotSource,
 } from "./router.ts";
-import { signRequest, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
+import { signDial, signRequest, DIAL_HEADER, MAX_SKEW_MS, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo, type Warrant } from "./trust-store.ts";
 import { mintWarrant, WARRANT_TTL_MS } from "./warrant.ts";
 
@@ -1669,5 +1669,144 @@ describe("POST /pack/v1/warrant at a collie that still believes it leads — the
     const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => T0 });
     const res = (await call(handler, PACK_WARRANT_PATH, post({ warrant: w, deputyCertPem: material("nas").certPem })))!;
     expect(await res.json()).toEqual({ generation: 1, applied: true });
+  });
+});
+
+describe("a two-anchored peer requires an attested dial, and gives the deputy ZERO reach (§8.1)", () => {
+  /** A peer of `desk` that has anchored `nas` as its deputy — the store and the listener's anchor. */
+  function anchored() {
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
+    return {
+      data: peerStore({ warrant: { warrant: w, deputyCertPem: material("nas").certPem } }),
+      deputyAnchor: { memberId: "nas", certPem: material("nas").certPem },
+    };
+  }
+
+  /** The dial-attestation headers a caller with `label`'s key would send for `path`. */
+  const attested = (label: string, method: string, path: string, at = T0, to = "laptop") => ({
+    [DIAL_HEADER]: signDial(material(label).keyPem, { method, path, timestamp: at, to }),
+    [TIMESTAMP_HEADER]: String(at),
+  });
+
+  /** Every route this build serves, as (path, init) — the set the deputy must not reach. */
+  const EVERY_ROUTE: readonly (readonly [string, string])[] = [
+    [PACK_HELLO_PATH, "GET"],
+    [PACK_SNAPSHOT_PATH, "GET"],
+    [PACK_SECRET_PATH, "POST"],
+    [PACK_WARRANT_PATH, "POST"],
+    [PACK_LEAD_PATH, "POST"],
+    [PACK_LEAVE_PATH, "POST"],
+    [`${PACK_PREFIX}pane/w1:p1`, "GET"],
+  ];
+
+  const router = (h: ReturnType<typeof harness>, deputyAnchor?: { memberId: string; certPem: string }) =>
+    createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      now: () => T0,
+      snapshot: () => ownSnapshot(),
+      dispatch: () => Promise.resolve(new Response("{}", { status: 200 })),
+      deputyAnchor,
+    });
+
+  test("a SINGLE-anchor peer still admits an unattested dial — today, byte for byte", async () => {
+    const h = harness(peerStore());
+    const res = (await call(router(h), PACK_HELLO_PATH, { headers: authed }))!;
+    expect(res.status).toBe(200);
+  });
+
+  test("a two-anchored peer REFUSES an unattested dial, on every route", async () => {
+    const { data, deputyAnchor } = anchored();
+    for (const [path, method] of EVERY_ROUTE) {
+      const h = harness(data);
+      const res = (await call(router(h, deputyAnchor), path, { method, headers: authed }))!;
+      expect(res.status).toBe(401);
+    }
+  });
+
+  test("a LEAD-attested dial is admitted and resolves to the lead", async () => {
+    const { data, deputyAnchor } = anchored();
+    const h = harness(data);
+    const res = (await call(router(h, deputyAnchor), PACK_HELLO_PATH, {
+      headers: { ...authed, ...attested("desk", "GET", PACK_HELLO_PATH) },
+    }))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ protocol: 1, member: "laptop", warrantGeneration: 1, warrantRefreshedAt: T0 });
+  });
+
+  test("a DEPUTY-attested dial is refused on EVERY route this build has — its reach is zero", async () => {
+    // The second anchor buys a completed TLS handshake and nothing behind it. When the takeover and
+    // witness routes land they opt in through `DEPUTY_ROUTES`; until then this is the whole surface.
+    const { data, deputyAnchor } = anchored();
+    for (const [path, method] of EVERY_ROUTE) {
+      const h = harness(data);
+      const res = (await call(router(h, deputyAnchor), path, {
+        method,
+        headers: { ...authed, ...attested("nas", method, path) },
+      }))!;
+      expect(res.status).toBe(401);
+      expect(h.writes()).toBe(0);
+      expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+    }
+  });
+
+  test("a TAMPERED attestation is refused — the signature is over the method, path and receiver", async () => {
+    const { data, deputyAnchor } = anchored();
+    for (const bent of [
+      // Signed for another route.
+      attested("desk", "GET", PACK_SNAPSHOT_PATH),
+      // Signed for another method.
+      attested("desk", "POST", PACK_HELLO_PATH),
+      // Signed for ANOTHER RECEIVER — the field that stops the deputy replaying a dial it legitimately
+      // received at a sibling peer. `nas` is dialled by this same lead, with this same key.
+      attested("desk", "GET", PACK_HELLO_PATH, T0, "nas"),
+      // Signed by a member this peer anchors neither of.
+      attested("attic", "GET", PACK_HELLO_PATH),
+      // Re-stamped: the timestamp is inside the signature, so it cannot be walked forward.
+      { ...attested("desk", "GET", PACK_HELLO_PATH), [TIMESTAMP_HEADER]: String(T0 + 1) },
+      // Truncated to nothing.
+      { [DIAL_HEADER]: "", [TIMESTAMP_HEADER]: String(T0) },
+    ]) {
+      const h = harness(data);
+      const res = (await call(router(h, deputyAnchor), PACK_HELLO_PATH, { headers: { ...authed, ...bent } }))!;
+      expect(res.status).toBe(401);
+    }
+  });
+
+  test("a STALE attestation is refused — §8.6's skew window, unchanged", async () => {
+    const { data, deputyAnchor } = anchored();
+    const h = harness(data);
+    const old = T0 - MAX_SKEW_MS - 1;
+    const res = (await call(router(h, deputyAnchor), PACK_HELLO_PATH, {
+      headers: { ...authed, ...attested("desk", "GET", PACK_HELLO_PATH, old) },
+    }))!;
+    expect(res.status).toBe(401);
+    // Inside the window it is fine, so what refused it was the clock and not the shape.
+    const fresh = (await call(router(h, deputyAnchor), PACK_HELLO_PATH, {
+      headers: { ...authed, ...attested("desk", "GET", PACK_HELLO_PATH, T0 - MAX_SKEW_MS + 1) },
+    }))!;
+    expect(fresh.status).toBe(200);
+  });
+
+  test("CONCURRENT attested dials all land — the replay FLOOR is not applied here", async () => {
+    // The lead dials several members within one millisecond, so a monotonic floor on this signature
+    // would refuse all but one of every sweep. What bounds a captured dial is the receiver binding.
+    const { data, deputyAnchor } = anchored();
+    const h = harness(data);
+    const handler = router(h, deputyAnchor);
+    const headers = { ...authed, ...attested("desk", "GET", PACK_HELLO_PATH) };
+    for (let i = 0; i < 3; i++) {
+      expect((await call(handler, PACK_HELLO_PATH, { headers }))!.status).toBe(200);
+    }
+  });
+
+  test("the secret is still required — an attestation is a second factor, never a first", async () => {
+    const { data, deputyAnchor } = anchored();
+    const h = harness(data);
+    const res = (await call(router(h, deputyAnchor), PACK_HELLO_PATH, {
+      headers: { "x-pack-protocol": "1", ...attested("desk", "GET", PACK_HELLO_PATH) },
+    }))!;
+    expect(res.status).toBe(401);
   });
 });

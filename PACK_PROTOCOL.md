@@ -487,17 +487,36 @@ that something is listening.
 > anchors than before** — the lead's own certificate is never in question and is never dropped, so an
 > existing lead's handshake is unaffected and this is not a wire change.
 >
-> **The consequence for the boolean, stated rather than discovered.** With one anchor,
+> **The boolean does not survive a second anchor, so it is not used with one.** With one anchor,
 > `transportPinned` named a unique member and was sufficient rather than lossy. With two it names
-> *one of two*, and Bun still exposes no accessor for the certificate a caller presented — so a
-> two-anchored peer resolves an **unsigned** admitted request to its lead, and a deputy dialling it
-> unsigned would be read as its lead. That cannot be closed at the transport (`server.reload` does not
-> re-pin, and refusing unsigned requests would refuse the lead's own poll), so it is **the reach the
-> operator granted when they named the deputy**: a compromised deputy reaches what a compromised lead
-> reaches, on every peer that has anchored it, without waiting for a takeover. §8.5's mitigation is
-> the one that applies — *make the deputy the second machine you most trust* — and a pack that names
-> no deputy is unaffected, byte for byte. **A future amendment that wants this closed has to make the
-> lead sign its own lead→peer calls; nothing weaker distinguishes the two anchors.**
+> *one of two*, and Bun still exposes no accessor for the certificate a caller presented — so reading
+> it as "the lead" would let a deputy that merely completed the handshake be taken for the lead on
+> every route. **A two-anchored peer therefore resolves its caller by SIGNATURE, never by the
+> transport's boolean:**
+>
+> - **Every lead→peer dial carries a dial attestation** (§8.6): base64 ECDSA-P256-SHA256 over a
+>   domain-tagged string binding the method, the path, the timestamp and **the member being dialled**,
+>   in `X-Pack-Dial` beside the existing `X-Pack-Timestamp`. It covers no body, so a streamed upload
+>   (§13) stays a stream and it can therefore ride *every* route rather than a closed set.
+> - **Identity is whichever anchored certificate verifies it** — the pinned lead's, or the deputy's.
+>   A verified §8.6 *request* signature still wins outright where one is present; it is the more
+>   specific claim.
+> - **An unattested request is refused** on a two-anchored peer, whoever it claims to be from. A
+>   listener that cannot tell its two callers apart must not guess.
+> - **A single-anchor peer is unchanged, byte for byte** — the boolean still resolves to its lead, an
+>   unattested dial is still admitted, and no pack that has never named a deputy sees any of this.
+>
+> **This is additive, and the reason is the ordering.** The only lead that can face a two-anchored
+> peer is a post-amendment build, because a second anchor exists only where a warrant was issued and
+> pushed — and only a post-amendment lead can issue one. So there is no build that could be locked out
+> by the requirement that did not create it. An older *peer* ignores the extra headers and loses
+> nothing it had.
+>
+> **What a second anchor buys a compromised deputy is therefore a completed TLS handshake and nothing
+> behind it.** Every route this specification defines refuses a caller admitted as the deputy; the
+> takeover and witness routes will declare themselves as accepting one, and until they exist the set
+> is empty. §8.5's mitigation still applies to what a takeover would grant — *make the deputy the
+> second machine you most trust* — but it is no longer load-bearing for the pre-takeover case.
 
 ### 8.2 Enrollment — `collie join <lead-address> <token>`
 
@@ -728,11 +747,13 @@ travel it are the most consequential in the protocol: `leave` removes a member f
 speak for any other. The second factor is therefore re-established over material both sides already
 pinned — no new key, no new trust, the same guarantee the handshake gives the other way.
 
-**`POST /pack/v1/leave` and `POST /pack/v1/lead` MUST carry a signature.** `GET /pack/v1/hello` MAY,
-and does when a verb sends it, so `collie pack status` and `collie reconnect` can probe a lead at
-all. Nothing else may: the proxy surface (§5) runs lead → peer over a pinned handshake, and hashing a
-body to verify a signature there would pull a streamed upload (§13) into memory on the security path.
-`/pack/v1/enroll` cannot — at that instant nobody has pinned the caller (§8.2).
+**`POST /pack/v1/leave`, `POST /pack/v1/lead` and `POST /pack/v1/warrant` MUST carry a signature.**
+`GET /pack/v1/hello` MAY, and does when a verb sends it, so `collie pack status` and `collie
+reconnect` can probe a lead at all. (`warrant` joined the set on 2026-08-20: §18.12's deposition
+travels peer → lead, into a listener that pins nothing inbound.) Nothing else may: the proxy surface
+(§5) runs lead → peer over a pinned handshake, and hashing a body to verify a signature there would
+pull a streamed upload (§13) into memory on the security path. `/pack/v1/enroll` cannot — at that
+instant nobody has pinned the caller (§8.2).
 
 - **`X-Pack-Signature`** — base64 ECDSA-P256-SHA256 over the canonical string, made with the private
   key behind the sender's **pinned** certificate and verified with that certificate's public key.
@@ -775,6 +796,40 @@ tag makes the property structural and costs one string. **Retrofitting the reque
 deliberately NOT proposed** — it is deployed, and changing a canonical string is a flag day inside
 §7's exact-1 window. The tag is for new objects; §16's reserved signed handover should take one if it
 is ever built.
+
+#### The dial attestation — a THIRD signed object, and the lead→peer direction's identity *(added 2026-08-20)*
+
+**Every lead → peer dial carries one, on every route, unconditionally.** It is what a two-anchored
+peer resolves its caller from (§8.1's amendment), and it is a *third* canonical string rather than a
+reuse of the four-field one above, for two reasons that are both load-bearing:
+
+1. **The body cannot be hashed here.** A proxied write streams `req.body` straight through — up to
+   10 MB of multipart, never buffered on the lead (§13). Signing a digest would mean buffering every
+   upload in the lead's memory on the security path, which is the exact trade the closed
+   `MUST carry a signature` set above was drawn to avoid. So this string omits the body, and what it
+   claims is **identity, not integrity**: body integrity on this hop is the pinned mutual TLS's, and
+   the attacker it closes — a compromised deputy read as the lead — cannot produce the lead's
+   signature over any string at all.
+2. **The four-field string names no RECEIVER**, and its own text says a broadening of who-pins-whom
+   MUST bind one. A two-anchored peer *is* that broadening: the lead dials the deputy exactly as it
+   dials every other member, so the deputy legitimately holds lead-signed traffic and could otherwise
+   present it at a sibling peer.
+
+- **`X-Pack-Dial`** — base64 ECDSA-P256-SHA256 over the string below, beside the existing
+  `X-Pack-Timestamp` (one stamp per request; one request makes one freshness claim).
+- **The canonical string**, exactly — five fields behind the same kind of fixed domain tag the warrant
+  carries:
+
+  ```
+  collie-pack-dial-v1\n<METHOD>\n<path>\n<timestamp>\n<the member being dialled>
+  ```
+
+- **Skew: the same ±5 minutes.** **The replay FLOOR is deliberately not applied**, and that is not an
+  omission: the lead dials several members concurrently within one millisecond, so a monotonic floor
+  here would refuse all but one of every sweep. What bounds a captured dial instead is the receiver
+  field — the only party positioned to capture one is the receiver itself, and the receiver is the
+  only collie it verifies at.
+- **A failure at any step is the uniform 401**, indistinguishable from every other refusal.
 
 ---
 
