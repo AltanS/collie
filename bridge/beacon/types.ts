@@ -84,7 +84,20 @@ export interface BeaconRecord {
   readonly schemaVersion: number;
   /** The harness the agent is, in the journal registry's own vocabulary (`claude`, `codex`, `pi`). */
   readonly harness: string;
-  /** How the agent named its session — the journal's own {@link AgentSessionRef}, not a new type. */
+  /**
+   * How the agent named its session — the journal's own {@link AgentSessionRef}, not a new type.
+   *
+   * BOTH KINDS ARE SAFE AND THE ID IS SAFER, WHICH IS WHY CLAUDE'S EMITTER WRITES ONLY THE ID. An
+   * `id` is pattern-validated and then used to BUILD a path inside a root Collie configured, so it
+   * can never name a file outside one; a `path` can only be REJECTED after it already names one, by
+   * `journal/files.ts` containment. Choosing the strictly stronger of two safe options costs nothing
+   * here, so the Claude hook payload's `transcript_path` is not in this schema at all (.adr/0024) —
+   * an unread attacker-chosen value is a hazard waiting for a future consumer. A harness that reports
+   * no stable id supplies `{ kind: "id" }`'s alternative, `path`, and that ref is confined by
+   * `containedRealpathIn` per root after symlink resolution, exactly as pi's is. There is no third
+   * branch and no trust carve-out for "the operator installed the hook": anything that can write into
+   * the beacon directory is the threat model.
+   */
   readonly session: AgentSessionRef;
   /** What the agent last said it was doing. Discarded once the beacon expires (see reader.ts). */
   readonly status: BeaconStatus;
