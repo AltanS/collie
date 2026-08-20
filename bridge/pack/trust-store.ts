@@ -147,6 +147,54 @@ export interface PendingHandover {
   readonly expiresAt: number;
 }
 
+/**
+ * A standing, lead-signed permission for ONE member to take the crown (RFC §4.2, PACK_PROTOCOL.md
+ * §18). Signed with the lead's own identity key and verified against the certificate the recipient
+ * already pinned — no new key, no new algorithm, no CA (`bridge/pack/warrant.ts`).
+ *
+ * **The fingerprint is the load-bearing field.** A warrant naming only a member id would let anything
+ * presenting that id be accepted; naming the fingerprint binds the certificate, so consent names the
+ * *key* that may take over and not merely the name it answers to (§14.2's lesson).
+ */
+export interface Warrant {
+  readonly packId: string;
+  /** Monotonic on the lead. Higher supersedes lower, everywhere. Never reset, never reused. */
+  readonly generation: number;
+  /** The deputy, or `null` — a revocation warrant names nobody (RFC §4.4). */
+  readonly deputyMemberId: string | null;
+  /** The deputy's pinned certificate fingerprint. `null` iff `deputyMemberId` is null. */
+  readonly deputyFingerprint: string | null;
+  /** The issuing lead's member id — so a verifier knows whose key to check it with. */
+  readonly leadMemberId: string;
+  /** When this GENERATION was minted. Does not move on a refresh. */
+  readonly issuedAt: number;
+  /**
+   * When this generation was last re-signed by a healthy lead (RFC §4.5). The warrant is dead at
+   * `refreshedAt + WARRANT_TTL_MS`. On a fresh mint, equal to `issuedAt`.
+   */
+  readonly refreshedAt: number;
+  /** Base64 ECDSA-P256-SHA256 over `canonicalWarrant` (`bridge/pack/warrant.ts`). */
+  readonly signature: string;
+}
+
+/**
+ * The warrant as a member keeps it, with the material that came with it.
+ *
+ * **A peer has no roster beyond its lead**, so it cannot look the deputy's certificate up — the push
+ * carries it and the peer accepts it only when `sha256(certPem)` equals the warrant's
+ * `deputyFingerprint` (RFC §5, the identical rule §8.2 uses at enrollment). Without those bytes a
+ * peer could never build the second TLS anchor, because BoringSSL anchors on certificates and not on
+ * hashes.
+ */
+export interface StoredWarrant {
+  readonly warrant: Warrant;
+  /**
+   * The deputy's certificate, PEM. `null` on a revocation warrant (nobody is named) and on the
+   * issuing lead itself, which pins the deputy in its own roster and needs no copy.
+   */
+  readonly deputyCertPem: string | null;
+}
+
 /** The whole file. */
 export interface TrustStoreData {
   readonly version: number;
@@ -167,6 +215,27 @@ export interface TrustStoreData {
    * why {@link parseTrustStore}'s whitelist names it in both the validator and the result.
    */
   readonly pendingHandover?: PendingHandover | null;
+  /**
+   * On the LEAD: the member the operator has designated as deputy, or `null` after a revocation
+   * (RFC §3). It is the operator's *designation*; {@link TrustStoreData.warrant} is the signed
+   * artefact of it, and the two are written in one step so they can never disagree.
+   *
+   * **OPTIONAL, and absent means CLOSED** — a store written before this field existed has designated
+   * nobody, which is exactly the right reading. A peer never writes this field: what a peer holds is
+   * the warrant, and the deputy's name is inside it.
+   */
+  readonly deputy?: string | null;
+  /**
+   * The one warrant this collie holds (RFC §4.4: the highest generation it has verified, and within
+   * that generation the highest `refreshedAt`). On the lead, the warrant it currently issues; on a
+   * peer, the one its lead last pushed.
+   *
+   * **OPTIONAL, and absent means CLOSED** — no warrant, therefore no deputy, therefore nothing
+   * eligible to take over. It also carries the generation counter, which is why a *revocation*
+   * (generation N+1 naming nobody) is stored rather than deleted: dropping the field would reset the
+   * counter and make an old warrant verify again (RFC §4.4).
+   */
+  readonly warrant?: StoredWarrant | null;
 }
 
 /**
@@ -233,6 +302,66 @@ function isHandover(value: JsonValue | undefined): value is JsonValue & PendingH
 }
 
 /**
+ * A stored warrant, structurally (RFC §4.2).
+ *
+ * The two `null`-together fields are checked as a pair rather than separately: `deputyMemberId` and
+ * `deputyFingerprint` are null in a revocation warrant and both present otherwise, and a half-named
+ * deputy is not a shape this codebase should have to reason about downstream. Nothing here checks the
+ * *signature* — that needs a certificate the parser does not have, and it is the verifier's job
+ * (`bridge/pack/warrant.ts`), which is where the fail-closed reading lives.
+ */
+function isWarrant(value: JsonValue | undefined): value is JsonValue & Warrant {
+  const w = asRecord(value);
+  if (w === null) return false;
+  const named = isMemberId(w.deputyMemberId) && isFingerprint(w.deputyFingerprint);
+  const revoked = w.deputyMemberId === null && w.deputyFingerprint === null;
+  return (
+    typeof w.packId === "string" &&
+    typeof w.generation === "number" &&
+    Number.isSafeInteger(w.generation) &&
+    (named || revoked) &&
+    isMemberId(w.leadMemberId) &&
+    typeof w.issuedAt === "number" &&
+    typeof w.refreshedAt === "number" &&
+    typeof w.signature === "string" &&
+    w.signature.length > 0
+  );
+}
+
+/** {@link isMemberId} at this parser's argument type, so the optional reader below can take it. */
+function isDeputyId(value: JsonValue | undefined): value is JsonValue & string {
+  return isMemberId(value);
+}
+
+function isStoredWarrant(value: JsonValue | undefined): value is JsonValue & StoredWarrant {
+  const s = asRecord(value);
+  if (s === null) return false;
+  if (!isWarrant(s.warrant)) return false;
+  return (
+    s.deputyCertPem === null ||
+    (typeof s.deputyCertPem === "string" && s.deputyCertPem.includes("BEGIN CERTIFICATE"))
+  );
+}
+
+/**
+ * Read one OPTIONAL top-level field, keeping the absent/`null` distinction intact.
+ *
+ * Three fields now need the identical three-way reading — absent, explicitly null, or a value that
+ * must validate — and the rule they share is the one that is easy to get wrong: **absent must stay
+ * absent**, so a store written before the field existed round-trips to the same bytes it arrived as,
+ * and anything malformed invalidates the WHOLE store rather than being read around.
+ *
+ * `null` is the refusal (malformed); a box is the answer, so `undefined` inside it is a value.
+ */
+function optionalField<T>(
+  raw: JsonValue | undefined,
+  is: (value: JsonValue | undefined) => value is JsonValue & T,
+): { readonly value: T | null | undefined } | null {
+  if (raw === null || raw === undefined) return { value: raw };
+  return is(raw) ? { value: raw } : null;
+}
+
+/**
  * Parse a trust store from its serialised form. Returns `null` for anything that isn't a store this
  * reader understands — a wrong version, a missing identity, a member with an unpinnable fingerprint.
  *
@@ -296,17 +425,14 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   }
   if (!Array.isArray(d.peers) || !d.peers.every(isMember)) return null;
   if (!Array.isArray(d.invites) || !d.invites.every(isInvite)) return null;
-  // Same strictness the roster gets: a malformed approval invalidates the WHOLE store rather than
-  // being read around. Absent or `null` is the ordinary, fail-closed case — no live approval. The
-  // two are NOT collapsed: `null` round-trips as `null`, absent round-trips as absent.
-  const rawHandover = d.pendingHandover;
-  let handover: PendingHandover | null | undefined;
-  if (rawHandover === null || rawHandover === undefined) {
-    handover = rawHandover;
-  } else {
-    if (!isHandover(rawHandover)) return null;
-    handover = rawHandover;
-  }
+  // Same strictness the roster gets: a malformed approval, designation or warrant invalidates the
+  // WHOLE store rather than being read around. Absent or `null` is the ordinary, fail-closed case —
+  // no live approval, no deputy, no warrant. The two are NOT collapsed: `null` round-trips as `null`,
+  // absent round-trips as absent.
+  const handover = optionalField(d.pendingHandover, isHandover);
+  const deputy = optionalField<string>(d.deputy, isDeputyId);
+  const warrant = optionalField(d.warrant, isStoredWarrant);
+  if (handover === null || deputy === null || warrant === null) return null;
 
   const store: TrustStoreData = {
     version: TRUST_STORE_VERSION,
@@ -324,10 +450,14 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   };
   // THE WHITELIST IS THE TRAP: the literal above is the store, so a field validated but left out of
   // it vanishes on every load→save round trip — and an approval that cannot survive a read is an
-  // approval the demotion can never find (§14.1). Absent stays absent rather than becoming an
-  // explicit `null`, so a pre-amendment store round-trips to the same bytes it arrived as.
-  if (handover === undefined) return store;
-  return { ...store, pendingHandover: handover };
+  // approval the demotion can never find (§14.1); a warrant that cannot survive one is a deputy that
+  // silently stops existing at the next write. Absent stays absent rather than becoming an explicit
+  // `null`, so a pre-amendment store round-trips to the same bytes it arrived as.
+  let out = store;
+  if (handover.value !== undefined) out = { ...out, pendingHandover: handover.value };
+  if (deputy.value !== undefined) out = { ...out, deputy: deputy.value };
+  if (warrant.value !== undefined) out = { ...out, warrant: warrant.value };
+  return out;
 }
 
 /** Serialise a store for disk. Stable, pretty-printed, newline-terminated — a diffable secret file. */

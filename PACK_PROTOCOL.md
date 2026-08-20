@@ -27,6 +27,8 @@ cited so a reviewer can check the extension is faithful.
 | **pack** | The lead plus its enrolled peers. One lead per pack, always. |
 | **member** | A collie enrolled in a pack — lead or peer. Identified by a **member id**. |
 | **solo** | A pack of one: a lead with zero enrolled peers. Today's Collie, exactly. |
+| **deputy** | The one peer the lead has named as eligible to take over. A deputy is a peer in every other respect. **At most one exists in a pack at any instant** (§18). |
+| **warrant** | The short, lead-signed object that names the deputy: pack id, generation, deputy member id, deputy certificate fingerprint, issue and refresh times (§18). A *standing permission*, never a command. |
 
 These are the shipped words. Earlier drafts said *alpha* for *lead* and *bridge* for *collie*; both
 are dead. The vocabulary decision and the rename rules for operator-visible surfaces are
@@ -202,7 +204,9 @@ answering build:
 ```json
 { "protocol": 1,
   "member": "peer-7f3a2c",
-  "version": "1.0.0-alpha.11" }
+  "version": "1.0.0-alpha.11",
+  "warrantGeneration": 3,
+  "warrantRefreshedAt": 1755600000000 }
 ```
 
 - `protocol` and `member` are **REQUIRED** (`bridge/pack/router.ts`, the `PACK_HELLO_PATH` branch; a
@@ -219,9 +223,22 @@ answering build:
   than at probe time), the road is an additive-optional field on `snapshot`'s response, per §7.1's
   class rule — not a second dial.
 
+- `warrantGeneration` and `warrantRefreshedAt` are **OPTIONAL**, added 2026-08-20 (§18): the warrant
+  this member holds, as a monotonic integer and an epoch-millisecond timestamp. **They are sent as a
+  pair or not at all**, and **an absent pair means "this member holds no warrant, or is a build that
+  does not know about warrants" — never "up to date"** (§7.1). A half-reported pair is exactly as
+  unknown as an absent one. Both readings make the lead push the current warrant on its next sweep,
+  which is the closed direction: a needless push costs one small body, where reading silence as
+  currency costs a member that never receives the operator's designation at all. **The same pair
+  rides `/pack/v1/snapshot`'s response**, beside the snapshot body rather than inside it — that body
+  is the one this collie serves its own browser, and a pack-only fact has no business in the
+  browser's shape. `snapshot` is what the lead's poll already dials (§10.1), which is what makes the
+  comparison cost no extra round trip.
+
 `hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
 become a place to learn something an unadmitted caller wants; a version is admissible there for the
-same reason `member` is — it is already knowable to anyone who has cleared both factors.
+same reason `member` is — it is already knowable to anyone who has cleared both factors. A warrant
+generation is admissible for the same reason, and it names no secret: an integer and a timestamp.
 
 **Deliberately not on the pack surface**, because they are properties of the collie the phone talks to
 rather than of a herd: `POST /api/subscribe` (`:303`), `POST /api/notifications/snooze` (`:318`),
@@ -245,6 +262,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/pack/v1/secret` | the lead | Hands a peer the rotated pack secret (§8.4). Refused unless the caller is *this collie's own lead*: the secret is pack-wide, so any other admitted member accepting one could lock the lead out of its own pack. Authenticated by the **outgoing** secret and carrying the incoming one — there is no instant in which both are accepted. |
 | `POST` | `/pack/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the pack secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/pack/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
+| `POST` | `/pack/v1/warrant` | the lead | Delivers or refreshes the warrant naming the pack's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `pack status` finding, never an error. |
 
 Everything except `enroll` sits behind the same two factors as the rest of the prefix, and each
 carries a role check on top: *admitted* and *allowed to do this* are different questions.
@@ -334,7 +352,10 @@ updated machines, so build skew is the steady state (§7), and this section is t
   claiming the thing*, never as *claiming it permissively*. Concretely: an absent field never grants,
   never approves, never widens, and never makes an older member's silence read as consent. §14.6's
   approval field is one instance (no approval field ⇒ no live approval ⇒ refuse); `hello`'s `version`
-  is another (absent ⇒ "older than this amendment", rendered as such). An addition that **cannot** be
+  is another (absent ⇒ "older than this amendment", rendered as such); §18's `warrantGeneration` /
+  `warrantRefreshedAt` are a third (an absent pair ⇒ "holds no warrant", which makes the lead *push*
+  — never "already current"); and §18's `/pack/v1/warrant` route is a fourth (a `404` ⇒ the member
+  cannot hold a warrant, which is the closed reading of every question that route answers). An addition that **cannot** be
   expressed this way is a version-2 change and takes `X-Pack-Protocol` with it — it does not get to
   ship inside `1` with a compatibility claim nobody tested.
 
@@ -703,6 +724,20 @@ body to verify a signature there would pull a streamed upload (§13) into memory
 - **A failure at any step is the uniform 401** of §8.1 — indistinguishable from a wrong secret, an
   unpinned certificate, or an unknown member. The signature is checked **before** the timestamp, so a
   caller who cannot sign learns nothing about this collie's clock or about what it has already seen.
+
+**The warrant is a SECOND signed object under the same key** (§18, added 2026-08-20). It reuses these
+primitives unchanged — base64 ECDSA-P256-SHA256, made with the signer's own key and verified against
+the certificate the reader already pinned — and it is a *different canonical string*, never a
+different algorithm and never a different trust anchor.
+
+The two are kept apart **structurally**, by a fixed domain tag in the warrant's first field
+(`collie-pack-warrant-v1`), rather than by the field-count disjointness the four-field string above
+relies on. That disjointness is real but it degrades with every signed object added, and the key is
+genuinely shared: a lead signs `hello` probes, `leave`, `lead` *and* warrants with one private key. A
+tag makes the property structural and costs one string. **Retrofitting the request string above is
+deliberately NOT proposed** — it is deployed, and changing a canonical string is a flag day inside
+§7's exact-1 window. The tag is for new objects; §16's reserved signed handover should take one if it
+is ever built.
 
 ---
 
@@ -1444,3 +1479,182 @@ Named here so v1's shape does not foreclose them, and so nobody mistakes a reser
   starting points chosen to be consistent with today's cadence, not measured ones. M4 may move them;
   the *shapes* — a budget below the poll interval, a short single-use token, pinning-not-expiry, a
   threshold above one missed poll — are the contract.
+
+---
+
+## 18. The deputy and the warrant *(added 2026-08-20)*
+
+**The problem this closes:** a lead that dies takes the front door with it, and today the only way
+back is `collie promote` at a keyboard on another machine (§14.4). A **deputy** is the one peer the
+operator names, in advance and while everything is healthy, as eligible to take over. This section
+specifies the object that carries that consent — the **warrant** — and how it reaches every member.
+It does not specify the takeover itself.
+
+### 18.1 One deputy, one warrant
+
+**At most one standing warrant exists in a pack at any instant.** Naming a second deputy does not add
+one: it mints generation *N+1* naming the new member, which supersedes the old warrant everywhere it
+lands. With one candidate there is nothing to rank, nothing to race, and no election — which is the
+point. Letting any peer *claim* leadership on lead-silence would let an attacker who can take the
+lead offline choose the new lead, and ADR 0014 already refused exactly that shape. Pre-designation
+moves the choice back to the operator, made while the lead is healthy enough to sign it.
+
+The deputy must be an **enrolled peer of this pack holding the current secret generation** — the same
+validation `pack approve-promote` performs (§14.1). A lead cannot name itself.
+
+**A deputy is still a peer.** It publishes no managed front door, serves no PWA and no `/api/*`, and
+answers `/pack/v1/*` exactly as before (§3, ADR 0013).
+
+### 18.2 The warrant
+
+```ts
+interface Warrant {
+  packId: string;
+  generation: number;              // monotonic on the lead; higher supersedes lower, everywhere
+  deputyMemberId: string | null;   // null ⇒ a REVOCATION warrant, naming nobody
+  deputyFingerprint: string | null;// null iff deputyMemberId is null
+  leadMemberId: string;            // whose key verifies this
+  issuedAt: number;                // when this GENERATION was minted; does not move on a refresh
+  refreshedAt: number;             // when it was last re-signed by a healthy lead (§18.4)
+  signature: string;               // base64 ECDSA-P256-SHA256 over the canonical string below
+}
+```
+
+**No new crypto** (§8.6): the lead signs with the private key behind its own pinned certificate, and
+a member verifies with the certificate it already pinned as its lead's. No new key, no new algorithm,
+no new trust anchor, no CA. A member verifying a warrant asks the one question it can already answer:
+*did the member we pinned as our lead sign this?*
+
+**The fingerprint is the load-bearing field.** §14.2 learned this once already: *"consent names who
+may take over" is only true if the key that takes over is the one already pinned.* A warrant naming
+only a member id would let anything presenting that id be accepted.
+
+**No address and no roster.** An address is a hint the operator may re-point (§4), so binding one
+would make roaming a warrant failure; a roster would make the warrant a second source of truth about
+membership.
+
+**The canonical string**, exactly — eight LF-separated fields behind a fixed domain tag (§8.6):
+
+```
+collie-pack-warrant-v1\n<packId>\n<generation>\n<leadMemberId>\n<deputyMemberId>\n<deputyFingerprint>\n<issuedAt>\n<refreshedAt>
+```
+
+`deputyMemberId` and `deputyFingerprint` are the literal string `-` in a revocation warrant. An
+**empty** field there would make two different objects share a string.
+
+### 18.3 Supersession and revocation
+
+- **A member keeps exactly one warrant: the highest generation it has verified, and within that
+  generation the highest `refreshedAt`.** A lower generation is discarded silently; so is the same
+  generation with a `refreshedAt` no newer than the one held. Monotone on both axes, so a refresh can
+  never walk a warrant backwards. That is the replay defence.
+- **Revocation is generation *N+1* naming nobody** — a positive, verifiable statement rather than an
+  absence. A member that never hears about it still holds the old warrant; a member that hears it can
+  prove it heard it. An absence could never be told from a lost message.
+- **Naming a new deputy revokes the old one**, by the same mechanism, in one step.
+- **The generation counter lives on the lead and never resets.** It survives revocation, restart and
+  promotion (§14 — a new lead adopts the generation it is handed, then increments). A reset would
+  make an old warrant verify again, which is why a revocation is *stored* rather than deleted.
+
+### 18.4 A standing generation, re-signed while healthy, dead 30 days after its last refresh
+
+**Not a fixed expiry from issue.** Such a warrant expires precisely when it is needed: the lead is the
+only party that can re-issue one, so an operator whose lead died on holiday would find the deputy
+disarmed at the one moment it mattered. That is also what separates this from §14.1's ten-minute
+approval, which is a *consent to a promotion happening now*. The two are different objects and must
+not share a lifetime.
+
+**Not standing forever, either.** A capability that outlives the operator's memory of granting it is a
+liability.
+
+So: **the generation is standing; the signature is refreshed.**
+
+- The lead **re-signs the current generation on a healthy sweep** — same generation, same deputy, same
+  fingerprint, new `refreshedAt`, new signature — at most **once an hour**. The refreshed warrant
+  rides the same push that already carries it, and a member already holding this generation at this
+  refresh is not re-pushed, so the steady-state wire cost is **one small body per member per hour**,
+  not one per sweep.
+- **A warrant is dead at `refreshedAt + 30 days`**, so it is only ever as old as the last time the
+  pack was healthy. A pack in daily use never approaches it; a pack that has been dark for a month
+  disarms itself.
+- **An expired warrant is not refreshed.** It is dead on every clock that holds it, and re-signing it
+  would silently re-arm a pack nobody has touched in a month. `collie pack deputy` is the way back.
+- **Expiry is not revocation.** A revocation is immediate but only reaches machines that are up; an
+  expiry reaches every machine but takes 30 days. Both are needed and neither substitutes for the
+  other.
+- **Validity is evaluated on each verifier's own clock**, and §8.6 already establishes that another
+  member's clock is never trusted for freshness. A machine whose clock is a month fast disarms early —
+  the fail-closed direction, and accepted.
+
+**What bounds a warrant regardless of its lifetime:** the one-warrant invariant, generation-based
+revocation, the fingerprint binding, and — decisively — the fact that **holding a warrant grants
+nothing by itself**. What a takeover additionally requires is specified with the takeover, not here.
+
+### 18.5 Distribution, and the two-phase arming nobody can skip
+
+A peer's listener is built with **exactly one TLS anchor** — its lead's certificate — and
+`server.reload({ tls })` does **not** swap a pinned `ca` (§8.1). Therefore a warrant that arrives over
+the pack link lands **on disk**, and is **inert at the transport until that member restarts**. No
+route, signature or warrant can climb that wall.
+
+| Phase | What happens | When it takes effect |
+|---|---|---|
+| **1 — stored** | The lead pushes the warrant to every member (`POST /pack/v1/warrant`, §5). Each verifies the lead's signature, checks the generation and persists it beside its trust material. | Immediately. The member now *knows* who the deputy is. |
+| **2 — anchored** | The member's next restart builds its listener with the deputy's certificate as a second anchor. | At the restart. Until then a takeover from that member's side is **impossible**, not merely refused. |
+
+**The push carries the deputy's certificate PEM alongside the warrant**, and the receiver accepts it
+only if `sha256(certPem)` equals the warrant's `deputyFingerprint`. This is the identical rule §8.2
+uses at enrollment, for the identical reason: BoringSSL anchors on **certificates**, so a hash alone
+could never be enforced. The certificate is inside the signature *by proxy, not by inclusion* —
+signing a ~700-byte blob would buy no additional guarantee. A revocation names nobody and therefore
+carries no certificate; one that arrives with a certificate is refused.
+
+**The receiving order is the rule**, and it runs outside-in: shape, then whose warrant this is, then
+the signature, then the certificate that rode with it, then the clock, then supersession. A caller who
+cannot sign therefore never learns which generation this collie holds. **A refusal costs no write**:
+a warrant that does not verify leaves the member holding exactly what it held before.
+
+**Re-push rides the sweep the lead already runs — there is no second timer** (§10.1, §11). Each poll's
+`snapshot` answer carries the member's `warrantGeneration` / `warrantRefreshedAt` (§5), so the
+comparison is two fields on an exchange that already happens and costs no dial to *decide*. Only a
+member genuinely behind is dialled, which covers three cases with one mechanism: a member that was
+offline when the deputy was named, a member that has never heard of warrants, and every member once
+an hour when the signature is refreshed. **A member that did not answer is skipped**, not pushed to
+blind — it has said nothing about what it holds, and a second dial into a dead link is a second
+failure per tick for no information. The push runs off the tick and is never awaited, so a sweep
+still costs one strict budget (§10.1).
+
+### 18.6 Local state
+
+The warrant and the lead's designation land in the **trust store** as optional top-level fields
+(`deputy`, `warrant`), sibling to `pendingHandover` (§14.1). **No new state file**, and solo writes
+none of it (§11). `parseTrustStore` builds its result from an explicit field whitelist, so each field
+is named in both the validator and the returned result or it is silently dropped on every read —
+§14.1 records that exact trap. **`TRUST_STORE_VERSION` stays `1`**: the fields are read as optional
+and an *unknown* store version is refused, so bumping it would make an updated collie reject its own
+pre-amendment store (§14.6's reasoning, verbatim). A malformed warrant or designation invalidates the
+**whole** store rather than being read around — a hole in a trust file is an unpinned member.
+
+A peer stores the warrant and the deputy's certificate; it does **not** store the `deputy`
+designation, which is the operator's decision *on the lead*. Who the deputy is, on a peer, is inside
+the warrant.
+
+### 18.7 Compatibility
+
+**`X-Pack-Protocol` stays `1`.** The route is new (a `404` is closed everywhere), and the two response
+fields are additive-optional with an absent pair reading as "holds no warrant" — the reading that
+makes the lead push rather than assume. Verified precedent: `PeerClient.hello` reads `protocol` and
+`member` by name and passes unknown siblings over without inspection (§7.1).
+
+**What is *not* additive, stated plainly:** a pre-amendment member is **not warrant-capable** and no
+amount of protocol politeness changes that — it has no warrant, no second anchor and no route. That is
+a **capability** gap, not a **compatibility** gap: nothing breaks, one thing is unavailable, and
+`pack status` says which members it is unavailable for. Bumping the protocol integer would be
+actively wrong — §7's window is exact-1, so a bump takes **every** route down between differently
+updated members in order to add a feature that degrades gracefully on its own.
+
+### 18.8 Not specified here
+
+The takeover exchange, the standby door a deputy binds while armed, the deposed state of a former
+lead, the boot-time gate against a split brain, and the `collie pack deputy` verb itself. Each is its
+own amendment; none of them changes anything above.

@@ -4,6 +4,7 @@ import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } fr
 import { PACK_PREFIX } from "./router.ts";
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
+import type { WarrantPush } from "./warrant.ts";
 
 // The LEAD side of a pack link: the client that dials a peer's `/pack/v1/*` surface.
 //
@@ -421,6 +422,26 @@ export class PeerClient {
     // nothing, not a broken link, and it must not turn a reachable peer unreachable.
     const version = typeof body?.version === "string" && body.version !== "" ? body.version : null;
     return { ...outcome, value: { protocol, member, version } };
+  }
+
+  /**
+   * `POST /pack/v1/warrant` — deliver or refresh the warrant naming the pack's deputy (§18).
+   *
+   * An ordinary **data** dial, on the same budget every other one gets: the strict per-poll budget,
+   * plus the single bootstrap credit a cold link is owed ({@link takeDataBudget}). It is deliberately
+   * NOT given `hello`'s standing patient budget — that one belongs to the verdict, and a member that
+   * is behind on its warrant is simply behind until the next sweep asks again.
+   *
+   * A **404 is the answer, not a fault**: it is a pre-amendment member, which is not warrant-capable
+   * and therefore not takeover-capable (§7.1's absent-means-closed). It surfaces here as the ordinary
+   * `unreachable` outcome the caller already handles, and re-asking costs one small body per sweep.
+   */
+  warrant(link: PackLink, payload: WarrantPush): Promise<PeerOutcome<JsonValue>> {
+    return this.json(link, "warrant", undefined, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
 
   /** `GET /pack/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business. */

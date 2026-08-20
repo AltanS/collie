@@ -14,10 +14,12 @@ import {
   PACK_PREFIX,
   PACK_SECRET_PATH,
   PACK_SNAPSHOT_PATH,
+  PACK_WARRANT_PATH,
   type SnapshotSource,
 } from "./router.ts";
 import { signRequest, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
-import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
+import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo, type Warrant } from "./trust-store.ts";
+import { mintWarrant, WARRANT_TTL_MS } from "./warrant.ts";
 
 // The endpoint. It takes a plain `Request` and needs no `Bun.serve`, so unlike the rest of the HTTP
 // layer this IS unit-tested for real rather than pinned at the source.
@@ -1241,5 +1243,184 @@ describe("N2 — the pinned certificate alone: an identity this collie does not 
       expect(h.writes()).toBe(0);
       expect(h.data().invites).toHaveLength(1);
     }
+  });
+});
+
+describe("POST /pack/v1/warrant — the receiving half of the deputy designation (§18)", () => {
+  // Lead → peer over the pinned handshake, like `secret`: `asLead` admits via `transportPinned`,
+  // which resolves to exactly this collie's own pinned lead ("desk").
+  const asLead = (h: ReturnType<typeof harness>, now = T0) =>
+    createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => now });
+
+  /** A warrant minted on `desk` naming `nas`, plus the body its lead would push. */
+  function warrantFor(deputy: string | null, at = T0) {
+    const lead = leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] });
+    const change = mintWarrant(lead, deputy, at);
+    if (change === null) throw new Error("fixture: expected a mint");
+    return change.result;
+  }
+
+  const pushBody = (w: Warrant, certLabel: string | null = w.deputyMemberId) =>
+    certLabel === null ? { warrant: w } : { warrant: w, deputyCertPem: material(certLabel).certPem };
+
+  test("this collie's own lead delivers one, and it lands on disk with the deputy's certificate", async () => {
+    const h = harness(peerStore());
+    const w = warrantFor("nas");
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(w))))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ generation: 1, applied: true });
+    expect(h.data().warrant?.warrant).toEqual(w);
+    // The certificate is what phase 2 needs: BoringSSL anchors on certificates, never on hashes.
+    expect(h.data().warrant?.deputyCertPem).toBe(material("nas").certPem);
+    expect(h.lines.map((l) => l.action)).toContain("pack.warrant.stored");
+  });
+
+  test("a redelivery answers 200, applies nothing, and does not touch the disk twice", async () => {
+    const h = harness(peerStore());
+    const w = warrantFor("nas");
+    await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(w)));
+    const before = h.writes();
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(w))))!;
+    expect(await res.json()).toEqual({ generation: 1, applied: false });
+    expect(h.writes()).toBe(before);
+  });
+
+  test("an OLD generation is refused, and the newer one it holds is what it reports", async () => {
+    const h = harness(peerStore());
+    const first = warrantFor("nas");
+    const lead = leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] });
+    const second = mintWarrant(mintWarrant(lead, "nas", T0)!.next, "attic", T0 + 5)!.result;
+    await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(second)));
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(first))))!;
+    expect(await res.json()).toEqual({ generation: 2, applied: false });
+    expect(h.data().warrant?.warrant.deputyMemberId).toBe("attic");
+  });
+
+  test("a certificate that is not the one the fingerprint names is a 400, and nothing is stored", async () => {
+    const h = harness(peerStore());
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(warrantFor("nas"), "attic"))))!;
+    expect(res.status).toBe(400);
+    expect(h.data().warrant).toBeUndefined();
+    expect(h.writes()).toBe(0);
+  });
+
+  test("a tampered warrant is the uniform 401 — a bad signature is told nothing more", async () => {
+    const h = harness(peerStore());
+    const w = warrantFor("nas");
+    const forged: Warrant = { ...w, deputyMemberId: "attic", deputyFingerprint: fp("attic") };
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(forged))))!;
+    expect(res.status).toBe(401);
+    expect(h.data().warrant).toBeUndefined();
+    expect(h.writes()).toBe(0);
+    expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+  });
+
+  test("one past its 30 days is refused on THIS collie's clock, however well it verifies", async () => {
+    const h = harness(peerStore());
+    const res = (await call(asLead(h, T0 + WARRANT_TTL_MS), PACK_WARRANT_PATH, post(pushBody(warrantFor("nas")))))!;
+    expect(res.status).toBe(400);
+    expect(h.data().warrant).toBeUndefined();
+  });
+
+  test("a revocation names nobody, carries nothing, and still lands", async () => {
+    const h = harness(peerStore());
+    const lead = leadStore({ peers: [member({ memberId: "nas" })] });
+    const revoked = mintWarrant(mintWarrant(lead, "nas", T0)!.next, null, T0 + 5)!.result;
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, post({ warrant: revoked })))!;
+    expect(await res.json()).toEqual({ generation: 2, applied: true });
+    expect(h.data().warrant?.warrant.deputyMemberId).toBeNull();
+    expect(h.data().warrant?.deputyCertPem).toBeNull();
+    // A peer records the warrant, never the DESIGNATION — that field is the lead's own.
+    expect(h.data().deputy).toBeUndefined();
+  });
+
+  test("a malformed body is a 400 and writes nothing", async () => {
+    const h = harness(peerStore());
+    for (const body of [{}, { warrant: "nope" }, { warrant: { generation: 1 } }]) {
+      const res = (await call(asLead(h), PACK_WARRANT_PATH, post(body)))!;
+      expect(res.status).toBe(400);
+    }
+    expect(h.writes()).toBe(0);
+  });
+
+  test("an admitted member that is NOT this collie's lead cannot push one", async () => {
+    // A lead has no lead of its own, so nothing can present as an identified caller here — the same
+    // shape `/pack/v1/secret` has, and for the same reason (the transport pins exactly one member).
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, post(pushBody(warrantFor("nas")))))!;
+    expect(res.status).toBe(401);
+    expect(h.data().warrant).toBeUndefined();
+  });
+
+  test("an unadmitted caller cannot reach it at all", async () => {
+    const h = harness(peerStore());
+    const handler = createPackRouter({ store: h.store, audit: h.audit });
+    const res = (await call(handler, PACK_WARRANT_PATH, post(pushBody(warrantFor("nas")))))!;
+    expect(res.status).toBe(401);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("a GET on the path falls through to the ordinary 404 — the route is POST-only", async () => {
+    const h = harness(peerStore());
+    const res = (await call(asLead(h), PACK_WARRANT_PATH, { headers: authed }))!;
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("what a member reports about the warrant it holds (§18, RFC §11.2)", () => {
+  const nas = member({ memberId: "nas" });
+
+  /** A store already holding generation 1 of a warrant naming `nas`. */
+  function holding(base: TrustStoreData): TrustStoreData {
+    const lead = leadStore({ peers: [nas] });
+    const w = mintWarrant(lead, "nas", T0)!.result;
+    return { ...base, warrant: { warrant: w, deputyCertPem: material("nas").certPem } };
+  }
+
+  test("hello carries the generation and the refresh when there is one", async () => {
+    const h = harness(holding(leadStore({ peers: [nas] })));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({ protocol: 1, member: "desk", warrantGeneration: 1, warrantRefreshedAt: T0 });
+  });
+
+  test("hello OMITS both fields when there is no warrant — absent, never zero (§7.1)", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({ protocol: 1, member: "desk" });
+  });
+
+  test("snapshot carries them BESIDE the body, never inside the browser's own shape", async () => {
+    const h = harness(holding(peerStore()));
+    const body = ownSnapshot();
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(await res.json()).toEqual({ ...body, warrantGeneration: 1, warrantRefreshedAt: T0 });
+    // The injected source is the very closure this collie serves its browser from, and it is not
+    // mutated by being read for the pack: a pack-only field never leaks into the local snapshot.
+    expect(body).toEqual(ownSnapshot());
+  });
+
+  test("snapshot omits them when there is no warrant, and the body is byte-identical", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(await res.json()).toEqual(body);
   });
 });

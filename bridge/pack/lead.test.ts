@@ -12,7 +12,7 @@ import {
 } from "./lead.ts";
 import type { PackLink, PeerOutcome } from "./peer-client.ts";
 import { PackRegistry, type PeerState } from "./registry.ts";
-import type { TrustedMember } from "./trust-store.ts";
+import type { TrustedMember, Warrant } from "./trust-store.ts";
 
 // The sweep and what it remembers. The registry owns a peer's HEALTH (M4/03); this class owns the
 // last-good BODY, which is what makes §10.2's "a peer's sessions never vanish" mechanical.
@@ -585,5 +585,134 @@ describe("a sweep that died on its own clock earns a patient re-ask (§10.4)", (
     await h.lead.sweep();
     await Bun.sleep(5);
     expect(h.registry.state("laptop").health).toBe("unreachable");
+  });
+});
+
+// ── Warrant distribution rides the same sweep (§18, RFC §5) ──────────────────
+
+describe("PackLead — the warrant re-push, on the sweep the lead already runs", () => {
+  const WARRANT: Warrant = {
+    packId: "pack-1",
+    generation: 2,
+    deputyMemberId: "nas",
+    deputyFingerprint: "a".repeat(64),
+    leadMemberId: "desk",
+    issuedAt: NOW,
+    refreshedAt: NOW,
+    signature: "sig",
+  };
+
+  /** A lead whose members answer `report` on `snapshot`, with a scripted warrant distribution. */
+  function distributing(
+    reports: Record<string, { warrantGeneration?: number; warrantRefreshedAt?: number }>,
+    opts: { warrant?: Warrant | null; push?: () => Promise<PeerOutcome<unknown>>; reachable?: boolean } = {},
+  ) {
+    const pushed: string[] = [];
+    let currents = 0;
+    const members = Object.keys(reports).map((memberId) => member({ memberId }));
+    const l = new PackLead({
+      registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async (link) =>
+        opts.reachable === false ? down : ok({ ...body, ...reports[link.memberId] }),
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      now: () => NOW,
+      warrant: {
+        current: async () => {
+          currents += 1;
+          const held = opts.warrant === undefined ? WARRANT : opts.warrant;
+          return held === null ? null : { warrant: held, deputyCertPem: "PEM" };
+        },
+        push: async (link) => {
+          pushed.push(link.memberId);
+          return opts.push === undefined ? ok(null) : opts.push();
+        },
+      },
+    });
+    return { lead: l, pushed, currents: () => currents };
+  }
+
+  test("a member reporting NOTHING is pushed — absent is never read as up to date", async () => {
+    const h = distributing({ laptop: {} });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.pushed).toEqual(["laptop"]);
+  });
+
+  test("a member at this exact generation and refresh is NOT dialled again", async () => {
+    const h = distributing({ laptop: { warrantGeneration: 2, warrantRefreshedAt: NOW } });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.pushed).toEqual([]);
+  });
+
+  test("a member behind on the generation, or on the refresh, is pushed", async () => {
+    const behind = distributing({
+      old: { warrantGeneration: 1, warrantRefreshedAt: NOW },
+      stale: { warrantGeneration: 2, warrantRefreshedAt: NOW - 1 },
+      current: { warrantGeneration: 2, warrantRefreshedAt: NOW },
+    });
+    await behind.lead.sweep();
+    await Bun.sleep(5);
+    expect(behind.pushed.toSorted()).toEqual(["old", "stale"]);
+  });
+
+  test("a member that did NOT answer is skipped — it has told us nothing about what it holds", async () => {
+    const h = distributing({ laptop: {} }, { reachable: false });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.pushed).toEqual([]);
+  });
+
+  test("a lead that has named nobody moves not one byte", async () => {
+    const h = distributing({ laptop: {} }, { warrant: null });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.pushed).toEqual([]);
+  });
+
+  test("the warrant is read ONCE per sweep, not once per member", async () => {
+    const h = distributing({ a: {}, b: {}, c: {} });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.currents()).toBe(1);
+    expect(h.pushed.toSorted()).toEqual(["a", "b", "c"]);
+  });
+
+  test("at most one push per member is in flight, however many sweeps run", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = distributing(
+      { laptop: {} },
+      {
+        push: async () => {
+          await held;
+          return ok(null);
+        },
+      },
+    );
+    await h.lead.sweep();
+    await h.lead.sweep();
+    await h.lead.sweep();
+    expect(h.pushed).toEqual(["laptop"]);
+    release();
+    await Bun.sleep(5);
+  });
+
+  test("a push that THROWS is contained — the sweep is not the place a transport bug lands", async () => {
+    const h = distributing({ laptop: {} }, { push: () => Promise.reject(new Error("boom")) });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    // The sweep still recorded the member's health: distribution is a rider, never the point.
+    expect(h.pushed).toEqual(["laptop"]);
+  });
+
+  test("a lead wired WITHOUT distribution pushes nothing at all", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => ok(body));
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.calls).toEqual(["laptop"]);
   });
 });
