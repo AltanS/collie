@@ -285,6 +285,9 @@ const PANE_WIRE_KEYS = {
   // carries a host: like the fields above it is optional-and-absent when the pane has no meaningful
   // title, and no golden byte moved.
   terminalTitle: true,
+  // Also not a pack dimension: an optional sentence the bridge composes for one kind of pane
+  // (M11/05). Absent on every pane in this baseline, so no golden byte moved.
+  hint: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -358,6 +361,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "cwd",
       "focused",
       "hasSession",
+      "hint",
       "host",
       "kind",
       "lastActiveAt",

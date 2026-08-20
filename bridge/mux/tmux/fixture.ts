@@ -70,6 +70,8 @@ interface FakePane {
   active: boolean;
   height: number;
   cwd: string;
+  /** `pane_current_command` — the foreground process name, as tmux reports it. Never an identity. */
+  command: string;
   title: string;
   /** Lines that have scrolled off — what only a `-S -N` capture reaches. */
   history: string[];
@@ -424,6 +426,7 @@ export class FakeTmux implements TmuxExec {
       ["history_size", String(pane.history.length)],
       ["host", HOST],
       ["pane_current_path", pane.cwd],
+      ["pane_current_command", pane.command],
       ["pane_title", pane.title],
       ["window_name", window?.name ?? ""],
       ["session_name", session?.name ?? ""],
@@ -463,6 +466,9 @@ export class FakeTmux implements TmuxExec {
       active: this.panes.filter((candidate) => candidate.windowId === window.id).length === 0,
       height: 24,
       cwd,
+      // A bare shell, which is what every seeded pane is. A fixture that seeded a harness name here
+      // would make the hint tier fire across the whole conformance world for no reason.
+      command: "bash",
       // tmux's default title is the host name, and the adapter has to recognise it as "no label".
       title: HOST,
       history: Array.from({ length: 30 }, (_, i) => `scrollback line ${String(i)} of ${id}`),

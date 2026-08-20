@@ -499,6 +499,10 @@ function toMuxPane(
   // What a `recent` read can yield: the history tmux kept, plus the viewport it sits behind. This is
   // the mirror's only reliable "is there more" signal, and tmux reports both halves exactly.
   pane.readableLines = raw.historySize + raw.height;
+  // The raw fact, reported as one: `pane_current_command` is what tmux sees in the foreground this
+  // second, which is NOT who runs here (the header, and ../types.ts § MuxPane.agent). `agent` above
+  // stays `"shell"` whatever this says.
+  if (raw.currentCommand.length > 0) pane.foregroundCommand = raw.currentCommand;
   return pane;
 }
 

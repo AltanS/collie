@@ -546,6 +546,9 @@ function toMuxPane(
     // A bound rather than a measurement — see ASSUMED_SCROLLBACK_LINES.
     readableLines: raw.contentRows + ASSUMED_SCROLLBACK_LINES,
   };
+  // The raw fact, reported as one: `terminal_command` is what zellij was asked to run here, which is
+  // NOT who runs here (the header, and ../types.ts § MuxPane.agent). `agent` above stays `"shell"`.
+  if (raw.command.length > 0) pane.foregroundCommand = raw.command;
   // Assigned, never conditionally spread, so absent stays absent (the Herdr adapter's rule).
   const label = operatorLabel(raw.title);
   if (label !== null) pane.paneLabel = label;

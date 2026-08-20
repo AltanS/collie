@@ -69,6 +69,15 @@ export interface AgentView {
    */
   terminalTitle?: string;
   /**
+   * A finished English sentence about this pane, composed in the bridge and rendered as text the
+   * client does not interpret. Absent on almost every pane.
+   *
+   * PRESENTATION AND NOTHING ELSE. It never carries a harness name or a multiplexer name, it never
+   * implies the pane's `agent` or `status`, and no control may be armed, hidden or shown by it. The
+   * module that composes it sits beside the mux decorator and is the only thing that writes one.
+   */
+  hint?: string;
+  /**
    * Epoch ms of this agent's last observed status transition (bridge/activity.ts). The only thing
    * that can make a pane read as unseen. Absent until the ledger has an entry, and on the very
    * first poll after a fresh install.

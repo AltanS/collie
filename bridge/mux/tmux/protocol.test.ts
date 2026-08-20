@@ -110,7 +110,7 @@ describe("parseListing", () => {
   const listing = [
     ["S", "$0", "2", "1787171890", "collie"].join(SEP),
     ["W", "@0", "$0", "0", "1", "2", "0", "agents"].join(SEP),
-    ["P", "%0", "@0", "$0", "0", "1", "1", "24", "30", "bluefin", "/home/dev", "a title"].join(SEP),
+    ["P", "%0", "@0", "$0", "0", "1", "1", "24", "30", "bluefin", "/home/dev", "claude", "a title"].join(SEP),
   ].join("\n");
 
   test("the three tagged sections parse into three lists", () => {
@@ -122,10 +122,13 @@ describe("parseListing", () => {
     expect(parsed.panes.at(0)?.id).toBe("%0");
     expect(parsed.panes.at(0)?.historySize).toBe(30);
     expect(parsed.panes.at(0)?.title).toBe("a title");
+    // The raw foreground process name, carried as a fact and never as an identity (../types.ts §
+    // MuxPane.agent). The adapter still reports this pane as a shell.
+    expect(parsed.panes.at(0)?.currentCommand).toBe("claude");
   });
 
   test("a free-text field carrying the separator folds into itself rather than shifting the record", () => {
-    const withSeparator = ["P", "%1", "@0", "$0", "0", "0", "0", "24", "0", "host", "/tmp", `odd${SEP}title`].join(SEP);
+    const withSeparator = ["P", "%1", "@0", "$0", "0", "0", "0", "24", "0", "host", "/tmp", "bash", `odd${SEP}title`].join(SEP);
     const pane = parseListing(withSeparator).panes.at(0);
     expect(pane?.cwd).toBe("/tmp");
     expect(pane?.title).toBe(`odd${SEP}title`);

@@ -70,3 +70,18 @@ export function adapterFor(
 export function journalAgents(registry: Record<string, JournalAdapter>): string[] {
   return Object.keys(registry).toSorted();
 }
+
+/**
+ * Every harness name this build knows, independent of where any of their logs live.
+ *
+ * DERIVED FROM THE ADAPTERS, exactly as the registry itself is — a second hand-written list of
+ * harness names is a list that drifts the day a fifth adapter lands. The roots are empty because the
+ * question is "what are these called", not "where are they": every adapter factory here is a pure
+ * constructor and touches no disk (each source only normalises its root list).
+ *
+ * It is a name list and NOT a detector. Nothing may key a grammar, a journal read or a pane's
+ * identity off a match against it — see `bridge/mux/types.ts` § `MuxPane.agent`.
+ */
+export const KNOWN_HARNESS_NAMES: readonly string[] = journalAgents(
+  buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [] }),
+);

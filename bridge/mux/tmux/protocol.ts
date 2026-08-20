@@ -68,6 +68,11 @@ export interface TmuxPaneRecord {
   readonly host: string;
   readonly cwd: string;
   readonly title: string;
+  /**
+   * `pane_current_command` — whatever tmux sees in the foreground this second. NOT an identity (the
+   * adapter's header and ../types.ts § MuxPane.agent say why); it is carried as the raw fact it is.
+   */
+  readonly currentCommand: string;
 }
 
 /** Everything one listing call returned. */
@@ -100,6 +105,7 @@ const PANE_FORMAT = [
   "#{history_size}",
   "#{host}",
   "#{pane_current_path}",
+  "#{pane_current_command}",
   "#{pane_title}",
 ].join(SEP);
 
@@ -193,7 +199,10 @@ export function parseListing(stdout: string): TmuxListing {
       continue;
     }
     if (!line.startsWith(PANE_TAG + SEP)) continue;
-    const [, id, windowId, sessionId, dead, active, windowActive, height, history, host, cwd, title] = fields(line, 12);
+    // `pane_current_command` sits BEFORE the title, because `fields` folds any excess back into the
+    // last field and the title is the one value that can carry the separator.
+    const [, id, windowId, sessionId, dead, active, windowActive, height, history, host, cwd, command, title] =
+      fields(line, 13);
     if (id === undefined || id.length === 0 || windowId === undefined || sessionId === undefined) continue;
     panes.push({
       id,
@@ -206,6 +215,7 @@ export function parseListing(stdout: string): TmuxListing {
       historySize: num(history),
       host: host ?? "",
       cwd: cwd ?? "",
+      currentCommand: command ?? "",
       title: title ?? "",
     });
   }

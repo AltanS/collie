@@ -79,6 +79,24 @@ export interface HookCommand {
 }
 
 /**
+ * What follows the binary in every command we write. One constant, so the writer below and
+ * {@link hookBinaryOf} — which reads an INSTALLED command back — cannot drift apart.
+ */
+const HOOK_VERB = " beacon emit ";
+
+/**
+ * The absolute name an installed entry runs, or null when the command is not shaped like ours.
+ *
+ * `doctor` asks this (M11/05): a hook pinned to a checkout that has since moved still parses, still
+ * carries our marker, and simply never runs — the silent failure the verb exists to catch. The
+ * answer comes from the string in the settings file, never from what an install would write today.
+ */
+export function hookBinaryOf(command: string): string | null {
+  const at = command.indexOf(HOOK_VERB);
+  return at <= 0 ? null : command.slice(0, at);
+}
+
+/**
  * The command an entry runs — ALWAYS an absolute path.
  *
  * A hook does not run under the operator's login shell (the same trap as a Herdr plugin action), so a
@@ -93,7 +111,7 @@ export function resolveHookCommand(ctx: CliContext, fs: LinkReader): HookCommand
   const probe = fs.probe(published);
   const source: HookCommandSource = probe.kind === "symlink" && probe.target === own ? "path-link" : "checkout";
   const binary = source === "path-link" ? published : own;
-  return { binary, source, command: `${binary} beacon emit ${HOOK_MARKER}` };
+  return { binary, source, command: `${binary}${HOOK_VERB}${HOOK_MARKER}` };
 }
 
 // ── The targets ──────────────────────────────────────────────────────────────
@@ -159,6 +177,22 @@ export function markedCommandIn(group: JsonValue): string | null {
     if (text.includes(HOOK_MARKER_PREFIX)) return text;
   }
   return null;
+}
+
+/**
+ * One entry per {@link BEACON_HOOKS} registration, in order: the command WE own on that event, or
+ * null where the event carries none of ours.
+ *
+ * The single reading of "what is installed in this file", and both readers use it — `hooks status`
+ * below and `collie doctor` (M11/05). A second walk of the same document is a second thing to drift,
+ * and a doctor that disagrees with its own verb is worse than no doctor (cli/doctor.ts's rule).
+ */
+export function markedCommandsByEvent(document: JsonValue | null): (string | null)[] {
+  const section = asObject(asObject(document)?.hooks) ?? {};
+  return BEACON_HOOKS.map((registration) => {
+    const groups = asArray(section[registration.event]) ?? [];
+    return groups.map((group) => markedCommandIn(group)).find((found) => found !== null) ?? null;
+  });
 }
 
 export type HookDocument =
@@ -411,13 +445,10 @@ function describeTarget(deps: HooksDeps, target: HookTarget): string {
   const settings = readSettings(deps, target);
   if (settings === null) return "unreadable — not valid JSON";
   if (settings.text === null) return "no settings file — `collie hooks install claude` creates one";
-  const section = asObject(asObject(settings.value)?.hooks) ?? {};
   const versions = new Set<string>();
   let present = 0;
-  for (const registration of BEACON_HOOKS) {
-    const groups = asArray(section[registration.event]) ?? [];
-    const command = groups.map((group) => markedCommandIn(group)).find((found) => found !== null);
-    if (command === undefined || command === null) continue;
+  for (const command of markedCommandsByEvent(settings.value)) {
+    if (command === null) continue;
     present += 1;
     versions.add(String(markerVersionOf(command)));
   }

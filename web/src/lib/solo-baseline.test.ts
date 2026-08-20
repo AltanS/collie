@@ -96,6 +96,9 @@ const AGENT_VIEW_KEYS = {
   // title). Recorded here because the tripwire is exhaustive over `keyof AgentView`, not because it
   // carries a host.
   terminalTitle: true,
+  // Also not a pack dimension: an optional sentence the bridge composes about one kind of pane
+  // (M11/05), rendered as text and absent everywhere else.
+  hint: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -153,6 +156,7 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "cwd",
       "focused",
       "hasSession",
+      "hint",
       "host",
       "kind",
       "lastActiveAt",
