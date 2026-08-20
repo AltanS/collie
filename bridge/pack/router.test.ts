@@ -1451,6 +1451,63 @@ describe("what a member reports about the warrant it holds (§18, RFC §11.2)", 
     const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
     expect(await res.json()).toEqual(body);
   });
+
+  // ── §18.17 — ACTIVATION, WHICH ONLY THIS MACHINE CAN REPORT ─────────────────
+  // Storage is a file, and the pair above already reports it. Activation is what this PROCESS came up
+  // holding, and the lead used to infer it from whether its own operator had once restarted this
+  // machine — so a restart done any other way rendered an armed peer as `anchor INACTIVE`.
+  test("hello carries what the LISTENER activated, beside what the store holds", async () => {
+    const h = harness(holding(leadStore({ peers: [nas] })));
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      // The bind-time capture, threaded in once at boot exactly as the bridge does it.
+      warrantActiveGeneration: 1,
+    });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({
+      protocol: 1,
+      member: "desk",
+      warrantGeneration: 1,
+      warrantRefreshedAt: T0,
+      warrantActiveGeneration: 1,
+    });
+  });
+
+  test("hello OMITS the activation when nothing is active — absent, never zero (§7.1)", async () => {
+    const h = harness(holding(leadStore({ peers: [nas] })));
+    // The store HOLDS generation 1 and the listener activated nothing: the exact state a peer is in
+    // between the warrant landing and its restart, and the one the lead must still call INACTIVE.
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0, warrantActiveGeneration: null });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({ protocol: 1, member: "desk", warrantGeneration: 1, warrantRefreshedAt: T0 });
+  });
+
+  test("snapshot carries the activation beside the body too — the lead's poll already dials it", async () => {
+    const h = harness(holding(peerStore()));
+    const body = ownSnapshot();
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      warrantActiveGeneration: 1,
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(await res.json()).toEqual({
+      ...body,
+      warrantGeneration: 1,
+      warrantRefreshedAt: T0,
+      warrantActiveGeneration: 1,
+    });
+    // The browser's own snapshot is untouched: a pack-only fact never leaks into it.
+    expect(body).toEqual(ownSnapshot());
+  });
 });
 
 describe("Gap A — a peer knows when its lead last called (§18.9)", () => {

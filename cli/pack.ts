@@ -33,7 +33,7 @@ import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } fr
 import { signDial, signRequest } from "../bridge/pack/signing.ts";
 import { dialTls } from "../bridge/pack/transport.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
-import { PackOpsStore } from "../bridge/pack/ops-store.ts";
+import { PackOpsStore, type OpsRecord } from "../bridge/pack/ops-store.ts";
 import {
   packHelloBudget,
   packTimeoutBudget,
@@ -49,6 +49,7 @@ import {
 // apart. Everything below the enrollment POST goes through `PeerClient`, which composes the prefix
 // itself — hence one path constant here and route NAMES ("secret", "lead", "leave") at the call sites.
 import { PACK_ENROLL_PATH } from "../bridge/pack/router.ts";
+import { currentWarrant } from "../bridge/pack/warrant.ts";
 import {
   parseStandbyDevices,
   standbyDevicesPath,
@@ -958,13 +959,15 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
       // fed from it, on the strict per-poll budget that every real read runs under.
       for (const line of dataLines(reach)) emit(line.text, line.tone);
       for (const line of versionLines(outcome.value.version, ours, m.memberId)) emit(line, "dim");
-      // The two phases of RFC §5, for this member: what it says it holds, and whether this operator
-      // has armed it. Lead-side only — a peer has no roster to report anchoring for.
+      // The two phases of RFC §5, for this member: what it says it holds, and whether its listener
+      // came up holding it (§18.17). Lead-side only — a peer has no roster to report anchoring for.
       if (data.lead === null) {
         const record = opsRecords?.members[m.memberId] ?? null;
-        for (const l of memberWarrantLines(data, outcome.value.warrantGeneration, record, m.memberId)) {
+        const active = outcome.value.warrantActiveGeneration;
+        for (const l of memberWarrantLines(data, outcome.value.warrantGeneration, record, m.memberId, active)) {
           emit(l.text, l.tone);
         }
+        await convergeAnchor(deps, data, record, m.memberId, active);
       }
       // First successful contact clears the provisional marker: one-time and self-healing. The
       // bridge's own sweep could also stamp this later; today `pack status` is the clearer.
@@ -1085,6 +1088,35 @@ function versionLines(reported: string | null, ours: string, memberId: string): 
     `            Build skew refuses nothing (§7.1) — the link keeps working. Level it from here:`,
     `            \`collie pack update ${memberId}\` (over your own ssh, ADR 0016).`,
   ];
+}
+
+/**
+ * Bring `pack-ops.json`'s anchor record up to what the member itself just reported (§18.17).
+ *
+ * The record is this operator's own lower bound — it moves only when `pack deputy`'s restart leg
+ * completes here — so a machine restarted any other way stays recorded as un-armed forever, and the
+ * OFFLINE view (`pack status --no-probe`, and every member that is not answering right now) keeps
+ * printing `anchor INACTIVE` about a pack that is armed. A probe that got the answer writes it down,
+ * so the two views converge instead of disagreeing until the next `pack deputy`.
+ *
+ * **Only ever a refresh, never a creation.** A member with no record is one this machine has never
+ * SSH'd to (ADR 0016), and an anchor generation with no ssh route beside it would be a record
+ * inventing a field the operator never supplied. It is also silent on failure for the reason
+ * `PackOpsStore.record` returns a boolean at all: a convenience file is never worth failing a
+ * read-only status on, and the next probe will try again.
+ */
+async function convergeAnchor(
+  deps: PackDeps,
+  data: TrustStoreData,
+  record: OpsRecord | null,
+  memberId: string,
+  active: number | null,
+): Promise<void> {
+  if (record === null || active === null) return;
+  const issued = currentWarrant(data)?.warrant ?? null;
+  if (issued === null || issued.deputyMemberId === null || active < issued.generation) return;
+  if ((record.anchoredGeneration ?? 0) >= active) return;
+  await deps.ops.record(memberId, { ...record, anchoredGeneration: active, anchoredAt: deps.now() });
 }
 
 /**

@@ -42,16 +42,22 @@ export interface OpsRecord {
   readonly port: number;
   readonly recordedAt: number;
   /**
-   * The warrant generation `collie pack deputy` last ARMED on that machine, by restarting it over
-   * this ssh route (RFC §5's phase 2). `null`/absent ⇒ this operator has never restarted it to arm
-   * one, which is what `warrant stored, anchor INACTIVE` reports.
+   * The warrant generation this machine last saw ARMED on that member (RFC §5's phase 2) —
+   * `collie pack deputy` writes it when its own restart leg completes. `null`/absent ⇒ nothing here
+   * has ever seen it armed, which is what `warrant stored, anchor INACTIVE` reports.
    *
-   * **It belongs here rather than in the trust store, and it is a lower bound rather than a claim.**
-   * Anchoring happens in the peer's own process, and the peer never says over the wire which
-   * generation its listener was built with — that would be a new field for a fact a lead cannot act
-   * on. What a lead honestly knows is what its operator did from this machine, which is precisely
-   * what this file is for (ADR 0016): a peer that restarted for its own reasons has anchored without
-   * this ever moving, so the report names the remedy rather than accusing the peer.
+   * **It belongs here rather than in the trust store, and it is a LOWER BOUND rather than a claim.**
+   * Anchoring happens in the peer's own process; this file holds what the operator did from this
+   * machine, which is what it is for (ADR 0016) — so a peer restarted any other way is armed with
+   * this never having moved.
+   *
+   * **That bound is no longer the only evidence** (§18.17). This comment used to say a peer never
+   * reports which generation its listener was built with "because a lead could not act on one", and a
+   * live drill disproved it: the lead told the operator to restart a deputy that was fully armed, and
+   * `pack deputy` offered to do it. The peer now reports `warrantActiveGeneration` on `hello` and
+   * `snapshot`, the lead's renderer prefers that report, and a confirmed report is written back here —
+   * so this field's remaining job is to answer for a member that is **not** answering, or is too old
+   * to say. Both writers are CLI-side; the bridge never touches this file.
    */
   readonly anchoredGeneration?: number | null;
   /** When that restart landed, epoch ms. `null`/absent together with the generation above. */

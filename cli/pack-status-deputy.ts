@@ -35,9 +35,11 @@ import type { Tone, TonedLine } from "./render.ts";
 //
 //   • the PEER knows anchoring exactly — its own process built the listener, and the runtime marker
 //     carries the generation it built it from (`bridge/pack/staleness.ts`);
-//   • the LEAD knows storage exactly — every member reports its generation on `hello` — and knows
-//     anchoring only as "did I restart that machine over ssh", which is what `pack-ops.json` records.
-//     That is a lower bound, and the line it produces names the remedy rather than accusing the peer.
+//   • the LEAD knows storage exactly — every member reports its generation on `hello` — and learns
+//     activation the same way since §18.17: `warrantActiveGeneration`, reported by the machine that
+//     did it. `pack-ops.json`'s "did I restart that machine over ssh" survives as the fallback for a
+//     member that is not answering, or is too old to say. Preferring the report is the fix for a live
+//     drill in which the lead told the operator to restart a deputy that was already fully armed.
 //
 // ── ONE SILENCE CLOCK (RFC §10.1) ────────────────────────────────────────────
 // The threshold this file prints against is the arming formula itself, because §10.1's rule is that
@@ -219,12 +221,20 @@ export function deputyUnreachableLines(data: TrustStoreData, reachable: (memberI
  * `reported` is what that member answered `hello` with (§18.7): a number, or `null`/absent for a
  * build that predates warrants — which is a **capability** gap, not a failure, and is spelled as
  * one. Nothing here refuses anything.
+ *
+ * `active` is §18.17's second report — the generation that member's LISTENER came up holding. It
+ * **outranks the ops record**, and that is the whole point: the record only ever moves when *this
+ * verb's own restart leg* completes, so a restart performed any other way (an update, the unit, a
+ * hand on a keyboard) left an armed machine rendered as `anchor INACTIVE — restart it`. A live drill
+ * read that sentence on a deputy whose own `pack status` said `deputy role ACTIVE at this boot`.
+ * Absent ⇒ the record's lower bound, which is the pre-amendment reading, unchanged.
  */
 export function memberWarrantLines(
   data: TrustStoreData,
   reported: number | null | undefined,
   record: OpsRecord | null,
   memberId: string,
+  active: number | null | undefined = null,
 ): TonedLine[] {
   const stored = currentWarrant(data);
   if (stored === null || stored.warrant.deputyMemberId === null) return [];
@@ -249,9 +259,25 @@ export function memberWarrantLines(
       ...staleRecord,
     ];
   }
-  if (!anchored(w, record)) {
+  // The MACHINE'S OWN WORD FIRST (§18.17). Activation happens in that peer's process, so the peer is
+  // the authority on it and the ops record is only ever a lower bound on what this operator did from
+  // here. When the report says the current generation is live, it is live — however it got restarted.
+  if (active !== null && active !== undefined && active >= w.generation) {
+    // Which word depends on the role, because the two roles activate two different things
+    // (`bridge/index.ts`'s `activatedGeneration`): the machine the warrant NAMES arms its own deputy
+    // role and anchors nothing — it does not anchor its own certificate — while every other peer adds
+    // the deputy's certificate as a second TLS anchor. The lead can tell them apart without a wire
+    // field: it knows who the warrant names.
+    const role = memberId === w.deputyMemberId ? "its deputy role is ACTIVE" : "anchored";
+    return [
+      line(`    warrant generation ${w.generation} — stored, and ${role} (that machine reports it)`, "good"),
+    ];
+  }
+  if (!anchored(w, record) || (active !== null && active !== undefined)) {
     // RFC §5's exact shape, and §8.2's "enrolled but INACTIVE" note is its sibling: a fact that is on
-    // disk over there and not yet in the process that would have to act on it.
+    // disk over there and not yet in the process that would have to act on it. A member that reports
+    // an OLDER activation lands here even when the record claims otherwise — the record describes a
+    // past restart, and the machine is describing the process running on it now.
     return [
       line(`    warrant stored, anchor INACTIVE — restart ${memberId}`, "warn"),
       line("            Its listener was built before the warrant landed, and `server.reload` cannot", "dim"),
