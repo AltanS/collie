@@ -38,6 +38,7 @@ import {
   TIMESTAMP_HEADER,
 } from "./signing.ts";
 import type { TrustedMember, TrustStore, TrustStoreData } from "./trust-store.ts";
+import { checkWarrantPush, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
 import type { SnapshotResponse } from "../types.ts";
 
 // The `/pack/v1/*` surface. This module exists **so that `bridge/server.ts` contains no pack route
@@ -80,6 +81,15 @@ export const PACK_SECRET_PATH = "/pack/v1/secret";
 export const PACK_LEAD_PATH = "/pack/v1/lead";
 /** `POST` — the caller removes ITSELF from this collie's roster (§8.4, `collie leave`). */
 export const PACK_LEAVE_PATH = "/pack/v1/leave";
+/**
+ * `POST` — this collie's own lead delivers or refreshes the warrant naming the pack's deputy (§18).
+ *
+ * **Storage only.** What arrives here lands on disk and is inert at the transport until this collie
+ * restarts: `server.reload({tls})` does not swap a pinned `ca` list, so the second anchor a warrant
+ * authorises is built at bind time or not at all (§8.1). That is the two-phase arming, and no route
+ * can climb it.
+ */
+export const PACK_WARRANT_PATH = "/pack/v1/warrant";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -234,8 +244,18 @@ function verifySigned(
  * enrollment unanswerable. The zero-tax contract is untouched by this, because it is a promise to an
  * instance that never enrolled, and such an instance has no trust store to register on.
  */
-/** `GET /pack/v1/hello`'s body. `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1). */
-type HelloBody = { protocol: number; member: string; version?: string };
+/**
+ * `GET /pack/v1/hello`'s body. `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1);
+ * the two warrant fields are the OPTIONAL fields of §18's, read the same way — **absent means "no
+ * warrant, or a build that does not know about warrants", never "up to date"** (RFC §11.2).
+ */
+type HelloBody = {
+  protocol: number;
+  member: string;
+  version?: string;
+  warrantGeneration?: number;
+  warrantRefreshedAt?: number;
+};
 
 /**
  * A box rather than a bare `let`, so a refusal decided inside `commitPackChange`'s callback survives
@@ -274,6 +294,30 @@ function badRequest(self: string, reason: string): Response {
     status: 400,
     headers: packResponseHeaders(self),
   });
+}
+
+/** The one body `/pack/v1/warrant` answers with. `applied: false` is a success, not a refusal. */
+function warrantAnswer(self: string, generation: number, applied: boolean): Response {
+  return new Response(JSON.stringify({ generation, applied }), {
+    status: 200,
+    headers: packResponseHeaders(self),
+  });
+}
+
+/**
+ * What a refused warrant push is TOLD, which is deliberately less than what is known.
+ *
+ * The caller here is this collie's own pinned lead, so §8.1's uniform-401 rule does not apply and a
+ * useful sentence is owed: every one of these is an operator-fixable fault on the *lead's* side, and
+ * a lead that cannot tell "your clock says this expired" from "your certificate did not match" has
+ * to guess at a two-machine problem. The signature failure is NOT in this table — it is answered as
+ * the uniform 401, because that is the one refusal an attacker could also provoke.
+ */
+function warrantRefusalText(reason: Exclude<WarrantRefusal, "bad-signature">): string {
+  if (reason === "malformed") return "a warrant push needs a well-formed `warrant`";
+  if (reason === "foreign") return "this warrant is not from this collie's own lead, or not for this pack";
+  if (reason === "expired") return "this warrant is past its validity on this collie's clock — re-run `collie pack deputy`";
+  return "the certificate that rode with this warrant is not the one its fingerprint names";
 }
 
 export function createPackRouter(deps: PackRouterDeps): PackHandler {
@@ -348,6 +392,14 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // this build answering an older prober costs nothing and needs no coordination.
       const hello: HelloBody = { protocol: PACK_PROTOCOL_VERSION, member: verdict.self };
       if (deps.version !== undefined) hello.version = deps.version;
+      // What warrant this member holds (§18). Admissible here for the same reason `member` is: it is
+      // already knowable to anyone who cleared both factors, and it names no secret — a generation
+      // integer and a timestamp. Omitted entirely when there is no warrant, which is the closed read.
+      const report = warrantReportOf(data);
+      if (report !== null) {
+        hello.warrantGeneration = report.generation;
+        hello.warrantRefreshedAt = report.refreshedAt;
+      }
       return new Response(JSON.stringify(hello), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
@@ -356,6 +408,9 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
 
     if (pathname === PACK_SECRET_PATH && req.method === "POST") {
       return secret(req, signedBody, verdict.member, verdict.self);
+    }
+    if (pathname === PACK_WARRANT_PATH && req.method === "POST") {
+      return warrant(req, signedBody, verdict.member, verdict.self);
     }
     if (pathname === PACK_LEAD_PATH && req.method === "POST") {
       return newLead(req, signedBody, verdict.member, verdict.self);
@@ -389,7 +444,17 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // No `etag` and no conditional handling: the lead re-serialises this body into its merged
       // snapshot, so a 304 here would save a transfer the lead cannot pass on and would leave it
       // with nothing to merge. Proxied reads (§9.1, M4/05) are the opposite case and keep theirs.
-      return new Response(JSON.stringify(body), {
+      //
+      // The warrant report rides ALONG the body rather than inside it (§18, RFC §11.2): `body` is the
+      // very object this collie serves its own browser, and a pack-only field has no business in the
+      // browser's snapshot type. `mergeSnapshot` whitelists what it reads, so the siblings reach the
+      // lead's sweep and never the phone.
+      const report = warrantReportOf(data);
+      const withReport =
+        report === null
+          ? body
+          : { ...body, warrantGeneration: report.generation, warrantRefreshedAt: report.refreshedAt };
+      return new Response(JSON.stringify(withReport), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
       });
@@ -489,6 +554,51 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       JSON.stringify({ generation: applied?.secretGeneration ?? generation, applied: applied !== null }),
       { status: 200, headers: packResponseHeaders(self) },
     );
+  }
+
+  /**
+   * `POST /pack/v1/warrant` — the lead delivers or refreshes the warrant naming the deputy (§18).
+   *
+   * **Only this collie's own lead may push one**, the same role check `/pack/v1/secret` carries and
+   * for the same reason: a warrant is a pack-wide statement about who may take the crown, so an
+   * admitted *peer* minting one would be a compromised member reaching past its own machine (§8.5).
+   * The check is doubled — the caller must be the pinned lead, and the warrant must claim to come
+   * from that same member — because they are two different questions and only both close the gap.
+   *
+   * **A refusal costs no write.** Every branch below either answers without touching the store or
+   * hands one transition to `commitPackChange`; a warrant that does not verify leaves this collie
+   * holding exactly what it held before, which is the fail-closed reading of every failure mode.
+   */
+  async function warrant(req: Request, cached: string | null, from: TrustedMember, self: string): Promise<Response> {
+    const data = await deps.store.load();
+    if (data === null || data.lead === null || data.lead.memberId !== from.memberId) {
+      // Not our lead. Audited as a refused factor for the reason `secret` gives: this is a pinned
+      // member exceeding its role rather than a stranger, and that distinction belongs in the log.
+      return refuse(PACK_WARRANT_PATH, "not-a-pack-member");
+    }
+    const verdict = checkWarrantPush(data, await readJson(req, cached), now());
+    if (verdict.kind === "refuse") {
+      if (verdict.reason === "bad-signature") {
+        // A signature that does not verify is answered exactly like an unpinned certificate, because
+        // that is what it is: the uniform 401, and the real cause only in this operator's own log.
+        return refuse(PACK_WARRANT_PATH, "certificate");
+      }
+      return badRequest(self, warrantRefusalText(verdict.reason));
+    }
+    if (verdict.kind === "stale") {
+      // A redelivery applies nothing and is still a success — the lead's question is "does this
+      // member hold generation N?", and reporting what IS held is what stops the lead re-pushing.
+      return warrantAnswer(self, verdict.generation, false);
+    }
+    const applied = await commitPackChange(deps.store, deps.audit, (current) =>
+      current === null ? null : storeWarrant(current, verdict.stored),
+    );
+    // Stored on disk, INERT at the transport: this process pinned its `ca` list at bind time and
+    // `server.reload({tls})` does not swap it (§8.1), so the second anchor the warrant authorises
+    // exists only after a restart. Saying so is the whole of what this hook buys (staleness.ts) —
+    // and it is exactly the "warrant stored, anchor INACTIVE" state §18 asks the operator to see.
+    if (applied !== null) membershipChanged();
+    return warrantAnswer(self, applied?.generation ?? verdict.stored.warrant.generation, applied !== null);
   }
 
   /**

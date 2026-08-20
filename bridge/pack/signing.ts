@@ -84,10 +84,44 @@ export interface SignedRequestParts {
   readonly timestamp: number;
 }
 
+/**
+ * Sign ANY canonical string with the PKCS#8 private key behind this collie's own pinned certificate.
+ * Base64, DER ECDSA-P256-SHA256.
+ *
+ * The one place this codebase signs anything, so a second signed object is a second *canonical
+ * string* and never a second algorithm, a second key or a second trust anchor. The warrant (RFC §4.1)
+ * is the second caller; it is kept apart from {@link canonicalRequest}'s four-field string by a fixed
+ * domain tag in its own first field (RFC §4.3), not by field-count arithmetic.
+ */
+export function signCanonical(keyPem: string, message: string): string {
+  return cryptoSign("sha256", Buffer.from(message, "utf8"), keyPem).toString("base64");
+}
+
+/**
+ * Verify a canonical string against the public key of a **pinned** certificate. The counterpart of
+ * {@link signCanonical}, and the one place a signature is checked.
+ *
+ * A malformed certificate or signature is `false`, never a throw: a refusal is a decision, and an
+ * exception on this path would be a 500 that tells a caller more than a uniform refusal does.
+ */
+export function verifyCanonical(certPem: string, signatureB64: string, message: string): boolean {
+  if (signatureB64 === "") return false;
+  let cert: X509Certificate;
+  try {
+    cert = new X509Certificate(certPem);
+  } catch {
+    return false;
+  }
+  try {
+    return cryptoVerify("sha256", Buffer.from(message, "utf8"), cert.publicKey, Buffer.from(signatureB64, "base64"));
+  } catch {
+    return false;
+  }
+}
+
 /** Sign with the PKCS#8 private key behind this collie's own pinned certificate. Base64, DER ECDSA. */
 export function signRequest(keyPem: string, parts: SignedRequestParts): string {
-  const message = canonicalRequest(parts.method, parts.path, bodyDigest(parts.body), parts.timestamp);
-  return cryptoSign("sha256", Buffer.from(message, "utf8"), keyPem).toString("base64");
+  return signCanonical(keyPem, canonicalRequest(parts.method, parts.path, bodyDigest(parts.body), parts.timestamp));
 }
 
 /**
@@ -100,19 +134,8 @@ export function signRequest(keyPem: string, parts: SignedRequestParts): string {
  * more than the uniform 401 does.
  */
 export function verifyRequestSignature(certPem: string, signatureB64: string, parts: SignedRequestParts): boolean {
-  if (signatureB64 === "") return false;
-  let cert: X509Certificate;
-  try {
-    cert = new X509Certificate(certPem);
-  } catch {
-    return false;
-  }
   const message = canonicalRequest(parts.method, parts.path, bodyDigest(parts.body), parts.timestamp);
-  try {
-    return cryptoVerify("sha256", Buffer.from(message, "utf8"), cert.publicKey, Buffer.from(signatureB64, "base64"));
-  } catch {
-    return false;
-  }
+  return verifyCanonical(certPem, signatureB64, message);
 }
 
 /** Parse `X-Pack-Timestamp`. A non-integer, negative or absent value is `null`, which is a refusal. */

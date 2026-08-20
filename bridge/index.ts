@@ -21,6 +21,7 @@ import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
 import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
 import { dialTls, peerListenerTls } from "./pack/transport.ts";
+import { commitPackChange } from "./pack/enrollment.ts";
 import { PackLead } from "./pack/lead.ts";
 import { leadLabel } from "./pack/merge.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
@@ -29,6 +30,7 @@ import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
 import { formatMarker, markerFor, packRuntimePath, rosterDrift } from "./pack/staleness.ts";
 import { enrollmentOf, TrustStore } from "./pack/trust-store.ts";
+import { currentWarrant, refreshWarrant } from "./pack/warrant.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
 import { startServer } from "./server.ts";
@@ -471,6 +473,32 @@ const packLead = (() => {
     // pushed through the same coordinator machinery a local session uses (M4/06).
     onPeerSnapshot: (memberId, body) => peerNotifier?.observe(memberId, body),
     onPeerGone: (memberId) => peerNotifier?.forget(memberId),
+    // Warrant distribution (§18). Read through the store on every sweep for the reason the secret and
+    // the roster are: `pack deputy` writes the designation in another process, and a captured copy
+    // would keep pushing a warrant the operator has already superseded. A lead that has named nobody
+    // has no warrant, `current()` answers `null`, and not one byte moves.
+    warrant: {
+      current: async (at) => {
+        // The refresh is a WRITE, and it is the only one on this path: at most one an hour, and only
+        // when a warrant exists (`refreshWarrant` answers `null` for everything else, including a
+        // warrant already past its 30 days — a dark pack disarms rather than silently re-arming).
+        await commitPackChange(trustStore, audit, (current) =>
+          current === null ? null : refreshWarrant(current, at),
+        );
+        const held = trustStore.current();
+        const stored = currentWarrant(held);
+        if (stored === null || held === null) return null;
+        // The deputy's certificate rides the push because a peer has no roster beyond its lead and
+        // could not otherwise pin the second anchor (§18). Taken from THIS lead's roster, so it is
+        // the certificate the lead itself pins — never a copy kept beside the warrant.
+        const deputy = held.peers.find((p) => p.memberId === stored.warrant.deputyMemberId);
+        if (stored.warrant.deputyMemberId !== null && deputy === undefined) return null;
+        return deputy === undefined
+          ? { warrant: stored.warrant }
+          : { warrant: stored.warrant, deputyCertPem: deputy.certPem };
+      },
+      push: (link, payload) => client.warrant(link, payload),
+    },
   });
 })();
 

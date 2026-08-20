@@ -4,6 +4,7 @@ import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forwar
 import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnapshotBody } from "./merge.ts";
 import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
+import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
 
 // The lead's side of the pack, assembled: sweep the peers, remember the last-good body, merge.
 //
@@ -118,7 +119,31 @@ export interface PackLeadDeps {
   readonly onPeerSnapshot?: (memberId: string, body: PeerSnapshotBody) => void;
   /** Called for a member the registry has dropped (`leave`/revocation/rotation) — see PeerNotifier.forget. */
   readonly onPeerGone?: (memberId: string) => void;
+  /**
+   * Warrant distribution (§18). Absent ⇒ this lead distributes none, which is every lead that has
+   * never named a deputy and every test that is not about warrants.
+   */
+  readonly warrant?: WarrantDistribution;
   readonly now?: () => number;
+}
+
+/**
+ * The two things the sweep needs in order to keep every member's warrant current, injected for the
+ * reason `snapshot` and `hello` are: the decision logic must be exercisable without a socket or a
+ * disk.
+ */
+export interface WarrantDistribution {
+  /**
+   * The warrant this lead currently issues, **re-signed first when the refresh interval has elapsed**
+   * (RFC §4.5), with the deputy's certificate beside it. `null` when no deputy has been named.
+   *
+   * Awaited on the tick, and that is deliberate: it is a local read that writes at most once an hour,
+   * never a dial, so it costs the poll's budget nothing. The dial is {@link WarrantDistribution.push}
+   * and that one is never awaited.
+   */
+  current(now: number): Promise<WarrantPush | null>;
+  /** Deliver it to one member. Failure is a value here as everywhere else in the pack client. */
+  push(link: PackLink, payload: WarrantPush): Promise<PeerOutcome<unknown>>;
 }
 
 /**
@@ -132,6 +157,8 @@ export class PackLead {
   private sweeping = false;
   /** Members with a verdict probe in flight. At most one per member, ever — see {@link probe}. */
   private readonly probing = new Set<string>();
+  /** Members with a warrant push in flight. At most one per member — see {@link pushWarrant}. */
+  private readonly pushingWarrant = new Set<string>();
 
   constructor(private readonly deps: PackLeadDeps) {
     this.now = deps.now ?? Date.now;
@@ -185,12 +212,74 @@ export class PackLead {
           this.deps.onPeerSnapshot?.(memberId, next.body);
         }
       }
+      await this.distributeWarrant(due, outcomes);
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the pack degrades to
       // "stale" rather than taking the lead's poll loop down with it.
       console.warn(`[pack] sweep failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.sweeping = false;
+    }
+  }
+
+  /**
+   * Bring every member that just answered up to the warrant this lead currently issues (§18, RFC §5).
+   *
+   * **NO NEW TIMER, and no new dial to decide.** The comparison rides the `snapshot` answer this
+   * sweep already collected — two optional fields on a body that was fetched anyway — so a pack whose
+   * members are current costs exactly nothing here. Only a member genuinely behind is dialled, which
+   * makes this three things at once: the peer that was offline when the deputy was named, the peer
+   * that has never heard of warrants, and every member once an hour when the signature is refreshed.
+   *
+   * A member that did NOT answer is skipped rather than pushed to blind: it has told us nothing about
+   * what it holds, and a second dial into a dead link is a second failure per tick for no information.
+   */
+  private async distributeWarrant(due: readonly PackLink[], outcomes: Map<string, PeerOutcome<unknown>>): Promise<void> {
+    const distribution = this.deps.warrant;
+    if (distribution === undefined) return;
+    const payload = await distribution.current(this.now());
+    if (payload === null) return;
+    for (const link of due) {
+      const outcome = outcomes.get(link.memberId);
+      if (outcome === undefined || !outcome.ok) continue;
+      // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by construction, the
+      // same cast and the same reason as `foldPeerMemory`'s. `parseWarrantReport` re-checks both
+      // fields, and an absent or half-formed pair reads as "unknown", which pushes.
+      const reported = parseWarrantReport(outcome.value as JsonValue);
+      if (!warrantPushNeeded(payload.warrant, reported)) continue;
+      this.pushWarrant(distribution, link, payload);
+    }
+  }
+
+  /**
+   * Deliver one warrant, off the tick and never awaited — the same discipline {@link probe} follows,
+   * for the same reason: a sweep must cost one strict budget no matter what else it decided to do.
+   *
+   * At most one push per member is in flight. A push that lands after the member has been pruned is
+   * simply a failed dial; nothing here writes to this lead's store, so a `leave` mid-flight cannot be
+   * undone by it.
+   */
+  private pushWarrant(distribution: WarrantDistribution, link: PackLink, payload: WarrantPush): void {
+    if (this.pushingWarrant.has(link.memberId)) return;
+    this.pushingWarrant.add(link.memberId);
+    void this.runWarrantPush(distribution, link, payload);
+  }
+
+  /** The push's body. Separate so {@link pushWarrant} can start it without awaiting it. */
+  private async runWarrantPush(
+    distribution: WarrantDistribution,
+    link: PackLink,
+    payload: WarrantPush,
+  ): Promise<void> {
+    try {
+      await distribution.push(link, payload);
+    } catch (err) {
+      // Defensive, exactly as `sweep` and `probe` are: failure is a value everywhere in the pack
+      // client, so a throw here is a bug in an injected transport — and it must not become an
+      // unhandled rejection that takes the bridge down.
+      console.warn(`[pack] warrant push failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.pushingWarrant.delete(link.memberId);
     }
   }
 

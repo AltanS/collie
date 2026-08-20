@@ -675,3 +675,42 @@ describe("two budgets, and which call runs on which (§10.4)", () => {
     expect(!dead.ok && dead.reason).toBe("snapshot: connect ECONNREFUSED");
   });
 });
+
+describe("warrant — the lead's push (§18)", () => {
+  const warrant = {
+    packId: "pack-1",
+    generation: 2,
+    deputyMemberId: "nas",
+    deputyFingerprint: "a".repeat(64),
+    leadMemberId: "desk",
+    issuedAt: 1,
+    refreshedAt: 2,
+    signature: "sig",
+  };
+
+  test("POSTs the warrant and the deputy's certificate to /pack/v1/warrant", async () => {
+    const { fetch, calls } = replying({ generation: 2, applied: true });
+    const outcome = await client(fetch).warrant(laptop, { warrant, deputyCertPem: "PEM" });
+    expect(outcome.ok && outcome.value).toEqual({ generation: 2, applied: true });
+    expect(calls[0]!.url).toBe("https://laptop.example:8787/pack/v1/warrant");
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ warrant, deputyCertPem: "PEM" });
+  });
+
+  test("is an ordinary DATA dial: one bootstrap attempt per cold link, strict budget thereafter", async () => {
+    const stalled: PackFetch = (_u, init) =>
+      new Promise((_res, rej) => init.signal?.addEventListener("abort", () => rej(new Error("aborted"))));
+    const c = client(stalled, { timeoutMs: 5, patientTimeoutMs: 40 });
+    // It never gets `hello`'s standing patient budget — that one belongs to the verdict probe.
+    expect(!(await c.warrant(laptop, { warrant })).ok).toBe(true);
+    const again = await c.warrant(laptop, { warrant });
+    expect(!again.ok && again.reason).toBe("warrant: timed out after 5ms");
+  });
+
+  test("a 404 from a pre-amendment member is the ordinary unreachable outcome, never a throw", async () => {
+    const { fetch } = replying({ error: "not found" }, { status: 404 });
+    const outcome = await client(fetch).warrant(laptop, { warrant });
+    expect(!outcome.ok && outcome.state).toBe("unreachable");
+    expect(!outcome.ok && outcome.reason).toBe("warrant: HTTP 404");
+  });
+});
