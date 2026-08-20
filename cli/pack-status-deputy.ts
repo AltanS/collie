@@ -185,14 +185,23 @@ export function memberWarrantLines(
   if (stored === null || stored.warrant.deputyMemberId === null) return [];
   const w = stored.warrant;
   const verdict = storedVerdict(w, reported);
+  // The record is a claim about the PAST — "I restarted that machine for generation N" — and the
+  // report is the machine speaking for itself now. When they disagree the machine wins: it cannot
+  // have ANCHORED a generation it does not even STORE, so a record that outruns the report is
+  // provably stale (the machine was re-installed, rolled back, or the restart never took). Rendered
+  // rather than quietly dropped, because a disappearing anchor with no sentence is how an operator
+  // learns to distrust the column instead of the record.
+  const staleRecord = staleAnchorLines(record, reported);
   if (verdict === "silent") {
     return [
       line("    warrant reports none — this build predates warrants, so it can hold no deputy", "dim"),
+      ...staleRecord,
     ];
   }
   if (verdict === "behind") {
     return [
       line(`    warrant generation ${reported} — BEHIND this lead's ${w.generation}; the next sweep pushes it`, "warn"),
+      ...staleRecord,
     ];
   }
   if (!anchored(w, record)) {
@@ -210,6 +219,26 @@ export function memberWarrantLines(
       `    warrant generation ${w.generation} — stored and anchored${when === null ? "" : ` (${iso(when)})`}`,
       "good",
     ),
+  ];
+}
+
+/**
+ * The line that fires when the ops record claims an anchor the peer's own report contradicts.
+ *
+ * Empty for every honest combination — no record, no report, or a report that is level with the
+ * record or ahead of it. It is deliberately not silent about the disagreement: the record is the
+ * only thing the lead-side anchor column is built from, so a stale one must be visible as stale,
+ * not merely unused.
+ */
+function staleAnchorLines(record: OpsRecord | null, reported: number | null | undefined): TonedLine[] {
+  const claimed = record?.anchoredGeneration ?? null;
+  if (claimed === null) return [];
+  if (reported !== null && reported !== undefined && reported >= claimed) return [];
+  const holds = reported === null || reported === undefined ? "reports none at all" : `reports generation ${reported}`;
+  return [
+    line(`    anchor  RECORD IS STALE — this machine armed generation ${claimed} there, but it ${holds}`, "bad"),
+    line("            A machine cannot anchor a warrant it does not hold, so the recorded arming no", "dim"),
+    line("            longer describes it. Re-run `collie pack deputy` to store and arm it again.", "dim"),
   ];
 }
 

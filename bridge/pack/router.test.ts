@@ -1287,6 +1287,32 @@ describe("POST /pack/v1/warrant — the receiving half of the deputy designation
     expect(h.writes()).toBe(before);
   });
 
+  test("a SIGNED push advances this member's replay floor — the same stamp twice is refused", async () => {
+    // The mechanism behind the `pack deputy` live-drill failure of 2026-08-20, pinned where it
+    // lives. `PACK_WARRANT_PATH` is in `MEMBERSHIP_PATHS`, so an admitted SIGNED push commits
+    // `signedAt` for the caller — and §8.6 then refuses any later signature stamped at or before it.
+    // Two processes on the lead sign warrant pushes with ONE key (the running bridge's sweep and the
+    // `collie pack deputy` verb), so their stamps can collide and the second body to land is refused
+    // as a replay. It is a stamp collision, not a permission failure, and the remedy is a retry with
+    // a fresh stamp — which is what `cli/pack-deputy.ts` now does.
+    const h = harness(peerStore());
+    const w = warrantFor("nas");
+    const first = (await call(asLead(h), PACK_WARRANT_PATH, signedPost("desk", PACK_WARRANT_PATH, pushBody(w), T0 + 2)))!;
+    expect(first.status).toBe(200);
+    expect(h.data().lead?.signedAt).toBe(T0 + 2);
+
+    // Equal, and older: both are replays, and both are the uniform 401 with no cause named.
+    for (const stamp of [T0 + 2, T0 + 1]) {
+      const again = (await call(asLead(h), PACK_WARRANT_PATH, signedPost("desk", PACK_WARRANT_PATH, pushBody(w), stamp)))!;
+      expect(again.status).toBe(401);
+      expect(await again.json()).toEqual({ error: "unauthorized" });
+    }
+
+    // A FRESH stamp from the same key is admitted — which is what makes one retry the whole fix.
+    const retry = (await call(asLead(h), PACK_WARRANT_PATH, signedPost("desk", PACK_WARRANT_PATH, pushBody(w), T0 + 3)))!;
+    expect(retry.status).toBe(200);
+  });
+
   test("an OLD generation is refused, and the newer one it holds is what it reports", async () => {
     const h = harness(peerStore());
     const first = warrantFor("nas");
