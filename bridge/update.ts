@@ -32,7 +32,14 @@ const STALE_TTL_MS = 5_000;
 // ── Pure helpers (unit-tested) ────────────────────────────────────────────────
 
 /** Parse a strict `vX.Y.Z` tag into its numeric parts, or null (prereleases like `v1.0.0-rc` and any
- *  non-release ref are rejected by the anchor). Remote ref names are untrusted input. */
+ *  non-release ref are rejected by the anchor). Remote ref names are untrusted input.
+ *
+ *  The consequence is deliberate and larger than one tag: for the WHOLE length of a prerelease train
+ *  (`v1.0.0-beta.1…N`) no installed Collie sees an update banner at all, and the first banner a 0.x
+ *  user gets is `v1.0.0` itself. Accepted — the banner only offers, and the 0.x→1.x crossing is
+ *  consented to separately by `update --major`
+ *  (ADR 0020, amended 2026-08-20). Anything outside Collie resolving "the newest release" must read
+ *  git tags, never `releases/latest`: README → *Resolving the newest release from a script*. */
 export function parseSemverTag(tag: string): [number, number, number] | null {
   const m = SEMVER_TAG.exec(tag.trim());
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;

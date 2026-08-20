@@ -69,7 +69,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          set -euo pipefail
+          # GitHub does NOT infer "prerelease" from a semver hyphen — the API defaults to
+          # prerelease:false, which also moves the Latest badge. A `-beta` / `-rc` tag must never take
+          # that badge from the shipped release line, so mark it explicitly.
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             --title "Collie $GITHUB_REF_NAME" \
             --notes-file "${{ steps.notes.outputs.file }}" \
             "${{ steps.bundle.outputs.tarball }}" \

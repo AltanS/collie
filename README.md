@@ -587,6 +587,24 @@ teach it; a failure stops that member and not the run. Nothing about an update c
 itself — that is deliberate, and the reasoning is
 [ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md).
 
+#### Resolving the newest release from a script
+
+If something outside Collie has to answer *"which release is current?"* — a packager, a CI job, the
+demo site that pins a release bundle — **read the repo's git tags and sort them by semver**. Include
+or exclude the `-beta` / `-rc` tails according to what you want; Collie's own update banner and
+`collie update` both do exactly this (`bridge/update.ts`, `cli/update.ts`).
+
+```bash
+# newest stable release
+git ls-remote --tags --refs https://github.com/AltanS/collie | \
+  sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+```
+
+**Do not use `GET /repos/AltanS/collie/releases/latest`.** That endpoint excludes prereleases by
+design, so while a prerelease train is running it keeps answering the last stable tag and a consumer
+that trusts it silently stalls on an old version. The tags are the contract; the Latest badge is only
+a hint for people.
+
 ### Migrating from 0.x
 
 The last 0.x release is **0.31.1**. Going from there to 1.0 crosses a major, so a routine `update`
