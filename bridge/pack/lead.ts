@@ -5,7 +5,12 @@ import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnaps
 import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
 import { PAIRING_LABEL_COLLISION } from "./router.ts";
-import { pairingPushNeeded, parsePairingReport, type PairingSync } from "./standby-devices.ts";
+import {
+  pairingPushNeeded,
+  parseCollisionReport,
+  parsePairingReport,
+  type PairingSync,
+} from "./standby-devices.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
 
@@ -379,12 +384,14 @@ export class PackLead {
     // same cast and the same reason as `foldPeerMemory`'s. `parsePairingReport` re-checks it, and
     // anything that is not a digest reads as "nothing synced", which pushes.
     const reported = parsePairingReport(outcome.value as JsonValue);
-    if (!pairingPushNeeded(payload.digest, reported)) {
-      // Level. A deputy that already holds this registry also clears any collision finding: the
-      // operator's rename landed, and the finding it produced has nothing left to describe.
-      distribution.collision?.(null);
-      return;
-    }
+    // §18.14's finding, read off the SAME answer and on EVERY sweep — never off the push, which only
+    // happens when the two copies differ. That is what makes it visible while true and gone when
+    // fixed; carrying it on the push made it flicker for one sweep and then vanish.
+    // SAFETY: `value` is that member's HTTP body after `res.json()` — a JsonValue by construction,
+    // the same cast and the same reason as `parsePairingReport`'s above; `parseCollisionReport`
+    // re-checks every element before any of it reaches a surface.
+    distribution.collision?.(parseCollisionReport(outcome.value as JsonValue));
+    if (!pairingPushNeeded(payload.digest, reported)) return;
     this.pushingPairing = true;
     void (async () => {
       try {
@@ -394,11 +401,11 @@ export class PackLead {
         // converge without this class holding an opinion. A refused sync (a label collision, RFC §16
         // decision 6) is simply re-offered, which is what makes the operator's rename take effect
         // without a restart.
-        if (pushed.ok) {
-          distribution.collision?.(null);
-        } else if (pushed.state === "refused" && pushed.code === PAIRING_LABEL_COLLISION) {
-          // The one refusal whose remedy is on the OPERATOR's side, so it is carried out of this
-          // process to `pack status` (§18.9's checkpoint) rather than only logged here.
+        if (!pushed.ok && pushed.state === "refused" && pushed.code === PAIRING_LABEL_COLLISION) {
+          // A PRE-AMENDMENT deputy, which REFUSED the sync outright instead of applying it and
+          // reporting. Read so the operator still sees the finding — but that build's copy is frozen
+          // until it is updated, and a frozen copy is a revoked credential still live at its door.
+          // This lead cannot close that from here; naming it is all it can do.
           distribution.collision?.(pushed.labels ?? []);
         }
       } catch (err) {

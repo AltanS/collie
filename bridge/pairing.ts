@@ -400,7 +400,17 @@ export class PairingStore {
       // Fire-and-forget: a failed stamp must never fail the request that triggered it.
       void (async () => {
         try {
-          await this.io.writeRegistry(touched);
+          // ── RE-DERIVED FROM DISK, NEVER WRITTEN FROM THE SNAPSHOT ABOVE ────
+          // `touched` was computed from a registry read at the top of this synchronous call, and this
+          // write lands later. `bin/collie devices revoke` runs in ANOTHER process and writes the same
+          // file, so writing `touched` blind would put a revoked device BACK — a stamp silently undoing
+          // a revocation, which is the one thing a credential store may not do. Re-reading here costs
+          // one file read at most once per device per minute (the throttle above is what makes this
+          // path rare), and a device that has gone in the meantime is simply not stamped.
+          const current = coerceRegistry(await this.io.readRegistry());
+          const fresh = touchDevice(current, device.label, this.now());
+          if (fresh === null) return;
+          await this.io.writeRegistry(fresh);
         } catch (err) {
           console.warn(
             `[pairing] could not stamp lastSeenAt: ${err instanceof Error ? err.message : String(err)}`,

@@ -259,6 +259,14 @@ export interface StandbySurface {
    * something a restarted process has forgotten.
    */
   readonly syncedDigest: () => string | null;
+  /**
+   * The labels this collie's OWN paired devices share with the synced registry it holds (§18.14).
+   *
+   * Empty for the ordinary case. Reported on the exchange rather than answered once by the sync, so
+   * `pack status` on the LEAD — the machine whose operator can rename the device — sees it the moment
+   * it is true and stops seeing it the moment they fix it.
+   */
+  readonly syncedCollision: () => readonly string[];
 }
 
 export interface PackRouterDeps {
@@ -442,6 +450,7 @@ type HelloBody = {
   warrantRefreshedAt?: number;
   warrantActiveGeneration?: number;
   pairingDigest?: string;
+  pairingCollision?: string[];
 };
 
 /**
@@ -764,6 +773,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       if (active !== null) hello.warrantActiveGeneration = active;
       const synced = deps.standby?.syncedDigest() ?? null;
       if (synced !== null) hello.pairingDigest = synced;
+      // §18.14's finding, beside the digest and read the same absent-means-closed way: an empty list
+      // is omitted, and an omitted field is "no finding". It names labels the operator chose and
+      // nothing else — no hash, no token, no device count.
+      const clash = deps.standby?.syncedCollision() ?? [];
+      if (clash.length > 0) hello.pairingCollision = [...clash];
       return new Response(JSON.stringify(hello), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
@@ -836,7 +850,13 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
           ? body
           : { ...body, warrantGeneration: report.generation, warrantRefreshedAt: report.refreshedAt };
       const withActive = active === null ? withWarrant : { ...withWarrant, warrantActiveGeneration: active };
-      const withReport = synced === null ? withActive : { ...withActive, pairingDigest: synced };
+      const withDigest = synced === null ? withActive : { ...withActive, pairingDigest: synced };
+      // §18.14's finding, beside the digest: which of THIS collie's own paired devices share a label
+      // with the registry it was synced. An empty list is OMITTED, and an omitted field is "no
+      // finding" — the closed reading. It rides the sweep's own answer rather than the sync's, so the
+      // lead sees it while it is true instead of for the one sweep a push happened to land on.
+      const clash = deps.standby?.syncedCollision() ?? [];
+      const withReport = clash.length === 0 ? withDigest : { ...withDigest, pairingCollision: [...clash] };
       return new Response(JSON.stringify(withReport), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
@@ -1135,20 +1155,27 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     if (data.pack === null || sync.packId !== data.pack.packId || sync.leadMemberId !== from.memberId) {
       return badRequest(self, "this pairing sync is not from this collie's own lead, or not for this pack");
     }
-    const collisions = standby.collidingLabels(sync.devices);
-    if (collisions.length > 0) {
-      // Reported, not steamrolled — and reported to the LEAD, which is the machine whose operator can
-      // rename the device. `409`: the two sides disagree about a name, which is what that status is
-      // for on this surface (§7, §18.10 use it the same way).
-      return new Response(
-        JSON.stringify({
-          error: `this machine already has paired devices called "${collisions.join('", "')}" — rename one, or revoke it here`,
-          code: PAIRING_LABEL_COLLISION,
-          labels: collisions,
-        }),
-        { status: 409, headers: packResponseHeaders(self) },
-      );
-    }
+    // ── THE SYNC ALWAYS LANDS. A COLLISION IS REPORTED, NOT A REFUSAL ─────────
+    // This used to `return` a `409` before applying, and a live drill found what that costs: the
+    // deputy's copy FREEZES at whatever it held when the collision first appeared, so a device
+    // revoked on the lead stays valid at this machine's standby door **for ever**. That is a revoked
+    // credential surviving revocation, which is the one thing this file may not allow.
+    //
+    // The refusal protected nothing, and that is the actual error rather than the wording: **a sync
+    // never touches this collie's own registry.** It replaces `standby-devices.json`, a separate file
+    // holding hashes the DOOR checks against — and RFC §16 decision 6's reason ("a silently renamed
+    // device is one the operator cannot revoke by the name they know it by") is about the moment
+    // entries ENTER `paired-devices.json` under a name. That moment is the takeover commit, and it is
+    // already guarded twice: `performTakeover`'s pre-flight and `PairingStore.adopt`'s own re-check,
+    // either of which refuses the whole takeover and writes nothing.
+    //
+    // So decision 6 is intact — refuse and report, never namespace-and-merge — with the refusal at
+    // the adoption where it belongs, and the REPORT riding the sync so `pack status` on the lead names
+    // the labels early, while the operator still has a healthy pack to rename them in.
+    // The finding is NOT answered here. It rides `hello`/`snapshot` instead (`syncedCollision`),
+    // because a finding delivered once — on the push that happened to land — is one the operator
+    // cannot see: the next sweep finds the copies level, has nothing to push, and no way to say the
+    // collision is still there. Reported on the exchange it appears when true and clears when fixed.
     await standby.applySync(sync);
     return new Response(JSON.stringify({ devices: sync.devices.length, applied: true }), {
       status: 200,

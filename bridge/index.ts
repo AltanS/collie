@@ -65,6 +65,7 @@ import {
 } from "./pack/standby.ts";
 import {
   collidingLabels,
+  collisionReportOf,
   pairingReportOf,
   StandbyDeviceStore,
   STANDBY_DEVICES_VERSION,
@@ -724,6 +725,9 @@ const standbySurface: PackRouterDeps["standby"] =
         // §18.14's report: what this collie ACTUALLY holds, read off the store on every call. It is
         // what makes the lead's re-push decision survive a restart on either side.
         syncedDigest: () => pairingReportOf(standbyStore.current()),
+        // §18.14's finding, re-derived from disk on every answer: which of THIS machine's own paired
+        // devices share a label with the registry it was synced. Empty is the ordinary case.
+        syncedCollision: () => collisionReportOf(pairing.registry(), standbyStore.current()),
         applySync: async (sync) => {
           // Wholesale, never a merge: the lead's registry is the whole truth, so a revocation there
           // has to be able to REMOVE a device here.

@@ -719,16 +719,31 @@ describe("PackLead — the warrant re-push, on the sweep the lead already runs",
 
 // ── The pairing sync's two decided outcomes (RFC §6.5, §18.14) ────────────────
 
-describe("PackLead — a refused pairing sync is REPORTED, never swallowed", () => {
+/** A peer's snapshot body plus §18.14's two optional reports — the shape this block scripts. */
+type PeerReportBody = typeof body & { pairingDigest?: string; pairingCollision?: string[] };
+
+describe("PackLead — a pairing collision is REPORTED every sweep, never swallowed", () => {
   const sync = { packId: "pack-1", leadMemberId: "desk", devices: [] };
 
-  /** A lead syncing its registry to `deputy`, with a scripted answer from that deputy. */
-  function syncing(deputy: string | null, answer: () => PeerOutcome<unknown>) {
+  /**
+   * A lead syncing its registry to `deputy`, with a scripted answer from that deputy — and, since the
+   * live drill, a scripted REPORT on the snapshot the sweep already reads.
+   */
+  function syncing(
+    deputy: string | null,
+    answer: () => PeerOutcome<unknown>,
+    reports: { digest?: string; collision?: string[]; reachable?: boolean } = {},
+  ) {
     const said: (readonly string[] | null)[] = [];
     const members = [member({ memberId: "laptop" })];
+    // Assigned, never conditionally spread: an absent report must carry NO such key at all, which is
+    // exactly the wire's absent-means-closed reading and what these cases are about.
+    const answered: PeerReportBody = { ...body };
+    if (reports.digest !== undefined) answered.pairingDigest = reports.digest;
+    if (reports.collision !== undefined) answered.pairingCollision = reports.collision;
     const l = new PackLead({
       registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
-      snapshot: async () => ok(body),
+      snapshot: async () => (reports.reachable === false ? down : ok(answered)),
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
       now: () => NOW,
@@ -752,34 +767,43 @@ describe("PackLead — a refused pairing sync is REPORTED, never swallowed", () 
     receivedAt: NOW,
   });
 
-  test("the labels the deputy named are carried out of the sweep, verbatim", async () => {
-    const h = syncing("laptop", () => collision(["phone", "tablet"]));
+  // ── THE LIVE DRILL, THE REVOCATION ─────────────────────────────────────────
+  // The finding used to ride the PUSH, which happens only when the two copies differ — so it flickered
+  // for one sweep and then the "level" branch cleared it, and `pack status` could not show a collision
+  // that was still true. It is read off the sweep's own answer now, every sweep.
+  test("the labels the deputy REPORTS are carried out of the sweep, verbatim, while they are true", async () => {
+    const h = syncing("laptop", () => ok(null), { digest: "d1", collision: ["phone", "tablet"] });
     await h.lead.sweep();
     await Bun.sleep(5);
-    expect(h.said).toEqual([["phone", "tablet"]]);
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    // Reported on BOTH sweeps, even though the copies are level and nothing was pushed.
+    expect(h.said).toEqual([["phone", "tablet"], ["phone", "tablet"]]);
   });
 
-  test("a sync that LANDS clears the finding — the operator's rename needs no verb", async () => {
-    const h = syncing("laptop", () => ok(null));
+  test("a deputy that reports NO collision clears the finding — the rename needs no verb", async () => {
+    const h = syncing("laptop", () => ok(null), { digest: "d1" });
     await h.lead.sweep();
     await Bun.sleep(5);
     expect(h.said).toEqual([null]);
   });
 
   test("a deputy that could not be reached reports NOTHING — silence is not a collision", async () => {
-    const h = syncing("laptop", () => down);
+    // The SNAPSHOT is what carries the report, so an unreachable deputy says nothing at all — neither
+    // a collision nor the absence of one. A finding invented from silence would outlive the fault.
+    const h = syncing("laptop", () => down, { reachable: false });
     await h.lead.sweep();
     await Bun.sleep(5);
     expect(h.said).toEqual([]);
   });
 
-  test("a refusal is re-offered: only a landed sync is remembered as delivered", async () => {
+  test("a PRE-AMENDMENT deputy that refuses the sync outright is still surfaced", async () => {
+    // That build freezes its copy — a revoked credential still live at its door — and this lead
+    // cannot close it from here. Naming it is all it can do.
     const h = syncing("laptop", () => collision(["phone"]));
     await h.lead.sweep();
     await Bun.sleep(5);
-    await h.lead.sweep();
-    await Bun.sleep(5);
-    expect(h.said).toEqual([["phone"], ["phone"]]);
+    expect(h.said).toEqual([null, ["phone"]]);
   });
 
   test("a pack with no deputy syncs to nobody and reports nothing", async () => {

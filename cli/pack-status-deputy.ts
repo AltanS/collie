@@ -532,23 +532,30 @@ export function standbyDoorLines(
 // ── The lead's pairing sync (RFC §6.5; RFC §16, decision 6) ──────────────────
 
 /**
- * The deputy refused the last pairing sync, because it already holds one of those labels (§18.14).
+ * The deputy holds paired devices of its own under labels the lead is syncing (§18.14).
+ *
+ * **It is a finding, not a refusal, and the difference is security-relevant.** The sync itself always
+ * lands — a live drill found that refusing it froze the deputy's copy, so a device revoked on the
+ * lead stayed valid at that machine's standby door for ever. What the collision refuses is the
+ * ADOPTION: the takeover, where those entries would enter a registry under a name, and where a
+ * silently renamed device is one the operator could not revoke by the name they know it by (RFC §16,
+ * decision 6).
  *
  * It is the lead's operator who can fix it — the labels are theirs — so the finding is printed here
- * and nowhere else. It is read off the runtime marker rather than the trust store because it is an
- * observation of one process's traffic, and it clears itself: the lead re-offers the refused sync on
- * every sweep, so the rename takes effect with no verb and no restart.
+ * and nowhere else. Read off the runtime marker because it is an observation of one process's
+ * traffic, and re-derived by the deputy on every answer, so it appears while it is true and clears
+ * the moment the name is freed, with no verb and no restart.
  */
 export function pairingCollisionLines(marker: PackRuntimeMarker | null, now: number): TonedLine[] {
   const collision = marker?.pairingCollision ?? null;
   if (collision === null) return [];
   const labels = collision.labels.map((l) => `"${l}"`).join(", ");
   return [
-    line(`⚠ pairing sync REFUSED ${humanAge(now - collision.at)} ago — the deputy already has ${labels}`, "warn"),
-    line("  Until it lands, that deputy's standby door has nothing to check a takeover against and", "dim"),
-    line("  refuses to arm. A label is the revoke handle, so the sync refuses rather than renaming a", "dim"),
-    line("  device you could then not revoke by name. Free the name on one side and the next sweep", "dim"),
-    line("  syncs by itself — `collie devices revoke <label>` there, or re-pair under another name here.", "dim"),
+    line(`⚠ pairing LABEL CLASH (seen ${humanAge(now - collision.at)} ago) — the deputy already has ${labels}`, "warn"),
+    line("  The sync itself is landing, so that deputy's door is checking the right credentials. What", "dim"),
+    line("  this blocks is the TAKEOVER: adopting these would put two devices under one name, and a", "dim"),
+    line("  label is the revoke handle. Free the name on one side and it clears by itself —", "dim"),
+    line("  `collie devices revoke <label>` there, or re-pair under another name here.", "dim"),
   ];
 }
 

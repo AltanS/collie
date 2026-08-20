@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
 import { EXIT } from "../../cli/io.ts";
+import { cmdDevicesRevoke } from "../../cli/pairing.ts";
 import {
   cmdJoin,
   cmdLeave,
@@ -1422,6 +1423,8 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   const DEPUTY_ARM_MS = "3000";
   const WITNESS_ARM_MS = "1000";
   const TOKEN = "phone-token-for-the-takeover-test";
+  /** A second credential, paired and then revoked — the drill's `drill` device. */
+  const REVOKED_TOKEN = "drill-token-that-gets-revoked";
 
   let hq: Instance;
   let aide: Instance;
@@ -1577,6 +1580,79 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     expect(existsSync(join(witness.stateDir, "standby-devices.json"))).toBe(false);
   }, 60_000);
 
+  // ── THE LIVE DRILL, THE REVOCATION ─────────────────────────────────────────
+  // `collie devices revoke` on the lead reported success and the phone lost write access there — and
+  // 35 seconds later the deputy's copy still listed the revoked device, so the credential was still
+  // takeover-capable at the standby door. A revoked credential must die EVERYWHERE.
+  test("a device revoked on the lead leaves the deputy's copy, with no verb and no restart", async () => {
+    // Two paired devices, both synced. `collie pair` is a claim exchange the phone drives; the file
+    // it writes is the subject here, and it is the same file either way.
+    writeFileSync(
+      join(hq.stateDir, "paired-devices.json"),
+      JSON.stringify({
+        devices: [
+          { label: "phone", tokenHash: sha256Hex(TOKEN), createdAt: 1, lastSeenAt: 1 },
+          { label: "drill", tokenHash: sha256Hex(REVOKED_TOKEN), createdAt: 2, lastSeenAt: 2 },
+        ],
+      }),
+      { mode: 0o600 },
+    );
+    await waitFor(
+      async () => syncedLabels(aide).includes("drill"),
+      30_000,
+      async () => `the deputy never received the second device (holds ${JSON.stringify(syncedLabels(aide))})`,
+    );
+
+    // THE DRILL'S SHAPE: the deputy is a machine that has paired devices OF ITS OWN under the same
+    // labels. That is not exotic — it is every former lead, and every machine whose operator paired
+    // the same phone. Written before the revoke so the sync must cope with it.
+    writeFileSync(
+      join(aide.stateDir, "paired-devices.json"),
+      JSON.stringify({ devices: [{ label: "phone", tokenHash: sha256Hex("aide-own"), createdAt: 3, lastSeenAt: 3 }] }),
+      { mode: 0o600 },
+    );
+
+    // THE REAL VERB, on the real file — the path the drill ran.
+    const revoked = await verb(hq, async (d) =>
+      cmdDevicesRevoke({ ctx: d.ctx, io: d.io, files: d.files }, ["drill"]),
+    );
+    expect(revoked.code).toBe(EXIT.OK);
+    expect(revoked.out).toContain('revoked "drill"');
+
+    // THE FIX, ASSERTED: the deputy's copy loses it, even though a label collides. The sync never
+    // touches the deputy's OWN registry — it replaces `standby-devices.json`, which is what the door
+    // checks — so refusing it protected nothing and froze a revoked credential in place.
+    await waitFor(
+      async () => !syncedLabels(aide).includes("drill"),
+      30_000,
+      async () => `the deputy still holds the revoked device (holds ${JSON.stringify(syncedLabels(aide))})`,
+    );
+    // …and the one that was NOT revoked is still there, so this was a replacement and not a wipe.
+    expect(syncedLabels(aide)).toEqual(["phone"]);
+
+    // DECISION 6 IS INTACT: the collision is REPORTED — on the exchange, every sweep, so it is
+    // visible while it is true — and it reaches the LEAD's own `pack status` surface, the machine
+    // whose operator can rename the device. What it refuses is the ADOPTION (the takeover), which is
+    // where entries actually enter a registry under a name.
+    await waitFor(
+      async () => (runtimeMarkerOf(hq)?.pairingCollision?.labels ?? []).includes("phone"),
+      30_000,
+      async () =>
+        `the lead never reported the collision (marker=${JSON.stringify(runtimeMarkerOf(hq)?.pairingCollision)}` +
+        ` deputySynced=${JSON.stringify(syncedLabels(aide))})`,
+    );
+
+    // Cleared for the rest of this file: the takeover below must be able to ADOPT, and a live
+    // collision correctly refuses it. Removing the deputy's own registry is the operator's "revoke it
+    // here" remedy, performed by the harness.
+    rmSync(join(aide.stateDir, "paired-devices.json"));
+    await waitFor(
+      async () => runtimeMarkerOf(hq)?.pairingCollision == null,
+      30_000,
+      "the lead never cleared the collision finding after the operator resolved it",
+    );
+  }, 120_000);
+
   test("the anchor exists at bind time or not at all — both peers restart (RFC §5, phase 2)", async () => {
     await aide.restart();
     await witness.restart();
@@ -1697,11 +1773,24 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   }, 60_000);
 
   test("the confirm is PAIRING ONLY — no bearer, a wrong bearer and a device header all refuse", async () => {
-    const rejected: Record<string, string>[] = [{}, { authorization: "Bearer wrong" }, { "x-tailnet-device": "phone" }];
+    const rejected: Record<string, string>[] = [
+      {},
+      { authorization: "Bearer wrong" },
+      { "x-tailnet-device": "phone" },
+      // ── THE LIVE DRILL, THE REVOCATION ──────────────────────────────────────
+      // The credential revoked on the lead while it was still alive. It must be dead HERE too, at the
+      // one door that can hand this machine the whole pack — and it is dead because the sync replaced
+      // this deputy's copy rather than being refused on a label collision.
+      { authorization: `Bearer ${REVOKED_TOKEN}` },
+    ];
     for (const headers of rejected) {
       const res = await standby("/standby/takeover", { method: "POST", headers });
       expect(res.status).toBe(401);
     }
+    // …and the credential that was NOT revoked is still good, so this was a revocation and not an
+    // outage: the door still knows the surviving device. (Asserted without spending it — the takeover
+    // below is where that token is used for real.)
+    expect(syncedLabels(aide)).toEqual(["phone"]);
     // Nothing moved: the witness still follows the old lead.
     expect(witness.store()!.lead!.memberId).toBe(idOf(hq));
   }, 30_000);

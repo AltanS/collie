@@ -215,6 +215,28 @@ export function parsePairingReport(value: JsonValue | undefined): string | null 
 }
 
 /**
+ * The labels this member's OWN paired devices share with the registry it was synced (§18.14).
+ *
+ * **Reported on the exchange, not carried by the sync answer** — and that distinction was paid for.
+ * A finding delivered once, on the push that happened to land, is a finding the operator cannot see:
+ * the very next sweep finds the two copies level, has nothing to push, and had no way to know the
+ * collision was still there. Reported here, it is re-derived from disk on every answer, so it appears
+ * the moment it is true, survives every restart, and clears the instant the operator renames or
+ * revokes one of the two — with no dial, no memory and no second timer.
+ */
+export function collisionReportOf(own: PairedRegistry, held: StandbyDevices | null): string[] {
+  return held === null ? [] : collidingLabels(own, held.devices);
+}
+
+/** Read a member's collision report. Absent, empty or malformed all read as "no finding" — closed. */
+export function parseCollisionReport(value: JsonValue | undefined): string[] | null {
+  const body = asRecord(value);
+  if (!Array.isArray(body?.pairingCollision)) return null;
+  const labels = body.pairingCollision.filter((l): l is string => typeof l === "string" && l !== "");
+  return labels.length === 0 ? null : labels;
+}
+
+/**
  * Is this member behind the registry the lead currently holds? (§18.14's re-push rule.)
  *
  * **The whole reason this is a comparison against a REPORT rather than against a memory.** The lead
