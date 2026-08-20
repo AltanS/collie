@@ -138,12 +138,19 @@ export type ForwardAuditEntry = {
  *   host's own ledger (.adr/0003). The lead marks nothing for a pane it does not own.
  * - `content-type` — carries the multipart boundary an upload cannot be re-assembled without (§13).
  *
- * **`accept-encoding` is deliberately NOT forwarded.** The lead asks the peer for identity bytes and
- * hands them on verbatim. Negotiating gzip on the peer hop would have the platform `fetch`
- * transparently decompress the body and strip `content-encoding`, leaving the lead re-emitting a
- * header that no longer describes the bytes — the one thing §9.1 forbids. The ETag is unaffected
- * either way (it is hashed over the pre-gzip body, `bridge/http-cache.ts`), so what this costs is one
- * hop's compression on a tailnet link, and what it buys is a byte-for-byte mirror.
+ * **`accept-encoding: identity` is SET here, and the phone's own value is never forwarded.** The lead
+ * asks the peer for identity bytes, so the body it holds and the body it re-emits are the same bytes.
+ *
+ * Omitting the header is NOT enough, which is what this comment used to claim: Bun's `fetch` supplies
+ * its own `accept-encoding: gzip, deflate, br, zstd` when the init carries none, so the peer gzips,
+ * `fetch` transparently decompresses — and, unlike the spec's step, does **not** strip
+ * `content-encoding: gzip` from the response headers. The lead then re-emitted a `gzip` header over
+ * plain bytes and every peer pane rendered as "(no recent output)", because the phone's `fetch` threw
+ * trying to inflate them. Setting `identity` explicitly (Bun passes it through unmodified) makes the
+ * peer hop genuinely uncompressed; {@link PROXIED_RESPONSE_HEADERS} not carrying `content-encoding` is
+ * the belt to this braces. The ETag is unaffected either way — it is hashed over the pre-gzip body
+ * (`bridge/http-cache.ts`) — so what this costs is one hop's compression on a tailnet link, and what
+ * it buys is a header that describes the bytes.
  *
  * `X-Pack-Device` is added here rather than on the client because it is a property of the PHONE's
  * request — the operator's device as the lead's own `deviceAuth()` resolved it (§12) — and the sweep
@@ -157,19 +164,34 @@ export function forwardHeaders(req: Request, device?: string | null): Headers {
     if (value !== null) headers.set(name, value);
   }
   if (device !== null && device !== undefined && device !== "") headers.set(DEVICE_HEADER, device);
+  headers.set("accept-encoding", "identity");
   return headers;
 }
 
-/** Response headers a proxied answer keeps. Everything else is the peer's business, not the phone's. */
-const PROXIED_RESPONSE_HEADERS = ["content-type", "content-encoding", "etag", "cache-control", "vary"];
+/**
+ * Response headers a proxied answer keeps. Everything else is the peer's business, not the phone's.
+ *
+ * **`content-encoding` is NOT on this list, and that is the honest answer rather than a loss.** By the
+ * time a peer's response is in hand the lead holds identity bytes — the hop asked for identity, and
+ * anything the runtime compressed anyway it has already decompressed (see {@link forwardHeaders}). A
+ * copied `content-encoding` would therefore describe bytes that no longer exist. The lead's own front
+ * door still compresses for the phone whenever the phone asked for it (`bridge/http-cache.ts`), so the
+ * only thing given up is compression on the lead→phone hop for *forwarded* routes.
+ */
+const PROXIED_RESPONSE_HEADERS = ["content-type", "etag", "cache-control", "vary"];
 
 /**
- * The peer's answer, re-emitted for the phone **unmodified**: status, body bytes, `content-type`,
- * `content-encoding` and — critically — `etag` (§9.1).
+ * The peer's answer, re-emitted for the phone **unmodified**: status, body bytes, `content-type` and
+ * — critically — `etag` (§9.1).
  *
  * The body is passed as a stream, never read: a 400-turn history must not be buffered whole on the
  * lead just to be written out again, and reading it would also be the moment an ETag stopped
  * describing what was sent. A `304`/`204` carries no body at all, which the platform enforces.
+ *
+ * `content-length` is likewise absent by construction: it is not copied, and the server that writes
+ * this response derives it from the bytes it actually writes. A copied one would be the peer's
+ * pre-decompression length — the same lie as a copied `content-encoding`, in a field the phone trusts
+ * even harder.
  *
  * `x-pack-*` headers are stripped. They are link-internal (§6) and a browser must never see them.
  */

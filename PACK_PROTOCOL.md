@@ -691,9 +691,16 @@ body to verify a signature there would pull a streamed upload (§13) into memory
 ### 9.1 Proxied reads (pane mirror, history)
 
 The lead forwards the request to the owning peer and returns the peer's response **unmodified**:
-status, body bytes, `content-type`, `content-encoding`, and — critically — **`etag`**.
+status, body bytes, `content-type`, and — critically — **`etag`**.
 
 - `If-None-Match` from the phone is passed through to the peer.
+- **The peer hop is `Accept-Encoding: identity`, and `content-encoding` is not re-emitted.** The lead
+  asks the peer for uncompressed bytes, so the body it holds is the body it writes out; whatever the
+  runtime compresses and transparently decompresses anyway, it does *not* strip the stale
+  `content-encoding` from the response headers, and re-emitting that header describes bytes that no
+  longer exist. "Unmodified" is about the *body* and the ETag, never about a transfer encoding: the
+  lead's own front door compresses for the phone on the phone's own `Accept-Encoding`. `content-length`
+  is likewise never copied — the emitting server derives it from the bytes it writes.
 - A peer's `304` is returned to the phone as a `304`, with the peer's `etag` echoed. RFC 7232 §4.1 is
   satisfied by the peer's own existing code path (`bridge/server.ts:467-478`).
 - The ETag on a proxied read therefore means what it has always meant: *the peer's assertion about its

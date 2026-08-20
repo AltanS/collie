@@ -182,7 +182,7 @@ describe("which routes cross a link", () => {
 // ── §9.1 Proxied reads: byte-for-byte, ETag and all ──────────────────────────
 
 describe("a proxied read is the peer's response, unmodified (§9.1)", () => {
-  test("status, body bytes, content-type, content-encoding and etag all survive the hop", async () => {
+  test("status, body bytes, content-type and etag all survive the hop", async () => {
     const body = JSON.stringify({ paneId: "w1:p1", lines: ["hello"] });
     const peer = new Response(body, {
       status: 200,
@@ -203,7 +203,10 @@ describe("a proxied read is the peer's response, unmodified (§9.1)", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(body);
     expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
-    expect(res.headers.get("content-encoding")).toBe("gzip");
+    // The peer said `gzip`; the bytes in hand are plain (the runtime decompressed them and left the
+    // header behind). Re-emitting it made the phone's `fetch` throw on every peer pane, so the header
+    // is dropped: after the identity hop the lead always holds identity bytes.
+    expect(res.headers.get("content-encoding")).toBeNull();
     expect(res.headers.get("etag")).toBe('"deadbeef"');
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("vary")).toBe("accept-encoding");
@@ -299,9 +302,9 @@ describe("request shaping", () => {
     for (const banned of ["cookie", "origin", "authorization", "x-tailnet-device"]) {
       expect(headers.get(banned)).toBeNull();
     }
-    // Identity bytes only — see the module comment: negotiating gzip on the peer hop would have
-    // `fetch` decompress the body and strip `content-encoding`, breaking the byte-for-byte mirror.
-    expect(headers.get("accept-encoding")).toBeNull();
+    // Identity bytes only, and ASKED FOR rather than merely not-forwarded: Bun's `fetch` supplies its
+    // own `accept-encoding: gzip, …` when the init carries none, so an absent header is a gzipped hop.
+    expect(headers.get("accept-encoding")).toBe("identity");
   });
 
   test("no device header at all when the lead's device gate is off", () => {
