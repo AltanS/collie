@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.12] - 2026-08-20
+
+### Added
+
+- The header's "Collie on tmux" line carries the multiplexer's own mark — adapter-supplied SVG served sandboxed at `/api/mux/logo.svg`, rendered as an `<img>` so adapter markup never becomes document markup (797b955)
+
 ## [1.0.0-beta.11] - 2026-08-20
 
 ### Added
