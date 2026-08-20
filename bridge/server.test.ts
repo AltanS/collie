@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   bridgeConfigBody,
   muxConfigBody,
+  muxLogoResponse,
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
@@ -38,7 +39,8 @@ import { muxAck, type MuxAck, type MuxAdapter, type MuxGrid } from "./mux/types.
 import { neverProxy } from "./pack/fixtures.ts";
 import { PackLead } from "./pack/lead.ts";
 import { PackRegistry } from "./pack/registry.ts";
-import type { SnapshotResponse } from "./types.ts";
+import { computeEtag } from "./http-cache.ts";
+import { MUX_LOGO_PATH, type SnapshotResponse } from "./types.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -1240,6 +1242,55 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
     for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(true);
     expect(wire.notes).toEqual({});
   });
+
+  // The mark's URL is published like everything else here: as data the phone prints. An adapter
+  // WITHOUT one must publish no key, because the key's absence is the whole instruction to render
+  // the header's text alone — a `logoUrl` on an adapter with no logo is a 404 in every header.
+  test("an adapter with a logo publishes its URL; one without publishes no key", () => {
+    const withLogo = muxConfigBody({ mux: "reference", capabilities: everything, logo: "<svg/>" });
+    expect(withLogo.logoUrl).toBe(MUX_LOGO_PATH);
+    expect("logoUrl" in muxConfigBody({ mux: "reference", capabilities: everything })).toBe(false);
+  });
+
+  test("the real Herdr adapter ships a mark, so its header renders one", () => {
+    const wire = muxConfigBody(herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} }));
+    expect(wire.logoUrl).toBe(MUX_LOGO_PATH);
+  });
+});
+
+// GET /api/mux/logo.svg. The bytes are an ADAPTER's, so the headers are the containment: sandboxed
+// (no script can run even if a future adapter's file carried some), nosniff (a browser may not
+// re-decide what they are), and validated by ETag rather than pinned by a max-age, so a release that
+// changes the mark is picked up on the next load.
+describe("muxLogoResponse — serving an adapter's mark", () => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>`;
+
+  test("answers the SVG with the image type and both hardening headers", async () => {
+    const res = muxLogoResponse(svg, null);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/svg+xml; charset=utf-8");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await res.text()).toBe(svg);
+  });
+
+  test("carries a strong ETag and revalidates rather than pinning a max-age", () => {
+    const res = muxLogoResponse(svg, null);
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(res.headers.get("etag")).toBe(computeEtag(svg));
+  });
+
+  test("a client holding the current bytes gets a bodiless 304 — still hardened", async () => {
+    const res = muxLogoResponse(svg, computeEtag(svg));
+    expect(res.status).toBe(304);
+    expect(await res.text()).toBe("");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+    expect(res.headers.get("etag")).toBe(computeEtag(svg));
+  });
+
+  test("a stale validator re-sends the body", () => {
+    expect(muxLogoResponse(svg, `"stale"`).status).toBe(200);
+  });
 });
 
 describe("bridgeConfigBody — the mux block is appended, never reordering what came before", () => {
@@ -1372,12 +1423,13 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // All four session-scoped routes (tab create, workspace create, tab action, the pane family)
     // reach their runtime through the caller's resolver and nothing else.
     expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(4);
-    // Exactly three `registry.get(` calls remain, and each is a sanctioned one, named here rather
+    // Exactly four `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
-    // "(session) → runtime, or 404" helper both callers share; and `/api/config`, which reports
-    // THIS collie's own multiplexer (M10/06) and is not session-scoped at all. A fourth would be a
-    // route reaching past the gate.
-    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(3);
+    // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
+    // collie's own multiplexer (M10/06) and is not session-scoped at all; and `/api/mux/logo.svg`,
+    // which serves that same local multiplexer's mark and is session-scoped no more than the config
+    // that publishes its URL. A fifth would be a route reaching past the gate.
+    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(4);
     // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
     // are its own business and reach the lead over the pack API, never out of this registry.
     expect(src).toContain("const activeMux = registry.get();");

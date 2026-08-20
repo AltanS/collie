@@ -39,6 +39,7 @@
 // drops a title equal to it — an untouched pane has no label, and saying "bluefin" would be noise.
 
 import { declareCapabilities } from "../capabilities.ts";
+import { TMUX_LOGO_SVG } from "./logo.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxAck,
@@ -160,6 +161,7 @@ interface PaneRevision {
 export class TmuxMux implements MuxAdapter {
   readonly mux = TMUX_MUX;
   readonly capabilities = TMUX_CAPABILITIES;
+  readonly logo = TMUX_LOGO_SVG;
 
   /**
    * The derived revision, per pane. tmux HAS no content revision — no format field moves when a pane

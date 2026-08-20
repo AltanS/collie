@@ -25,6 +25,7 @@
 import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
 import type { DialMode } from "../../dial.ts";
 import { declareCapabilities } from "../capabilities.ts";
+import { HERDR_LOGO_SVG } from "./logo.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxAck,
@@ -135,6 +136,7 @@ function transportRefusal<T>(err: T): MuxRefusalOutcome {
 export class HerdrMux implements MuxAdapter {
   readonly mux = HERDR_MUX;
   readonly capabilities = HERDR_CAPABILITIES;
+  readonly logo = HERDR_LOGO_SVG;
 
   // session.snapshot is the fast path; flipped off PERMANENTLY once a server proves it predates the
   // method (see snapshot()), after which every read uses the legacy three-call path. Adapter state

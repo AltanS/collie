@@ -51,6 +51,7 @@
 // short-lived census and checks the target against it: see {@link ZellijMux.livePane}.
 
 import { declareCapabilities } from "../capabilities.ts";
+import { ZELLIJ_LOGO_SVG } from "./logo.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxAck,
@@ -204,6 +205,7 @@ interface PaneRevision {
 export class ZellijMux implements MuxAdapter {
   readonly mux = ZELLIJ_MUX;
   readonly capabilities = ZELLIJ_CAPABILITIES;
+  readonly logo = ZELLIJ_LOGO_SVG;
 
   /**
    * The derived revision, per pane. zellij HAS no content revision — no field moves when a pane

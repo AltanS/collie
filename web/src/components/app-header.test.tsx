@@ -182,6 +182,55 @@ describe("AppHeader — the multiplexer line", () => {
     expect(screen.queryByText(/^on /)).toBeNull();
   });
 
+  // The mark beside the name comes from the bridge as a URL and is PRINTED into a `src` — the same
+  // property the fabricated name above proves for the word. A component that picked a picture per
+  // multiplexer could not render this one, and would render nothing for the next adapter.
+  it("shows the published mark before the name, decorative to a screen reader", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: {
+            name: "reference",
+            capabilities: {},
+            unsupportedKeys: [],
+            notes: {},
+            logoUrl: "/api/mux/logo.svg",
+          },
+        }),
+      ),
+    );
+    const { container } = renderHeader(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
+    const logo = container.querySelector('img[src="/api/mux/logo.svg"]');
+    expect(logo).not.toBeNull();
+    // alt="" — the name is right there in the same sentence; announcing the picture too would say
+    // the multiplexer twice.
+    expect(logo?.getAttribute("alt")).toBe("");
+  });
+
+  it("renders no image when the bridge published a name but no mark", async () => {
+    // An adapter with no logo, or a bridge older than the field. The line is exactly the text it
+    // has always been — never a house glyph standing in for a mark nobody supplied.
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: {}, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    const { container } = renderHeader(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
+    expect(container.querySelector('img[src*="logo"]')).toBeNull();
+  });
+
   it("keeps the line out of the pane header, where the breadcrumb owns the width", async () => {
     server.use(
       http.get("/api/config", () =>

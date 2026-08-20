@@ -431,7 +431,26 @@ export interface MuxConfig {
    * come from — the adapter wrote them, they name the multiplexer, and they never blame Collie.
    */
   notes: Partial<Record<MuxCapability, string>>;
+  /**
+   * Where this multiplexer's mark is served — {@link MUX_LOGO_PATH}, or absent.
+   *
+   * A URL and not the SVG source: the bytes are cacheable, revalidated by ETag, and never touch the
+   * JSON every page load re-reads. Present ONLY when the active adapter supplied a logo
+   * (bridge/mux/types.ts `MuxAdapter.logo`) — absent means "this bridge has no picture for you",
+   * which the header answers by rendering exactly the text it always did.
+   */
+  logoUrl?: string;
 }
+
+/**
+ * The one path the mark is served from, spelled once.
+ *
+ * A CONSTANT rather than a literal at each end, because the bridge both routes it and publishes it
+ * in {@link MuxConfig.logoUrl}; two spellings of one path is one release away from a broken image.
+ * It is deliberately not per-multiplexer — a collie drives exactly one, so the path names the
+ * question ("this bridge's mux") and the answer changes with the bridge, never with the URL.
+ */
+export const MUX_LOGO_PATH = "/api/mux/logo.svg";
 
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {

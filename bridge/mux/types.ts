@@ -338,6 +338,20 @@ export interface MuxAdapter {
   /** What this adapter can do. Declared, never inferred from {@link mux}. */
   readonly capabilities: MuxCapabilityDeclaration;
 
+  /**
+   * This multiplexer's mark, as SVG source — the bytes served at `/api/mux/logo.svg`.
+   *
+   * SUPPLIED BY THE ADAPTER, exactly like {@link capabilities} and for the same reason: the phone
+   * prints what arrives and recognises nothing, so a picture keyed by name in `web/src` would
+   * re-weld the app to one multiplexer just as surely as a name branch would
+   * (scripts/check-mux-names.sh). Every adapter in this build ships one in its own `logo.ts`.
+   *
+   * OPTIONAL, and absent is a real answer: an adapter with no mark publishes no `logoUrl`, and the
+   * header renders exactly the text it rendered before this field existed. Nothing downstream may
+   * substitute a placeholder for it.
+   */
+  readonly logo?: string;
+
   /** Is the multiplexer answering? Drives the connected/disconnected banner. */
   reachable(): Promise<boolean>;
 
