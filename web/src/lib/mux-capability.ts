@@ -118,6 +118,20 @@ export function useMuxCapability(capability: MuxCapability): MuxCapabilityState 
   return muxCapability(useMuxConfig(), capability);
 }
 
+/**
+ * The multiplexer's display name, for the header's "on <name>" line — display only.
+ *
+ * The ONE read of the name the UI is allowed, and it is not the question the module header bans:
+ * nothing decides anything on this string, it is simply printed. Empty until a bridge has answered
+ * (older bridge, cached page, read not back yet), and a call site must render NOTHING extra when it
+ * is empty rather than invent a placeholder — "on unknown" is a worse header than no line at all.
+ *
+ * It rides the same one-shot `/api/config` store as every capability, so this adds no request.
+ */
+export function useMuxName(): string {
+  return useMuxConfig()?.name ?? "";
+}
+
 /** The neutral key spellings this multiplexer refuses. Empty until the bridge has answered. */
 export function useMuxUnsupportedKeys(): readonly string[] {
   return useMuxConfig()?.unsupportedKeys ?? NO_KEYS;

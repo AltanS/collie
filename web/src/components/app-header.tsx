@@ -3,6 +3,7 @@ import { Settings } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { isConnecting } from "@/lib/connection";
+import { useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
@@ -64,6 +65,12 @@ export function AppHeader({
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
   const lost = useConnectionLost(connecting);
+  // What this collie drives, printed beside the wordmark. It ALWAYS describes the LOCAL collie and
+  // never changes with the viewed scope: `/api/config`'s mux block is this bridge's own, and a peer's
+  // is not fetched (the pack link carries runtime data, not a second config channel). So on `?h=peer`
+  // the line still reads "on <the lead's mux>" — the name of the thing the page you are running is
+  // built on, which is what a support question needs.
+  const mux = useMuxName();
   return (
     // A column, not a row: the sticky bar owns the safe-area inset and stacks the (usually absent)
     // prerelease strip above the header row proper, which keeps its original padding. On a stable
@@ -77,6 +84,17 @@ export function AppHeader({
         {override ?? (
           <>
             <CollieHome onHome={onHome} trouble={trouble} lost={lost} wordmark={wordmark} />
+            {/* "on <mux>" — a plain sentence completing the wordmark, so the top-left reads
+                "Collie on <mux>". It rides WITH the wordmark (dashboard + space, never the pane,
+                where the breadcrumb owns the width) and sits OUTSIDE the home button so it isn't
+                part of that tap target and stays readable to a screen reader, which the button's
+                aria-label would otherwise replace. Text only, one size down and muted, so it reads
+                as a caption to the wordmark rather than a second brand. Nothing renders until a
+                bridge has actually named one: an old bridge, a cached page or a read still in
+                flight all leave the header exactly as it was, never a "on unknown" placeholder. */}
+            {wordmark && mux !== "" && (
+              <span className="-ml-1 min-w-0 truncate text-xs text-muted-foreground">on {mux}</span>
+            )}
             {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
                 pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight. */}
             <div className="flex min-w-0 flex-1 items-center">{children}</div>
