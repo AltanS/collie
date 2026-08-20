@@ -130,6 +130,16 @@ describe("writable vs state — refusal is not smoothed", () => {
     expect(writeRefusal(h)).toMatch(/workshop is unreachable/);
   });
 
+  it("a member with an OLD receipt the lead still believes reachable is writable, and refuses nothing", () => {
+    // The other half of the asymmetry, and the one a surface got wrong: `stale` describes the age of
+    // the lead's receipt, not the machine. With `reachable: true` no write is refused — so no surface
+    // may print "unreachable" or claim replies are refused here (see host-stale-banner.test.tsx).
+    const h = hostHealth(member({ reachable: true, lastSeenAt: LEAD_NOW - 10_000 }), HOT);
+    expect(h.state).toBe("stale");
+    expect(h.writable).toBe(true);
+    expect(writeRefusal(h)).toBeUndefined();
+  });
+
   it("names the member and its last-seen age (§10.3)", () => {
     const h = hostHealth(member({ reachable: false, lastSeenAt: LEAD_NOW - 600_000 }), HOT);
     expect(writeRefusal(h)).toBe("workshop is unreachable · last seen 10m");

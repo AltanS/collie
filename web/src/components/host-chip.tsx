@@ -46,22 +46,36 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
   // dog, all reading one shared clock, and duplicating their answer here is how two surfaces start
   // disagreeing about the same outage. An unlisted host (a member that departed while you were
   // looking at it) resolves to `unknown` rather than being dropped or quietly assumed healthy.
-  const live = (state ?? health?.state ?? "unknown") === "live";
+  //
+  // ── AND WHY THE CONDITION IS `writable`, NOT `state !== "live"` ──────────────
+  // `state === "stale"` is a statement about the AGE of the lead's receipt, never a verdict on the
+  // machine (lib/host-health.ts). This chip used to degrade on `state !== "live"` alone and append
+  // "(unreachable)" with it, so a peer answering every request — its receipt merely older than the
+  // sweep's cadence — was announced down to a screen reader, beside a composer that was accepting
+  // sends. The dashed border and the word are the same fact as the refusal: the lead's plain
+  // boolean, unsmoothed, exactly what `writeRefusal` gates on. Absent health on a pack is a departed
+  // member, which is not writable either.
+  const unreachable = !health?.writable;
+  // ONE condition drives BOTH the styling and the label, so the two can never drift into a chip that
+  // looks fine and reads down (or the reverse). The word itself is narrower than the styling: only
+  // `!writable` may spell "unreachable".
+  const degraded =
+    unreachable || health?.incompatible === true || (state ?? health?.state ?? "unknown") === "unknown";
   const target = variant === "target";
 
   return (
     <span
       // The name is decorative repetition for a screen reader if it were bare text, so the whole
       // chip carries one label that says what it MEANS.
-      aria-label={`${target ? "Sends to host" : "Host"}: ${name}${live ? "" : " (unreachable)"}`}
+      aria-label={`${target ? "Sends to host" : "Host"}: ${name}${unreachable ? " (unreachable)" : ""}`}
       className={cn(
         "inline-flex max-w-[8rem] shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium",
         target ? "text-[11px]" : "text-[10px]",
-        live
-          ? "border-border bg-muted/60 text-muted-foreground"
-          : // Unreachable is a STATE, not a disappearance (PACK_PROTOCOL.md §10.2) — it stays legible,
+        degraded
+          ? // Unreachable is a STATE, not a disappearance (PACK_PROTOCOL.md §10.2) — it stays legible,
             // dashed rather than dimmed, so a blocked agent on a down machine is never greyed away.
-            "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked",
+            "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked"
+          : "border-border bg-muted/60 text-muted-foreground",
         className,
       )}
     >

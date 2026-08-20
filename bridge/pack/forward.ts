@@ -320,6 +320,16 @@ export interface ForwardDeps {
    * audited locally today and does not become audited by crossing a link.
    */
   readonly audit?: (entry: ForwardAuditEntry) => void;
+  /**
+   * Called with the lead's receipt time whenever the peer **answered** — success only, whatever
+   * status it answered with. A forward that landed is a receipt from that member exactly as a sweep's
+   * is, and `PackRegistry.recordExchange` folds it into `lastSeenAt` so the freshness a phone reads
+   * tracks the cadence somebody is actually watching at, not the sweep's idle one.
+   *
+   * Deliberately NOT called on failure: how a failure is classified is the sweep's and the probe's
+   * business (§10.2, §10.4), and this path runs on a different budget. See `recordExchange`'s doc.
+   */
+  readonly onExchange?: (receivedAt: number) => void;
   /** The operator's device, as the LEAD resolved it — forwarded as `X-Pack-Device` (§12). */
   readonly device?: string | null;
 }
@@ -403,6 +413,9 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     return response;
   }
 
+  // The peer answered. That is a receipt, and it is stamped before the body has been streamed on:
+  // `receivedAt` is when the response landed on this lead, not when the phone finished reading it.
+  deps.onExchange?.(outcome.receivedAt);
   record(`http ${outcome.value.status}`);
   return proxiedResponse(outcome.value);
 }

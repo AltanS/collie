@@ -29,6 +29,19 @@
 // and it already has an owner: tier 1. That is the whole orthogonality — tier 1 asks "how old is
 // what I'm holding", tier 2 asks "how old was the peer data when the lead assembled it".
 //
+// ── AND WHY THE PHONE DOES NOT COUNT ITS OWN SUCCESSFUL FETCH AS A RECEIPT ───
+// Considered and declined. "This pane's fetch just came back, so its host answered" is the strongest
+// freshness fact the phone has — but consuming it here would mean a per-host anchor that survives
+// between calls, i.e. exactly the map-of-clocks this module's header opens by refusing, once per pack
+// member. It would also be measured on the BROWSER's clock and then compared against `lastSeenAt`,
+// which is the lead's — the cross-machine subtraction two paragraphs up rules out.
+//
+// It is also redundant now: the same fetch already refreshes the receipt at its source. The lead folds
+// every landed forward into `lastSeenAt` (`bridge/pack/registry.ts` → `recordExchange`), so a pane the
+// phone is watching produces one receipt per poll, on the lead's own clock, and arrives here through
+// the snapshot like every other pack fact. Two implementations of the same idea, one of which needs a
+// clock — so this side keeps none.
+//
 // Consequence worth naming: with polling paused (the idle lock, ADR 0007) `ts` freezes along with
 // `lastSeenAt`, so ages stop advancing rather than drifting into a false alarm. That is safe because
 // the lock COVERS the screen and its release refetches before uncovering (`beginCatchUp` in
@@ -45,6 +58,13 @@ import type { ServerSummary } from "./types";
  *   content. Its rows and panes STAY, labelled: a triage list that flickers is worse than one that
  *   is honestly stale, and the blocked agent you opened the app for is exactly the one on the
  *   machine that just went quiet.
+ *
+ *   **`stale` is a statement about the RECEIPT, never about reachability, and a surface that spells
+ *   it "unreachable" is lying.** The lead can hold `reachable: true` beside an old receipt (a sweep
+ *   running slower than this phone polls, a slow-link note — §10.2, §10.4), and in that state writes
+ *   are NOT refused: {@link writeRefusal} gates on {@link HostHealth.writable}, which is the lead's
+ *   plain boolean. So the word "unreachable" and any claim that "replies and keys are refused"
+ *   belong to `!writable`, and only to it — see components/host-stale-banner.tsx for the table.
  * - `unknown` — not reachable and never seen at all (`lastSeenAt === 0`): a first visit during an
  *   outage. There is no last-good content to show, so the UI must say so rather than spin forever.
  *
@@ -97,6 +117,21 @@ export const PRESENTED_STALE_MAX_MS = 15_000;
  * How old the lead's last receipt from a member may be before that member is presented stale:
  * `min(3 × pollMs, 15s)`. Three polls, so one dropped sweep — or two — is invisible; capped at 15 s
  * so a cold 4 s cadence can't buy a peer 12 s of undeserved green on top.
+ *
+ * ── `pollMs` IS THE RIGHT CLOCK TO MEASURE AGAINST, BUT ONLY BECAUSE THE LEAD MAKES IT SO ─────
+ * `pollMs` is the PHONE's cadence, and `lastSeenAt` is refreshed on the LEAD — so this formula is
+ * only honest while the two move together. It once did not: the lead's peer sweep runs on the lead's
+ * own adaptive interval, which relaxes to `COLLIE_POLL_IDLE_MS` (12 s) whenever its event stream is
+ * healthy, while a phone watching a peer's pane polls at 1.5 s. Three of the phone's polls is 4.5 s,
+ * so a perfectly healthy peer's receipt aged 0 → 12 s and read stale for most of every sweep — the
+ * banner flapped on a machine that was answering every single request.
+ *
+ * What fixed it is on the lead, not here: `PackRegistry.recordExchange` folds every **landed
+ * proxied forward** into `lastSeenAt`, so a peer the phone is actually watching gets a receipt per
+ * pane read — i.e. at `pollMs` — and the sweep stays the floor for a peer nobody is looking at. The
+ * tolerance is therefore measured against a receipt clock that tracks this cadence, which is what
+ * `3 × pollMs` always claimed. If that fold is ever removed, this formula must go back to being
+ * expressed in the LEAD's sweep interval, not the phone's.
  */
 export function staleThresholdMs(pollMs: number): number {
   return Math.min(3 * Math.max(0, pollMs), PRESENTED_STALE_MAX_MS);

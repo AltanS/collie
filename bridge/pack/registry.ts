@@ -254,6 +254,46 @@ export class PackRegistry {
   }
 
   /**
+   * Fold a successful **proxied exchange** into the freshness half of the ledger — and nothing else.
+   *
+   * The sweep is not the only time this lead hears from a member. Every phone read of a peer's pane
+   * and every phone write to one is an authenticated round trip over the same pack link (§5, §9.1),
+   * and one that *landed* is a receipt exactly as a sweep's is: same lead clock, same
+   * "the response arrived here" meaning (§10.2 — freshness is the lead's receipt time).
+   *
+   * Crediting them matters because the two clocks are otherwise unrelated. A phone watching a peer's
+   * pane polls at the hot cadence (1.5 s) while the sweep, with a healthy event stream, runs at the
+   * idle one (12 s) — so the phone's own presented-stale tolerance (`3 × pollMs`) was being measured
+   * against a receipt only the 12 s sweep refreshed, and a perfectly healthy peer spent most of every
+   * sweep interval reading stale. With this fold the receipt refreshes at whatever cadence somebody
+   * is actually watching, and the sweep stays the floor for a member nobody is looking at.
+   *
+   * **Two rules keep this from becoming a second classifier:**
+   *
+   *   • **Successes only, and only for a member already believed `reachable`.** A failed or ambiguous
+   *     forward changes nothing here — `forwardToPeer` classifies those for the *phone* (§10.3), on a
+   *     different budget than the sweep's, and letting it also move the ledger would mean two code
+   *     paths deciding what "unreachable" means. A member the sweep believes down is likewise not
+   *     revived by a lucky proxy: that verdict is the sweep's and the probe's (§10.4), and it clears
+   *     on the next tick anyway.
+   *   • **`lastSeenAt` only ever moves forward.** Forwards are concurrent by nature — several pane
+   *     reads can be in flight at once and may land out of order — so an older receipt must never
+   *     overwrite a newer one.
+   *
+   * Nothing else on the state is touched: health, reason and version stay exactly as the sweep and
+   * the probe left them (a slow-link note therefore survives, which is honest — the machine answers,
+   * its *snapshot* still misses the poll budget).
+   */
+  recordExchange(memberId: string, receivedAt: number): PeerState {
+    const previous = this.peers.get(memberId);
+    if (previous === undefined || previous.health !== "reachable") return this.state(memberId);
+    if (receivedAt <= (previous.lastSeenAt ?? 0)) return previous;
+    const next: PeerState = { ...previous, lastSeenAt: receivedAt };
+    this.peers.set(memberId, next);
+    return next;
+  }
+
+  /**
    * Drop the state of every member no longer in the roster — a `leave`, a revocation, or a member
    * dropped by a rotation. Mirrors `SessionRegistry.dispose()`'s contract (`bridge/sessions.ts:222`):
    * what a vanished member owned stops existing rather than lingering as a stale row.

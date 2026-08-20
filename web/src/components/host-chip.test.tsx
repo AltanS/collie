@@ -156,29 +156,54 @@ describe("write surfaces name the machine", () => {
   });
 });
 
-// The §10.2 presented-stale threshold, seen from the chip (M5/03). The tolerance is what stops a
-// single dropped sweep flapping every label in the herd list between two good polls.
-describe("HostChip — presented-stale, not merely 'the last poll missed'", () => {
-  const quiet: ServerSummary[] = [
+// Which FACT the chip tracks (M5/03). `state === "stale"` is the age of the lead's receipt; the word
+// "unreachable" and the degraded look are the lead's plain boolean, the same one that refuses a write.
+// The chip announced a peer down whenever its receipt aged past the tolerance — over a machine that
+// was answering every request, next to a composer that was accepting sends.
+describe("HostChip — 'unreachable' is the write gate's word, never the receipt's age", () => {
+  const quiet = (workshop: Partial<ServerSummary>): ServerSummary[] => [
     { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
-    { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 98_000 },
+    {
+      id: "workshop",
+      name: "workshop",
+      isLead: false,
+      reachable: true,
+      protocol: "ok",
+      lastSeenAt: 98_000,
+      ...workshop,
+    },
   ];
-  const at = (ts: number) =>
+  const at = (ts: number, servers: ServerSummary[] = quiet({})) =>
     ({ children }: { children: React.ReactNode }) => (
-      <PackProvider servers={quiet} ts={ts} pollMs={1500}>
+      <PackProvider servers={servers} ts={ts} pollMs={1500}>
         {children}
       </PackProvider>
     );
 
-  it("stays plain while inside the tolerance — one missed sweep is invisible", () => {
-    // 2s since the lead last heard from it, against a 4.5s (3 × 1500ms) tolerance.
-    render(<HostChip host="workshop" />, { wrapper: at(100_000) });
+  it("an old receipt on a machine the lead still believes up leaves the chip untouched", () => {
+    // 12s of receipt age against a 4.5s (3 × 1500ms) tolerance, so `state` is `stale` — and that
+    // changes nothing here, because `reachable` is still true and no write would be refused.
+    const chip = render(<HostChip host="workshop" />, { wrapper: at(110_000) }).container
+      .firstElementChild;
     expect(screen.getByLabelText("Host: workshop")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/unreachable/i)).not.toBeInTheDocument();
+    // The look and the label are one condition, so neither may degrade without the other.
+    expect(chip?.className).not.toMatch(/border-dashed/);
   });
 
-  it("says unreachable once past it", () => {
-    render(<HostChip host="workshop" />, { wrapper: at(110_000) });
-    expect(screen.getByLabelText(/workshop \(unreachable\)/i)).toBeInTheDocument();
+  it("says unreachable the moment the lead's own boolean does, tolerance or no tolerance", () => {
+    // Inside the tolerance (2s of age), so `state` is `live` — the refusal is not smoothed, and the
+    // chip sits beside a composer that is already disabled.
+    render(<HostChip host="workshop" />, { wrapper: at(100_000, quiet({ reachable: false })) });
+    const chip = screen.getByLabelText(/workshop \(unreachable\)/i);
+    expect(chip.className).toMatch(/border-dashed/);
+  });
+
+  it("marks a member that has never answered without calling it unreachable", () => {
+    // Nothing cached, but the lead believes it is up: the chip stands out, the label does not lie.
+    render(<HostChip host="workshop" />, { wrapper: at(100_000, quiet({ lastSeenAt: 0 })) });
+    const chip = screen.getByLabelText("Host: workshop");
+    expect(chip.className).toMatch(/border-dashed/);
   });
 
   it("never degrades the LEAD — whether the phone can reach it is the other tier's answer", () => {
