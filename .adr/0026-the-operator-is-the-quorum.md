@@ -5,13 +5,12 @@ Status: **Accepted** (2026-08-20)
 Generalises: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md) — promotion-is-a-confirm becomes
 the no-deputy instance of a broader rule. 0014 is not superseded and its gate is unchanged.
 Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) ·
-[ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) · spec:
-[`PACK_DEPUTY_RFC.md`](../PACK_DEPUTY_RFC.md) §3, §6, §12, §13, §16 (contract:
-[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) will gain the corresponding sections once the RFC's §15
-fold-in lands, and this ADR's links move there then).
+[ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) · contract:
+[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18 (the deputy, the warrant, the deposed state, the standby
+door and the takeover) · design history: [`PACK_DEPUTY_RFC.md`](../PACK_DEPUTY_RFC.md).
 
-Subordinate: ADR 0027 (the deputy and its warrant) and ADR 0028 (the standby door) — both land with
-their implementing commits.
+Subordinate: [ADR 0027](./0027-the-deputy-is-named-ahead-of-time.md) (the deputy and its warrant) and
+[ADR 0028](./0028-the-standby-door-is-a-second-listener.md) (the standby door).
 
 ## Context
 

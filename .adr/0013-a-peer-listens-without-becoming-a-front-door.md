@@ -4,6 +4,9 @@ Status: **Accepted** (2026-08-06)
 
 Amends: [ADR 0001](./0001-one-managed-front-door.md) — *one managed front door* graduates from
 **per machine** to **per pack**. 0001 is not superseded; its criterion is unchanged and still binding.
+**Amended in scope by:** [ADR 0028](./0028-the-standby-door-is-a-second-listener.md) — a peer that
+holds a lead-signed warrant may **bind** an unpublished, three-route standby listener. Nothing below
+is retracted: *a peer publishes nothing* is unchanged, and the standby door is bound, not published.
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) · contract:
 [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md)
 

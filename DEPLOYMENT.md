@@ -9,6 +9,7 @@ four shapes here are for everything else. Pick one.
 - [Variant C — reverse proxy as the only front door (no Tailscale)](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
 - [Variant D — off-host identity proxy over the tailnet](#variant-d--off-host-identity-proxy-over-the-tailnet)
 - [Variant E — any other mesh or tunnel](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
+- [The standby door — a pack's failover path](#the-standby-door--a-packs-failover-path) (packs only)
 
 The security rules in [README → Security](./README.md#%EF%B8%8F-security--read-before-you-run-it)
 are not relaxed by any of them. None of these is a prerequisite for authorising individual devices —
@@ -377,3 +378,153 @@ Three things to get right, none of them Collie-specific:
 > the auth in front of it is the only thing between a stranger and that shell, so treat a shared PIN
 > the way you'd treat a root password — and prefer a tunnel scoped to your own devices over a public
 > URL with a gate on it.
+
+## The standby door — a pack's failover path
+
+**Packs only, and opt-in.** If you lead a [pack](./PACK_PROTOCOL.md), you can name one peer the
+**deputy** and give it a page your phone can reach when the lead is gone. The deputy holds a
+lead-signed *warrant*; the page's one button spends it. Why it is a second listener rather than a
+route on the existing one, and why the button is gated the way it is, are
+[ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md) and
+[ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md); the contract is
+[`PACK_PROTOCOL.md` §18](./PACK_PROTOCOL.md).
+
+Set on the **deputy** (and on the lead, see the last row):
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `COLLIE_STANDBY_PORT` | *(unset)* | The port the standby door binds. **Unset means no door at all** — nothing is bound, nothing is served, and the deputy is a plain peer you can still recover from a keyboard with `collie promote`. Absent means closed. |
+| `COLLIE_STANDBY_HOST` | `127.0.0.1` | Where it binds. Loopback is right when the failover proxy is co-located; set the overlay address when it is not. |
+| `COLLIE_STANDBY_ARM_MS` | `max(30000, 2.5 × COLLIE_POLL_IDLE_MS)` | How long the lead must be silent before the door arms. The default is a **formula**, so relaxing `COLLIE_POLL_IDLE_MS` moves it with you. A value at or below the idle poll makes an idle pack arm itself nightly; Collie **warns** at boot and does not refuse. |
+
+**Set `COLLIE_STANDBY_PORT` on the lead too, at the same number.** A lead binds that port and answers
+only the health check — otherwise a deputy that takes over and later comes back up as the lead leaves
+your proxy health-checking a closed port and swinging the phone onto the machine that died.
+
+Collie **binds** this port and publishes nothing: no `tailscale serve`, never `funnel`, no ownership
+record. The ingress in front of it is yours, exactly as under
+[Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) and
+[Variant E](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel).
+
+### The prerequisite: one hostname, two backends
+
+**The phone must reach the lead and the deputy on the same origin.** The pairing credential and the
+installed PWA are both per-origin, so a takeover page on a different hostname is a page your phone
+cannot authenticate to. A same-origin failover proxy is therefore an accepted prerequisite of the
+phone-first path — Collie does not grow a second credential to work around it, and `collie pack
+deputy` says so once when it sees no shared origin configured.
+
+A pack **without** such a proxy still gets everything else: the warrant, the deposition, the
+self-heal. Its recovery is `collie promote` at a keyboard
+([PACK_PROTOCOL §14.4](./PACK_PROTOCOL.md)), unchanged.
+
+```yaml
+# Traefik — generic shape, adapt to your ingress. Hostnames are placeholders.
+http:
+  routers:
+    collie:
+      rule: "Host(`collie.example.com`)"
+      service: collie-pack
+      tls: {}                      # your ingress terminates TLS; both backends speak plain HTTP
+
+  services:
+    collie-pack:
+      failover:
+        service: collie-lead       # primary
+        fallback: collie-deputy    # used only while the primary fails its health check
+
+    collie-lead:
+      loadBalancer:
+        servers:
+          - url: "http://lead.internal:8787"
+        healthCheck:
+          path: /standby/health    # the LEAD answers 200 here while it leads,
+          interval: 5s             # and NON-200 once it has been deposed
+          timeout: 2s
+
+    collie-deputy:
+      loadBalancer:
+        servers:
+          - url: "http://deputy.internal:8788"   # COLLIE_STANDBY_PORT
+        healthCheck:
+          path: /standby/health    # 503 while the lead is fresh — so the fallback
+          interval: 5s             # only comes up once the deputy has armed
+          timeout: 2s
+```
+
+`/standby/health` is one question — *should anything route here?* — and three kinds of machine answer
+it: a lead `200`, a deposed lead non-`200`, a deputy `503` until it arms and `200` after.
+
+> ⚠️ **The gap is real, and it is one tuning decision rather than two.** The proxy fails the lead over
+> after `interval × failures` (seconds here) while the deputy arms after `COLLIE_STANDBY_ARM_MS`
+> (30 s by default). In between, both backends are unhealthy and the phone gets a `503`. That is
+> honest — the lead really is down and the deputy really is not yet sure — so **tune the health check
+> to the arming threshold, not the reverse.**
+
+### Set it up once, while everything is healthy
+
+```bash
+# on the lead
+collie pair                      # the door needs a credential; an empty registry refuses to arm
+collie pack deputy nas           # mints the warrant, restarts this lead, pushes it to every peer,
+                                 # then restarts each peer over your own SSH (one prompt, whole batch)
+collie pack status               # confirm: deputy named, warrant generation, anchored on N/N peers
+```
+
+Then on the deputy, put `COLLIE_STANDBY_PORT=8788` (and `COLLIE_STANDBY_HOST` if the proxy is not
+co-located) in its env and restart it.
+
+**The restart of each peer is load-bearing, not tidiness.** A peer's pinned listener cannot adopt the
+deputy's certificate while it runs, so a warrant that has landed on disk is inert at the transport
+until that peer restarts. `collie pack status` names any peer left in that state
+(`warrant stored, anchor INACTIVE`) — fix it *before* the bad day, because a peer that never
+restarted cannot be taken over to.
+
+**Visit `https://collie.example.com/standby` once now.** While the lead is healthy the page is a
+statement of fact with no action on it, which is how you confirm the door works without spending
+anything.
+
+### ⚠️ The deputy must be supervised
+
+A takeover **commits its store and then exits**, deliberately: the operator asked from a phone, and a
+machine whose store says `lead` while its process still runs a peer's pinned listener is a machine
+nobody can reach. So it commits, says so, and calls `process.exit(0)` about a second later
+(`performTakeover` in [`bridge/index.ts`](./bridge/index.ts) — the one place the bridge restarts
+itself, and the comment there says why).
+
+A supervised install — `systemd --user` with `Restart=always`, or the Herdr plugin — comes straight
+back up as the new lead. An unsupervised one is left with a correct store and a stopped process. Put
+**both** the lead and the deputy under supervision.
+
+### The bad day — the runbook
+
+1. **The phone's Collie stops answering** — amber at 4 s, red at 15 s.
+2. **Pull to refresh, or reopen the app.** The proxy has failed the lead over, so the request lands on
+   the deputy.
+3. **`/standby` answers** with one sentence: *your lead `desk` has not called this machine for 47
+   seconds; this machine (`nas`) is the deputy.*
+4. **One button: take over.** No options, no roster editor — a page with choices on it is a page
+   nobody can use one-handed at 23:00.
+5. **The confirm sends the phone's pairing credential.** The deputy asks the lead first, then asks the
+   surviving peers what *they* last heard, and either refuses with the evidence — *peer `attic` says
+   the lead called it 2 s ago* — or commits. **A refusal here is the feature working**, not a failure:
+   it means you are the one who is cut off. On a two-machine pack there is nobody to ask, and the page
+   says so above the button.
+6. **The page reloads onto the real app**, now served by the new lead.
+
+**Afterwards, most of the cleanup does itself.** When the old machine comes back it finds the warrant,
+**deposes itself and heals to `peer`** on materials both machines already hold — no command, no token,
+nothing minted. It stops polling, fails its health check so the proxy stops routing to it, and serves
+one page saying which state it is in. `collie pack status` on the new lead names what is genuinely
+left, and it is three decisions rather than three repairs:
+
+1. **Name a new deputy** — the takeover spent the warrant, so the pack has none.
+2. **`collie unserve` on the old machine**, the one thing Collie will not do for another machine's
+   operator ([ADR 0001](./.adr/0001-one-managed-front-door.md)). Its failing health check is what
+   keeps the un-torn-down door harmless meanwhile.
+3. **Re-point the phone**, if you have no failover proxy.
+
+> ⚠️ **Do not `collie pack rotate` until the old machine is back.** Rotation marks a member that
+> missed it `unenrolled`, and a deposed machine that heals into a rotated pack is stranded and needs a
+> re-join after all. The rule is not relaxed for this feature; `rotate` warns you by name. Wait for the
+> re-entry, *then* rotate.

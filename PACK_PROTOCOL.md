@@ -1488,15 +1488,41 @@ The change is **additive**: one optional trust-store field, no new wire object.
 ```mermaid
 stateDiagram-v2
   [*] --> leading
+  leading --> deputised: collie pack deputy nas
+  note right of deputised
+    warrant minted, pushed, anchored
+    at each peer's restart (18.5)
+    still just a healthy pack
+  end note
+  deputised --> leading: collie pack deputy --revoke
+
   leading --> lead_down: the lead process or its machine dies
+  deputised --> lead_down: the lead process or its machine dies
   note right of lead_down
     phone: amber at 4s, red at 15s
     peers: unaffected and unaware
     agents on peers keep running
   end note
+
   lead_down --> recovering: the operator restarts the lead
   recovering --> leading: boot reads pack-trust.json, first sweep repopulates
-  lead_down --> promoted: the lead is gone for good
+
+  lead_down --> armed: deputy sees COLLIE_STANDBY_ARM_MS of silence
+  armed --> lead_down: the lead calls again, instantly disarmed
+  armed --> taken_over: operator taps take over, lead silent, no peer contradicts
+  armed --> lead_down: a peer answers lead_is_alive, nothing changed
+  taken_over --> leading: the deputy is the lead now, warrant spent
+  note right of taken_over
+    peers re-pinned, pairing adopted
+    the deputy restarts into lead mode
+    name a new deputy afterwards
+  end note
+
+  lead_down --> deposed: the old machine boots and meets the warrant
+  deposed --> healed: self-heal on material both sides already held
+  healed --> leading: an ordinary peer of the new lead
+
+  lead_down --> promoted: no deputy, and the lead is gone for good
   promoted --> [*]
   note right of promoted
     collie promote --force
@@ -1518,14 +1544,23 @@ in-memory — last-good snapshots and the health registry (§7.1) — so a resta
 from a network blip except for one poll cycle in which peers render from an empty cache rather than a
 stale one.
 
-**Keeping the lead alive is the operator's job, by design.** Collie never restarts itself, for the
-reason §14.7's closing note gives: a collie cannot tell which supervision tier it is under, so exiting
-to be revived is a bet it may lose. Put the lead under `systemd --user` (or launchd) and let that
-supervise it.
+**Keeping the lead alive is the operator's job, by design.** Collie never restarts itself — except at
+the instant a takeover commits (§18.16) — for the reason §14.7's closing note gives: a collie cannot
+tell which supervision tier it is under, so exiting to be revived is a bet it may lose. Put the lead
+**and the deputy** under `systemd --user` (or launchd) and let that supervise them.
 
-If the machine is not coming back, the recovery is §14.4's `collie promote --force` — the path that
-skips the consent the old lead can no longer give, and pays for it by stranding every other peer. Read
-that section before running it; its costs are not summarised here.
+**If the machine is not coming back, the deputy is the answer.** A pack that named one (§18.13) is
+recovered from a phone: the door arms itself on silence, the operator's tap spends the warrant, and
+the exchange refuses if the lead answers or any peer says it was dialled recently (§18.15, §18.16).
+Nothing here is automatic — silence *arms* the surface and never *authorises* the action
+([ADR 0026](./.adr/0026-the-operator-is-the-quorum.md)). When the old machine returns it meets the
+warrant, deposes itself and heals to `peer` on material both sides already held, with no operator step
+(§18.12). Two things it does not do for you: the warrant is **spent**, so name a new deputy; and the
+old machine's front door is its own operator's to tear down.
+
+**Without a deputy the floor is unchanged:** §14.4's `collie promote --force` — the path that skips
+the consent the old lead can no longer give, and pays for it by stranding every other peer. Read that
+section before running it; its costs are not summarised here.
 
 ---
 

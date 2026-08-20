@@ -970,6 +970,7 @@ Herdr's plugin system itself is upstream's to document:
 - Deployment variants B–E — [`DEPLOYMENT.md`](./DEPLOYMENT.md)
 - Design & rationale — [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - The lead↔peer pack link — [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) (topology diagram: [§2](./PACK_PROTOCOL.md#2-shape-of-the-thing))
+- Recovering a pack whose lead died, from a phone — [`DEPLOYMENT.md` → the standby door](./DEPLOYMENT.md#the-standby-door--a-packs-failover-path)
 - Verified Herdr socket API — [`HERDR_API.md`](./HERDR_API.md)
 - Ops, versioning & conventions — [`CLAUDE.md`](./CLAUDE.md)
 - Changes — [`CHANGELOG.md`](./CHANGELOG.md)
