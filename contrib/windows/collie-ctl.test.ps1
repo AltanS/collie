@@ -148,6 +148,8 @@ COLLIE_HOST="127.0.0.1"
   Assert-Equal $script:registered.Principal.RunLevel "Limited" "task privilege"
   Assert-Equal $script:registered.Settings.ExecutionTimeLimit ([TimeSpan]::Zero) "task execution limit"
   Assert-Equal $script:registered.Settings.RestartCount 999 "task restart policy"
+  Assert-Contains $script:registered.Action.Execute "conhost.exe" "task launcher is headless"
+  Assert-Contains $script:registered.Action.Argument "--headless" "task action asks for no console"
 
   $env:COLLIE_TASK_RUN_LEVEL = "highest"
   function Test-Administrator { $true }
