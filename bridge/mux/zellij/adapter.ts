@@ -77,6 +77,7 @@ import {
 } from "../types.ts";
 import { resolveZellijBinary, SpawnZellijExec } from "./exec.ts";
 import { toZellijKey, ZELLIJ_UNSENDABLE_KEYS } from "./keys.ts";
+import { zellijBeaconMatcher } from "./markers.ts";
 import {
   closePaneArgs,
   closeTabArgs,
@@ -146,7 +147,10 @@ export const MAX_TYPED_CHARS = 128 * 1024;
  *
  * The three absences are real:
  *
- *  • `agentDetection` / `agentSessionRef` — absent, for the reason in the header.
+ *  • `agentDetection` / `agentSessionRef` — declared `false` (by their omission from the list
+ *    below, which `declareCapabilities` turns into an explicit `false`), for the reason in the header.
+ *    The ONE thing that can lift them is the beacon decorator, which needs the agent's own hooks and
+ *    is not this adapter (M11/03) — this declaration stays `false` under it, unchanged.
  *  • `createSpace` — absent because one adapter instance IS one session; see the header.
  *  • `pushTopologyEvents` — absent because zellij's CLI announces no such thing; watch.ts documents
  *    the search that failed and the bounded census that stands in for it.
@@ -594,9 +598,28 @@ function meaningfulTabName(tab: ZellijTabRecord | undefined, tabCount: number): 
 export const zellijMuxFactory: MuxAdapterFactory = {
   mux: ZELLIJ_MUX,
   create(target: MuxTarget) {
-    const binary = resolveZellijBinary(target.options[ZELLIJ_BINARY_OPTION] ?? "");
-    return new ZellijMux(
-      new ZellijSessionBinding(new SpawnZellijExec(binary, target.timeoutMs || DEFAULT_ZELLIJ_TIMEOUT_MS), target.endpoint),
-    );
+    return new ZellijMux(bindingFor(target));
+  },
+  /**
+   * zellij's half of the beacon join (M11/03) — the ONE thing that can give this adapter sight, and
+   * it is contributed here rather than declared: `agentDetection` stays absent above, because the raw
+   * adapter really cannot answer it. The decorator is what declares it, and only when the agent's own
+   * hooks are installed.
+   */
+  beaconMatcher(target: MuxTarget) {
+    return zellijBeaconMatcher(ZELLIJ_MUX, bindingFor(target));
   },
 };
+
+/**
+ * The session binding for one target.
+ *
+ * The matcher gets its OWN, and that is sound rather than merely cheap: the binding resolves the
+ * configured name, or discovers the single running session and refuses an ambiguous one
+ * (session.ts `chooseSession`) — a deterministic rule, so two bindings built from one target can
+ * never resolve to two different sessions. The cost is one extra `list-sessions`, once.
+ */
+function bindingFor(target: MuxTarget): ZellijSessionBinding {
+  const binary = resolveZellijBinary(target.options[ZELLIJ_BINARY_OPTION] ?? "");
+  return new ZellijSessionBinding(new SpawnZellijExec(binary, target.timeoutMs || DEFAULT_ZELLIJ_TIMEOUT_MS), target.endpoint);
+}

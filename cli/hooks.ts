@@ -116,8 +116,14 @@ export const backupPath = (target: HookTarget): string => `${target.path}.collie
  * profile its own tree, issue #92), and a profile's `settings.json` sits beside its `projects/`. So
  * the set of homes Collie can already READ a journal from is exactly the set it installs hooks into;
  * a profile Collie cannot read is a profile a beacon would not help.
+ *
+ * It asks for the two fields it reads rather than the whole {@link CliContext}, because the BRIDGE
+ * asks the same question — "are these hooks installed", which decides whether the beacon decorator
+ * lifts its capabilities (M11/03, `bridge/beacon-io.ts`) — and the answer must be computed from one
+ * rule. A second implementation over there would drift silently, and a drifted answer is a
+ * capability declared over beacons that will never be written.
  */
-export function claudeSettingsTargets(ctx: CliContext): HookTarget[] {
+export function claudeSettingsTargets(ctx: Pick<CliContext, "home" | "env">): HookTarget[] {
   const dirs = [join(ctx.home, ".claude")];
   for (const root of (ctx.env.COLLIE_TRANSCRIPT_ROOT ?? "").split(",")) {
     const trimmed = root.trim();

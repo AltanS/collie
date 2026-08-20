@@ -18,6 +18,7 @@
 // answered by a harness lookup, and a harness question must never be answered by the mux name — do
 // that and neither axis is pluggable any more.
 
+import type { BeaconMatcher } from "../beacon/decorate.ts";
 import { herdrMuxFactory } from "./herdr/adapter.ts";
 import { tmuxMuxFactory } from "./tmux/adapter.ts";
 import { zellijMuxFactory } from "./zellij/adapter.ts";
@@ -54,6 +55,21 @@ export interface MuxAdapterFactory {
   /** The configured name this factory answers to. It IS the registry key — see {@link buildMuxRegistry}. */
   readonly mux: string;
   create(target: MuxTarget): MuxAdapter;
+  /**
+   * How a beacon's environment markers name one of this adapter's panes (M11/03), or absent when this
+   * multiplexer is never decorated.
+   *
+   * ABSENT IS THE HERDR CASE and it is not an omission: an adapter that already reports the agent and
+   * its session from its own wire has a stronger source of truth than a beacon, and the decorator
+   * refuses to wrap it. So the field's presence is exactly "this adapter is blind and can be taught".
+   *
+   * It takes the TARGET rather than the built adapter, so it stays symmetric with {@link create} and
+   * needs no way to reach inside one. The matcher builds its own transport from the same target,
+   * which is safe because every transport in this tree is stateless configuration (a binary path, a
+   * socket name) and because the one piece of state a matcher resolves — which session/server it is
+   * bound to — is resolved by the same deterministic rule the adapter uses.
+   */
+  beaconMatcher?(target: MuxTarget): BeaconMatcher;
 }
 
 /**

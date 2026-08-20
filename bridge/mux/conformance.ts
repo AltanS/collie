@@ -114,6 +114,14 @@ export interface MuxConformanceWorld {
 export interface MuxConformanceFixture {
   /** Must equal the registered factory's `mux` — checked by the suite, so a copy-paste cannot drift. */
   readonly mux: string;
+  /**
+   * Which BUILD of that adapter this fixture proves, when it is not the plain one — the beacon
+   * decorator's two directions, with the agent's hooks installed and without (M11/03).
+   *
+   * A variant shares its adapter's `mux`, because that is what the adapter reports and what the
+   * registry knows it as. This field exists so a failure names which of them broke.
+   */
+  readonly variant?: string;
   create(): Promise<MuxConformanceWorld>;
 }
 

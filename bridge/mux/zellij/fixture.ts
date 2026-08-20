@@ -42,8 +42,13 @@ import { ZellijSessionBinding } from "./session.ts";
 const GREEN = "[32m";
 const RESET = "[0m";
 
-/** The session the fixture's world runs in. */
-const SESSION = "collie-fixture";
+/**
+ * The session the fixture's world runs in.
+ *
+ * Exported because it is zellij's whole addressing space, and so it is what a beacon's `scope` is
+ * compared against at the join (markers.ts) — the decorated variant seeds its fake beacons with it.
+ */
+export const SESSION = "collie-fixture";
 
 /** zellij's own default name for a pane nobody has named. */
 function defaultPaneTitle(index: number): string {
@@ -442,11 +447,25 @@ function afterDoubleDash(args: readonly string[]): string[] {
 export const zellijConformanceFixture: MuxConformanceFixture = {
   mux: "zellij",
   create(): Promise<MuxConformanceWorld> {
-    const fake = new FakeZellij();
-    // The DEFAULT configuration — no session named, so the binding discovers the single running
-    // one exactly as an operator who set nothing but `COLLIE_MUX=zellij` gets.
-    const adapter = new ZellijMux(new ZellijSessionBinding(fake, ""));
-    return Promise.resolve({
+    return Promise.resolve(zellijWorld(new FakeZellij()).world);
+  },
+};
+
+/**
+ * One world over a caller-supplied fake, and the binding it was built with.
+ *
+ * Split out so the DECORATED variant (../fixtures.ts, M11/03) proves the same world through the same
+ * adapter, with the beacon join added — its matcher must resolve the session through THE SAME
+ * binding the adapter uses, or the two could disagree about which session this collie drives.
+ */
+export function zellijWorld(fake: FakeZellij): ZellijFixtureWorld {
+  // The DEFAULT configuration — no session named, so the binding discovers the single running
+  // one exactly as an operator who set nothing but `COLLIE_MUX=zellij` gets.
+  const session = new ZellijSessionBinding(fake, "");
+  const adapter = new ZellijMux(session);
+  return {
+    session,
+    world: {
       adapter,
       writes: () => fake.writes(),
       reconnect: () => fake.reconnect(),
@@ -459,6 +478,12 @@ export const zellijConformanceFixture: MuxConformanceFixture = {
         fake.shutdown();
         return Promise.resolve();
       },
-    });
-  },
-};
+    },
+  };
+}
+
+/** A zellij world and the session binding behind it. */
+export interface ZellijFixtureWorld {
+  readonly session: ZellijSessionBinding;
+  readonly world: MuxConformanceWorld;
+}
