@@ -1,4 +1,5 @@
 import type { OpsRecord } from "../bridge/pack/ops-store.ts";
+import type { PeerClient, PeerOutcome } from "../bridge/pack/peer-client.ts";
 import type { TrustedMember, TrustStoreData, Warrant } from "../bridge/pack/trust-store.ts";
 import { commitPackChange } from "../bridge/pack/enrollment.ts";
 import { currentWarrant, mintWarrant, warrantExpired, type WarrantPush } from "../bridge/pack/warrant.ts";
@@ -43,7 +44,23 @@ const USAGE = [
 ];
 
 /** What one member's arming attempt came to. Rendered as one row each, at the end. */
-type AnchorOutcome = "armed" | "inactive" | "already";
+type AnchorOutcome =
+  /** Restarted by this run: its listener is rebuilt and the warrant is live there. */
+  | "armed"
+  /** Stored, not armed — no ssh route, or a restart that did not happen. The pack is half-armed. */
+  | "inactive"
+  /** Already armed for this generation, so this run had nothing to do there. */
+  | "already"
+  /**
+   * The warrant is **not** on that machine, so there is nothing an anchor could anchor.
+   *
+   * Its own outcome rather than a flavour of `inactive`, because the two demand opposite handling:
+   * an `inactive` member is one restart away and its warrant is already there, while this one must
+   * not be restarted, must not have an anchor recorded for it, and must fail the run. A restart
+   * here would rebuild a listener around a warrant the machine does not hold — which is how a
+   * `not stored … now anchors the deputy` line came to be printed at all.
+   */
+  | "failed";
 
 interface Row {
   readonly memberId: string;
@@ -95,15 +112,26 @@ export async function cmdPackDeputy(deps: PackAddDeps, args: readonly string[]):
   const minted = await mintOrReuse(deps, data, named.memberId, revoking);
   if (!minted.ok) return minted.code;
 
-  // The local bridge first, and unconditionally: the push below is made by THIS process, but the
-  // running lead is what refreshes the warrant on every sweep thereafter (§18.4) and what answers
-  // for it. A lead that never restarted would keep issuing the previous generation.
+  // ── DISTRIBUTE, THEN RESTART — the order is load-bearing ───────────────────
+  // It is `pack rotate`'s order and it was `pack deputy`'s bug. Restarting first boots a lead whose
+  // sweep immediately sees every peer behind on the warrant and fires its OWN pushes, signed with
+  // the same key as this verb's, into a route that advances a per-member replay floor
+  // (`MEMBERSHIP_PATHS`). The two collide and whichever lands second is refused. Pushed FIRST, the
+  // still-running old process holds the PREVIOUS warrant — which no peer is behind on — so
+  // `warrantPushNeeded` is false for it and it pushes nothing at all. The window closes rather than
+  // narrowing. The restart still happens, unconditionally, because the running lead is what
+  // refreshes the warrant on every sweep thereafter (§18.4) and what answers for it.
+  const rows = await pushToPeers(deps, data, minted.warrant);
   await restartLocally(deps, minted.reused ? "the re-synced warrant" : "the new warrant");
 
-  const rows = await pushToPeers(deps, data, minted.warrant);
   const anchorCode = await armPeers(deps, data, minted.warrant, rows);
   report(deps, data, minted.warrant, rows);
-  return anchorCode;
+  // A member whose store this verb could not confirm fails the run, even when the restarts it DID
+  // reach all succeeded: the operator asked for an armed pack and did not get one. The consent
+  // codes win over it — "you said no" and "nobody was there to ask" are answers about this run,
+  // not about a member, and overwriting them with a generic failure would lose which happened.
+  if (anchorCode !== EXIT.OK) return anchorCode;
+  return [...rows.values()].some((r) => !r.stored) ? EXIT.FAIL : EXIT.OK;
 }
 
 /**
@@ -274,30 +302,80 @@ async function mintOrReuse(
 // ── Phase 1 — stored (over the pack link) ────────────────────────────────────
 
 /**
- * Push the warrant to every enrolled peer (RFC §5, phase 1).
+ * Push the warrant to every enrolled peer, and **confirm** that it landed (RFC §5, phase 1).
  *
- * Concurrent, one budget for the sweep — and a peer that is offline right now is **not** a failure
- * of this verb: the lead's own sweep re-pushes on any poll where that member reports a generation
- * behind (§18.4's re-push rule), so the warrant arrives on its own. What the operator is told is
- * simply which machines have it *now*.
+ * ── WHY A PUSH IS RETRIED ONCE, AND WHY THAT IS NOT PAPERING OVER ANYTHING ───
+ * `POST /pack/v1/warrant` is in `MEMBERSHIP_PATHS` (`bridge/pack/router.ts`), so **every accepted
+ * push advances this lead's persisted replay floor on that peer** (`recordSignedRequest`), and
+ * §8.6's rule refuses any later signature stamped at or before it. Two processes on this machine
+ * sign warrant pushes with the same key — the running bridge's sweep (`lead.ts` → `distributeWarrant`)
+ * and this verb — so their stamps can collide, and the one that lands second is refused as a replay
+ * of a stamp the peer has already burned. That is a **stamp** problem, not a permission one, and
+ * `signing.ts` names the remedy in its own words: *"refusing the second costs a retry"*. So the retry
+ * carries a fresh stamp, and it costs one small body.
+ *
+ * ── AND WHY IT STILL ASKS ────────────────────────────────────────────────────
+ * A retry closes the common race, not the general case. The authority on whether a peer holds the
+ * warrant is **the peer**, so a push this verb could not confirm is followed by one `hello`, whose
+ * `warrantGeneration` (§18.7) is the same field the lead's own sweep decides re-pushes from. Three
+ * outcomes, and the operator is told which one it was rather than a word this side guessed:
+ *
+ *   • it reports this generation or newer — **stored**, and by whom is immaterial: the sweep may
+ *     simply have got there first, which is a race won, not a failure;
+ *   • it answers and reports less — it is **there and did not take it**. Reachable, refused;
+ *   • it does not answer — it is **not there**. Unreachable, and the sweep will deliver on its next
+ *     successful dial (§18.4's re-push rule).
+ *
+ * Nothing downstream may claim an anchor for a member this function did not mark `stored`.
  */
 async function pushToPeers(deps: PackAddDeps, data: TrustStoreData, warrant: Warrant): Promise<Map<string, Row>> {
   const rows = new Map<string, Row>();
   const enrolled = data.peers.filter((p) => p.status === "enrolled");
   if (enrolled.length === 0) return rows;
   const client = clientFor(deps, data, data.pack?.secret ?? "");
+  const payload = payloadFor(data, warrant);
   await Promise.all(
     enrolled.map(async (member) => {
-      const outcome = await client.warrant(linkOf(member), payloadFor(data, warrant));
-      rows.set(member.memberId, {
-        memberId: member.memberId,
-        stored: outcome.ok,
-        anchor: "inactive",
-        detail: outcome.ok ? "warrant stored" : `not stored — ${failureLine(outcome)}`,
-      });
+      const link = linkOf(member);
+      const first = await client.warrant(link, payload);
+      // The retry rides a new timestamp because `PeerClient` stamps every dial from its own clock —
+      // there is no stamp to reuse and nothing to reset.
+      const outcome = first.ok ? first : await client.warrant(link, payload);
+      if (outcome.ok) {
+        rows.set(member.memberId, { memberId: member.memberId, stored: true, anchor: "inactive", detail: "warrant stored" });
+        return;
+      }
+      rows.set(member.memberId, await confirmStored(client, member, warrant, outcome));
     }),
   );
   return rows;
+}
+
+/**
+ * Ask the peer itself whether it holds this generation, after a push this verb could not land.
+ *
+ * The refusal that came back is deliberately **not** the sentence printed here. `PeerClient` maps a
+ * `401` onto the `unreachable` state, correctly — §10.2's table has three states and the phone's
+ * answer is the same for an auth failure as for a dead host — but "unreachable" is then the wrong
+ * WORD for a machine that answered, and printing it produced the contradiction this fixed
+ * (`not stored — unreachable — … refused by the peer (unauthorized)` about a peer that was up).
+ * Rather than sniff the reason string for which kind of failure it was, this asks a question whose
+ * answer settles it.
+ */
+async function confirmStored(
+  client: PeerClient,
+  member: TrustedMember,
+  warrant: Warrant,
+  refusal: PeerOutcome<unknown>,
+): Promise<Row> {
+  const row = (stored: boolean, detail: string): Row => ({ memberId: member.memberId, stored, anchor: "inactive", detail });
+  const hello = await client.hello(linkOf(member));
+  if (!hello.ok) return row(false, `NOT STORED — that machine is not answering: ${failureLine(hello)}`);
+  if ((hello.value.warrantGeneration ?? 0) >= warrant.generation) {
+    return row(true, "warrant stored (this lead's own sweep delivered it first)");
+  }
+  const why = refusal.ok ? "" : ` (${refusal.reason})`;
+  return row(false, `NOT STORED — that machine is up and did not take the warrant${why}`);
 }
 
 /**
@@ -336,6 +414,12 @@ async function armPeers(
 ): Promise<number> {
   const targets: Target[] = [];
   for (const member of data.peers.filter((p) => p.status === "enrolled")) {
+    // PHASE 2 IS GATED ON PHASE 1, per member. A machine that does not hold the warrant has nothing
+    // for a restart to arm, so it is not probed, not restarted, and no anchor is recorded for it.
+    if (rows.get(member.memberId)?.stored !== true) {
+      mark(rows, member.memberId, "failed", "not restarted — it does not hold the warrant");
+      continue;
+    }
     const record = await deps.ops.get(member.memberId);
     if (record === null || record.sshHost === "") {
       // Reported, never silently skipped (RFC §5): this is the difference between a pack that is
@@ -510,6 +594,15 @@ function report(deps: PackAddDeps, data: TrustStoreData, warrant: Warrant, rows:
       // RFC §5's exact shape, so this line and `pack status`'s are the same words.
       deps.io.out(`  ${member.memberId}: warrant stored, anchor INACTIVE — restart ${member.memberId}`);
       deps.io.out(`             (${row.detail})`);
+      continue;
+    }
+    // An unstored member's row NEVER mentions an anchor, in any form. The composite that made this
+    // rule necessary read `not stored — … , restarted — its listener now anchors the deputy`, which
+    // is two contradictory claims about one machine in one line; the arming phase no longer produces
+    // the second half, and this prints only the first.
+    if (!row.stored) {
+      deps.io.out(`  ${member.memberId}: ${row.detail}`);
+      deps.io.out(`             Nothing was restarted there and no anchor was recorded for it.`);
       continue;
     }
     deps.io.out(`  ${member.memberId}: ${row.detail}`);

@@ -91,8 +91,16 @@ function withWarrant(data: TrustStoreData, deputy: string | null, now = T0): Tru
 interface HarnessOptions {
   store?: TrustStoreData | null;
   ops?: SeededOps;
-  /** Members whose warrant push fails. */
+  /** Members whose warrant push never reaches the far side at all — a transport throw. */
   refuse?: readonly string[];
+  /**
+   * How many warrant pushes each member answers with a bare `401` before accepting one.
+   *
+   * A `401` is what §8.6's replay floor produces when two processes on the lead sign a push with the
+   * same key and one stamp lands second (`bridge/pack/router.ts` → `MEMBERSHIP_PATHS`), so it is a
+   * REACHABLE machine refusing — the distinction the verb must not blur.
+   */
+  unauthorized?: Record<string, number>;
   /** Per-host, per-leg canned results. */
   answers?: Record<string, Partial<Record<Leg, Partial<RemoteResult>>>>;
   confirm?: boolean | null;
@@ -136,6 +144,8 @@ function harness(opts: HarnessOptions = {}) {
   const audit: AuditEntry[] = [];
   const confirms: string[] = [];
   const pushed: PushedWarrant[] = [];
+  /** How many times each member's warrant route was dialled — the retry is counted here. */
+  const warrantPushes = new Map<string, number>();
   const restarts: number[] = [];
   const ops = fakeOps(opts.ops ?? { nas: opsRecord("nas.example"), attic: opsRecord("attic.example") });
   const now = opts.now ?? T0;
@@ -155,12 +165,20 @@ function harness(opts: HarnessOptions = {}) {
     fetch: async (url, init) => {
       const who = ["nas", "attic"].find((id) => url.includes(addressOf(initial, id))) ?? "nas";
       if (url.includes("/warrant")) {
+        warrantPushes.set(who, (warrantPushes.get(who) ?? 0) + 1);
         // SAFETY: this verb serialises exactly one shape onto this route — `WarrantPush`, through
         // `JSON.stringify` a few lines earlier in `pushToPeers`. The suite is reading back the bytes
         // it just watched the verb write, not foreign input, so there is nothing here to re-validate.
         const body = JSON.parse(String(init.body)) as WarrantPush;
         pushed.push({ member: who, warrant: body.warrant, certPem: body.deputyCertPem ?? null });
         if (opts.refuse?.includes(who) === true) throw new Error("connection refused");
+        if ((warrantPushes.get(who) ?? 0) <= (opts.unauthorized?.[who] ?? 0)) {
+          // The bare 401 admission emits: no code, no cause, no version banner (§8.1).
+          return new Response(JSON.stringify({ error: "unauthorized" }), {
+            status: 401,
+            headers: { "content-type": "application/json" },
+          });
+        }
         return jsonReply({ ok: true }, who);
       }
       const reported = opts.hello?.[who];
@@ -208,6 +226,7 @@ function harness(opts: HarnessOptions = {}) {
     ops,
     audit,
     restarts,
+    warrantPushes,
     data: () => (contents === null ? null : contents),
   };
 }
@@ -405,10 +424,79 @@ describe("a peer this operator cannot ssh into is REPORTED", () => {
     expect(legs(h).includes("attic.example:restart")).toBe(false);
   });
 
-  test("a peer that did not take the warrant is reported as NOT stored, with the far side's reason", async () => {
-    const h = harness({ refuse: ["attic"] });
+  test("a peer that did not take the warrant fails the run rather than passing it quietly", async () => {
+    const h = harness({ refuse: ["attic"], hello: { nas: 1, attic: false } });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("attic: NOT STORED");
+  });
+});
+
+// ── A store that was not confirmed is never an anchor (the live-drill regression) ─
+
+describe("a push the verb cannot confirm never becomes a recorded anchor", () => {
+  test("a 401 is retried once with a fresh stamp — the replay floor's own remedy", async () => {
+    const h = harness({ unauthorized: { nas: 1 } });
     expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
-    expect(text(h.io)).toContain("attic: not stored");
+    expect(h.warrantPushes.get("nas")).toBe(2);
+    expect(h.warrantPushes.get("attic")).toBe(1);
+    expect(text(h.io)).toContain("nas: warrant stored, restarted");
+  });
+
+  test("the drill's exact sequence: 401 that never clears → member failed, NOT restarted, no ops write, non-zero exit", async () => {
+    // The peer answers every push with 401 and reports the generation it actually holds: none.
+    const h = harness({ unauthorized: { attic: 99 }, hello: { nas: 1, attic: null } });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.FAIL);
+    // (a) no restart was attempted there…
+    expect(legs(h).some((l) => l.startsWith("attic"))).toBe(false);
+    // …and (b) no anchor was recorded for it.
+    expect(parsePackOps(h.ops.contents()!)?.members.attic?.anchoredGeneration ?? null).toBeNull();
+    // The member that DID store it is unaffected — one failure is not a cancelled run.
+    expect(parsePackOps(h.ops.contents()!)?.members.nas?.anchoredGeneration).toBe(1);
+  });
+
+  test("an unstored member's row never mentions an anchor, in any form", async () => {
+    const h = harness({ unauthorized: { attic: 99 }, hello: { nas: 1, attic: null } });
+    await cmdPackDeputy(h.deps, ["nas"]);
+    const said = text(h.io);
+    const atticLines = said.split("\n").filter((l) => l.includes("attic:") || l.includes("no anchor"));
+    expect(atticLines.join(" ")).not.toContain("anchors the deputy");
+    expect(said).toContain("Nothing was restarted there and no anchor was recorded for it.");
+  });
+
+  test("a peer that ANSWERS and did not take it is called up-and-refusing, never unreachable", async () => {
+    const h = harness({ unauthorized: { attic: 99 }, hello: { nas: 1, attic: null } });
+    await cmdPackDeputy(h.deps, ["nas"]);
+    expect(text(h.io)).toContain("attic: NOT STORED — that machine is up and did not take the warrant");
+    expect(text(h.io)).not.toContain("attic: NOT STORED — that machine is not answering");
+  });
+
+  test("a peer that answers NOTHING is called unreachable — the two words stay distinct", async () => {
+    const h = harness({ refuse: ["attic"], hello: { nas: 1, attic: false } });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("attic: NOT STORED — that machine is not answering");
+  });
+
+  test("the sweep winning the race is not a failure — the peer's own report is the confirmation", async () => {
+    // Every push 401s (the stamp the bridge's sweep already burned), but the peer reports the
+    // generation, so it HOLDS the warrant and the run is honest to say so.
+    const h = harness({ unauthorized: { attic: 99 }, hello: { nas: 1, attic: 1 } });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("attic: warrant stored (this lead's own sweep delivered it first)");
+    expect(legs(h)).toContain("attic.example:restart");
+    expect(parsePackOps(h.ops.contents()!)?.members.attic?.anchoredGeneration).toBe(1);
+  });
+
+  test("the local restart happens AFTER the push, so the running lead has nothing newer to race with", async () => {
+    const h = harness();
+    await cmdPackDeputy(h.deps, ["nas"]);
+    // Both pushes are on the wire before the line announcing the local restart is printed.
+    expect(h.pushed).toHaveLength(2);
+    const said = h.io.stdout;
+    const restartLine = said.findIndex((l) => l.includes("restarting the bridge"));
+    const planLine = said.findIndex((l) => l.includes("will restart collie at"));
+    expect(restartLine).toBeGreaterThan(-1);
+    // …and before the ssh phase, which is what the plan lines mark.
+    expect(planLine).toBeGreaterThan(restartLine);
   });
 });
 
@@ -528,6 +616,41 @@ describe("pack status on the lead", () => {
     const h = harness({ store: withWarrant(withWarrant(twoPeers(), "nas"), "attic"), hello: { nas: 1, attic: 2 } });
     await cmdPackStatus(h.deps, []);
     expect(text(h.io)).toContain("warrant generation 1 — BEHIND this lead's 2");
+  });
+
+  test("an ops record that outruns the peer's own report is rendered STALE, never as anchored", async () => {
+    const h = harness({
+      store: withWarrant(twoPeers(), "nas"),
+      // The record says this operator armed generation 1 there; the machine says it holds nothing.
+      ops: { nas: opsRecord("nas.example", { anchoredGeneration: 1, anchoredAt: T0 }) },
+      hello: { nas: null, attic: null },
+    });
+    await cmdPackStatus(h.deps, []);
+    const said = text(h.io);
+    expect(said).toContain("anchor  RECORD IS STALE — this machine armed generation 1 there, but it reports none at all");
+    expect(said).not.toContain("stored and anchored");
+  });
+
+  test("a member BEHIND the current generation cannot have anchored it, and the record is called out", async () => {
+    const h = harness({
+      store: withWarrant(withWarrant(twoPeers(), "nas"), "attic"),
+      ops: { nas: opsRecord("nas.example", { anchoredGeneration: 2, anchoredAt: T0 }) },
+      hello: { nas: 1, attic: 2 },
+    });
+    await cmdPackStatus(h.deps, []);
+    const said = text(h.io);
+    expect(said).toContain("warrant generation 1 — BEHIND this lead's 2");
+    expect(said).toContain("RECORD IS STALE — this machine armed generation 2 there, but it reports generation 1");
+  });
+
+  test("a record level with the peer's report is not stale — the honest case says nothing extra", async () => {
+    const h = harness({
+      store: withWarrant(twoPeers(), "nas"),
+      ops: { nas: opsRecord("nas.example", { anchoredGeneration: 1, anchoredAt: T0 }) },
+      hello: { nas: 1, attic: 1 },
+    });
+    await cmdPackStatus(h.deps, []);
+    expect(text(h.io)).not.toContain("RECORD IS STALE");
   });
 
   test("a member that reports no generation is a capability gap, stated as one", async () => {
