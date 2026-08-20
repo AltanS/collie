@@ -40,7 +40,7 @@ import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
 import type { PackHandler, PackSurface } from "./pack/router.ts";
 import type { PackTlsOptions } from "./pack/transport.ts";
 import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
-import { toPaneWire } from "./types.ts";
+import { MUX_LOGO_PATH, toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -202,7 +202,7 @@ interface RouteCaller {
  * operator (Herdr ships one, about how its scrollback depth is known), and shipping it would put
  * developer prose on the wire for every page load of the reference adapter.
  */
-export function muxConfigBody(mux: { readonly mux: string; readonly capabilities: MuxCapabilityDeclaration }): MuxConfig {
+export function muxConfigBody(mux: MuxPublication): MuxConfig {
   const decl = mux.capabilities;
   const notes: Partial<Record<MuxCapability, string>> = {};
   for (const cap of MUX_CAPABILITIES) {
@@ -210,12 +210,64 @@ export function muxConfigBody(mux: { readonly mux: string; readonly capabilities
     const note = decl.notes[cap];
     if (note !== undefined) notes[cap] = note;
   }
-  return {
+  const wire: MuxConfig = {
     name: mux.mux,
     capabilities: { ...decl.supports },
     unsupportedKeys: [...decl.unsupportedKeys],
     notes,
   };
+  // Assigned only when the adapter actually has a mark — the key's ABSENCE is what tells the phone
+  // to render its text alone, so a bridge that published `logoUrl` unconditionally would point every
+  // header at a 404.
+  if (mux.logo !== undefined) wire.logoUrl = MUX_LOGO_PATH;
+  return wire;
+}
+
+/**
+ * What publishing an adapter needs off it — its name, its declaration, and its mark.
+ *
+ * The three FIELDS rather than the {@link MuxAdapter} itself, so this stays a pure shape `bun test`
+ * can build by hand, and so it is structurally obvious that publishing a config cannot reach into a
+ * multiplexer.
+ */
+interface MuxPublication {
+  readonly mux: string;
+  readonly capabilities: MuxCapabilityDeclaration;
+  readonly logo?: string;
+}
+
+/**
+ * `GET /api/mux/logo.svg` — the active adapter's mark, as the adapter wrote it.
+ *
+ * Pure + exported: the handler lives inside `Bun.serve`, which `bun test` cannot stand up, so the
+ * headers are asserted against this instead.
+ *
+ * The two headers this adds beyond {@link secure}'s are the SVG-serving hardening, and they are not
+ * decoration. An SVG is a document, not a picture: served same-origin it could in principle carry
+ * script, so `Content-Security-Policy: sandbox` drops the whole response into an opaque origin with
+ * scripting off. `nosniff` (already on every response) then keeps a browser from re-deciding what
+ * these bytes are. Collie's own three logos contain no script — bridge/mux/logo.test.ts pins that
+ * for each of them — but the bytes come from an ADAPTER, and the next adapter's author is not
+ * necessarily in this repo.
+ *
+ * Caching follows the dist rule (see {@link cacheControlFor}): the path is not content-addressed and
+ * its bytes change with a release, so `no-cache` + a strong ETag means a warm client spends a 304
+ * and no body, while a rebuilt bridge is picked up on the next load rather than at the end of some
+ * max-age.
+ */
+export function muxLogoResponse(svg: string, ifNoneMatch: string | null): Response {
+  const etag = computeEtag(svg);
+  const headers = {
+    "content-type": "image/svg+xml; charset=utf-8",
+    "cache-control": "no-cache",
+    "content-security-policy": "sandbox",
+    etag,
+  };
+  if (notModified(ifNoneMatch, etag)) {
+    // RFC 7232 §4.1: a 304 echoes the validators and carries no body.
+    return secure(new Response(null, { status: 304, headers }));
+  }
+  return secure(new Response(svg, { headers }));
 }
 
 export function bridgeConfigBody(opts: {
@@ -228,7 +280,7 @@ export function bridgeConfigBody(opts: {
    * caller that has no session registry) stay about the pack and nothing else; the real handler
    * always passes it.
    */
-  mux?: { readonly mux: string; readonly capabilities: MuxCapabilityDeclaration };
+  mux?: MuxPublication;
   /**
    * The operator's own palette rows. Omitted entirely when there are none, so an operator who never
    * wrote a `commands.toml` ships the same payload as before — the same reasoning `mode` follows.
@@ -677,6 +729,23 @@ export function startServer(opts: {
           }),
           req.headers.get("accept-encoding"),
         );
+      }
+      if (pathname === MUX_LOGO_PATH && req.method === "GET") {
+        // Read-level, exactly like the `/api/config` block that publishes its URL — an image the
+        // header shows is part of the same answer, and gating it harder than the config that names
+        // it would only ever produce a broken image beside a rendered name. Both device gates stay
+        // where they are (writes), so a read-only device still sees the mark.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        // The PRIMARY session's adapter, for the reason `/api/config` gives: one collie drives one
+        // multiplexer, so which runtime answers is not a choice.
+        const logo = registry.get()?.herdr.logo;
+        // 404 rather than an empty 200, and rather than a stand-in: an adapter with no mark
+        // publishes no `logoUrl`, so nothing in a current client can even ask this. Reaching here
+        // means a stale page holding a URL this bridge no longer serves — and "there is no picture"
+        // is the true answer to that.
+        if (logo === undefined) return text("this multiplexer has no logo", 404);
+        return muxLogoResponse(logo, req.headers.get("if-none-match"));
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {
         // Read-level: registering for push isn't terminal-driving, so a read-only device may still

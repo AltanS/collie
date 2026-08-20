@@ -3,7 +3,7 @@ import { Settings } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { isConnecting } from "@/lib/connection";
-import { useMuxName } from "@/lib/mux-capability";
+import { useMuxLogoUrl, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
@@ -71,6 +71,9 @@ export function AppHeader({
   // the line still reads "on <the lead's mux>" — the name of the thing the page you are running is
   // built on, which is what a support question needs.
   const mux = useMuxName();
+  // The mark that goes with that name, served by the bridge from the ADAPTER's own bytes. Empty
+  // whenever no logo was published, and empty renders nothing — see useMuxLogoUrl.
+  const muxLogo = useMuxLogoUrl();
   return (
     // A column, not a row: the sticky bar owns the safe-area inset and stacks the (usually absent)
     // prerelease strip above the header row proper, which keeps its original padding. On a stable
@@ -93,7 +96,27 @@ export function AppHeader({
                 bridge has actually named one: an old bridge, a cached page or a read still in
                 flight all leave the header exactly as it was, never a "on unknown" placeholder. */}
             {wordmark && mux !== "" && (
-              <span className="-ml-1 min-w-0 truncate text-xs text-muted-foreground">on {mux}</span>
+              <span className="-ml-1 min-w-0 truncate text-xs text-muted-foreground">
+                on{" "}
+                {/* The multiplexer's own mark, between "on" and its name. `alt=""` and nothing else:
+                    the name is right there in the same sentence, so a screen reader announcing the
+                    picture too would read the multiplexer twice — this is decoration OF that word.
+                    An `<img>` and never inline SVG: these bytes come from an adapter, and the one
+                    way to be certain adapter-supplied markup can never become document markup is to
+                    never put it in the document (the mirror's XSS boundary, same rule). The bridge
+                    serves it sandboxed. Sized in `em` so it tracks this caption's own line rather
+                    than a pixel guess, and inline so the line stays ONE text run — the sentence is
+                    still "on <name>" to a screen reader and to a text query. Nothing renders when
+                    the bridge published no URL. */}
+                {muxLogo !== "" && (
+                  <img
+                    src={muxLogo}
+                    alt=""
+                    className="mr-1 inline-block size-[1.15em] align-[-0.2em]"
+                  />
+                )}
+                {mux}
+              </span>
             )}
             {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
                 pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight. */}

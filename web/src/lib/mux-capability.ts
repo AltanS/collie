@@ -132,6 +132,19 @@ export function useMuxName(): string {
   return useMuxConfig()?.name ?? "";
 }
 
+/**
+ * Where this multiplexer's mark is served, for the header's `<img>` — or `""` when there is none.
+ *
+ * The SAME kind of read as {@link useMuxName} and bound by the same rule: the URL is PRINTED into a
+ * `src`, never chosen. Empty whenever the bridge did not publish one — an older bridge, an adapter
+ * with no mark, a cached page, a read still in flight — and an empty answer means render no image
+ * at all. There is no house fallback mark, deliberately: a generic glyph beside a name would say
+ * "this is what that multiplexer looks like", which would be false.
+ */
+export function useMuxLogoUrl(): string {
+  return useMuxConfig()?.logoUrl ?? "";
+}
+
 /** The neutral key spellings this multiplexer refuses. Empty until the bridge has answered. */
 export function useMuxUnsupportedKeys(): readonly string[] {
   return useMuxConfig()?.unsupportedKeys ?? NO_KEYS;

@@ -450,6 +450,16 @@ export interface MuxConfig {
   unsupportedKeys: string[];
   /** The adapter's own words for the capabilities it lacks — the text an explanation renders. */
   notes: Partial<Record<MuxCapability, string>>;
+  /**
+   * Where the bridge serves this multiplexer's mark, for an `<img src>`. Absent on a bridge whose
+   * adapter has no mark (and on every bridge older than the field), and absent means NO IMAGE — the
+   * header renders its text alone rather than standing something in.
+   *
+   * The path arrives as DATA and is never spelled here: a mark chosen in the frontend would be a
+   * lookup keyed by the multiplexer's name, which is the one thing this app must not do
+   * (lib/mux-capability.ts, scripts/check-mux-names.sh).
+   */
+  logoUrl?: string;
 }
 
 export interface BridgeConfig {
