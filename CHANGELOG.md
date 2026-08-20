@@ -6,6 +6,16 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.11] - 2026-08-20
+
+### Added
+
+- **Agent beacons (M11)** — on tmux/zellij, agents identify themselves through their own hooks; a beacon is a hint, never a control channel ([ADR 0024](./.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md), 6585658)
+- `collie beacon emit` + `collie hooks install|uninstall|status claude` — the Claude emitter (exit 0 unconditionally, silent, env-gated) and the guarded settings installer: marker merge, symlink refusal, one-time backup, self-heal (af4d5ea)
+- `withAgentBeacons` — a decorated tmux/zellij pane carries its agent's name, status (`waiting` surfaces as blocked) and session ref; capabilities lift when hooks are installed, scope checks keep a second server's `%7` out (1e17dd3)
+- Pane history on tmux/zellij rides the beacon's session ref through the unmodified journal; `journal-probe.ts` gains a read-only beacon section (4ba5f54)
+- `collie doctor` gains `beacon-hooks-claude` + `beacons` (warn, never error), and a pane whose foreground command looks like a harness carries one hint sentence — never an identity (7465efa)
+
 ## [1.0.0-beta.10] - 2026-08-20
 
 ### Added
