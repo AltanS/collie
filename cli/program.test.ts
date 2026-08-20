@@ -58,6 +58,11 @@ const DIAGNOSTIC_VERBS = ["doctor"];
 // diagnostics — they answer "where does the binary live", not "is the service healthy".
 const LINK_VERBS = ["link", "unlink"];
 
+// The agent-beacon verbs (M11/02). Declared right after the PATH-name pair because `hooks install`
+// writes that published name into the agent's own settings.json (ADR 0021), and `beacon` is the
+// internal emitter the entry it writes calls.
+const BEACON_VERBS = ["hooks", "beacon"];
+
 // The device-pairing verbs. Declared between the diagnostics and the pack, because that is where
 // they sit in the table, and grouped separately for the same reason as the two above.
 const PAIRING_VERBS = ["pair", "devices"];
@@ -79,6 +84,7 @@ describe("the verb table", () => {
       ...SHELL_VERBS,
       ...DIAGNOSTIC_VERBS,
       ...LINK_VERBS,
+      ...BEACON_VERBS,
       ...PAIRING_VERBS,
       ...PUSH_VERBS,
       ...PACK_VERBS,
@@ -90,6 +96,8 @@ describe("the verb table", () => {
     expect(COMMANDS.filter((c) => c.internal === true).map((c) => c.name)).toEqual([
       "_apply-update",
       "_exec-bridge",
+      // The emitter is spelled by a hook, never typed — see cli/beacon.ts.
+      "beacon",
     ]);
   });
 
@@ -220,6 +228,8 @@ describe("the subcommand trees", () => {
 
   test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
     expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual([
+      "hooks",
+      "beacon",
       "devices",
       "push",
       "pack",
@@ -319,6 +329,11 @@ describe("exit codes", () => {
       // Every `push` sub-verb resolves the real state dir, and `push test` would send to this host's
       // own subscribed phones. cli/push.test.ts drives all three against a throwaway dir.
       ...PUSH_VERBS,
+      // `hooks` edits the developer's own ~/.claude/settings.json, and `hooks status` resolves the
+      // same real paths before it reads them. cli/hooks.test.ts drives all three against fakes.
+      // `beacon` is world-touching in the other direction: it would write a beacon into this host's
+      // real state dir. cli/beacon.test.ts drives it against fakes.
+      ...BEACON_VERBS,
     ];
     const readOnly = ["version", "help"];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();
