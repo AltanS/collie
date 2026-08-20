@@ -161,6 +161,28 @@ export interface MuxPane extends MuxIdentity {
    * signal, and it means something only with `gridScrollback`.
    */
   readonly readableLines?: number;
+  /**
+   * The command name the multiplexer says is in this pane's foreground right now — tmux's
+   * `pane_current_command`, zellij's `terminal_command`. Absent when the multiplexer reports none.
+   *
+   * It is the RAW FACT the adapter already holds, reported as a raw fact. Exactly one module in the
+   * tree reads it (`bridge/beacon/hint.ts`), where it may become a sentence for the operator and
+   * nothing else: it never reaches {@link agent}, {@link status}, the session ref or the triage sort.
+   *
+   * **IT IS NOT IDENTITY, AND NOTHING MAY TREAT IT AS ONE.** {@link MuxPane.agent} carries the whole
+   * reason: a wrong agent name picks a wrong harness grammar AND a wrong journal adapter, so the
+   * port's answer to "which agent runs here" is `agentDetection` or `"shell"` — never a process
+   * name, however much this one looks like an identity.
+   */
+  readonly foregroundCommand?: string;
+  /**
+   * A finished English sentence for the operator about this pane, composed server-side.
+   *
+   * Presentation, and only presentation: it is text the phone renders and does not interpret. It
+   * names no harness and no multiplexer, arms nothing, and its presence or absence changes no
+   * capability, no grammar and no sort. See the module that composes it, beside the decorator.
+   */
+  readonly hint?: string;
 }
 
 /** One space — a project-scoped container of tabs. Collie's word; the port never uses another. */

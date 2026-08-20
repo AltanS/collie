@@ -105,6 +105,9 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // meaningful is the journal adapter's call; absent simply means "no history for this pane".
   if (pane.agentSession) view.agentSession = pane.agentSession;
   if (pane.readableLines !== undefined) view.readableLines = pane.readableLines;
+  // A finished sentence for the operator, composed server-side and carried through untouched. It is
+  // presentation: nothing in this engine reads it, and it never reaches `agent` or `status` above.
+  if (pane.hint) view.hint = pane.hint;
   return view;
 }
 

@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { HostChip } from "@/components/host-chip";
+import { PaneHint } from "@/components/pane-hint";
 import { timeAgoShort } from "@/lib/format";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
 import { STATUS_LABEL } from "@/lib/types";
@@ -171,6 +172,11 @@ export function AgentCard({
               {inTab && stamp !== undefined && <Age at={stamp} />}
             </div>
           )}
+
+          {/* The bridge's own sentence about this pane, when it sent one — text, never a branch
+              (components/pane-hint.tsx). It changes nothing about the row: a hinted pane is still a
+              shell, still sorts where an unknown status sorts, and still opens the same view. */}
+          <PaneHint hint={agent.hint} />
         </div>
 
         {isShell ? (

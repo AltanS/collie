@@ -74,7 +74,17 @@ describe("parsePaneList", () => {
       tabPosition: 1,
       tabName: "probetab",
       contentRows: 23,
+      // The probe's own value: zellij reports `null` for a pane it did not start with an explicit
+      // command, which reaches the port as "no foreground command" rather than as a name.
+      command: "",
     });
+  });
+
+  test("a terminal_command is carried raw — a fact, never an identity", () => {
+    const listing = JSON.stringify([
+      { id: 3, is_plugin: false, title: "Pane #4", exited: false, tab_id: 0, terminal_command: "/usr/bin/claude" },
+    ]);
+    expect(parsePaneList(listing)?.at(0)?.command).toBe("/usr/bin/claude");
   });
 
   test("anything that is not a listing is null, not an empty herd", () => {

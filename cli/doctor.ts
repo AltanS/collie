@@ -1,5 +1,17 @@
 import { join } from "node:path";
 
+import { BEACON_HOOKS } from "./beacon.ts";
+import {
+  claudeSettingsTargets,
+  hookBinaryOf,
+  HOOK_MARKER_VERSION,
+  markedCommandsByEvent,
+  markerVersionOf,
+  resolveHookCommand,
+  type HookTarget,
+} from "./hooks.ts";
+import { beaconReader } from "../bridge/beacon-io.ts";
+import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
 import { resolveBridgeHost } from "../bridge/config.ts";
 import { bindIsWildcard } from "../bridge/pack/config.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
@@ -67,6 +79,12 @@ export interface DoctorDeps {
   readonly store: TrustStore;
   /** The injected transport — the `hello` probe and one `snapshot` READ per member, and no other call. */
   readonly fetch: PackFetch;
+  /**
+   * The agent-beacon sweep's two seams — a directory listing and a pid probe, both READS
+   * (`bridge/beacon/reader.ts`). There is no writer of a beacon anywhere in the bridge: an agent's
+   * own hook writes them, so this is a diagnostic reading somebody else's file.
+   */
+  readonly beacons: BeaconSweepDeps;
   readonly now: () => number;
   /**
    * The terminal renderer, when this run landed on one (`cli/render.ts`). Absent — which is what
@@ -113,6 +131,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     [...reaches].map(([id, answered]) => [id, answered.hello]),
   );
 
+  // The emitter's two findings ride together: the second one's wording depends on whether an install
+  // was found, and reading the settings files twice would be two answers to one question.
+  const hookEntries = installedEntries(deps);
   const local: Finding[] = [
     webDist(deps),
     pathLink(deps),
@@ -121,6 +142,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     bindWildcard(deps),
     acl(deps),
     frontDoor(deps, mode),
+    beaconHooks(deps, hookEntries),
+    await beacons(deps, hookEntries.length > 0),
     restartPending(),
     clock(inPack, probes),
   ];
@@ -525,6 +548,140 @@ function clock(inPack: boolean, probes: Map<string, PeerOutcome<HelloResult>>): 
   return ok("clock", `${detail} — well inside §8.6's ±5m window`);
 }
 
+// ── The agent's own hooks, and the beacons they write (M11/05) ───────────────
+//
+// BOTH ARE READS, and both read the SAME CODE the verbs do: `claudeSettingsTargets` finds the files,
+// `markedCommandsByEvent` says which entries are ours, `markerVersionOf` dates them, `hookBinaryOf`
+// says what one runs and `resolveHookCommand` says what an install would write. A second probe here
+// would be a second definition of "installed", and the drift would show up as a capability declared
+// over beacons nobody writes.
+//
+// A MISSING INSTALL IS A `warn` AND NEVER AN `error`. A Herdr operator will never install one — their
+// multiplexer names the agent from its own wire — so an `error` would exit this verb non-zero on a
+// perfectly healthy machine, and an operator who learns to ignore one red line ignores the next.
+
+/** What one settings file carries: the commands we own, and where they were found. */
+interface InstalledEntry {
+  readonly target: HookTarget;
+  readonly command: string;
+}
+
+/** Every entry Collie owns, across every settings file this host has. */
+function installedEntries(deps: DoctorDeps): InstalledEntry[] {
+  const found: InstalledEntry[] = [];
+  for (const target of claudeSettingsTargets(deps.ctx)) {
+    const text = deps.files.read(target.path);
+    if (text === null || text.trim() === "") continue;
+    let document;
+    try {
+      document = JSON.parse(text);
+    } catch {
+      // A file we cannot read is one `hooks install` refuses to merge into, so nothing of ours is in
+      // it. `hooks status` says the same thing in its own words; neither of them repairs it.
+      continue;
+    }
+    for (const command of markedCommandsByEvent(document)) {
+      if (command !== null) found.push({ target, command });
+    }
+  }
+  return found;
+}
+
+/**
+ * `beacon-hooks-claude` — is the emitter registered in the agent's own settings, is it current, and
+ * does the command it runs still exist?
+ *
+ * The third question is the one this check is really for. A hook pinned to a checkout that has since
+ * moved is still valid JSON, still carries our marker, and simply never runs: every pane goes on
+ * reading as a shell and nothing anywhere says why.
+ */
+function beaconHooks(deps: DoctorDeps, entries: readonly InstalledEntry[]): Finding {
+  const check = "beacon-hooks-claude";
+  const would = resolveHookCommand(deps.ctx, deps.link);
+  if (entries.length === 0) {
+    return warn(
+      check,
+      "no settings file here carries the beacon emitter, so an agent cannot name itself and every" +
+        ` pane reads as a shell (an install would pin \`${would.binary}\`)`,
+      "`collie hooks install claude` — or nothing at all, if this collie drives a multiplexer that reports agents itself",
+    );
+  }
+
+  // The path first: an entry that points at nothing never runs, so its version is beside the point.
+  const dangling = entries.filter((entry) => {
+    const binary = hookBinaryOf(entry.command);
+    return binary !== null && !deps.files.exists(binary);
+  });
+  if (dangling.length > 0) {
+    const binaries = [...new Set(dangling.map((entry) => hookBinaryOf(entry.command)))];
+    return warn(
+      check,
+      `${dangling.length} installed entr${dangling.length === 1 ? "y" : "ies"} run \`${binaries.join(", ")}\`,` +
+        " which is not there any more — the checkout moved, so the hook fires and does nothing",
+      "`collie link` here (ADR 0021: the published name is a symlink, so it survives a move), then" +
+        " `collie hooks install claude` to re-pin the entries",
+    );
+  }
+
+  const versions = [...new Set(entries.map((entry) => markerVersionOf(entry.command)))];
+  const stale = versions.filter((version) => version !== HOOK_MARKER_VERSION);
+  if (stale.length > 0) {
+    return warn(
+      check,
+      `installed at v${stale.join("/")}, and this build writes v${String(HOOK_MARKER_VERSION)} — the` +
+        " entry is ours and out of date",
+      "`collie hooks install claude` — it replaces our own entry in place and leaves every other hook alone",
+    );
+  }
+
+  // Partial, exactly as `hooks status` reports it: some events registered and some not.
+  const expected = BEACON_HOOKS.length;
+  const perFile = new Map<string, number>();
+  for (const entry of entries) perFile.set(entry.target.path, (perFile.get(entry.target.path) ?? 0) + 1);
+  const partial = [...perFile].filter(([, count]) => count < expected);
+  if (partial.length > 0) {
+    return warn(
+      check,
+      `a settings file carries only some of the ${String(expected)} registrations` +
+        ` (${partial.map(([path, count]) => `${path}: ${String(count)}/${String(expected)}`).join("; ")})`,
+      "`collie hooks install claude` to complete it",
+    );
+  }
+  return ok(
+    check,
+    `v${String(HOOK_MARKER_VERSION)} in ${String(perFile.size)} settings file${perFile.size === 1 ? "" : "s"},` +
+      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\``,
+  );
+}
+
+/**
+ * `beacons` — how many agents have identified themselves here, and how many of those are gone.
+ *
+ * An expired beacon is ORDINARY and never a warning: agents end, and an expired one is still the key
+ * to that pane's history (M11/04). What this finding answers is the question `hooks status` cannot —
+ * whether anything has actually been written since the emitter was installed.
+ */
+async function beacons(deps: DoctorDeps, installed: boolean): Promise<Finding> {
+  const readings = await readBeacons(deps.beacons);
+  const live = readings.filter((reading) => reading.liveness === "live").length;
+  const expired = readings.length - live;
+  if (readings.length === 0) {
+    return skipped(
+      "beacons",
+      installed
+        ? "no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event"
+        : "nothing writes one here, because the emitter is not installed",
+      installed
+        ? "start (or prompt) an agent in a pane and re-run `collie doctor`"
+        : "`collie hooks install claude`",
+    );
+  }
+  return ok(
+    "beacons",
+    `${String(live)} live, ${String(expired)} expired — an expired one still keys that pane's history`,
+  );
+}
+
 // ── Pack checks ──────────────────────────────────────────────────────────────
 
 /**
@@ -704,6 +861,9 @@ export function doctorDeps(base: {
     link: realLinkFs,
     store: new TrustStore(base.ctx.stateDir),
     fetch: (url, init) => fetch(url, init),
+    // The bridge's own reader, seams and all (`bridge/beacon-io.ts`), so `doctor` counts what the
+    // running bridge counts. Both of its seams are reads; neither can create the directory.
+    beacons: beaconReader(base.ctx.stateDir),
     now: () => Date.now(),
   };
 }

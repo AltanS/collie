@@ -7,6 +7,7 @@ import { ActivityLedger } from "./activity.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
+import { withAgentHints } from "./beacon/hint.ts";
 import { loadConfig } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
@@ -218,8 +219,11 @@ const hooksInstalled = hooksInstalledProbe({ home: homedir(), env: process.env }
  */
 function withBeaconsIfBlind(adapter: MuxAdapter, target: MuxTarget): MuxAdapter {
   const matcher = factoryFor(muxRegistry, adapter.mux)?.beaconMatcher?.(target);
-  if (matcher === undefined) return adapter;
-  return withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled });
+  const seeing = matcher === undefined ? adapter : withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled });
+  // The hint tier sits OUTSIDE the decorator, so it reads the DECORATED declaration and retires
+  // itself the moment that declaration says agents are visible (M11/05). Applied to every adapter,
+  // including one that was never decorated: it suppresses itself there for the same reason.
+  return withAgentHints(seeing, { hooksInstalled });
 }
 
 // ── Per-session runtime factory ──────────────────────────────────────────────

@@ -4,7 +4,12 @@ import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { leadStore, member, PACK, peerStore, T0 } from "../bridge/pack/fixtures.ts";
 import { markerFor } from "../bridge/pack/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
+import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
+import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
+import type { JsonObject } from "../bridge/json.ts";
+import { BEACON_HOOKS } from "./beacon.ts";
 import { cmdDoctor, type DoctorDeps, type Finding } from "./doctor.ts";
+import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
 import {
@@ -63,9 +68,18 @@ const HEALTHY_ANSWERS: Scripted["answers"] = [
   ...netmapAnswers(NETMAP_OPEN),
 ];
 
-/** The files a healthy install has: a built bundle, a Herdr socket, an ownership record. */
+/**
+ * The files a healthy install has: a built bundle, a Herdr socket, an ownership record — and the
+ * agent's own settings carrying a current emitter entry pinned to a binary that exists.
+ *
+ * The emitter is in the BASELINE so the contract test above it can go on asserting that a healthy
+ * install warns about nothing. Its absence is a warn rather than an error (a Herdr operator never
+ * installs one), and that case is seeded explicitly by the tests that are about it.
+ */
 function healthyFiles(): SeededFiles {
   return {
+    [SETTINGS]: settingsWith(hookCommand(OWN_BINARY)),
+    [OWN_BINARY]: "#!/bin/sh",
     [`${ROOT}/web/dist/index.html`]: "<!doctype html>",
     [`${ROOT}/web/dist/assets/app.js`]: "//",
     [`${ROOT}/web/dist/build-info.json`]: JSON.stringify({ version: "1.0.0-alpha.12" }),
@@ -117,6 +131,8 @@ function harness(
     absent?: string[];
     /** What is at `~/.local/bin/collie`; absent — nothing linked — is the default. */
     link?: Record<string, LinkProbe>;
+    /** The beacon directory this host has right now; empty is the default. */
+    beacons?: FakeBeacon[];
   } = {},
 ): Harness {
   const contents = initial === null ? null : serializeTrustStore(initial);
@@ -147,6 +163,9 @@ function harness(
         if (reply instanceof Error) throw reply;
         return reply;
       },
+      // An in-memory beacon directory (bridge/beacon/fake.ts): no state directory, no live process,
+      // and — the point of the seam — nothing `doctor` could write even if it tried.
+      beacons: fakeBeaconReader(over.beacons ?? []),
       now: () => T0,
     },
     io: out,
@@ -224,6 +243,8 @@ describe("collie doctor — the contract", () => {
       "bind-wildcard",
       "acl",
       "front-door",
+      "beacon-hooks-claude",
+      "beacons",
       "restart-pending",
       "clock",
     ]);
@@ -672,6 +693,130 @@ describe("collie doctor — the pack checks", () => {
     );
     expect(byCheck.get("member-versions")?.status).toBe("ok");
     expect(byCheck.get("member-versions")?.detail).toContain("1.0.0-alpha.12");
+  });
+});
+
+// ── The agent's own hooks, and the beacons they write (M11/05) ───────────────
+//
+// Every case here is READ-ONLY by construction: the fake filesystem records writes, and the suite's
+// existing "doctor wrote nothing" assertion covers these paths with the rest. What is asserted here
+// is the tier — a missing install is a `warn` and the run still exits 0, because a Herdr operator
+// will never install one.
+
+/** The Claude settings file `hooks install claude` writes on a default host. */
+const SETTINGS = `${HOME}/.claude/settings.json`;
+/** The binary an install pins to when nothing is linked: this checkout's own. */
+const OWN_BINARY = `${ROOT}/bin/collie`;
+
+/** A settings document carrying our entry on every registered event, at `version`. */
+function settingsWith(command: string): string {
+  const hooks: JsonObject = {};
+  for (const registration of BEACON_HOOKS) {
+    hooks[registration.event] = [{ matcher: registration.matcher, hooks: [{ type: "command", command }] }];
+  }
+  return JSON.stringify({ hooks }, null, 2);
+}
+
+/** The command an install at `version` would have written, pinned to `binary`. */
+const hookCommand = (binary: string, version = HOOK_MARKER): string => `${binary} beacon emit ${version}`;
+
+/** One beacon on disk, alive or not. Markers are opaque here — this suite only counts. */
+function beacon(pid: number, alive: boolean): FakeBeacon {
+  return {
+    alive,
+    record: {
+      schemaVersion: BEACON_SCHEMA_VERSION,
+      harness: "claude",
+      session: { kind: "id", value: `session-${String(pid)}` },
+      status: "idle",
+      pid,
+      pidStartTime: pid * 10,
+      markers: [{ namespace: "fixture", scope: "/socket", pane: `%${String(pid)}` }],
+      heartbeatMs: FAKE_BEACON_NOW - 1000,
+    },
+  };
+}
+
+describe("beacon-hooks-claude", () => {
+  test("no install is a WARN naming the verb — never an error, and the run still exits 0", async () => {
+    const h = harness(null, [], { files: without(healthyFiles(), SETTINGS) });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("beacon-hooks-claude")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.remedy).toContain("collie hooks install claude");
+    // The detail says what an install would pin to, which is the other half of the answer.
+    expect(finding.detail).toContain(OWN_BINARY);
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("a current install whose binary is there is ok, with no remedy", async () => {
+    const { byCheck } = await findings(harness(null));
+    const finding = byCheck.get("beacon-hooks-claude")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.remedy).toBeNull();
+    expect(finding.detail).toContain(OWN_BINARY);
+  });
+
+  test("a stale marker version is a warn whose remedy is the self-heal", async () => {
+    const stale = hookCommand(OWN_BINARY, `${HOOK_MARKER_PREFIX}0`);
+    const files = { ...healthyFiles(), [SETTINGS]: settingsWith(stale) };
+    const { byCheck, code } = await findings(harness(null, [], { files }));
+    const finding = byCheck.get("beacon-hooks-claude")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain("v0");
+    expect(finding.remedy).toContain("collie hooks install claude");
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("a hook pinned to a path that is gone is its own warn, and names `collie link`", async () => {
+    // The silent failure: valid JSON, our marker, and a command that can never run.
+    const moved = `${HOME}/old-checkout/bin/collie`;
+    const files = { ...healthyFiles(), [SETTINGS]: settingsWith(hookCommand(moved)) };
+    const { byCheck, code } = await findings(harness(null, [], { files }));
+    const finding = byCheck.get("beacon-hooks-claude")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain(moved);
+    expect(finding.remedy).toContain("collie link");
+    expect(finding.remedy).toContain("collie hooks install claude");
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("a settings file that is not JSON is left alone and reads as no install", async () => {
+    const files = { ...healthyFiles(), [SETTINGS]: "{ this is not json" };
+    const { byCheck } = await findings(harness(null, [], { files }));
+    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("warn");
+  });
+
+  test("somebody else's hooks are not ours — an unmarked entry installs nothing", async () => {
+    const foreign = JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "notify-send hi" }] }] } });
+    const files = { ...healthyFiles(), [SETTINGS]: foreign };
+    const { byCheck } = await findings(harness(null, [], { files }));
+    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("warn");
+    expect(byCheck.get("beacon-hooks-claude")?.detail).toContain("no settings file");
+  });
+});
+
+describe("beacons", () => {
+  test("an empty directory with no install says so, and names the install verb", async () => {
+    const { byCheck } = await findings(harness(null, [], { files: without(healthyFiles(), SETTINGS) }));
+    const finding = byCheck.get("beacons")!;
+    expect(finding.status).toBe("skipped");
+    expect(finding.remedy).toContain("collie hooks install claude");
+  });
+
+  test("an empty directory WITH an install points at the agent, not at the installer", async () => {
+    const finding = (await findings(harness(null))).byCheck.get("beacons")!;
+    expect(finding.status).toBe("skipped");
+    expect(finding.remedy).not.toContain("hooks install");
+    expect(finding.detail).toContain("installed");
+  });
+
+  test("counts live against expired, and an expired one is never a warning", async () => {
+    const beacons = [beacon(11, true), beacon(12, false), beacon(13, false)];
+    const finding = (await findings(harness(null, [], { beacons }))).byCheck.get("beacons")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.detail).toContain("1 live");
+    expect(finding.detail).toContain("2 expired");
   });
 });
 

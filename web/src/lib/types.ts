@@ -57,6 +57,16 @@ export interface AgentView {
    */
   terminalTitle?: string;
   /**
+   * A finished sentence the bridge composed about this pane, for the operator to read. Absent on
+   * almost every pane, and on every bridge older than the version that introduced it.
+   *
+   * RENDER IT, NEVER READ IT. The frontend does not parse it, branch on it, or infer anything from
+   * its presence: it carries no harness name and no multiplexer name, and the pane's status, its
+   * controls and its place in the sort are decided exactly as they were without it. Text only,
+   * never markup — the same XSS boundary as `paneLabel`.
+   */
+  hint?: string;
+  /**
    * Epoch ms of this agent's last status transition, as the bridge observed it. Absent on an older
    * bridge — which is exactly why triage degrades cleanly; see `triage()`.
    */

@@ -163,6 +163,14 @@ export interface ZellijPaneRecord {
   readonly tabPosition: number;
   readonly tabName: string;
   readonly contentRows: number;
+  /**
+   * `terminal_command` — what zellij was asked to run in this pane, or `""` when it reports none
+   * (the listing carries `null` for a pane zellij did not start with an explicit command).
+   *
+   * NOT an identity: the adapter's header and ../types.ts § MuxPane.agent say why a process name may
+   * never pick a harness grammar or a journal adapter. It travels as the raw fact it is.
+   */
+  readonly command: string;
 }
 
 /** Field separator inside one census row. A byte no zellij label can carry. */
@@ -233,6 +241,7 @@ export function parsePaneList(stdout: string): ZellijPaneRecord[] | null {
       tabPosition: readInteger(row, "tab_position") ?? 0,
       tabName: readText(row, "tab_name") ?? "",
       contentRows: readInteger(row, "pane_content_rows") ?? 0,
+      command: readText(row, "terminal_command") ?? "",
     });
   }
   return panes;
