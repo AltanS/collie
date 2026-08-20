@@ -817,7 +817,8 @@ call breaks the deadlock and every strict-budget request after it rides the warm
 So the two questions are budgeted separately:
 
 - **Per-poll data requests keep the strict clamped budget of §10.1**, and a miss keeps meaning
-  *stale this poll* — never *peer gone*.
+  *stale this poll* — never *peer gone*. (Amended by §10.5: a *cold* link's first data request is
+  owed one patient attempt, because the deadlock above is not exclusive to `hello`.)
 - **The reachability verdict comes from a `hello` probe with its own budget** —
   `COLLIE_PACK_HELLO_TIMEOUT_MS`, default 5000 ms, **not** clamped by the poll fraction (clamping it
   would restore the deadlock) and floored at the data budget. It runs **off the poll's hot path**:
@@ -830,6 +831,44 @@ beside the `lastSeenAt` of its last real snapshot — the honest rendering of "t
 its data is old". A probe never stamps `lastSeenAt`: a `hello` carries no snapshot. A failure that
 is *not* a timeout (refused, DNS, TLS) is never re-probed patiently — those are answers from the
 world, and asking them again slowly is only slower.
+
+### 10.5 A cold link's first data request is patient too *(added 2026-08-19)*
+
+§10.4 budgeted the *verdict* out of the deadlock and left the *data path* in it. Measured on the same
+real DERP-relayed link: `hello` cold **1.86 s** → 200, `snapshot` cold *including* the handshake
+**1.22 s** → 200, `snapshot` warm **0.12 s**, pane read warm **0.11 s**. Every data request carried
+the strict ~1200 ms budget, so a cold one aborted mid-handshake, pooled nothing, and left the next
+one cold as well — the peer read `unreachable` and every pane read answered `503 host_unreachable`
+after exactly one budget, forever. **Warm budgets were never the problem; only bootstrap was.**
+
+So a data request gets **one patient attempt per cold link**, bounded so it can never become the
+steady-state budget (`takeDataBudget`, `bridge/pack/peer-client.ts`):
+
+| link | first data request | after |
+|---|---|---|
+| never dialled, or dialled and torn down after a success | the patient budget of §10.4, **once** | strict |
+| warm (a dial reached the far side, nothing failed since) | strict | strict |
+| cold with its one credit already spent | strict | strict |
+
+The credit is spent **at issue**, so concurrent requests and later polls never stack patient dials:
+at most one is in flight per link. A host that is genuinely gone therefore still fails in one strict
+budget per poll. Warmth is remembered **per address** — a member that moved (`collie reconnect`) is a
+different connection and correctly starts cold — is never persisted, and decides a timeout and never
+a verdict; losing it costs one patient dial.
+
+**Every reachability finding asks both questions.** `hello` alone was a lie by omission: it runs on
+the patient budget while every real read runs on the strict one, so `collie pack status` printed
+`reachable` and `collie doctor` printed `member-reach ✓` over a pack that was 503ing every pane. Both
+verbs now send one real `GET /pack/v1/snapshot` after the probe, on the same client (so it rides the
+warmed connection, which is the bridge's steady state), and report each half with its timing. A
+member that answers and then starves is its own finding, with its own remedy: the address is right,
+the budget is not.
+
+**The clamp of §10.1 is not silent.** `COLLIE_PACK_TIMEOUT_MS` above 0.8 × `COLLIE_POLL_MS` is still
+clamped — that arithmetic is what stops a slow peer stalling the lead — but the bridge warns at boot
+and `pack status` prints the same line, naming `COLLIE_POLL_MS` as the other half an operator must
+raise. `COLLIE_PACK_TIMEOUT_MS=3000` at the default poll buys exactly nothing, and used to say so
+nowhere.
 
 ---
 

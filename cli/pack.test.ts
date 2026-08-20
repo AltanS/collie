@@ -744,6 +744,48 @@ describe("collie pack status", () => {
     expect(rendered).not.toContain(leadStore().self.keyPem.trim());
   });
 
+  test("a reachable member is asked BOTH questions — the probe, and one real read", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+      jsonReply({ protocol: 1, member: "nas" }, 200, "nas"),
+      jsonReply({ servers: [] }, 200, "nas"),
+    ]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.requests.map((r) => r.url)).toEqual([
+      "https://nas.example:8787/pack/v1/hello",
+      "https://nas.example:8787/pack/v1/snapshot",
+    ]);
+    expect(text(h.io)).toContain("served a snapshot");
+  });
+
+  test("a member that answers `hello` and then starves is never rendered as simply reachable", async () => {
+    // The measured DERP shape: the patient probe gets through, every strict-budget read does not.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+      jsonReply({ protocol: 1, member: "nas" }, 200, "nas"),
+      new Error("timed out after 1200ms"),
+    ]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain("data    STARVED");
+    expect(rendered).toContain("timed out after 1200ms");
+    // The remedy is a budget, not a `reconnect` — the machine just answered.
+    expect(rendered).toContain("COLLIE_POLL_MS");
+  });
+
+  test("--no-probe asks neither question", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdPackStatus(h.deps, ["--no-probe"])).toBe(EXIT.OK);
+    expect(h.requests).toEqual([]);
+    expect(text(h.io)).toContain("not probed");
+  });
+
+  test("a clamped COLLIE_PACK_TIMEOUT_MS says so instead of silently doing nothing", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    // The harness asks for 60000ms against the default 1500ms poll, so the clamp bites hard.
+    expect(text(h.io)).toContain("COLLIE_PACK_TIMEOUT_MS=60000 has no effect beyond 1200ms");
+    expect(text(h.io)).toContain("COLLIE_POLL_MS=75000");
+  });
+
   test("a wildcard COLLIE_HOST is shown as ALL interfaces in the bind line", async () => {
     const h = harness(peerStore(), [], {
       ctx: context(
@@ -1269,6 +1311,18 @@ describe("collie reconnect", () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [jsonReply({ protocol: 1, member: "nas" }, 200, "nas")]);
     expect(await cmdReconnect(h.deps, ["nas", "nas.other:1"])).toBe(EXIT.OK);
     expect(h.data()!.peers[0]!.address).toBe("nas.other:1");
+  });
+
+  test("an address that answers but serves no data says so, and the move still stands", async () => {
+    const h = harness(peerStore(), [
+      jsonReply({ protocol: 1, member: "desk" }, 200, "desk"),
+      new Error("timed out after 1200ms"),
+    ]);
+    // The move succeeded and the machine answered — a budget problem must not tell a script the
+    // address is wrong, so the exit code stays the `hello` verdict.
+    expect(await cmdReconnect(h.deps, ["desk.other:8787"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("it answered there.");
+    expect(text(h.io)).toContain("it served no data");
   });
 
   test("an address that still does not answer is reported as unreachable, and the move stands", async () => {

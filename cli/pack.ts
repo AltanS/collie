@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { join } from "node:path";
 
-import type { JsonObject } from "../bridge/json.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { AuditLog } from "../bridge/audit.ts";
 import {
   acceptEnrollment,
@@ -37,6 +37,7 @@ import { PackOpsStore } from "../bridge/pack/ops-store.ts";
 import {
   packHelloBudget,
   packTimeoutBudget,
+  packTimeoutClampWarning,
   PeerClient,
   sweepPeers,
   type HelloResult,
@@ -162,14 +163,14 @@ function timeoutFor(ctx: CliContext): number {
 }
 
 /**
- * The patient budget a verb's `hello` runs on (§10.4).
+ * The patient budget a verb's `hello` — and its one cold data attempt — runs on (§10.4).
  *
- * A verb is a FRESH PROCESS with an empty connection pool, so every `hello` it sends pays a cold
+ * A verb is a FRESH PROCESS with an empty connection pool, so every request it sends pays a cold
  * pinned-TLS handshake — which over a relay costs more than the whole poll budget. On the strict
  * budget `pack status` therefore printed `unreachable` for a healthy member categorically, no matter
  * how many times the operator ran it. Nothing on a phone waits for a verb, so it can afford to wait.
  */
-function helloTimeoutFor(ctx: CliContext): number {
+function patientTimeoutFor(ctx: CliContext): number {
   return packHelloBudget(pollFor(ctx), ctx.env);
 }
 
@@ -186,7 +187,7 @@ function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerC
     self: data.self.memberId,
     secret: () => secret,
     timeoutMs: timeoutFor(deps.ctx),
-    helloTimeoutMs: helloTimeoutFor(deps.ctx),
+    patientTimeoutMs: patientTimeoutFor(deps.ctx),
     fetch: deps.fetch,
     now: deps.now,
     // Pin whichever member this dial is aimed at (§8.1). A verb only ever dials a member already in
@@ -836,9 +837,11 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     return EXIT.OK;
   }
 
-  const probes = bare.has("no-probe")
-    ? new Map<string, PeerOutcome<HelloResult>>()
-    : await probeMembers(deps, data, members);
+  // Both questions, always — a member that answers `hello` on the patient budget and then starves the
+  // phone on the strict one is the exact failure this surface used to render as `reachable`.
+  const reaches = bare.has("no-probe") ? new Map<string, MemberReach>() : await probeMemberReach(deps, data, members);
+  const clamped = packTimeoutClampWarning(pollFor(deps.ctx), deps.ctx.env);
+  if (clamped !== null) deps.io.out(clamped);
   // This build's own version, resolved once for the whole roster by the same rule `collie version`
   // uses (`bridge/version.ts`) — the bridge answers `hello` with that exact string, so the two sides
   // of every comparison below are the same kind of thing.
@@ -872,7 +875,8 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
       emit(`            Recovery is deliberate: \`collie pack invite\` here, \`collie join\` there.`, "dim");
       continue;
     }
-    const outcome = probes.get(m.memberId);
+    const reach = reaches.get(m.memberId);
+    const outcome = reach?.hello;
     // A member pinned but never once contacted (strictly `contactedAt === null`) is a possible
     // half-finished join. An ABSENT field is `undefined` — a member from before this field existed —
     // and must never read as provisional. A number is a real contact time. Suppressed when this very
@@ -888,6 +892,9 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     }
     if (outcome.ok) {
       emit(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`, "good");
+      // The second question. `hello` says the machine is there; this says the phone can actually be
+      // fed from it, on the strict per-poll budget that every real read runs under.
+      for (const line of dataLines(reach)) emit(line.text, line.tone);
       for (const line of versionLines(outcome.value.version, ours, m.memberId)) emit(line, "dim");
       // First successful contact clears the provisional marker: one-time and self-healing. The
       // bridge's own sweep could also stamp this later; today `pack status` is the clearer.
@@ -995,6 +1002,30 @@ function versionLines(reported: string | null, ours: string, memberId: string): 
 }
 
 /**
+ * How the data half of a {@link MemberReach} renders, under a member that answered `hello`.
+ *
+ * A failure here is the interesting line on this whole surface: the machine IS there — it just
+ * answered — so the remedy is a budget, not a `reconnect`. It names both knobs, because raising one
+ * without the other is silently clamped ({@link packTimeoutClampWarning}).
+ */
+function dataLines(reach: MemberReach | undefined): TonedLine[] {
+  const data = reach?.data;
+  if (data === undefined || data === null) return [];
+  if (data.ok) return [{ text: `    data    served a snapshot in ${reach?.dataMs ?? 0}ms`, tone: "good" }];
+  return [
+    { text: `    data    STARVED · answered \`hello\`, but ${failureLine(data)}`, tone: "bad" },
+    {
+      text: "            The machine is there; its data is not arriving inside the per-poll budget.",
+      tone: "dim",
+    },
+    {
+      text: `            Raise BOTH: \`COLLIE_PACK_TIMEOUT_MS\` and \`COLLIE_POLL_MS\` (the first is clamped to 0.8 of the second).`,
+      tone: "dim",
+    },
+  ];
+}
+
+/**
  * `hello` against every member, concurrently — one budget for the sweep, not N (§10.1).
  *
  * Typed on {@link HelloResult} rather than `unknown`: the reported version is the point of the probe
@@ -1012,6 +1043,48 @@ export function probeMembers(
     members.filter((m) => m.status === "enrolled").map(linkOf),
     (link) => client.hello(link),
   );
+}
+
+/** What one member answered to BOTH questions a link has to pass — see {@link probeMemberReach}. */
+export interface MemberReach {
+  /** The verdict probe, on the patient budget. Exactly what {@link probeMembers} returns. */
+  readonly hello: PeerOutcome<HelloResult>;
+  /**
+   * One real data request — `GET /pack/v1/snapshot`, a read — under the budget rules the bridge's own
+   * poll uses. `null` when `hello` never answered: a member that is not there has already failed, and
+   * asking it a second question teaches nothing while doubling the wait.
+   */
+  readonly data: PeerOutcome<JsonValue> | null;
+  /** How long the data request took, by this collie's clock, or `null` when none was sent. */
+  readonly dataMs: number | null;
+}
+
+/**
+ * `hello` **and one real data request** against every member — the probe every reachability finding
+ * is built from.
+ *
+ * `hello` alone was a lie by omission. It runs on the patient budget (§10.4) while every data request
+ * runs on the strict clamped one, so a link whose handshake outprices the poll answered the probe and
+ * starved the phone: `pack status` printed `reachable`, `doctor` printed `member-reach ✓`, and every
+ * pane read 503'd. The two questions are budgeted differently, so both have to be ASKED.
+ *
+ * One client for both, in that order, deliberately: the data request then rides the connection `hello`
+ * just warmed, which is precisely the bridge's steady state after its own patient probe. What this
+ * reports is therefore what the phone gets — not a cold-start number no poll ever sees.
+ */
+export async function probeMemberReach(
+  deps: ProbeDeps,
+  data: TrustStoreData,
+  members: readonly TrustedMember[],
+): Promise<Map<string, MemberReach>> {
+  const client = clientFor(deps, data, data.pack?.secret ?? "");
+  return sweepPeers<MemberReach>(members.filter((m) => m.status === "enrolled").map(linkOf), async (link) => {
+    const hello = await client.hello(link);
+    if (!hello.ok) return { hello, data: null, dataMs: null };
+    const startedAt = deps.now();
+    const snapshot = await client.snapshot(link);
+    return { hello, data: snapshot, dataMs: deps.now() - startedAt };
+  });
 }
 
 // ── pack rotate (on the lead) ────────────────────────────────────────────────
@@ -1355,8 +1428,19 @@ export async function cmdReconnect(deps: PackDeps, args: readonly string[]): Pro
   deps.io.out(`✓ "${target}" moved from ${moved.from} to ${address} — its pinned certificate is unchanged.`);
 
   const client = clientFor(deps, data, data.pack.secret);
-  const outcome = await client.hello({ memberId: target, address });
+  const link = { memberId: target, address };
+  const outcome = await client.hello(link);
   deps.io.out(outcome.ok ? "  it answered there." : `  it did not answer there yet — ${failureLine(outcome)}`);
+  if (outcome.ok) {
+    // The same second question `pack status` asks, for the same reason: an address that answers the
+    // patient probe and then starves the strict one is a moved member that is still not usable. The
+    // exit code stays the `hello` verdict — the move itself succeeded, and a budget problem is not a
+    // reason to tell a script the address is wrong.
+    const startedAt = deps.now();
+    const served = await client.snapshot(link);
+    const took = deps.now() - startedAt;
+    deps.io.out(served.ok ? `  it served a snapshot in ${took}ms.` : `  but it served no data — ${failureLine(served)}`);
+  }
   await applyLocally(deps, "the new address");
   return outcome.ok ? EXIT.OK : EXIT.UNREACHABLE;
 }
