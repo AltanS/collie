@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -66,6 +67,43 @@ const PANE_TEXT_PEER =
   "peer pane\n$ echo laptop\n" + Array.from({ length: 40 }, (_, i) => `laptop line ${i} ................`).join("\n");
 
 let root: string;
+
+/**
+ * A GET that decodes NOTHING — status, headers and the bytes exactly as they were framed.
+ *
+ * `fetch` (Bun's and every browser's) transparently inflates a `content-encoding: gzip` body while
+ * leaving the header in place, so under `fetch` a header that describes its bytes and one that lies
+ * about them look identical. That is what let the beta.9 bug ship. `node:http` performs no content
+ * decoding, so the assertion "encoding claimed ⟺ bytes gzipped" is actually decidable.
+ */
+async function rawGet(
+  target: string,
+  headers: Record<string, string>,
+): Promise<{ status: number; headers: Record<string, string>; body: Uint8Array<ArrayBuffer> }> {
+  const url = new URL(target);
+  return await new Promise((resolve, reject) => {
+    const req = httpGet(
+      { host: url.hostname, port: url.port, path: `${url.pathname}${url.search}`, headers },
+      (msg) => {
+        const chunks: Buffer[] = [];
+        msg.on("data", (chunk: Buffer) => chunks.push(chunk));
+        msg.on("end", () => {
+          const flat: Record<string, string> = {};
+          for (const [name, value] of Object.entries(msg.headers)) {
+            if (value !== undefined) flat[name] = Array.isArray(value) ? value.join(", ") : value;
+          }
+          // Copied into a plain `Uint8Array` rather than handed on as a `Buffer`: a Buffer's backing
+          // store is `ArrayBufferLike`, which `Bun.gunzipSync` will not take.
+          const merged = Buffer.concat(chunks);
+          const body = new Uint8Array(merged.byteLength);
+          body.set(merged);
+          resolve({ status: msg.statusCode ?? 0, headers: flat, body });
+        });
+      },
+    );
+    req.on("error", reject);
+  });
+}
 
 /** One end of the pack: a scratch state dir, a fake Herdr, and a child bridge we can respawn. */
 class Instance {
@@ -513,33 +551,47 @@ describe("the lead speaks for the pack", () => {
     expect(await conditional.text()).toBe("");
   });
 
-  test("a proxied read's headers describe the bytes it sent — no inherited content-encoding", async () => {
-    // THE REGRESSION THIS PINS. The lead used to copy the peer's `content-encoding` onto a body the
+  test("a proxied read's headers describe the bytes it sent — encoding claimed ⟺ bytes gzipped", async () => {
+    // THE REGRESSION THIS PINS. The lead used to copy the PEER's `content-encoding` onto a body the
     // runtime had already transparently decompressed, so the phone got `gzip` over plain JSON, its
     // `fetch` threw inflating it, the loader's catch degraded to a stale pane, and EVERY peer pane
     // rendered "(no recent output)". `curl` without `--compressed` ignores the header, which is why
     // every shell check looked green — so this test asks the way a browser asks, and decodes.
+    //
+    // The invariant is NOT "never an encoding": .adr/0023 has the lead compress this hop itself, so a
+    // `content-encoding: gzip` here is now legitimate. What must hold is that the header and the bytes
+    // agree — which is what the original bug violated, and what is asserted below in both directions.
     const peerId = peer.store()!.self.memberId;
     const url = `${lead.origin()}/api/pane/${encodeURIComponent(peer.paneId)}?host=${peerId}`;
-    const res = await fetch(url, { headers: { "accept-encoding": "gzip, deflate, br" } });
+    // Read at the WIRE, via `node:http`: `fetch` inflates a gzip body for us and leaves the header
+    // on, which is precisely the confusion that hid the original bug — under `fetch` a lying header
+    // and an honest one are indistinguishable. `rawGet` decodes nothing.
+    const res = await rawGet(url, { "accept-encoding": "gzip, deflate, br" });
     expect(res.status).toBe(200);
 
-    // Read as BYTES first: a `.json()` alone would hide a length that lies about them.
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const text = new TextDecoder().decode(bytes);
+    const gzipped = res.body[0] === 0x1f && res.body[1] === 0x8b;
+    const claimed = res.headers["content-encoding"];
+    expect(claimed === undefined || claimed === "gzip").toBe(true);
+    expect(gzipped).toBe(claimed === "gzip");
+
+    const text = new TextDecoder().decode(gzipped ? Bun.gunzipSync(res.body) : res.body);
     expect(text).toContain("peer pane");
     expect(() => {
       JSON.parse(text);
     }).not.toThrow();
-    // Past `GZIP_MIN_BYTES`, so the peer's gzip branch was reachable for this body — the assertion
-    // below is about the lead refusing to inherit the header, not about a body too small to compress.
-    expect(bytes.byteLength).toBeGreaterThan(256);
+    // Past `GZIP_MIN_BYTES`, so a body too small to be worth compressing is not what made this pass.
+    expect(text.length).toBeGreaterThan(256);
 
-    expect(res.headers.get("content-encoding")).toBeNull();
-    const length = res.headers.get("content-length");
-    if (length !== null) expect(Number(length)).toBe(bytes.byteLength);
-    // The ETag is unaffected by any of this: it is the peer's hash of its pre-gzip body (§9.1).
-    expect(res.headers.get("etag")).not.toBeNull();
+    // Never the peer's pre-decompression length, and absent entirely on a transformed body.
+    const length = res.headers["content-length"];
+    if (length !== undefined) expect(Number(length)).toBe(res.body.byteLength);
+    // The ETag is unaffected by any of this: it is the peer's hash of its pre-gzip body (§9.1) — the
+    // identity representation, which is what both hops agree on (.adr/0023).
+    expect(res.headers["etag"]).toBeDefined();
+
+    // …and the win .adr/0023 exists for: this hop really was compressed for a phone that asked.
+    expect(gzipped).toBe(true);
+    expect(res.body.byteLength).toBeLessThan(text.length / 2);
   });
 
   test("the lead's own poll rate is unchanged by the pack it now leads", async () => {

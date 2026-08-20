@@ -694,13 +694,23 @@ The lead forwards the request to the owning peer and returns the peer's response
 status, body bytes, `content-type`, and — critically — **`etag`**.
 
 - `If-None-Match` from the phone is passed through to the peer.
-- **The peer hop is `Accept-Encoding: identity`, and `content-encoding` is not re-emitted.** The lead
-  asks the peer for uncompressed bytes, so the body it holds is the body it writes out; whatever the
-  runtime compresses and transparently decompresses anyway, it does *not* strip the stale
-  `content-encoding` from the response headers, and re-emitting that header describes bytes that no
-  longer exist. "Unmodified" is about the *body* and the ETag, never about a transfer encoding: the
-  lead's own front door compresses for the phone on the phone's own `Accept-Encoding`. `content-length`
-  is likewise never copied — the emitting server derives it from the bytes it writes.
+- **Compression is hop-local: the peer hop is `Accept-Encoding: identity`, and the peer's
+  `content-encoding` is never re-emitted.** The lead asks the peer for uncompressed bytes, so the body
+  it holds is the body it writes out; whatever the runtime compresses and transparently decompresses
+  anyway, it does *not* strip the stale `content-encoding` from the response headers, and re-emitting
+  that header describes bytes that no longer exist.
+- **The lead→phone hop is compressed by the lead itself**, on the phone's own `Accept-Encoding`, as a
+  **stream transform** over the identity bytes (`CompressionStream("gzip")`) — never a buffer, so a
+  400-turn history is still never held whole. It applies to JSON and text bodies with a body to send;
+  a `304`/`204` and a non-compressible type stream through untouched. When it applies, the lead sets
+  `content-encoding: gzip` and merges `accept-encoding` into the peer's `Vary` (setting it when the
+  peer sent none) — the same negotiation, and the same `Vary`, a local route already declares
+  (`bridge/http-cache.ts`). This is a **lead-side** behaviour only: the peer surface is unchanged.
+- **"Unmodified" means status, decompressed-equivalent body bytes, and the ETag — never a transfer
+  encoding.** The ETag names the identity bytes on both sides of the lead, which is why compressing
+  this hop cannot invalidate it (ADR 0023). `content-length` is never copied, and is absent on a
+  compressed hop by construction — a transform cannot know it, and the emitting server frames the
+  bytes it actually writes.
 - A peer's `304` is returned to the phone as a `304`, with the peer's `etag` echoed. RFC 7232 §4.1 is
   satisfied by the peer's own existing code path (`bridge/server.ts:467-478`).
 - The ETag on a proxied read therefore means what it has always meant: *the peer's assertion about its
