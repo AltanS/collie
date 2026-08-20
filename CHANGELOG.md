@@ -8,16 +8,30 @@ All notable changes to Collie are recorded here. The format follows
 
 ## [1.0.0-beta.14] - 2026-08-20
 
+**The deputy and the takeover** — a pack can now name a standby peer ahead of time and let the
+operator promote it, by hand, when the lead goes dark. ADRs
+[0026](./.adr/0026-the-operator-is-the-quorum.md), [0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md)
+and [0028](./.adr/0028-the-standby-door-is-a-second-listener.md); full protocol in
+[`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) §18; runbook in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
 ### Added
 
-- `collie pack deputy <member>` / `--revoke` — mints the warrant, pushes it to every peer, then arms them by restarting each over the operator's own SSH under ONE consent for the batch; a peer with no SSH record is reported `warrant stored, anchor INACTIVE — restart <member>`, never skipped
-- `pack deputy` re-runs re-sync instead of minting — the retry after fixing an SSH record completes the arming rather than superseding it
-- `pack status` renders the whole arming state: the deputy line on a lead, per-member stored/anchored columns, `lead last called me …` and the stored warrant on a peer, and a loud DEPOSED banner naming the new lead and which of §18.3's three outcomes this machine is in
-- The runtime marker checkpoints the four facts only the running process holds, on the tick it already runs — so a one-shot verb can print them (PACK_PROTOCOL.md §18.9's amendment)
+- **ADR 0026 accepted — the operator is the quorum** — no automatic election, promotion is always a deliberate tap (a286fa3)
+- **The warrant** — signed, generational proof the lead grants one peer standing to take over; minted, refreshed each healthy sweep, superseded, expired (`bridge/pack/warrant.ts`) (b0af1e5)
+- **The peer learns its lead** — a warranted peer's trust store widens to two anchors (its lead's, and the deputy's own), `409 lead_conflict` names a conflicting lead by generation, a booting lead probes its roster once before publishing (the boot gate), and a deposed lead self-heals into a peer rather than crash-looping (6a57783)
+- `collie pack deputy <member>` / `--revoke` — mints the warrant, pushes it to every peer, then arms them by restarting each over the operator's own SSH under ONE consent for the batch; a peer with no SSH record is reported `warrant stored, anchor INACTIVE — restart <member>`, never skipped; a re-run re-syncs rather than re-minting (9da3064)
+- **The standby door and the takeover** — a second listener (`COLLIE_STANDBY_PORT`) armed only when a verified warrant names this machine and the lead has gone silent past its threshold; the operator's one tap asks the lead, asks the peers, and takes the crown (RFC §6/§7) (69b1480)
+- ADRs 0027/0028, the deputy runbook, and the death-of-a-lead story in `PACK_PROTOCOL.md` (6582395)
+- `pack status` renders the whole arming state: the deputy line on a lead, per-member stored/anchored columns, `lead last called me …` and the stored warrant on a peer, a loud DEPOSED banner naming the new lead, and `pack deputy` refuses a lead with no paired device rather than minting a door nobody can open (c131c56)
+- `collie pack set-address <member> <host:port>` — repairs a peer's row after a takeover leaves it undialable; a healed peer now tears down its own `tailscale serve` mapping instead of leaving the old front door black-holed (12994fc)
 
-### Changed
+### Fixed
 
-- A `conflicted` member keeps its own health on the lead and renders as `this peer follows another lead "nas" (warrant generation 7)` — never as a generic unreachable (PACK_PROTOCOL.md §18.10)
+- **A two-anchored peer resolves its caller by signature, never by the TLS boolean** — with two anchors, an unsigned dial from the deputy resolved as the lead; every lead-to-member dial now carries a signed, receiver-bound attestation, and the deputy's own route reach stays at zero until spec 4 opts it in (7ec47b1)
+- **The deputy's push was refused as a stamp replay** — the sweep and the verb signed warrant pushes with the same key and raced the replay floor; the push now carries its own signature, and a refused store can no longer be recorded as an anchor (4119a83)
+- **Four bugs from a live drill (bluefin ↔ minibuch)** — a takeover now exits `EX_TEMPFAIL` (75) so `Restart=on-failure` revives the machine instead of stranding it; the takeover spends the designation and stamps it, so the new lead no longer reports the deposed member as its own deputy; a deputy's anchored state is now derived by matching the warrant's named member, not by presence of a certificate alone, so a witness and a deputy stop reading as the same role; the pairing-device sync is now reported and re-pushed on divergence instead of being lost on restart (348a5fe)
+- **The lead accused an armed deputy of being un-armed** — the lead inferred anchoring solely from whether its own `pack deputy` restarted that machine, so a restart done any other way read as `anchor INACTIVE — restart <member>`; the peer now reports `warrantActiveGeneration` on `hello`/`snapshot`, the lead prefers that report over its `pack-ops.json` record and writes a confirmation back, and a `pack deputy` re-run against an already-armed pack asks nothing (d1fb381)
+- **A device revoked on the lead stayed valid at the deputy's standby door** — the pairing sync was refused outright on a label clash, freezing the deputy's copy for ever, so a revoked credential could still spend a takeover; the sync now always lands (its target is a separate hashes-only file, never the deputy's own registry), the clash is reported on `hello`/`snapshot` as a finding while the takeover keeps refusing it, and a `lastSeenAt` stamp can no longer write a revoked device back (3b8e9cf)
 
 ## [1.0.0-beta.13] - 2026-08-20
 
