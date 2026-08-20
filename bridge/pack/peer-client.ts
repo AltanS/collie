@@ -46,11 +46,44 @@ export function packTimeoutBudget(
   pollMs: number,
   env: Record<string, string | undefined> = process.env,
 ): number {
+  const { wanted, ceiling } = budgetParts(pollMs, env);
+  return Math.min(wanted, ceiling);
+}
+
+/** The two halves {@link packTimeoutBudget} compares, so the warning below reads the same arithmetic. */
+function budgetParts(pollMs: number, env: Record<string, string | undefined>) {
   const raw = env[PACK_TIMEOUT_ENV];
   const parsed = raw === undefined ? NaN : Number.parseInt(raw.trim(), 10);
-  const wanted = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PACK_TIMEOUT_MS;
-  const ceiling = Math.max(1, Math.floor(pollMs * BUDGET_FRACTION));
-  return Math.min(wanted, ceiling);
+  const asked = Number.isFinite(parsed) && parsed > 0;
+  return {
+    wanted: asked ? parsed : DEFAULT_PACK_TIMEOUT_MS,
+    ceiling: Math.max(1, Math.floor(pollMs * BUDGET_FRACTION)),
+    asked,
+  };
+}
+
+/**
+ * The sentence to print when the clamp above **bit** — i.e. the operator asked for a budget and got a
+ * smaller one. `null` when they asked for nothing, or asked for something the poll can afford.
+ *
+ * The clamp itself stays (it is the arithmetic that keeps a slow peer from stalling the lead), but it
+ * stops being SILENT: `COLLIE_PACK_TIMEOUT_MS=3000` at the default 1500 ms poll changes nothing at
+ * all, and an operator who set it to chase a slow link deserves to be told which knob actually moves —
+ * `COLLIE_POLL_MS`. Same posture as `startupWarnings` in `bridge/server.ts`: a pure function that
+ * returns the line, and a caller that decides where it is printed.
+ */
+export function packTimeoutClampWarning(
+  pollMs: number,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const { wanted, ceiling, asked } = budgetParts(pollMs, env);
+  if (!asked || wanted <= ceiling) return null;
+  const neededPoll = Math.ceil(wanted / BUDGET_FRACTION);
+  return (
+    `[pack] ${PACK_TIMEOUT_ENV}=${wanted} has no effect beyond ${ceiling}ms: a peer may use at most ` +
+    `${BUDGET_FRACTION} of the ${pollMs}ms poll, or a slow peer stalls this lead's own snapshot. ` +
+    `For the full ${wanted}ms, raise the poll too: COLLIE_POLL_MS=${neededPoll}.`
+  );
 }
 
 /** How long a `hello` PROBE may take before the lead calls a member gone (§10.4), by default. */
@@ -97,6 +130,68 @@ export function packHelloBudget(
   const parsed = raw === undefined ? NaN : Number.parseInt(raw.trim(), 10);
   const wanted = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PACK_HELLO_TIMEOUT_MS;
   return Math.max(packTimeoutBudget(pollMs, env), Math.min(wanted, HELLO_BUDGET_CEILING_MS));
+}
+
+// ── The bootstrap credit ─────────────────────────────────────────────────────
+//
+// The patient budget above fixed the VERDICT and left the DATA path in the same deadlock it was
+// measured out of (2026-08-19, against a real DERP-relayed peer): hello cold 1.86 s → 200, snapshot
+// cold **with the handshake** 1.22 s → 200, snapshot warm 0.12 s. Every data request carried the
+// strict ~1200 ms budget, so a cold one aborted mid-handshake; an aborted attempt pools nothing, so
+// the next one started cold as well, and the peer read `unreachable` with every pane read answering
+// 503 after exactly one budget, forever.
+//
+// So a data request gets ONE patient attempt per cold link — the same medicine as `hello`, bounded so
+// it can never become the steady-state budget:
+//
+//   • WARM (a dial reached the far side and nothing has failed since) ⇒ the strict budget, always.
+//     Warm requests measured 0.11–0.12 s, so the strict budget is not what is broken.
+//   • COLD with its credit unspent ⇒ the patient budget, and the credit is spent AT ISSUE. Concurrent
+//     requests and later polls therefore do not stack patient dials: at most one is ever in flight.
+//   • COLD with its credit spent ⇒ the strict budget. A host that is genuinely gone fails in one
+//     strict budget per poll, which is the pre-existing behaviour and the point of the bound.
+//   • A warm link that fails is granted a fresh credit, because that is exactly the shape of a pool
+//     the far side (or an idle timer) tore down: one strict miss, then one patient re-bootstrap.
+//
+// It is deliberately small, pure and exported so `peer-client.test.ts` can pin the matrix without a
+// socket. Only a DATA dial spends a credit — `hello` already carries the patient budget of its own.
+
+/** What a {@link PeerClient} remembers about one link, for budget selection and nothing else. */
+export interface LinkWarmth {
+  /** A dial reached the far side and nothing has failed since. */
+  readonly warm: boolean;
+  /** The one patient attempt a cold link is allowed has already been issued. */
+  readonly bootstrapSpent: boolean;
+}
+
+/** A link nothing is known about yet: cold, and owed its one patient attempt. */
+export const COLD_LINK: LinkWarmth = { warm: false, bootstrapSpent: false };
+
+/** The budget for one data dial, and the warmth to remember while it is in flight. */
+export interface TakenBudget {
+  readonly budgetMs: number;
+  readonly next: LinkWarmth;
+}
+
+/**
+ * Pick a data request's budget and consume a bootstrap credit if it takes one.
+ *
+ * `patientMs` is floored at `strictMs` here as well as in {@link packHelloBudget}, so a hand-wired
+ * client can never make its bootstrap attempt MORE impatient than its steady state.
+ */
+export function takeDataBudget(state: LinkWarmth, strictMs: number, patientMs: number): TakenBudget {
+  if (state.warm || state.bootstrapSpent) return { budgetMs: strictMs, next: state };
+  return { budgetMs: Math.max(strictMs, patientMs), next: { warm: false, bootstrapSpent: true } };
+}
+
+/**
+ * Fold one dial's TRANSPORT result back in. `reached` is "the far side answered at all" — a 401, a 409
+ * and a 404 all reached it, and all leave a usable pooled connection behind, so all of them are warm.
+ * Only a throw (timeout, refusal, DNS, TLS) is a failure here.
+ */
+export function foldWarmth(state: LinkWarmth, reached: boolean): LinkWarmth {
+  if (reached) return { warm: true, bootstrapSpent: false };
+  return { warm: false, bootstrapSpent: state.warm ? false : state.bootstrapSpent };
 }
 
 /** Where a member is dialled. `address` is the trust store's hint — never a client-supplied value. */
@@ -211,11 +306,15 @@ export interface PeerClientDeps {
   /** Per-peer budget in ms. Build it with {@link packTimeoutBudget}, never by hand. */
   readonly timeoutMs: number;
   /**
-   * The budget for {@link PeerClient.hello} alone. Build it with {@link packHelloBudget}, never by
-   * hand. Absent ⇒ `hello` shares the strict data budget, which is the pre-2026-08-18 behaviour and
-   * the deadlock that doc describes — so every production wiring supplies it.
+   * The patient budget: {@link PeerClient.hello}'s, and a cold link's one bootstrap data attempt
+   * ({@link takeDataBudget}). Build it with {@link packHelloBudget}, never by hand.
+   *
+   * It is still built from `COLLIE_PACK_HELLO_TIMEOUT_MS` because it is the same budget the verdict
+   * probe named on 2026-08-18 and an operator-facing key does not churn for a second caller. Absent ⇒
+   * every call shares the strict data budget, which is the pre-2026-08-18 behaviour and the deadlock
+   * the two docs above describe — so every production wiring supplies it.
    */
-  readonly helloTimeoutMs?: number;
+  readonly patientTimeoutMs?: number;
   readonly fetch: PackFetch;
   readonly now?: () => number;
   /** The operator's device id, forwarded for the peer's audit trail (§6, §12). Off ⇒ `null`. */
@@ -273,15 +372,24 @@ export function packUrl(address: string, route: string, params?: Record<string, 
 }
 
 /**
- * The lead's client for one pack. Stateless: it holds no per-peer state, no timers and no cache, so
- * "what the lead believes about peer X" lives in the registry (bridge/pack/registry.ts) and there is
- * exactly one place to look for it.
+ * The lead's client for one pack. It holds no timers, no cache and no belief about a peer: "what the
+ * lead believes about peer X" lives in the registry (bridge/pack/registry.ts) and there is exactly one
+ * place to look for it.
  *
- * Zero tax follows from that statelessness — constructing one arms nothing, and a solo lead never
- * constructs one because it has no peers to hand it.
+ * The one thing it does remember is {@link LinkWarmth} — whether a dial to an address has ever
+ * succeeded — because the budget for the NEXT request depends on whether a handshake has already been
+ * paid for, and nothing outside this class knows that. It is transport bookkeeping, not state about a
+ * member: it decides a timeout and never a verdict, it is never persisted, and losing it costs one
+ * patient dial. Keyed by address, which is what the connection pool is keyed by; a member that moved
+ * (`collie reconnect`) is a different connection and correctly starts cold again. Bounded by the
+ * roster, since an address only ever comes from the trust store.
+ *
+ * Zero tax otherwise — constructing one arms nothing, and a solo lead never constructs one because it
+ * has no peers to hand it.
  */
 export class PeerClient {
   private readonly now: () => number;
+  private readonly warmth = new Map<string, LinkWarmth>();
 
   constructor(private readonly deps: PeerClientDeps) {
     this.now = deps.now ?? Date.now;
@@ -290,14 +398,15 @@ export class PeerClient {
   /**
    * `GET /pack/v1/hello` — liveness, version and the peer's member id (§5).
    *
-   * **The one call that runs on the patient budget** ({@link packHelloBudget}). It is the verdict
-   * probe: `pack status` renders it, `reconnect` confirms with it, and the lead re-probes a
-   * timed-out peer with it. It is never on the poll's hot path, so paying for a cold handshake here
-   * costs the phone nothing — and the connection it warms is the one the next strict-budget snapshot
-   * rides.
+   * **The call that ALWAYS runs on the patient budget** ({@link packHelloBudget}), where a data
+   * request gets one such attempt per cold link ({@link takeDataBudget}) and the strict budget
+   * thereafter. It is the verdict probe: `pack status` renders it, `reconnect` confirms with it, and
+   * the lead re-probes a timed-out peer with it. It is never on the poll's hot path, so paying for a
+   * cold handshake here costs the phone nothing — and the connection it warms is the one the next
+   * strict-budget snapshot rides.
    */
   async hello(link: PackLink): Promise<PeerOutcome<HelloResult>> {
-    const outcome = await this.json(link, "hello", undefined, {}, this.deps.helloTimeoutMs);
+    const outcome = await this.json(link, "hello", undefined, {}, this.deps.patientTimeoutMs);
     if (!outcome.ok) return outcome;
     const body = asRecord(outcome.value);
     const member = typeof body?.member === "string" ? body.member : null;
@@ -393,11 +502,12 @@ export class PeerClient {
     init: PackRequestInit,
     mode: "consumed" | "passthrough",
     // The one knob a caller may widen, and only `hello` does: the verdict probe's patient budget
-    // (§10.4). Everything else runs on the strict per-poll one, which is what keeps a slow peer from
-    // stalling the lead's snapshot — a rule this parameter must never be used to bend.
+    // (§10.4). Everything else runs on the strict per-poll one — except for the single bootstrap
+    // attempt a cold link is owed, which is chosen below and can never repeat while the link stays
+    // down. A caller must never widen a data request by hand; that rule is what keeps a slow peer
+    // from stalling the lead's snapshot every poll.
     budgetMs?: number,
   ): Promise<PeerOutcome<Response>> {
-    const timeoutMs = budgetMs ?? this.deps.timeoutMs;
     const secret = this.deps.secret();
     if (secret === null || secret === "") {
       // Never send an unauthenticated pack request. A missing secret is a local fault (not in a pack,
@@ -409,6 +519,9 @@ export class PeerClient {
     if (url === null) {
       return this.fail({ state: "unreachable", reason: `unusable address: ${link.address}`, attempted: false });
     }
+    // Chosen AFTER the two pre-flight refusals above, so a missing secret or an unusable address —
+    // neither of which touches a socket — can never spend a link's one bootstrap credit.
+    const timeoutMs = budgetMs ?? this.takeBudget(link);
 
     const device = this.deps.device?.() ?? null;
     const headers = new Headers(init.headers);
@@ -444,7 +557,11 @@ export class PeerClient {
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
       res = await this.deps.fetch(url, dialInit);
+      // A response — ANY response — means the handshake completed and the pool holds a connection the
+      // next strict-budget request can ride. Status is irrelevant here; it is read further down.
+      this.settle(link, true);
     } catch (err) {
+      this.settle(link, false);
       // Timeout, connection refused, DNS, TLS — one state, because the phone's answer is the same in
       // all of them: last-good state, marked stale (§10.2). The peer's address is named; the secret
       // never appears in a reason string, and nothing here interpolates one.
@@ -515,6 +632,25 @@ export class PeerClient {
       receivedAt: this.now(),
       date: httpDate(res.headers.get("date")),
     };
+  }
+
+  /**
+   * The budget for one data dial, spending this link's bootstrap credit if it is owed one.
+   *
+   * With no patient budget wired there is nothing to spend and nothing to remember, so the strict
+   * budget is returned untouched — the pre-2026-08-19 behaviour, exactly.
+   */
+  private takeBudget(link: PackLink): number {
+    const patient = this.deps.patientTimeoutMs;
+    if (patient === undefined) return this.deps.timeoutMs;
+    const taken = takeDataBudget(this.warmth.get(link.address) ?? COLD_LINK, this.deps.timeoutMs, patient);
+    this.warmth.set(link.address, taken.next);
+    return taken.budgetMs;
+  }
+
+  /** Remember whether this link's transport reached the far side. See {@link foldWarmth}. */
+  private settle(link: PackLink, reached: boolean): void {
+    this.warmth.set(link.address, foldWarmth(this.warmth.get(link.address) ?? COLD_LINK, reached));
   }
 
   private fail(failure: PeerFailure): PeerOutcome<never> {

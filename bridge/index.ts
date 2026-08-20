@@ -20,7 +20,7 @@ import { dialTls, peerListenerTls } from "./pack/transport.ts";
 import { PackLead } from "./pack/lead.ts";
 import { leadLabel } from "./pack/merge.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
-import { packHelloBudget, packTimeoutBudget, PeerClient } from "./pack/peer-client.ts";
+import { packHelloBudget, packTimeoutBudget, packTimeoutClampWarning, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
 import { formatMarker, markerFor, packRuntimePath, rosterDrift } from "./pack/staleness.ts";
@@ -382,6 +382,13 @@ if (warnsOnWildcardBind(pack.mode, cfg.host)) {
   );
 }
 
+// The per-peer budget is clamped by the poll interval, and a clamp nobody is told about reads as a
+// knob that does nothing. Said once, at boot, next to the other pack warnings.
+{
+  const clamped = packTimeoutClampWarning(cfg.pollMs);
+  if (clamped !== null) console.warn(clamped);
+}
+
 const packLead = (() => {
   if (pack.mode !== "lead") return undefined;
   const data = trustStore.current();
@@ -401,11 +408,12 @@ const packLead = (() => {
     // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
     // (§10.1). The clamp lives in packTimeoutBudget; nothing here is allowed to widen it.
     timeoutMs: packTimeoutBudget(cfg.pollMs),
-    // …and the VERDICT probe's patient one, which the poll fraction deliberately does not clamp
-    // (§10.4). A cold pinned-TLS handshake over a relay costs more than a whole poll budget, so the
-    // strict budget can decide "this poll is stale" but must never be what decides "this peer is
-    // gone" — see packHelloBudget's own doc for the measurement that produced this pair.
-    helloTimeoutMs: packHelloBudget(cfg.pollMs),
+    // …and the patient one, which the poll fraction deliberately does not clamp (§10.4). A cold
+    // pinned-TLS handshake over a relay costs more than a whole poll budget, so the strict budget can
+    // decide "this poll is stale" but must never be what decides "this peer is gone", nor what a cold
+    // link's FIRST data request has to fit inside — see packHelloBudget and takeDataBudget for the
+    // measurements that produced this pair.
+    patientTimeoutMs: packHelloBudget(cfg.pollMs),
     fetch: (url, init) => fetch(url, init),
     // Pinned mutual TLS, per member, read through the store on every dial for the same reason the
     // secret and the roster are: `pack remove`, a re-join and a rotation all change what this lead

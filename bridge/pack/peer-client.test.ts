@@ -3,15 +3,19 @@ import { describe, expect, test } from "bun:test";
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
 import { PACK } from "./fixtures.ts";
 import {
+  COLD_LINK,
   DEFAULT_PACK_HELLO_TIMEOUT_MS,
   DEFAULT_PACK_TIMEOUT_MS,
   PACK_HELLO_TIMEOUT_ENV,
   PACK_TIMEOUT_ENV,
   PeerClient,
+  foldWarmth,
   packHelloBudget,
   packTimeoutBudget,
+  packTimeoutClampWarning,
   packUrl,
   sweepPeers,
+  takeDataBudget,
   type PackFetch,
   type PackLink,
 } from "./peer-client.ts";
@@ -47,13 +51,13 @@ function replying<TBody>(
 
 function client(
   fetch: PackFetch,
-  over: { timeoutMs?: number; helloTimeoutMs?: number; secret?: string | null; device?: string | null } = {},
+  over: { timeoutMs?: number; patientTimeoutMs?: number; secret?: string | null; device?: string | null } = {},
 ) {
   return new PeerClient({
     self: "desk",
     secret: () => (over.secret === undefined ? PACK.secret : over.secret),
     timeoutMs: over.timeoutMs ?? 50,
-    helloTimeoutMs: over.helloTimeoutMs,
+    patientTimeoutMs: over.patientTimeoutMs,
     fetch,
     now: () => 1_000,
     device: over.device === undefined ? undefined : () => over.device ?? null,
@@ -81,6 +85,66 @@ describe("packTimeoutBudget — strictly below the lead's poll (§10.1)", () => 
     for (const raw of ["", "abc", "0", "-5"]) {
       expect(packTimeoutBudget(10_000, { [PACK_TIMEOUT_ENV]: raw })).toBe(DEFAULT_PACK_TIMEOUT_MS);
     }
+  });
+});
+
+describe("packTimeoutClampWarning — the clamp stops being silent", () => {
+  test("silence when the operator asked for nothing", () => {
+    expect(packTimeoutClampWarning(1500, {})).toBeNull();
+  });
+
+  test("silence when the poll can afford what they asked for", () => {
+    expect(packTimeoutClampWarning(1500, { [PACK_TIMEOUT_ENV]: "1000" })).toBeNull();
+    expect(packTimeoutClampWarning(5000, { [PACK_TIMEOUT_ENV]: "3000" })).toBeNull();
+  });
+
+  test("the default pair is the trap it warns about, and it names the knob that moves", () => {
+    const warning = packTimeoutClampWarning(1500, { [PACK_TIMEOUT_ENV]: "3000" });
+    // The whole point: 3000 at a 1500ms poll is 1200ms, i.e. exactly the default it replaced.
+    expect(packTimeoutBudget(1500, { [PACK_TIMEOUT_ENV]: "3000" })).toBe(DEFAULT_PACK_TIMEOUT_MS);
+    expect(warning).toContain("no effect beyond 1200ms");
+    // COLLIE_POLL_MS is the other half, with the value that actually buys the 3000ms asked for.
+    expect(warning).toContain("COLLIE_POLL_MS=3750");
+    expect(packTimeoutBudget(3750, { [PACK_TIMEOUT_ENV]: "3000" })).toBe(3000);
+  });
+
+  test("garbage is not a clamp — it is a value that was never read", () => {
+    for (const raw of ["nonsense", "-5", "0", ""]) {
+      expect(packTimeoutClampWarning(1500, { [PACK_TIMEOUT_ENV]: raw })).toBeNull();
+    }
+  });
+});
+
+describe("takeDataBudget / foldWarmth — the bootstrap credit", () => {
+  test("a cold link's first data request is patient, and the credit is spent at issue", () => {
+    const taken = takeDataBudget(COLD_LINK, 1200, 5000);
+    expect(taken.budgetMs).toBe(5000);
+    expect(taken.next).toEqual({ warm: false, bootstrapSpent: true });
+    // Spent: the peer that is genuinely gone falls back to one strict budget per poll.
+    expect(takeDataBudget(taken.next, 1200, 5000).budgetMs).toBe(1200);
+    expect(takeDataBudget(taken.next, 1200, 5000).next).toEqual(taken.next);
+  });
+
+  test("a warm link is strict, always — the patient budget must not leak onto the poll", () => {
+    const warm = foldWarmth(COLD_LINK, true);
+    expect(warm).toEqual({ warm: true, bootstrapSpent: false });
+    expect(takeDataBudget(warm, 1200, 5000).budgetMs).toBe(1200);
+  });
+
+  test("a warm link that dies is owed one fresh bootstrap — that is a torn-down pool", () => {
+    const died = foldWarmth(foldWarmth(COLD_LINK, true), false);
+    expect(died).toEqual({ warm: false, bootstrapSpent: false });
+    expect(takeDataBudget(died, 1200, 5000).budgetMs).toBe(5000);
+  });
+
+  test("a cold link that fails again is NOT owed another — the patient budget stays bounded", () => {
+    const spent = takeDataBudget(COLD_LINK, 1200, 5000).next;
+    const failedTwice = foldWarmth(foldWarmth(spent, false), false);
+    expect(takeDataBudget(failedTwice, 1200, 5000).budgetMs).toBe(1200);
+  });
+
+  test("a patient budget below the strict one is floored, never used to make bootstrap harsher", () => {
+    expect(takeDataBudget(COLD_LINK, 1200, 10).budgetMs).toBe(1200);
   });
 });
 
@@ -524,16 +588,76 @@ describe("two budgets, and which call runs on which (§10.4)", () => {
     });
 
   test("`hello` runs on the patient budget and says so in its reason", async () => {
-    const outcome = await client(stalling, { timeoutMs: 5, helloTimeoutMs: 40 }).hello(laptop);
+    const outcome = await client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 }).hello(laptop);
     expect(!outcome.ok && outcome.reason).toBe("hello: timed out after 40ms");
   });
 
-  test("every DATA call keeps the strict one — the patient budget must not leak onto the poll", async () => {
-    const patient = client(stalling, { timeoutMs: 5, helloTimeoutMs: 40 });
-    const snapshot = await patient.snapshot(laptop);
-    expect(!snapshot.ok && snapshot.reason).toBe("snapshot: timed out after 5ms");
+  test("a COLD data call gets one patient attempt, and the poll keeps the strict budget after it", async () => {
+    const patient = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
+    // The bootstrap credit: one attempt allowed to pay for a handshake the strict budget cannot.
+    const first = await patient.snapshot(laptop);
+    expect(!first.ok && first.reason).toBe("snapshot: timed out after 40ms");
+    // Spent. Everything after it is strict again, so a host that is genuinely gone still fails fast.
+    const second = await patient.snapshot(laptop);
+    expect(!second.ok && second.reason).toBe("snapshot: timed out after 5ms");
     const forwarded = await patient.proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
     expect(!forwarded.ok && forwarded.reason).toBe("pane/w1:p1/reply: timed out after 5ms");
+  });
+
+  test("the credit is spent AT ISSUE, so concurrent cold requests never stack patient dials", async () => {
+    const patient = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
+    const [a, b, c] = await Promise.all([
+      patient.snapshot(laptop),
+      patient.snapshot(laptop),
+      patient.snapshot(laptop),
+    ]);
+    const reasons = [a, b, c].map((o) => (o.ok ? "ok" : o.reason));
+    expect(reasons.filter((r) => r === "snapshot: timed out after 40ms")).toHaveLength(1);
+    expect(reasons.filter((r) => r === "snapshot: timed out after 5ms")).toHaveLength(2);
+  });
+
+  test("a WARM link is strict — and a warm link that dies is granted one fresh patient attempt", async () => {
+    // Answers the first dial, stalls forever after it: a peer that was there and then went away.
+    let answered = false;
+    const oncely: PackFetch = (url, init) => {
+      if (answered) return stalling(url, init);
+      answered = true;
+      return replying({}).fetch(url, init);
+    };
+    const link = client(oncely, { timeoutMs: 5, patientTimeoutMs: 40 });
+    expect((await link.snapshot(laptop)).ok).toBe(true);
+    // Warm: the handshake is paid for, so the strict budget is the honest one.
+    const missed = await link.snapshot(laptop);
+    expect(!missed.ok && missed.reason).toBe("snapshot: timed out after 5ms");
+    // …and that failure is exactly the shape of a torn-down pool, so one patient re-bootstrap follows.
+    const rebootstrap = await link.snapshot(laptop);
+    expect(!rebootstrap.ok && rebootstrap.reason).toBe("snapshot: timed out after 40ms");
+    const after = await link.snapshot(laptop);
+    expect(!after.ok && after.reason).toBe("snapshot: timed out after 5ms");
+  });
+
+  test("with no patient budget wired, every data call is strict — the old behaviour", async () => {
+    const strict = client(stalling, { timeoutMs: 5 });
+    const first = await strict.snapshot(laptop);
+    const second = await strict.snapshot(laptop);
+    expect(!first.ok && first.reason).toBe("snapshot: timed out after 5ms");
+    expect(!second.ok && second.reason).toBe("snapshot: timed out after 5ms");
+  });
+
+  test("a pre-flight refusal never spends the credit — nothing was dialled", async () => {
+    const secretless = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40, secret: null });
+    expect((await secretless.snapshot(laptop)).ok).toBe(false);
+    const dialled = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
+    const first = await dialled.snapshot(laptop);
+    expect(!first.ok && first.reason).toBe("snapshot: timed out after 40ms");
+  });
+
+  test("warmth is per ADDRESS: a member that moved starts cold again", async () => {
+    const moved: PackLink = { memberId: "laptop", address: "laptop.other:8787" };
+    const c = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
+    expect(!(await c.snapshot(laptop)).ok).toBe(true);
+    const there = await c.snapshot(moved);
+    expect(!there.ok && there.reason).toBe("snapshot: timed out after 40ms");
   });
 
   test("with no patient budget wired, `hello` is as impatient as the poll — the old behaviour", async () => {

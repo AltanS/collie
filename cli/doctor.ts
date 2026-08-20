@@ -10,7 +10,7 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs } from "./link.ts";
 import type { Ui } from "./render.ts";
-import { failureLine, parsePackArgs, probeMembers, VERSION_REPORTED_SINCE } from "./pack.ts";
+import { failureLine, type MemberReach, parsePackArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { tailnetInboundBlocked, tailnetName } from "./tailnet.ts";
@@ -65,7 +65,7 @@ export interface DoctorDeps {
   readonly link: LinkReader;
   /** Read-only use: `load()` and nothing else. */
   readonly store: TrustStore;
-  /** The injected transport — the `hello` probe, and no other call. */
+  /** The injected transport — the `hello` probe and one `snapshot` READ per member, and no other call. */
   readonly fetch: PackFetch;
   readonly now: () => number;
   /**
@@ -101,11 +101,17 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   const inPack = data !== null && data.pack !== null;
 
   // The members this collie talks to: its peers on a lead, its one lead on a peer. Probed ONCE, and
-  // read by three checks (reachability, versions, clocks) — `hello` is the only call `doctor` makes.
+  // read by three checks (reachability, versions, clocks). Two calls per member and no more: the
+  // `hello` verdict probe, and the one real data request that keeps `member-reach` honest.
   const members: readonly TrustedMember[] =
     data === null ? [] : data.lead === null ? data.peers : [data.lead, ...data.peers];
-  const probes: Map<string, PeerOutcome<HelloResult>> =
-    inPack && members.length > 0 ? await probeMembers(deps, data, members) : new Map();
+  const reaches: Map<string, MemberReach> =
+    inPack && data !== null && members.length > 0 ? await probeMemberReach(deps, data, members) : new Map();
+  // Versions and clocks read the `hello` half alone — they are questions about the far side's build
+  // and clock, which a data request cannot answer better.
+  const probes: Map<string, PeerOutcome<HelloResult>> = new Map(
+    [...reaches].map(([id, answered]) => [id, answered.hello]),
+  );
 
   const local: Finding[] = [
     webDist(deps),
@@ -123,7 +129,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       ? [
           storeDrift(deps, data),
           secretGeneration(data, members),
-          reach(data, members, probes),
+          reach(data, members, reaches),
           memberVersions(deps, members, probes),
         ]
       : [];
@@ -571,12 +577,16 @@ function secretGeneration(data: TrustStoreData, members: readonly TrustedMember[
   );
 }
 
-/** The link, not the machine: `member-reach` on a lead, `lead-reach` on a peer. */
-function reach(
-  data: TrustStoreData,
-  members: readonly TrustedMember[],
-  probes: Map<string, PeerOutcome<HelloResult>>,
-): Finding {
+/**
+ * The link, not the machine: `member-reach` on a lead, `lead-reach` on a peer.
+ *
+ * **Both halves of {@link MemberReach}, because `hello` alone was a lie.** The verdict probe runs on
+ * the patient budget and every real read runs on the strict clamped one, so a link whose handshake
+ * outprices the poll answered the probe while the phone got nothing — and this check printed `✓` over
+ * a pack that was 503ing every pane. A member that answers and then starves is now its own finding,
+ * with its own remedy: the address is right, the budget is not.
+ */
+function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches: Map<string, MemberReach>): Finding {
   const check = data.lead === null ? "member-reach" : "lead-reach";
   const enrolled = members.filter((m) => m.status === "enrolled");
   if (enrolled.length === 0) {
@@ -586,21 +596,45 @@ function reach(
       "`collie pack invite` here, then `collie join` on the other machine",
     );
   }
-  const failures: string[] = [];
+  const silent: string[] = [];
+  const starved: string[] = [];
+  const served: number[] = [];
   for (const m of enrolled) {
-    const outcome = probes.get(m.memberId);
-    if (outcome === undefined) {
-      failures.push(`${m.memberId} — not dialled`);
+    const answered = reaches.get(m.memberId);
+    if (answered === undefined) {
+      silent.push(`${m.memberId} — not dialled`);
       continue;
     }
-    if (!outcome.ok) failures.push(`${m.memberId} at ${m.address} — ${failureLine(outcome)}`);
+    if (!answered.hello.ok) {
+      silent.push(`${m.memberId} at ${m.address} — ${failureLine(answered.hello)}`);
+      continue;
+    }
+    if (answered.data === null || !answered.data.ok) {
+      const why = answered.data === null ? "no data request was sent" : failureLine(answered.data);
+      starved.push(`${m.memberId} at ${m.address} — ${why}`);
+      continue;
+    }
+    served.push(answered.dataMs ?? 0);
   }
-  if (failures.length === 0) return ok(check, `${enrolled.length} of ${enrolled.length} answered`);
-  return bad(
-    check,
-    `${failures.length} of ${enrolled.length} did not answer: ${failures.join("; ")}`,
-    "`collie reconnect <member> <address>` if the address moved; otherwise `collie restart` on that machine",
-  );
+  if (silent.length > 0) {
+    const note = starved.length === 0 ? "" : `; answered but served no data: ${starved.join("; ")}`;
+    return bad(
+      check,
+      `${silent.length} of ${enrolled.length} did not answer: ${silent.join("; ")}${note}`,
+      "`collie reconnect <member> <address>` if the address moved; otherwise `collie restart` on that machine",
+    );
+  }
+  if (starved.length > 0) {
+    return bad(
+      check,
+      `${enrolled.length} of ${enrolled.length} answered \`hello\`, but ${starved.length} served no data:` +
+        ` ${starved.join("; ")} — the machines are there; their data misses the per-poll budget`,
+      "raise BOTH `COLLIE_PACK_TIMEOUT_MS` and `COLLIE_POLL_MS` here (the first is clamped to 0.8 of the" +
+        " second), then `collie restart`",
+    );
+  }
+  const slowest = served.length === 0 ? 0 : Math.max(...served);
+  return ok(check, `${enrolled.length} of ${enrolled.length} answered and served a snapshot (slowest ${slowest}ms)`);
 }
 
 /**

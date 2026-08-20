@@ -639,14 +639,14 @@ function startLatencyProxy(port: number, delayMs: number) {
 }
 
 /** A real lead-side client aimed at `address`, with the two budgets under test. */
-function clientForBudgets(timeoutMs: number, helloTimeoutMs?: number): PeerClient {
+function clientForBudgets(timeoutMs: number, patientTimeoutMs?: number): PeerClient {
   const from = lead.store()!;
   const to = peer.store()!;
   return new PeerClient({
     self: from.self.memberId,
     secret: () => from.pack!.secret,
     timeoutMs,
-    helloTimeoutMs,
+    patientTimeoutMs,
     fetch: packFetch,
     // The SHIPPED pin, built the way bridge/index.ts builds it — including the fresh object per
     // dial, which is the thing that could plausibly have defeated connection reuse.
@@ -690,6 +690,29 @@ describe("a cold handshake priced above the budget", () => {
       expect((await strict.hello(link)).ok).toBe(true);
       expect((await strict.snapshot(link)).ok).toBe(true);
       expect(proxy.state.accepts).toBe(4);
+    } finally {
+      proxy.stop();
+    }
+  }, 60_000);
+
+  test("a cold DATA request bootstraps on the patient budget, then rides the warm one", async () => {
+    // The same 1 s of injected RTT — the shape that left the link flapping with `hello` green and
+    // every pane read 503ing after exactly one strict budget.
+    const proxy = startLatencyProxy(peer.port, 500);
+    const link: PackLink = { memberId: peer.store()!.self.memberId, address: `127.0.0.1:${proxy.port}` };
+    try {
+      const starved = clientForBudgets(1200);
+      expect((await starved.snapshot(link)).ok).toBe(false);
+      expect(proxy.state.accepts).toBe(1);
+
+      // With a patient budget wired, the FIRST data request pays for the handshake itself — no
+      // `hello` in front of it — and every one after it rides the connection it left pooled.
+      const client = clientForBudgets(1200, 5000);
+      expect((await client.snapshot(link)).ok).toBe(true);
+      expect(proxy.state.accepts).toBe(2);
+      expect((await client.snapshot(link)).ok).toBe(true);
+      expect((await client.proxy(link, "snapshot")).ok).toBe(true);
+      expect(proxy.state.accepts).toBe(2);
     } finally {
       proxy.stop();
     }

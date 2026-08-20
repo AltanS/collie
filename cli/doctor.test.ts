@@ -612,6 +612,35 @@ describe("collie doctor — the pack checks", () => {
     expect(code).toBe(EXIT.FAIL);
   });
 
+  test("member-reach: a member that answers `hello` and then starves is an error about the BUDGET", async () => {
+    // `hello` runs on the patient budget, every real read on the strict clamped one — so a link whose
+    // handshake outprices the poll used to answer the probe while the phone got 503s, and this check
+    // printed ✓ over it. Both questions are asked now, and the remedy names the knobs, not `reconnect`.
+    const { code, byCheck } = await findings(
+      harness(LEAD, [hello(), new Error("timed out after 1200ms")], {
+        files: { ...healthyFiles(), ...markerFile(LEAD) },
+      }),
+    );
+    const f = byCheck.get("member-reach");
+    expect(f?.status).toBe("error");
+    expect(f?.detail).toContain("served no data");
+    expect(f?.remedy).toContain("COLLIE_PACK_TIMEOUT_MS");
+    expect(f?.remedy).toContain("COLLIE_POLL_MS");
+    expect(f?.remedy).not.toContain("collie reconnect");
+    expect(code).toBe(EXIT.FAIL);
+  });
+
+  test("member-reach: a healthy member reports both answers, and the data half is a REAL request", async () => {
+    const h = harness(LEAD, [hello(), hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } });
+    const { byCheck } = await findings(h);
+    expect(byCheck.get("member-reach")?.status).toBe("ok");
+    expect(byCheck.get("member-reach")?.detail).toContain("served a snapshot");
+    expect(h.requests).toEqual([
+      "https://laptop.example:8787/pack/v1/hello",
+      "https://laptop.example:8787/pack/v1/snapshot",
+    ]);
+  });
+
   test("member-versions: skew WARNS naming both versions — §7.1 refuses nothing, so nor does this", async () => {
     const { code, byCheck } = await findings(
       harness(LEAD, [hello({ version: "1.0.0-alpha.9" })], {
