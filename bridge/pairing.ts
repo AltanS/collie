@@ -438,6 +438,33 @@ export class PairingStore {
     return { ok: true, token };
   }
 
+  /**
+   * Adopt a lead's synced entries into this machine's own registry — **at takeover commit, and only
+   * then** (RFC §6.5, `bridge/pack/standby-devices.ts`).
+   *
+   * After the commit this machine IS the lead, so the phone must keep working against the very
+   * credential it already holds; before it, adopting would silently arm this machine's own write gate
+   * for an operator who never ran `collie pair` here. That is why this is a verb the takeover calls
+   * rather than something the sync does.
+   *
+   * Returns the colliding labels, and writes NOTHING when there are any — refuse and report, never
+   * namespace-and-merge (RFC §16, decision 6): a label is the revoke handle.
+   */
+  async adopt(devices: readonly { label: string; tokenHash: string; createdAt: number }[]): Promise<string[]> {
+    const own = coerceRegistry(await this.io.readRegistry());
+    const collisions = devices.filter((d) => own.devices.some((x) => x.label === d.label)).map((d) => d.label);
+    if (collisions.length > 0) return collisions;
+    await this.io.writeRegistry({
+      devices: [
+        ...own.devices,
+        // `lastSeenAt: 0` — never contacted THIS machine, and copying the lead's stamp would be this
+        // machine asserting traffic it never saw.
+        ...devices.map((d) => ({ label: d.label, tokenHash: d.tokenHash, createdAt: d.createdAt, lastSeenAt: 0 })),
+      ],
+    });
+    return [];
+  }
+
   /** Drop a device. False ⇒ no such label. */
   async revoke(label: string): Promise<boolean> {
     const next = removeDevice(coerceRegistry(await this.io.readRegistry()), label);

@@ -1,8 +1,8 @@
 import type { JsonObject, JsonValue } from "../json.ts";
-import type { PackChange } from "./enrollment.ts";
+import { parseRoster, type PackChange } from "./enrollment.ts";
 import { fingerprintOfCert, isFingerprint, isMemberId, normalizeFingerprint } from "./identity.ts";
 import { signCanonical, verifyCanonical } from "./signing.ts";
-import type { StoredWarrant, TrustStoreData, Warrant } from "./trust-store.ts";
+import type { RosterRow, StoredWarrant, TrustStoreData, Warrant } from "./trust-store.ts";
 
 // The warrant: the lead's standing, signed permission for ONE member to take the crown
 // (PACK_PROTOCOL.md §18, RFC §4). This module mints it, verifies it, and decides what supersedes
@@ -330,6 +330,28 @@ export interface WarrantPush {
    * additional guarantee.
    */
   readonly deputyCertPem?: string;
+  /**
+   * The lead's current roster — **on the push to the DEPUTY and to nobody else** (RFC §7.4).
+   *
+   * The signed warrant carries no roster and that stands; this rides beside it. The deputy cannot
+   * lead a pack it cannot dial and holds exactly one roster entry of its own, so the alternative to
+   * this field is a takeover into a pack the new lead cannot see. It is the identical payload
+   * §14.3's successful demotion already returns, for the identical reason.
+   *
+   * **Not signed, and it does not need to be**: it arrives over a two-factor pack link from the
+   * pinned lead, which is the trust basis every other lead→peer byte has. A recipient that is not the
+   * named deputy discards it (`checkWarrantPush`), so an ordinary peer never stores one.
+   */
+  readonly roster?: readonly RosterRow[];
+  /**
+   * Where the SENDER should be dialled — present only on RFC §9's reconciliation push, where the
+   * sender is a **new lead** telling a member that was down during the takeover.
+   *
+   * A hint and never an identity (§4): what the recipient pins is the certificate it already
+   * anchored, and this only decides where it is dialled. An ordinary lead→peer push omits it, and a
+   * recipient that is not being re-pinned never reads it.
+   */
+  readonly address?: string;
 }
 
 /** Why a pushed warrant was refused. Local vocabulary — the wire says far less than this does. */
@@ -347,7 +369,12 @@ export type WarrantRefusal =
 
 /** The verdict on one pushed warrant. `stale` is not a failure — it is "already at least this new". */
 export type WarrantVerdict =
-  | { readonly kind: "accept"; readonly stored: StoredWarrant }
+  /**
+   * `roster` is present exactly when this collie is the deputy the warrant names AND the push carried
+   * one (RFC §7.4). `null` on every other member: a roster is the deputy's business, and an ordinary
+   * peer that stored one would be holding pins for machines it must never dial (§4).
+   */
+  | { readonly kind: "accept"; readonly stored: StoredWarrant; readonly roster: readonly RosterRow[] | null }
   | { readonly kind: "stale"; readonly generation: number }
   | { readonly kind: "refuse"; readonly reason: WarrantRefusal };
 
@@ -402,7 +429,16 @@ export function checkWarrantPush(
   if (!warrantSupersedes(held, warrant)) {
     return { kind: "stale", generation: held?.generation ?? warrant.generation };
   }
-  return { kind: "accept", stored: { warrant, deputyCertPem } };
+
+  // The roster (RFC §7.4). Read ONLY when this collie is the member the warrant names, so a push that
+  // carried one to the wrong recipient stores nothing — and a malformed roster is dropped rather than
+  // failing the warrant, because the warrant is the security object and the roster is the addressing
+  // hint that rides with it. `parseRoster` re-checks `fingerprint === sha256(certPem)` on every row,
+  // so a row this collie keeps is one it could actually pin.
+  const forSelf = warrant.deputyMemberId === data.self.memberId;
+  const roster = forSelf ? parseRoster(record?.roster) : null;
+
+  return { kind: "accept", stored: { warrant, deputyCertPem }, roster };
 }
 
 /**
@@ -410,9 +446,19 @@ export function checkWarrantPush(
  * the operator's designation **on the lead**, and a peer that copied it would be recording a decision
  * it did not make. Who the deputy is, on a peer, is inside the warrant.
  */
-export function storeWarrant(data: TrustStoreData, stored: StoredWarrant): PackChange<Warrant> {
+export function storeWarrant(
+  data: TrustStoreData,
+  stored: StoredWarrant,
+  /**
+   * The roster that rode along (RFC §7.4), when this collie is the deputy the warrant names. `null`
+   * leaves whatever is already held rather than clearing it: a push whose roster failed to parse must
+   * not disarm a deputy that already has a good one, and a lead that stopped sending one is a lead
+   * running an older build — neither is evidence the pack shrank to nothing.
+   */
+  roster: readonly RosterRow[] | null = null,
+): PackChange<Warrant> {
   return {
-    next: { ...data, warrant: stored },
+    next: roster === null ? { ...data, warrant: stored } : { ...data, warrant: stored, standbyRoster: roster },
     result: stored.warrant,
     audit: {
       action: "pack.warrant.stored",

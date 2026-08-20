@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +24,8 @@ import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
 import { mintIdentity, randomToken } from "./identity.ts";
 import { PACK_HELLO_PATH, PACK_LEAVE_PATH, PACK_PREFIX, PACK_SNAPSHOT_PATH } from "./router.ts";
+import { parseStandbyDevices } from "./standby-devices.ts";
+import { sha256Hex } from "../pairing.ts";
 import {
   bodyDigest,
   canonicalRequest,
@@ -34,7 +36,7 @@ import {
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
 } from "./signing.ts";
-import { canonicalWarrant } from "./warrant.ts";
+import { canonicalWarrant, mintWarrant } from "./warrant.ts";
 import { PeerClient, type PackLink } from "./peer-client.ts";
 import { dialTls, peerListenerTls, type PackRequestInit, type PackTlsOptions } from "./transport.ts";
 import {
@@ -137,6 +139,8 @@ class Instance {
     readonly name: string,
     readonly paneId: string,
     readonly paneText: string,
+    /** Extra environment for this child — the standby door's two keys, and nothing else so far. */
+    readonly extraEnv: Record<string, string> = {},
   ) {
     this.home = join(root, name);
     this.stateDir = join(this.home, "state");
@@ -197,6 +201,7 @@ class Instance {
         // second timer, which is exactly what the cadence assertion measures.
         COLLIE_POLL_IDLE_MS: "1000",
         COLLIE_MULTI_SESSION: "0",
+        ...this.extraEnv,
         // The pack surface is what is under test; the browser gate is not, and a peer serves no
         // browser surface at all (§3). Left at its defaults so nothing here relaxes a shipped rule.
       },
@@ -1382,3 +1387,275 @@ async function waitFor(
   const detail = typeof message === "string" ? message : await message();
   throw new Error(`timed out after ${budgetMs}ms: ${detail}`);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE STANDBY DOOR AND THE TAKEOVER, END TO END (RFC §6, §7, §9).
+//
+// Three REAL child bridges — a lead, a deputy and a witness — enrolled through the real enrollment
+// path, over real pinned mutual TLS. The whole loop, with nothing about it faked:
+//
+//   deputize → the warrant and the ROSTER ride the lead's own sweep → the pairing registry syncs to
+//   the deputy and to nobody else → kill the lead → the door ARMS on silence → the phone confirms
+//   with its pairing bearer → the deputy asks the dead lead, then asks the witness → the witness
+//   re-pins → the deputy restarts as the lead and serves the front door → the old lead boots, its
+//   boot gate finds the conflict, and it self-heals to a peer of the machine that deposed it.
+//
+// It is its OWN pack, on its own ports, so it neither depends on nor disturbs the two instances the
+// rest of this file drives.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
+  /**
+   * Short enough to test, still above the harness's 1 s idle poll — the rule the formula encodes.
+   *
+   * The DEPUTY's threshold is deliberately the longer of the two, and that is not a test convenience:
+   * both machines start counting from the same instant (the lead's last sweep), so a witness whose
+   * threshold matched the deputy's would answer `lead_is_alive` or `silent` depending on which of two
+   * near-simultaneous clocks fired first. RFC §14.2 names this race for the proxy's health check and
+   * the arming threshold; it is the same race one layer in, and the same answer applies — the machine
+   * that ACTS waits longer than the machines it asks.
+   */
+  const DEPUTY_ARM_MS = "3000";
+  const WITNESS_ARM_MS = "1000";
+  const TOKEN = "phone-token-for-the-takeover-test";
+
+  let hq: Instance;
+  let aide: Instance;
+  let witness: Instance;
+  let standbyPort = 0;
+
+  const idOf = (i: Instance): string => i.store()!.self.memberId;
+  const standby = (path: string, init: RequestInit = {}) =>
+    fetch(`http://127.0.0.1:${standbyPort}${path}`, init);
+
+  /** Enrol `peer` into `lead`'s pack through the real invite/join exchange. */
+  async function enrol(leadInstance: Instance, peerInstance: Instance): Promise<void> {
+    const invited = await verb(leadInstance, (d) => cmdPackInvite(d, ["--label", peerInstance.name]));
+    expect(invited.code).toBe(EXIT.OK);
+    const token = invited.out.split("\n")[0]!.trim();
+    // `--insecure` for the reason the first enrollment above gives: this harness enrolls over
+    // loopback `http://`, which is exactly the "genuinely trusted hop" that flag exists for.
+    const joined = await verb(peerInstance, (d) =>
+      cmdJoin(d, [
+        `http://127.0.0.1:${leadInstance.port}`,
+        token,
+        "--insecure",
+        "--address",
+        `127.0.0.1:${peerInstance.port}`,
+      ]),
+    );
+    expect(joined.err).not.toContain("certificate minting is not wired");
+    expect(joined.code).toBe(EXIT.OK);
+    // Nothing restarts the LEAD after an enrollment lands (§8.2's note) — that restart is the
+    // operator's, and here it is the harness's.
+    await leadInstance.restart();
+  }
+
+  beforeAll(async () => {
+    standbyPort = await freePort();
+    hq = new Instance("hq", "w1:p1", "hq pane\n");
+    aide = new Instance("aide", "w1:p2", "aide pane\n", {
+      COLLIE_STANDBY_PORT: String(standbyPort),
+      COLLIE_STANDBY_HOST: "127.0.0.1",
+      COLLIE_STANDBY_ARM_MS: DEPUTY_ARM_MS,
+    });
+    witness = new Instance("nas", "w1:p3", "nas pane\n", { COLLIE_STANDBY_ARM_MS: WITNESS_ARM_MS });
+    for (const i of [hq, aide, witness]) i.startHerdr();
+    await Promise.all([hq.start(), aide.start(), witness.start()]);
+    await enrol(hq, aide);
+    await enrol(hq, witness);
+  }, 120_000);
+
+  afterAll(async () => {
+    if (process.env.COLLIE_HARNESS_DEBUG === "1") {
+      for (const i of [hq, aide, witness]) console.log(`\n──── ${i?.name} ────\n${i?.log}`);
+    }
+    await Promise.all([hq?.stop(), aide?.stop(), witness?.stop()]);
+    for (const i of [hq, aide, witness]) i?.herdr?.stop();
+  });
+
+  test("the warrant and the ROSTER ride the lead's own sweep to the deputy (RFC §7.4)", async () => {
+    // The operator's designation, minted through the shipped transition and left on the lead's disk
+    // exactly as `collie pack deputy` leaves it. What this test is about is what happens NEXT, with
+    // no verb and no second timer: the sweep the lead already runs carries it.
+    const data = hq.store()!;
+    const change = mintWarrant(data, idOf(aide), Date.now());
+    expect(change).not.toBeNull();
+    writeFileSync(join(hq.stateDir, TRUST_STORE_FILENAME), serializeTrustStore(change!.next), { mode: 0o600 });
+    await hq.restart();
+
+    await waitFor(async () => aide.store()?.warrant != null, 20_000, "the deputy never received its warrant");
+    const deputyStore = aide.store()!;
+    expect(deputyStore.warrant!.warrant.deputyMemberId).toBe(idOf(aide));
+    // The certificate, so the transport could anchor it — and the ROSTER, so this machine can lead a
+    // pack it has never dialled. Both ride the one push.
+    expect(deputyStore.warrant!.deputyCertPem).toContain("BEGIN CERTIFICATE");
+    expect(deputyStore.standbyRoster?.map((r) => r.memberId).toSorted()).toEqual([idOf(aide), idOf(witness)].toSorted());
+
+    // …and the WITNESS gets the warrant without the roster: a peer never holds pins for machines it
+    // must never dial (§4).
+    await waitFor(async () => witness.store()?.warrant != null, 20_000, "the witness never received the warrant");
+    expect(witness.store()!.standbyRoster).toBeUndefined();
+  }, 60_000);
+
+  test("the pairing registry syncs to the DEPUTY and to nobody else (RFC §6.5)", async () => {
+    // The registry `collie pair` writes, written directly — the subject here is the sync, not the
+    // claim exchange, and the file is the same one either way.
+    writeFileSync(
+      join(hq.stateDir, "paired-devices.json"),
+      JSON.stringify({ devices: [{ label: "phone", tokenHash: sha256Hex(TOKEN), createdAt: 1, lastSeenAt: 1 }] }),
+      { mode: 0o600 },
+    );
+    await waitFor(
+      async () => existsSync(join(aide.stateDir, "standby-devices.json")),
+      20_000,
+      "the deputy never received the pairing registry",
+    );
+    const synced = parseStandbyDevices(readFileSync(join(aide.stateDir, "standby-devices.json"), "utf8"))!;
+    expect(synced.devices.map((d) => d.label)).toEqual(["phone"]);
+    // ONLY HASHES CROSS: the token was shown once, at claim time, and is not recoverable.
+    expect(readFileSync(join(aide.stateDir, "standby-devices.json"), "utf8")).not.toContain(TOKEN);
+    // …and it is NOT merged into the deputy's own registry, which would arm its own write gate for
+    // an operator who never ran `collie pair` here (RFC §16, decision 5).
+    expect(existsSync(join(aide.stateDir, "paired-devices.json"))).toBe(false);
+    // The witness is not the deputy and gets none of it.
+    expect(existsSync(join(witness.stateDir, "standby-devices.json"))).toBe(false);
+  }, 60_000);
+
+  test("the anchor exists at bind time or not at all — both peers restart (RFC §5, phase 2)", async () => {
+    await aide.restart();
+    await witness.restart();
+    // The witness now carries TWO anchors: its lead's, and the deputy's. That is what makes the
+    // takeover exchange reachable at all — and it is a transport fact, not a route.
+    const tls = peerListenerTls("peer", witness.store());
+    expect(tls!.ca).toHaveLength(2);
+    expect(tls!.ca[1]).toBe(aide.store()!.self.certPem);
+  }, 60_000);
+
+  test("while the lead is alive the door is COLD: 503 on health, a page with no button", async () => {
+    const health = await standby("/standby/health");
+    expect(health.status).toBe(503);
+    expect(await health.json()).toEqual({ state: "cold" });
+
+    const page = await standby("/standby");
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("Standby");
+    expect(html).not.toContain("<button");
+    // A confirm is refused with the reason, and the credential is never even consulted.
+    const refused = await standby("/standby/takeover", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(refused.status).toBe(409);
+  }, 30_000);
+
+  test("the LEAD answers its own /standby/health with 200 — the proxy's primary check (RFC §14.2)", async () => {
+    const res = await fetch(`${hq.origin()}/standby/health`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ state: "leading" });
+  });
+
+  test("kill the lead, and the door ARMS on silence alone", async () => {
+    await hq.stop();
+    await waitFor(async () => (await standby("/standby/health")).status === 200, 20_000, "the door never armed");
+    expect(await (await standby("/standby/health")).json()).toMatchObject({ state: "armed" });
+
+    const html = await (await standby("/standby")).text();
+    expect(html).toContain("Take over");
+    expect(html).toContain(`has not called this machine for`);
+    expect(html).toContain(`<button id="go" type="button">Take over</button>`);
+    // One witness exists, so the page says who will be asked rather than the two-machine warning.
+    expect(html).toContain("ask 1 other machine whether it has called");
+  }, 60_000);
+
+  test("the confirm is PAIRING ONLY — no bearer, a wrong bearer and a device header all refuse", async () => {
+    const rejected: Record<string, string>[] = [{}, { authorization: "Bearer wrong" }, { "x-tailnet-device": "phone" }];
+    for (const headers of rejected) {
+      const res = await standby("/standby/takeover", { method: "POST", headers });
+      expect(res.status).toBe(401);
+    }
+    // Nothing moved: the witness still follows the old lead.
+    expect(witness.store()!.lead!.memberId).toBe(idOf(hq));
+  }, 30_000);
+
+  test("the takeover: the witness re-pins, and the deputy commits LAST", async () => {
+    const aideId = idOf(aide);
+    const hqId = idOf(hq);
+    const res = await standby("/standby/takeover", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    // Asserted WITH the body: every refusal here is a sentence, and a bare status would hide the one
+    // fact a failure needs (which of RFC §7's steps said no).
+    const answer = await res.json();
+    expect({ status: res.status, answer }).toMatchObject({
+      status: 200,
+      answer: { ok: true, message: expect.stringContaining("the lead now") },
+    });
+
+    // The WITNESS re-pinned, on its own disk, keeping its member id and the pack secret (§14.5).
+    await waitFor(async () => witness.store()!.lead!.memberId === aideId, 15_000, "the witness never re-pinned");
+    expect(witness.store()!.pack!.secret).toBe(aide.store()!.pack!.secret);
+    expect(witness.store()!.lead!.certPem).toBe(aide.store()!.self.certPem);
+
+    // The DEPUTY committed locally, last: it leads, it adopted the roster the push carried, and the
+    // old lead is carried as an ordinary member that has not been told yet (RFC §9).
+    const led = aide.store()!;
+    expect(led.lead).toBeNull();
+    expect(led.peers.map((p) => p.memberId).toSorted()).toEqual([hqId, idOf(witness)].toSorted());
+    expect(led.peers.find((p) => p.memberId === hqId)!.rePinPending).toBe(true);
+    // The warrant was SPENT: the pack designates nobody until the operator names one again.
+    expect(led.deputy).toBeNull();
+    // …and the phone's credential came with it, so the same device keeps working against the new lead.
+    expect(readFileSync(join(aide.stateDir, "paired-devices.json"), "utf8")).toContain(sha256Hex(TOKEN));
+  }, 60_000);
+
+  test("the deputy restarts INTO lead mode and serves the real front door", async () => {
+    // The one restart the bridge performs on its own: the operator asked from a phone, and a machine
+    // whose store says `lead` while its process runs a peer's pinned listener is unreachable.
+    await waitFor(async () => !(await portOpen(aide.port)), 15_000, "the deputy never restarted");
+    await aide.start();
+    // An unpinned listener, plain HTTP, serving the app — the shape a lead has and a peer does not.
+    expect(aide.pins()).toBe(false);
+    expect(aide.origin().startsWith("http://")).toBe(true);
+    // The standby PORT keeps answering, and it now answers `leading` — a failover proxy's fallback
+    // backend points here, so a new lead that closed it would leave the proxy swinging the phone back
+    // onto the machine that died (RFC §14.2).
+    await waitFor(async () => (await standby("/standby/health")).status === 200, 20_000, "the standby port went dark");
+    expect(await (await standby("/standby/health")).json()).toEqual({ state: "leading" });
+    await waitFor(
+      async () => (await fetch(`${aide.origin()}/standby/health`)).status === 200,
+      20_000,
+      "the new lead never answered its own health check",
+    );
+    // The merged snapshot names both members, from the roster that rode the warrant push.
+    await waitFor(
+      async () => ((await snapshotOf(aide.origin())).servers ?? []).some((s) => s.id === idOf(witness) && s.reachable),
+      20_000,
+      "the new lead never swept its adopted roster",
+    );
+  }, 60_000);
+
+  test("the old lead boots, finds the conflict, and SELF-HEALS to a peer of the machine that deposed it", async () => {
+    const aideId = aide.store()!.self.memberId;
+    await hq.start();
+    await waitFor(async () => hq.store()!.lead?.memberId === aideId, 30_000, "the old lead never self-healed");
+    const healed = hq.store()!;
+    // Strictly privilege-DECREASING, and it created no trust: the new lead's certificate came out of
+    // this machine's own roster, never off the wire (§18.12).
+    expect(healed.peers).toEqual([]);
+    expect(healed.lead!.certPem).toBe(aide.store()!.self.certPem);
+    expect(healed.deputy).toBeNull();
+    // The pack identity and the secret are untouched — a role change, not a re-enrollment.
+    expect(healed.pack!.packId).toBe(aide.store()!.pack!.packId);
+    expect(healed.pack!.secret).toBe(aide.store()!.pack!.secret);
+
+    // …and the new lead stops owing it the proof: §9's "one extra round trip, once, and never again".
+    await waitFor(
+      async () => aide.store()!.peers.find((p) => p.memberId === hq.store()!.self.memberId)?.rePinPending !== true,
+      30_000,
+      "the new lead never cleared the old lead's pending re-pin",
+    );
+  }, 90_000);
+});

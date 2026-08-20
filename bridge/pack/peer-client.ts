@@ -5,6 +5,8 @@ import { LEAD_CONFLICT, PACK_PREFIX } from "./router.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
+import type { PairingSync } from "./standby-devices.ts";
+import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, type WarrantPush } from "./warrant.ts";
 
 // The LEAD side of a pack link: the client that dials a peer's `/pack/v1/*` surface.
@@ -497,6 +499,41 @@ export class PeerClient {
     });
   }
 
+  /**
+   * `POST /pack/v1/pairing` — sync the lead's paired-device registry to the DEPUTY (RFC §6.5, §18.14).
+   *
+   * An ordinary data dial on the ordinary budget. A `404` or a `401` is the answer, not a fault: a
+   * pre-amendment member has no route, and a member that is not the deputy refuses the role — both
+   * surface as the `unreachable` outcome the caller already handles, and neither is retried faster.
+   */
+  pairing(link: PackLink, payload: PairingSync): Promise<PeerOutcome<JsonValue>> {
+    return this.json(link, "pairing", undefined, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  /**
+   * `POST /pack/v1/takeover` — the witness question, then the re-pin (RFC §7).
+   *
+   * **Never §8.6-signed, and that is not an omission.** The caller here is the DEPUTY, which is not in
+   * the receiving peer's roster at all — so a signature could only ever fail to verify against it, and
+   * a failed signature is the uniform 401 before the deputy path is reached. What authenticates this
+   * dial is the pinned handshake against the anchored certificate plus the dial attestation that says
+   * which of the two anchors is calling (§8.1's 2026-08-20 amendment), which is strictly the same key.
+   */
+  takeover(link: PackLink, payload: TakeoverBody): Promise<PeerOutcome<JsonValue>> {
+    return this.json(
+      link,
+      "takeover",
+      undefined,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) },
+      undefined,
+      false,
+    );
+  }
+
   /** `GET /pack/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business. */
   snapshot(link: PackLink, session?: string): Promise<PeerOutcome<JsonValue>> {
     return this.json(link, "snapshot", session === undefined || session === "" ? undefined : { session });
@@ -509,8 +546,9 @@ export class PeerClient {
     params?: Record<string, string>,
     init: PackRequestInit = {},
     budgetMs?: number,
+    sign = true,
   ): Promise<PeerOutcome<JsonValue>> {
-    const outcome = await this.raw(link, route, params, init, budgetMs);
+    const outcome = await this.raw(link, route, params, init, budgetMs, sign);
     if (!outcome.ok) return outcome;
     try {
       const value: JsonValue = await outcome.value.json();
@@ -546,7 +584,7 @@ export class PeerClient {
     params?: Record<string, string>,
     init: PackRequestInit = {},
   ): Promise<PeerOutcome<Response>> {
-    return this.dial(link, route, params, init, "passthrough");
+    return this.dial(link, route, params, init, "passthrough", undefined, false);
   }
 
   /**
@@ -560,8 +598,9 @@ export class PeerClient {
     params?: Record<string, string>,
     init: PackRequestInit = {},
     budgetMs?: number,
+    sign = true,
   ): Promise<PeerOutcome<Response>> {
-    return this.dial(link, route, params, init, "consumed", budgetMs);
+    return this.dial(link, route, params, init, "consumed", budgetMs, sign);
   }
 
   /**
@@ -581,6 +620,11 @@ export class PeerClient {
     // down. A caller must never widen a data request by hand; that rule is what keeps a slow peer
     // from stalling the lead's snapshot every poll.
     budgetMs?: number,
+    // Whether a §8.6 REQUEST signature may ride this call, when this client holds a key. Two callers
+    // say no, and for two different reasons: `proxy` streams its body (a signature over a stream
+    // cannot be computed without buffering it, §8.6's own trade), and `takeover` is dialled by a
+    // machine that is not in the receiver's roster, where a signature could only ever be a refusal.
+    sign = true,
   ): Promise<PeerOutcome<Response>> {
     const secret = this.deps.secret();
     if (secret === null || secret === "") {
@@ -617,7 +661,7 @@ export class PeerClient {
     const stampedAt = this.now();
     const method = init.method ?? "GET";
     const path = new URL(url).pathname;
-    if (this.deps.sign !== undefined) {
+    if (this.deps.sign !== undefined && sign) {
       const body = typeof init.body === "string" ? init.body : "";
       headers.set(TIMESTAMP_HEADER, String(stampedAt));
       headers.set(SIGNATURE_HEADER, this.deps.sign({ method, path, body, timestamp: stampedAt }));

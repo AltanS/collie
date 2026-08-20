@@ -11,9 +11,11 @@ import {
   PACK_HELLO_PATH,
   PACK_LEAD_PATH,
   PACK_LEAVE_PATH,
+  PACK_PAIRING_PATH,
   PACK_PREFIX,
   PACK_SECRET_PATH,
   PACK_SNAPSHOT_PATH,
+  PACK_TAKEOVER_PATH,
   PACK_WARRANT_PATH,
   type SnapshotSource,
 } from "./router.ts";
@@ -1735,11 +1737,14 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
     expect(await res.json()).toEqual({ protocol: 1, member: "laptop", warrantGeneration: 1, warrantRefreshedAt: T0 });
   });
 
-  test("a DEPUTY-attested dial is refused on EVERY route this build has — its reach is zero", async () => {
-    // The second anchor buys a completed TLS handshake and nothing behind it. When the takeover and
-    // witness routes land they opt in through `DEPUTY_ROUTES`; until then this is the whole surface.
+  test("a DEPUTY-attested dial reaches ONLY the two routes DEPUTY_ROUTES names", async () => {
+    // The second anchor buys a completed TLS handshake, the takeover exchange and RFC §9's
+    // reconciliation — and nothing else. Every other route is the uniform 401, audited as a member
+    // exceeding its role rather than as a stranger, and none of them costs a write.
     const { data, deputyAnchor } = anchored();
+    const reachable = new Set<string>([PACK_TAKEOVER_PATH, PACK_WARRANT_PATH]);
     for (const [path, method] of EVERY_ROUTE) {
+      if (reachable.has(path)) continue;
       const h = harness(data);
       const res = (await call(router(h, deputyAnchor), path, {
         method,
@@ -1748,6 +1753,29 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
       expect(res.status).toBe(401);
       expect(h.writes()).toBe(0);
       expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+    }
+    // …and the two it DOES reach are refused on their own terms — an empty body is a 400 on an
+    // admitted link, never a silent success, and still not a write.
+    for (const path of reachable) {
+      const h = harness(data);
+      const res = (await call(router(h, deputyAnchor), path, {
+        method: "POST",
+        headers: { ...authed, ...attested("nas", "POST", path) },
+        body: "{}",
+      }))!;
+      expect(res.status).toBe(400);
+      expect(h.writes()).toBe(0);
+    }
+  });
+
+  test("a DEPUTY-attested dial with the WRONG METHOD is refused, on both of its own routes", async () => {
+    const { data, deputyAnchor } = anchored();
+    for (const path of [PACK_TAKEOVER_PATH, PACK_WARRANT_PATH]) {
+      const h = harness(data);
+      const res = (await call(router(h, deputyAnchor), path, {
+        headers: { ...authed, ...attested("nas", "GET", path) },
+      }))!;
+      expect(res.status).toBe(401);
     }
   });
 
@@ -1808,5 +1836,270 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
       headers: { "x-pack-protocol": "1", ...attested("desk", "GET", PACK_HELLO_PATH) },
     }))!;
     expect(res.status).toBe(401);
+  });
+});
+
+// ── The standby half: the pairing sync and the takeover exchange (RFC §6.5, §7) ───────────────────
+
+describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY only (RFC §6.5)", () => {
+  const DEVICE = { label: "phone", tokenHash: "b".repeat(64), createdAt: T0 };
+  const body = (over: { packId?: string; leadMemberId?: string } = {}) => ({
+    packId: PACK.packId,
+    leadMemberId: "desk",
+    devices: [DEVICE],
+    ...over,
+  });
+
+  /** A peer of `desk` holding the warrant that names IT — i.e. this pack's deputy. */
+  function deputy() {
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "laptop" })] }), "laptop", T0)!.result;
+    return peerStore({ warrant: { warrant: w, deputyCertPem: material("laptop").certPem } });
+  }
+
+  function router(
+    h: ReturnType<typeof harness>,
+    over: { warrantsSelf?: boolean; own?: string[] } = {},
+  ) {
+    const synced: unknown[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      now: () => T0,
+      standby: {
+        warrantsSelf: () => over.warrantsSelf ?? true,
+        silentForMs: () => 60_000,
+        armMs: 30_000,
+        collidingLabels: (devices) => devices.filter((d) => (over.own ?? []).includes(d.label)).map((d) => d.label),
+        applySync: async (sync) => void synced.push(sync),
+      },
+    });
+    return { handler, synced };
+  }
+
+  test("the deputy's own lead syncs, and only hashes cross", async () => {
+    const r = router(harness(deputy()));
+    const res = (await call(r.handler, PACK_PAIRING_PATH, post(body())))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ devices: 1, applied: true });
+    expect(r.synced).toEqual([{ packId: PACK.packId, leadMemberId: "desk", devices: [DEVICE] }]);
+  });
+
+  test("a peer that is NOT the deputy refuses the route outright", async () => {
+    const h = harness(peerStore());
+    const r = router(h, { warrantsSelf: false });
+    const res = (await call(r.handler, PACK_PAIRING_PATH, post(body())))!;
+    expect(res.status).toBe(401);
+    expect(r.synced).toEqual([]);
+    expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+  });
+
+  test("a build with no standby surface at all refuses it — absent means closed", async () => {
+    const h = harness(deputy());
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => T0 });
+    expect((await call(handler, PACK_PAIRING_PATH, post(body())))!.status).toBe(401);
+  });
+
+  test("a LABEL COLLISION refuses and REPORTS — never namespace-and-merge (RFC §16, decision 6)", async () => {
+    const r = router(harness(deputy()), { own: ["phone"] });
+    const res = (await call(r.handler, PACK_PAIRING_PATH, post(body())))!;
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "pairing_label_collision", labels: ["phone"] });
+    expect(r.synced).toEqual([]);
+  });
+
+  test("a sync for another pack, or claiming another lead, is a 400 and lands nothing", async () => {
+    for (const bent of [body({ packId: "pack-2" }), body({ leadMemberId: "attic" })]) {
+      const r = router(harness(deputy()));
+      expect((await call(r.handler, PACK_PAIRING_PATH, post(bent)))!.status).toBe(400);
+      expect(r.synced).toEqual([]);
+    }
+  });
+
+  test("a malformed body is a 400 on an admitted link, and syncs nothing", async () => {
+    const r = router(harness(deputy()));
+    expect((await call(r.handler, PACK_PAIRING_PATH, post({ devices: [] })))!.status).toBe(400);
+    expect(r.synced).toEqual([]);
+  });
+
+  test("a LEAD never answers it: it has no lead of its own to have sent it", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const r = router(h);
+    expect((await call(r.handler, PACK_PAIRING_PATH, post(body())))!.status).toBe(401);
+  });
+});
+
+describe("POST /pack/v1/takeover — the witness question and the re-pin (RFC §7)", () => {
+  /** A peer of `desk` that has ANCHORED `nas` as its deputy — the store plus the listener's anchor. */
+  function anchoredPeer() {
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
+    return {
+      warrant: w,
+      data: peerStore({ warrant: { warrant: w, deputyCertPem: material("nas").certPem } }),
+      deputyAnchor: { memberId: "nas", certPem: material("nas").certPem },
+    };
+  }
+
+  const dial = (label: string, path: string, at = T0, to = "laptop") => ({
+    [DIAL_HEADER]: signDial(material(label).keyPem, { method: "POST", path, timestamp: at, to }),
+    [TIMESTAMP_HEADER]: String(at),
+  });
+
+  const asDeputy = <TBody,>(body: TBody, label = "nas", path = PACK_TAKEOVER_PATH): RequestInit => ({
+    method: "POST",
+    headers: { ...authed, "content-type": "application/json", ...dial(label, path) },
+    body: JSON.stringify(body),
+  });
+
+  function router(h: ReturnType<typeof harness>, deputyAnchor: { memberId: string; certPem: string }, silent = 60_000) {
+    return createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      deputyAnchor,
+      now: () => T0,
+      standby: {
+        warrantsSelf: () => false,
+        silentForMs: () => silent,
+        armMs: 30_000,
+        collidingLabels: () => [],
+        applySync: async () => {},
+      },
+    });
+  }
+
+  test("PROBE while the lead is quiet: a witness, and NOTHING is written", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const before = h.writes();
+    const res = (await call(router(h, deputyAnchor), PACK_TAKEOVER_PATH, asDeputy({ warrant })))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, witness: "silent", lastDialledAgoMs: 60_000 });
+    expect(h.writes()).toBe(before);
+    expect(h.data().lead!.memberId).toBe("desk");
+  });
+
+  test("PROBE while the lead is calling: lead_is_alive — the answer that aborts a takeover", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(router(h, deputyAnchor, 2000), PACK_TAKEOVER_PATH, asDeputy({ warrant })))!;
+    expect(await res.json()).toEqual({ ok: false, code: "lead_is_alive", lastDialledAgoMs: 2000 });
+    expect(h.data().lead!.memberId).toBe("desk");
+  });
+
+  test("an ABSENT phase is a probe: a commit must be asked for explicitly", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(router(h, deputyAnchor), PACK_TAKEOVER_PATH, asDeputy({ warrant, address: "nas:1" })))!;
+    expect(await res.json()).toMatchObject({ witness: "silent" });
+    expect(h.data().lead!.memberId).toBe("desk");
+  });
+
+  test("COMMIT re-pins the lead to the anchored certificate and says a restart is required", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(
+      router(h, deputyAnchor),
+      PACK_TAKEOVER_PATH,
+      asDeputy({ warrant, phase: "commit", address: "nas.example:8787" }),
+    ))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, adopted: true, restartRequired: true, generation: 1 });
+    const after = h.data();
+    expect(after.lead).toMatchObject({ memberId: "nas", certPem: material("nas").certPem, address: "nas.example:8787" });
+    expect(after.pack).toEqual(data.pack);
+    expect(h.lines.map((l) => l.action)).toContain("pack.takeover.adopted");
+  });
+
+  test("a COMMIT with no address is a 400 — a peer must know where to dial its new lead", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const before = h.writes();
+    const res = (await call(router(h, deputyAnchor), PACK_TAKEOVER_PATH, asDeputy({ warrant, phase: "commit" })))!;
+    expect(res.status).toBe(400);
+    expect(h.writes()).toBe(before);
+  });
+
+  test("the WRONG DEPUTY presenting a valid warrant is refused, and writes nothing", async () => {
+    // `attic` is anchored here (say the operator moved the designation) but the warrant names `nas`.
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
+    const h = harness(peerStore({ warrant: { warrant: w, deputyCertPem: material("attic").certPem } }));
+    const anchor = { memberId: "attic", certPem: material("attic").certPem };
+    const res = (await call(
+      router(h, anchor),
+      PACK_TAKEOVER_PATH,
+      asDeputy({ warrant: w, phase: "commit", address: "x:1" }, "attic"),
+    ))!;
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("different machine") });
+    expect(h.data().lead!.memberId).toBe("desk");
+  });
+
+  test("a BAD SIGNATURE is the uniform 401, not a sentence", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const bent = { ...warrant, generation: 7 };
+    const res = (await call(router(h, deputyAnchor), PACK_TAKEOVER_PATH, asDeputy({ warrant: bent })))!;
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  test("an UNATTESTED dial never reaches the route at all", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(router(h, deputyAnchor), PACK_TAKEOVER_PATH, post({ warrant })))!;
+    expect(res.status).toBe(401);
+  });
+
+  test("a MEMBER (this peer's own lead) is refused on it — the route is the deputy's", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(
+      router(h, deputyAnchor),
+      PACK_TAKEOVER_PATH,
+      { ...asDeputy({ warrant }, "desk"), headers: { ...authed, "content-type": "application/json", ...dial("desk", PACK_TAKEOVER_PATH) } },
+    ))!;
+    expect(res.status).toBe(401);
+  });
+
+  test("RFC §9's reconciliation: the same decision, on /pack/v1/warrant, from a deputy-admitted caller", async () => {
+    const { data, warrant, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(
+      router(h, deputyAnchor),
+      PACK_WARRANT_PATH,
+      asDeputy({ warrant, address: "nas.example:8787" }, "nas", PACK_WARRANT_PATH),
+    ))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, adopted: true });
+    expect(h.data().lead!.memberId).toBe("nas");
+  });
+
+  test("at a collie that still LEADS, a probe answers lead_is_alive and a commit deposes it (§18.12)", async () => {
+    const base = leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] });
+    const minted = mintWarrant(base, "nas", T0)!;
+    const signedTakeover = <TBody,>(body: TBody) => signedPost("nas", PACK_TAKEOVER_PATH, body, T0 + 1);
+
+    // A probe: the recipient IS the lead and it IS answering, which is exactly the honest answer.
+    const probe = harness(minted.next);
+    const probed = (await call(
+      createPackRouter({ store: probe.store, audit: probe.audit, now: () => T0 + 1 }),
+      PACK_TAKEOVER_PATH,
+      signedTakeover({ warrant: minted.result }),
+    ))!;
+    expect(await probed.json()).toEqual({ ok: false, code: "lead_is_alive", lastDialledAgoMs: 0 });
+    expect(probe.data().lead).toBeNull();
+
+    // A commit: the same proof, the same self-heal `/pack/v1/warrant` performs.
+    const h = harness(minted.next);
+    const res = (await call(
+      createPackRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 }),
+      PACK_TAKEOVER_PATH,
+      signedTakeover({ warrant: minted.result, phase: "commit" }),
+    ))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ deposed: "desk", lead: "nas", outcome: "healed" });
+    expect(h.data().lead!.memberId).toBe("nas");
+    expect(h.data().peers).toEqual([]);
   });
 });

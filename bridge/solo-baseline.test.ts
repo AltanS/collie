@@ -683,7 +683,22 @@ const STATE_DIR_ENTRIES = [
  * The behavioural half of the guard — that an instance which never enrolled writes NONE of these —
  * is the `TrustStore` case in "driving every solo write path".
  */
-const PACK_STATE_DIR_ENTRIES = ["pack-ops.json", "pack-runtime.json", "pack-trust.json"];
+const PACK_STATE_DIR_ENTRIES = [
+  "pack-ops.json",
+  "pack-runtime.json",
+  "pack-trust.json",
+  // The lead's paired-device registry, synced to the DEPUTY only (RFC §6.5, PACK_PROTOCOL.md §18.14).
+  // **A solo instance can never have one**, and the reason is structural rather than a check anyone
+  // has to remember: it is written on exactly one path — a `POST /pack/v1/pairing` that cleared the
+  // pack's two factors, came from this collie's own pinned LEAD, and found a verified warrant naming
+  // THIS machine as deputy. A solo instance has no trust store, so it registers no pack routes at all,
+  // so none of those three can ever be true of it.
+  //
+  // It is a separate file from `paired-devices.json` on purpose and permanently: `enforced()` is "the
+  // registry is non-empty", so merging the two would arm the deputy's own write gate for its own
+  // operator (`bridge/pack/standby-devices.ts`).
+  "standby-devices.json",
+];
 
 /** Every `.ts` module under `dir`, recursively, excluding tests. */
 function sourceFiles(dir: string): string[] {

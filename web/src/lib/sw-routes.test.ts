@@ -110,6 +110,18 @@ describe("service-worker navigation passthrough", () => {
       String(/^\/auth(?:[/?]|$)/),
       String(/^\/cdn-cgi\//),
       String(/^\/pack\/v1(?:[/?]|$)/),
+      String(/^\/standby(?:[/?]|$)/),
     ]);
+  });
+
+  // The standby door (PACK_PROTOCOL.md §18.15). On the bad day the phone's FIRST hit is an installed
+  // service worker minted from the LEAD's origin, so a precached app shell here is the difference
+  // between reaching the takeover page and staring at the UI of the collie that just died.
+  it("passes the whole standby namespace to the network, query and all", () => {
+    for (const path of ["/standby", "/standby/", "/standby/health", "/standby/takeover", "/standby?x=1"]) {
+      expect(isNetworkOnlyNavigation(path)).toBe(true);
+    }
+    // A route that merely shares the prefix is Collie's, exactly as `/authors` is.
+    expect(isNetworkOnlyNavigation("/standbyish")).toBe(false);
   });
 });

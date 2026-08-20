@@ -262,13 +262,15 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/pack/v1/secret` | the lead | Hands a peer the rotated pack secret (§8.4). Refused unless the caller is *this collie's own lead*: the secret is pack-wide, so any other admitted member accepting one could lock the lead out of its own pack. Authenticated by the **outgoing** secret and carrying the incoming one — there is no instant in which both are accepted. |
 | `POST` | `/pack/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the pack secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/pack/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
+| `POST` | `/pack/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
+| `POST` | `/pack/v1/takeover` | the deputy | The witness question, then the re-pin (§18.16). **Two-phase**, with `phase` additive-optional and **absent meaning `probe`** — the reading that changes nothing. It is the one route a caller admitted **as the deputy** may use, and like `warrant` it has two kinds of recipient: arriving at a collie that still believes it leads, a `probe` answers `lead_is_alive` (it *is* the lead, and it *is* answering) and a `commit` is a deposition (§18.12). |
 | `POST` | `/pack/v1/warrant` | the lead | Delivers or refreshes the warrant naming the pack's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `pack status` finding, never an error. **It is also the one route with two kinds of recipient** — arriving at a collie that still believes it leads, a warrant it signed itself is a *deposition* rather than a push to store (§18.12), exactly as `/pack/v1/lead` is one fact arriving at two kinds of recipient. |
 
 Everything except `enroll` sits behind the same two factors as the rest of the prefix, and each
 carries a role check on top: *admitted* and *allowed to do this* are different questions.
 
 **Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`
-and, since 2026-08-20, `warrant`. It is exactly the routes that travel **peer → lead**, the one
+and, since 2026-08-20, `warrant` and `takeover`. It is exactly the routes that travel **peer → lead**, the one
 direction where the transport cannot pin (§8.1), and `warrant` joined it for the delivery that
 matters most: a new lead telling the old one that the crown has moved (§18.12). The proxy surface is
 not on the list and must not be — those calls run lead → peer over a pinned handshake, and admitting a
@@ -280,6 +282,13 @@ nobody (§8.2).
 proxy, `bridge/server.ts:1347`, matched `:383`) or `/cdn-cgi/`. It is also **denylisted in the service
 worker's route table** (`web/src/lib/sw-routes.ts`) — a browser never issues a pack request, so a
 browser must never be able to cache one.
+
+**`/standby` joins that reserved set (added 2026-08-20, §18.15).** It is not a pack route and never
+travels a pack link — it is the deputy's own second listener, on its own port — but it is reserved on
+the front door and denylisted in the same service-worker table, and for a sharper reason than
+hygiene: in the same-origin failover deployment the phone's first hit on the bad day is an installed
+service worker minted from the **lead's** origin, so a precached app shell there is the difference
+between reaching the takeover page and staring at the UI of the collie that just died.
 
 ---
 
@@ -1112,7 +1121,7 @@ federation code exists to break it.
 | Poll cadence | unchanged — **no second timer, no peer sweep**, same idle relaxation | `bridge/event-poker.ts`, `bridge/config.ts:212-213` |
 | Audit line bytes | unchanged — `host` is omitted, not null, exactly as `session`/`device` are today | `bridge/audit.ts:55-61` |
 | Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147` |
-| Ports opened | exactly one, loopback, as today | `bridge/config.ts:210-211` |
+| Ports opened | exactly one, loopback, as today. The standby door's second listener (§18.15) is bound only when `COLLIE_STANDBY_PORT` is set **and** a trust store exists, which a solo instance has neither of | `bridge/config.ts:210-211`, `bridge/pack/standby.ts` |
 
 **Why `servers` is optional-and-absent rather than always-present.** An always-present field — even a
 single-entry one, the shape `sessions` chose — changes every solo snapshot body, and therefore every
@@ -1754,11 +1763,12 @@ updated members in order to add a feature that degrades gracefully on its own.
 
 ### 18.8 Not specified here
 
-The takeover exchange and the standby door a deputy binds while armed. Each is its own amendment;
-neither changes anything above.
+**Nothing.** Every item that was on this list has landed.
 
-*(The deposed state, the self-heal and the boot gate were on this list until 2026-08-20 and are now
-§18.11 and §18.12 below. The `collie pack deputy` verb was on it until 2026-08-20 and is now §18.13.)*
+*(The deposed state, the self-heal and the boot gate were on it until 2026-08-20 and are now §18.11
+and §18.12. The `collie pack deputy` verb was on it until 2026-08-20 and is now §18.13. The pairing
+sync, the standby door and the takeover exchange were on it until 2026-08-20 and are now §18.14,
+§18.15 and §18.16.)*
 
 ### 18.9 A peer knows when its lead last called *(added 2026-08-20)*
 
@@ -2019,3 +2029,185 @@ What a lead honestly knows is what its operator did from this machine, so the ar
 recorded per member in `pack-ops.json` beside the SSH route (ADR 0016 — operator-local, never trust,
 never a wire field). It is a **lower bound**: a peer that restarted for its own reasons has anchored
 without it moving, which is why the line names a remedy rather than accusing the peer.
+
+### 18.14 The pairing sync — the lead's device registry, on the deputy *(added 2026-08-20)*
+
+The standby door (§18.15) authenticates the operator's phone with **the pairing credential the phone
+already holds** (`bridge/pairing.ts`) and nothing else. The deputy must therefore be able to verify a
+token the *lead* minted, so the lead pushes its registry.
+
+| | |
+|---|---|
+| **Route** | `POST /pack/v1/pairing`, lead → **deputy only** |
+| **Gate** | the pack's two factors (§8.1), plus a role check: the caller must be *this collie's own lead*, **and this collie must hold a verified warrant naming itself**. Every other peer that ever receives one refuses it. |
+| **Body** | `{ packId, leadMemberId, devices: [{ label, tokenHash, createdAt }] }` — every field required, because the route is new and a new route may require its own fields (§7.1). |
+| **Sent** | at designation and on every change — a `pair`, a `devices revoke`, nothing else. |
+| **Absent (404)** | no credential to verify ⇒ **the standby door refuses to arm.** Closed. |
+
+- **Only hashes cross.** The token was shown once, at claim time, and is not recoverable
+  (`pairing.ts`), so a store that leaks yields nothing spendable — the same reasoning `PendingInvite`
+  already runs on. `lastSeenAt` is deliberately **not** sent: it is a fact about the lead's own
+  traffic that the deputy could not keep true, and it is stamped on a throttle, so including it would
+  make every sixty-second write look like a registry change.
+- **No second timer and no dial to decide.** The lead compares a digest over *what it would send*
+  against what this process last delivered, and only a genuine change costs a dial. It rides the
+  sweep the lead already runs (§10.1, §11).
+- **A replace is wholesale, never a merge**, because a revocation on the lead has to be able to
+  *remove* a device on the deputy.
+- **It lands in `standby-devices.json`** — its own file, its own version integer, 0600 in a 0700
+  directory, temp-then-rename — and is **NEVER merged into the deputy's own `paired-devices.json`.**
+  This is not tidiness. `PairingStore.enforced()` is *the registry is non-empty*, so a merge would
+  silently switch on the deputy's **own** write gate for its **own** operator, on a machine where
+  nobody ran `collie pair`. A gate the operator did not arm is a lockout waiting for the day they use
+  that machine directly. The synced entries are adopted into the deputy's own registry **at takeover
+  commit and only then** (§18.16), because after the commit that machine *is* the lead and the phone
+  must keep working against the credential it already holds.
+- **A label collision refuses the sync and reports it** — `409` with `code:
+  "pairing_label_collision"` and the colliding labels — and it is re-offered on the next sweep, so
+  the operator's rename takes effect without a restart. Labels are the revoke handle
+  (`pairing.ts` → `removeDevice`); a silently renamed device is one the operator cannot revoke by the
+  name they know it by.
+
+> **The boundary this amends, stated rather than quietly outlived.** `bridge/server.ts` records that
+> pairing is "**NOT** threaded into the pack surface … a lead does not hold one of this collie's
+> pairing tokens and must never need one." **The rule survives verbatim: no pack request is ever
+> admitted by a pairing token**, and this route is admitted by the pack's own two factors plus a role
+> check like every other one. What is new is that a *browser* credential's hash rides a pack route and
+> lands on a peer's disk, which is adjacent enough that the comment there carries the exception and a
+> pointer. `X-Pack-Device` (§12's forwarded attribution) is untouched, and neither substitutes for the
+> other.
+
+### 18.15 The standby door *(added 2026-08-20)*
+
+**A second HTTP listener the deputy binds, and the one narrow exception to a peer publishing
+nothing** (ADR 0013).
+
+It cannot ride the pack listener, and that is a measurement rather than a preference: §8.1's
+amendment records that `COLLIE_PEER_BROWSER=1` and a pinned listener are mutually exclusive, because
+a browser cannot present the lead's client certificate. A phone is a browser, so the choice was a
+second listener or no feature.
+
+- **Bind:** `COLLIE_STANDBY_HOST` (default `127.0.0.1`) and `COLLIE_STANDBY_PORT`. **Absent
+  `COLLIE_STANDBY_PORT` means no standby door at all** — nothing is bound, nothing is served, and the
+  deputy is a plain peer that can still be taken over from a keyboard by §14's promotion. Absent means
+  closed. **A LEAD with the key set binds the port too and answers only the health check**, because a
+  failover proxy's fallback backend points at it: a deputy that took over and came back up as the lead
+  would otherwise leave the proxy health-checking a closed port and swinging the phone back onto the
+  machine that died.
+- **Plain HTTP behind the operator's own ingress.** Collie **binds** it and publishes nothing: no
+  `tailscale serve`, never `funnel`, no ownership record. ADR 0001's criterion is untouched — we still
+  manage only what we run and can test.
+- **Three routes, and no more.** No PWA, no `/api/*`, no SPA fallback, no `/auth` placeholder; every
+  other path on that port is a bare `404`. *A route that does not exist cannot be mis-gated.*
+
+| Method | Path | Gate | Answer |
+|---|---|---|---|
+| `GET` | `/standby/health` | none | `503` + `{"state":"cold"}` while the lead is fresh; `200` + `{"state":"armed","silentForMs":…}` once armed. **Never a body a stranger can learn a member id from.** |
+| `GET` | `/standby` | none (a read) | The page, in both states. |
+| `POST` | `/standby/takeover` | **pairing bearer credential only** | Runs §18.16. `409` with the reason while cold — the credential is not even consulted there. |
+
+**Armed** — the definition, and all three factors are required:
+
+```
+armed  ⇔  a VERIFIED warrant on this machine's own disk names THIS machine
+        ∧  now - max(lastDialledAt, processStartedAt) >= COLLIE_STANDBY_ARM_MS
+        ∧  the synced pairing registry is non-empty
+
+COLLIE_STANDBY_ARM_MS  default = max(30_000, 2.5 × COLLIE_POLL_IDLE_MS)
+```
+
+- **The default is a formula, not a number, and that is the point.** At today's defaults both terms
+  are 30 s. An operator who relaxes the idle poll to save a laptop's battery moves the threshold with
+  it automatically, instead of discovering months later that their idle pack arms its own door every
+  night. The threshold **must** exceed `COLLIE_POLL_IDLE_MS` or an idle pack arms itself; the formula
+  guarantees it, and an operator who overrides it below that line gets a boot warning and is **not**
+  refused.
+- **`lastDialledAt` is §18.9's number, and there is only one of it.** The door and `collie pack
+  status` read the same value: a door that arms on a fact `pack status` does not print is a door
+  nobody can explain.
+- **`processStartedAt` is in the max on purpose.** A deputy that has just restarted has never been
+  dialled by anyone; without it, every reboot would arm the door instantly.
+- **An EMPTY synced registry refuses to arm**, rather than arming ungated: an ungated takeover button
+  on an unpublished port is a takeover button for anyone who reaches the port.
+- **Arming is reversible and instantaneous.** The lead's next landed call disarms it. Nothing is
+  persisted and no state machine survives it — a door that flaps with the lead's connectivity is
+  correct, because it grants nothing.
+
+**The device-header gate is NOT applied here, and that is a deliberate, documented narrowing.**
+`COLLIE_DEVICE_HEADER` and pairing compose by AND on `/api/*` and that stays true everywhere else. The
+standby door is the exception because **the failover path is precisely when an ingress is
+misbehaving**: a header the *broken* proxy should have injected is not a second factor there, it is a
+dependency on the component that just failed. The pairing credential has no such failure mode — the
+phone holds it and the deputy checks it against a registry on its own disk (§18.14).
+
+**The page** is server-rendered from the bridge: one sentence, one button, no external asset, no
+framework, `default-src 'none'` with the single inline script admitted by its own SHA-256 hash. That
+script exists for exactly one reason — the pairing credential lives in this origin's `localStorage`
+and an HTML form post cannot carry an `Authorization` header. Every interpolation is HTML-escaped
+without exception. While **cold** the page is a statement of fact with no action on it at all, which
+is what lets an operator confirm the door before the bad day rather than during it. **A two-machine
+pack has no witness, is allowed anyway, and the page says so above the button** — there, the operator
+is the entire evidence base.
+
+**`/standby/health` is answered by three kinds of machine, and the three answers are the feature:** a
+**lead** answers `200` while it leads, a **deposed** lead answers `503` (§18.12), and a **deputy**
+answers `503` until it arms and `200` after. One name for one question — *should anything route
+here?* — asked of both backends behind one failover hostname.
+
+### 18.16 The takeover exchange *(added 2026-08-20)*
+
+The one thing that **spends** a warrant. Three steps, and the order is the safety.
+
+**(a) Ask the lead first.** One `GET /pack/v1/hello` at the lead, on §10.4's patient budget, and no
+retry — a second attempt is a slower way to get the same answer. **If the lead answers, the takeover
+is REFUSED** and nothing anywhere has changed.
+
+**(b) Ask the peers, twice.** `POST /pack/v1/takeover` at every other member, carrying the warrant and
+a dial attestation (§8.6). The route is two-phase and `phase` is additive-optional:
+
+| `phase` | The peer does | The peer answers |
+|---|---|---|
+| `probe` (**also: field absent**) | Verifies the warrant against its **pinned lead's** certificate, checks the generation and the clock, checks that the caller is the member the warrant names *and* presents the key it names, and reads its **own** `lastDialledAt`. **Changes nothing.** | `{ok: true, witness: "silent", lastDialledAgoMs}` — or `{ok: false, code: "lead_is_alive", lastDialledAgoMs}` |
+| `commit` | Re-pins its lead to the deputy on disk, records the generation, keeps its member id and the pack secret. Requires `address` — where it should dial its new lead, a hint and never an identity (§4). | `{ok: true, adopted: true, restartRequired: true, generation}` |
+
+**Any peer answering `lead_is_alive` aborts the whole takeover, before the deputy has changed a
+byte.** That is the partition defence and it is why the exchange is two-phase: a peer its lead dialled
+inside the arming window is direct evidence that the deputy's silence is the **deputy's own** network
+problem. **This is not a vote** — no peer is asked what it thinks should happen; each is asked one
+factual question about its own inbox, and one honest *no* is decisive.
+
+**What the peer pins is the certificate its own listener ANCHORED** (§18.5's phase 2), never one off
+the wire, so a commit creates no trust that did not already exist. Every clause of the verification is
+a question about material the peer already holds: its own pack id, its lead's certificate, the
+anchored deputy certificate, its own generation counter and its own clock.
+
+**(c) Commit locally, LAST.** Only after the reachable peers have answered does the deputy rewrite its
+**own** store: role `lead`, the roster adopted from the one that **rode the warrant push** (§18.5 —
+the deputy holds exactly one roster entry of its own, so without it a takeover would be a takeover
+into a pack it cannot see), the old lead carried as an ordinary member, the warrant kept (it carries
+the generation counter and it *is* the proof), the designation dropped (**the pack has no deputy after
+a takeover**), and the synced pairing registry adopted (§18.14). Then it **restarts** — the one place
+the bridge restarts itself, because the operator asked from a phone and a machine whose store says
+`lead` while its process still runs a peer's pinned listener is a machine nobody can reach.
+
+**Partial success is representable and is not a failure.** Every member that did not answer the commit
+round is carried as `rePinPending` on the new lead — an optional, absent-means-closed field on the
+roster entry — and is reconciled by §9's rule with no operator step: **the new lead's first contact
+carries the warrant** (`POST /pack/v1/warrant`), the member verifies it, checks the caller against the
+warrant's `deputyFingerprint`, and re-pins. That is the same decision the `commit` phase makes, reached
+through the route §9 names, and both doors run one implementation so they cannot drift apart. A member
+whose sweep answer already reports this generation is confirmed **without** a push — it has been told
+already, by its own boot gate or by the commit round, and pushing again would be refused as `foreign`
+and repeat every sweep forever. **A peer that answered `lead_is_alive` is not partial; it is an
+abort.**
+
+**A peer that never restarted after the warrant push cannot be taken over to**, because the deputy's
+handshake is refused before HTTP exists (§18.5). From the deputy's side that is indistinguishable from
+a peer that is down, so it lands in the pending bucket — which is why §18.13's `pack status` insists
+the un-anchored state is a named finding *before* the outage.
+
+**Compatibility: `X-Pack-Protocol` stays `1`.** Both new routes are additive (a `404` is closed in
+every case above), `phase`'s absence selects the reading that changes nothing, and every new response
+field rides a new route, which may require its own. A pre-amendment member is **not takeover-capable**
+and no amount of protocol politeness changes that — it has no warrant, no second anchor and no route.
+That is a **capability** gap, not a **compatibility** gap.
