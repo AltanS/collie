@@ -39,6 +39,7 @@ import {
   packRuntimePath,
   rosterDrift,
   type PackRuntimeFacts,
+  type PairingCollision,
 } from "./pack/staleness.ts";
 import { signDial, signRequest } from "./pack/signing.ts";
 import {
@@ -156,6 +157,14 @@ function selfAddress(data: TrustStoreData): string {
 
 /** This process's deposed state (§18.12), or `null`. Set at most once, at boot or from the wire. */
 let deposed: DeposedState | null = null;
+
+/**
+ * The last pairing sync this LEAD had refused for a label collision (§18.14), or `null`.
+ *
+ * Reassigned on every *decided* outcome of the sweep's sync — set on a refusal, cleared on a success
+ * — so the operator's rename clears the finding by itself, with no verb and no restart.
+ */
+let pairingCollision: PairingCollision | null = null;
 
 /**
  * One pack client, built the same way for the boot gate and for the lead's sweep — because two would
@@ -680,6 +689,7 @@ runtimeFacts = () => {
     leadLastDialledAt: facts.lastDialledAt,
     leadRefusedSecretAt: facts.leadRefusedSecretAt,
     deposed: deposed === null ? null : { ...deposed, outcome: outcomeNow(deposed, facts) },
+    pairingCollision,
   };
 };
 void checkpointRuntime();
@@ -827,6 +837,11 @@ const packLead = (() => {
         };
       },
       push: (link, sync) => client.pairing(link, sync),
+      // §18.14's refusal, carried to the checkpoint so `collie pack status` here can name the labels.
+      // An empty list would be a warning with nothing to rename in it, so it reads as "no finding".
+      collision: (labels) => {
+        pairingCollision = labels === null || labels.length === 0 ? null : { at: Date.now(), labels };
+      },
     },
     // §18.10's fast path: a member told this lead, in as many words, that it follows somebody else.
     // Best-effort and time-boxed (it works only while this lead is still in that member's anchor

@@ -2102,6 +2102,12 @@ token the *lead* minted, so the lead pushes its registry.
   the operator's rename takes effect without a restart. Labels are the revoke handle
   (`pairing.ts` → `removeDevice`); a silently renamed device is one the operator cannot revoke by the
   name they know it by.
+  **The lead reads that `code` and those `labels` off the refusal**, exactly as it reads §18.10's
+  `lead_conflict` off the same status. This `409` is a *refusal* and not §7's version skew: the
+  deputy read the body perfectly and declined it for a fact on its own disk. Classifying it as a skew
+  would blame the protocol for a duplicate device label and would leave the lead — the one machine
+  whose operator can rename it — unable to say which label. The labels are the deputy's own device
+  names, so they are surfaced by `collie pack status` **there as received**, never re-derived.
 
 > **The boundary this amends, stated rather than quietly outlived.** `bridge/server.ts` records that
 > pairing is "**NOT** threaded into the pack surface … a lead does not hold one of this collie's

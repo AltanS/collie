@@ -49,6 +49,11 @@ import {
 // apart. Everything below the enrollment POST goes through `PeerClient`, which composes the prefix
 // itself — hence one path constant here and route NAMES ("secret", "lead", "leave") at the call sites.
 import { PACK_ENROLL_PATH } from "../bridge/pack/router.ts";
+import {
+  parseStandbyDevices,
+  standbyDevicesPath,
+  type StandbyDevices,
+} from "../bridge/pack/standby-devices.ts";
 import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/staleness.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
@@ -59,8 +64,11 @@ import {
   deputyUnreachableLines,
   leadContactLines,
   leadDeputyLines,
+  memberRePinLines,
   memberWarrantLines,
+  pairingCollisionLines,
   peerWarrantLines,
+  standbyDoorLines,
 } from "./pack-status-deputy.ts";
 import type { Tone, TonedLine, Ui } from "./render.ts";
 // Type-only, so it is erased: the runtime edge to `cli/remote.ts` is the dynamic import in `cmdPack`.
@@ -859,8 +867,13 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   for (const l of deposedLines(marker)) deps.io.out(l.text);
   const sideLines =
     data.lead === null
-      ? leadDeputyLines(data, deps.now())
-      : [...leadContactLines(data, marker, deps.ctx.env, deps.now()), ...peerWarrantLines(data, marker, deps.now())];
+      ? [...leadDeputyLines(data, deps.now()), ...pairingCollisionLines(marker, deps.now())]
+      : [
+          ...leadContactLines(data, marker, deps.ctx.env, deps.now()),
+          ...peerWarrantLines(data, marker, deps.now()),
+          // Only the named deputy prints anything here, and only about the door THIS machine binds.
+          ...standbyDoorLines(data, marker, syncedDevicesOnDisk(deps), deps.ctx.env, deps.now()),
+        ];
   for (const l of sideLines) deps.io.out(l.text);
   reportDrift(deps, data);
 
@@ -916,6 +929,9 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
         (behind ? " — HAS NOT picked up the current secret" : " — current"),
       behind ? "warn" : "dim",
     );
+    // §9's unfinished business, above the link line rather than under it: a member still owed the
+    // proof is usually the unreachable one, and the row must not be conditional on it answering.
+    if (data.lead === null) for (const l of memberRePinLines(m)) emit(l.text, l.tone);
     if (m.status === "unenrolled") {
       emit("    status  unenrolled — dropped by a rotation it was offline for (§8.4).", "warn");
       emit(`            Recovery is deliberate: \`collie pack invite\` here, \`collie join\` there.`, "dim");
@@ -989,6 +1005,19 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   }
   if (deps.ui != null) await deps.ui.packMembers(banked);
   return EXIT.OK;
+}
+
+/**
+ * The registry this machine's lead has synced here (RFC §6.5), off disk.
+ *
+ * Absent, unreadable or malformed all read as **none**, which is exactly how the door itself reads
+ * them — and "none" is a refusal to arm rather than an ungated one, so the closed reading is also the
+ * honest one. Never `paired-devices.json`: these are the lead's device hashes and merging them into
+ * this machine's own registry would arm its own write gate (`bridge/pack/standby-devices.ts`).
+ */
+function syncedDevicesOnDisk(deps: PackDeps): StandbyDevices | null {
+  const raw = deps.files.read(standbyDevicesPath(deps.ctx.stateDir));
+  return raw === null ? null : parseStandbyDevices(raw);
 }
 
 /**

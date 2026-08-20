@@ -9,6 +9,7 @@ import { checkpointMarker, formatMarker, markerFor, type PackRuntimeFacts } from
 import {
   serializeTrustStore,
   TrustStore,
+  type TrustedMember,
   type TrustStoreData,
   type TrustStoreIo,
   type Warrant,
@@ -99,8 +100,26 @@ interface HarnessOptions {
   hello?: Record<string, number | null | false>;
   /** Seeded files, for the runtime marker `pack status` reads. */
   files?: SeededFiles;
+  /**
+   * The labels in THIS machine's own `paired-devices.json`.
+   *
+   * One by default, because RFC §6.4 refuses to designate a deputy on a lead with nothing paired —
+   * so an unpaired lead is a *state under test*, not the ambient condition of every other test.
+   */
+  paired?: readonly string[];
   now?: number;
   env?: Record<string, string>;
+}
+
+/** A paired registry as `collie pair` leaves it: labels and 64-hex hashes, nothing spendable. */
+function pairedFiles(labels: readonly string[]): SeededFiles {
+  const devices = labels.map((label, i) => ({
+    label,
+    tokenHash: String(i).repeat(64).slice(0, 64),
+    createdAt: T0,
+    lastSeenAt: T0,
+  }));
+  return { [`${STATE}/paired-devices.json`]: `${JSON.stringify({ devices }, null, 2)}\n` };
 }
 
 function harness(opts: HarnessOptions = {}) {
@@ -127,7 +146,7 @@ function harness(opts: HarnessOptions = {}) {
     ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000", ...opts.env }),
     io: out,
     exec: fakeExec(),
-    files: fakeFiles(opts.files ?? {}),
+    files: fakeFiles({ ...pairedFiles(opts.paired ?? ["phone"]), ...opts.files }),
     store: new TrustStore(STATE, storeIo),
     ops,
     // SAFETY: `AuditLog` hands its sink the line it just serialised from an `AuditEntry` — the log's
@@ -229,6 +248,7 @@ function marker(
     leadLastDialledAt: null,
     leadRefusedSecretAt: null,
     deposed: null,
+    pairingCollision: null,
     ...facts,
   });
   const live = checkpointMarker(boot, boot, o.checkpointedAt ?? boot.bootedAt);
@@ -736,5 +756,223 @@ describe("pack status on a deposed machine", () => {
     const h = harness({ store: data, files: marker(data, { leadLastDialledAt: T0 }), now: T0 + 1_000 });
     await cmdPackStatus(h.deps, ["--no-probe"]);
     expect(text(h.io)).not.toContain("DEPOSED");
+  });
+});
+
+// ── RFC §6.4 and §16 decision 4: what `pack deputy` will not do, and what it warns about ──
+
+describe("pack deputy and the credential the door would check (RFC §6.4)", () => {
+  test("a lead with nothing paired is REFUSED, and the remedy is `collie pair`", async () => {
+    const h = harness({ paired: [] });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.STATE);
+    const said = text(h.io);
+    expect(said).toContain("no paired device, so a deputy's standby door could never arm");
+    expect(said).toContain("collie pair");
+    // Nothing was minted, written or sent — the refusal is before the first side effect.
+    expect(h.pushed).toEqual([]);
+    expect(h.restarts).toEqual([]);
+    expect(h.calls).toEqual([]);
+  });
+
+  test("one paired device is enough — the gate is presence, exactly as `enforced()` is", async () => {
+    const h = harness({ paired: ["phone"] });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.pushed).toHaveLength(2);
+  });
+
+  test("--revoke is never refused by it: the un-doing must work on any pack", async () => {
+    const h = harness({ paired: [], store: withWarrant(twoPeers(), "nas") });
+    expect(await cmdPackDeputy(h.deps, ["--revoke"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("names NOBODY");
+  });
+});
+
+describe("pack deputy says the same-origin prerequisite once (RFC §16, decision 4)", () => {
+  test("with no shared origin configured it WARNS, names what is lost, and refuses nothing", async () => {
+    const h = harness();
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).toContain("COLLIE_PUBLIC_URL is unset here, so this machine knows of no shared origin");
+    expect(said).toContain("per-origin");
+    // The fallback is named rather than implied: this pack keeps everything but the phone-first half.
+    expect(said).toContain("collie promote");
+  });
+
+  test("a lead behind one origin is not lectured about it", async () => {
+    const h = harness({ env: { COLLIE_PUBLIC_URL: "https://collie.example.com" } });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(text(h.io)).not.toContain("no shared origin");
+  });
+
+  test("a revocation says nothing about origins — there is no door left to reach", async () => {
+    const h = harness({ store: withWarrant(twoPeers(), "nas") });
+    expect(await cmdPackDeputy(h.deps, ["--revoke"])).toBe(EXIT.OK);
+    expect(text(h.io)).not.toContain("no shared origin");
+  });
+});
+
+// ── `pack status` on the deputy: its own door (RFC §6.2, §6.3, §10.1) ────────
+
+/** The registry the lead has synced here (RFC §6.5), as `standby-devices.json` holds it. */
+function syncedFiles(labels: readonly string[]): SeededFiles {
+  const devices = labels.map((label, i) => ({ label, tokenHash: String(i).repeat(64), createdAt: T0 }));
+  const file = { version: 1, packId: "pack-1", leadMemberId: "desk", syncedAt: T0, devices };
+  return { [`${STATE}/standby-devices.json`]: `${JSON.stringify(file, null, 2)}\n` };
+}
+
+/** The deputy itself — `laptop` is `peerStore`'s own id — with a live marker and a scripted silence. */
+function deputyAt(opts: { silentMs?: number; devices?: readonly string[]; env?: Record<string, string> } = {}) {
+  const data = peerHolding("laptop");
+  const silent = opts.silentMs ?? 0;
+  return harness({
+      store: data,
+      files: {
+        ...marker(data, { leadLastDialledAt: T0, anchoredGeneration: 1 }, { checkpointedAt: T0 + silent }),
+        ...syncedFiles(opts.devices ?? ["phone"]),
+      },
+      now: T0 + silent,
+      env: { COLLIE_STANDBY_PORT: "8788", ...opts.env },
+  });
+}
+
+describe("pack status prints the deputy's own arming state", () => {
+  test("cold: the door's own sentence, not a second wording of it", async () => {
+    const h = deputyAt({ silentMs: 4_000 });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const said = text(h.io);
+    expect(said).toContain("standby door — cold on :8788 · arms after 30 seconds of silence");
+    expect(said).toContain("it is alive");
+  });
+
+  test("armed: it says so, and says how long the lead has been silent", async () => {
+    const h = deputyAt({ silentMs: 61_000 });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const said = text(h.io);
+    expect(said).toContain("standby door — ARMED on :8788 · silent for 61 seconds");
+    // Arming grants nothing, and the line must not read like something has happened.
+    expect(said).toContain("the lead's next landed call disarms it");
+  });
+
+  test("an EMPTY synced registry refuses to arm, and the line names the remedy", async () => {
+    const h = deputyAt({ silentMs: 61_000, devices: [] });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const said = text(h.io);
+    expect(said).toContain("standby door — cold on :8788");
+    expect(said).toContain("Run `collie pair` on the lead");
+    expect(said).not.toContain("ARMED");
+  });
+
+  test("no port is no door at all — RFC §6.2's absent-means-closed, said out loud", async () => {
+    const h = deputyAt({ silentMs: 61_000, env: { COLLIE_STANDBY_PORT: "" } });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const said = text(h.io);
+    expect(said).toContain("standby door — CLOSED: COLLIE_STANDBY_PORT is unset");
+    expect(said).toContain("collie promote");
+  });
+
+  test("the threshold is the FORMULA — a relaxed idle poll moves this line with it (§10.1)", async () => {
+    const h = deputyAt({ silentMs: 4_000, env: { COLLIE_POLL_IDLE_MS: "24000" } });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).toContain("arms after 60 seconds of silence");
+  });
+
+  test("an override at or below the idle poll is warned about, in the door's own words", async () => {
+    const h = deputyAt({ silentMs: 4_000, env: { COLLIE_STANDBY_ARM_MS: "5000", COLLIE_POLL_IDLE_MS: "12000" } });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).toContain("will arm itself on an idle pack");
+  });
+
+  test("a peer that is NOT the deputy has no door, and prints none", async () => {
+    const data = peerHolding("nas");
+    const h = harness({
+      store: data,
+      files: marker(data, { leadLastDialledAt: T0 }),
+      now: T0 + 61_000,
+      env: { COLLIE_STANDBY_PORT: "8788" },
+    });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).not.toContain("standby door");
+  });
+
+  test("no live bridge means no verdict — an arming line off a dead process would be a lie", async () => {
+    const data = peerHolding("laptop");
+    const h = harness({
+      store: data,
+      files: { ...marker(data, { leadLastDialledAt: T0 }), ...syncedFiles(["phone"]) },
+      now: T0 + 600_000,
+      env: { COLLIE_STANDBY_PORT: "8788" },
+    });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const said = text(h.io);
+    expect(said).toContain("configured on :8788, but no bridge is running here to bind it");
+    expect(said).not.toContain("ARMED");
+  });
+});
+
+// ── `pack status` on the lead: the refused pairing sync (RFC §6.5, §18.14) ───
+
+describe("pack status names a pairing sync the deputy refused", () => {
+  test("it names the labels, what it costs, and how to free the name", async () => {
+    const data = withWarrant(twoPeers(), "nas");
+    const h = harness({
+      store: data,
+      files: marker(data, { pairingCollision: { at: T0 + 1_000, labels: ["phone"] } }),
+      now: T0 + 6_000,
+    });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const said = text(h.io);
+    expect(said).toContain('⚠ pairing sync REFUSED 5s ago — the deputy already has "phone"');
+    expect(said).toContain("refuses to arm");
+    expect(said).toContain("collie devices");
+  });
+
+  test("a lead whose last sync landed says nothing about collisions", async () => {
+    const data = withWarrant(twoPeers(), "nas");
+    const h = harness({ store: data, files: marker(data), now: T0 + 1_000 });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).not.toContain("pairing sync REFUSED");
+  });
+});
+
+// ── `pack status` on a NEW lead: the members it has not told (RFC §7.1, §9) ──
+
+describe("pack status renders the pending re-pins a takeover left behind", () => {
+  const tookOver = (over: Partial<TrustedMember> = {}): TrustStoreData =>
+    leadStore({ peers: [member({ memberId: "desk", rePinPending: true, ...over }), member({ memberId: "attic" })] });
+
+  test("a member still owed the proof is a row, and it names NO step to run", async () => {
+    const data = tookOver();
+    const h = harness({ store: data, files: marker(data), now: T0 + 1_000 });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    const said = text(h.io);
+    expect(said).toContain("re-pin  PENDING — this member has not been told the crown moved");
+    expect(said).toContain("There is no step to run");
+    expect(said).toContain("clears the row by itself");
+  });
+
+  test("the row survives `--no-probe`: the member most likely to be pending is the unreachable one", async () => {
+    const data = tookOver();
+    const h = harness({ store: data, files: marker(data), now: T0 + 1_000, hello: { attic: 1 } });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).toContain("re-pin  PENDING");
+  });
+
+  test("a member that WAS told carries no row, and neither does one from before the field", async () => {
+    const data = tookOver({ rePinPending: false });
+    const h = harness({ store: data, files: marker(data), now: T0 + 1_000 });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).not.toContain("re-pin");
+
+    const old = leadStore({ peers: [member({ memberId: "desk" })] });
+    const g = harness({ store: old, files: marker(old), now: T0 + 1_000 });
+    await cmdPackStatus(g.deps, ["--no-probe"]);
+    expect(text(g.io)).not.toContain("re-pin");
+  });
+
+  test("a PEER prints none of it — it has no roster to owe anything to", async () => {
+    const data = peerStore();
+    const h = harness({ store: data, files: marker(data, { leadLastDialledAt: T0 }), now: T0 + 1_000 });
+    await cmdPackStatus(h.deps, ["--no-probe"]);
+    expect(text(h.io)).not.toContain("re-pin");
   });
 });
