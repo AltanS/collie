@@ -146,8 +146,13 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                                   tolerance a dropped sweep is invisible here, so a healthy member
                                   can't flash "unreachable" between two good polls. The age is the
                                   LEAD's receipt time measured on the LEAD's clock, and 0 means it has
-                                  never answered at all — which "0s ago" would misreport as just-now. */}
-                              {`unreachable · ${h.lastSeenLabel}`}
+                                  never answered at all — which "0s ago" would misreport as just-now.
+
+                                  The WORD, though, belongs to `writable` and not to `state`: a stale
+                                  receipt beside `reachable: true` is an old receipt, not a down
+                                  machine, and this row spelled it "unreachable" beside a peer whose
+                                  every request was landing. See host-stale-banner.tsx's table. */}
+                              {h.writable ? h.lastSeenLabel : `unreachable · ${h.lastSeenLabel}`}
                             </span>
                           )
                         )}

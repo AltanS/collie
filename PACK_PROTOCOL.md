@@ -783,9 +783,24 @@ never crosses a pack link.
   stale — panes must not disappear and reappear between polls.
 - **Freshness is the lead's receipt time.** A peer's clock is never trusted; `lastSeenAt` is stamped
   when the response lands, which is also why no timestamp header rides the response (§6).
+- **Every landed call is a receipt — the sweep is the floor, not the only source.** A proxied read or
+  write (§5, §9.1) that the peer *answered* refreshes `lastSeenAt` exactly as a sweep does: same
+  clock, same meaning. This matters because the sweep rides the lead's own adaptive interval and
+  relaxes to `COLLIE_POLL_IDLE_MS` (12 s), while a phone watching that peer's pane polls at 1.5 s —
+  so a receipt only the sweep refreshed made a perfectly healthy peer read stale for most of every
+  sweep. The fold is **successes only, for a member already believed `reachable`, and monotone**: how
+  a *failure* is classified stays the sweep's and the probe's business (§10.4), so there is still one
+  path to the word "unreachable". A `hello` probe remains the exception that stamps nothing (§10.4) —
+  it carries no snapshot. (`bridge/pack/registry.ts` → `recordExchange`.)
 - **Presented-stale threshold:** a member is rendered stale once its `lastSeenAt` is older than
   `3 × pollMs` **or** 15 s, whichever comes first. Below that, a single missed poll is invisible —
-  the same tolerance the herd link already gets.
+  the same tolerance the herd link already gets. `pollMs` is the *phone's* cadence, and the bullet
+  above is what makes measuring the lead's receipt against it sound.
+- **Stale is not unreachable, and the UI may not spell it so.** The table's "Presented as" column
+  describes the *content* (last-good, labelled), not a verdict on the machine: `reachable: true`
+  beside an old receipt is a normal, common state, and writes to such a member are **not** refused
+  (§10.3 refuses on the lead's boolean alone). A surface may therefore only print "unreachable", or
+  claim that replies and keys are refused, when that boolean is false.
 
 ### 10.3 Writes to a member that is not reachable
 

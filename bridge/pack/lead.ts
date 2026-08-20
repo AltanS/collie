@@ -257,6 +257,10 @@ export class PackLead {
       link: resolved.link,
       state: resolved.state,
       transport: this.deps.proxy,
+      // Every landed forward refreshes this member's receipt, so a watched peer's freshness tracks
+      // the phone's cadence rather than the sweep's idle one. The registry owns the rules (successes
+      // only, reachable members only, monotone) — this class just supplies the member id.
+      onExchange: (receivedAt) => void this.deps.registry.recordExchange(resolved.link.memberId, receivedAt),
       ...opts,
     });
   }

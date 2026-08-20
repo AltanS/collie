@@ -390,6 +390,100 @@ describe("forward — the lead's per-pane hop (M4/05)", () => {
   });
 });
 
+// ── §10.2: the sweep is the floor, not the only receipt ──────────────────────
+
+describe("a landed forward refreshes the receipt (§10.2)", () => {
+  /** A lead whose sweep and whose forwards are each scripted, sharing one registry. */
+  function fed(sweepScript: () => PeerOutcome<unknown>, proxyScript: () => PeerOutcome<Response>) {
+    const registry = new PackRegistry({
+      sessions: { get: () => undefined },
+      self: "desk",
+      members: () => [member({ memberId: "laptop" })],
+    });
+    const l = new PackLead({
+      registry,
+      snapshot: async () => sweepScript(),
+      proxy: async () => proxyScript(),
+      self: { id: "desk", name: "the herd" },
+      now: () => NOW,
+    });
+    return {
+      lead: l,
+      seen: () => registry.state("laptop").lastSeenAt,
+      health: () => registry.state("laptop").health,
+      read: async () => {
+        const url = new URL("https://lead.example/api/pane/w1:p1?host=laptop");
+        const resolved = l.resolve({ kind: "member", id: "laptop" });
+        // SAFETY: "laptop" is the sole enrolled member and is not `self`, so `resolve` returns the
+        // `peer` variant — the one carrying the link + state pair.
+        await l.forward(new Request(url), url, resolved as ResolvedPeer);
+      },
+    };
+  }
+
+  /** A peer answering a proxied read at `at` on the LEAD's clock. */
+  function answered(at: number): PeerOutcome<Response> {
+    return { ok: true, value: new Response("{}"), status: 200, member: "laptop", receivedAt: at, date: null };
+  }
+
+  test("a phone's own read of a peer pane stamps lastSeenAt, without waiting for a sweep", async () => {
+    // The bug this pins: the sweep relaxes to the idle cadence (12 s) while a phone watching this
+    // pane polls at 1.5 s, so a receipt only the sweep refreshed aged past 3 × pollMs and the phone
+    // called a peer that was answering every request "unreachable".
+    const h = fed(() => ok(body), () => answered(NOW + 3_000));
+    await h.lead.sweep();
+    expect(h.seen()).toBe(NOW);
+
+    await h.read();
+    expect(h.seen()).toBe(NOW + 3_000);
+    expect(h.health()).toBe("reachable");
+  });
+
+  test("lastSeenAt only moves forward — a forward that lands out of order never rewinds it", async () => {
+    let at = NOW + 5_000;
+    const h = fed(() => ok(body), () => answered(at));
+    await h.lead.sweep();
+    await h.read();
+    expect(h.seen()).toBe(NOW + 5_000);
+
+    // Reads are concurrent by nature and may land out of order. An older receipt is not news.
+    at = NOW + 1_000;
+    await h.read();
+    expect(h.seen()).toBe(NOW + 5_000);
+  });
+
+  test("a FAILED forward changes nothing — classification stays the sweep's and the probe's", async () => {
+    const h = fed(
+      () => ok(body),
+      () => ({ ok: false, state: "unreachable", reason: "timed out", attempted: true, receivedAt: NOW + 9_000 }),
+    );
+    await h.lead.sweep();
+    await h.read();
+    // Not "unreachable" from this path: the forward runs on a different budget, and two code paths
+    // deciding what that word means is exactly what §10.2's single classifier exists to prevent.
+    expect(h.health()).toBe("reachable");
+    expect(h.seen()).toBe(NOW);
+  });
+
+  test("a landed forward does not revive a member the sweep believes down", async () => {
+    let sweepOk = true;
+    const h = fed(
+      () => (sweepOk ? ok(body) : down),
+      () => answered(NOW + 7_000),
+    );
+    await h.lead.sweep();
+    sweepOk = false;
+    await h.lead.sweep();
+    expect(h.health()).toBe("unreachable");
+
+    // A read still forwards (only writes are refused before attempt, §10.3) and may even succeed —
+    // but the verdict is the sweep's, and it clears on the next tick anyway.
+    await h.read();
+    expect(h.health()).toBe("unreachable");
+    expect(h.seen()).toBe(NOW);
+  });
+});
+
 // ── §10.4: the verdict probe ─────────────────────────────────────────────────
 
 describe("a sweep that died on its own clock earns a patient re-ask (§10.4)", () => {

@@ -20,25 +20,66 @@ import { cn } from "@/lib/utils";
 // lead believes unreachable is refused BEFORE it is attempted, never queued, never retried), so the
 // banner says so up front. That is ADR 0010's posture carried across a lossier link: an unsent
 // message you know about beats a send whose outcome you have to guess at.
+//
+// ── THE ONE THING IT MUST NEVER SAY: A REFUSAL THAT WILL NOT HAPPEN ──────────
+// `state === "stale"` and "this host is unreachable" are DIFFERENT FACTS (see lib/host-health.ts's
+// note on the state). The first is about the age of the lead's receipt; the second is the lead's
+// plain boolean, and it is the only one that refuses a write — `writeRefusal` gates on `writable`
+// and nothing else. This banner used to render on `state !== "live"` alone and print
+// "X is unreachable · last seen now. …replies and keys are refused until it answers." over a peer
+// that was answering every request, with a composer that was accepting them: three claims, all
+// false, one of them self-contradicting.
+//
+// So the table is now — `state` first, because the §10.2 tolerance still owns whether this surface
+// speaks at all (a single missed sweep must not flash a banner), and `writable` owns WHAT it says:
+//
+//   state "live",    any writable   → NOTHING. Unchanged, deliberately: inside the tolerance this
+//                                     surface is silent even when the lead's boolean says
+//                                     unreachable — the refusal still bites, and `writeRefusal` is
+//                                     what tells the operator so, at the moment they try.
+//   incompatible                    → named, refusal claimed (writable is false by construction)
+//   state "unknown",  writable      → one waiting sentence, no refusal claim: the lead believes this
+//                                     machine is up, it just has not answered yet.
+//   state "unknown", !writable      → "unreachable · never seen" + "nothing cached" — the refusal is
+//                                     real, but there is no last-known screen to promise.
+//   state "stale",  !writable       → "unreachable · <last seen>" + refusal — the one true case
+//   state "stale",   writable       → NOTHING. The lead believes this machine is up, writes are
+//                                     accepted, and the screen below arrived through that very link
+//                                     (every landed forward now refreshes the receipt on the lead —
+//                                     `PackRegistry.recordExchange`). A banner here would be
+//                                     describing the sweep's cadence, not this pane's freshness.
 export function HostStaleBanner({
   health,
   className,
 }: {
-  /** The pane's host health. Undefined (solo, or live) renders nothing. */
+  /** The pane's host health. Undefined (solo), live, or stale-but-writable renders nothing. */
   health: HostHealth | undefined;
   className?: string;
 }) {
   if (!health || health.state === "live") return null;
+  const nothingCached = health.state === "unknown";
+  // A merely-old receipt on a machine the lead still believes up is not news: writes are accepted,
+  // and the screen below arrived through that same link. Say nothing rather than say something false.
+  if (!health.incompatible && health.writable && !nothingCached) return null;
 
   const reason = health.incompatible
     ? `${health.name} is running an incompatible Collie`
     : `${health.name} is unreachable · ${health.lastSeenLabel}`;
   // `unknown` means the lead has never had anything from this machine, so there is no last-good
   // mirror under this banner — an empty pane that SAYS it is empty, never a spinner that can't resolve.
-  const detail =
-    health.state === "unknown"
-      ? "Nothing cached for this machine yet."
-      : "Showing the last known screen — replies and keys are refused until it answers.";
+  // The refusal sentence is spoken only when a write really would be refused (`!writable`), which is
+  // exactly `writeRefusal`'s own condition — one fact, one gate, in both places.
+  const detail = nothingCached
+    ? "Nothing cached for this machine yet."
+    : "Showing the last known screen — replies and keys are refused until it answers.";
+  // The one case with nothing to refuse and nothing to show: the lead believes this machine is up
+  // and simply has not heard from it yet. One sentence, in the present tense, naming neither a
+  // refusal nor a machine that is down — and deliberately not "…yet. Nothing … yet.", which said the
+  // same thing twice and read like two faults.
+  const message =
+    nothingCached && health.writable
+      ? `Nothing from ${health.name} yet — waiting for its first answer.`
+      : `${reason}. ${detail}`;
 
   return (
     <output
@@ -51,7 +92,7 @@ export function HostStaleBanner({
       <span>
         {/* The host name is operator-supplied (their `join` label) and, like every other such string
             that reaches this UI, is rendered as a text node and never as markup. */}
-        {reason}. {detail}
+        {message}
         {health.incompatible && health.protocolDetail ? ` ${health.protocolDetail}` : ""}
       </span>
     </output>
