@@ -6,6 +6,19 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.14] - 2026-08-20
+
+### Added
+
+- `collie pack deputy <member>` / `--revoke` — mints the warrant, pushes it to every peer, then arms them by restarting each over the operator's own SSH under ONE consent for the batch; a peer with no SSH record is reported `warrant stored, anchor INACTIVE — restart <member>`, never skipped
+- `pack deputy` re-runs re-sync instead of minting — the retry after fixing an SSH record completes the arming rather than superseding it
+- `pack status` renders the whole arming state: the deputy line on a lead, per-member stored/anchored columns, `lead last called me …` and the stored warrant on a peer, and a loud DEPOSED banner naming the new lead and which of §18.3's three outcomes this machine is in
+- The runtime marker checkpoints the four facts only the running process holds, on the tick it already runs — so a one-shot verb can print them (PACK_PROTOCOL.md §18.9's amendment)
+
+### Changed
+
+- A `conflicted` member keeps its own health on the lead and renders as `this peer follows another lead "nas" (warrant generation 7)` — never as a generic unreachable (PACK_PROTOCOL.md §18.10)
+
 ## [1.0.0-beta.13] - 2026-08-20
 
 ### Added

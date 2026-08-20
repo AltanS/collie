@@ -54,6 +54,14 @@ import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/p
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import {
+  deposedLines,
+  deputyUnreachableLines,
+  leadContactLines,
+  leadDeputyLines,
+  memberWarrantLines,
+  peerWarrantLines,
+} from "./pack-status-deputy.ts";
 import type { Tone, TonedLine, Ui } from "./render.ts";
 // Type-only, so it is erased: the runtime edge to `cli/remote.ts` is the dynamic import in `cmdPack`.
 import type { PackAddDeps } from "./remote.ts";
@@ -182,7 +190,7 @@ function patientTimeoutFor(ctx: CliContext): number {
  * been handed it would refuse a request carrying it (§8.4 — no grace window, so the lead must dial
  * with the value the peer still holds).
  */
-function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerClient {
+export function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
     secret: () => secret,
@@ -216,7 +224,7 @@ function memberById(data: TrustStoreData, memberId: string): TrustedMember | und
   return data.peers.find((p) => p.memberId === memberId);
 }
 
-const linkOf = (member: TrustedMember): PackLink => ({
+export const linkOf = (member: TrustedMember): PackLink => ({
   memberId: member.memberId,
   address: member.address,
 });
@@ -227,6 +235,13 @@ export function failureLine(outcome: PeerOutcome<unknown>): string {
   if (outcome.state === "incompatible") return `incompatible — ${outcome.reason}`;
   // A refusal is an ANSWER, not a failure to reach — the far side is there and said no (§14.3).
   if (outcome.state === "refused") return `refused — ${outcome.reason}`;
+  // …and so is a conflict (§18.10, §10.2's fourth state). It answered, and answered precisely: it
+  // follows somebody else now. Never `unreachable` — the machine is up, and the remedy is a
+  // membership decision rather than a network one.
+  if (outcome.state === "conflicted") {
+    const generation = outcome.warrantGeneration === null ? "" : ` (warrant generation ${outcome.warrantGeneration})`;
+    return `this peer follows another lead "${outcome.leadMemberId}"${generation}`;
+  }
   return `unreachable — ${outcome.reason}`;
 }
 
@@ -835,6 +850,18 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     const minutes = Math.max(1, Math.ceil((approval.expiresAt - deps.now()) / 60_000));
     deps.io.out(`handover approved: ${approval.memberId} — expires in ${minutes}m`);
   }
+  // The deputy, from whichever side this machine is on (RFC §10). The lead prints its own
+  // designation; a peer prints the warrant it holds and whether its listener is actually built with
+  // it — two different facts, and only one of them is knowable on each machine.
+  const marker = parseMarker(deps.files.read(packRuntimePath(deps.ctx.stateDir)));
+  // …but first, whether this machine is still the lead it thinks it is. A machine rejoining a pack
+  // by itself must be a thing the operator READS about, not one they discover (RFC §8.2).
+  for (const l of deposedLines(marker)) deps.io.out(l.text);
+  const sideLines =
+    data.lead === null
+      ? leadDeputyLines(data, deps.now())
+      : [...leadContactLines(data, marker, deps.ctx.env, deps.now()), ...peerWarrantLines(data, marker, deps.now())];
+  for (const l of sideLines) deps.io.out(l.text);
   reportDrift(deps, data);
 
   const members = data.lead === null ? data.peers : [data.lead, ...data.peers];
@@ -864,6 +891,19 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     if (deps.ui != null) banked.push({ text, tone });
     else deps.io.out(text);
   };
+
+  // The one machine that may take over, when it is the one not answering (RFC §5). Emitted above the
+  // roster rather than beside that member's row: it is a fact about the PACK's readiness, and it is
+  // the line the operator has to act on while the lead is still healthy enough to sign a new warrant.
+  // Suppressed under `--no-probe`, where nothing answered because nothing was asked: a warning
+  // derived from an unasked question is the fastest way to teach an operator to ignore warnings.
+  if (data.lead === null && !bare.has("no-probe")) {
+    for (const l of deputyUnreachableLines(data, (id) => reaches.get(id)?.hello.ok === true)) {
+      emit(l.text, l.tone);
+    }
+  }
+  // Read once for the whole roster: the anchor column is per member, and one file answers for all.
+  const opsRecords = data.lead === null ? (await deps.ops.load()).data : null;
 
   emit("");
   emit("members:", "dim");
@@ -902,6 +942,14 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
       // fed from it, on the strict per-poll budget that every real read runs under.
       for (const line of dataLines(reach)) emit(line.text, line.tone);
       for (const line of versionLines(outcome.value.version, ours, m.memberId)) emit(line, "dim");
+      // The two phases of RFC §5, for this member: what it says it holds, and whether this operator
+      // has armed it. Lead-side only — a peer has no roster to report anchoring for.
+      if (data.lead === null) {
+        const record = opsRecords?.members[m.memberId] ?? null;
+        for (const l of memberWarrantLines(data, outcome.value.warrantGeneration, record, m.memberId)) {
+          emit(l.text, l.tone);
+        }
+      }
       // First successful contact clears the provisional marker: one-time and self-healing. The
       // bridge's own sweep could also stamp this later; today `pack status` is the clearer.
       if (m.contactedAt === null) {
@@ -1454,7 +1502,16 @@ export async function cmdReconnect(deps: PackDeps, args: readonly string[]): Pro
 // ── `collie pack <sub>` dispatch ─────────────────────────────────────────────
 
 /** The `pack` sub-verbs, in the order the help prints them. */
-export const PACK_SUBCOMMANDS = ["invite", "add", "update", "status", "rotate", "remove", "approve-promote"] as const;
+export const PACK_SUBCOMMANDS = [
+  "invite",
+  "add",
+  "update",
+  "status",
+  "rotate",
+  "remove",
+  "deputy",
+  "approve-promote",
+] as const;
 
 export function packUsage(): string {
   return `usage: collie pack {${PACK_SUBCOMMANDS.join("|")}}`;
@@ -1478,6 +1535,13 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       const { cmdPackUpdate } = await import("./pack-update.ts");
       return cmdPackUpdate(deps, rest);
     }
+    // Same reason `add` and `update` are imported at call time: `cli/pack-deputy.ts` reaches back into
+    // this module for `parsePackArgs`, `clientFor` and `linkOf`, and a static import here would close
+    // a cycle.
+    case "deputy": {
+      const { cmdPackDeputy } = await import("./pack-deputy.ts");
+      return cmdPackDeputy(deps, rest);
+    }
     case "status":
       return cmdPackStatus(deps, rest);
     case "rotate":
@@ -1497,6 +1561,8 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       deps.io.err("  status   mode, members, reachability, secret pickup and why a link is refused");
       deps.io.err("  rotate   reissue the pack secret and hand it to every reachable peer");
       deps.io.err("  remove   unpin and forget a member (on the lead)");
+      deps.io.err("  deputy   name the ONE peer that may take over, and arm it: `pack deputy <member>`");
+      deps.io.err("           (on the lead); `--revoke` names nobody");
       deps.io.err("  approve-promote  consent, on the lead, for one member to take over (10 minutes,");
       deps.io.err("                   single-use); `--cancel` clears it");
       return EXIT.USAGE;

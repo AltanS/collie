@@ -467,6 +467,10 @@ describe("the ops record", () => {
       path: CHECKOUT,
       port: 9000,
       recordedAt: T0,
+      // `pack update` arms nothing — only `pack deputy` writes this pair, and a record it refreshes
+      // must not silently claim an anchor it did not create.
+      anchoredGeneration: null,
+      anchoredAt: null,
     });
   });
 

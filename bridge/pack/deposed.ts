@@ -242,15 +242,22 @@ export function deposedPage(state: DeposedState, outcome: DeposedOutcome): strin
     `The pack is now led by ${lead} (warrant generation ${state.generation}).`,
     "Nothing here is live.",
     "",
-    ...outcomeLines(state, outcome),
+    ...deposedOutcomeLines(state, outcome),
     "",
     "Its front door is still published — run `collie unserve` on this machine to take it down.",
   ];
   return `${lines.join("\n")}\n`;
 }
 
-/** The one paragraph that differs per outcome, so a human never has to guess what is expected. */
-function outcomeLines(state: DeposedState, outcome: DeposedOutcome): string[] {
+/**
+ * The one paragraph that differs per outcome, so a human never has to guess what is expected.
+ *
+ * Exported because `collie pack status` must say the same thing on the same machine (RFC §8.2: "says
+ * so in `pack status`, loudly … and either the self-heal it is performing or the reason it could
+ * not"). Two spellings of a terminal state is one spelling too many — the page and the verb read
+ * this one.
+ */
+export function deposedOutcomeLines(state: DeposedState, outcome: DeposedOutcome): string[] {
   if (outcome === "healed") {
     return [
       "This machine has rejoined the pack as a peer. It takes effect at its next restart —",

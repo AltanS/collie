@@ -15,7 +15,17 @@ import type { TrustStoreIo } from "./trust-store.ts";
 
 const T0 = 1_754_000_000_000;
 
-const RECORD: OpsRecord = { sshHost: "nas.example", path: "/home/pat/.collie", port: 8787, recordedAt: T0 };
+// The anchor pair is optional on the type and EXPLICIT after a read: the parser builds its result
+// from a whitelist and normalises absent to `null`, so a record written by a build that predates
+// `pack deputy` reads back with two named nulls rather than two missing keys.
+const RECORD: OpsRecord = {
+  sshHost: "nas.example",
+  path: "/home/pat/.collie",
+  port: 8787,
+  recordedAt: T0,
+  anchoredGeneration: null,
+  anchoredAt: null,
+};
 
 /** An in-memory file, plus what was written to it and how often. */
 function fakeIo(initial: string | null = null): TrustStoreIo & { contents: string | null; writes: number } {
@@ -94,7 +104,14 @@ describe("PackOpsStore", () => {
   test("a second record for the same member REPLACES it — that is what an override refresh is", async () => {
     const store = new PackOpsStore("/state", fakeIo());
     await store.record("nas", RECORD);
-    const moved: OpsRecord = { sshHost: "nas.lan", path: "/srv/collie", port: 9000, recordedAt: T0 + 1 };
+    const moved: OpsRecord = {
+      sshHost: "nas.lan",
+      path: "/srv/collie",
+      port: 9000,
+      recordedAt: T0 + 1,
+      anchoredGeneration: null,
+      anchoredAt: null,
+    };
     await store.record("nas", moved);
     expect(await store.get("nas")).toEqual(moved);
     expect((await store.load()).data?.members).toEqual({ nas: moved });

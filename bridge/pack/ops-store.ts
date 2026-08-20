@@ -41,6 +41,21 @@ export interface OpsRecord {
   /** The port that machine's collie is configured to bind. */
   readonly port: number;
   readonly recordedAt: number;
+  /**
+   * The warrant generation `collie pack deputy` last ARMED on that machine, by restarting it over
+   * this ssh route (RFC §5's phase 2). `null`/absent ⇒ this operator has never restarted it to arm
+   * one, which is what `warrant stored, anchor INACTIVE` reports.
+   *
+   * **It belongs here rather than in the trust store, and it is a lower bound rather than a claim.**
+   * Anchoring happens in the peer's own process, and the peer never says over the wire which
+   * generation its listener was built with — that would be a new field for a fact a lead cannot act
+   * on. What a lead honestly knows is what its operator did from this machine, which is precisely
+   * what this file is for (ADR 0016): a peer that restarted for its own reasons has anchored without
+   * this ever moving, so the report names the remedy rather than accusing the peer.
+   */
+  readonly anchoredGeneration?: number | null;
+  /** When that restart landed, epoch ms. `null`/absent together with the generation above. */
+  readonly anchoredAt?: number | null;
 }
 
 /** The whole file: member id → how to reach it. */
@@ -64,8 +79,18 @@ function isRecord(value: JsonValue | undefined): value is JsonValue & OpsRecord 
     r.sshHost !== "" &&
     (r.path === null || typeof r.path === "string") &&
     typeof r.port === "number" &&
-    typeof r.recordedAt === "number"
+    typeof r.recordedAt === "number" &&
+    // The anchor pair is OPTIONAL — a record written before `pack deputy` existed carries neither —
+    // but a value that IS present must be a number or an explicit `null`. A file half-understood is
+    // refused whole (see {@link parsePackOps}), and that rule does not soften for a new field.
+    optionalNumber(r.anchoredGeneration) &&
+    optionalNumber(r.anchoredAt)
   );
+}
+
+/** Absent, `null`, or a number — the three readings a tolerant optional field is allowed to have. */
+function optionalNumber(value: JsonValue | undefined): boolean {
+  return value === undefined || value === null || typeof value === "number";
 }
 
 /**
@@ -93,11 +118,15 @@ export function parsePackOps(raw: string): PackOpsData | null {
   const members: Record<string, OpsRecord> = {};
   for (const [memberId, record] of Object.entries(rawMembers)) {
     if (!isRecord(record)) return null;
+    // An explicit whitelist, exactly as the trust store builds its result — a field named in the
+    // validator and forgotten here is silently dropped on every read (§14.1's recorded trap).
     members[memberId] = {
       sshHost: record.sshHost,
       path: record.path,
       port: record.port,
       recordedAt: record.recordedAt,
+      anchoredGeneration: record.anchoredGeneration ?? null,
+      anchoredAt: record.anchoredAt ?? null,
     };
   }
   return { version: PACK_OPS_VERSION, members };

@@ -60,6 +60,7 @@ import {
 import { cmdPushKeys } from "./push-keys.ts";
 import { cmdQr } from "./qr.ts";
 import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
+import { cmdPackDeputy } from "./pack-deputy.ts";
 import { cmdPackUpdate } from "./pack-update.ts";
 import { cmdPackAdd, packAddDeps, type PackAddDeps } from "./remote.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
@@ -475,6 +476,11 @@ export const COMMANDS: readonly Command[] = [
         cmdPackRotate(deps),
       ),
       packSubcommand("remove", "unpin and forget a member (on the lead)", cmdPackRemove),
+      packSubcommand(
+        "deputy",
+        "name the ONE peer that may take over and arm it over ssh: `pack deputy <member> | --revoke`",
+        (deps, args) => cmdPackDeputy(deps, args),
+      ),
       packSubcommand(
         "approve-promote",
         "consent, on the lead, for one member to take over (10 minutes, single-use)",

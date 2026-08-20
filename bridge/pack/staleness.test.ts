@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { leadStore, member, peerStore } from "./fixtures.ts";
 import {
+  checkpointMarker,
+  checkpointStale,
   formatMarker,
   markerFor,
   packRuntimePath,
@@ -37,8 +39,68 @@ describe("the marker", () => {
   test("round-trips through its own format", () => {
     const data = leadStore({ peers: [member({ memberId: "nas" })] });
     const marker = markerFor(data, T0, 4242);
-    expect(marker).toEqual({ bootedAt: T0, pid: 4242, mode: "lead", roster: ["peer:nas"] });
+    expect(marker).toEqual({
+      bootedAt: T0,
+      pid: 4242,
+      mode: "lead",
+      roster: ["peer:nas"],
+      // The boot write IS its own first checkpoint, and a process that has just started holds none
+      // of the four runtime facts (§18.9).
+      checkpointedAt: T0,
+      anchoredGeneration: null,
+      leadLastDialledAt: null,
+      leadRefusedSecretAt: null,
+      deposed: null,
+    });
     expect(parseMarker(formatMarker(marker))).toEqual(marker);
+  });
+
+  test("a checkpoint carries the four facts only the running process holds (§18.9)", () => {
+    const data = peerStore();
+    const boot = markerFor(data, T0, 7);
+    const live = checkpointMarker(
+      boot,
+      {
+        anchoredGeneration: 3,
+        leadLastDialledAt: T0 + 4_000,
+        leadRefusedSecretAt: null,
+        deposed: null,
+      },
+      T0 + 15_000,
+    );
+    // The boot half is what this process WIRED and never moves; only the facts and the stamp do.
+    expect(live.bootedAt).toBe(T0);
+    expect(live.pid).toBe(7);
+    expect(live.checkpointedAt).toBe(T0 + 15_000);
+    expect(parseMarker(formatMarker(live))).toEqual(live);
+  });
+
+  test("a marker from a build that predates §18.9 reads as reporting nothing, never as a receipt", () => {
+    const before = '{"bootedAt":100,"pid":2,"mode":"peer","roster":[]}';
+    expect(parseMarker(before)).toEqual({
+      bootedAt: 100,
+      pid: 2,
+      mode: "peer",
+      roster: [],
+      // One write, at boot — which is exactly what such a marker is.
+      checkpointedAt: 100,
+      anchoredGeneration: null,
+      leadLastDialledAt: null,
+      leadRefusedSecretAt: null,
+      deposed: null,
+    });
+  });
+
+  test("a deposed mark this build cannot read is simply no mark — nothing acts on it", () => {
+    const boot = markerFor(peerStore(), T0, 7);
+    const raw = JSON.stringify({ ...boot, deposed: { outcome: "abdicated", generation: 1, at: T0 } });
+    expect(parseMarker(raw)?.deposed).toBeNull();
+  });
+
+  test("a checkpoint nothing has refreshed is stale after three intervals, and not before", () => {
+    const boot = markerFor(peerStore(), T0, 7);
+    expect(checkpointStale(boot, T0 + 44_000, 15_000)).toBe(false);
+    expect(checkpointStale(boot, T0 + 46_000, 15_000)).toBe(true);
   });
 
   test("anything unreadable is simply no marker — never a thrown verb", () => {
