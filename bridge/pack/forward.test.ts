@@ -256,7 +256,7 @@ describe("a proxied read is the peer's response, unmodified (§9.1)", () => {
       }),
       { status: 200, headers: { etag: '"big"' } },
     );
-    const out = proxiedResponse(peer);
+    const out = proxiedResponse(peer, null);
     expect(pulls).toBe(0); // the transcript was handed on, not consumed
     expect(await out.text()).toHaveLength(100_000);
     expect(pulls).toBe(1); // …and read exactly once, by the phone's response
@@ -268,6 +268,120 @@ describe("a proxied read is the peer's response, unmodified (§9.1)", () => {
       const [req, url] = get("/api/pane/nope?host=laptop");
       expect((await forward(req, url, { transport })).status).toBe(status);
     }
+  });
+});
+
+// ── §9.1 Compression is hop-local: the LEAD gzips the phone hop (.adr/0023) ──
+
+describe("the lead compresses the phone hop itself (.adr/0023)", () => {
+  // The whole decision rests on this primitive existing in the runtime the bridge ships on. Asserted
+  // rather than assumed: without it the compressed branch would throw inside a request path whose
+  // stated contract is "never throws".
+  test("the runtime has CompressionStream, and it really deflates", async () => {
+    const plain = "collie ".repeat(500);
+    const out = new Response(plain).body!.pipeThrough(new CompressionStream("gzip"));
+    const bytes = new Uint8Array(await new Response(out).arrayBuffer());
+    expect(bytes.byteLength).toBeLessThan(plain.length / 10);
+    expect(new TextDecoder().decode(Bun.gunzipSync(bytes))).toBe(plain);
+  });
+
+  /** A peer answer big enough that gzip is plainly doing work, in the shape a pane read has. */
+  function peerJson(headers: Record<string, string> = {}): [string, Response] {
+    const body = JSON.stringify({ paneId: "w1:p1", lines: Array.from({ length: 200 }, () => "peer pane output") });
+    return [
+      body,
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8", etag: '"deadbeef"', ...headers },
+      }),
+    ];
+  }
+
+  async function forwardWithAccept(peer: Response, accept: string | null): Promise<Response> {
+    const { transport } = transportOf(() => ok(peer));
+    const [req, url] = get("/api/pane/w1:p1?host=laptop", accept === null ? {} : { "accept-encoding": accept });
+    return await forward(req, url, { transport });
+  }
+
+  test("the phone asked for gzip, so the BYTES are gzip and they inflate back to the peer's JSON", async () => {
+    const [body, peer] = peerJson();
+    const res = await forwardWithAccept(peer, "gzip, deflate, br");
+
+    expect(res.headers.get("content-encoding")).toBe("gzip");
+    // Bytes, not headers: a header that merely claims gzip is the exact bug beta.9 fixed, and the
+    // only assertion that can tell the two apart is decoding what was actually written.
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(bytes[0]).toBe(0x1f); // gzip magic
+    expect(bytes[1]).toBe(0x8b);
+    expect(bytes.byteLength).toBeLessThan(body.length);
+    expect(new TextDecoder().decode(Bun.gunzipSync(bytes))).toBe(body);
+    // The ETag names the IDENTITY bytes, on both sides of the lead — so compressing this hop cannot
+    // invalidate it, exactly as `gzipJsonResponse` intends on a local route.
+    expect(res.headers.get("etag")).toBe('"deadbeef"');
+    // A transform cannot know its own output length, and the emitting server frames what it writes.
+    expect(res.headers.get("content-length")).toBeNull();
+  });
+
+  test("the phone did not ask, so the body is the peer's bytes verbatim and no encoding is claimed", async () => {
+    const [body, peer] = peerJson();
+    const res = await forwardWithAccept(peer, null);
+
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(await res.text()).toBe(body);
+    expect(res.headers.get("etag")).toBe('"deadbeef"');
+  });
+
+  test("an `identity`-only phone is not gzipped either", async () => {
+    const [body, peer] = peerJson();
+    const res = await forwardWithAccept(peer, "identity");
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(await res.text()).toBe(body);
+  });
+
+  test("`vary` is MERGED with the peer's, never clobbered — and set when the peer sent none", async () => {
+    const [, withVary] = peerJson({ vary: "x-collie-seen" });
+    expect((await forwardWithAccept(withVary, "gzip")).headers.get("vary")).toBe("x-collie-seen, accept-encoding");
+
+    // Already varying on it (what a peer's own gzip branch declares): kept, not doubled.
+    const [, already] = peerJson({ vary: "accept-encoding" });
+    expect((await forwardWithAccept(already, "gzip")).headers.get("vary")).toBe("accept-encoding");
+
+    const [, none] = peerJson();
+    expect((await forwardWithAccept(none, "gzip")).headers.get("vary")).toBe("accept-encoding");
+  });
+
+  test("a 304 and a 204 pass through untouched — no body to transform, so no encoding claimed", async () => {
+    for (const status of [304, 204]) {
+      const peer = new Response(null, {
+        status,
+        headers: { "content-type": "application/json; charset=utf-8", etag: '"same"' },
+      });
+      const res = await forwardWithAccept(peer, "gzip, deflate, br");
+      expect(res.status).toBe(status);
+      expect(res.headers.get("content-encoding")).toBeNull();
+      expect(res.body).toBeNull();
+      expect(res.headers.get("etag")).toBe('"same"');
+    }
+  });
+
+  test("a non-compressible content-type streams through unchanged even when the phone asked", async () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const peer = new Response(bytes, {
+      status: 200,
+      headers: { "content-type": "image/png", etag: '"png"' },
+    });
+    const res = await forwardWithAccept(peer, "gzip, deflate, br");
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+    expect(res.headers.get("etag")).toBe('"png"');
+  });
+
+  test("the peer hop stays identity no matter what the phone asked for (the beta.9 invariant)", async () => {
+    const [, peer] = peerJson();
+    const { transport, calls } = transportOf(() => ok(peer));
+    const [req, url] = get("/api/pane/w1:p1?host=laptop", { "accept-encoding": "gzip, deflate, br, zstd" });
+    await forward(req, url, { transport });
+    expect(new Headers(calls[0]!.init.headers).get("accept-encoding")).toBe("identity");
   });
 });
 

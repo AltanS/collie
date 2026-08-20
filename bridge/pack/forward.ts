@@ -140,6 +140,8 @@ export type ForwardAuditEntry = {
  *
  * **`accept-encoding: identity` is SET here, and the phone's own value is never forwarded.** The lead
  * asks the peer for identity bytes, so the body it holds and the body it re-emits are the same bytes.
+ * Compression is **hop-local** (.adr/0023): this hop is plain, and {@link proxiedResponse} compresses
+ * the lead→phone hop itself, on the phone's own `accept-encoding`.
  *
  * Omitting the header is NOT enough, which is what this comment used to claim: Bun's `fetch` supplies
  * its own `accept-encoding: gzip, deflate, br, zstd` when the init carries none, so the peer gzips,
@@ -147,10 +149,10 @@ export type ForwardAuditEntry = {
  * `content-encoding: gzip` from the response headers. The lead then re-emitted a `gzip` header over
  * plain bytes and every peer pane rendered as "(no recent output)", because the phone's `fetch` threw
  * trying to inflate them. Setting `identity` explicitly (Bun passes it through unmodified) makes the
- * peer hop genuinely uncompressed; {@link PROXIED_RESPONSE_HEADERS} not carrying `content-encoding` is
- * the belt to this braces. The ETag is unaffected either way — it is hashed over the pre-gzip body
- * (`bridge/http-cache.ts`) — so what this costs is one hop's compression on a tailnet link, and what
- * it buys is a header that describes the bytes.
+ * peer hop genuinely uncompressed; {@link PROXIED_RESPONSE_HEADERS} not carrying the peer's
+ * `content-encoding` is the belt to this braces. The ETag is unaffected either way — it is hashed over
+ * the pre-gzip body (`bridge/http-cache.ts`) — so what this costs is one tailnet hop's compression,
+ * and what it buys is a header that describes the bytes.
  *
  * `X-Pack-Device` is added here rather than on the client because it is a property of the PHONE's
  * request — the operator's device as the lead's own `deviceAuth()` resolved it (§12) — and the sweep
@@ -171,38 +173,74 @@ export function forwardHeaders(req: Request, device?: string | null): Headers {
 /**
  * Response headers a proxied answer keeps. Everything else is the peer's business, not the phone's.
  *
- * **`content-encoding` is NOT on this list, and that is the honest answer rather than a loss.** By the
- * time a peer's response is in hand the lead holds identity bytes — the hop asked for identity, and
- * anything the runtime compressed anyway it has already decompressed (see {@link forwardHeaders}). A
- * copied `content-encoding` would therefore describe bytes that no longer exist. The lead's own front
- * door still compresses for the phone whenever the phone asked for it (`bridge/http-cache.ts`), so the
- * only thing given up is compression on the lead→phone hop for *forwarded* routes.
+ * **The peer's `content-encoding` is NOT on this list, because it describes the peer hop and not this
+ * one.** By the time a peer's response is in hand the lead holds identity bytes — the hop asked for
+ * identity, and anything the runtime compressed anyway it has already decompressed (see
+ * {@link forwardHeaders}). Copying that header would describe bytes that no longer exist.
+ *
+ * Compression is not given up, it is **re-decided per hop** (.adr/0023): {@link proxiedResponse}
+ * gzips the lead→phone hop itself, as a stream transform over the identity bytes, on the phone's own
+ * `accept-encoding` — the same negotiation `bridge/http-cache.ts` makes for a local route, and the
+ * same relationship to the ETag (hashed over the identity body, `vary: accept-encoding` declared).
  */
 const PROXIED_RESPONSE_HEADERS = ["content-type", "etag", "cache-control", "vary"];
 
+/** Content types worth a transform. Everything else (an image, an upload echo) streams through. */
+function compressibleType(contentType: string | null): boolean {
+  if (contentType === null) return false;
+  const type = contentType.toLowerCase();
+  return type.startsWith("application/json") || type.startsWith("text/");
+}
+
 /**
- * The peer's answer, re-emitted for the phone **unmodified**: status, body bytes, `content-type` and
- * — critically — `etag` (§9.1).
+ * The peer's `vary` with `accept-encoding` MERGED in, never clobbered — the peer may vary on
+ * something of its own, and dropping that would make a cache serve one variant for another.
+ */
+function varyWithAcceptEncoding(existing: string | null): string {
+  if (existing === null) return "accept-encoding";
+  const parts = existing.split(",").map((part) => part.trim()).filter((part) => part !== "");
+  if (parts.length === 0) return "accept-encoding";
+  if (parts.some((part) => part === "*" || part.toLowerCase() === "accept-encoding")) return parts.join(", ");
+  return [...parts, "accept-encoding"].join(", ");
+}
+
+/**
+ * The peer's answer, re-emitted for the phone **unmodified** — status, body bytes and, critically,
+ * `etag` (§9.1) — and compressed for this hop when the phone asked for it.
  *
- * The body is passed as a stream, never read: a 400-turn history must not be buffered whole on the
- * lead just to be written out again, and reading it would also be the moment an ETag stopped
- * describing what was sent. A `304`/`204` carries no body at all, which the platform enforces.
+ * ── COMPRESSION IS HOP-LOCAL, AND IT IS A TRANSFORM ──────────────────────────
+ * The peer hop is identity so the lead's headers can describe the lead's bytes ({@link
+ * forwardHeaders}). That left the lead→phone hop plain for *forwarded* routes only — ~136 KB per poll
+ * where a local pane ships ~6 KB, which on cellular is the difference between usable and not. So the
+ * lead compresses this hop itself, on the phone's own `accept-encoding`, via
+ * `CompressionStream("gzip")`: the body is still never buffered, so a 400-turn history is transformed
+ * chunk by chunk rather than held whole. The peer's ETag rides through untouched — it names the
+ * identity bytes, exactly as `gzipJsonResponse` intends it on a local route (.adr/0023).
  *
- * `content-length` is likewise absent by construction: it is not copied, and the server that writes
- * this response derives it from the bytes it actually writes. A copied one would be the peer's
- * pre-decompression length — the same lie as a copied `content-encoding`, in a field the phone trusts
- * even harder.
+ * `content-length` is absent by construction in both branches: it is not copied, and a transform
+ * cannot know it. A copied one would be the peer's pre-decompression length — the same lie as a
+ * copied `content-encoding`, in a field the phone trusts even harder.
+ *
+ * A `304`/`204` carries no body at all, which the platform enforces, so neither can be compressed.
  *
  * `x-pack-*` headers are stripped. They are link-internal (§6) and a browser must never see them.
  */
-export function proxiedResponse(res: Response): Response {
+export function proxiedResponse(res: Response, acceptEncoding: string | null): Response {
   const headers = new Headers();
   for (const name of PROXIED_RESPONSE_HEADERS) {
     const value = res.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  const bodyless = res.status === 304 || res.status === 204;
-  return new Response(bodyless ? null : res.body, { status: res.status, headers });
+  const body = res.status === 304 || res.status === 204 ? null : res.body;
+  if (body === null) return new Response(null, { status: res.status, headers });
+
+  const wantsGzip = acceptEncoding !== null && acceptEncoding.includes("gzip");
+  if (!wantsGzip || !compressibleType(res.headers.get("content-type"))) {
+    return new Response(body, { status: res.status, headers });
+  }
+  headers.set("content-encoding", "gzip");
+  headers.set("vary", varyWithAcceptEncoding(headers.get("vary")));
+  return new Response(body.pipeThrough(new CompressionStream("gzip")), { status: res.status, headers });
 }
 
 /** The machine-readable `code` on every refusal this module invents. The phone renders on these. */
@@ -417,6 +455,8 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // `receivedAt` is when the response landed on this lead, not when the phone finished reading it.
   deps.onExchange?.(outcome.receivedAt);
   record(`http ${outcome.value.status}`);
-  return proxiedResponse(outcome.value);
+  // The phone's own `accept-encoding` — never the peer's, which was pinned to `identity` on the way
+  // out. Compression is decided once per hop (.adr/0023).
+  return proxiedResponse(outcome.value, req.headers.get("accept-encoding"));
 }
 

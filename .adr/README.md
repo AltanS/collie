@@ -88,6 +88,8 @@ the pointer, it was a supersede.
 | [0019](./0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md) | oxlint + vendored anti-slop is the lint gate; one linter; TypeScript 7 | Accepted |
 | [0020](./0020-a-major-upgrade-is-consented-by-flag.md) | A major upgrade is consented by flag; routine update follows tags within the major | Accepted |
 | [0021](./0021-the-path-name-is-a-pointer-never-a-copy.md) | The name on PATH is a pointer, never a copy | Accepted |
+| [0022](./0022-the-mux-seam-is-a-port-collie-owns.md) | The multiplexer is a port Collie owns, not a relocated Herdr client | Accepted |
+| [0023](./0023-compression-is-hop-local-on-the-pack-link.md) | Compression is hop-local on the pack link; the ETag names the identity bytes | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
