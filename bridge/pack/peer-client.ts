@@ -7,7 +7,7 @@ import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
-import { parseWarrant, type WarrantPush } from "./warrant.ts";
+import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 
 // The LEAD side of a pack link: the client that dials a peer's `/pack/v1/*` surface.
 //
@@ -332,6 +332,15 @@ export interface HelloResult {
    */
   readonly warrantGeneration: number | null;
   /**
+   * The warrant generation that member's LISTENER activated at bind, or `null` (§18.17).
+   *
+   * The other half of RFC §5's two phases, and the half a lead cannot observe: storage is a file the
+   * peer reports, activation is what its process came up holding. **Absent means "nothing active
+   * there, or a build that cannot say" — never "armed"**, so the lead falls back to the lower bound
+   * in its own `pack-ops.json` and keeps naming the remedy, which is today's reading unchanged.
+   */
+  readonly warrantActiveGeneration: number | null;
+  /**
    * The digest of the synced pairing registry that member holds, or `null` (§18.14).
    *
    * **Absent means "nothing synced there", never "up to date"** — the same reading the warrant
@@ -493,8 +502,14 @@ export class PeerClient {
     const warrantGeneration = typeof generation === "number" && Number.isSafeInteger(generation) ? generation : null;
     // §18.14's report, read the same absent-means-closed way: anything that is not a digest is
     // "nothing synced", which never refuses a link and never reads as agreement.
+    // §18.17's activation report, read the same absent-means-closed way: anything that is not a safe
+    // integer is "nothing active there", which never refuses a link and never reads as armed.
+    const warrantActiveGeneration = parseWarrantActiveReport(outcome.value);
     const pairingDigest = parsePairingReport(outcome.value);
-    return { ...outcome, value: { protocol, member, version, warrantGeneration, pairingDigest } };
+    return {
+      ...outcome,
+      value: { protocol, member, version, warrantGeneration, warrantActiveGeneration, pairingDigest },
+    };
   }
 
   /**

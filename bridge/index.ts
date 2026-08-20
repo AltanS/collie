@@ -1155,6 +1155,11 @@ const server = startServer({
             // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).
             deputyAnchor,
             version: packVersion,
+            // §18.17: what THIS listener activated, reported so the lead stops inferring it from
+            // whether its own operator once restarted this machine. A restart done any other way —
+            // an update, a systemd unit, a hand on a keyboard — is invisible to `pack-ops.json` and
+            // was therefore rendered as `anchor INACTIVE` on a machine that was fully armed.
+            warrantActiveGeneration: activatedGeneration,
             onMembershipChange: packStoreChanged,
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
             onLeadDialled: (at) => leadContact.record(at),

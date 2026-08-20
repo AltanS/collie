@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
-import type { JsonValue } from "../bridge/json.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, peerStore, T0 } from "../bridge/pack/fixtures.ts";
 import { type OpsRecord, parsePackOps } from "../bridge/pack/ops-store.ts";
@@ -106,6 +106,12 @@ interface HarnessOptions {
   confirm?: boolean | null;
   /** Per-member `hello` answers for `pack status`: the warrant generation, or `false` for silence. */
   hello?: Record<string, number | null | false>;
+  /**
+   * Per-member `warrantActiveGeneration` on `hello` (§18.17) — what that machine's LISTENER came up
+   * holding, as opposed to what its store holds. Absent ⇒ the field is omitted, which is a
+   * pre-amendment build or a machine with nothing active, and reads as neither.
+   */
+  active?: Record<string, number>;
   /** Seeded files, for the runtime marker `pack status` reads. */
   files?: SeededFiles;
   /**
@@ -183,10 +189,16 @@ function harness(opts: HarnessOptions = {}) {
       }
       const reported = opts.hello?.[who];
       if (reported === false) throw new Error("connection refused");
-      return jsonReply(
-        { protocol: PACK_PROTOCOL_VERSION, member: who, version: "1.0.0", warrantGeneration: reported ?? null },
-        who,
-      );
+      const active = opts.active?.[who];
+      const body: JsonObject = {
+        protocol: PACK_PROTOCOL_VERSION,
+        member: who,
+        version: "1.0.0",
+        warrantGeneration: reported ?? null,
+      };
+      // Omitted rather than nulled when the test says nothing — absent is the wire's own state.
+      if (active !== undefined) body.warrantActiveGeneration = active;
+      return jsonReply(body, who);
     },
     now: () => now,
     random: () => "r",
@@ -540,6 +552,49 @@ describe("a re-run re-syncs rather than minting", () => {
     expect(h.confirms).toEqual([]);
     expect(h.calls).toEqual([]);
   });
+
+  // ── THE LIVE DRILL, BUG 5 (§18.17) ────────────────────────────────────────
+  // The record only moves when THIS verb's own restart leg completes, so a machine restarted by an
+  // update, by its unit, or by a hand on a keyboard was armed and unrecorded — and a re-run offered
+  // to restart a pack that was already fully armed. It asks the machines now.
+  test("the drill's sequence: warrant stored, restarted OUT OF BAND — the re-run asks nothing and exits 0", async () => {
+    const h = harness({
+      store: withWarrant(twoPeers(), "nas"),
+      // Nothing in this file has ever seen either machine armed…
+      ops: { nas: opsRecord("nas.example"), attic: opsRecord("attic.example") },
+      hello: { nas: 1, attic: 1 },
+      // …and both listeners came up holding the current generation regardless.
+      active: { nas: 1, attic: 1 },
+    });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
+    // Nothing asked, nothing probed over ssh, nothing restarted.
+    expect(h.confirms).toEqual([]);
+    expect(h.calls).toEqual([]);
+    expect(text(h.io)).toContain("that machine reports it active");
+    // …and the record catches up, so the OFFLINE view stops disagreeing with the live one.
+    const members = parsePackOps(h.ops.contents()!)!.members;
+    expect(members.nas?.anchoredGeneration).toBe(1);
+    expect(members.attic?.anchoredGeneration).toBe(1);
+    // A refresh, never a creation: the ssh route the operator typed is untouched.
+    expect(members.nas?.sshHost).toBe("nas.example");
+  });
+
+  test("a machine reporting an OLDER activation is still restarted — the report cuts both ways", async () => {
+    const h = harness({
+      store: withWarrant(withWarrant(twoPeers(), "nas"), "nas", T0 + 1000),
+      ops: {
+        nas: opsRecord("nas.example", { anchoredGeneration: 1, anchoredAt: T0 }),
+        attic: opsRecord("attic.example", { anchoredGeneration: 2, anchoredAt: T0 }),
+      },
+      hello: { nas: 2, attic: 2 },
+      // `attic`'s RECORD claims generation 2, and `attic` itself says its listener holds 1.
+      active: { nas: 1, attic: 1 },
+    });
+    expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
+    // `nas` is behind on the record AND on its report, so it is restarted. `attic` is skipped by the
+    // record check above, which is untouched — this verb never demotes a record it already trusts.
+    expect(legs(h)).toEqual(["nas.example:probe", "nas.example:restart"]);
+  });
 });
 
 // ── Revocation (RFC §4.4) ────────────────────────────────────────────────────
@@ -610,6 +665,64 @@ describe("pack status on the lead", () => {
     await cmdPackStatus(h.deps, []);
     expect(text(h.io)).toContain("warrant stored, anchor INACTIVE — restart nas");
     expect(text(h.io)).toContain("warrant stored, anchor INACTIVE — restart attic");
+  });
+
+  // ── THE LIVE DRILL, BUG 5 (§18.17) ────────────────────────────────────────
+  // The lead told the operator to restart a deputy whose own `pack status` read `deputy role ACTIVE
+  // at this boot`. The two surfaces had different evidence: the machine knew, and the lead was
+  // reading a file that only its own restart leg ever writes. It asks the machine now.
+  test("a member that reports the generation ACTIVE is armed, whoever restarted it", async () => {
+    const h = harness({
+      // No ops record for either machine: nothing here has ever restarted them.
+      store: withWarrant(twoPeers(), "nas"),
+      ops: {},
+      hello: { nas: 1, attic: 1 },
+      active: { nas: 1, attic: 1 },
+    });
+    await cmdPackStatus(h.deps, []);
+    const said = text(h.io);
+    // The role picks the word, and the lead knows the role from its own warrant.
+    expect(said).toContain("stored, and its deputy role is ACTIVE (that machine reports it)");
+    expect(said).toContain("stored, and anchored (that machine reports it)");
+    expect(said).not.toContain("anchor INACTIVE");
+  });
+
+  test("a report BEHIND the issued generation stays INACTIVE, even against a record that claims it", async () => {
+    const h = harness({
+      store: withWarrant(withWarrant(twoPeers(), "nas"), "nas", T0 + 1000),
+      ops: { nas: opsRecord("nas.example", { anchoredGeneration: 2, anchoredAt: T0 }) },
+      hello: { nas: 2, attic: 2 },
+      active: { nas: 1, attic: 1 },
+    });
+    await cmdPackStatus(h.deps, []);
+    expect(text(h.io)).toContain("warrant stored, anchor INACTIVE — restart nas");
+  });
+
+  test("a confirmed activation is written back, so `--no-probe` stops disagreeing with the probe", async () => {
+    const h = harness({
+      store: withWarrant(twoPeers(), "nas"),
+      ops: { nas: opsRecord("nas.example"), attic: opsRecord("attic.example") },
+      hello: { nas: 1, attic: 1 },
+      active: { nas: 1, attic: 1 },
+      now: T0 + 5000,
+    });
+    await cmdPackStatus(h.deps, []);
+    const members = parsePackOps(h.ops.contents()!)!.members;
+    expect(members.nas?.anchoredGeneration).toBe(1);
+    expect(members.nas?.anchoredAt).toBe(T0 + 5000);
+    // A refresh, never a creation — the route the operator typed is what makes a record exist.
+    expect(members.nas?.sshHost).toBe("nas.example");
+  });
+
+  test("a member with no ops record gains none — an anchor with no ssh route invents a field", async () => {
+    const h = harness({
+      store: withWarrant(twoPeers(), "nas"),
+      ops: {},
+      hello: { nas: 1, attic: 1 },
+      active: { nas: 1, attic: 1 },
+    });
+    await cmdPackStatus(h.deps, []);
+    expect(parsePackOps(h.ops.contents() ?? "{}")?.members.nas).toBeUndefined();
   });
 
   test("a member a generation behind is named as behind, not as unarmed", async () => {

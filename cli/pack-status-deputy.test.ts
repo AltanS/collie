@@ -5,7 +5,13 @@ import { NO_RUNTIME_FACTS, type PackRuntimeMarker } from "../bridge/pack/stalene
 import { adoptLeadership, rosterRowsOf } from "../bridge/pack/takeover.ts";
 import type { StoredWarrant, TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { mintWarrant } from "../bridge/pack/warrant.ts";
-import { deputyUnreachableLines, leadDeputyLines, peerWarrantLines } from "./pack-status-deputy.ts";
+import type { OpsRecord } from "../bridge/pack/ops-store.ts";
+import {
+  deputyUnreachableLines,
+  leadDeputyLines,
+  memberWarrantLines,
+  peerWarrantLines,
+} from "./pack-status-deputy.ts";
 import type { TonedLine } from "./render.ts";
 
 // What `collie pack status` SAYS about the deputy. Pure data in, `TonedLine[]` out — so the whole
@@ -198,5 +204,68 @@ describe("the peer's own warrant line names what THIS machine's restart activate
     const revoked = mintWarrant(mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.next, null, T0)!;
     const held = peerStore({ warrant: { warrant: revoked.result, deputyCertPem: null } });
     expect(text(peerWarrantLines(held, marker(), T0))).toContain("REVOKED");
+  });
+});
+
+// ── THE LIVE DRILL, BUG 5 (§18.17) ──────────────────────────────────────────
+// The deputy's own `pack status` said `deputy role ACTIVE at this boot` while the LEAD's said
+// `warrant stored, anchor INACTIVE — restart minibuch … a takeover from there is impossible`, about
+// the same machine at the same minute. The lead's only anchor evidence was `pack-ops.json`, which
+// moves when `pack deputy`'s own restart leg completes and at no other time — so a restart done by an
+// update, by the unit, or by a hand on a keyboard left an armed pack rendered as un-armed forever.
+describe("the LEAD prefers the member's own activation report over its ops record (§18.17)", () => {
+  /** `desk`, holding generation 1 of a warrant naming `nas`. `attic` is the witness. */
+  const lead = (): TrustStoreData => designated();
+  /** The same lead, one generation later — so a report of `1` is provably BEHIND. */
+  const leadAtTwo = (): TrustStoreData => mintWarrant(designated(), "nas", T0 + 1000)!.next;
+  const record = (over: Partial<OpsRecord> = {}): OpsRecord => ({
+    sshHost: "nas.local",
+    path: "/home/op/collie",
+    port: 8787,
+    recordedAt: T0,
+    anchoredGeneration: null,
+    anchoredAt: null,
+    ...over,
+  });
+
+  test("a DEPUTY reporting the current generation is armed — with no ops record at all", () => {
+    // The drill's exact state: nothing ever restarted it from here, and it is nonetheless armed.
+    const rendered = text(memberWarrantLines(lead(), 1, null, "nas", 1));
+    expect(rendered).toContain("its deputy role is ACTIVE");
+    expect(rendered).toContain("that machine reports it");
+    expect(rendered).not.toContain("INACTIVE");
+    expect(rendered).not.toContain("restart nas");
+  });
+
+  test("a WITNESS reporting the current generation says ANCHORED — the role picks the word", () => {
+    // No wire field carries a role: the lead knows who its own warrant names.
+    const rendered = text(memberWarrantLines(lead(), 1, null, "attic", 1));
+    expect(rendered).toContain("anchored");
+    expect(rendered).not.toContain("deputy role");
+    expect(rendered).not.toContain("INACTIVE");
+  });
+
+  test("a report BEHIND the issued generation is INACTIVE — even when the record claims otherwise", () => {
+    // The record describes a past restart; the report describes the process running now, and the
+    // machine wins. A record that outran the report is how a lead would swear a rolled-back peer armed.
+    const rendered = text(memberWarrantLines(leadAtTwo(), 2, record({ anchoredGeneration: 2, anchoredAt: T0 }), "nas", 1));
+    expect(rendered).toContain("warrant stored, anchor INACTIVE — restart nas");
+  });
+
+  test("an ABSENT report falls back to the ops record — the pre-amendment reading, unchanged", () => {
+    const armed = text(memberWarrantLines(lead(), 1, record({ anchoredGeneration: 1, anchoredAt: T0 }), "nas", null));
+    expect(armed).toContain("stored and anchored");
+    const unarmed = text(memberWarrantLines(lead(), 1, record(), "nas", null));
+    expect(unarmed).toContain("warrant stored, anchor INACTIVE — restart nas");
+    // A caller that passes nothing at all reads exactly as one that reports nothing.
+    expect(text(memberWarrantLines(lead(), 1, record(), "nas"))).toBe(unarmed);
+  });
+
+  test("a member BEHIND on STORAGE is still reported on storage — activation cannot outrank it", () => {
+    // Two independent facts, and the first one that is wrong is the one to say. A machine that does
+    // not even hold the warrant has nothing for a restart to arm.
+    const rendered = text(memberWarrantLines(leadAtTwo(), 1, null, "nas", 1));
+    expect(rendered).toContain("BEHIND this lead's 2");
+    expect(rendered).not.toContain("ACTIVE");
   });
 });

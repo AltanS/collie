@@ -235,6 +235,14 @@ answering build:
   browser's shape. `snapshot` is what the lead's poll already dials (§10.1), which is what makes the
   comparison cost no extra round trip.
 
+- `warrantActiveGeneration` is **OPTIONAL**, added 2026-08-20 (§18.17): the warrant generation that
+  member's **listener activated when it bound**, which is the second of §5's two phases and the only
+  half the lead cannot observe. **An absent field means "nothing is active there, or this build cannot
+  say" — never "armed"** (§7.1), and that reading leaves the lead on the lower bound in its own
+  `pack-ops.json`, which is the pre-amendment behaviour unchanged. **It rides `/pack/v1/snapshot`'s
+  response too**, beside the body rather than inside it, for the warrant pair's reason. It names no
+  secret: one integer, and one the caller itself issued.
+
 - `pairingDigest` is **OPTIONAL**, added 2026-08-20 (§18.14): a digest of the synced paired-device
   registry this member holds, and `null`/absent on every member that holds none — which is every peer
   that is not the deputy. **An absent field means "nothing synced here", never "up to date"** (§7.1),
@@ -2068,12 +2076,17 @@ specifies it, and the restart rides the operator's own SSH and is never a pack m
   in `pack status` thereafter.
 
 **What each side can honestly say about anchoring.** A peer knows it exactly — its own process built
-the listener, and §18.9's checkpoint carries the generation it built it from. A lead does **not**:
-anchoring happens in the peer's process and no field reports it, because a lead could not act on one.
-What a lead honestly knows is what its operator did from this machine, so the armed generation is
-recorded per member in `pack-ops.json` beside the SSH route (ADR 0016 — operator-local, never trust,
-never a wire field). It is a **lower bound**: a peer that restarted for its own reasons has anchored
-without it moving, which is why the line names a remedy rather than accusing the peer.
+the listener, and §18.9's checkpoint carries the generation it built it from. What a *lead* knows on
+its own is what its operator did from this machine, so the armed generation is recorded per member in
+`pack-ops.json` beside the SSH route (ADR 0016 — operator-local, never trust, never a wire field). It
+is a **lower bound**: a peer that restarted for its own reasons has anchored without it moving.
+
+**This paragraph used to end there, and that was the bug.** It also said no field reports anchoring
+*"because a lead could not act on one"* — which a live drill disproved: the lead accused an armed
+deputy of being un-armed, and `pack deputy` offered to restart it again. §18.17 amends it. The peer now
+reports `warrantActiveGeneration`, the lead prefers that report over this record, and a confirmed
+report refreshes the record so the offline view converges. The record survives unchanged as the answer
+for a member that is not answering, or is too old to say.
 
 ### 18.14 The pairing sync — the lead's device registry, on the deputy *(added 2026-08-20)*
 
@@ -2281,3 +2294,50 @@ every case above), `phase`'s absence selects the reading that changes nothing, a
 field rides a new route, which may require its own. A pre-amendment member is **not takeover-capable**
 and no amount of protocol politeness changes that — it has no warrant, no second anchor and no route.
 That is a **capability** gap, not a **compatibility** gap.
+
+### 18.17 The peer reports what its listener activated *(added 2026-08-20)*
+
+**`warrantActiveGeneration`: the generation this collie's listener came up holding — additive-optional
+on `hello` and `snapshot` (§5), absent meaning "nothing active here, or a build that cannot say".**
+
+§18.6 recorded the opposite rule — *"a peer never reports which generation its listener was built
+with, and a lead could not act on one if it did"* — and a live drill disproved the second half of that
+sentence, so this amends it rather than quietly outliving it.
+
+**What went wrong.** The deputy's own `pack status` read `deputy role ACTIVE at this boot`, which was
+true. The lead's `pack status` read `warrant stored, anchor INACTIVE — restart <member> … a takeover
+from there is impossible`, about the same machine, at the same minute. Both surfaces were reporting
+honestly from what they had: the lead's *only* anchor evidence was `anchoredGeneration` in
+`pack-ops.json`, which is written **when §18.13's own restart leg completes and at no other time**. A
+restart performed any other way — an update, the systemd unit, a hand on a keyboard — arms the machine
+and moves nothing on the lead. The wire carried **storage** (`warrantGeneration`) and never
+**activation**, so the gap could not close on its own, and `pack deputy` re-run had the same blindness:
+it offered to restart a pack that was already armed.
+
+**The rule.** Activation happens in the peer's own process, so the peer is the authority on it and the
+lead's record is a **lower bound on what this operator did from here**, never a claim about the
+machine. Three readings, and the lead's `pack status` picks between them per member:
+
+| the member's report | the lead prints |
+|---|---|
+| ≥ the issued generation | armed — *stored, and `its deputy role is ACTIVE`* on the machine the warrant names, *`anchored`* on every other. The lead tells the two roles apart from its own roster; no wire field carries a role. |
+| below it | §18.13's `anchor INACTIVE — restart <member>` line, unchanged. **This outranks the record**: the record describes a past restart, the report describes the process running now. |
+| absent | the `pack-ops.json` lower bound — exactly today's behaviour, which is what makes the field additive. |
+
+**A confirmed activation is written back to `pack-ops.json`**, by `pack status` and by `pack deputy`,
+so the offline view (`--no-probe`, and any member not answering right now) converges instead of
+disagreeing until the next designation. It is a **refresh and never a creation**: a member with no
+record is one nobody has ever SSH'd to (ADR 0016), and an anchor generation with no route beside it
+would be a record inventing a field the operator never supplied.
+
+**`pack deputy`'s re-run asks before it restarts.** A member whose record is behind is dialled
+read-only once; a report at or above the generation marks it `already armed for this generation — that
+machine reports it active`, and it is not probed over ssh, not restarted, and not counted as a target.
+A re-run against a pack that is fully armed therefore asks the operator nothing and exits `0`.
+
+**Compatibility: `X-Pack-Protocol` stays `1`.** One additive-optional integer on two existing
+responses, absent-means-closed in the direction that preserves the old sentence (§7.1). It is
+admissible on `hello` for `member`'s reason — already knowable to anyone who has cleared both factors —
+and it names no secret. It is threaded into the router **once, at boot** (`bridge/index.ts`'s
+`activatedGeneration`), never read per request: the field is *defined* as what this listener came up
+holding, so a value re-read later would be answering a different question.

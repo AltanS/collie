@@ -276,10 +276,18 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     const outcome = await client(fetch).hello(laptop);
     expect(outcome).toEqual({
       ok: true,
-      // `version` and `warrantGeneration` are both OPTIONAL on the wire and both read as `null` when
-      // absent (§7.1, §18.7) — never as "up to date", which is what makes the lead push rather than
-      // assume and what keeps the boot gate from reading a silent member as agreement.
-      value: { protocol: 1, member: "laptop", version: null, warrantGeneration: null, pairingDigest: null },
+      // `version`, `warrantGeneration` and `warrantActiveGeneration` are all OPTIONAL on the wire and
+      // all read as `null` when absent (§7.1, §18.7, §18.17) — never as "up to date" or "armed", which
+      // is what makes the lead push rather than assume, what keeps the boot gate from reading a silent
+      // member as agreement, and what keeps an absent activation on the ops file's lower bound.
+      value: {
+        protocol: 1,
+        member: "laptop",
+        version: null,
+        warrantGeneration: null,
+        warrantActiveGeneration: null,
+        pairingDigest: null,
+      },
       status: 200,
       member: "laptop",
       receivedAt: 1_000, // the injected lead clock — never a header from the peer (§6)

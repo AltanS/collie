@@ -4,6 +4,7 @@ import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { JsonValue } from "../json.ts";
 import { EXIT } from "../../cli/io.ts";
 import {
   cmdJoin,
@@ -27,7 +28,7 @@ import { PACK_HELLO_PATH, PACK_LEAVE_PATH, PACK_PREFIX, PACK_SNAPSHOT_PATH } fro
 import { parseStandbyDevices } from "./standby-devices.ts";
 import { TAKEOVER_RESTART_EXIT } from "./takeover.ts";
 import { parseMarker, packRuntimePath } from "./staleness.ts";
-import { peerWarrantLines } from "../../cli/pack-status-deputy.ts";
+import { memberWarrantLines, peerWarrantLines } from "../../cli/pack-status-deputy.ts";
 import { sha256Hex } from "../pairing.ts";
 import {
   bodyDigest,
@@ -39,7 +40,7 @@ import {
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
 } from "./signing.ts";
-import { canonicalWarrant, mintWarrant } from "./warrant.ts";
+import { canonicalWarrant, mintWarrant, parseWarrantActiveReport, parseWarrantReport } from "./warrant.ts";
 import { PeerClient, type PackLink } from "./peer-client.ts";
 import { dialTls, peerListenerTls, type PackRequestInit, type PackTlsOptions } from "./transport.ts";
 import {
@@ -1446,6 +1447,39 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   };
   const standby = (path: string, init: RequestInit = {}) =>
     fetch(`http://127.0.0.1:${standbyPort}${path}`, init);
+  /**
+   * `GET /pack/v1/hello` at a peer, dialled as the LEAD does it — the exact bytes the lead's own
+   * `pack status` reads its answers off. Two factors: the lead's certificate at the handshake and the
+   * pack secret in the header.
+   */
+  async function helloAt(
+    target: Instance,
+  ): Promise<{ warrantGeneration: number | null; warrantActiveGeneration: number | null }> {
+    const from = hq.store()!;
+    const to = target.store()!;
+    const res = await packFetch(`https://127.0.0.1:${target.port}${PACK_HELLO_PATH}`, {
+      headers: {
+        authorization: `Bearer ${from.pack!.secret}`,
+        "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
+        "x-pack-member": from.self.memberId,
+      },
+      tls: {
+        cert: from.self.certPem,
+        key: from.self.keyPem,
+        ca: [to.self.certPem],
+        checkServerIdentity: () => undefined,
+      },
+    });
+    expect(res.status).toBe(200);
+    // SAFETY: `Response.json()` yields exactly a JsonValue — the wire is JSON by definition — and both
+    // readers below are the SHIPPED ones, so this asserts against the parse the lead really performs
+    // rather than a second one written here.
+    const body = (await res.json()) as JsonValue;
+    return {
+      warrantGeneration: parseWarrantReport(body)?.generation ?? null,
+      warrantActiveGeneration: parseWarrantActiveReport(body),
+    };
+  }
 
   /** Enrol `peer` into `lead`'s pack through the real invite/join exchange. */
   async function enrol(leadInstance: Instance, peerInstance: Instance): Promise<void> {
@@ -1584,6 +1618,28 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
       .map((l) => l.text)
       .join("\n");
     expect(witnessLines).toContain("anchored at this boot");
+  }, 60_000);
+
+  // ── THE LIVE DRILL, BUG 5 (§18.17) ─────────────────────────────────────────
+  // The two surfaces above are the deputy's own. The LEAD's said the opposite about the same machine
+  // at the same minute — `warrant stored, anchor INACTIVE — restart <member>` — because its only
+  // evidence was `pack-ops.json`, which moves when `pack deputy`'s restart leg completes and never
+  // otherwise. Nothing restarted these machines through that verb, and they are armed; so this reads
+  // the wire the lead actually reads, and then the sentence the operator would have got.
+  test("the LEAD hears the activation over the wire, and stops asking for a restart", async () => {
+    const generation = aide.store()!.warrant!.warrant.generation;
+    const hello = await helloAt(aide);
+    expect(hello.warrantGeneration).toBe(generation);
+    expect(hello.warrantActiveGeneration).toBe(generation);
+
+    // The lead's own renderer, with NO ops record — the drill's exact state, and the one that used to
+    // print the impossible sentence.
+    const rendered = memberWarrantLines(hq.store()!, hello.warrantGeneration, null, idOf(aide), hello.warrantActiveGeneration)
+      .map((l) => l.text)
+      .join("\n");
+    expect(rendered).toContain("its deputy role is ACTIVE");
+    expect(rendered).not.toContain("anchor INACTIVE");
+    expect(rendered).not.toContain("a takeover from there is impossible");
   }, 60_000);
 
   // ── THE LIVE DRILL, BUG 4 ──────────────────────────────────────────────────

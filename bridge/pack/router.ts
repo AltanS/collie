@@ -343,6 +343,21 @@ export interface PackRouterDeps {
    * router for some other route need not care; the boot path always supplies it.
    */
   readonly version?: string;
+  /**
+   * **The warrant generation this process ACTIVATED when it bound its listener** — `bridge/index.ts`'s
+   * `activatedGeneration`, and the second half of RFC §5's two phases, told by the only machine that
+   * can honestly tell it (§18.17).
+   *
+   * Threaded in once, at boot, for `version`'s reason and a stronger one: the answer is *defined* as
+   * what this listener came up holding, so a value re-read per request would be answering a different
+   * question. Activation happens at bind or not at all — `server.reload({tls})` does not swap a
+   * pinned `ca`.
+   *
+   * `undefined`/`null` ⇒ the field is omitted, which the lead reads as "pre-amendment build, or
+   * nothing active here" and falls back to its own `pack-ops.json` lower bound — today's reading,
+   * unchanged (§7.1's absent-means-closed).
+   */
+  readonly warrantActiveGeneration?: number | null;
   readonly now?: () => number;
   readonly random?: RandomSource;
 }
@@ -425,6 +440,7 @@ type HelloBody = {
   version?: string;
   warrantGeneration?: number;
   warrantRefreshedAt?: number;
+  warrantActiveGeneration?: number;
   pairingDigest?: string;
 };
 
@@ -740,6 +756,12 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // here", never "up to date"**, and both readings make the lead push. It names no secret — a
       // SHA-256 over label + token-hash + creation, which is a digest of digests — and it is
       // admissible here for `member`'s reason: already knowable to anyone who cleared both factors.
+      // §18.17's report: what this listener ACTIVATED, which is the half the lead cannot observe. It
+      // names no secret — one integer, and one the caller already sent us — and it is admissible here
+      // for the warrant pair's reason. Omitted when nothing is active, which is the closed read: the
+      // lead then falls back to its own record and prints the remedy, exactly as it did before.
+      const active = deps.warrantActiveGeneration ?? null;
+      if (active !== null) hello.warrantActiveGeneration = active;
       const synced = deps.standby?.syncedDigest() ?? null;
       if (synced !== null) hello.pairingDigest = synced;
       return new Response(JSON.stringify(hello), {
@@ -805,14 +827,16 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // lead's sweep and never the phone.
       const report = warrantReportOf(data);
       const synced = deps.standby?.syncedDigest() ?? null;
-      // Both reports ride ALONGSIDE the body, never inside it, for the reason the warrant's pair
+      const active = deps.warrantActiveGeneration ?? null;
+      // All three reports ride ALONGSIDE the body, never inside it, for the reason the warrant's pair
       // does: `body` is the very object this collie serves its own browser, and a pack-only fact has
       // no business in the browser's snapshot type. `mergeSnapshot` whitelists what it reads.
       const withWarrant =
         report === null
           ? body
           : { ...body, warrantGeneration: report.generation, warrantRefreshedAt: report.refreshedAt };
-      const withReport = synced === null ? withWarrant : { ...withWarrant, pairingDigest: synced };
+      const withActive = active === null ? withWarrant : { ...withWarrant, warrantActiveGeneration: active };
+      const withReport = synced === null ? withActive : { ...withActive, pairingDigest: synced };
       return new Response(JSON.stringify(withReport), {
         status: 200,
         headers: packResponseHeaders(verdict.self),

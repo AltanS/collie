@@ -311,6 +311,23 @@ export function parseWarrantReport(value: JsonValue | undefined): WarrantReport 
 }
 
 /**
+ * Read a member's ACTIVATION report off a `hello`/`snapshot` body — §18.17's `warrantActiveGeneration`.
+ *
+ * `null` for absent, for a value that is not a safe integer, and for a build that predates the
+ * amendment. **Absent means "nothing active there, or a build that cannot say" — never "armed"**, and
+ * that reading is what makes the lead fall back to the lower bound in its own `pack-ops.json` and
+ * keep printing the remedy. Read on its own rather than as part of {@link parseWarrantReport}: what a
+ * member STORES and what its listener ACTIVATED are two independent facts, and a build that reports
+ * one and not the other must not lose both.
+ */
+export function parseWarrantActiveReport(value: JsonValue | undefined): number | null {
+  const body = asRecord(value);
+  if (body === null) return null;
+  const active = body.warrantActiveGeneration;
+  return typeof active === "number" && Number.isSafeInteger(active) ? active : null;
+}
+
+/**
  * Is this member behind the warrant the lead currently issues? (RFC §5's re-push rule.)
  *
  * A two-field comparison on an exchange that already happens, so it costs no dial to *decide* — only

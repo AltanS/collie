@@ -413,6 +413,7 @@ async function armPeers(
   rows: Map<string, Row>,
 ): Promise<number> {
   const targets: Target[] = [];
+  const client = clientFor(deps, data, data.pack?.secret ?? "");
   for (const member of data.peers.filter((p) => p.status === "enrolled")) {
     // PHASE 2 IS GATED ON PHASE 1, per member. A machine that does not hold the warrant has nothing
     // for a restart to arm, so it is not probed, not restarted, and no anchor is recorded for it.
@@ -430,6 +431,18 @@ async function armPeers(
     }
     if ((record.anchoredGeneration ?? null) !== null && (record.anchoredGeneration ?? 0) >= warrant.generation) {
       mark(rows, member.memberId, "already", "already armed for this generation");
+      continue;
+    }
+    // ── ASK THE MACHINE BEFORE RESTARTING IT (§18.17) ───────────────────────
+    // The record above is this operator's own lower bound: it moves only when THIS verb's restart leg
+    // completes, so a machine restarted any other way — an update, its unit, a hand on a keyboard —
+    // is armed and unrecorded. A re-run that trusted the record alone asked the operator to restart a
+    // pack that was already armed, which the live drill did. The member's own report settles it, and
+    // it costs one small read-only dial per member that the record does not already vouch for.
+    const reported = await activeGenerationAt(client, member);
+    if (reported !== null && reported >= warrant.generation) {
+      mark(rows, member.memberId, "already", "already armed for this generation — that machine reports it active");
+      await rememberReported(deps, member.memberId, record, reported);
       continue;
     }
     targets.push({ member, record });
@@ -535,6 +548,36 @@ async function restartAll(
     mark(rows, id, "armed", "restarted — its listener now anchors the deputy");
     await remember(deps, planned, warrant);
   }
+}
+
+/**
+ * What that member's listener says it activated, or `null` (§18.17).
+ *
+ * `null` for a member that is not answering, for a pre-amendment build, and for one that reports
+ * nothing active — three cases with one closed reading, because each of them means *this run cannot
+ * see an armed listener there*, and the answer to that is the restart this verb performs. A failed
+ * dial is never an error here: the machine is about to be probed over ssh anyway, which is where an
+ * unreachable one is reported in the operator's own terms.
+ */
+async function activeGenerationAt(client: PeerClient, member: TrustedMember): Promise<number | null> {
+  const hello = await client.hello(linkOf(member));
+  return hello.ok ? hello.value.warrantActiveGeneration : null;
+}
+
+/**
+ * Write down an arming this verb did NOT perform, so the offline view converges (§18.17).
+ *
+ * The record is meant to answer "is that machine armed", and a `pack status --no-probe` reading it
+ * would otherwise keep saying INACTIVE about a machine this very run just confirmed. Silent on
+ * failure: nothing here is trust material, the arming is true either way, and the next run asks again.
+ */
+async function rememberReported(
+  deps: PackAddDeps,
+  memberId: string,
+  record: OpsRecord,
+  generation: number,
+): Promise<void> {
+  await deps.ops.record(memberId, { ...record, anchoredGeneration: generation, anchoredAt: deps.now() });
 }
 
 /**
