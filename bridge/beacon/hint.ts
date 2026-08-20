@@ -24,6 +24,7 @@
 // it has.
 
 import { KNOWN_HARNESS_NAMES } from "../journal/registry.ts";
+import { muxDataFields } from "../mux/types.ts";
 import type {
   MuxAck,
   MuxAdapter,
@@ -126,9 +127,12 @@ export interface AgentHintDeps {
  * It touches ONE thing — the panes coming out of `snapshot()`. Every other method is delegated
  * verbatim (never spread: an adapter written as a class keeps its methods on a prototype), and the
  * capability declaration is passed through untouched, because a sentence can never be a capability.
+ * The adapter's data fields ride along through {@link muxDataFields} — which is where a NEW one gets
+ * added, precisely so it cannot be forgotten here (see that function's header).
  */
 export function withAgentHints(adapter: MuxAdapter, deps: AgentHintDeps): MuxAdapter {
   return {
+    ...muxDataFields(adapter),
     mux: adapter.mux,
     // A getter, because the wrapped declaration is itself one — the decorator re-reads the emitter's
     // install per request, and freezing the answer here would undo that.

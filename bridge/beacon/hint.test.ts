@@ -112,6 +112,8 @@ describe("withPaneHint — what it may touch", () => {
 /** A blind adapter, written as a CLASS so the wrapper is proved not to lose prototype methods. */
 class StubAdapter implements MuxAdapter {
   readonly mux = "stub";
+  /** The adapter's mark, when a case gives it one. Absent by default, like an adapter with none. */
+  logo?: string;
   capabilities = declareCapabilities({ supports: ["paneGrid", "typeText"] });
   panes: MuxPane[] = [shellPane({ paneId: "%1", foregroundCommand: "claude" }), shellPane({ paneId: "%2" })];
   readonly calls: string[] = [];
@@ -190,6 +192,23 @@ describe("withAgentHints", () => {
     const wrapped = withAgentHints(stub, { hooksInstalled: () => false });
     expect(wrapped.capabilities).toEqual(stub.capabilities);
     expect(wrapped.mux).toBe(stub.mux);
+  });
+
+  // THE BUG THIS PINS SHIPPED. `logo` was added to the contract and to every adapter, and the whole
+  // header still rendered without a mark on all three live instances — because index.ts wraps EVERY
+  // adapter in this decorator, and a decorator that rebuilds the adapter field by field silently
+  // drops the one nobody remembered to name. It passed every test that spoke to a raw adapter.
+  test("carries the wrapped adapter's mark across, so a wrapped bridge still publishes one", () => {
+    const stub = new StubAdapter();
+    stub.logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>`;
+    expect(withAgentHints(stub, { hooksInstalled: () => false }).logo).toBe(stub.logo);
+  });
+
+  test("an adapter with no mark stays without one — the KEY is absent, not undefined", () => {
+    // `muxConfigBody` publishes `logoUrl` on `logo !== undefined`, so an undefined-valued key would
+    // work today and quietly become a lie the day anything asks `"logo" in adapter`.
+    const wrapped = withAgentHints(new StubAdapter(), { hooksInstalled: () => false });
+    expect("logo" in wrapped).toBe(false);
   });
 
   test("re-reads the install per snapshot, so an install reaches a running bridge", async () => {
