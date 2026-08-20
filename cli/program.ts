@@ -1,7 +1,16 @@
 import { Command as Program, CommanderError } from "commander";
 
+import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
 import { cmdBuild } from "./build.ts";
 import { collieVersion, loadContext } from "./context.ts";
+import {
+  cmdHooks,
+  cmdHooksInstall,
+  cmdHooksStatus,
+  cmdHooksUninstall,
+  type HooksDeps,
+  HOOKS_SUBCOMMANDS,
+} from "./hooks.ts";
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
 import { EXIT, type Io, realIo } from "./io.ts";
@@ -178,6 +187,32 @@ function linkDeps(io: Io): LinkDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
 }
 
+/**
+ * `hooks`: the same three seams as `link` — it edits the agent's `settings.json` and reads the
+ * published PATH name to decide what command to write into it (ADR 0021). No service manager, no
+ * network, and nothing under the state dir.
+ */
+function hooksDeps(io: Io): HooksDeps {
+  return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
+/**
+ * `beacon emit`: the state dir, the filesystem, stdin, and the AGENT's pid.
+ *
+ * There is no `Io` in this set, and that is the point — a hook's stdout is injected into the
+ * conversation, so the verb has no way to print even by accident. The context's own stderr notes are
+ * dropped for the same reason. `process.ppid` is the `claude` process: a hook command runs as its
+ * direct child (probed 2026-08-20 — see `cli/beacon.ts`).
+ */
+function beaconDeps(): BeaconEmitDeps {
+  return {
+    ctx: loadContext(() => {}),
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    agentPid: process.ppid,
+  };
+}
+
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
 function lifecycleCommand(
   name: string,
@@ -308,6 +343,48 @@ export const COMMANDS: readonly Command[] = [
     name: "unlink",
     summary: "remove that name again (only when it points at THIS checkout)",
     run: (_args, s) => cmdUnlink(linkDeps(s.io)),
+  },
+  // ── Agent beacons (M11) ────────────────────────────────────────────────────
+  // Declared beside `link` because they share its subject: `hooks install` writes the published PATH
+  // name into the agent's own settings, and that name is a symlink to this checkout (ADR 0021). The
+  // emitter is internal — it is spelled by a hook, never typed — and its whole contract is that it
+  // prints nothing and exits 0 (cli/beacon.ts).
+  {
+    name: "hooks",
+    summary: `agent hooks that report a pane's identity: ${HOOKS_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "install",
+        summary: "register the beacon hooks: `hooks install claude`",
+        run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
+      },
+      {
+        name: "uninstall",
+        summary: "remove only the entries collie owns: `hooks uninstall claude`",
+        run: (args, s) => cmdHooksUninstall(hooksDeps(s.io), args),
+      },
+      {
+        name: "status",
+        summary: "what each settings file carries right now (reads only)",
+        run: (_args, s) => cmdHooksStatus(hooksDeps(s.io)),
+      },
+    ],
+    run: (args, s) => cmdHooks(hooksDeps(s.io), args),
+  },
+  {
+    name: "beacon",
+    summary: "internal: `beacon emit` — an agent hook's payload in, one beacon file out",
+    internal: true,
+    subcommands: [
+      {
+        name: "emit",
+        summary: "internal: write this pane's beacon from the hook payload on stdin",
+        run: () => runBeaconEmit(beaconDeps),
+      },
+    ],
+    // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets
+    // the same silence and the same exit 0 as every other path through the emitter.
+    run: () => EXIT.OK,
   },
   // ── Device pairing ─────────────────────────────────────────────────────────
   // The operator's terminal is the out-of-band channel enrolment bootstraps from — see the header of

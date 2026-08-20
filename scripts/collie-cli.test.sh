@@ -1675,6 +1675,141 @@ esac
 [ -L "$LINK_BIN" ] || fail "\`collie doctor\` changed the link"
 assert_eq "$(readlink "$LINK_BIN")" "${OURS}/bin/collie"
 
+# ── Agent beacons: hooks install/uninstall/status, and the emitter (M11/02) ──
+# `cli/hooks.test.ts` pins the merge rules against a fake seam; only this file can prove that the
+# installer really refuses a REAL symlink, and that the compiled binary really writes a beacon (and
+# really exits 0 on garbage — the contract that keeps a hook from blocking the operator's prompt).
+BEACON_HOME="${TMP_ROOT}/beacon-home"
+BEACON_STATE="${TMP_ROOT}/beacon-state"
+BEACON_ROOT="${TMP_ROOT}/beacon-checkout"
+CLAUDE_DIR="${BEACON_HOME}/.claude"
+CLAUDE_SETTINGS="${CLAUDE_DIR}/settings.json"
+mkdir -p "$CLAUDE_DIR" "$BEACON_STATE" "${BEACON_ROOT}/bin"
+printf '#!/bin/sh\n' > "${BEACON_ROOT}/bin/collie"
+: > "$PAIR_CALLS"
+
+beacon_env() {
+  run_stripped HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$BEACON_ROOT" \
+    HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" "$BIN" "$@"
+}
+
+# A settings file the operator already owns. Every assertion below is about it surviving.
+cat > "$CLAUDE_SETTINGS" <<'EOF'
+{
+  "model": "opus",
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/audit.sh" }] }]
+  }
+}
+EOF
+cp "$CLAUDE_SETTINGS" "${TMP_ROOT}/settings.original"
+
+beacon_env hooks status || fail "\`collie hooks status\` failed: ${STDERR}"
+assert_contains "$STDOUT" "not installed"
+assert_eq "$(cat "$CLAUDE_SETTINGS")" "$(cat "${TMP_ROOT}/settings.original")"
+
+beacon_env hooks install claude || fail "\`collie hooks install claude\` failed: ${STDERR}"
+assert_contains "$STDOUT" "UserPromptSubmit"
+# The absolute path of the checkout binary, because nothing published `~/.local/bin/collie` here.
+assert_contains "$STDOUT" "${BEACON_ROOT}/bin/collie beacon emit"
+# The operator's own hook is still there, and so is every other setting.
+assert_contains "$(cat "$CLAUDE_SETTINGS")" "/usr/local/bin/audit.sh"
+assert_contains "$(cat "$CLAUDE_SETTINGS")" '"model": "opus"'
+assert_contains "$(cat "$CLAUDE_SETTINGS")" "collie-beacon v1"
+assert_eq "$(cat "${CLAUDE_SETTINGS}.collie-backup")" "$(cat "${TMP_ROOT}/settings.original")"
+
+# Installing twice is byte-identical — the whole point of merging by marker rather than appending.
+cp "$CLAUDE_SETTINGS" "${TMP_ROOT}/settings.installed"
+beacon_env hooks install claude || fail "a second install failed: ${STDERR}"
+assert_contains "$STDOUT" "no bytes changed"
+assert_eq "$(cat "$CLAUDE_SETTINGS")" "$(cat "${TMP_ROOT}/settings.installed")"
+
+beacon_env hooks status || fail "\`collie hooks status\` failed after install: ${STDERR}"
+assert_contains "$STDOUT" "installed (v1)"
+
+beacon_env hooks uninstall claude || fail "\`collie hooks uninstall claude\` failed: ${STDERR}"
+case "$(cat "$CLAUDE_SETTINGS")" in *"collie-beacon"*) fail "uninstall left a marked entry behind" ;; esac
+assert_contains "$(cat "$CLAUDE_SETTINGS")" "/usr/local/bin/audit.sh"
+assert_contains "$(cat "$CLAUDE_SETTINGS")" '"model": "opus"'
+
+# A REAL symlink is refused, and the file it points at is not touched.
+SETTINGS_ELSEWHERE="${TMP_ROOT}/elsewhere-settings.json"
+printf '{}\n' > "$SETTINGS_ELSEWHERE"
+mv "$CLAUDE_SETTINGS" "${TMP_ROOT}/settings.kept"
+ln -s "$SETTINGS_ELSEWHERE" "$CLAUDE_SETTINGS"
+rc=0
+beacon_env hooks install claude || rc=$?
+assert_eq "$rc" "1"
+assert_contains "$STDERR" "is a symlink"
+assert_eq "$(cat "$SETTINGS_ELSEWHERE")" "{}"
+rm -f "$CLAUDE_SETTINGS"
+
+# An unknown harness is a usage error, and writes nothing.
+rc=0
+beacon_env hooks install codex || rc=$?
+assert_eq "$rc" "2"
+[ ! -e "$CLAUDE_SETTINGS" ] || fail "a usage error still wrote a settings file"
+
+# ── The emitter ──────────────────────────────────────────────────────────────
+# Outside a multiplexer: nothing at all, and exit 0.
+beacon_env beacon emit </dev/null || fail "\`collie beacon emit\` exited non-zero outside a multiplexer"
+assert_eq "$STDOUT" ""
+[ ! -d "${BEACON_STATE}/beacons" ] || fail "the emitter created a beacon directory outside a multiplexer"
+
+# Garbage on stdin, inside a multiplexer: still exit 0, still silent, still no file. A non-zero exit
+# here would BLOCK the operator's prompt, and anything on stdout would be injected into it.
+set +e
+printf 'not json' | env -i HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
+  COLLIE_PLUGIN_ROOT="$BEACON_ROOT" HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" \
+  TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" "$BIN" beacon emit > "${TMP_ROOT}/emit.out" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "0"
+assert_eq "$(cat "${TMP_ROOT}/emit.out")" ""
+[ ! -d "${BEACON_STATE}/beacons" ] || fail "garbage on stdin still wrote a beacon"
+
+# A real payload: one owner-only beacon file, named by the digest of the markers it carries.
+set +e
+printf '{"session_id":"ff2dd3c2-e3d5-40db-9474-eea02e606c6c","hook_event_name":"UserPromptSubmit","cwd":"/tmp"}' \
+  | env -i HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$BEACON_ROOT" \
+    HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" \
+    "$BIN" beacon emit > "${TMP_ROOT}/emit.out" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "0"
+assert_eq "$(cat "${TMP_ROOT}/emit.out")" ""
+BEACON_FILE="$(ls "${BEACON_STATE}/beacons")"
+assert_eq "$(printf '%s\n' "$BEACON_FILE" | wc -l | tr -d ' ')" "1"
+case "$BEACON_FILE" in
+  *.json) ;;
+  *) fail "the emitter wrote ${BEACON_FILE}, which is not a beacon name" ;;
+esac
+BEACON_BODY="$(cat "${BEACON_STATE}/beacons/${BEACON_FILE}")"
+assert_contains "$BEACON_BODY" '"harness":"claude"'
+assert_contains "$BEACON_BODY" '"status":"working"'
+assert_contains "$BEACON_BODY" '"pane":"%7"'
+assert_contains "$BEACON_BODY" '"scope":"/tmp/tmux-1000/default"'
+# The session ID, and NOT the transcript path (.adr/0024).
+assert_contains "$BEACON_BODY" 'ff2dd3c2-e3d5-40db-9474-eea02e606c6c'
+case "$BEACON_BODY" in *transcript*) fail "the beacon carries a transcript path" ;; esac
+# No temp file survived the rename.
+assert_eq "$(ls -a "${BEACON_STATE}/beacons" | grep -c 'tmp' || true)" "0"
+
+# A subagent's event is not the pane's: the beacon must be untouched by it.
+cp "${BEACON_STATE}/beacons/${BEACON_FILE}" "${TMP_ROOT}/beacon.before"
+set +e
+printf '{"session_id":"other-session","agent_id":"sub-1","hook_event_name":"Stop"}' \
+  | env -i HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$BEACON_ROOT" \
+    HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" \
+    "$BIN" beacon emit >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "0"
+assert_eq "$(cat "${BEACON_STATE}/beacons/${BEACON_FILE}")" "$(cat "${TMP_ROOT}/beacon.before")"
+
+# Neither verb shelled out to anything: both are one filesystem edit and nothing else.
+assert_eq "$(cat "$PAIR_CALLS")" ""
+
 echo "✓ collie CLI: env-stripped invocation, exit codes, version parity, config-dir precedence"
 echo "✓ collie CLI lifecycle: systemd + launchd + unsupervised tiers, banner, bootstrap retry, _exec-bridge"
 echo "✓ collie CLI front door: ownership record, both refusal directions, adoption, COLLIE_SKIP_SERVE, uninstall"
@@ -1688,3 +1823,4 @@ echo "✓ collie CLI pairing: 0600 pending file with no code in it, re-mint, lis
 echo "✓ collie CLI push: list/forget answer with no VAPID and no environment, no keys on screen, exit codes"
 echo "✓ collie CLI push-keys: writes the resolved .env at 0600, refuses live keys / a bad subject / a symlink"
 echo "✓ collie CLI link: a real symlink not a copy, idempotent, take-over, every refusal untouched, doctor reports"
+echo "✓ collie CLI beacons: hook merge keeps the operator's entries, real symlink refused, emitter silent + exit 0 on garbage"
