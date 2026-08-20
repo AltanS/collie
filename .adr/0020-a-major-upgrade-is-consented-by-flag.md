@@ -69,6 +69,23 @@ flagged act.**
    `v0.32.x`. Tag-following installs receive them by the same rule as (3), which is what makes the
    freeze survivable rather than a dead end.
 
+> **Amended (2026-08-20, the v1 beta train).** Two facts follow from the Context's parenthesis about
+> `SEMVER_TAG` rejecting prereleases, and are recorded here because they are accepted, not incidental:
+>
+> - **The betas are invisible to the banner by design.** For the whole `v1.0.0-beta.N` train, no
+>   install — 0.x or 1.x — is offered an update. The code stays as it is: a beta is taken by an
+>   operator who went looking for it, never by a tap. Nothing is lost, because the crossing this ADR
+>   gates is consented to by `--major` anyway; the banner may offer, only the operator crosses.
+> - **The `v1.0.0` release notes MUST carry the migration section.** That release is the *first and
+>   only* notice a 0.x user ever receives, so the `Upgrading` block named in the first Consequence
+>   below is not optional there — it has no earlier notice to lean on.
+>
+> Two mechanics support this. A prerelease tag is now published as a GitHub **prerelease**
+> (`.github/workflows/release.yml`), so it cannot take the Latest badge from the shipped 0.x line; and
+> because `releases/latest` therefore keeps answering the old stable tag for the whole train, anything
+> resolving "the newest Collie" must read git tags instead — README → *Resolving the newest release
+> from a script*.
+
 ## Consequences
 
 - **An install that never takes 0.32.0 is not protected.** It is still pointed at origin HEAD and
