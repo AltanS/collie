@@ -59,7 +59,11 @@ import { collieVersionBare } from "../version.ts";
 
 const BOOT_TIMEOUT_MS = 15_000;
 const PANE_TEXT_LEAD = "lead pane\n$ echo desk\n";
-const PANE_TEXT_PEER = "peer pane\n$ echo laptop\n";
+// Deliberately TALL — well past `GZIP_MIN_BYTES` (bridge/http-cache.ts), so the peer's own gzip
+// branch is genuinely reached when the hop negotiates gzip. A two-line fixture kept every proxied
+// body under the threshold, which is exactly why the header-vs-bytes bug below was invisible here.
+const PANE_TEXT_PEER =
+  "peer pane\n$ echo laptop\n" + Array.from({ length: 40 }, (_, i) => `laptop line ${i} ................`).join("\n");
 
 let root: string;
 
@@ -507,6 +511,35 @@ describe("the lead speaks for the pack", () => {
     const conditional = await fetch(url, { headers: { "if-none-match": etag! } });
     expect(conditional.status).toBe(304);
     expect(await conditional.text()).toBe("");
+  });
+
+  test("a proxied read's headers describe the bytes it sent — no inherited content-encoding", async () => {
+    // THE REGRESSION THIS PINS. The lead used to copy the peer's `content-encoding` onto a body the
+    // runtime had already transparently decompressed, so the phone got `gzip` over plain JSON, its
+    // `fetch` threw inflating it, the loader's catch degraded to a stale pane, and EVERY peer pane
+    // rendered "(no recent output)". `curl` without `--compressed` ignores the header, which is why
+    // every shell check looked green — so this test asks the way a browser asks, and decodes.
+    const peerId = peer.store()!.self.memberId;
+    const url = `${lead.origin()}/api/pane/${encodeURIComponent(peer.paneId)}?host=${peerId}`;
+    const res = await fetch(url, { headers: { "accept-encoding": "gzip, deflate, br" } });
+    expect(res.status).toBe(200);
+
+    // Read as BYTES first: a `.json()` alone would hide a length that lies about them.
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const text = new TextDecoder().decode(bytes);
+    expect(text).toContain("peer pane");
+    expect(() => {
+      JSON.parse(text);
+    }).not.toThrow();
+    // Past `GZIP_MIN_BYTES`, so the peer's gzip branch was reachable for this body — the assertion
+    // below is about the lead refusing to inherit the header, not about a body too small to compress.
+    expect(bytes.byteLength).toBeGreaterThan(256);
+
+    expect(res.headers.get("content-encoding")).toBeNull();
+    const length = res.headers.get("content-length");
+    if (length !== null) expect(Number(length)).toBe(bytes.byteLength);
+    // The ETag is unaffected by any of this: it is the peer's hash of its pre-gzip body (§9.1).
+    expect(res.headers.get("etag")).not.toBeNull();
   });
 
   test("the lead's own poll rate is unchanged by the pack it now leads", async () => {
