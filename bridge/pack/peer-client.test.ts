@@ -279,7 +279,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
       // `version` and `warrantGeneration` are both OPTIONAL on the wire and both read as `null` when
       // absent (§7.1, §18.7) — never as "up to date", which is what makes the lead push rather than
       // assume and what keeps the boot gate from reading a silent member as agreement.
-      value: { protocol: 1, member: "laptop", version: null, warrantGeneration: null },
+      value: { protocol: 1, member: "laptop", version: null, warrantGeneration: null, pairingDigest: null },
       status: 200,
       member: "laptop",
       receivedAt: 1_000, // the injected lead clock — never a header from the peer (§6)
@@ -802,7 +802,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   });
 
   test("hello reads the warrant generation, absent-means-closed", async () => {
-    const withGen = replying({ protocol: 1, member: "laptop", warrantGeneration: 4 });
+    const withGen = replying({ protocol: 1, member: "laptop", warrantGeneration: 4, pairingDigest: null });
     expect((await client(withGen.fetch).hello(laptop)).ok).toBe(true);
     const outcome = await client(withGen.fetch).hello(laptop);
     expect(outcome.ok && outcome.value.warrantGeneration).toBe(4);

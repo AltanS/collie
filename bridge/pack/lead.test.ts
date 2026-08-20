@@ -788,4 +788,98 @@ describe("PackLead — a refused pairing sync is REPORTED, never swallowed", () 
     await Bun.sleep(5);
     expect(h.said).toEqual([]);
   });
+
+  // ── THE LIVE DRILL, BUG 4 ──────────────────────────────────────────────────
+  // The decision used to be a process-local memory of what this lead had pushed, and `pack deputy`
+  // restarts the local bridge as its last step — so the process that knew it still owed a sync was
+  // replaced by one that had never offered it, and nothing ever asked the deputy. It is now the
+  // deputy's OWN report, on an exchange that already happens, exactly as the warrant's is.
+  describe("the deputy's own report decides the push, not something this process remembers", () => {
+    /** A lead whose deputy answers its snapshot with `pairingDigest`, or without one. */
+    function reporting(reported: string | null) {
+      const pushes: string[] = [];
+      const members = [member({ memberId: "laptop" })];
+      const answer = reported === null ? body : { ...body, pairingDigest: reported };
+      const l = new PackLead({
+        registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+        snapshot: async () => ok(answer),
+        proxy: neverProxy,
+        self: { id: "desk", name: "the herd" },
+        now: () => NOW,
+        pairing: {
+          deputy: () => "laptop",
+          current: () => ({ sync, digest: "d1" }),
+          push: async () => {
+            pushes.push("laptop");
+            return ok(null);
+          },
+        },
+      });
+      return { lead: l, pushes };
+    }
+
+    test("a deputy REPORTING NOTHING is pushed to — absent means nothing synced, never up to date", async () => {
+      const h = reporting(null);
+      await h.lead.sweep();
+      await Bun.sleep(5);
+      expect(h.pushes).toEqual(["laptop"]);
+    });
+
+    test("a deputy reporting a DIFFERENT digest is pushed to", async () => {
+      const h = reporting("d0");
+      await h.lead.sweep();
+      await Bun.sleep(5);
+      expect(h.pushes).toEqual(["laptop"]);
+    });
+
+    test("a deputy reporting the SAME digest costs no dial, on this sweep or any other", async () => {
+      const h = reporting("d1");
+      await h.lead.sweep();
+      await Bun.sleep(5);
+      await h.lead.sweep();
+      await Bun.sleep(5);
+      expect(h.pushes).toEqual([]);
+    });
+
+    test("a FRESH PackLead re-offers to a deputy that still reports nothing — a restart forgets nothing", async () => {
+      // The regression, stated as the property that closes it: this lead has never pushed anything,
+      // and it does not need to have, because the answer is on the wire.
+      const first = reporting(null);
+      await first.lead.sweep();
+      await Bun.sleep(5);
+      const second = reporting(null);
+      await second.lead.sweep();
+      await Bun.sleep(5);
+      expect(second.pushes).toEqual(["laptop"]);
+    });
+  });
+
+  test("a failing WARRANT half never takes the pairing half down with it", async () => {
+    // They used to share one try/catch, so a store write failing in the warrant refresh silently
+    // skipped the sync on every sweep thereafter. Neither is the other's precondition.
+    const pushes: string[] = [];
+    const members = [member({ memberId: "laptop" })];
+    const l = new PackLead({
+      registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async () => ok(body),
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      now: () => NOW,
+      warrant: {
+        current: () => Promise.reject(new Error("boom")),
+        push: async () => ok(null),
+      },
+      pairing: {
+        deputy: () => "laptop",
+        current: () => ({ sync, digest: "d1" }),
+        push: async () => {
+          pushes.push("laptop");
+          return ok(null);
+        },
+      },
+    });
+    await l.sweep();
+    await Bun.sleep(5);
+    expect(pushes).toEqual(["laptop"]);
+  });
 });

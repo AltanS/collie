@@ -276,6 +276,23 @@ export interface TrustStoreData {
    * it cannot see either.
    */
   readonly standbyRoster?: readonly RosterRow[] | null;
+  /**
+   * When a takeover **spent** this collie's designation — the instant this machine became the lead
+   * by taking over, rather than by being promoted or by enrolling the first peer (RFC §7.1's (c)).
+   *
+   * It exists because the state a takeover leaves behind is otherwise indistinguishable from two
+   * innocent ones. The new lead keeps the WARRANT (it carries the generation counter, which must
+   * never reset, and it is the proof handed to every member that was down) — and that warrant names
+   * **this machine**. A surface reading the deputy off the warrant therefore reports a lead as its
+   * own deputy, which is what the live drill saw. `deputy: null` says nobody is designated; this says
+   * *why*, so `pack status` can name the follow-up (RFC §14.4's first) instead of a bare absence.
+   *
+   * **OPTIONAL, and absent means CLOSED** — no takeover has happened here, which is the right
+   * reading for every store written before this field existed and for every lead that never took
+   * over. Cleared the moment a new deputy is designated, because the question it answers ("why does
+   * this lead name nobody?") no longer applies.
+   */
+  readonly deputySpentAt?: number | null;
 }
 
 /**
@@ -388,6 +405,11 @@ function isWarrant(value: JsonValue | undefined): value is JsonValue & Warrant {
   );
 }
 
+/** A finite epoch-millisecond stamp, at the optional reader's argument type. */
+function isTimestamp(value: JsonValue | undefined): value is JsonValue & number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 /** {@link isMemberId} at this parser's argument type, so the optional reader below can take it. */
 function isDeputyId(value: JsonValue | undefined): value is JsonValue & string {
   return isMemberId(value);
@@ -493,7 +515,10 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   const deputy = optionalField<string>(d.deputy, isDeputyId);
   const warrant = optionalField(d.warrant, isStoredWarrant);
   const standbyRoster = optionalField<RosterRow[]>(d.standbyRoster, isStandbyRoster);
-  if (handover === null || deputy === null || warrant === null || standbyRoster === null) return null;
+  const spentAt = optionalField<number>(d.deputySpentAt, isTimestamp);
+  if (handover === null || deputy === null || warrant === null || standbyRoster === null || spentAt === null) {
+    return null;
+  }
 
   const store: TrustStoreData = {
     version: TRUST_STORE_VERSION,
@@ -519,6 +544,7 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   if (deputy.value !== undefined) out = { ...out, deputy: deputy.value };
   if (warrant.value !== undefined) out = { ...out, warrant: warrant.value };
   if (standbyRoster.value !== undefined) out = { ...out, standbyRoster: standbyRoster.value };
+  if (spentAt.value !== undefined) out = { ...out, deputySpentAt: spentAt.value };
   return out;
 }
 

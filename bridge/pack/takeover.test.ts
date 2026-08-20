@@ -20,6 +20,7 @@ import {
   runTakeover,
   takeoverMessage,
   LEAD_IS_ALIVE,
+  TAKEOVER_RESTART_EXIT,
   type TakeoverBody,
   type TakeoverOutcome,
 } from "./takeover.ts";
@@ -279,6 +280,30 @@ describe("the deputy's commit: adopting leadership (RFC §7.1's (c), §7.4)", ()
     expect(pendingRePin(cleared!.next)).toEqual(new Set(["nas", "attic"]));
     expect(clearRePin(cleared!.next, "desk")).toBeNull();
     expect(clearRePin(cleared!.next, "nobody")).toBeNull();
+  });
+
+  // ── THE LIVE DRILL, BUG 2 ──────────────────────────────────────────────────
+  // The new lead reported ITSELF as its own deputy, and then warned that it could not reach itself.
+  // The warrant is kept on purpose — the generation counter and §9's proof — but it names THIS
+  // machine, so the DESIGNATION has to go, and the moment it went has to be recorded or the state is
+  // indistinguishable from a lead that simply never named anybody.
+  test("the takeover SPENDS the designation and stamps when, while keeping the warrant", () => {
+    const data = deputyStore();
+    const change = adoptLeadership(data, { roster: data.standbyRoster!, confirmed: new Set(), now: T0 + 9 });
+    const after = change!.next;
+    expect(after.deputy).toBeNull();
+    expect(after.deputySpentAt).toBe(T0 + 9);
+    // Kept: it carries the counter and it is the proof handed to every member that was down.
+    expect(after.warrant!.warrant.generation).toBe(1);
+    expect(after.warrant!.warrant.deputyMemberId).toBe(after.self.memberId);
+  });
+
+  // ── THE LIVE DRILL, BUG 1 ──────────────────────────────────────────────────
+  test("the restart exit status is NON-ZERO, because `Restart=on-failure` does not revive a clean exit", () => {
+    expect(TAKEOVER_RESTART_EXIT).not.toBe(0);
+    // 75 is EX_TEMPFAIL: "temporary failure, the user is invited to retry", which is exactly this —
+    // nothing broke, but this incarnation cannot continue and the next one must.
+    expect(TAKEOVER_RESTART_EXIT).toBe(75);
   });
 
   test("a store with no lead, or no pack, adopts nothing", () => {

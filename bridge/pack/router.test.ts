@@ -1884,7 +1884,7 @@ describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY on
 
   function router(
     h: ReturnType<typeof harness>,
-    over: { warrantsSelf?: boolean; own?: string[] } = {},
+    over: { warrantsSelf?: boolean; own?: string[]; digest?: string } = {},
   ) {
     const synced: unknown[] = [];
     const handler = createPackRouter({
@@ -1898,6 +1898,7 @@ describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY on
         armMs: 30_000,
         collidingLabels: (devices) => devices.filter((d) => (over.own ?? []).includes(d.label)).map((d) => d.label),
         applySync: async (sync) => void synced.push(sync),
+        syncedDigest: () => over.digest ?? null,
       },
     });
     return { handler, synced };
@@ -1990,6 +1991,7 @@ describe("POST /pack/v1/takeover — the witness question and the re-pin (RFC §
         armMs: 30_000,
         collidingLabels: () => [],
         applySync: async () => {},
+        syncedDigest: () => null,
       },
     });
   }

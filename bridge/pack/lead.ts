@@ -5,7 +5,7 @@ import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnaps
 import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
 import { PAIRING_LABEL_COLLISION } from "./router.ts";
-import type { PairingSync } from "./standby-devices.ts";
+import { pairingPushNeeded, parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
 
@@ -224,9 +224,8 @@ export class PackLead {
   private readonly probing = new Set<string>();
   /** Members with a warrant push in flight. At most one per member — see {@link pushWarrant}. */
   private readonly pushingWarrant = new Set<string>();
-  /** At most one pairing sync in flight, and the digest of the last one that landed. See §6.5. */
+  /** At most one pairing sync in flight. **Nothing about what landed is remembered** — §18.14. */
   private pushingPairing = false;
-  private pairingPushed: string | null = null;
 
   constructor(private readonly deps: PackLeadDeps) {
     this.now = deps.now ?? Date.now;
@@ -285,8 +284,13 @@ export class PackLead {
           this.deps.onPeerSnapshot?.(memberId, next.body);
         }
       }
-      await this.distributeWarrant(due, outcomes);
-      this.distributePairing(due, outcomes);
+      // ── TWO INDEPENDENT DISTRIBUTIONS, TWO INDEPENDENT GUARDS ─────────────
+      // They used to share this try, and a live drill showed what that costs: the warrant half awaits
+      // a store write (the hourly refresh), so any failure there took the pairing half down with it
+      // for every sweep thereafter — silently, since the outer catch logs one line about "the sweep".
+      // Neither is the other's precondition, so neither may be the other's single point of failure.
+      await this.guarded("warrant distribution", () => this.distributeWarrant(due, outcomes));
+      await this.guarded("pairing sync", async () => this.distributePairing(due, outcomes));
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the pack degrades to
       // "stale" rather than taking the lead's poll loop down with it.
@@ -308,6 +312,15 @@ export class PackLead {
    * A member that did NOT answer is skipped rather than pushed to blind: it has told us nothing about
    * what it holds, and a second dial into a dead link is a second failure per tick for no information.
    */
+  /** Run one distribution so its failure is its own. Named, so the journal says WHICH half broke. */
+  private async guarded(what: string, run: () => Promise<void>): Promise<void> {
+    try {
+      await run();
+    } catch (err) {
+      console.warn(`[pack] ${what} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   private async distributeWarrant(due: readonly PackLink[], outcomes: Map<string, PeerOutcome<unknown>>): Promise<void> {
     const distribution = this.deps.warrant;
     if (distribution === undefined) return;
@@ -357,23 +370,36 @@ export class PackLead {
     const deputy = distribution.deputy();
     if (deputy === null) return;
     const link = due.find((l) => l.memberId === deputy);
-    if (link === undefined || outcomes.get(deputy)?.ok !== true) return;
+    const outcome = outcomes.get(deputy);
+    if (link === undefined || outcome === undefined || !outcome.ok) return;
     const payload = distribution.current();
-    if (payload === null || payload.digest === this.pairingPushed) return;
+    if (payload === null) return;
+    // THE DEPUTY'S OWN ANSWER decides this, not something this process remembers (§18.14).
+    // SAFETY: `value` is that member's HTTP body after `res.json()` — a JsonValue by construction, the
+    // same cast and the same reason as `foldPeerMemory`'s. `parsePairingReport` re-checks it, and
+    // anything that is not a digest reads as "nothing synced", which pushes.
+    const reported = parsePairingReport(outcome.value as JsonValue);
+    if (!pairingPushNeeded(payload.digest, reported)) {
+      // Level. A deputy that already holds this registry also clears any collision finding: the
+      // operator's rename landed, and the finding it produced has nothing left to describe.
+      distribution.collision?.(null);
+      return;
+    }
     this.pushingPairing = true;
     void (async () => {
       try {
-        const outcome = await distribution.push(link, payload.sync);
-        // Remembered only on success. A refused sync (a label collision, RFC §16 decision 6) is
-        // re-offered on the next sweep, which is what makes the operator's rename take effect without
-        // a restart — and what keeps `pack status` honest about a deputy that is still behind.
-        if (outcome.ok) {
-          this.pairingPushed = payload.digest;
+        const pushed = await distribution.push(link, payload.sync);
+        // Nothing is remembered here on purpose — the next sweep re-reads the deputy's own report, so
+        // a push that half-landed, a process that restarted and a registry that changed underneath all
+        // converge without this class holding an opinion. A refused sync (a label collision, RFC §16
+        // decision 6) is simply re-offered, which is what makes the operator's rename take effect
+        // without a restart.
+        if (pushed.ok) {
           distribution.collision?.(null);
-        } else if (outcome.state === "refused" && outcome.code === PAIRING_LABEL_COLLISION) {
+        } else if (pushed.state === "refused" && pushed.code === PAIRING_LABEL_COLLISION) {
           // The one refusal whose remedy is on the OPERATOR's side, so it is carried out of this
           // process to `pack status` (§18.9's checkpoint) rather than only logged here.
-          distribution.collision?.(outcome.labels ?? []);
+          distribution.collision?.(pushed.labels ?? []);
         }
       } catch (err) {
         console.warn(`[pack] pairing sync failed: ${err instanceof Error ? err.message : String(err)}`);

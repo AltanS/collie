@@ -10,6 +10,9 @@ import {
   adoptedRegistry,
   collidingLabels,
   noStandbyDevices,
+  pairingPushNeeded,
+  pairingReportOf,
+  parsePairingReport,
   parsePairingSync,
   parseStandbyDevices,
   resolveSyncedToken,
@@ -132,6 +135,53 @@ describe("parsing refuses rather than repairs", () => {
     expect(parseStandbyDevices(JSON.stringify({ ...file, version: 2 }))).toBeNull();
     expect(parseStandbyDevices("not json")).toBeNull();
     expect(parseStandbyDevices(JSON.stringify({ version: STANDBY_DEVICES_VERSION }))).toBeNull();
+  });
+});
+
+// ── THE LIVE DRILL, BUG 4 ─────────────────────────────────────────────────────
+// The lead used to remember what it had pushed. `pack deputy` restarts the local bridge as its last
+// step, so the process holding that memory was replaced by one that had never offered the sync — and
+// nothing ever asked the deputy. The decision is now the deputy's own answer, on an exchange that
+// already happens, exactly as the warrant's is.
+describe("the deputy reports what it holds, so the lead's decision survives a restart", () => {
+  test("a member with no synced registry reports NOTHING, and nothing is up to date", () => {
+    expect(pairingReportOf(null)).toBeNull();
+    expect(pairingPushNeeded(syncDigest(devices(device("phone", HASH_A))), null)).toBe(true);
+  });
+
+  test("a member reports the digest of exactly what is on its disk", () => {
+    const held = { ...noStandbyDevices("p", "desk"), devices: devices(device("phone", HASH_A)) };
+    expect(pairingReportOf(held)).toBe(syncDigest(held.devices));
+    expect(pairingPushNeeded(syncDigest(held.devices), pairingReportOf(held))).toBe(false);
+  });
+
+  test("a member that is BEHIND, or AHEAD, is pushed to — the lead's registry is the whole truth", () => {
+    const mine = syncDigest(devices(device("phone", HASH_A), device("tablet", HASH_B)));
+    expect(pairingPushNeeded(mine, syncDigest(devices(device("phone", HASH_A))))).toBe(true);
+    // A revocation on the lead leaves the deputy holding MORE, and that must be corrected too.
+    expect(pairingPushNeeded(syncDigest([]), syncDigest(devices(device("phone", HASH_A))))).toBe(true);
+  });
+
+  test("an EMPTY registry is still something to sync — a revoke has to be able to remove one", () => {
+    expect(pairingPushNeeded(syncDigest([]), null)).toBe(true);
+    expect(pairingPushNeeded(syncDigest([]), syncDigest([]))).toBe(false);
+  });
+
+  test("a lead with no registry at all pushes nothing", () => {
+    expect(pairingPushNeeded(null, null)).toBe(false);
+    expect(pairingPushNeeded(null, "anything")).toBe(false);
+  });
+
+  test("the wire reading is absent-means-closed, and the value is opaque", () => {
+    expect(parsePairingReport({ pairingDigest: "abc" })).toBe("abc");
+    // Nothing here checks it against SHA-256's shape: it is only ever compared for equality, and a
+    // reader that pinned the current digest's length would silently read every report as absent the
+    // day the digest changed.
+    const absent: JsonValue[] = [{}, { pairingDigest: "" }, { pairingDigest: 1 }, { pairingDigest: null }, null, []];
+    for (const body of absent) expect(parsePairingReport(body)).toBeNull();
+    // …but it is bounded, so a hostile peer cannot hand over a megabyte.
+    expect(parsePairingReport({ pairingDigest: "x".repeat(129) })).toBeNull();
+    expect(parsePairingReport({ pairingDigest: "x".repeat(128) })).toBe("x".repeat(128));
   });
 });
 

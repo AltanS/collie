@@ -5,7 +5,7 @@ import { LEAD_CONFLICT, PACK_PREFIX, PAIRING_LABEL_COLLISION } from "./router.ts
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
-import type { PairingSync } from "./standby-devices.ts";
+import { parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, type WarrantPush } from "./warrant.ts";
 
@@ -331,6 +331,14 @@ export interface HelloResult {
    * else. Nothing reads a lower or absent one as agreement.
    */
   readonly warrantGeneration: number | null;
+  /**
+   * The digest of the synced pairing registry that member holds, or `null` (§18.14).
+   *
+   * **Absent means "nothing synced there", never "up to date"** — the same reading the warrant
+   * generation beside it carries, and both make the lead push. `collie pack deputy` renders it so the
+   * operator can see a deputy whose door has no credential to check against.
+   */
+  readonly pairingDigest: string | null;
 }
 
 export interface PeerClientDeps {
@@ -483,7 +491,10 @@ export class PeerClient {
     // same pair would be a second place for "is this member behind?" to be answered.
     const generation = body?.warrantGeneration;
     const warrantGeneration = typeof generation === "number" && Number.isSafeInteger(generation) ? generation : null;
-    return { ...outcome, value: { protocol, member, version, warrantGeneration } };
+    // §18.14's report, read the same absent-means-closed way: anything that is not a digest is
+    // "nothing synced", which never refuses a link and never reads as agreement.
+    const pairingDigest = parsePairingReport(outcome.value);
+    return { ...outcome, value: { protocol, member, version, warrantGeneration, pairingDigest } };
   }
 
   /**

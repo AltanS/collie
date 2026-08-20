@@ -26,7 +26,7 @@ function silent(reason = "timed out after 5000ms"): PeerOutcome<HelloResult> {
 function answered(warrantGeneration: number | null = null): PeerOutcome<HelloResult> {
   return {
     ok: true,
-    value: { protocol: 1, member: "nas", version: "1.0.0", warrantGeneration },
+    value: { protocol: 1, member: "nas", version: "1.0.0", warrantGeneration, pairingDigest: null },
     status: 200,
     member: "nas",
     receivedAt: T0,

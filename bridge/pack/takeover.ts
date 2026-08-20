@@ -37,6 +37,27 @@ export type TakeoverPhase = "probe" | "commit";
 /** The machine-readable `code` on a peer's "my lead called me recently" refusal (RFC §7.1). */
 export const LEAD_IS_ALIVE = "lead_is_alive";
 
+/**
+ * The exit status a committed takeover leaves the process with — **and it is deliberately NOT zero.**
+ *
+ * A takeover ends by exiting so the supervisor brings the machine back up in lead mode (RFC §7.1's
+ * (c)); it is the one place the bridge exits on its own, because the operator asked from a phone and
+ * a store saying `lead` under a peer's still-pinned listener is a machine nobody can reach.
+ *
+ * **A live drill found the zero.** `Restart=on-failure` — systemd's common choice and the one the
+ * drill's unit carried — treats a clean `0` as "this service is finished" and does **not** revive it.
+ * The result is the worst state this feature can produce: the store says `lead`, the service is
+ * `inactive`, and the operator holding the phone has no shell to fix it with. `Restart=always` and
+ * `Restart=on-failure` both revive a NON-ZERO exit, so a non-zero status is the only one that is
+ * correct under either policy — and the takeover answer's "reload in a moment" is only honest with it.
+ *
+ * `75` is `EX_TEMPFAIL` (`sysexits.h`): *temporary failure, the user is invited to retry.* That is
+ * exactly what this is — the process is not broken and nothing failed, but this incarnation of it
+ * cannot continue and the next one must. Distinctive enough that `journalctl` showing
+ * `status=75/n/a` names the takeover rather than looking like a crash.
+ */
+export const TAKEOVER_RESTART_EXIT = 75;
+
 /** The body of `POST /pack/v1/takeover`. */
 export interface TakeoverRequest {
   readonly phase: TakeoverPhase;
@@ -274,8 +295,15 @@ export function adoptLeadership(
       lead: null,
       peers,
       pendingHandover: null,
-      // The warrant was SPENT. The pack designates nobody until the operator names one again.
+      // ── THE WARRANT IS KEPT AND THE DESIGNATION IS SPENT, AND THOSE ARE TWO DIFFERENT THINGS ──
+      // The signed object stays: it carries the generation counter, which must never reset (RFC
+      // §4.4), and it IS the proof this machine hands to every member that was down (§9). But it
+      // names THIS machine, and a lead is not its own deputy — so the designation goes, and the
+      // instant it went is recorded. Without the stamp, a surface that read the deputy off the
+      // warrant would report this lead as its own deputy and then warn that it was unreachable,
+      // which is exactly what the live drill saw.
       deputy: null,
+      deputySpentAt: opts.now,
     },
     result: { members: peers.length, pending },
     audit: {

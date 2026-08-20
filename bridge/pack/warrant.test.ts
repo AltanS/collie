@@ -493,3 +493,12 @@ describe("the trust store carries it (RFC §11.4)", () => {
     expect(parseTrustStore(raw)?.deputy).toBeNull();
   });
 });
+
+// ── THE LIVE DRILL, BUG 2's other half ───────────────────────────────────────
+test("naming a deputy clears the takeover's spent stamp — the question it answers no longer applies", () => {
+  const took = { ...lead(), deputy: null, deputySpentAt: T0 - 5000 };
+  const change = mintWarrant(took, "nas", T0);
+  expect(change).not.toBeNull();
+  expect(change!.next.deputy).toBe("nas");
+  expect(change!.next.deputySpentAt).toBeNull();
+});
