@@ -64,6 +64,7 @@ import {
 } from "../types.ts";
 import { resolveTmuxBinary, SpawnTmuxExec, tmuxServerArgs, type TmuxExec, type TmuxRunResult } from "./exec.ts";
 import { toTmuxKey, TMUX_UNSENDABLE_KEYS } from "./keys.ts";
+import { tmuxBeaconMatcher } from "./markers.ts";
 import {
   CREATED_FORMAT,
   LISTING_ARGS,
@@ -103,8 +104,11 @@ const REVISION_VARIANTS = 32;
  *
  * The value of this list is that it is SHORTER than Herdr's, and that the two absences are real:
  *
- *  • `agentDetection` / `agentSessionRef` — absent, for the reason in the header. Declaring either
- *    would make the herd view invent agents out of process names.
+ *  • `agentDetection` / `agentSessionRef` — declared `false` (by their omission from the list
+ *    below, which `declareCapabilities` turns into an explicit `false`), for the reason in the header.
+ *    Declaring either would make the herd view invent agents out of process names. The ONE thing
+ *    that can lift them is the beacon decorator, which needs the agent's own hooks and is not this
+ *    adapter (M11/03) — this declaration stays `false` under it, unchanged.
  *
  * Everything else is claimed because a probe ran it on tmux 3.6b: `capture-pane -p -e` returned SGR
  * and nothing else, `-S -N` reached 51 lines behind a 24-line viewport, `send-keys` typed and
@@ -538,9 +542,21 @@ function meaningfulWindowName(window: TmuxWindow | undefined, session: TmuxSessi
 export const tmuxMuxFactory: MuxAdapterFactory = {
   mux: TMUX_MUX,
   create(target: MuxTarget) {
-    const binary = resolveTmuxBinary(target.options[TMUX_BINARY_OPTION] ?? "");
-    return new TmuxMux(
-      new SpawnTmuxExec(binary, tmuxServerArgs(target.endpoint), target.timeoutMs || DEFAULT_TMUX_TIMEOUT_MS),
-    );
+    return new TmuxMux(execFor(target));
+  },
+  /**
+   * tmux's half of the beacon join (M11/03) — the ONE thing that can give this adapter sight, and it
+   * is contributed here rather than declared: `agentDetection` stays absent above, because the raw
+   * adapter really cannot answer it. The decorator is what declares it, and only when the agent's own
+   * hooks are installed.
+   */
+  beaconMatcher(target: MuxTarget) {
+    return tmuxBeaconMatcher(TMUX_MUX, execFor(target));
   },
 };
+
+/** The transport for one target. Stateless configuration, so the matcher may build its own. */
+function execFor(target: MuxTarget): TmuxExec {
+  const binary = resolveTmuxBinary(target.options[TMUX_BINARY_OPTION] ?? "");
+  return new SpawnTmuxExec(binary, tmuxServerArgs(target.endpoint), target.timeoutMs || DEFAULT_TMUX_TIMEOUT_MS);
+}

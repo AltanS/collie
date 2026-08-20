@@ -35,6 +35,15 @@ const RESET = "\u001b[0m";
 /** The host name tmux seeds every `pane_title` with, until somebody sets one. */
 const HOST = "fixture-host";
 
+/**
+ * The socket this fake server answers `#{socket_path}` with.
+ *
+ * Shaped like the real thing (`/tmp/tmux-<uid>/<name>`) because it is what a beacon's `scope` is
+ * compared against at the join (markers.ts) — probed: `$TMUX`'s first field and `#{socket_path}` are
+ * the same string.
+ */
+export const FAKE_TMUX_SOCKET = "/tmp/tmux-1000/fixture";
+
 /** One session in the fake server. */
 interface FakeSession {
   id: string;
@@ -233,6 +242,7 @@ export class FakeTmux implements TmuxExec {
     if (verb === "rename-window") return this.renameWindow(group);
     if (verb === "kill-window") return this.killWindow(group);
     if (verb === "new-session") return this.newSession(group);
+    if (verb === "display-message") return this.displayMessage(group);
     return { code: 1, stdout: "", stderr: `unknown command: ${verb}\n` };
   }
 
@@ -349,6 +359,19 @@ export class FakeTmux implements TmuxExec {
     const window = this.newWindowIn(session, "bash", true);
     const pane = this.newPaneIn(window, flagValue(group, "-c") ?? "/tmp");
     return said(`${render(flagValue(group, "-F") ?? "", this.paneVars(pane))}\n`);
+  }
+
+  /**
+   * `display-message -p -F <format>` — the server answering a format about ITSELF.
+   *
+   * Rendered through the same `-F` interpreter every listing uses, so a token nobody taught this file
+   * comes back empty exactly as the real binary's does. `socket_path` is the one the beacon join asks
+   * for (probed on tmux 3.6b: it equals `$TMUX`'s first field).
+   */
+  private displayMessage(group: readonly string[]): TmuxRunResult {
+    if (!group.includes("-p")) return said("");
+    const vars = new Map([["socket_path", FAKE_TMUX_SOCKET]]);
+    return said(`${render(flagValue(group, "-F") ?? "", vars)}\n`);
   }
 
   // ── Internals ──────────────────────────────────────────────────────────────
@@ -505,22 +528,32 @@ function render(format: string, vars: ReadonlyMap<string, string>): string {
 export const tmuxConformanceFixture: MuxConformanceFixture = {
   mux: "tmux",
   create(): Promise<MuxConformanceWorld> {
-    const fake = new FakeTmux();
-    const adapter = new TmuxMux(fake);
-    return Promise.resolve({
-      adapter,
-      writes: () => fake.writes(),
-      reconnect: () => fake.reconnect(),
-      restartMux: () => fake.restartMux(),
-      renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
-      changePane: (paneId) => fake.changePane(paneId),
-      endPane: (paneId) => fake.endPane(paneId),
-      pokeTopology: () => fake.pokeTopology(),
-      pokePane: (paneId) => fake.pokePane(paneId),
-      close: () => {
-        fake.shutdown();
-        return Promise.resolve();
-      },
-    });
+    return Promise.resolve(tmuxWorld(new FakeTmux()));
   },
 };
+
+/**
+ * One world over a caller-supplied fake.
+ *
+ * Split out so the DECORATED variant (../fixtures.ts, M11/03) proves the same world through the same
+ * adapter, with the beacon join added — it needs the fake in its hand to build the matcher against,
+ * and a second copy of this wiring would be a second thing to keep in step.
+ */
+export function tmuxWorld(fake: FakeTmux): MuxConformanceWorld {
+  const adapter = new TmuxMux(fake);
+  return {
+    adapter,
+    writes: () => fake.writes(),
+    reconnect: () => fake.reconnect(),
+    restartMux: () => fake.restartMux(),
+    renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
+    changePane: (paneId) => fake.changePane(paneId),
+    endPane: (paneId) => fake.endPane(paneId),
+    pokeTopology: () => fake.pokeTopology(),
+    pokePane: (paneId) => fake.pokePane(paneId),
+    close: () => {
+      fake.shutdown();
+      return Promise.resolve();
+    },
+  };
+}

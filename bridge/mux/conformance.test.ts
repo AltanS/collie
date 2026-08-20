@@ -43,7 +43,10 @@ describe("every registered adapter contributes a conformance fixture", () => {
 
 /** Register the whole suite for one adapter. Called once per registered fixture, below. */
 function describeConformance(fixture: MuxConformanceFixture): void {
-  describe(`MuxAdapter conformance — ${fixture.mux}`, () => {
+  // The variant, when there is one, is the only thing telling two runs of one adapter apart — the
+  // decorated builds share their adapter's name because that is what the adapter reports (M11/03).
+  const label = fixture.variant === undefined ? fixture.mux : `${fixture.mux} (${fixture.variant})`;
+  describe(`MuxAdapter conformance — ${label}`, () => {
     test("the adapter reports the mux name it is registered under", async () => {
       const world = await fixture.create();
       try {

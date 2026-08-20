@@ -1,16 +1,19 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { hostname } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 import { ActivityLedger } from "./activity.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
+import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
+import { withAgentBeacons } from "./beacon/decorate.ts";
 import { loadConfig } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
-import { buildMuxRegistry, createMux, DEFAULT_MUX } from "./mux/registry.ts";
+import { buildMuxRegistry, createMux, DEFAULT_MUX, factoryFor, type MuxTarget } from "./mux/registry.ts";
 import { TMUX_BINARY_OPTION } from "./mux/tmux/adapter.ts";
+import type { MuxAdapter } from "./mux/types.ts";
 import { ZELLIJ_BINARY_OPTION } from "./mux/zellij/adapter.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
@@ -199,6 +202,26 @@ updateTimer.unref();
 // name, so a key can never drift from the adapter it resolves to.
 const muxRegistry = buildMuxRegistry();
 
+// Are the agent's own hooks installed (M11/02)? Probed through `cli/hooks.ts`'s definition of
+// "installed", cached for a few seconds, and shared by every session: it is a property of this HOST,
+// not of one herd. It is what decides whether a blind adapter's beacon capabilities are lifted —
+// never whether a beacon happens to be on disk, which would make the declaration flicker.
+const hooksInstalled = hooksInstalledProbe({ home: homedir(), env: process.env });
+
+/**
+ * The adapter, with agent beacons around it when the multiplexer cannot see agents on its own.
+ *
+ * A multiplexer that reports the agent and its session from its own wire is left ALONE — it has the
+ * stronger source of truth, and the decorator refuses to wrap it anyway (bridge/beacon/decorate.ts).
+ * The two conditions are the same one, read from two sides: an adapter contributes a beacon matcher
+ * exactly when it is blind, and the decorator refuses exactly when it is not.
+ */
+function withBeaconsIfBlind(adapter: MuxAdapter, target: MuxTarget): MuxAdapter {
+  const matcher = factoryFor(muxRegistry, adapter.mux)?.beaconMatcher?.(target);
+  if (matcher === undefined) return adapter;
+  return withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled });
+}
+
 // ── Per-session runtime factory ──────────────────────────────────────────────
 // One mux adapter + StateEngine + EventPoker + NotificationCoordinator per herd session. The
 // registry calls this for the primary at construction and for each session discovered later. Push,
@@ -212,7 +235,7 @@ const muxRegistry = buildMuxRegistry();
 // filesystem-path endpoint is Herdr's question, where the tmux binary is, is tmux's, and the registry
 // reads neither key.
 const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
-  const herdr = createMux(muxRegistry, cfg.mux, {
+  const target = {
     endpoint: cfg.mux === DEFAULT_MUX ? socketPath : cfg.muxEndpoint,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     options: {
@@ -220,7 +243,8 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
       [TMUX_BINARY_OPTION]: cfg.tmuxBin,
       [ZELLIJ_BINARY_OPTION]: cfg.zellijBin,
     },
-  });
+  };
+  const herdr = withBeaconsIfBlind(createMux(muxRegistry, cfg.mux, target), target);
   const engine = new StateEngine(herdr, cfg.pollMs);
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
