@@ -1,8 +1,11 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter, useLocation } from "react-router";
 import type { ReactElement } from "react";
 
+import { server } from "@/test/setup";
+import { __resetOperatorCommands } from "@/lib/operator-config";
 import { AppHeader, SettingsGear } from "./app-header";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
@@ -142,5 +145,59 @@ describe("AppHeader — a quiet pack member is not the phone's connection", () =
     expect(container.querySelector(".dog-gallop")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(isLostLatched()).toBe(false);
+  });
+});
+
+// "Collie on <mux>" — the header says what this collie drives, and the name arrives as DATA on the
+// one /api/config read. The fabricated name below is not any real multiplexer's, deliberately: it is
+// the standing proof that the line is PRINTED rather than recognised. A component that had learned a
+// name — a lookup table, a branch, a per-mux glyph — could not render this one at all.
+describe("AppHeader — the multiplexer line", () => {
+  beforeEach(() => {
+    __resetConnectionHealth();
+    __resetOperatorCommands(); // the store caches one read for the life of a page; each case is a page
+  });
+  afterEach(() => __resetOperatorCommands());
+
+  it("names whatever the bridge published, beside the wordmark", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: {}, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    renderHeader(<AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />);
+    await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
+    expect(screen.getByText("Collie")).toBeInTheDocument(); // the wordmark it completes, still there
+  });
+
+  it("says nothing extra when the bridge published no mux block", async () => {
+    // The default handler is that bridge — older than the field, or a cached page. The header is
+    // exactly the one it has always been: no line, and no "on unknown" placeholder standing in.
+    renderHeader(<AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />);
+    await waitFor(() => expect(screen.getByText("Collie")).toBeInTheDocument());
+    expect(screen.queryByText(/^on /)).toBeNull();
+  });
+
+  it("keeps the line out of the pane header, where the breadcrumb owns the width", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: {}, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    renderHeader(
+      <AppHeader bridge="connected" error={false} onHome={() => {}}>
+        <span>webapp › main</span>
+      </AppHeader>,
+    );
+    await waitFor(() => expect(screen.getByText("webapp › main")).toBeInTheDocument());
+    expect(screen.queryByText("on reference")).toBeNull();
   });
 });
