@@ -128,14 +128,37 @@ function anchored(issued: Warrant, record: OpsRecord | null): boolean {
 export function leadDeputyLines(data: TrustStoreData, now: number): TonedLine[] {
   const stored = currentWarrant(data);
   const enrolled = data.peers.filter((p) => p.status === "enrolled");
-  if (stored === null || stored.warrant.deputyMemberId === null) {
+  // ── THE DESIGNATION IS THE SOURCE, NEVER THE WARRANT ────────────────────────
+  // `data.deputy` is the operator's decision ON THIS LEAD; the warrant is the signed artefact of a
+  // decision that may already be spent. After a takeover the new lead keeps the warrant — it carries
+  // the generation counter and it is the proof for §9's reconciliation — and that warrant names
+  // **this machine**. Reading the deputy off it made a lead report itself as its own deputy and then
+  // warn that it was unreachable, which is what the live drill saw. `deputy` is written in the same
+  // transition as every mint (`warrant.ts`), so the two can never disagree about who was named.
+  const designated = data.deputy ?? null;
+  if (designated === null || stored === null || stored.warrant.deputyMemberId === null) {
     if (enrolled.length === 0) return [];
-    const why = stored === null ? "" : ` (revoked at generation ${stored.warrant.generation})`;
-    return [
-      line(`deputy none${why} — no peer may take over; name one with \`collie pack deputy <member>\``, "warn"),
-    ];
+    return [line(`deputy none${undesignatedReason(data, stored)} — no peer may take over; name one with \`collie pack deputy <member>\``, "warn")];
   }
   const w = stored.warrant;
+  if (designated === data.self.memberId) {
+    // A lead cannot be its own deputy under any reading — `mintWarrant` only ever names a member of
+    // this collie's own roster, and a lead is not in it. Said rather than rendered as a live deputy.
+    return [
+      line(`deputy ${designated} — this machine names ITSELF, which cannot be armed`, "bad"),
+      line("       A deputy is a peer that takes over from this lead; this lead taking over from", "dim"),
+      line("       itself is not a recovery path. Name a peer: `collie pack deputy <member>`.", "dim"),
+    ];
+  }
+  if (designated !== w.deputyMemberId) {
+    // The two disagree, which the one-transition rule above makes impossible without a hand edit.
+    // Named rather than resolved: picking a winner here would be inventing a designation.
+    return [
+      line(`deputy ${designated} — but the warrant on disk names "${w.deputyMemberId}"`, "bad"),
+      line("       The designation and the signed warrant are written in one step, so this store was", "dim"),
+      line("       edited by hand. Re-run `collie pack deputy <member>` to make them agree.", "dim"),
+    ];
+  }
   if (warrantExpired(w, now)) {
     return [
       line(`deputy ${w.deputyMemberId} — warrant generation ${w.generation} EXPIRED ${iso(warrantExpiresAt(w))}`, "bad"),
@@ -152,6 +175,23 @@ export function leadDeputyLines(data: TrustStoreData, now: number): TonedLine[] 
 }
 
 /**
+ * Why this lead names nobody — the parenthetical on `deputy none`, and there are three answers.
+ *
+ * **A takeover is the one that needs saying** (RFC §14.4's first follow-up): it leaves a lead holding
+ * a warrant that names itself and designating no one, and an operator who reads that as "I never got
+ * round to it" will not realise the pack has been without a deputy since the outage. A revocation and
+ * a pack that never named one are the two innocent cases and are spelled as such.
+ */
+function undesignatedReason(data: TrustStoreData, stored: ReturnType<typeof currentWarrant>): string {
+  const spentAt = data.deputySpentAt ?? null;
+  if (spentAt !== null) return ` — spent by the takeover of ${iso(spentAt)}`;
+  if (stored !== null && stored.warrant.deputyMemberId === null) {
+    return ` (revoked at generation ${stored.warrant.generation})`;
+  }
+  return "";
+}
+
+/**
  * The warning RFC §5 asks for when the one machine that may take over is the one not answering.
  *
  * It is not an error and it refuses nothing: a deputy that is merely asleep comes back. What it
@@ -159,8 +199,13 @@ export function leadDeputyLines(data: TrustStoreData, now: number): TonedLine[] 
  * which is exactly the window this whole feature exists to use.
  */
 export function deputyUnreachableLines(data: TrustStoreData, reachable: (memberId: string) => boolean): TonedLine[] {
-  const deputy = currentWarrant(data)?.warrant.deputyMemberId ?? null;
-  if (deputy === null || reachable(deputy)) return [];
+  // The DESIGNATION, for `leadDeputyLines`' reason — a spent warrant names this very machine, and
+  // warning that this lead cannot reach itself is the absurd companion the live drill printed. A
+  // designation that is not an enrolled peer is not warned about either: it is a different fault, and
+  // `leadDeputyLines` above is where it is named.
+  const deputy = data.deputy ?? null;
+  if (deputy === null || deputy === data.self.memberId || reachable(deputy)) return [];
+  if (!data.peers.some((p) => p.memberId === deputy && p.status === "enrolled")) return [];
   return [
     line(`⚠ deputy "${deputy}" is unreachable — appoint another with \`collie pack deputy <member>\``, "warn"),
     line("  A deputy that cannot be reached now is a deputy that cannot be armed later: the warrant is", "dim"),
@@ -340,12 +385,23 @@ export function peerWarrantLines(
       line("       itself. Re-run `collie pack deputy` on the lead to mint a live one.", "dim"),
     ];
   }
+  // Two roles activate two different things at a restart (`bridge/index.ts`'s `activatedGeneration`),
+  // so the word has to follow the role: the machine the warrant NAMES arms its own deputy role and
+  // anchors nothing — it does not anchor its own certificate — while every other peer adds the
+  // deputy's certificate as a second anchor. One marker, two sentences, and neither is the other's.
+  const isDeputy = w.deputyMemberId === data.self.memberId;
   if (anchoredGeneration === w.generation) {
-    return [line(head, "good"), line("       verified · anchored at this boot", "good")];
+    return [
+      line(head, "good"),
+      line(`       verified · ${isDeputy ? "deputy role ACTIVE at this boot" : "anchored at this boot"}`, "good"),
+    ];
   }
   return [
     line(head, "warn"),
-    line("       verified · stored, NOT anchored — this collie's listener was built before it landed.", "warn"),
+    line(
+      `       verified · stored, NOT ${isDeputy ? "active" : "anchored"} — this collie's listener was built before it landed.`,
+      "warn",
+    ),
     line("       Restart here to arm it: `herdr plugin action invoke restart --plugin herdr.collie`.", "dim"),
   ];
 }

@@ -253,6 +253,12 @@ export interface StandbySurface {
   readonly collidingLabels: (devices: readonly SyncedDevice[]) => readonly string[];
   /** Replace `standby-devices.json` wholesale. A sync is never a merge. */
   readonly applySync: (sync: PairingSync) => Promise<void>;
+  /**
+   * The digest of the synced registry this collie actually holds, or `null` when it holds none
+   * (§18.14). Reported on `hello` and `snapshot` so the lead's re-push decision is a fact rather than
+   * something a restarted process has forgotten.
+   */
+  readonly syncedDigest: () => string | null;
 }
 
 export interface PackRouterDeps {
@@ -419,6 +425,7 @@ type HelloBody = {
   version?: string;
   warrantGeneration?: number;
   warrantRefreshedAt?: number;
+  pairingDigest?: string;
 };
 
 /**
@@ -729,6 +736,12 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
         hello.warrantGeneration = report.generation;
         hello.warrantRefreshedAt = report.refreshedAt;
       }
+      // §18.14's report, read exactly as the warrant pair above is: **absent means "nothing synced
+      // here", never "up to date"**, and both readings make the lead push. It names no secret — a
+      // SHA-256 over label + token-hash + creation, which is a digest of digests — and it is
+      // admissible here for `member`'s reason: already knowable to anyone who cleared both factors.
+      const synced = deps.standby?.syncedDigest() ?? null;
+      if (synced !== null) hello.pairingDigest = synced;
       return new Response(JSON.stringify(hello), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
@@ -791,10 +804,15 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // browser's snapshot type. `mergeSnapshot` whitelists what it reads, so the siblings reach the
       // lead's sweep and never the phone.
       const report = warrantReportOf(data);
-      const withReport =
+      const synced = deps.standby?.syncedDigest() ?? null;
+      // Both reports ride ALONGSIDE the body, never inside it, for the reason the warrant's pair
+      // does: `body` is the very object this collie serves its own browser, and a pack-only fact has
+      // no business in the browser's snapshot type. `mergeSnapshot` whitelists what it reads.
+      const withWarrant =
         report === null
           ? body
           : { ...body, warrantGeneration: report.generation, warrantRefreshedAt: report.refreshedAt };
+      const withReport = synced === null ? withWarrant : { ...withWarrant, pairingDigest: synced };
       return new Response(JSON.stringify(withReport), {
         status: 200,
         headers: packResponseHeaders(verdict.self),

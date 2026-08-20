@@ -186,6 +186,49 @@ export function syncDigest(devices: readonly SyncedDevice[]): string {
   return sha256Hex(devices.map((d) => `${d.label} ${d.tokenHash} ${d.createdAt}`).join(""));
 }
 
+/**
+ * What a member says about the registry it holds, on `hello` and `snapshot` (§18.14).
+ *
+ * **Absent means "nothing synced here", never "up to date"** — the same absent-means-closed reading
+ * the warrant's own pair carries (§7.1), and it pushes for the same reason: a needless push costs one
+ * small body, where reading silence as currency costs a deputy whose door can never arm.
+ *
+ * `null` for every member that holds no synced registry, which is every peer that is not the deputy.
+ */
+export function pairingReportOf(devices: StandbyDevices | null): string | null {
+  return devices === null ? null : syncDigest(devices.devices);
+}
+
+/**
+ * Read a member's report off a `hello`/`snapshot` body. Anything that is not a digest is absent.
+ *
+ * **The value is OPAQUE to this reader** — it is only ever compared for equality with the lead's own,
+ * never parsed — so it is deliberately not checked against SHA-256's length. A reader that pinned the
+ * current digest's shape would silently read every report as absent the day the digest changed, which
+ * is a fail-closed direction but a silent one: the pack would re-push on every sweep, forever, with
+ * nothing saying why. Bounded rather than shaped, so a hostile peer cannot hand over a megabyte.
+ */
+export function parsePairingReport(value: JsonValue | undefined): string | null {
+  const body = asRecord(value);
+  const digest = body?.pairingDigest;
+  return typeof digest === "string" && digest !== "" && digest.length <= 128 ? digest : null;
+}
+
+/**
+ * Is this member behind the registry the lead currently holds? (§18.14's re-push rule.)
+ *
+ * **The whole reason this is a comparison against a REPORT rather than against a memory.** The lead
+ * used to remember what it had pushed in a process-local field, and a live drill found the hole that
+ * leaves: `pack deputy` restarts the local bridge as its last step, so the process that knew it still
+ * owed a sync was replaced by one that had never offered it — and nothing ever asked the deputy. Now
+ * the deputy answers for itself on an exchange that already happens, exactly as it does for the
+ * warrant, so the decision survives a restart on either side and no timer is added.
+ */
+export function pairingPushNeeded(current: string | null, reported: string | null): boolean {
+  if (current === null) return false;
+  return reported !== current;
+}
+
 // ── The deputy's half ────────────────────────────────────────────────────────
 
 /**

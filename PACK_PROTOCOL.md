@@ -235,6 +235,16 @@ answering build:
   browser's shape. `snapshot` is what the lead's poll already dials (§10.1), which is what makes the
   comparison cost no extra round trip.
 
+- `pairingDigest` is **OPTIONAL**, added 2026-08-20 (§18.14): a digest of the synced paired-device
+  registry this member holds, and `null`/absent on every member that holds none — which is every peer
+  that is not the deputy. **An absent field means "nothing synced here", never "up to date"** (§7.1),
+  and both readings make the lead push, which is the closed direction for the same reason the warrant
+  pair's is. **It rides `/pack/v1/snapshot`'s response too**, beside the body rather than inside it,
+  because `snapshot` is what the lead's poll already dials. It names no secret: a hash over labels,
+  token *hashes* and creation stamps — a digest of digests — and it is admissible here for `member`'s
+  reason, being already knowable to anyone who has cleared both factors. The value is **opaque to its
+  reader**, which only ever compares it for equality with its own.
+
 `hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
 become a place to learn something an unadmitted caller wants; a version is admissible there for the
 same reason `member` is — it is already knowable to anyone who has cleared both factors. A warrant
@@ -2084,9 +2094,19 @@ token the *lead* minted, so the lead pushes its registry.
   already runs on. `lastSeenAt` is deliberately **not** sent: it is a fact about the lead's own
   traffic that the deputy could not keep true, and it is stamped on a throttle, so including it would
   make every sixty-second write look like a registry change.
-- **No second timer and no dial to decide.** The lead compares a digest over *what it would send*
-  against what this process last delivered, and only a genuine change costs a dial. It rides the
-  sweep the lead already runs (§10.1, §11).
+- **No second timer and no dial to decide.** The deputy reports the digest of the registry it
+  actually holds — `pairingDigest`, an additive-optional field on `hello` and `snapshot` (§5) — and
+  the lead pushes when, and only when, that report differs from what it would send. It rides the
+  sweep the lead already runs (§10.1, §11) and costs no round trip to decide.
+
+  **It is a REPORT and not a memory, and that distinction was paid for.** The lead used to remember
+  what it had pushed in a process-local field. `collie pack deputy` restarts the local bridge as its
+  last step (§18.13), so the process that knew it still owed a sync was replaced by one that had never
+  offered it — and nothing ever asked the deputy. A live drill found a designated deputy that never
+  received a registry at all, with no error anywhere: the lead believed there was nothing to do. Asked
+  rather than remembered, the decision survives a restart on either side, converges after a failed
+  push, and corrects a deputy whose file was removed. This is the warrant's own discipline (§18.5),
+  applied to the second thing a deputy needs.
 - **A replace is wholesale, never a merge**, because a revocation on the lead has to be able to
   *remove* a device on the deputy.
 - **It lands in `standby-devices.json`** — its own file, its own version integer, 0600 in a 0700
@@ -2226,10 +2246,19 @@ anchored deputy certificate, its own generation counter and its own clock.
 **own** store: role `lead`, the roster adopted from the one that **rode the warrant push** (§18.5 —
 the deputy holds exactly one roster entry of its own, so without it a takeover would be a takeover
 into a pack it cannot see), the old lead carried as an ordinary member, the warrant kept (it carries
-the generation counter and it *is* the proof), the designation dropped (**the pack has no deputy after
-a takeover**), and the synced pairing registry adopted (§18.14). Then it **restarts** — the one place
-the bridge restarts itself, because the operator asked from a phone and a machine whose store says
-`lead` while its process still runs a peer's pinned listener is a machine nobody can reach.
+the generation counter and it *is* the proof), the designation dropped and the instant it went recorded
+(**the pack has no deputy after a takeover** — and `deputySpentAt` is what lets `pack status` say so
+rather than reading the deputy off a warrant that names this very machine), and the synced pairing
+registry adopted (§18.14). Then it **restarts** — the one place the bridge restarts itself, because
+the operator asked from a phone and a machine whose store says `lead` while its process still runs a
+peer's pinned listener is a machine nobody can reach.
+
+**It exits NON-ZERO (`75`, `EX_TEMPFAIL`), and that is a correctness requirement rather than a
+convention.** `Restart=on-failure` — systemd's common choice — does **not** revive a process that
+exited cleanly, so a takeover that exited `0` left the store saying `lead`, the service `inactive`,
+and the operator holding a phone with no shell. Both `on-failure` and `always` revive a non-zero
+exit, so only a non-zero status is correct under either policy, and the answer's *"reload in a
+moment"* is honest only with it.
 
 **Partial success is representable and is not a failure.** Every member that did not answer the commit
 round is carried as `rePinPending` on the new lead — an optional, absent-means-closed field on the

@@ -65,6 +65,7 @@ import {
 } from "./pack/standby.ts";
 import {
   collidingLabels,
+  pairingReportOf,
   StandbyDeviceStore,
   STANDBY_DEVICES_VERSION,
   syncDigest,
@@ -78,6 +79,7 @@ import {
   runTakeover,
   rosterRowsOf,
   takeoverMessage,
+  TAKEOVER_RESTART_EXIT,
   type CommitOutcome,
 } from "./pack/takeover.ts";
 import { enrollmentOf, TrustStore, type TrustStoreData, type Warrant } from "./pack/trust-store.ts";
@@ -719,6 +721,9 @@ const standbySurface: PackRouterDeps["standby"] =
         silentForMs: () => silenceOf(leadContact.facts(), Date.now()),
         armMs: standbyArmMs,
         collidingLabels: (devices: readonly SyncedDevice[]) => collidingLabels(pairing.registry(), devices),
+        // §18.14's report: what this collie ACTUALLY holds, read off the store on every call. It is
+        // what makes the lead's re-push decision survive a restart on either side.
+        syncedDigest: () => pairingReportOf(standbyStore.current()),
         applySync: async (sync) => {
           // Wholesale, never a merge: the lead's registry is the whole truth, so a revocation there
           // has to be able to REMOVE a device here.
@@ -733,15 +738,34 @@ const standbySurface: PackRouterDeps["standby"] =
       };
 
 // From here on the process knows the four things a store cannot say, so the checkpoint can say them
-// (§18.9). `anchoredGeneration` is deliberately derived from `deputyAnchorPem` rather than from the
-// stored warrant: the question is which generation THIS LISTENER was built with, and a warrant that
-// landed a minute ago is stored without being anchored — which is the whole of RFC §5's two phases,
-// and the one thing `pack status` must not blur.
+// (§18.9).
+//
+// ── WHICH GENERATION THIS PROCESS ACTUALLY ACTIVATED AT BIND TIME ────────────
+// RFC §5's phase 2 is "the restart made the stored warrant real", and a peer can be on EITHER side of
+// that sentence — which is the bug the live drill found. There are two roles and they activate two
+// different things:
+//
+//   • a peer the warrant does NOT name activates a SECOND TLS ANCHOR — `deputyAnchorOf`, which is
+//     what lets the deputy complete a handshake there one day;
+//   • the peer the warrant DOES name activates its own DEPUTY ROLE — the standby door and the
+//     takeover exchange — and anchors nothing at all, because a machine does not anchor its own
+//     certificate (`transport.ts`'s `deputyAnchor` refuses exactly that case, by name).
+//
+// Deriving this from `deputyAnchorPem` alone therefore reported the DEPUTY — the one machine the
+// whole feature is about — as "stored, NOT anchored" forever, through any number of clean restarts.
+// Both roles are read here, off one clock, and the store says which one applies.
+//
+// It is also captured AT BIND rather than read per checkpoint: the question is what this listener
+// came up holding, and a warrant that landed a minute after boot is stored without being active.
+const boundWarrantGeneration = currentWarrant(trustStore.current())?.warrant.generation ?? null;
+const deputyRoleAtBind = warrantNamesSelf(pack.mode, trustStore.current(), listenerBuiltAt);
+const activatedGeneration =
+  deputyAnchorPem === null && !deputyRoleAtBind ? null : boundWarrantGeneration;
+
 runtimeFacts = () => {
   const facts = leadContact.facts();
   return {
-    anchoredGeneration:
-      deputyAnchorPem === null ? null : (currentWarrant(trustStore.current())?.warrant.generation ?? null),
+    anchoredGeneration: activatedGeneration,
     leadLastDialledAt: facts.lastDialledAt,
     leadRefusedSecretAt: facts.leadRefusedSecretAt,
     deposed: deposed === null ? null : { ...deposed, outcome: outcomeNow(deposed, facts) },
@@ -1021,12 +1045,14 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
   console.warn(
     `[pack] TOOK OVER — this machine is the lead of pack "${data.pack?.name ?? "?"}" now (warrant ` +
       `generation ${currentWarrant(trustStore.current())?.warrant.generation ?? 0}), confirmed by ` +
-      `${outcome.repinned.length} peer(s). Restarting into lead mode; if this process does not come ` +
-      "back by itself, run `herdr plugin action invoke restart --plugin herdr.collie` here.",
+      `${outcome.repinned.length} peer(s). Exiting ${TAKEOVER_RESTART_EXIT} so the supervisor brings ` +
+      "this machine back up in LEAD mode — that status is non-zero on purpose, because `Restart=" +
+      "on-failure` does not revive a clean exit. If nothing restarts this process, its supervision is " +
+      "unmanaged: run `herdr plugin action invoke restart --plugin herdr.collie` here.",
   );
   // Long enough for the answer above to reach the phone, short enough that the failover proxy's next
   // health check finds a lead. Not unref'd: this timer is the whole remaining purpose of the process.
-  setTimeout(() => process.exit(0), 1000);
+  setTimeout(() => process.exit(TAKEOVER_RESTART_EXIT), 1000);
   return { ok: true, message };
 }
 

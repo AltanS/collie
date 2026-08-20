@@ -218,7 +218,15 @@ export function mintWarrant(
     // The designation and the signed artefact are written in ONE step, so they can never disagree
     // about who the deputy is. The lead keeps no copy of the deputy's certificate: it pins the
     // deputy in its own roster, and a second copy would be a second thing to keep in step.
-    next: { ...data, deputy: warrant.deputyMemberId, warrant: { warrant, deputyCertPem: null } },
+    // `deputySpentAt` is cleared here, and only here: it answers "why does this lead name nobody?",
+    // and the operator has just answered it by naming somebody. Leaving it would make a freshly
+    // designated pack still explain itself with a takeover that is now history.
+    next: {
+      ...data,
+      deputy: warrant.deputyMemberId,
+      deputySpentAt: null,
+      warrant: { warrant, deputyCertPem: null },
+    },
     result: warrant,
     audit: {
       action: warrant.deputyMemberId === null ? "pack.deputy.revoke" : "pack.deputy.name",

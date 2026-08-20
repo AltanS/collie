@@ -25,6 +25,9 @@ import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
 import { mintIdentity, randomToken } from "./identity.ts";
 import { PACK_HELLO_PATH, PACK_LEAVE_PATH, PACK_PREFIX, PACK_SNAPSHOT_PATH } from "./router.ts";
 import { parseStandbyDevices } from "./standby-devices.ts";
+import { TAKEOVER_RESTART_EXIT } from "./takeover.ts";
+import { parseMarker, packRuntimePath } from "./staleness.ts";
+import { peerWarrantLines } from "../../cli/pack-status-deputy.ts";
 import { sha256Hex } from "../pairing.ts";
 import {
   bodyDigest,
@@ -1425,6 +1428,22 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   let standbyPort = 0;
 
   const idOf = (i: Instance): string => i.store()!.self.memberId;
+  /** The device labels this machine's SYNCED registry holds. `[]` for a file that is not there. */
+  const syncedLabels = (i: Instance): string[] => {
+    try {
+      return parseStandbyDevices(readFileSync(join(i.stateDir, "standby-devices.json"), "utf8"))?.devices.map((d) => d.label) ?? [];
+    } catch {
+      return [];
+    }
+  };
+  /** The marker THAT PROCESS wrote — the only honest source for "what did this listener come up with". */
+  const runtimeMarkerOf = (i: Instance) => {
+    try {
+      return parseMarker(readFileSync(packRuntimePath(i.stateDir), "utf8"));
+    } catch {
+      return null;
+    }
+  };
   const standby = (path: string, init: RequestInit = {}) =>
     fetch(`http://127.0.0.1:${standbyPort}${path}`, init);
 
@@ -1506,10 +1525,12 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
       JSON.stringify({ devices: [{ label: "phone", tokenHash: sha256Hex(TOKEN), createdAt: 1, lastSeenAt: 1 }] }),
       { mode: 0o600 },
     );
+    // The DEVICE, not merely the file: an empty registry is itself something the lead syncs (a
+    // `devices revoke` has to be able to REMOVE one over there), so the file alone proves nothing.
     await waitFor(
-      async () => existsSync(join(aide.stateDir, "standby-devices.json")),
+      async () => syncedLabels(aide).includes("phone"),
       20_000,
-      "the deputy never received the pairing registry",
+      async () => `the deputy never received the pairing registry (holds ${JSON.stringify(syncedLabels(aide))})`,
     );
     const synced = parseStandbyDevices(readFileSync(join(aide.stateDir, "standby-devices.json"), "utf8"))!;
     expect(synced.devices.map((d) => d.label)).toEqual(["phone"]);
@@ -1531,6 +1552,56 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     expect(tls!.ca).toHaveLength(2);
     expect(tls!.ca[1]).toBe(aide.store()!.self.certPem);
   }, 60_000);
+
+  // ── THE LIVE DRILL, BUG 3 ──────────────────────────────────────────────────
+  // A deputy that had stored a verified warrant and then restarted cleanly still reported "stored,
+  // NOT anchored" — forever, through any number of restarts. Reproduced here against REAL child
+  // bridges: the marker each process writes is the only honest source for "what did this listener
+  // come up with", so this asserts what those processes actually wrote, and then the sentence the
+  // operator would have read.
+  test("a warrant stored BEFORE a restart is reported as activated afterwards — both roles", async () => {
+    const generation = aide.store()!.warrant!.warrant.generation;
+    // The DEPUTY: it anchors NOTHING (a collie does not anchor its own certificate), so the old
+    // derivation could never report it. What its restart activated is its deputy role.
+    await waitFor(
+      async () => runtimeMarkerOf(aide)?.anchoredGeneration === generation,
+      20_000,
+      async () => `deputy marker: ${JSON.stringify(runtimeMarkerOf(aide))}`,
+    );
+    const deputyLines = peerWarrantLines(aide.store()!, runtimeMarkerOf(aide), Date.now())
+      .map((l) => l.text)
+      .join("\n");
+    expect(deputyLines).toContain("deputy role ACTIVE at this boot");
+    expect(deputyLines).not.toContain("NOT anchored");
+
+    // The WITNESS: it really did build a second anchor, and says so in the other word.
+    await waitFor(
+      async () => runtimeMarkerOf(witness)?.anchoredGeneration === generation,
+      20_000,
+      async () => `witness marker: ${JSON.stringify(runtimeMarkerOf(witness))}`,
+    );
+    const witnessLines = peerWarrantLines(witness.store()!, runtimeMarkerOf(witness), Date.now())
+      .map((l) => l.text)
+      .join("\n");
+    expect(witnessLines).toContain("anchored at this boot");
+  }, 60_000);
+
+  // ── THE LIVE DRILL, BUG 4 ──────────────────────────────────────────────────
+  // The lead used to remember what it had pushed in a process-local field, and `pack deputy` restarts
+  // the local bridge as its last step — so the process that knew it still owed a sync was replaced by
+  // one that had never offered it, and nothing ever asked the deputy. Now the deputy answers for
+  // itself on an exchange that already happens, so this is provable: delete its copy, restart the
+  // LEAD too, and the pack must converge with no verb and no operator step.
+  test("the pairing sync survives a restart on either side — the deputy's own report drives it", async () => {
+    rmSync(join(aide.stateDir, "standby-devices.json"));
+    await aide.restart();
+    await hq.restart();
+    await waitFor(
+      async () => syncedLabels(aide).includes("phone"),
+      30_000,
+      async () => `the deputy never got its registry back (holds ${JSON.stringify(syncedLabels(aide))})`,
+    );
+  }, 90_000);
 
   test("while the lead is alive the door is COLD: 503 on health, a page with no button", async () => {
     const health = await standby("/standby/health");
@@ -1614,6 +1685,15 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   test("the deputy restarts INTO lead mode and serves the real front door", async () => {
     // The one restart the bridge performs on its own: the operator asked from a phone, and a machine
     // whose store says `lead` while its process runs a peer's pinned listener is unreachable.
+    // ── THE LIVE DRILL, BUG 1 ────────────────────────────────────────────────
+    // The exit STATUS is load-bearing, not cosmetic. `Restart=on-failure` — the drill's unit, and
+    // systemd's common choice — does not revive a clean `0`, so a takeover that exited zero left the
+    // store saying `lead`, the service `inactive`, and the operator holding a phone with no shell.
+    // Both `on-failure` and `always` revive a non-zero exit, so only a non-zero status is correct
+    // under either policy, and the answer's "reload in a moment" is only honest with it.
+    const exited = await aide.proc!.exited;
+    expect(exited).toBe(TAKEOVER_RESTART_EXIT);
+    expect(TAKEOVER_RESTART_EXIT).not.toBe(0);
     await waitFor(async () => !(await portOpen(aide.port)), 15_000, "the deputy never restarted");
     await aide.start();
     // An unpinned listener, plain HTTP, serving the app — the shape a lead has and a peer does not.
