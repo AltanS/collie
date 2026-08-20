@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { withAgentBeacons, type AgentBeaconDeps, type BeaconMatcher } from "./decorate.ts";
+import { withAgentHints } from "./hint.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "./fake.ts";
 import { BEACON_SCHEMA_VERSION, type BeaconMarker, type BeaconStatus } from "./types.ts";
 import { declareCapabilities, type MuxCapability } from "../mux/capabilities.ts";
@@ -52,6 +53,8 @@ interface RecordedCall {
 /** A blind adapter that records what reached it and answers something distinguishable. */
 class StubAdapter implements MuxAdapter {
   readonly mux = "stub";
+  /** The adapter's mark, when a case gives it one. Absent by default, like an adapter with none. */
+  logo?: string;
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -184,6 +187,95 @@ describe("withAgentBeacons refuses an adapter that already sees", () => {
     const adapter = new StubAdapter();
     adapter.capabilities = declareCapabilities({ supports: ["agentSessionRef"] });
     expect(() => decorate(adapter, [])).toThrow(/already declares agentSessionRef/u);
+  });
+});
+
+// THE FIELD THAT WENT MISSING, and the tripwire for the next one.
+//
+// `logo` was added to MuxAdapter and to all three adapters, and no live instance ever published it:
+// index.ts wraps every adapter in a decorator, each decorator rebuilds the adapter as a literal
+// naming every field, and an unnamed field simply ceases to exist. Nothing caught it, because every
+// test in the tree that read a logo read it off a RAW adapter.
+//
+// So the data fields are gathered by one helper (bridge/mux/types.ts § muxDataFields) and the
+// surface is asserted here, for BOTH decorators — `withAgentHints` included, even though it lives in
+// hint.ts, because the failure is the shape they share and a guard in only one of them is half a
+// guard.
+describe("a decorator preserves the adapter's whole surface", () => {
+  /**
+   * Every field of the contract, at runtime.
+   *
+   * `satisfies Record<keyof Required<MuxAdapter>, true>` is the half that has teeth: adding a field
+   * to {@link MuxAdapter} stops this FILE compiling until the field is named here, and naming it
+   * here then fails the assertions below until both decorators carry it. `Required<…>` so an
+   * OPTIONAL field is covered too — which is the only kind that has ever gone missing.
+   */
+  const MUX_ADAPTER_FIELDS = {
+    mux: true,
+    capabilities: true,
+    logo: true,
+    reachable: true,
+    snapshot: true,
+    readGrid: true,
+    typeText: true,
+    sendKeys: true,
+    renamePane: true,
+    closePane: true,
+    createTab: true,
+    renameTab: true,
+    closeTab: true,
+    createSpace: true,
+    watch: true,
+  } satisfies Record<keyof Required<MuxAdapter>, true>;
+
+  const CONTRACT = Object.keys(MUX_ADAPTER_FIELDS).toSorted();
+
+  /**
+   * Which contract fields this object actually has.
+   *
+   * `in`, not `Object.keys`: a raw adapter is a class, so its methods live on the prototype and its
+   * private state (`#client`, a revision map) is own state that no decorator should be expected to
+   * reproduce. Asking the contract's own questions compares the two shapes on the only terms that
+   * mean anything.
+   */
+  function surfaceOf(adapter: MuxAdapter): string[] {
+    return CONTRACT.filter((field) => field in adapter);
+  }
+
+  /** A raw adapter carrying EVERY field, so a decorator dropping any one of them is visible. */
+  function fullAdapter(): MuxAdapter {
+    const stub = new StubAdapter();
+    stub.logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>`;
+    return stub;
+  }
+
+  test("the fixture itself is complete — otherwise the assertions below prove nothing", () => {
+    // This is the test that fails FIRST when a field is added to the contract: name it above, and
+    // this one demands the fixture carry it before anything gets to claim a decorator preserves it.
+    expect(surfaceOf(fullAdapter())).toEqual(CONTRACT);
+  });
+
+  test("the beacon decorator hands on every field it was given", () => {
+    expect(surfaceOf(decorate(fullAdapter(), []))).toEqual(CONTRACT);
+  });
+
+  test("the hint decorator hands on every field it was given", () => {
+    expect(surfaceOf(withAgentHints(fullAdapter(), { hooksInstalled: () => false }))).toEqual(CONTRACT);
+  });
+
+  test("both decorators, stacked exactly as the bridge stacks them, still preserve it", () => {
+    // index.ts wraps beacons first and hints outside them — the real chain, not one link of it.
+    const raw = fullAdapter();
+    const wrapped = withAgentHints(decorate(raw, []), { hooksInstalled: () => false });
+    expect(surfaceOf(wrapped)).toEqual(CONTRACT);
+    expect(wrapped.logo).toBe(raw.logo);
+  });
+
+  test("an adapter with no mark comes out with the KEY absent, through either decorator", () => {
+    // Absent, not present-and-undefined: `"logo" in adapter` is the question `muxDataFields` keeps
+    // answerable, and a decorator that assigned `logo: undefined` would answer it wrongly.
+    expect("logo" in decorate(new StubAdapter(), [])).toBe(false);
+    expect("logo" in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
   });
 });
 

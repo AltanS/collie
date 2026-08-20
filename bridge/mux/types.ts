@@ -393,3 +393,27 @@ export interface MuxAdapter {
   /** Watch for change. Always available — an adapter with no push satisfies it by polling. */
   watch(options: MuxWatchOptions): MuxSubscription;
 }
+
+/**
+ * The adapter's plain DATA fields, carried across a decorator unchanged.
+ *
+ * WHY THIS IS A FUNCTION AND NOT THREE LINES IN EACH WRAPPER. Both decorators (beacon/decorate.ts,
+ * beacon/hint.ts) rebuild the adapter as an object literal that names every field — they cannot
+ * spread it, because an adapter written as a class keeps its methods on a prototype. That shape has
+ * one failure mode and it is silent: a new field on {@link MuxAdapter} is simply not mentioned, so
+ * it survives every test that talks to a raw adapter and vanishes the moment the real bridge wraps
+ * one. `logo` did exactly that, on all three live instances, while the unit tests stayed green.
+ *
+ * So the data fields are gathered HERE, once, and each decorator spreads the result. Adding a field
+ * to the contract is then one edit in this file rather than three that nothing forces you to make —
+ * and `decorate.test.ts`'s surface tripwire fails if the next one is added anywhere else.
+ *
+ * Methods stay out of it deliberately: a decorator delegating a verb is a decision it makes verb by
+ * verb (it may wrap one), whereas data has nothing to decide.
+ *
+ * The field is OMITTED rather than set to `undefined` when the adapter has none, so
+ * `"logo" in adapter` keeps answering the same question after wrapping as before it.
+ */
+export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
+  return adapter.logo === undefined ? {} : { logo: adapter.logo };
+}

@@ -33,7 +33,11 @@ import { join } from "node:path";
 import { AuditLog, type AuditEntry } from "./audit.ts";
 import type { Config } from "./config.ts";
 import { declareCapabilities, MUX_CAPABILITIES } from "./mux/capabilities.ts";
+import { withAgentBeacons } from "./beacon/decorate.ts";
+import { fakeBeaconReader } from "./beacon/fake.ts";
+import { withAgentHints } from "./beacon/hint.ts";
 import { HerdrMux, herdrMuxFactory } from "./mux/herdr/adapter.ts";
+import { tmuxMuxFactory } from "./mux/tmux/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import { muxAck, type MuxAck, type MuxAdapter, type MuxGrid } from "./mux/types.ts";
 import { neverProxy } from "./pack/fixtures.ts";
@@ -1255,6 +1259,27 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
   test("the real Herdr adapter ships a mark, so its header renders one", () => {
     const wire = muxConfigBody(herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} }));
     expect(wire.logoUrl).toBe(MUX_LOGO_PATH);
+  });
+
+  // …AND THROUGH THE WRAPPERS, which is where the first version of this shipped broken. `bridge/`
+  // never hands `muxConfigBody` a raw adapter: index.ts wraps every one in the hint tier and a blind
+  // one in the beacon decorator first, and both rebuild the adapter as a literal. Asserting the raw
+  // adapter's mark proves nothing about the object the route actually holds — that is precisely the
+  // gap that let three live instances publish no `logoUrl` while the suite stayed green.
+  test("the mark survives the hint tier — the wrapper EVERY adapter gets", () => {
+    const raw = herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} });
+    const wrapped = withAgentHints(raw, { hooksInstalled: () => false });
+    expect(muxConfigBody(wrapped).logoUrl).toBe(MUX_LOGO_PATH);
+  });
+
+  test("the mark survives BOTH wrappers on a blind adapter, stacked as index.ts stacks them", () => {
+    const target = { endpoint: "collie-test", timeoutMs: 100, options: {} } as const;
+    const raw = tmuxMuxFactory.create(target);
+    const matcher = tmuxMuxFactory.beaconMatcher?.(target);
+    if (matcher === undefined) throw new Error("the tmux factory must contribute a beacon matcher");
+    const seeing = withAgentBeacons(raw, fakeBeaconReader([]), { matcher, hooksInstalled: () => false });
+    const wrapped = withAgentHints(seeing, { hooksInstalled: () => false });
+    expect(muxConfigBody(wrapped).logoUrl).toBe(MUX_LOGO_PATH);
   });
 });
 
