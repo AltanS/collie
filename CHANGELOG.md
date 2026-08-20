@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.13] - 2026-08-20
+
+### Added
+
+- Pre-commit pack-wire guard — a wire-shape change must stage `PACK_PROTOCOL.md` or bump `PACK_PROTOCOL_VERSION` ([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md), bee6e02)
+- Pack diagrams — topology, one poll sweep, and "When the lead dies" in `PACK_PROTOCOL.md` (1ce9e32)
+
 ## [1.0.0-beta.12] - 2026-08-20
 
 ### Added
