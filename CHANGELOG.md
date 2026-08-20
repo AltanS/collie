@@ -6,6 +6,14 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.8] - 2026-08-20
+
+### Fixed
+
+- **A cold pack link now bootstraps on a relayed path** — the first data request per link dials on the patient budget (one credit, spent at issue), so a DERP-relayed TLS handshake no longer aborts at the strict per-poll budget and strands the link cold forever; warm requests stay strict ([PACK_PROTOCOL.md §10.5](./PACK_PROTOCOL.md), 8360d08)
+- `collie doctor` / `pack status` / `reconnect` send one real snapshot after `hello` and name an answered-but-starved link instead of reporting green (8360d08)
+- The `COLLIE_PACK_TIMEOUT_MS` clamp warns at boot, naming the `COLLIE_POLL_MS` value that would honour the requested budget (8360d08)
+
 ## [1.0.0-beta.7] - 2026-08-20
 
 ### Added
