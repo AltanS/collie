@@ -48,7 +48,29 @@ jobs:
           } > "$notes"
           echo "file=$notes" >> "$GITHUB_OUTPUT"
 
+      # The built frontend, published as an asset. It is what colliepwa.dev's demo runs: a pinned
+      # release bundle whose network calls are answered in the browser, so the demo shows the real
+      # app without this repo carrying a line of demo code. Nothing in Collie consumes it, and an
+      # operator never downloads it — `collie build` still builds web/ from source on the host.
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Build and package web/dist
+        id: bundle
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          (cd web && bun install --frozen-lockfile && bun run build)
+          tar -czf "$RUNNER_TEMP/web-dist-$version.tar.gz" -C web dist
+          (cd "$RUNNER_TEMP" && sha256sum "web-dist-$version.tar.gz" > "web-dist-$version.tar.gz.sha256")
+          echo "tarball=$RUNNER_TEMP/web-dist-$version.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "checksum=$RUNNER_TEMP/web-dist-$version.tar.gz.sha256" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "Collie $GITHUB_REF_NAME" --notes-file "${{ steps.notes.outputs.file }}"
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Collie $GITHUB_REF_NAME" \
+            --notes-file "${{ steps.notes.outputs.file }}" \
+            "${{ steps.bundle.outputs.tarball }}" \
+            "${{ steps.bundle.outputs.checksum }}"
