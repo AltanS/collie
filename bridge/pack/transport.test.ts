@@ -2,8 +2,32 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { leadStore, material, member, peerStore } from "./fixtures.ts";
+import { selfIdentity } from "./enrollment.ts";
+import { fp, leadStore, material, member, peerStore, T0 } from "./fixtures.ts";
+import type { StoredWarrant, TrustStoreData } from "./trust-store.ts";
 import { dialTls, peerListenerTls } from "./transport.ts";
+import { mintWarrant, WARRANT_TTL_MS } from "./warrant.ts";
+
+/**
+ * A warrant `desk` really signed, naming `nas`, with `nas`'s real certificate beside it — the shape a
+ * peer holds after §18.5's push. Minted rather than hand-written: the anchor decision verifies the
+ * signature and re-derives the fingerprint from the certificate, so a shaped placeholder would let a
+ * test pass on a store the production path refuses.
+ */
+function stored(over: Partial<StoredWarrant["warrant"]> = {}, now = T0): StoredWarrant {
+  const change = mintWarrant(
+    leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] }),
+    "nas",
+    now,
+  );
+  if (change === null) throw new Error("fixture: expected a mint");
+  return { warrant: { ...change.result, ...over }, deputyCertPem: material("nas").certPem };
+}
+
+/** A peer of `desk` holding `warrant`. */
+function anchored(warrant: StoredWarrant | null): TrustStoreData {
+  return peerStore({ warrant });
+}
 
 describe("the peer's pinned listener", () => {
   test("a peer anchors on its lead's certificate, and demands one back", () => {
@@ -17,6 +41,81 @@ describe("the peer's pinned listener", () => {
     expect(tls!.ca).toEqual([store.lead!.certPem]);
     expect(tls!.requestCert).toBe(true);
     expect(tls!.rejectUnauthorized).toBe(true);
+  });
+
+  // ── The second anchor (§18.5, RFC §5 phase 2) ──────────────────────────────
+  // The rule under every case below: the deputy's certificate joins the list **iff** the stored
+  // warrant verifies against the certificate this peer already pinned as its lead's. Every refusal
+  // leaves EXACTLY today's single anchor — never zero, so no clause here can take a working pack
+  // down, and never three.
+
+  test("a verified warrant adds the deputy's certificate — and only ever as a SECOND anchor", () => {
+    const tls = peerListenerTls("peer", anchored(stored()), T0);
+    expect(tls!.ca).toEqual([material("desk").certPem, material("nas").certPem]);
+    // The lead's own certificate is still first and still there: an existing lead's handshake is
+    // unaffected by any of this, which is why the widening is not a wire change (RFC §11.5).
+    expect(tls!.ca[0]).toBe(anchored(null).lead!.certPem);
+  });
+
+  test("no warrant at all is exactly today: one anchor", () => {
+    expect(peerListenerTls("peer", anchored(null), T0)!.ca).toEqual([material("desk").certPem]);
+    // Absent and explicitly-null are the same answer here, and both are the closed one.
+    expect(peerListenerTls("peer", peerStore(), T0)!.ca).toHaveLength(1);
+  });
+
+  test("a TAMPERED warrant anchors nobody — the signature is the whole question", () => {
+    // Bend one signed field. `nas` is still named, its certificate still matches its fingerprint, and
+    // the store still parses — the ONLY thing wrong is that `desk` did not sign this.
+    const bent = stored({ generation: 99 });
+    expect(peerListenerTls("peer", anchored(bent), T0)!.ca).toEqual([material("desk").certPem]);
+  });
+
+  test("an EXPIRED warrant anchors nobody — a dark pack disarms at the transport too", () => {
+    const at = T0 + WARRANT_TTL_MS;
+    expect(peerListenerTls("peer", anchored(stored()), at)!.ca).toEqual([material("desk").certPem]);
+    // One millisecond earlier it is still alive, so the clause is the clock and not the shape.
+    expect(peerListenerTls("peer", anchored(stored()), at - 1)!.ca).toHaveLength(2);
+  });
+
+  test("a REVOCATION names nobody, so it anchors nobody", () => {
+    const revoked: StoredWarrant = {
+      warrant: { ...stored().warrant, deputyMemberId: null, deputyFingerprint: null },
+      deputyCertPem: null,
+    };
+    expect(peerListenerTls("peer", anchored(revoked), T0)!.ca).toEqual([material("desk").certPem]);
+  });
+
+  test("a certificate that is not the fingerprint's is refused — BoringSSL anchors on CERTIFICATES", () => {
+    // §8.2's enrollment rule, one layer down: a hash cannot be enforced, so what is anchored must be
+    // provably the certificate the signed fingerprint names. Here it is `attic`'s, under `nas`'s name.
+    const swapped: StoredWarrant = { ...stored(), deputyCertPem: material("attic").certPem };
+    expect(peerListenerTls("peer", anchored(swapped), T0)!.ca).toEqual([material("desk").certPem]);
+    // …and with no certificate at all there is nothing to anchor, however good the signature is.
+    expect(peerListenerTls("peer", anchored({ ...stored(), deputyCertPem: null }), T0)!.ca).toHaveLength(1);
+  });
+
+  test("a warrant from a member this peer does not follow anchors nobody", () => {
+    // Signed by `desk`, verifiable by anyone holding `desk`'s certificate — but this peer follows
+    // `nas`, so `desk` is not the member whose consent it accepts. A warrant is not a bearer token.
+    const elsewhere = peerStore({ lead: member({ memberId: "nas", role: "lead" }), warrant: stored() });
+    expect(peerListenerTls("peer", elsewhere, T0)!.ca).toEqual([material("nas").certPem]);
+  });
+
+  test("a warrant naming THIS collie, or its own lead, adds no anchor — both are already there", () => {
+    // The deputy is this peer itself: anchoring its own certificate would name no member it cannot
+    // already reach, and it must not inflate the list.
+    const asDeputy: TrustStoreData = {
+      ...peerStore({ warrant: stored() }),
+      self: selfIdentity("nas", material("nas"), T0),
+    };
+    expect(peerListenerTls("peer", asDeputy, T0)!.ca).toEqual([material("desk").certPem]);
+
+    // And the degenerate case the other way: a warrant naming the very member this peer follows.
+    const namesLead: StoredWarrant = {
+      warrant: { ...stored().warrant, deputyMemberId: "desk", deputyFingerprint: fp("desk") },
+      deputyCertPem: material("desk").certPem,
+    };
+    expect(peerListenerTls("peer", anchored(namesLead), T0)!.ca).toEqual([material("desk").certPem]);
   });
 
   test("a lead pins nothing: its surface rides a front door that terminates TLS", () => {

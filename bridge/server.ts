@@ -334,6 +334,17 @@ export function startServer(opts: {
    */
   packRouter?: (surface: PackSurface) => PackHandler;
   /**
+   * The **deposed** answer, when this collie has learned the crown has moved (PACK_PROTOCOL.md
+   * §18.12). Returns a `Response` for every request it should swallow and `null` otherwise — so an
+   * instance that has not been deposed passes `undefined` and this file's dispatch is byte-identical
+   * to today's.
+   *
+   * A closure rather than a route, for the reason `packRouter` is one: the paths it owns are declared
+   * in `bridge/pack/deposed.ts`, so this file names none of them and `solo-baseline.test.ts` can keep
+   * proving by grep that the route table here is exactly today's.
+   */
+  deposed?: (req: Request, url: URL) => Response | null;
+  /**
    * The peer listener's pinned-mTLS options, supplied **only** by a peer that could build them
    * (`bridge/pack/transport.ts`). Absent on solo and on a lead, so this file's `Bun.serve` call is
    * byte-identical to today's for every instance that is not a peer (§11).
@@ -600,6 +611,14 @@ export function startServer(opts: {
         const packed = await packHandler(req, url);
         if (packed) return secure(packed);
       }
+
+      // A DEPOSED collie serves one page and fails its health check (§18.12). It sits AFTER the
+      // federated surface on purpose: the machine that just deposed this one must still be able to
+      // reach `/pack/v1/*` here — that is how it was told, and how it will be told again — while the
+      // app, the PWA and `/api/*` are gone. Everything below this line is the front door, and a
+      // deposed collie has none.
+      const deposedAnswer = opts.deposed?.(req, url);
+      if (deposedAnswer) return secure(deposedAnswer);
 
       // Session-scoped routes accept an optional `?session=<name>`; absent → the primary session
       // (identical to pre-multi-session behaviour). The name is only ever a registry Map lookup — it

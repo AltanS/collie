@@ -19,7 +19,10 @@ import { ZELLIJ_BINARY_OPTION } from "./mux/zellij/adapter.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
+import { runBootGate } from "./pack/boot-gate.ts";
 import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
+import { deposedAnswer, deposedStateFrom, outcomeNow, selfHeal, type DeposedState } from "./pack/deposed.ts";
+import { LeadContact } from "./pack/lead-contact.ts";
 import { dialTls, peerListenerTls } from "./pack/transport.ts";
 import { commitPackChange } from "./pack/enrollment.ts";
 import { PackLead } from "./pack/lead.ts";
@@ -29,7 +32,7 @@ import { packHelloBudget, packTimeoutBudget, packTimeoutClampWarning, PeerClient
 import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
 import { formatMarker, markerFor, packRuntimePath, rosterDrift } from "./pack/staleness.ts";
-import { enrollmentOf, TrustStore } from "./pack/trust-store.ts";
+import { enrollmentOf, TrustStore, type TrustStoreData, type Warrant } from "./pack/trust-store.ts";
 import { currentWarrant, refreshWarrant } from "./pack/warrant.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
@@ -72,14 +75,130 @@ const cfg = loadConfig();
 // solo instance will hand `resolvePackRuntime` forever after.
 const trustStore = new TrustStore(cfg.stateDir);
 const bootTrust = await trustStore.load();
-const enrollment = enrollmentOf(bootTrust);
-const pack = resolvePackRuntime(enrollment);
-if (pack.conflict) console.warn(`[pack] ${pack.conflict}`);
-if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
 
 // Ensure the state dir exists with private (0700) perms before push/snooze/uploads write into it —
 // it holds push subscription endpoints and uploaded images, so keep it owner-only.
+//
+// Moved AHEAD of the mode resolution by §18.11's boot gate: that gate may rewrite the trust store
+// before anything else is wired, and a store written into a directory that does not exist yet is a
+// boot that fails for the wrong reason.
 await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
+
+// Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
+// inside record() so it can never break the user action it's auditing.
+//
+// Constructed here, before the mode is resolved, for the boot gate's sake: a deposition is an audited
+// membership change (`pack.deposed`) and it happens before there is anything else to audit with.
+const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")), {
+  content: cfg.auditContent,
+});
+
+/**
+ * Gap A (PACK_PROTOCOL.md §18.9): when this collie's lead last called it.
+ *
+ * Constructed unconditionally and armed by nothing — it holds two `null`s and this process's start
+ * time until the router hands it a receipt, so a solo instance carries an object and no behaviour.
+ * In memory on purpose (`bridge/pack/lead-contact.ts` says why at length).
+ */
+const leadContact = new LeadContact(Date.now());
+
+/** This process's deposed state (§18.12), or `null`. Set at most once, at boot or from the wire. */
+let deposed: DeposedState | null = null;
+
+/**
+ * One pack client, built the same way for the boot gate and for the lead's sweep — because two would
+ * be two places for a pack request to forget its budget, its pin or its secret.
+ */
+function packPeerClient(data: TrustStoreData): PeerClient {
+  return new PeerClient({
+    self: data.self.memberId,
+    // Read at call time so a rotation is picked up without a restart (§8.3, §8.4).
+    secret: () => trustStore.current()?.pack?.secret ?? null,
+    // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
+    // (§10.1). The clamp lives in packTimeoutBudget; nothing here is allowed to widen it.
+    timeoutMs: packTimeoutBudget(cfg.pollMs),
+    // …and the patient one, which the poll fraction deliberately does not clamp (§10.4). A cold
+    // pinned-TLS handshake over a relay costs more than a whole poll budget, so the strict budget can
+    // decide "this poll is stale" but must never be what decides "this peer is gone", nor what a cold
+    // link's FIRST data request has to fit inside — see packHelloBudget and takeDataBudget for the
+    // measurements that produced this pair. It is also the boot gate's whole budget (§18.11).
+    patientTimeoutMs: packHelloBudget(cfg.pollMs),
+    fetch: (url, init) => fetch(url, init),
+    // Pinned mutual TLS, per member, read through the store on every dial for the same reason the
+    // secret and the roster are: `pack remove`, a re-join and a rotation all change what this lead
+    // may pin, and a captured copy would keep trusting a certificate the operator revoked. A member
+    // we cannot build a pin for is dialled with no TLS material at all — which the peer's own
+    // listener then refuses at the handshake, i.e. `unreachable`, never an unpinned connection.
+    tls: (link) => {
+      const member = trustStore.current()?.peers.find((p) => p.memberId === link.memberId);
+      return member === undefined ? undefined : (dialTls(trustStore.current(), member) ?? undefined);
+    },
+  });
+}
+
+/**
+ * Act on a deposition proof: self-heal to `peer` where the proof allows it, park where it does not,
+ * and **say so either way** (§18.12; RFC §12, F11 makes the announcement part of the security
+ * property rather than the UX — a re-entry the operator does not see is one they cannot decide about).
+ */
+async function applyDeposition(proof: Warrant | null, reason: string): Promise<DeposedState> {
+  const data = trustStore.current();
+  const heal = data === null ? ({ outcome: "parked", reason: "no-proof" } as const) : selfHeal(data, proof);
+  const state =
+    data === null
+      ? { outcome: "parked-unverifiable" as const, leadMemberId: null, generation: 0, at: Date.now(), packName: null, reason: "no-proof" as const }
+      : deposedStateFrom(data, proof, heal, Date.now());
+  if (heal.outcome === "healed") {
+    await commitPackChange(trustStore, audit, (current) => (current === null ? null : heal.change));
+    console.warn(
+      `[pack] DEPOSED — ${reason}. This machine has demoted itself to a peer of "${state.leadMemberId}" ` +
+        `(warrant generation ${state.generation}) on materials both machines already held. Its front door ` +
+        "is down and its health check now fails; run `collie unserve` here when convenient.",
+    );
+  } else {
+    audit.record({
+      action: "pack.deposed",
+      detail: { lead: state.leadMemberId, generation: state.generation, outcome: "parked", reason: heal.reason },
+    });
+    console.warn(
+      `[pack] DEPOSED — ${reason}. This machine could NOT rejoin by itself and has parked: ` +
+        `${heal.reason}. Recover it with \`collie pack add\` from the new lead, or \`collie join\`.`,
+    );
+  }
+  return state;
+}
+
+// ── The boot-time gate against a split brain (§18.11) ────────────────────────
+// A collie booting into `lead` mode with a non-empty roster asks its members ONCE, concurrently, on
+// the patient budget, BEFORE it publishes anything. Silence publishes; a conflicting answer deposes.
+// Nothing is armed and nothing repeats — this is boot-only, and it is not an election (§15).
+{
+  const data = trustStore.current();
+  if (data !== null && resolvePackRuntime(enrollmentOf(data)).mode === "lead") {
+    const client = packPeerClient(data);
+    const verdict = await runBootGate({
+      links: data.peers
+        .filter((p) => p.status === "enrolled")
+        .map((p) => ({ memberId: p.memberId, address: p.address })),
+      hello: (link) => client.hello(link),
+      generation: currentWarrant(data)?.warrant.generation ?? 0,
+    });
+    if (verdict.kind === "deposed") {
+      const state = await applyDeposition(verdict.proof, verdict.reason);
+      // A boot-time HEAL needs no deposed page: the mode is resolved below from the healed store, so
+      // this process comes up as an ordinary peer in the very same boot, having published nothing in
+      // between. That is the common case and the whole reason the gate sits at boot (§18.11).
+      deposed = state.outcome === "healed" ? null : state;
+    }
+  }
+}
+
+// The mode is resolved AFTER the gate, from whatever the gate left on disk — a machine that healed
+// boots as a peer, wires a peer's listener and serves no front door, with no second process involved.
+const enrollment = enrollmentOf(trustStore.current());
+const pack = resolvePackRuntime(enrollment);
+if (pack.conflict) console.warn(`[pack] ${pack.conflict}`);
+if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
 
 // The roster THIS PROCESS wired, left on disk for `collie pack status` to compare the store against
 // (bridge/pack/staleness.ts). A membership change can arrive over the wire — the first enrollment
@@ -88,7 +207,11 @@ await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
 // Gated on a trust store EXISTING: a solo instance writes no file here, which is §11's zero-tax
 // contract. Best effort throughout — a marker is a diagnostic, and one that failed to write must
 // never be a reason a bridge does not come up.
-const bootMarker = markerFor(bootTrust, Date.now(), process.pid);
+//
+// Built from the store AS THE GATE LEFT IT, not from the bytes read at line one: a machine that
+// self-healed at boot (§18.11) really did wire a peer's roster, and a marker claiming otherwise
+// would make `pack status` report drift against a store that is perfectly in step.
+const bootMarker = markerFor(trustStore.current(), Date.now(), process.pid);
 if (bootTrust !== null) {
   try {
     await writeFile(packRuntimePath(cfg.stateDir), formatMarker(bootMarker), { mode: 0o600 });
@@ -139,12 +262,6 @@ const pairing = new PairingStore(filePairingIo(cfg.stateDir));
 // session-scoped and collide across sessions.
 const activity = new ActivityLedger(cfg);
 await activity.load();
-
-// Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
-// inside record() so it can never break the user action it's auditing.
-const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")), {
-  content: cfg.auditContent,
-});
 
 // ── Update-availability monitor ───────────────────────────────────────────────
 // The running plugin version, captured NOW at module load — never re-read from disk later, or a
@@ -431,30 +548,7 @@ const packLead = (() => {
     // the operator has revoked.
     members: () => trustStore.current()?.peers ?? [],
   });
-  const client = new PeerClient({
-    self: data.self.memberId,
-    // Read at call time so a rotation is picked up without a restart (§8.3, §8.4).
-    secret: () => trustStore.current()?.pack?.secret ?? null,
-    // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
-    // (§10.1). The clamp lives in packTimeoutBudget; nothing here is allowed to widen it.
-    timeoutMs: packTimeoutBudget(cfg.pollMs),
-    // …and the patient one, which the poll fraction deliberately does not clamp (§10.4). A cold
-    // pinned-TLS handshake over a relay costs more than a whole poll budget, so the strict budget can
-    // decide "this poll is stale" but must never be what decides "this peer is gone", nor what a cold
-    // link's FIRST data request has to fit inside — see packHelloBudget and takeDataBudget for the
-    // measurements that produced this pair.
-    patientTimeoutMs: packHelloBudget(cfg.pollMs),
-    fetch: (url, init) => fetch(url, init),
-    // Pinned mutual TLS, per member, read through the store on every dial for the same reason the
-    // secret and the roster are: `pack remove`, a re-join and a rotation all change what this lead
-    // may pin, and a captured copy would keep trusting a certificate the operator revoked. A member
-    // we cannot build a pin for is dialled with no TLS material at all — which the peer's own
-    // listener then refuses at the handshake, i.e. `unreachable`, never an unpinned connection.
-    tls: (link) => {
-      const member = trustStore.current()?.peers.find((p) => p.memberId === link.memberId);
-      return member === undefined ? undefined : (dialTls(trustStore.current(), member) ?? undefined);
-    },
-  });
+  const client = packPeerClient(data);
   return new PackLead({
     registry: packRegistry,
     snapshot: (link) => client.snapshot(link),
@@ -499,6 +593,14 @@ const packLead = (() => {
       },
       push: (link, payload) => client.warrant(link, payload),
     },
+    // §18.10's fast path: a member told this lead, in as many words, that it follows somebody else.
+    // Best-effort and time-boxed (it works only while this lead is still in that member's anchor
+    // list), so it is a shortcut on top of the boot gate and never a replacement for it.
+    onLeadConflict: (memberId, proof) =>
+      void (async () => {
+        if (deposed !== null) return;
+        deposed = await applyDeposition(proof, `"${memberId}" says it follows another lead`);
+      })(),
   });
 })();
 
@@ -507,7 +609,10 @@ const packLead = (() => {
 // COLLIE_POLL_MS (relaxing to the idle cadence with the herd), so the pack inherits the exact
 // cadence and idle relaxation the herd link has. `onTick` rather than `onUpdate` so a local Herdr
 // outage cannot freeze a healthy peer's freshness.
-if (packLead) registry.get()?.engine.onTick(() => void packLead.sweep());
+// A DEPOSED collie stops polling (§18.12): its roster is void as a *lead's* roster, and dialling it
+// would be a second lead's traffic on a pack that has already moved on. It keeps the roster's
+// CONTENTS — the self-heal reads the new lead's certificate out of it — but it dials nobody.
+if (packLead) registry.get()?.engine.onTick(() => (deposed === null ? void packLead.sweep() : undefined));
 
 const server = startServer({
   cfg,
@@ -537,10 +642,22 @@ const server = startServer({
             transportPinned,
             version: packVersion,
             onMembershipChange: packStoreChanged,
+            // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
+            onLeadDialled: (at) => leadContact.record(at),
+            onLeadRefused: (at) => leadContact.recordSecretRefusal(at),
+            // §18.12's delivery path 1: the new lead tells this one, on first contact. The router has
+            // already verified the proof against THIS collie's own certificate and written the healed
+            // store; what is left is for the process to say so and to stop being a front door.
+            onDeposed: (state) => {
+              deposed ??= state;
+            },
             ...surface,
           }),
   // Peer only, and only when the pin could actually be built. See `transportPinned` above.
   tls: listenerTls ?? undefined,
+  // The one page a deposed collie serves, and the health check it must now fail (§18.12). `undefined`
+  // until something deposes this process, so an ordinary instance's dispatch is byte-identical.
+  deposed: (_req, url) => (deposed === null ? null : deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url)),
 });
 
 const shutdown = async () => {

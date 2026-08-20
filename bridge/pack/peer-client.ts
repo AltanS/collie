@@ -1,10 +1,11 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
-import { PACK_PREFIX } from "./router.ts";
+import { LEAD_CONFLICT, PACK_PREFIX } from "./router.ts";
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
-import type { WarrantPush } from "./warrant.ts";
+import type { Warrant } from "./trust-store.ts";
+import { parseWarrant, type WarrantPush } from "./warrant.ts";
 
 // The LEAD side of a pack link: the client that dials a peer's `/pack/v1/*` surface.
 //
@@ -256,6 +257,28 @@ export type PeerFailure =
       readonly reason: string;
       readonly code: string;
       readonly status: number;
+    }
+  /**
+   * **The far side follows a different lead** — §18.10's named `409`, with `code: "lead_conflict"`.
+   *
+   * Its own state, and §10.2's fourth, because the three it is NOT are each wrong in a different
+   * way: it is not `unreachable` (the member answered, and answered precisely), it is not
+   * `incompatible` (§7 reserves that for a protocol mismatch, and this build reads that member's
+   * protocol perfectly well), and it is not `refused` (that is a member declining an action, not one
+   * declining the caller's whole premise about who leads).
+   *
+   * `warrant` is the proof that deposed the caller, when the answering member sent one. It is
+   * verified by the reader against its OWN certificate before anything acts on it
+   * (`deposed.ts` — `isDepositionProof`), so nothing here trusts it; this is transport, and it hands
+   * the bytes over unchanged.
+   */
+  | {
+      readonly state: "conflicted";
+      readonly reason: string;
+      readonly leadMemberId: string;
+      /** The generation the answering member holds, or `null` when it reported none. */
+      readonly warrantGeneration: number | null;
+      readonly warrant: Warrant | null;
     };
 
 /**
@@ -290,6 +313,15 @@ export interface HelloResult {
   readonly member: string;
   /** The answering build's own version, or `null` when it did not report one — §7.1's pre-amendment. */
   readonly version: string | null;
+  /**
+   * The warrant generation that member holds, or `null` (§18.7).
+   *
+   * **Absent means "holds no warrant, or is a build that does not know about warrants" — never "up
+   * to date".** The boot gate (`boot-gate.ts`) reads it as evidence in exactly one direction: a
+   * member reporting a generation HIGHER than this machine's own has been told something by somebody
+   * else. Nothing reads a lower or absent one as agreement.
+   */
+  readonly warrantGeneration: number | null;
 }
 
 export interface PeerClientDeps {
@@ -421,7 +453,14 @@ export class PeerClient {
     // absent too: a malformed sibling on an otherwise well-formed body is one member reporting
     // nothing, not a broken link, and it must not turn a reachable peer unreachable.
     const version = typeof body?.version === "string" && body.version !== "" ? body.version : null;
-    return { ...outcome, value: { protocol, member, version } };
+    // The warrant generation (§18.7), read the same absent-means-closed way `version` is: anything
+    // that is not a safe integer is "reported nothing", which never refuses a link and never reads as
+    // agreement. The refresh timestamp is deliberately not read here — the lead's re-push decision
+    // rides the `snapshot` answer (`warrant.ts` → `parseWarrantReport`), and a second reader of the
+    // same pair would be a second place for "is this member behind?" to be answered.
+    const generation = body?.warrantGeneration;
+    const warrantGeneration = typeof generation === "number" && Number.isSafeInteger(generation) ? generation : null;
+    return { ...outcome, value: { protocol, member, version, warrantGeneration } };
   }
 
   /**
@@ -620,9 +659,25 @@ export class PeerClient {
       });
     }
     if (res.status === 409) {
+      // TWO answers share this status, and the body's `code` is what tells them apart (§18.10). The
+      // body is read ONCE and both readings come off that one record: a second `res.json()` would
+      // throw on a consumed stream, and re-reading is how two answers to one question drift apart.
+      const body = await read409(res);
+      const conflict = leadConflictOf(body);
+      if (conflict !== null) {
+        // Not a version skew and not a refusal: this member answered precisely, and what it said is
+        // that the caller's whole premise about who leads is out of date (§10.2's fourth state).
+        return this.fail({
+          state: "conflicted",
+          reason: `${route}: ${conflict.error}`,
+          leadMemberId: conflict.leadMemberId,
+          warrantGeneration: conflict.warrantGeneration,
+          warrant: conflict.warrant,
+        });
+      }
       // The peer refused *us* for skew (§7). It already named both sides; the body is the reason
       // string the operator sees verbatim in `pack status`, so it is read rather than paraphrased.
-      const mismatch = await readMismatch(res);
+      const mismatch = readMismatch(body);
       return this.fail({
         state: "incompatible",
         reason: `${route}: ${mismatch.reason}`,
@@ -739,16 +794,45 @@ async function readRefusal(res: Response): Promise<{ error: string; code: string
   }
 }
 
-/** Read a `409` body for §7's `expected`/`received`, tolerating a peer that sends neither. */
-async function readMismatch(res: Response): Promise<{ reason: string; expected: number; received: number | null }> {
+/**
+ * The one read of a `409` body. `null` for a body that will not parse, which both readers below
+ * treat as "said nothing" — the tolerant reading, because a member that answered 409 has told us the
+ * important half already and a parse failure must not upgrade a refusal into something else.
+ */
+async function read409(res: Response): Promise<JsonObject | null> {
   try {
     const raw: JsonValue = await res.json();
-    const body = asRecord(raw);
-    const error = typeof body?.error === "string" ? body.error : "pack protocol mismatch";
-    const expected = typeof body?.expected === "number" ? body.expected : PACK_PROTOCOL_VERSION;
-    const received = typeof body?.received === "number" ? body.received : null;
-    return { reason: error, expected, received };
+    return asRecord(raw);
   } catch {
-    return { reason: "pack protocol mismatch", expected: PACK_PROTOCOL_VERSION, received: null };
+    return null;
   }
+}
+
+/** The lead-conflict reading (§18.10), or `null` when this 409 is not one. */
+function leadConflictOf(body: JsonObject | null) {
+  if (body === null || body.code !== LEAD_CONFLICT) return null;
+  // The member id is REQUIRED: without it the answer names nothing, and a conflict with no named
+  // lead is indistinguishable from a 409 that happened to carry the code. That falls through to the
+  // skew reading, which is the closed one.
+  const leadMemberId = typeof body.leadMemberId === "string" && body.leadMemberId !== "" ? body.leadMemberId : null;
+  if (leadMemberId === null) return null;
+  const generation = body.warrantGeneration;
+  const error = typeof body.error === "string" ? body.error : `this member follows lead "${leadMemberId}"`;
+  return {
+    error,
+    leadMemberId,
+    warrantGeneration: typeof generation === "number" && Number.isSafeInteger(generation) ? generation : null,
+    // Optional, and absent means "no proof came with this answer" — which still deposes a stale lead
+    // (§18.11) but can no longer self-heal it (§18.12). Parsed, never trusted: the reader verifies it
+    // against its own certificate before a byte of it is acted on.
+    warrant: parseWarrant(body.warrant),
+  };
+}
+
+/** §7's `expected`/`received` reading, tolerating a peer that sends neither. */
+function readMismatch(body: JsonObject | null) {
+  const error = typeof body?.error === "string" ? body.error : "pack protocol mismatch";
+  const expected = typeof body?.expected === "number" ? body.expected : PACK_PROTOCOL_VERSION;
+  const received = typeof body?.received === "number" ? body.received : null;
+  return { reason: error, expected, received };
 }
