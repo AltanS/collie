@@ -212,7 +212,9 @@ async function render(
 /** One check, one line. The status leads, the identifier is the second word, the remedy closes it. */
 function line(f: Finding): string {
   const head = f.status === "ok" ? "✓" : `${f.status}:`;
-  const body = `  ${head.padEnd(9)}${f.check.padEnd(18)}${f.detail}`;
+  // 21 = longest check id ("beacon-hooks-claude", 19 chars) + 2, so every id gets
+  // at least one space before the detail. Grow this if a longer check id lands.
+  const body = `  ${head.padEnd(9)}${f.check.padEnd(21)}${f.detail}`;
   return f.remedy === null ? body : `${body} → ${f.remedy}`;
 }
 
