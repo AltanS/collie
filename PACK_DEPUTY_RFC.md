@@ -1021,7 +1021,32 @@ uploads and audit. It cannot impersonate another peer (pinning is pairwise).
    lead*; but the deputy can now *verify* a token, which is exactly the capability the feature grants
    and therefore exactly the capability an attacker inherits.
 4. **A second anchor in every peer's `ca`**, so the compromised deputy can complete a TLS handshake
-   with peers it previously could not reach at all. It still faces every route-level check.
+   with peers it previously could not reach at all.
+
+   > **Corrected 2026-08-20, during implementation.** The sentence that stood here — *"It still faces
+   > every route-level check"* — **was false as written, and the gap it hid was larger than anything
+   > else in this section.** A peer's admission gate resolved identity from a *boolean* ("the
+   > handshake was pin-enforcing"), because Bun exposes no accessor for the certificate a caller
+   > presented and a one-anchor list made the boolean sufficient. With a second anchor it stops being
+   > sufficient: an unsigned request from the deputy would have been resolved **as the lead**, so a
+   > compromised deputy would have reached what a compromised lead reaches — every terminal on every
+   > anchored peer, plus secret rotation — **without waiting for a takeover, without the operator's
+   > pairing credential, and without lead silence.** That would have defeated F5, F9 and the "no
+   > single credential is sufficient" rule at once.
+   >
+   > **It is closed, and it is closed in the shipped code rather than in this paragraph.** A
+   > two-anchored peer resolves its caller by **signature**: every lead→peer dial carries a
+   > domain-tagged attestation binding the method, the path, the timestamp and *the member being
+   > dialled*, identity is whichever anchored certificate verifies it, and an unattested request is
+   > refused. A single-anchor peer is unchanged byte for byte, and the requirement is additive because
+   > only a post-amendment lead can issue the warrant that creates a second anchor in the first place.
+   > The specification is `PACK_PROTOCOL.md` §8.1's and §8.6's 2026-08-20 amendments.
+   >
+   > **So what the second anchor now buys a compromised deputy is a completed TLS handshake and
+   > nothing behind it**: every route in the protocol refuses a caller admitted as the deputy, and the
+   > takeover and witness routes of RFC §7 will have to declare themselves as accepting one. The
+   > original sentence is true of the shipped design — but it was an assumption when it was written,
+   > and it took a mechanism to make it so.
 
 **What stops it, in order of strength:**
 

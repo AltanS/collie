@@ -44,8 +44,31 @@ export interface PackRequestFacts {
    * `false` on a lead (its front door terminates TLS, §8.6) and `false` on any mis-wiring — in which
    * case nothing at all is admitted, because the value is only ever set by the code that built the
    * listener, never by a header and never by configuration.
+   *
+   * **Amended 2026-08-20.** It is lossy the moment {@link PackRequestFacts.deputy} is present: a
+   * two-anchored listener names one of two members, so on such a peer this boolean says only "one of
+   * the two certificates I anchored", and identity comes from {@link PackRequestFacts.dial} instead.
+   * A single-anchor peer is untouched, byte for byte.
    */
   readonly transportPinned: boolean;
+  /**
+   * The **second anchor's** identity, when this listener was built with one (§18.5) — otherwise
+   * `null`, which is every pack that has never named a deputy and every lead and solo instance.
+   *
+   * Its presence is what switches this gate from "the transport says lead" to "the signature says
+   * who", so it is set by the same code that built the listener and read from nothing else. Non-null
+   * therefore means: **an unsigned request is refused here**, whoever it claims to be from.
+   */
+  readonly deputy: PinnedDeputy | null;
+  /**
+   * The member a verified **dial attestation** names (§8.6), or `null` for a request that carried
+   * none or one that did not verify.
+   *
+   * Verified upstream, in the router, against the public key of a certificate this collie already
+   * anchored — its lead's, or {@link PackRequestFacts.deputy}'s — so by the time it reaches here it is
+   * a fact, exactly like the two identity facts beside it, and this function stays pure.
+   */
+  readonly dial: { readonly memberId: string; readonly isDeputy: boolean } | null;
   /**
    * The member id proven by a verified request signature (§8.6), or `null` when the request carried
    * none or it did not verify.
@@ -64,20 +87,47 @@ export interface PackRequestFacts {
 /** Why a request was refused. Local detail for the peer's own audit log — never told to the caller. */
 export type RefusedFactor = "certificate" | "secret" | "token" | "not-a-pack-member";
 
+/**
+ * The deputy, as the peer that anchored it holds it: a member id and the certificate the warrant's
+ * fingerprint named. **Not a `TrustedMember`** — it is deliberately not in this collie's roster, and
+ * synthesising a roster entry for it would be inventing an enrollment that never happened.
+ */
+export interface PinnedDeputy {
+  readonly memberId: string;
+  readonly certPem: string;
+}
+
 export type PackVerdict =
-  /** Admitted. `member` is who called; `self` is this collie's own id, for the response headers. */
-  | { readonly ok: true; readonly member: TrustedMember; readonly self: string }
+  /** Admitted, by a member of this collie's own roster. `self` is this collie's id, for the headers. */
+  | { readonly ok: true; readonly caller: "member"; readonly member: TrustedMember; readonly self: string }
+  /**
+   * Admitted **as the deputy** — the second TLS anchor, proven by a dial attestation its certificate
+   * verifies. It is not a roster member and it is not this collie's lead.
+   *
+   * **Every route this build has refuses it** (`router.ts` → `DEPUTY_ROUTES`, empty today). It exists
+   * as a verdict rather than as a refusal so that the takeover and witness routes have a seam to
+   * declare themselves into, instead of re-deriving "is this the deputy?" from a warrant per route.
+   */
+  | { readonly ok: true; readonly caller: "deputy"; readonly deputy: PinnedDeputy; readonly self: string }
   | { readonly ok: false; readonly refusal: "unauthorized"; readonly factor: RefusedFactor }
   | { readonly ok: false; readonly refusal: "protocol_mismatch"; readonly received: number | null };
 
-/** Lift a request plus the two identity facts into what {@link admitPackRequest} decides on. */
+/** Lift a request plus the identity facts into what {@link admitPackRequest} decides on. */
 export function factsFrom(
   req: Request,
-  identity: { transportPinned: boolean; signedMember: string | null },
+  identity: {
+    transportPinned: boolean;
+    signedMember: string | null;
+    deputy?: PinnedDeputy | null;
+    dial?: { memberId: string; isDeputy: boolean } | null;
+  },
 ): PackRequestFacts {
   return {
     transportPinned: identity.transportPinned,
     signedMember: identity.signedMember,
+    // Absent ⇒ a single-anchor listener ⇒ exactly today's rule. The closed reading is the old one.
+    deputy: identity.deputy ?? null,
+    dial: identity.dial ?? null,
     authorization: req.headers.get("authorization"),
     protocol: req.headers.get(PROTOCOL_HEADER),
   };
@@ -119,7 +169,7 @@ export function admitPackRequest(data: TrustStoreData | null, facts: PackRequest
   // An `unenrolled` member is pinned but refused either way: that is what "dropped by a rotation"
   // means, and it must not read as an unknown machine to the operator's log.
   const pinned = resolveCaller(data, facts);
-  const identified = pinned !== undefined && pinned.status === "enrolled";
+  const identified = pinned !== undefined && (pinned.kind === "deputy" || pinned.member.status === "enrolled");
 
   // Factor 2 — the pack-wide bearer secret. Evaluated regardless of factor 1's outcome so the two
   // are not chained into a timing oracle for "is this certificate known?".
@@ -132,15 +182,45 @@ export function admitPackRequest(data: TrustStoreData | null, facts: PackRequest
   const version = parseProtocolHeader(facts.protocol);
   if (version !== PACK_PROTOCOL_VERSION) return { ok: false, refusal: "protocol_mismatch", received: version };
 
-  return { ok: true, member: pinned, self: data.self.memberId };
+  if (pinned.kind === "deputy") return { ok: true, caller: "deputy", deputy: pinned.deputy, self: data.self.memberId };
+  return { ok: true, caller: "member", member: pinned.member, self: data.self.memberId };
 }
 
-/** Who the two identity facts say is calling, if anyone. Never reads a header, never reads a body. */
-function resolveCaller(data: TrustStoreData, facts: PackRequestFacts): TrustedMember | undefined {
-  if (facts.signedMember !== null) {
-    return pinnedMembers(data).find((m) => m.memberId === facts.signedMember);
+/** Who is calling, as resolved from the identity facts alone. */
+type ResolvedCaller =
+  | { readonly kind: "member"; readonly member: TrustedMember }
+  | { readonly kind: "deputy"; readonly deputy: PinnedDeputy };
+
+/**
+ * Who the identity facts say is calling, if anyone. Never reads a header, never reads a body.
+ *
+ * Three rules, in the order of how specific the claim is:
+ *
+ *   1. **A verified §8.6 request signature names the member outright**, and it is checked first — a
+ *      member that signed said which member it is.
+ *   2. **A verified dial attestation names it too** (§8.6's 2026-08-20 addition), and on a
+ *      two-anchored peer it is the ONLY thing that can: the transport says "one of the two
+ *      certificates I anchored" and Bun will not say which. The answer therefore comes from *which
+ *      pinned certificate verified the signature*, which the router resolved before this ran.
+ *   3. **Otherwise the transport's boolean resolves to the pinned lead** — today's rule, and it
+ *      survives untouched for a single-anchor peer, which is every peer in every pack that has not
+ *      named a deputy. On a two-anchored one it is refused instead: a listener that cannot tell its
+ *      two callers apart must not guess, and guessing would be exactly the compromised-deputy reach
+ *      this closes.
+ */
+function resolveCaller(data: TrustStoreData, facts: PackRequestFacts): ResolvedCaller | undefined {
+  const asMember = (memberId: string): ResolvedCaller | undefined => {
+    const member = pinnedMembers(data).find((m) => m.memberId === memberId);
+    return member === undefined ? undefined : { kind: "member", member };
+  };
+  if (facts.signedMember !== null) return asMember(facts.signedMember);
+  if (!facts.transportPinned) return undefined;
+  if (facts.dial !== null) {
+    if (!facts.dial.isDeputy) return asMember(facts.dial.memberId);
+    return facts.deputy === null ? undefined : { kind: "deputy", deputy: facts.deputy };
   }
-  return facts.transportPinned ? (data.lead ?? undefined) : undefined;
+  if (facts.deputy !== null) return undefined;
+  return data.lead === null ? undefined : { kind: "member", member: data.lead };
 }
 
 /**

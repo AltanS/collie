@@ -138,6 +138,79 @@ export function verifyRequestSignature(certPem: string, signatureB64: string, pa
   return verifyCanonical(certPem, signatureB64, message);
 }
 
+// ── The dial attestation (§8.6, added 2026-08-20) ────────────────────────────
+//
+// **What it is for, stated first, because it is NOT the request signature above.** A peer whose
+// listener carries a second TLS anchor (§8.1's 2026-08-20 amendment) can no longer read "the
+// handshake was pin-enforcing" as "the caller is my lead" — the list names one of two, and Bun
+// exposes no accessor for which certificate was presented. So the caller SAYS which, with its key:
+// every lead→peer dial carries a signature, and a two-anchored peer resolves identity from **which
+// pinned certificate verifies it**, never from the transport boolean.
+//
+// ── WHY IT IS A SECOND OBJECT AND NOT `canonicalRequest` ─────────────────────
+// Two facts about this surface make the four-field request string unusable here, and both are
+// load-bearing rather than inconvenient:
+//
+//   1. **The body cannot be hashed.** A proxied write streams `req.body` straight through (§13, up to
+//      10 MB of multipart, never buffered on the lead — `bridge/pack/forward.ts`). Signing a digest
+//      would mean buffering every upload in the lead's memory *on the security path*, which is the
+//      exact trade §8.6's SIGNABLE_PATHS was drawn to avoid.
+//   2. **`canonicalRequest` names no RECEIVER**, and its own doc says a v2 that broadens who-pins-whom
+//      "MUST bind a receiver identity … or a signature minted for one collie would verify at another
+//      that happens to pin the same key". This IS that broadening: a two-anchored peer pins two
+//      members, and the lead dials the deputy exactly as it dials every other member — so the deputy
+//      legitimately holds lead-signed dials and could otherwise present them at a sibling peer.
+//
+// So this string **binds the receiver and omits the body**, and is kept structurally disjoint from
+// both the request string and the warrant by a fixed domain tag (the warrant's rule, RFC §4.3).
+//
+// ── WHAT IT DOES NOT CLAIM ───────────────────────────────────────────────────
+// **Identity, not integrity.** Body integrity on this hop is TLS's, and TLS is not weakened by any of
+// this: the connection is pinned mutual TLS to one of two certificates the operator chose. The
+// attacker this closes is a compromised DEPUTY being read as the lead, and a compromised deputy
+// cannot produce the lead's signature over any string at all.
+//
+// **Freshness is the skew window, not the replay floor.** `TrustedMember.signedAt` is advanced only by
+// signed MEMBERSHIP calls (§8.6), and it must stay that way: the lead makes several dials
+// concurrently within one millisecond, so a monotonic floor here would refuse all but one of every
+// sweep. What bounds a captured dial instead is the receiver binding — the only party positioned to
+// capture one is the receiver itself, and it is the only collie it verifies at.
+
+/** Base64 ECDSA-P256-SHA256 over {@link canonicalDial}. Rides beside `X-Pack-Timestamp`. */
+export const DIAL_HEADER = "x-pack-dial";
+
+/** The fixed domain tag, and the first field of every canonical dial string. */
+export const DIAL_DOMAIN = "collie-pack-dial-v1";
+
+export interface DialParts {
+  readonly method: string;
+  readonly path: string;
+  readonly timestamp: number;
+  /** The member id this dial is aimed at. The field that makes a captured dial unusable elsewhere. */
+  readonly to: string;
+}
+
+/**
+ * The string a dial attestation signs, exactly:
+ *
+ * ```
+ * collie-pack-dial-v1\n<METHOD>\n<path>\n<timestamp>\n<to>
+ * ```
+ */
+export function canonicalDial(parts: DialParts): string {
+  return [DIAL_DOMAIN, parts.method.toUpperCase(), parts.path, String(parts.timestamp), parts.to].join("\n");
+}
+
+/** Sign one dial with this collie's own identity key. */
+export function signDial(keyPem: string, parts: DialParts): string {
+  return signCanonical(keyPem, canonicalDial(parts));
+}
+
+/** Did the member whose certificate this is attest this dial, at this receiver? */
+export function verifyDial(certPem: string, signatureB64: string, parts: DialParts): boolean {
+  return verifyCanonical(certPem, signatureB64, canonicalDial(parts));
+}
+
 /** Parse `X-Pack-Timestamp`. A non-integer, negative or absent value is `null`, which is a refusal. */
 export function parseTimestamp(raw: string | null | undefined): number | null {
   if (raw === null || raw === undefined) return null;

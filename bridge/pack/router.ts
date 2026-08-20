@@ -33,10 +33,13 @@ import { randomToken, type RandomSource } from "./identity.ts";
 import {
   parseTimestamp,
   timestampVerdict,
+  verifyDial,
   verifyRequestSignature,
+  DIAL_HEADER,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
 } from "./signing.ts";
+import type { PinnedDeputy } from "./admission.ts";
 import type { TrustedMember, TrustStore, TrustStoreData } from "./trust-store.ts";
 import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
 import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
@@ -143,6 +146,21 @@ const SIGNABLE_PATHS: ReadonlySet<string> = new Set([
 const MEMBERSHIP_PATHS: ReadonlySet<string> = new Set([PACK_LEAVE_PATH, PACK_LEAD_PATH, PACK_WARRANT_PATH]);
 
 /**
+ * The routes that accept a caller admitted **as the deputy** rather than as a roster member.
+ *
+ * **Empty, and that is the whole of the deputy's reach on this build: zero.** A peer anchors its
+ * deputy's certificate so that a takeover can be *asked for* one day (§18.5); until the route that
+ * asks exists, an admitted deputy is refused on every route this build has — the snapshot, the
+ * proxied pane family, the membership routes, `hello`, all of them. A second anchor therefore buys
+ * a compromised deputy a completed TLS handshake and nothing behind it.
+ *
+ * It is a declaration rather than an `if` so that the takeover and witness routes have somewhere to
+ * opt in, instead of each re-deriving "is this the deputy?" from a warrant — which is how one route
+ * ends up deriving it differently from the next.
+ */
+const DEPUTY_ROUTES: ReadonlySet<string> = new Set<string>();
+
+/**
  * This collie's own snapshot body, for the one merged route (§9.2). `undefined` ⇒ the `?session=`
  * named does not exist here, which is the peer's own 404 and not the lead's.
  *
@@ -183,6 +201,17 @@ export interface PackRouterDeps {
    * pinning. A peer whose pin could not be built passes `false` and is down rather than single-factor.
    */
   readonly transportPinned?: boolean;
+  /**
+   * The **second TLS anchor's** identity, when this handler is mounted on a listener that was built
+   * with one (`bridge/pack/transport.ts` → `deputyAnchorOf`). Absent on every single-anchor peer, on
+   * every lead, and on solo.
+   *
+   * Not a configuration key and not readable from a request, for `transportPinned`'s reason: it is
+   * supplied by the same code that constructed the TLS options, so "this listener anchors two
+   * members" cannot be claimed by anything that did not do the anchoring. **Its presence makes a dial
+   * attestation mandatory** — see §8.1's 2026-08-20 amendment.
+   */
+  readonly deputyAnchor?: PinnedDeputy;
   /**
    * Called after a membership change this handler wrote — an enrollment, a demotion, an adopted lead.
    *
@@ -414,6 +443,48 @@ function warrantRefusalText(reason: Exclude<WarrantRefusal, "bad-signature">): s
   return "the certificate that rode with this warrant is not the one its fingerprint names";
 }
 
+/**
+ * Resolve a **dial attestation** to the member whose anchored certificate verified it, or `null`.
+ *
+ * The candidates are exactly the certificates this listener anchored — the pinned lead, and the
+ * deputy a verified warrant named (§18.5) — because those are exactly the two that could have
+ * completed the handshake. Nothing else is tried: this is not a roster search, and the answer is only
+ * ever "which of the two", which is the one question the transport cannot answer for itself.
+ *
+ * **Freshness is the skew window and the receiver binding, not the replay floor** — see `signing.ts`'s
+ * header for why a monotonic floor cannot go here (the lead dials several members concurrently within
+ * one millisecond) and why it does not need to (the only party positioned to capture a dial is its
+ * receiver, and the receiver is the only collie it verifies at).
+ *
+ * Every failure is the same `null`: a missing header, a missing or malformed timestamp, a skewed
+ * clock and a signature that does not verify are indistinguishable to the caller, which is §8.1's
+ * uniform-refusal rule holding one layer down.
+ */
+function resolveDial(
+  data: TrustStoreData | null,
+  req: Request,
+  url: URL,
+  deputy: PinnedDeputy | undefined,
+  now: number,
+): { memberId: string; isDeputy: boolean } | null {
+  const signature = req.headers.get(DIAL_HEADER);
+  if (signature === null || data === null) return null;
+  const timestamp = parseTimestamp(req.headers.get(TIMESTAMP_HEADER));
+  if (timestamp === null) return null;
+  // `signedAt: 0` — the window only. The floor belongs to signed MEMBERSHIP calls and stays there.
+  if (timestampVerdict(timestamp, now, 0) !== "ok") return null;
+
+  const parts = { method: req.method, path: url.pathname, timestamp, to: data.self.memberId };
+  const lead = data.lead;
+  if (lead !== null && lead.status === "enrolled" && verifyDial(lead.certPem, signature, parts)) {
+    return { memberId: lead.memberId, isDeputy: false };
+  }
+  if (deputy !== undefined && verifyDial(deputy.certPem, signature, parts)) {
+    return { memberId: deputy.memberId, isDeputy: true };
+  }
+  return null;
+}
+
 export function createPackRouter(deps: PackRouterDeps): PackHandler {
   const transportPinned = deps.transportPinned ?? false;
   const membershipChanged = (): void => deps.onMembershipChange?.();
@@ -451,7 +522,17 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       if (signed.refusal !== undefined) return refuse(pathname, signed.refusal);
     }
 
-    const verdict = admitPackRequest(data, factsFrom(req, { transportPinned, signedMember: signed.member }));
+    // The dial attestation (§8.6, §8.1's 2026-08-20 amendment). Read on EVERY path — unlike the §8.6
+    // request signature, which is confined to a closed set because it hashes a body. This one never
+    // touches the body, so a streamed upload stays a stream and the identity question is still
+    // answered. On a single-anchor peer the answer changes nothing; on a two-anchored one it is the
+    // only thing that can answer it.
+    const dial = resolveDial(data, req, url, deps.deputyAnchor, now());
+
+    const verdict = admitPackRequest(
+      data,
+      factsFrom(req, { transportPinned, signedMember: signed.member, deputy: deps.deputyAnchor, dial }),
+    );
     if (!verdict.ok) {
       if (verdict.refusal === "protocol_mismatch") return protocolMismatchResponse(verdict.received);
       // §8.4's rotation, seen from the side that was dropped. A `secret` factor means identity was
@@ -461,6 +542,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       if (verdict.factor === "secret" && data?.lead !== null) deps.onLeadRefused?.(now());
       return refuse(pathname, verdict.factor);
     }
+
+    // ZERO REACH FOR THE DEPUTY, in one place (see {@link DEPUTY_ROUTES}). A caller admitted as the
+    // second anchor is refused on every route this build has, and it is refused HERE — before the
+    // receipt below, before the conflict answer, before dispatch — so no route can forget to ask.
+    if (verdict.caller === "deputy") return deputyAnswer(pathname, verdict.self);
 
     // Gap A (RFC §10.1): every landed call from the lead is a receipt. Stamped here, once, after both
     // factors and before any route runs, so a proxied pane read counts exactly as a poll does.
@@ -606,6 +692,21 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       headers: packResponseHeaders(verdict.self),
     });
   };
+
+  /**
+   * What a caller admitted **as the deputy** gets. Today, on every route: the uniform 401.
+   *
+   * Audited as a refused factor, like `secret`'s role check — this is a machine the operator
+   * deliberately anchored, exceeding what an anchor grants. That is not a stranger, and the peer's own
+   * log should be able to tell the difference even though the wire deliberately cannot.
+   */
+  function deputyAnswer(pathname: string, self: string): Response {
+    if (!DEPUTY_ROUTES.has(pathname)) return refuse(pathname, "not-a-pack-member");
+    // A route named itself in DEPUTY_ROUTES but this build dispatches nothing for it. That is a
+    // wiring bug on this side, not a fault of the caller, so it is a 400 on an admitted link and not
+    // a silent success — the set and the dispatch must be extended together or not at all.
+    return badRequest(self, "this route accepts the deputy but is not implemented on this build");
+  }
 
   /**
    * §14.3's refusal: **403, and free to say why**. The caller passed both factors and §8.6, so

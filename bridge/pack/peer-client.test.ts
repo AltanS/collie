@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import type { JsonValue } from "../json.ts";
 
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
-import { leadStore, member, PACK, T0 } from "./fixtures.ts";
+import { leadStore, material, member, PACK, T0 } from "./fixtures.ts";
+import { signDial, verifyDial, DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import { mintWarrant } from "./warrant.ts";
 import {
   COLD_LINK,
@@ -21,7 +22,9 @@ import {
   takeDataBudget,
   type PackFetch,
   type PackLink,
+  type PeerClientDeps,
 } from "./peer-client.ts";
+import type { PackRequestInit } from "./transport.ts";
 
 // The lead's client, tested against a FAKE fetch rather than a socket (CLAUDE.md: anything needing
 // `Bun.serve`/`Bun.connect` is out of `bun test`'s reach, so the transport is a parameter).
@@ -54,7 +57,14 @@ function replying<TBody>(
 
 function client(
   fetch: PackFetch,
-  over: { timeoutMs?: number; patientTimeoutMs?: number; secret?: string | null; device?: string | null } = {},
+  over: {
+    timeoutMs?: number;
+    patientTimeoutMs?: number;
+    secret?: string | null;
+    device?: string | null;
+    sign?: PeerClientDeps["sign"];
+    dialSign?: PeerClientDeps["dialSign"];
+  } = {},
 ) {
   return new PeerClient({
     self: "desk",
@@ -64,6 +74,8 @@ function client(
     fetch,
     now: () => 1_000,
     device: over.device === undefined ? undefined : () => over.device ?? null,
+    sign: over.sign,
+    dialSign: over.dialSign,
   });
 }
 
@@ -802,5 +814,71 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
       const o = await client(fetch).hello(laptop);
       expect(o.ok && o.value.warrantGeneration).toBeNull();
     }
+  });
+});
+
+describe("PeerClient — every dial is attested (§8.6)", () => {
+  const key = material("desk").keyPem;
+  const withDial = (over: { sign?: PeerClientDeps["sign"] } = {}) => ({
+    dialSign: (parts: DialParts) => signDial(key, parts),
+    ...over,
+  });
+
+  test("the header rides EVERY route, not a closed set — and names the member being dialled", async () => {
+    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    const c = client(fetch, withDial());
+    await c.hello(laptop);
+    await c.snapshot(laptop);
+    await c.proxy(laptop, "pane/w1:p1");
+    expect(calls).toHaveLength(3);
+    for (const sent of calls) {
+      const headers = new Headers(sent.init.headers);
+      const signature = headers.get(DIAL_HEADER);
+      const timestamp = Number(headers.get(TIMESTAMP_HEADER));
+      expect(signature).not.toBeNull();
+      // It verifies against the LEAD's certificate over this exact method, path and receiver — which
+      // is what a two-anchored peer checks, and what a captured dial cannot be moved away from.
+      const path = new URL(sent.url).pathname;
+      expect(
+        verifyDial(material("desk").certPem, signature!, { method: sent.init.method ?? "GET", path, timestamp, to: "laptop" }),
+      ).toBe(true);
+      // …and NOT for another receiver, which is the field the request signature does not have.
+      expect(
+        verifyDial(material("desk").certPem, signature!, { method: sent.init.method ?? "GET", path, timestamp, to: "nas" }),
+      ).toBe(false);
+    }
+  });
+
+  test("it never touches the body — a streamed upload stays a stream", async () => {
+    // The whole reason this is not `canonicalRequest`: hashing would mean buffering every proxied
+    // upload in the lead's memory, on the security path.
+    const { fetch, calls } = replying({ ok: true });
+    const body = new ReadableStream<Uint8Array>({ start: (ctrl) => ctrl.close() });
+    const init: PackRequestInit = { method: "POST", body };
+    await client(fetch, withDial()).proxy(laptop, "pane/w1:p1/upload", undefined, init);
+    expect(calls[0]!.init.body).toBe(body);
+    expect(new Headers(calls[0]!.init.headers).get(DIAL_HEADER)).not.toBeNull();
+  });
+
+  test("both signatures share ONE timestamp — one request makes one freshness claim", async () => {
+    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    await client(fetch, withDial({ sign: () => "request-signature" })).hello(laptop);
+    const headers = new Headers(calls[0]!.init.headers);
+    const timestamp = Number(headers.get(TIMESTAMP_HEADER));
+    expect(headers.get(SIGNATURE_HEADER)).toBe("request-signature");
+    expect(
+      verifyDial(material("desk").certPem, headers.get(DIAL_HEADER)!, {
+        method: "GET",
+        path: "/pack/v1/hello",
+        timestamp,
+        to: "laptop",
+      }),
+    ).toBe(true);
+  });
+
+  test("a client with no key sends no header at all — absent, never empty", async () => {
+    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    await client(fetch).hello(laptop);
+    expect(new Headers(calls[0]!.init.headers).get(DIAL_HEADER)).toBeNull();
   });
 });

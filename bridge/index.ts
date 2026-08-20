@@ -23,7 +23,7 @@ import { runBootGate } from "./pack/boot-gate.ts";
 import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
 import { deposedAnswer, deposedStateFrom, outcomeNow, selfHeal, type DeposedState } from "./pack/deposed.ts";
 import { LeadContact } from "./pack/lead-contact.ts";
-import { dialTls, peerListenerTls } from "./pack/transport.ts";
+import { deputyAnchorOf, dialTls, peerListenerTls } from "./pack/transport.ts";
 import { commitPackChange } from "./pack/enrollment.ts";
 import { PackLead } from "./pack/lead.ts";
 import { leadLabel } from "./pack/merge.ts";
@@ -32,6 +32,7 @@ import { packHelloBudget, packTimeoutBudget, packTimeoutClampWarning, PeerClient
 import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
 import { formatMarker, markerFor, packRuntimePath, rosterDrift } from "./pack/staleness.ts";
+import { signDial } from "./pack/signing.ts";
 import { enrollmentOf, TrustStore, type TrustStoreData, type Warrant } from "./pack/trust-store.ts";
 import { currentWarrant, refreshWarrant } from "./pack/warrant.ts";
 import { Push } from "./push.ts";
@@ -124,6 +125,11 @@ function packPeerClient(data: TrustStoreData): PeerClient {
     // measurements that produced this pair. It is also the boot gate's whole budget (§18.11).
     patientTimeoutMs: packHelloBudget(cfg.pollMs),
     fetch: (url, init) => fetch(url, init),
+    // EVERY dial is attested with this collie's own key (§8.6's dial attestation). A peer that has
+    // anchored a deputy can no longer read "the handshake was pin-enforcing" as "this is my lead" —
+    // the list names one of two — so the caller says which, and it says it on every route rather than
+    // on a closed set, because this signature covers no body and pulls no upload into memory.
+    dialSign: (parts) => signDial(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
     // Pinned mutual TLS, per member, read through the store on every dial for the same reason the
     // secret and the roster are: `pack remove`, a re-join and a rotation all change what this lead
     // may pin, and a captured copy would keep trusting a certificate the operator revoked. A member
@@ -499,8 +505,25 @@ const peerNotifier =
 // MIS-WIRING IS FAIL-CLOSED, NOT DEGRADED: a peer whose store cannot produce an anchor gets
 // `transportPinned === false`, and admission then refuses every request rather than running on the
 // pack secret alone.
-const listenerTls = peerListenerTls(pack.mode, trustStore.current());
+//
+// The second anchor is read HERE, off one clock, and handed to both the listener and the admission
+// gate — a listener built with two anchors while the gate believed there was one would be exactly
+// the mis-resolution §8.1's amendment exists to close.
+const listenerBuiltAt = Date.now();
+const listenerTls = peerListenerTls(pack.mode, trustStore.current(), listenerBuiltAt);
+const deputyAnchorPem = deputyAnchorOf(pack.mode, trustStore.current(), listenerBuiltAt);
+const deputyAnchorId = currentWarrant(trustStore.current())?.warrant.deputyMemberId ?? null;
+const deputyAnchor =
+  deputyAnchorPem === null || deputyAnchorId === null
+    ? undefined
+    : { memberId: deputyAnchorId, certPem: deputyAnchorPem };
 const transportPinned = listenerTls !== null;
+if (deputyAnchor !== undefined) {
+  console.log(
+    `[pack] this peer anchors its deputy "${deputyAnchor.memberId}" as a second TLS anchor — every ` +
+      "caller must now attest its dials, and a caller that is not this peer's lead is refused on every route.",
+  );
+}
 if (pack.mode === "peer" && !transportPinned) {
   console.warn(
     "[pack] this peer could not build its pinned listener (no enrolled lead certificate in the trust " +
@@ -640,6 +663,9 @@ const server = startServer({
             store: trustStore,
             audit,
             transportPinned,
+            // Present only on a two-anchored peer. Its presence is what makes a dial attestation
+            // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).
+            deputyAnchor,
             version: packVersion,
             onMembershipChange: packStoreChanged,
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.

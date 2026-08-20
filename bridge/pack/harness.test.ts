@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,11 +23,27 @@ import { PackOpsStore } from "./ops-store.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
 import { mintIdentity, randomToken } from "./identity.ts";
-import { PACK_HELLO_PATH, PACK_LEAVE_PATH } from "./router.ts";
-import { bodyDigest, canonicalRequest, signRequest, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
+import { PACK_HELLO_PATH, PACK_LEAVE_PATH, PACK_PREFIX, PACK_SNAPSHOT_PATH } from "./router.ts";
+import {
+  bodyDigest,
+  canonicalRequest,
+  signCanonical,
+  signDial,
+  signRequest,
+  DIAL_HEADER,
+  SIGNATURE_HEADER,
+  TIMESTAMP_HEADER,
+} from "./signing.ts";
+import { canonicalWarrant } from "./warrant.ts";
 import { PeerClient, type PackLink } from "./peer-client.ts";
 import { dialTls, peerListenerTls, type PackRequestInit, type PackTlsOptions } from "./transport.ts";
-import { parseTrustStore, TrustStore, TRUST_STORE_FILENAME, type TrustStoreData } from "./trust-store.ts";
+import {
+  parseTrustStore,
+  serializeTrustStore,
+  TrustStore,
+  TRUST_STORE_FILENAME,
+  type TrustStoreData,
+} from "./trust-store.ts";
 import { collieVersionBare } from "../version.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -841,6 +857,117 @@ describe("signed membership requests", () => {
     // symmetry, and this line would not.
     expect(canonicalRequest("post", PACK_LEAVE_PATH, bodyDigest("{}"), 17)).toBe(
       `POST\n${PACK_LEAVE_PATH}\n${bodyDigest("{}")}\n17`,
+    );
+  });
+});
+
+// ── §8.1: a two-anchored peer, end to end ────────────────────────────────────
+
+describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-20)", () => {
+  // The closure for the reach a second TLS anchor would otherwise buy, exercised over a REAL pinned
+  // handshake against a REAL child bridge: the anchor is written to the peer's disk, the peer is
+  // restarted (the only thing that re-pins a `ca` list), and the same three dials are made that a
+  // healthy lead, an old build and a compromised deputy would each make.
+  const deputy = mintIdentity({ commonName: "collie-deputy", sans: ["127.0.0.1"] });
+  let restored = false;
+
+  /** Write a warrant `desk` really signed, naming `deputy`, into the PEER's store. */
+  function anchorDeputy(): void {
+    const leadData = lead.store()!;
+    const peerData = peer.store()!;
+    const unsigned = {
+      packId: peerData.pack!.packId,
+      generation: 1,
+      deputyMemberId: "deputy",
+      deputyFingerprint: deputy.fingerprint,
+      leadMemberId: leadData.self.memberId,
+      issuedAt: Date.now(),
+      refreshedAt: Date.now(),
+    };
+    const signature = signCanonical(leadData.self.keyPem, canonicalWarrant({ ...unsigned, signature: "" }));
+    const next: TrustStoreData = {
+      ...peerData,
+      warrant: { warrant: { ...unsigned, signature }, deputyCertPem: deputy.certPem },
+    };
+    writeFileSync(join(peer.stateDir, TRUST_STORE_FILENAME), serializeTrustStore(next), { mode: 0o600 });
+  }
+
+  /** Dial the peer presenting `identity`'s certificate, optionally attesting the dial with its key. */
+  function dialAs(identity: { certPem: string; keyPem: string }, attest: boolean, path = PACK_HELLO_PATH) {
+    const from = lead.store()!;
+    const to = peer.store()!;
+    const timestamp = Date.now();
+    const sent = new Headers({
+      authorization: `Bearer ${from.pack!.secret}`,
+      "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
+      "x-pack-member": from.self.memberId,
+    });
+    // The unattested case is provably the SAME request minus two headers — which is exactly the
+    // difference the gate is supposed to turn on.
+    if (attest) {
+      sent.set(TIMESTAMP_HEADER, String(timestamp));
+      sent.set(DIAL_HEADER, signDial(identity.keyPem, { method: "GET", path, timestamp, to: to.self.memberId }));
+    }
+    return packFetch(`https://127.0.0.1:${peer.port}${path}`, {
+      headers: sent,
+      tls: {
+        cert: identity.certPem,
+        key: identity.keyPem,
+        ca: [to.self.certPem],
+        checkServerIdentity: () => undefined,
+      },
+    });
+  }
+
+  beforeAll(async () => {
+    anchorDeputy();
+    // The anchor exists at bind time or not at all — `server.reload({tls})` does not swap a `ca`.
+    await peer.restart();
+  });
+
+  afterAll(async () => {
+    if (restored) return;
+    restored = true;
+    const peerData = peer.store()!;
+    const { warrant: _dropped, ...withoutWarrant } = peerData;
+    writeFileSync(join(peer.stateDir, TRUST_STORE_FILENAME), serializeTrustStore(withoutWarrant), { mode: 0o600 });
+    await peer.restart();
+  });
+
+  test("the listener really carries TWO anchors now, and the deputy's handshake completes", async () => {
+    const tls = peerListenerTls("peer", peer.store());
+    expect(tls!.ca).toEqual([lead.store()!.self.certPem, deputy.certPem]);
+    // The handshake is what the anchor buys. It answers — with a refusal, which is the next test.
+    const res = await dialAs(deputy, true);
+    expect(res.status).toBe(401);
+  });
+
+  test("the LEAD's own dial is admitted, because the shipped client attests every one", async () => {
+    const res = await dialAs(lead.store()!.self, true);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ protocol: PACK_PROTOCOL_VERSION, member: peer.store()!.self.memberId });
+  });
+
+  test("an UNATTESTED dial is refused, even from the lead's own certificate", async () => {
+    // This is the byte that closes the finding: the transport boolean no longer resolves to the lead,
+    // so a caller that will not say who it is gets the uniform 401 — and so would a deputy.
+    const res = await dialAs(lead.store()!.self, false);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  test("the DEPUTY reaches nothing: every route this build serves answers 401", async () => {
+    for (const path of [PACK_HELLO_PATH, PACK_SNAPSHOT_PATH, `${PACK_PREFIX}pane/w1:p1`]) {
+      const res = await dialAs(deputy, true, path);
+      expect(res.status).toBe(401);
+    }
+  });
+
+  test("and the merged snapshot still shows the peer — the real lead was never locked out", async () => {
+    await waitFor(
+      async () => ((await snapshotOf(lead.origin())).servers ?? []).some((s) => s.id === peer.store()!.self.memberId && s.reachable),
+      15_000,
+      "the lead lost its own peer after the second anchor went up",
     );
   });
 });
