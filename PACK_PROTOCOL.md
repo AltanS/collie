@@ -41,6 +41,28 @@ are dead. The vocabulary decision and the rename rules for operator-visible surf
                     └── pinned mTLS + pack secret ──▶ peer B  /pack/v1/*
 ```
 
+The same shape with the operator's own path drawn in, because it is the one people get wrong — code
+never rides the pack link:
+
+```mermaid
+graph TD
+  phone["phone (PWA)"] -->|"HTTPS /api/*"| lead
+  lead["lead collie (managed front door)"] -->|"/pack/v1/* : pinned mTLS + pack secret"| peerA["peer A collie (no front door)"]
+  lead -->|"/pack/v1/*"| peerB["peer B collie (no front door)"]
+  lead --- leadH["Herdr + agents, lead-local"]
+  peerA --- peerAH["Herdr + agents, A-local"]
+  peerB --- peerBH["Herdr + agents, B-local"]
+  op["operator"] -.->|"ssh"| lead
+  op -.->|"ssh"| peerA
+  op -.->|"ssh: code rides here, never the pack link"| peerB
+```
+
+The lead is the only dialler: a peer never calls the lead except at `join`, `leave` and `promote`
+(§8.6), and publishes nothing for the phone to reach ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
+The dotted edges are `collie pack add` / `collie pack update`, which push a git bundle over the
+operator's own ssh ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)); the pack link carries
+runtime data and never software.
+
 Three rules generate most of this document:
 
 1. **The lead consumes a peer's *Collie* HTTP API.** The lead **never dials a peer's Herdr socket**,
@@ -902,6 +924,39 @@ and `pack status` prints the same line, naming `COLLIE_POLL_MS` as the other hal
 raise. `COLLIE_PACK_TIMEOUT_MS=3000` at the default poll buys exactly nothing, and used to say so
 nowhere.
 
+### One sweep, end to end
+
+The whole of §10 in one tick. The two budgets are the thing to read off it: the data budget decides
+*this poll*, the patient probe decides *the verdict*.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant L as lead
+  participant A as peer A
+  participant B as peer B
+  Note over L: poll tick, the lead's own adaptive interval, no second timer
+  par one budget each, concurrent
+    L->>A: GET /pack/v1/snapshot
+    A-->>L: 200 snapshot
+    Note over L: reachable, lastSeenAt stamped on the lead's clock
+  and
+    L->>B: GET /pack/v1/snapshot
+    B--xL: data budget missed
+    Note over L: stale this poll, last-good body kept, never blank
+  end
+  L->>B: GET /pack/v1/hello, off-tick, patient budget, never awaited
+  alt hello answers
+    B-->>L: 200 hello
+    Note over L: reachable with a slow-link reason, connection now warm
+  else hello times out
+    Note over L: unreachable, retried every poll forever
+  end
+```
+
+A protocol mismatch is the one answer that leaves this loop: it is `incompatible`, not `unreachable`,
+and it backs off instead of being retried on the poll (§7, §10.2).
+
 ---
 
 ## 11. The solo zero-tax contract
@@ -1284,6 +1339,50 @@ The change is **additive**: one optional trust-store field, no new wire object.
 > A collie is launched identically on all three tiers and cannot tell which one it is under;
 > supervision is the CLI's knowledge. A demotion is not a licence to end a process that may not come
 > back, so the honest v1 answer is the operator's restart, named in three places.
+
+### When the lead dies
+
+```mermaid
+stateDiagram-v2
+  [*] --> leading
+  leading --> lead_down: the lead process or its machine dies
+  note right of lead_down
+    phone: amber at 4s, red at 15s
+    peers: unaffected and unaware
+    agents on peers keep running
+  end note
+  lead_down --> recovering: the operator restarts the lead
+  recovering --> leading: boot reads pack-trust.json, first sweep repopulates
+  lead_down --> promoted: the lead is gone for good
+  promoted --> [*]
+  note right of promoted
+    collie promote --force
+    every remaining peer must re-join
+    the old machine still believes it leads
+  end note
+```
+
+**Nobody elects anything, and no peer notices.** There is no peer-side timer in the protocol — a peer
+answers when dialled and is silent otherwise — so a dead lead is, from a peer's side, a lead that has
+not called lately. Agents on peers keep running; only the operator's window onto them closes. The
+phone is the only party that reacts, on its own tier-1 connection model: amber at 4 s, red at 15 s.
+
+**The lead role is the trust file.** `pack-trust.json` is read once per process, at boot
+(§14.1), and the same machine resumes leading simply because that file still names it so. Nothing is
+negotiated on the way back: peers re-admit the returning lead on the pinned certificate, the pack
+secret and §8.6's signature, all of which are on disk on both sides. What a restart loses is only
+in-memory — last-good snapshots and the health registry (§7.1) — so a restart is indistinguishable
+from a network blip except for one poll cycle in which peers render from an empty cache rather than a
+stale one.
+
+**Keeping the lead alive is the operator's job, by design.** Collie never restarts itself, for the
+reason §14.7's closing note gives: a collie cannot tell which supervision tier it is under, so exiting
+to be revived is a bet it may lose. Put the lead under `systemd --user` (or launchd) and let that
+supervise it.
+
+If the machine is not coming back, the recovery is §14.4's `collie promote --force` — the path that
+skips the consent the old lead can no longer give, and pays for it by stranding every other peer. Read
+that section before running it; its costs are not summarised here.
 
 ---
 
