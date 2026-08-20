@@ -1754,11 +1754,11 @@ updated members in order to add a feature that degrades gracefully on its own.
 
 ### 18.8 Not specified here
 
-The takeover exchange, the standby door a deputy binds while armed, and the `collie pack deputy` verb
-itself. Each is its own amendment; none of them changes anything above.
+The takeover exchange and the standby door a deputy binds while armed. Each is its own amendment;
+neither changes anything above.
 
 *(The deposed state, the self-heal and the boot gate were on this list until 2026-08-20 and are now
-§18.11 and §18.12 below.)*
+§18.11 and §18.12 below. The `collie pack deputy` verb was on it until 2026-08-20 and is now §18.13.)*
 
 ### 18.9 A peer knows when its lead last called *(added 2026-08-20)*
 
@@ -1788,6 +1788,25 @@ healthy link as quiet.
 
 **Nothing about it crosses the wire.** It is a fact a peer holds about calls it received; no field,
 no header, no route.
+
+**How a different process reads it** *(amended 2026-08-20)*. `collie pack status` is not the bridge —
+it is a one-shot verb in its own process, and a number held only in the bridge's memory is a number
+it cannot print. So the running process **checkpoints** the two receipts, the generation its listener
+actually anchored, and its deposed state (§18.12) into the **runtime marker**
+(`pack-runtime.json`, `bridge/pack/staleness.ts`), on the session-refresh tick it already runs and
+never on a new timer.
+
+This does not reopen "in memory, never persisted", and the distinction is structural rather than a
+promise. Every clause of the refusal above is closed by where it lands: **the marker is not the trust
+store**, it is **rewritten whole at every boot with a fresh `bootedAt`**, and silence is computed
+from the **later** of the receipt and that boot stamp — so a checkpoint left by a previous process is
+dominated by the new boot stamp and can never make a link look quieter than it is. `checkpointedAt`
+says how old the checkpoint itself is, which is how a reader distinguishes "the lead is quiet" from
+"no bridge is running here". There is still exactly one of each number: the process holds it, and
+every reader reads its one copy.
+
+**Still nothing crosses the wire.** The marker is a local diagnostic file, mode 0600 beside the trust
+store, and no route reads it or reports it.
 
 ### 18.10 `lead_conflict` — a named answer when a peer follows a different lead *(added 2026-08-20)*
 
@@ -1824,6 +1843,17 @@ already uses for "we do not agree about who we are talking to" — with:
 - **The dialling side renders it as a state, never as a generic failure** — §10.2's fourth,
   `conflicted` — and does not poll it: there is nothing useful to fetch from a machine that belongs
   to someone else's view of the pack.
+- **It survives into the lead's own belief about that member** *(amended 2026-08-20)*. The registry
+  holds `health: "conflicted"` with the lead and generation the peer named, and `collie pack status`
+  prints **`this peer follows another lead "nas" (warrant generation 7)`**. Folding it into
+  `unreachable` would render "this peer belongs to someone else's pack now" as "the laptop is shut",
+  and no amount of waiting fixes the first. The generation is carried beside the id rather than only
+  in the sentence because the operator's next move depends on it: **higher** than this lead's own is
+  a takeover this machine has not heard about; **lower** is a peer that has not caught up.
+- **The phone's projection is unchanged, deliberately.** §10.2 shows three states, and a `conflicted`
+  member is still one the phone cannot be served from — it renders as unreachable there, carrying the
+  answering peer's own sentence as the reason. The fourth state is the **operator's**, on a surface
+  where the remedy is a membership decision rather than a retry.
 
 ### 18.11 The boot-time gate against a split brain *(added 2026-08-20)*
 
@@ -1957,5 +1987,35 @@ for a failure of the self-heal, or for `unreachable` (§10.2's states are not to
 
 ### Not specified here
 
-The takeover exchange that produces the deposition in the first place, the standby door, and the
-`pack status` rendering of any of the above.
+The takeover exchange that produces the deposition in the first place, and the standby door.
+
+### 18.13 `collie pack deputy` — the operator's verb *(added 2026-08-20)*
+
+The verb that mints §18.2's warrant, distributes it and completes §18.5's second phase. **It adds no
+wire surface**: the mint is local, the push is `POST /pack/v1/warrant` exactly as §18.5 already
+specifies it, and the restart rides the operator's own SSH and is never a pack message (ADR 0016).
+
+- **`collie pack deputy <member>`**, on the lead. Refuses a collie that is not a lead, a member it
+  does not pin, an `unenrolled` member, one behind on the secret generation, and itself (§18.1's
+  validation, each refusal named separately so the operator knows which one it was). Then: mint,
+  restart this lead, push to every enrolled peer, probe every peer read-only over SSH, ask **once**
+  for the whole batch, restart each consented machine. Non-interactive aborts; there is no `--yes`.
+- **A re-run naming the deputy that is already standing does not mint.** §18.3's rule — naming a
+  deputy mints *N+1* — is a rule about a **change**. A re-run is a **retry**, and the common one:
+  a machine had no SSH record, the operator fixed it and ran the same command again. Minting there
+  would climb the generation on every attempt and make every peer already armed stale, so the re-run
+  would undo the arming it was run to finish. An **expired** warrant is not re-used; that one mints.
+- **`collie pack deputy --revoke`** mints §18.3's revocation, pushes it, and offers the same restart
+  batch — a stored revocation is provable, but a peer keeps *admitting* the old deputy's certificate
+  until its listener is rebuilt. Revoking when nobody is named writes nothing and is not an error.
+- **A member with no SSH record, or one that could not be restarted, is REPORTED, never silently
+  skipped**: `warrant stored, anchor INACTIVE — restart <member>`, in `pack deputy`'s own output and
+  in `pack status` thereafter.
+
+**What each side can honestly say about anchoring.** A peer knows it exactly — its own process built
+the listener, and §18.9's checkpoint carries the generation it built it from. A lead does **not**:
+anchoring happens in the peer's process and no field reports it, because a lead could not act on one.
+What a lead honestly knows is what its operator did from this machine, so the armed generation is
+recorded per member in `pack-ops.json` beside the SSH route (ADR 0016 — operator-local, never trust,
+never a wire field). It is a **lower bound**: a peer that restarted for its own reasons has anchored
+without it moving, which is why the line names a remedy rather than accusing the peer.

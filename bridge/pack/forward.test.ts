@@ -34,6 +34,7 @@ const REACHABLE: PeerState = {
   lastSeenAt: 1_754_000_000_000,
   reason: null,
   version: "1.0.0-alpha.12",
+  conflict: null,
 };
 const DEAD: PeerState = {
   memberId: "laptop",
@@ -41,6 +42,7 @@ const DEAD: PeerState = {
   lastSeenAt: 1_753_999_000_000,
   reason: "connection refused",
   version: null,
+  conflict: null,
 };
 const SKEWED: PeerState = {
   memberId: "laptop",
@@ -48,6 +50,7 @@ const SKEWED: PeerState = {
   lastSeenAt: null,
   reason: "peer speaks 2",
   version: null,
+  conflict: null,
 };
 
 /** Records every dial, so "was this attempted?" and "was it retried?" are assertable facts. */

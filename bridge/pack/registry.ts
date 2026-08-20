@@ -70,8 +70,19 @@ export interface PeerObservation {
   readonly version: string | null;
 }
 
-/** How the lead currently sees a member (§10.2). `reachable` until a call says otherwise. */
+/** How the lead currently sees a member (§10.2, §18.10). `reachable` until a call says otherwise. */
 export type PeerHealth = "reachable" | PeerFailure["state"];
+
+/**
+ * Who a `conflicted` member says it follows (§18.10) — everything the lead may render about it, and
+ * nothing more. The answering peer names a member id and a generation and is not a directory, so
+ * there is no address and no certificate here to be tempted by.
+ */
+export interface PeerConflict {
+  readonly leadMemberId: string;
+  /** The generation that member holds, or `null` when it reported none. */
+  readonly warrantGeneration: number | null;
+}
 
 /** The lead's belief about one peer — everything `pack status` and the `servers` array render. */
 export interface PeerState {
@@ -101,6 +112,28 @@ export interface PeerState {
    * nothing (§7.1 — the protocol integer is the only thing that refuses).
    */
   readonly version: string | null;
+  /**
+   * Set exactly when `health === "conflicted"`: the lead this member says it follows instead (§18.10).
+   *
+   * It is carried rather than folded into `reason` because the operator's next move depends on the
+   * two fields, not on the sentence: a generation HIGHER than this lead's own is a takeover this
+   * machine has not heard about, and a lower one is a peer that has not caught up. `pack status`
+   * renders both; nothing else branches on it.
+   */
+  readonly conflict: PeerConflict | null;
+}
+
+/**
+ * Which failure states survive into health as themselves.
+ *
+ * Only two do, and the rest project onto `unreachable` — which is not laziness but §10.2's own
+ * table: the phone is shown three states, and a state the phone cannot act on differently must not
+ * become a fourth badge it has to explain. `conflicted` earns its place because the remedy is
+ * different in kind (a member has moved packs; no amount of waiting fixes it).
+ */
+function conflictHealth(state: PeerFailure["state"]): PeerHealth {
+  if (state === "incompatible" || state === "conflicted") return state;
+  return "unreachable";
 }
 
 /** The local session registry, narrowed to what host resolution needs (and what a fake can be). */
@@ -177,6 +210,7 @@ export class PackRegistry {
         lastSeenAt: null,
         reason: "never polled",
         version: null,
+        conflict: null,
       }
     );
   }
@@ -205,16 +239,30 @@ export class PackRegistry {
     // "observed absence", and only the second overwrites.
     const version = observed !== undefined ? observed.version : (previous?.version ?? null);
     const next: PeerState = outcome.ok
-      ? { memberId, health: "reachable", lastSeenAt: outcome.receivedAt, reason: null, version }
+      ? {
+          memberId,
+          health: "reachable",
+          lastSeenAt: outcome.receivedAt,
+          reason: null,
+          version,
+          conflict: null,
+        }
       : {
           memberId,
           version,
           // `refused` (§14.3's 403) is a CLI-only outcome — no route the lead's sweep calls answers
-          // one — and health has three values by §10.2. Anything that is not a version skew reads as
-          // unreachable here, which is the honest projection: the phone's answer is the same.
-          health: outcome.state === "incompatible" ? "incompatible" : "unreachable",
+          // one — so it reads as unreachable here, which is the honest projection: the phone's answer
+          // is the same. `conflicted` (§18.10) does NOT, and that is the 2026-08-20 amendment: the
+          // member answered, and answered precisely, so folding it into `unreachable` would render
+          // "this peer belongs to someone else's pack now" as "the laptop is shut". §10.2's three
+          // states are not to be conflated, and this is the fourth.
+          health: conflictHealth(outcome.state),
           lastSeenAt: previous?.lastSeenAt ?? null,
           reason: outcome.reason,
+          conflict:
+            outcome.state === "conflicted"
+              ? { leadMemberId: outcome.leadMemberId, warrantGeneration: outcome.warrantGeneration }
+              : null,
         };
     this.peers.set(memberId, next);
     return next;
@@ -248,6 +296,7 @@ export class PackRegistry {
       lastSeenAt: previous?.lastSeenAt ?? null,
       reason: keepingUp ? null : SLOW_LINK_REASON,
       version,
+      conflict: null,
     };
     this.peers.set(memberId, next);
     return next;

@@ -31,7 +31,15 @@ import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packHelloBudget, packTimeoutBudget, packTimeoutClampWarning, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import { createPackRouter } from "./pack/router.ts";
-import { formatMarker, markerFor, packRuntimePath, rosterDrift } from "./pack/staleness.ts";
+import {
+  checkpointMarker,
+  formatMarker,
+  markerFor,
+  NO_RUNTIME_FACTS,
+  packRuntimePath,
+  rosterDrift,
+  type PackRuntimeFacts,
+} from "./pack/staleness.ts";
 import { signDial } from "./pack/signing.ts";
 import { enrollmentOf, TrustStore, type TrustStoreData, type Warrant } from "./pack/trust-store.ts";
 import { currentWarrant, refreshWarrant } from "./pack/warrant.ts";
@@ -223,6 +231,33 @@ if (bootTrust !== null) {
     await writeFile(packRuntimePath(cfg.stateDir), formatMarker(bootMarker), { mode: 0o600 });
   } catch (err) {
     console.warn(`[pack] could not record the boot roster: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+/**
+ * The facts only THIS PROCESS holds, for the checkpoint below. Reassigned once, after the listener
+ * has been built — until then this process has resolved none of them and says so (§18.9).
+ */
+let runtimeFacts: () => PackRuntimeFacts = () => NO_RUNTIME_FACTS;
+
+/**
+ * Re-stamp the runtime marker with those facts, so `collie pack status` — a different process — can
+ * print them (`bridge/pack/staleness.ts`, PACK_PROTOCOL.md §18.9's 2026-08-20 amendment).
+ *
+ * **It rides the session-refresh tick and adds no timer of its own.** The pack's rule is that a
+ * sweep costs one budget no matter what else it decided to do, and the same reasoning applies to a
+ * diagnostic: a second interval for a file nobody reads between `pack status` runs would be a second
+ * clock to explain. Best effort throughout — a marker that failed to write is a missing line in a
+ * status report, never a reason to disturb a running bridge.
+ */
+async function checkpointRuntime(): Promise<void> {
+  if (bootTrust === null) return;
+  try {
+    const marker = checkpointMarker(bootMarker, runtimeFacts(), Date.now());
+    await writeFile(packRuntimePath(cfg.stateDir), formatMarker(marker), { mode: 0o600 });
+  } catch {
+    // Deliberately silent, unlike the boot write above: that one happens once and a failure there is
+    // news, while this one repeats every 15 s and a warning per tick would be the actual problem.
   }
 }
 
@@ -456,7 +491,10 @@ if (primary && !(await primary.herdr.reachable())) {
 // started/stopped after boot is picked up (or disposed) within SESSION_REFRESH_MS. A no-op when
 // multi-session is off. unref() so the timer never keeps the process alive; cleared on shutdown.
 await registry.refresh();
-const refreshTimer = setInterval(() => void registry.refresh(), SESSION_REFRESH_MS);
+const refreshTimer = setInterval(() => {
+  void registry.refresh();
+  void checkpointRuntime();
+}, SESSION_REFRESH_MS);
 refreshTimer.unref();
 
 // Prune uploaded images past their TTL: once at startup, then on an interval. Uploads are single-use
@@ -518,6 +556,24 @@ const deputyAnchor =
     ? undefined
     : { memberId: deputyAnchorId, certPem: deputyAnchorPem };
 const transportPinned = listenerTls !== null;
+
+// From here on the process knows the four things a store cannot say, so the checkpoint can say them
+// (§18.9). `anchoredGeneration` is deliberately derived from `deputyAnchorPem` rather than from the
+// stored warrant: the question is which generation THIS LISTENER was built with, and a warrant that
+// landed a minute ago is stored without being anchored — which is the whole of RFC §5's two phases,
+// and the one thing `pack status` must not blur.
+runtimeFacts = () => {
+  const facts = leadContact.facts();
+  return {
+    anchoredGeneration:
+      deputyAnchorPem === null ? null : (currentWarrant(trustStore.current())?.warrant.generation ?? null),
+    leadLastDialledAt: facts.lastDialledAt,
+    leadRefusedSecretAt: facts.leadRefusedSecretAt,
+    deposed: deposed === null ? null : { ...deposed, outcome: outcomeNow(deposed, facts) },
+  };
+};
+void checkpointRuntime();
+
 if (deputyAnchor !== undefined) {
   console.log(
     `[pack] this peer anchors its deputy "${deputyAnchor.memberId}" as a second TLS anchor — every ` +

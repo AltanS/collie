@@ -1255,7 +1255,7 @@ rc=$?
 set -e
 assert_eq "$rc" "2"
 assert_contains "$(cat "${TMP_ROOT}/err")" "unknown pack subcommand \`nonsense\`"
-for sub in invite status rotate remove; do
+for sub in invite status rotate remove deputy; do
   assert_contains "$(cat "${TMP_ROOT}/err")" "$sub"
 done
 
