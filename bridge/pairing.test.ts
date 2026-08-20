@@ -522,11 +522,60 @@ describe("pairing never crosses the pack seam", () => {
     expect(callArgs.every((args) => args.includes("req, cfg"))).toBe(true);
   });
 
-  test("no pack module reaches into the pairing module", () => {
+  // ── AMENDED 2026-08-20 (RFC §16, decision 5; PACK_PROTOCOL.md §18.14) ────────────────────────
+  // This used to be "no pack module names pairing.ts at all", and the standby door made that reading
+  // impossible to keep: a deputy has to verify a bearer credential its lead minted, so `standby.ts`
+  // parses an `Authorization` header and `standby-devices.ts` hashes a token to compare against a
+  // stored digest. Both are PURE helpers, and re-implementing either inside `pack/` would have meant
+  // a second `sha256Hex` and a second `Bearer` parser to keep in step with the first — a worse
+  // outcome than the coupling it avoided.
+  //
+  // **What the rule actually protects is unchanged, and it is pinned below instead of inferred:**
+  // no pack module may touch `PairingStore` — the class that decides `enforced()`, resolves a token
+  // into a device, and writes `paired-devices.json`. That is the object whose reach would make a
+  // pairing token admit a pack request, and no pack module has it. The pack surface's two factors
+  // (PACK_PROTOCOL.md §8.1) are untouched, and the standby door is a SEPARATE listener that is not on
+  // the pack surface at all.
+  test("no pack module touches PairingStore, and only the standby pair names pairing.ts", () => {
+    /** Pack modules allowed to import pairing's PURE helpers, and what each of them may take. */
+    const ALLOWED = new Map<string, readonly string[]>([
+      // Hashes and compares a synced token digest; carries pairing's registry TYPES so the projection
+      // and the collision check cannot drift from the shape they project.
+      ["standby-devices.ts", ["hashesEqual", "sha256Hex", "PairedDevice", "PairedRegistry"]],
+      // Reads `Authorization: Bearer …` off the standby door's confirm. One parser, not two.
+      ["standby.ts", ["bearerToken"]],
+    ]);
+
+    let named = 0;
     for (const file of readdirSync(join(import.meta.dir, "pack"))) {
-      if (!file.endsWith(".ts")) continue;
-      expect(readFileSync(join(import.meta.dir, "pack", file), "utf8")).not.toContain("pairing.ts");
+      // Production modules only. A test that exercises the sync obviously builds a registry to sync,
+      // and a rule that forbade it would forbid testing the thing it protects.
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      const src = readFileSync(join(import.meta.dir, "pack", file), "utf8");
+      // Comments are dropped first, exactly as the `guard()` scan above drops them: several of these
+      // modules EXPLAIN why they must not merge into `PairingStore`'s registry, and a rule that
+      // forbade naming the class in prose would forbid documenting the rule.
+      const code = src
+        .split("\n")
+        .filter((line) => {
+          const t = line.trim();
+          return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
+        })
+        .join("\n");
+      expect({ file, usesStore: code.includes("PairingStore") }).toEqual({ file, usesStore: false });
+      if (!src.includes("pairing.ts")) continue;
+      named++;
+      const allowed = ALLOWED.get(file);
+      expect({ file, allowed: allowed !== undefined }).toEqual({ file, allowed: true });
+      // Exactly the named imports, and nothing that was not argued for above.
+      const imported = [...src.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+"\.\.\/pairing\.ts"/g)]
+        .flatMap((m) => m[1]!.split(","))
+        .map((name) => name.replace(/^\s*type\s+/, "").trim())
+        .filter((name) => name !== "");
+      expect({ file, extra: imported.filter((name) => !(allowed ?? []).includes(name)) }).toEqual({ file, extra: [] });
     }
+    // A negative control on the scan itself: if it matched nothing, it passed vacuously.
+    expect(named).toBe(ALLOWED.size);
   });
 });
 

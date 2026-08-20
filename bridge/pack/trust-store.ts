@@ -115,6 +115,32 @@ export interface TrustedMember {
    * window that reopens on restart is not a replay window at all.
    */
   readonly signedAt: number;
+  /**
+   * This member has not yet been told that the crown moved (RFC §7.1's partial success, §9's
+   * reconciliation). Set on every member the takeover could not reach, cleared on the first contact
+   * that lands the warrant.
+   *
+   * **OPTIONAL, and absent means CLOSED**: a member from before this field existed owes nothing, and
+   * a store that never saw a takeover has no pending anybody. Persisted rather than held in memory
+   * because the takeover RESTARTS this machine — an in-memory list would be lost at exactly the
+   * moment it becomes the only record of what is left to do.
+   */
+  readonly rePinPending?: boolean;
+}
+
+/**
+ * One roster row as it travels and as a deputy keeps it (RFC §7.4) — public material only: an id, a
+ * fingerprint, the certificate behind it, and the address the operator typed.
+ *
+ * Structurally identical to `enrollment.ts`'s `RosterEntry`, which is the row §14.3's demotion
+ * already returns. It is declared HERE because the trust store persists it and this module may not
+ * import `enrollment.ts` (that one imports this).
+ */
+export interface RosterRow {
+  readonly memberId: string;
+  readonly fingerprint: string;
+  readonly certPem: string;
+  readonly address: string;
 }
 
 /**
@@ -236,6 +262,20 @@ export interface TrustStoreData {
    * counter and make an old warrant verify again (RFC §4.4).
    */
   readonly warrant?: StoredWarrant | null;
+  /**
+   * On the DEPUTY: the lead's roster as of the last warrant push (RFC §7.4).
+   *
+   * The signed warrant carries no roster and that stands — this rides **beside** it, on the same
+   * push, to the deputy and to nobody else. A deputy holds exactly one roster entry of its own (its
+   * lead), so without this a takeover would be a takeover into a pack it cannot see. It is not
+   * signed, because it does not need to be: it arrives over a two-factor pack link from the pinned
+   * lead, which is the trust basis every other lead→peer byte already has.
+   *
+   * **OPTIONAL, and absent means CLOSED** — no roster, so RFC §7's step (c) refuses rather than
+   * inventing one. Refreshed on change, because a stale roster on a deputy is a takeover into a pack
+   * it cannot see either.
+   */
+  readonly standbyRoster?: readonly RosterRow[] | null;
 }
 
 /**
@@ -279,8 +319,28 @@ function isMember(value: JsonValue | undefined): value is JsonValue & TrustedMem
     // STRICTLY `contactedAt === null`. An absent field is `undefined`, which must NEVER read as
     // provisional — otherwise every member enrolled before this field existed (the live pack) would
     // regress to "provisional" on upgrade.
-    (m.contactedAt === undefined || m.contactedAt === null || typeof m.contactedAt === "number")
+    (m.contactedAt === undefined || m.contactedAt === null || typeof m.contactedAt === "number") &&
+    // Same back-compat rule, same reason: absent is "owes nothing", never "pending".
+    (m.rePinPending === undefined || typeof m.rePinPending === "boolean")
   );
+}
+
+/** One roster row, structurally. The cross-check `fingerprint === sha256(certPem)` is the wire's. */
+function isRosterRow(value: JsonValue | undefined): value is JsonValue & RosterRow {
+  const r = asRecord(value);
+  if (r === null) return false;
+  return (
+    isMemberId(r.memberId) &&
+    isFingerprint(r.fingerprint) &&
+    typeof r.certPem === "string" &&
+    r.certPem.includes("BEGIN CERTIFICATE") &&
+    typeof r.address === "string"
+  );
+}
+
+/** The deputy's copy of its lead's roster (RFC §7.4). A malformed row invalidates the whole store. */
+function isStandbyRoster(value: JsonValue | undefined): value is JsonValue & RosterRow[] {
+  return Array.isArray(value) && value.every(isRosterRow);
 }
 
 function isInvite(value: JsonValue | undefined): value is JsonValue & PendingInvite {
@@ -432,7 +492,8 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   const handover = optionalField(d.pendingHandover, isHandover);
   const deputy = optionalField<string>(d.deputy, isDeputyId);
   const warrant = optionalField(d.warrant, isStoredWarrant);
-  if (handover === null || deputy === null || warrant === null) return null;
+  const standbyRoster = optionalField<RosterRow[]>(d.standbyRoster, isStandbyRoster);
+  if (handover === null || deputy === null || warrant === null || standbyRoster === null) return null;
 
   const store: TrustStoreData = {
     version: TRUST_STORE_VERSION,
@@ -457,6 +518,7 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   if (handover.value !== undefined) out = { ...out, pendingHandover: handover.value };
   if (deputy.value !== undefined) out = { ...out, deputy: deputy.value };
   if (warrant.value !== undefined) out = { ...out, warrant: warrant.value };
+  if (standbyRoster.value !== undefined) out = { ...out, standbyRoster: standbyRoster.value };
   return out;
 }
 

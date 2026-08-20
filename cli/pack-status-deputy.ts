@@ -1,5 +1,6 @@
 import { deposedOutcomeLines } from "../bridge/pack/deposed.ts";
 import type { OpsRecord } from "../bridge/pack/ops-store.ts";
+import { armThresholdMs as bridgeArmThresholdMs } from "../bridge/pack/standby.ts";
 import { checkpointStale, type PackRuntimeMarker } from "../bridge/pack/staleness.ts";
 import type { TrustStoreData, Warrant } from "../bridge/pack/trust-store.ts";
 import { currentWarrant, verifyWarrantSignature, warrantExpired, warrantExpiresAt } from "../bridge/pack/warrant.ts";
@@ -39,9 +40,10 @@ import type { Tone, TonedLine } from "./render.ts";
  * floor keeps a very tight poll from producing a hair-trigger.
  */
 export function armThresholdMs(env: Environment): number {
-  const raw = Number.parseInt(env.COLLIE_POLL_IDLE_MS?.trim() ?? "", 10);
-  const idle = Number.isFinite(raw) && raw > 0 ? raw : 12_000;
-  return Math.max(30_000, Math.round(2.5 * idle));
+  // Delegated, never re-implemented. §10.1's rule is that the deputy's door and this verb read the
+  // SAME number, and two copies of a formula is exactly how they stop doing that. The bridge's copy
+  // also honours the operator's `COLLIE_STANDBY_ARM_MS` override, which this line therefore does too.
+  return bridgeArmThresholdMs(env);
 }
 
 /** How often the bridge re-stamps the runtime marker — the interval staleness is judged against. */

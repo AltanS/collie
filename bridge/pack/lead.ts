@@ -4,6 +4,7 @@ import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forwar
 import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnapshotBody } from "./merge.ts";
 import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
+import type { PairingSync } from "./standby-devices.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
 
@@ -53,6 +54,9 @@ export interface PeerMemory {
 }
 
 const FRESH: PeerMemory = { body: null, incompatibleRuns: 0, probeAfter: 0 };
+
+/** No member is owed the proof — every lead that never took over, which is almost all of them. */
+const EMPTY_PENDING: ReadonlySet<string> = new Set<string>();
 
 /**
  * Fold one call's outcome into what the lead remembers. **Pure** — the whole point, so the three
@@ -136,7 +140,33 @@ export interface PackLeadDeps {
    * never named a deputy and every test that is not about warrants.
    */
   readonly warrant?: WarrantDistribution;
+  /**
+   * Pairing-registry distribution to the DEPUTY (RFC §6.5). Absent ⇒ this lead syncs none, which is
+   * every lead that has never named a deputy and every test that is not about the standby door.
+   */
+  readonly pairing?: PairingDistribution;
   readonly now?: () => number;
+}
+
+/**
+ * The lead's half of RFC §6.5: keep the DEPUTY's copy of the paired-device registry current.
+ *
+ * **No second timer and no dial to decide.** The lead already knows when its own registry changed —
+ * the store caches on mtime — so the decision is a digest comparison against what this process last
+ * delivered, and only a genuine change costs a dial. It rides the sweep for the reason everything
+ * else does (§10.1, §11).
+ */
+export interface PairingDistribution {
+  /** The deputy this lead has designated, or `null`. Read through the store, never captured. */
+  deputy(): string | null;
+  /**
+   * What would be sent right now, with a digest over the SENT projection. `null` ⇒ nothing to send
+   * (no pack, or a registry this lead cannot read). An EMPTY device list is still something to send:
+   * a revocation on the lead has to reach the deputy, or a door stays armed on a dead credential.
+   */
+  current(): { readonly sync: PairingSync; readonly digest: string } | null;
+  /** Deliver it. Failure is a value here as everywhere else in the pack client. */
+  push(link: PackLink, sync: PairingSync): Promise<PeerOutcome<unknown>>;
 }
 
 /**
@@ -156,6 +186,19 @@ export interface WarrantDistribution {
   current(now: number): Promise<WarrantPush | null>;
   /** Deliver it to one member. Failure is a value here as everywhere else in the pack client. */
   push(link: PackLink, payload: WarrantPush): Promise<PeerOutcome<unknown>>;
+  /**
+   * Members this lead took over from that have **not yet been told** (RFC §7.1's partial success,
+   * §9's reconciliation). Read through the store each sweep, never captured.
+   *
+   * They are the one class of member that is pushed to even when they did NOT answer the sweep — the
+   * ordinary rule is "a member that said nothing is skipped", and the ordinary rule is right, but a
+   * pending member has told us something already: it is behind, and the push IS how it finds out. It
+   * is also the only way to reach a machine that still believes it leads, whose listener answers
+   * nothing else this lead can authenticate to.
+   */
+  pending?(): ReadonlySet<string>;
+  /** A pending member took the proof. Clears its flag, so this costs one round trip once, ever. */
+  confirm?(memberId: string): Promise<void>;
 }
 
 /**
@@ -171,6 +214,9 @@ export class PackLead {
   private readonly probing = new Set<string>();
   /** Members with a warrant push in flight. At most one per member — see {@link pushWarrant}. */
   private readonly pushingWarrant = new Set<string>();
+  /** At most one pairing sync in flight, and the digest of the last one that landed. See §6.5. */
+  private pushingPairing = false;
+  private pairingPushed: string | null = null;
 
   constructor(private readonly deps: PackLeadDeps) {
     this.now = deps.now ?? Date.now;
@@ -230,6 +276,7 @@ export class PackLead {
         }
       }
       await this.distributeWarrant(due, outcomes);
+      this.distributePairing(due, outcomes);
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the pack degrades to
       // "stale" rather than taking the lead's poll loop down with it.
@@ -256,16 +303,67 @@ export class PackLead {
     if (distribution === undefined) return;
     const payload = await distribution.current(this.now());
     if (payload === null) return;
+    const pending = distribution.pending?.() ?? EMPTY_PENDING;
     for (const link of due) {
       const outcome = outcomes.get(link.memberId);
-      if (outcome === undefined || !outcome.ok) continue;
+      if (outcome === undefined) continue;
+      if (!outcome.ok) {
+        // RFC §9: a member that has not yet been told the crown moved is pushed to BLIND, because
+        // being told is the whole point and because the machine most likely to be in this state — a
+        // lead that was deposed while it was down — cannot answer a snapshot to this collie at all.
+        if (pending.has(link.memberId)) this.pushWarrant(distribution, link, payload, true);
+        continue;
+      }
       // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by construction, the
       // same cast and the same reason as `foldPeerMemory`'s. `parseWarrantReport` re-checks both
       // fields, and an absent or half-formed pair reads as "unknown", which pushes.
       const reported = parseWarrantReport(outcome.value as JsonValue);
-      if (!warrantPushNeeded(payload.warrant, reported)) continue;
-      this.pushWarrant(distribution, link, payload);
+      const reconcile = pending.has(link.memberId);
+      // A pending member that ALREADY reports this generation has been told — by its own boot gate,
+      // by a `lead_conflict` it answered, or by the commit round of the takeover itself. Pushing the
+      // proof again would be refused as `foreign` (its lead is this collie now, and the warrant was
+      // signed by the previous one), so the flag would never clear and the dial would repeat every
+      // sweep forever. Reading the answer that is already in hand is the whole of §9's "and never
+      // again".
+      if (reconcile && reported !== null && reported.generation >= payload.warrant.generation) {
+        void distribution.confirm?.(link.memberId);
+        continue;
+      }
+      if (!reconcile && !warrantPushNeeded(payload.warrant, reported)) continue;
+      this.pushWarrant(distribution, link, payload, reconcile);
     }
+  }
+
+  /**
+   * Keep the deputy's copy of the paired-device registry current (RFC §6.5).
+   *
+   * **To the deputy and to nobody else**, and only when what would be sent differs from what this
+   * process last delivered. Off the tick and never awaited, exactly as the warrant push is, so a
+   * sweep still costs one strict budget (§10.1).
+   */
+  private distributePairing(due: readonly PackLink[], outcomes: Map<string, PeerOutcome<unknown>>): void {
+    const distribution = this.deps.pairing;
+    if (distribution === undefined || this.pushingPairing) return;
+    const deputy = distribution.deputy();
+    if (deputy === null) return;
+    const link = due.find((l) => l.memberId === deputy);
+    if (link === undefined || outcomes.get(deputy)?.ok !== true) return;
+    const payload = distribution.current();
+    if (payload === null || payload.digest === this.pairingPushed) return;
+    this.pushingPairing = true;
+    void (async () => {
+      try {
+        const outcome = await distribution.push(link, payload.sync);
+        // Remembered only on success. A refused sync (a label collision, RFC §16 decision 6) is
+        // re-offered on the next sweep, which is what makes the operator's rename take effect without
+        // a restart — and what keeps `pack status` honest about a deputy that is still behind.
+        if (outcome.ok) this.pairingPushed = payload.digest;
+      } catch (err) {
+        console.warn(`[pack] pairing sync failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        this.pushingPairing = false;
+      }
+    })();
   }
 
   /**
@@ -276,10 +374,15 @@ export class PackLead {
    * simply a failed dial; nothing here writes to this lead's store, so a `leave` mid-flight cannot be
    * undone by it.
    */
-  private pushWarrant(distribution: WarrantDistribution, link: PackLink, payload: WarrantPush): void {
+  private pushWarrant(
+    distribution: WarrantDistribution,
+    link: PackLink,
+    payload: WarrantPush,
+    reconcile = false,
+  ): void {
     if (this.pushingWarrant.has(link.memberId)) return;
     this.pushingWarrant.add(link.memberId);
-    void this.runWarrantPush(distribution, link, payload);
+    void this.runWarrantPush(distribution, link, payload, reconcile);
   }
 
   /** The push's body. Separate so {@link pushWarrant} can start it without awaiting it. */
@@ -287,9 +390,14 @@ export class PackLead {
     distribution: WarrantDistribution,
     link: PackLink,
     payload: WarrantPush,
+    reconcile: boolean,
   ): Promise<void> {
     try {
-      await distribution.push(link, payload);
+      const outcome = await distribution.push(link, payload);
+      // The member took the proof: it either re-pinned to this collie or deposed itself to a peer of
+      // it, and either way it never needs telling again. Clearing the flag is what makes §9's "one
+      // extra round trip, once per member, and never again" true rather than aspirational.
+      if (reconcile && outcome.ok) await distribution.confirm?.(link.memberId);
     } catch (err) {
       // Defensive, exactly as `sweep` and `probe` are: failure is a value everywhere in the pack
       // client, so a throw here is a bug in an injected transport — and it must not become an

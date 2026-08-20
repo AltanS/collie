@@ -373,6 +373,17 @@ export function startServer(opts: {
    * It is deliberately NOT threaded into the pack surface. `/pack/v1/*` is admitted by pinned mutual
    * TLS plus the pack secret and shares nothing with a browser credential (PACK_PROTOCOL.md §6,
    * ADR 0013) — a lead does not hold one of this collie's pairing tokens and must never need one.
+   *
+   * **ONE EXCEPTION, added 2026-08-20, and the rule above survives verbatim** (RFC §16, decision 5;
+   * PACK_PROTOCOL.md §18.14). `POST /pack/v1/pairing` carries a lead's registry — **hashes only** — to
+   * the one member it has named DEPUTY, so that member's standby door can check a phone's bearer
+   * credential when the lead is gone. What is unchanged: **no pack request is ever admitted by a
+   * pairing token**, and that route is admitted by the pack's own two factors plus a role check like
+   * every other one. What is new: a browser credential's hash rides a pack route and lands on a
+   * peer's disk — in `standby-devices.json`, its own file, **never** merged into
+   * `paired-devices.json`, because `PairingStore.enforced()` is "the registry is non-empty" and a
+   * merge would arm the deputy's own write gate for its own operator. The reasoning, at length, is in
+   * `bridge/pack/standby-devices.ts`.
    */
   pairing?: PairingStore;
 }) {

@@ -30,7 +30,7 @@ import { leadLabel } from "./pack/merge.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packHelloBudget, packTimeoutBudget, packTimeoutClampWarning, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
-import { createPackRouter } from "./pack/router.ts";
+import { createPackRouter, type PackRouterDeps } from "./pack/router.ts";
 import {
   checkpointMarker,
   formatMarker,
@@ -40,9 +40,38 @@ import {
   rosterDrift,
   type PackRuntimeFacts,
 } from "./pack/staleness.ts";
-import { signDial } from "./pack/signing.ts";
+import { signDial, signRequest } from "./pack/signing.ts";
+import {
+  armThresholdMs,
+  armThresholdWarning,
+  createStandbyDoor,
+  frontDoorHealth,
+  standbyHostOf,
+  silenceOf,
+  STANDBY_PREFIX,
+  standbyPortOf,
+  warrantNamesSelf,
+  type StandbyFacts,
+} from "./pack/standby.ts";
+import {
+  collidingLabels,
+  StandbyDeviceStore,
+  STANDBY_DEVICES_VERSION,
+  syncDigest,
+  syncedDevicesOf,
+  type SyncedDevice,
+} from "./pack/standby-devices.ts";
+import {
+  adoptLeadership,
+  clearRePin,
+  pendingRePin,
+  runTakeover,
+  rosterRowsOf,
+  takeoverMessage,
+  type CommitOutcome,
+} from "./pack/takeover.ts";
 import { enrollmentOf, TrustStore, type TrustStoreData, type Warrant } from "./pack/trust-store.ts";
-import { currentWarrant, refreshWarrant } from "./pack/warrant.ts";
+import { currentWarrant, refreshWarrant, type WarrantPush } from "./pack/warrant.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
 import { startServer } from "./server.ts";
@@ -111,6 +140,20 @@ const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")), {
  */
 const leadContact = new LeadContact(Date.now());
 
+/**
+ * Where OTHER members dial this collie — the address the previous lead used for it, kept in the
+ * roster that rode the warrant push (RFC §7.4).
+ *
+ * `""` on a lead that was never a deputy, which is every lead that did not take over. It is only
+ * ever needed by a machine that DID: its peers must be told where to dial their new lead, and this
+ * is the one address in the pack that other machines have demonstrably reached it at. An address is
+ * a hint the operator may re-point (§4, `collie reconnect`), never an identity, so a wrong one costs
+ * a `reconnect` and nothing else.
+ */
+function selfAddress(data: TrustStoreData): string {
+  return data.standbyRoster?.find((r) => r.memberId === data.self.memberId)?.address ?? "";
+}
+
 /** This process's deposed state (§18.12), or `null`. Set at most once, at boot or from the wire. */
 let deposed: DeposedState | null = null;
 
@@ -138,6 +181,14 @@ function packPeerClient(data: TrustStoreData): PeerClient {
     // the list names one of two — so the caller says which, and it says it on every route rather than
     // on a closed set, because this signature covers no body and pulls no upload into memory.
     dialSign: (parts) => signDial(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
+    // §8.6's REQUEST signature, on the closed set of routes that accept one (`router.ts` →
+    // SIGNABLE_PATHS). The lead→peer direction does not need it — that hop is pinned at the
+    // handshake — but ONE delivery does, and it is the delivery that ends a split brain: a new lead
+    // telling a machine that still believes it leads. That listener pins nothing inbound (§8.1), so
+    // without a signature the deposed machine could not admit the one member that can prove its
+    // deposition (§18.12, RFC §9). A streamed upload is never signed — `PeerClient.proxy` refuses to,
+    // for §8.6's own reason — so nothing is pulled into memory on the security path.
+    sign: (parts) => signRequest(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
     // Pinned mutual TLS, per member, read through the store on every dial for the same reason the
     // secret and the roster are: `pack remove`, a re-join and a rotation all change what this lead
     // may pin, and a captured copy would keep trusting a certificate the operator revoked. A member
@@ -557,6 +608,65 @@ const deputyAnchor =
     : { memberId: deputyAnchorId, certPem: deputyAnchorPem };
 const transportPinned = listenerTls !== null;
 
+// ── The standby half (RFC §6, §7; PACK_PROTOCOL.md §18.14–§18.16) ────────────
+// A deputy is a peer that holds its lead's standing, signed permission to take the crown. Three
+// things follow from that and nothing else does: it keeps a SYNCED copy of the lead's paired-device
+// registry (in its own file, never merged — `standby-devices.ts` says why at length), it may bind a
+// second listener the phone can reach, and it may run the takeover exchange.
+//
+// The threshold is read ONCE, here, and handed to everything that needs it: the door, the router's
+// witness answer and — through `pack status`'s own copy of the formula — the operator's screen. RFC
+// §10.1's rule is that there is exactly one silence clock in a pack.
+const standbyArmMs = armThresholdMs(process.env);
+{
+  const warning = armThresholdWarning(process.env);
+  if (warning !== null) console.warn(warning);
+}
+
+/** A verified warrant on this machine's own disk names THIS machine. Re-read: a revocation disarms. */
+const holdsOwnWarrant = (): boolean => warrantNamesSelf(pack.mode, trustStore.current(), Date.now());
+
+/**
+ * The lead's synced pairing registry, on a peer. Constructed for any peer with a trust store — the
+ * warrant that makes this machine the deputy can arrive over the wire at any time, and a store built
+ * only for a machine that was ALREADY the deputy at boot would have nowhere to put the first sync.
+ * Constructing it opens nothing and writes nothing; solo never reaches this line (§11).
+ */
+const standbyStore = pack.mode === "peer" && bootTrust !== null ? new StandbyDeviceStore(cfg.stateDir) : null;
+if (standbyStore !== null) await standbyStore.load();
+
+/** The synced devices, or none. The credential the standby door checks a confirm against — only that. */
+const syncedDevices = (): readonly SyncedDevice[] => standbyStore?.current()?.devices ?? [];
+
+/**
+ * What the two standby-shaped pack routes need from this process (`router.ts` → `StandbySurface`).
+ *
+ * `undefined` on a lead and on solo — a lead has no lead to be silent, no warrant naming itself and
+ * nothing to sync. That absence is what makes `/pack/v1/pairing` refuse and a takeover probe read as
+ * maximally silent, both of which are the closed readings.
+ */
+const standbySurface: PackRouterDeps["standby"] =
+  standbyStore === null
+    ? undefined
+    : {
+        warrantsSelf: () => holdsOwnWarrant(),
+        // Gap A's number, from the one holder — the door below reads this same call (RFC §10.1).
+        silentForMs: () => silenceOf(leadContact.facts(), Date.now()),
+        armMs: standbyArmMs,
+        collidingLabels: (devices: readonly SyncedDevice[]) => collidingLabels(pairing.registry(), devices),
+        applySync: async (sync) => {
+          // Wholesale, never a merge: the lead's registry is the whole truth, so a revocation there
+          // has to be able to REMOVE a device here.
+          await standbyStore.replace({
+            version: STANDBY_DEVICES_VERSION,
+            packId: sync.packId,
+            leadMemberId: sync.leadMemberId,
+            syncedAt: Date.now(),
+            devices: sync.devices,
+          });
+        },
+      };
+
 // From here on the process knows the four things a store cannot say, so the checkpoint can say them
 // (§18.9). `anchoredGeneration` is deliberately derived from `deputyAnchorPem` rather than from the
 // stored warrant: the question is which generation THIS LISTENER was built with, and a warrant that
@@ -651,6 +761,14 @@ const packLead = (() => {
     // would keep pushing a warrant the operator has already superseded. A lead that has named nobody
     // has no warrant, `current()` answers `null`, and not one byte moves.
     warrant: {
+      pending: () => pendingRePin(trustStore.current()),
+      // RFC §9's other half: the member took the proof, so it never needs telling again. One extra
+      // round trip, once per member, on the first contact after a takeover — and never again.
+      confirm: async (memberId) => {
+        await commitPackChange(trustStore, audit, (current) =>
+          current === null ? null : clearRePin(current, memberId),
+        );
+      },
       current: async (at) => {
         // The refresh is a WRITE, and it is the only one on this path: at most one an hour, and only
         // when a warrant exists (`refreshWarrant` answers `null` for everything else, including a
@@ -664,13 +782,51 @@ const packLead = (() => {
         // The deputy's certificate rides the push because a peer has no roster beyond its lead and
         // could not otherwise pin the second anchor (§18). Taken from THIS lead's roster, so it is
         // the certificate the lead itself pins — never a copy kept beside the warrant.
-        const deputy = held.peers.find((p) => p.memberId === stored.warrant.deputyMemberId);
-        if (stored.warrant.deputyMemberId !== null && deputy === undefined) return null;
-        return deputy === undefined
-          ? { warrant: stored.warrant }
-          : { warrant: stored.warrant, deputyCertPem: deputy.certPem };
+        const named = stored.warrant.deputyMemberId;
+        // The SPENT warrant, after a takeover: this collie is the member its own warrant names. It
+        // carries no certificate (nobody anchors the lead) and no roster; it is pure proof, and the
+        // only thing left to do with it is hand it to the members that were down (RFC §9).
+        if (named === data.self.memberId) return { warrant: stored.warrant, address: selfAddress(held) };
+        const deputy = held.peers.find((p) => p.memberId === named);
+        if (named !== null && deputy === undefined) return null;
+        if (deputy === undefined) return { warrant: stored.warrant, address: selfAddress(held) };
+        return {
+          warrant: stored.warrant,
+          deputyCertPem: deputy.certPem,
+          // The roster rides to the DEPUTY and is stripped for everyone else in `push` below (RFC
+          // §7.4). It is refreshed on every push, so an enrollment, a removal or a `reconnect` reaches
+          // the deputy on the same body that was going there anyway.
+          roster: rosterRowsOf(held.peers),
+          address: selfAddress(held),
+        };
       },
-      push: (link, payload) => client.warrant(link, payload),
+      push: (link, payload) => {
+        // TO THE DEPUTY AND ONLY TO THE DEPUTY. An ordinary peer discards a roster it is sent
+        // (`checkWarrantPush`), so this is not a security boundary — it is the wire cost, and a
+        // certificate for every member on every push to every member is a body nobody reads.
+        if (link.memberId === payload.warrant.deputyMemberId) return client.warrant(link, payload);
+        const trimmed: WarrantPush =
+          payload.deputyCertPem === undefined
+            ? { warrant: payload.warrant, address: payload.address ?? "" }
+            : { warrant: payload.warrant, deputyCertPem: payload.deputyCertPem, address: payload.address ?? "" };
+        return client.warrant(link, trimmed);
+      },
+    },
+    // RFC §6.5: keep the DEPUTY's copy of the paired-device registry current, and nobody else's.
+    // Hashes only, and never merged into that machine's own registry — the reasoning is in
+    // `bridge/pack/standby-devices.ts` and in the amended note at `bridge/server.ts`.
+    pairing: {
+      deputy: () => trustStore.current()?.deputy ?? null,
+      current: () => {
+        const held = trustStore.current();
+        if (held === null || held.pack === null) return null;
+        const devices = syncedDevicesOf(pairing.registry());
+        return {
+          sync: { packId: held.pack.packId, leadMemberId: held.self.memberId, devices },
+          digest: syncDigest(devices),
+        };
+      },
+      push: (link, sync) => client.pairing(link, sync),
     },
     // §18.10's fast path: a member told this lead, in as many words, that it follows somebody else.
     // Best-effort and time-boxed (it works only while this lead is still in that member's anchor
@@ -692,6 +848,185 @@ const packLead = (() => {
 // would be a second lead's traffic on a pack that has already moved on. It keeps the roster's
 // CONTENTS — the self-heal reads the new lead's certificate out of it — but it dials nobody.
 if (packLead) registry.get()?.engine.onTick(() => (deposed === null ? void packLead.sweep() : undefined));
+
+/**
+ * The client the TAKEOVER dials with. A deputy is a peer — it has no `peers` in its own store — so its
+ * pins come out of the roster that rode the warrant push (RFC §7.4) plus its own lead, and nowhere
+ * else. It signs no request bodies: the deputy is in nobody's roster, so a §8.6 signature could only
+ * ever fail to verify and become a refusal. What authenticates it is the pinned handshake against the
+ * certificate the receiver anchored, plus the dial attestation naming which anchor is calling.
+ */
+function takeoverClient(data: TrustStoreData): PeerClient {
+  const certOf = (memberId: string): string | null => {
+    const held = trustStore.current();
+    if (held === null) return null;
+    if (held.lead !== null && held.lead.memberId === memberId) return held.lead.certPem;
+    return held.standbyRoster?.find((r) => r.memberId === memberId)?.certPem ?? null;
+  };
+  return new PeerClient({
+    self: data.self.memberId,
+    secret: () => trustStore.current()?.pack?.secret ?? null,
+    timeoutMs: packTimeoutBudget(cfg.pollMs),
+    patientTimeoutMs: packHelloBudget(cfg.pollMs),
+    fetch: (url, init) => fetch(url, init),
+    dialSign: (parts) => signDial(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
+    tls: (link) => {
+      const certPem = certOf(link.memberId);
+      return certPem === null ? undefined : (dialTls(trustStore.current(), { certPem }) ?? undefined);
+    },
+  });
+}
+
+/**
+ * RFC §7, wired: the exchange, the local commit, and the one restart in this file.
+ *
+ * **The restart is the deliberate exception to "the bridge does not restart itself".** Every other
+ * membership change says so in the journal and waits for `collie restart`, because the supervision
+ * tier is the CLI's knowledge. This one cannot: the operator asked from a phone, on the bad day, and
+ * a machine whose store says `lead` while its process still runs a peer's pinned listener is a
+ * machine nobody can reach. So it commits, says so, and exits — a supervised install (systemd
+ * `Restart=always`, the Herdr plugin) comes straight back up as the lead, and an unsupervised one is
+ * left with a store that is correct and a message naming the command.
+ */
+async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; message: string }> {
+  const data = trustStore.current();
+  if (data === null || data.lead === null) {
+    return { ok: false, message: takeoverMessage({ kind: "refused", reason: "no-roster" }) };
+  }
+  const client = takeoverClient(data);
+  const outcome = await runTakeover({
+    warrant: () => (holdsOwnWarrant() ? (currentWarrant(trustStore.current())?.warrant ?? null) : null),
+    leadLink: () => {
+      const held = trustStore.current();
+      return held?.lead === null || held?.lead === undefined
+        ? null
+        : { memberId: held.lead.memberId, address: held.lead.address };
+    },
+    witnesses: () => {
+      const held = trustStore.current();
+      if (held === null) return [];
+      return (held.standbyRoster ?? [])
+        .filter((r) => r.memberId !== held.self.memberId && r.memberId !== held.lead?.memberId)
+        .map((r) => ({ memberId: r.memberId, address: r.address }));
+    },
+    address: () => selfAddress(data) || `${cfg.host}:${cfg.port}`,
+    hello: (link) => client.hello(link),
+    ask: (link, body) => client.takeover(link, body),
+    commit: async (confirmed): Promise<CommitOutcome> => {
+      const held = trustStore.current();
+      if (held === null || held.lead === null) return { kind: "refused", reason: "commit-failed" };
+      const roster = held.standbyRoster ?? null;
+      if (roster === null) return { kind: "refused", reason: "no-roster" };
+      // RFC §6.5: the synced entries become this machine's OWN paired devices at commit and only at
+      // commit, because after it this machine IS the lead and the phone must keep working against the
+      // credential it already holds. A label collision refuses the whole takeover and writes nothing —
+      // checked BEFORE the store is rewritten, so a refusal really does leave everything as it was.
+      const devices = syncedDevices();
+      const clash = collidingLabels(pairing.registry(), devices);
+      if (clash.length > 0) return { kind: "refused", reason: "pairing-collision", labels: clash };
+      const result = await commitPackChange(trustStore, audit, (current) =>
+        current === null ? null : adoptLeadership(current, { roster, confirmed, now: Date.now() }),
+      );
+      if (result === null) return { kind: "refused", reason: "commit-failed" };
+      const collisions = await pairing.adopt(devices);
+      if (collisions.length > 0) {
+        // Belt and braces: the read-only check above already passed, so reaching this means the
+        // registry changed underneath. The store is already a lead's, which is the state that matters;
+        // say so rather than pretending the adoption happened.
+        console.warn(`[pack] takeover: could not adopt ${collisions.join(", ")} — rename or revoke, then re-pair.`);
+      }
+      return { kind: "committed", pending: result.pending };
+    },
+    now: Date.now,
+  });
+
+  const message = takeoverMessage(outcome);
+  audit.record({
+    action: "pack.takeover",
+    device: deviceLabel,
+    detail: { outcome: outcome.kind === "committed" ? "committed" : outcome.reason },
+  });
+  if (outcome.kind !== "committed") return { ok: false, message };
+  console.warn(
+    `[pack] TOOK OVER — this machine is the lead of pack "${data.pack?.name ?? "?"}" now (warrant ` +
+      `generation ${currentWarrant(trustStore.current())?.warrant.generation ?? 0}), confirmed by ` +
+      `${outcome.repinned.length} peer(s). Restarting into lead mode; if this process does not come ` +
+      "back by itself, run `herdr plugin action invoke restart --plugin herdr.collie` here.",
+  );
+  // Long enough for the answer above to reach the phone, short enough that the failover proxy's next
+  // health check finds a lead. Not unref'd: this timer is the whole remaining purpose of the process.
+  setTimeout(() => process.exit(0), 1000);
+  return { ok: true, message };
+}
+
+/** The door proper — peer-only. A lead binds the port above for its health answer and nothing else. */
+const standbyDoor = standbyStore === null ? null : createStandbyDoor({
+  facts: (): StandbyFacts => {
+    const held = trustStore.current();
+    const roster = held?.standbyRoster ?? [];
+    return {
+      warrantsSelf: holdsOwnWarrant(),
+      silentForMs: silenceOf(leadContact.facts(), Date.now()),
+      armMs: standbyArmMs,
+      deviceCount: syncedDevices().length,
+      witnessCount: roster.filter(
+        (r) => r.memberId !== held?.self.memberId && r.memberId !== held?.lead?.memberId,
+      ).length,
+      leadMemberId: held?.lead?.memberId ?? null,
+      selfMemberId: held?.self.memberId ?? "this machine",
+      packName: held?.pack?.name ?? null,
+    };
+  },
+  devices: syncedDevices,
+  takeover: (device) => performTakeover(device),
+});
+
+/**
+ * The standby door's listener (RFC §6.2), or nothing at all.
+ *
+ * **`COLLIE_STANDBY_PORT` absent ⇒ nothing is bound**, and a deputy without it is a plain peer that
+ * can still be taken over from a keyboard by §14's promotion. Collie BINDS this; it publishes
+ * nothing — no `tailscale serve`, never `funnel`, no ownership record (ADR 0001 untouched).
+ *
+ * **A LEAD with the key set binds it too, and answers only the health check.** That is not an
+ * oversight in the other direction: a failover proxy's fallback backend points at THIS port
+ * (RFC §14.2), so a deputy that took over and came back up as the lead would leave the proxy
+ * health-checking a closed port and swinging the phone back onto the machine that died. One port,
+ * one question — *should anything route here?* — and a lead answers it `200` on both of its ports.
+ */
+const standbyPort = standbyPortOf(process.env);
+const standbyServer =
+  standbyPort === null || bootTrust === null
+    ? null
+    : Bun.serve({
+        hostname: standbyHostOf(process.env),
+        port: standbyPort,
+        fetch: async (req) => {
+          const url = new URL(req.url);
+          // Three kinds of machine answer here, in the order their states supersede one another: a
+          // DEPOSED collie fails the check (§18.12), a LEAD passes it, and a peer holding a warrant
+          // runs the door. A path nobody owns gets a bare 404 with no body worth reading — three
+          // routes exist on this port and nothing else does.
+          const answered =
+            deposed !== null
+              ? deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url)
+              : (frontDoorHealth(pack.mode, url) ?? (standbyDoor === null ? null : await standbyDoor(req, url)));
+          return answered ?? new Response("not found", { status: 404 });
+        },
+      });
+
+if (standbyServer !== null && standbyDoor !== null) {
+  console.log(
+    `[pack] standby door listening on http://${standbyHostOf(process.env)}:${standbyPort} — it arms ` +
+      `after ${Math.round(standbyArmMs / 1000)}s of silence from this peer's lead, and only while a ` +
+      "verified warrant names this machine and its lead has synced a paired device here.",
+  );
+} else if (standbyServer !== null) {
+  console.log(
+    `[pack] standby port ${standbyPort} answers the failover proxy's health check only — this collie ` +
+      "is not a deputy standing by.",
+  );
+}
 
 const server = startServer({
   cfg,
@@ -733,13 +1068,40 @@ const server = startServer({
             onDeposed: (state) => {
               deposed ??= state;
             },
+            // The standby half (RFC §6.5, §7), or nothing at all — see `standbySurface` above.
+            standby: standbySurface,
             ...surface,
           }),
   // Peer only, and only when the pin could actually be built. See `transportPinned` above.
   tls: listenerTls ?? undefined,
   // The one page a deposed collie serves, and the health check it must now fail (§18.12). `undefined`
   // until something deposes this process, so an ordinary instance's dispatch is byte-identical.
-  deposed: (_req, url) => (deposed === null ? null : deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url)),
+  // The paths this file's route table does not name and must not: `/standby/*` is declared in
+  // `bridge/pack/deposed.ts` and `bridge/pack/standby.ts`, so `solo-baseline.test.ts` can keep
+  // proving by grep that server.ts routes exactly today's set. Three answers, in order:
+  //
+  //   1. a DEPOSED collie serves its one page everywhere and FAILS `/standby/health` (§18.12) — the
+  //      asymmetry that stops a proxy swinging the phone back onto a machine with a stale roster;
+  //   2. a LEAD answers `/standby/health` with 200 while it leads (RFC §14.2's health check);
+  //   3. `/standby` and `/standby/takeover` on the FRONT door are reserved and honest: the door is a
+  //      separate port on a different machine, and the alternative is the SPA fallback handing the
+  //      operator the app shell of the collie they were trying to escape.
+  //
+  // A solo instance answers `null` to all three and gains no route at all (§11).
+  deposed: (_req, url) => {
+    if (deposed !== null) return deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url);
+    if (bootTrust === null) return null;
+    const health = frontDoorHealth(pack.mode, url);
+    if (health !== null) return health;
+    if (url.pathname === STANDBY_PREFIX || url.pathname.startsWith(`${STANDBY_PREFIX}/`)) {
+      return new Response(
+        "This machine is not standing by. The standby door is a separate port on the pack's deputy " +
+          "(COLLIE_STANDBY_PORT), reachable through your failover proxy — see PACK_PROTOCOL.md \u00a718.15.\n",
+        { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } },
+      );
+    }
+    return null;
+  },
 });
 
 const shutdown = async () => {

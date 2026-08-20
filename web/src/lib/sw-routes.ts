@@ -55,6 +55,16 @@ export const NAVIGATION_NETWORK_ONLY = [
   // Scoped to `v1` rather than all of `/pack/`: the protocol reserves the versioned prefix, and a
   // future `/pack/v2/` arrives with a bridge that can add its own line here.
   /^\/pack\/v1(?:[/?]|$)/,
+  // The standby door (PACK_PROTOCOL.md §18.15, RFC §6.2). In the same-origin failover deployment the
+  // phone's FIRST hit on the bad day is an installed service worker minted from the LEAD's origin —
+  // so without this line the takeover page is answered from the precache with the app shell of the
+  // very collie that just died, and the door is unreachable by the one device that needs it. This is
+  // not hygiene; it is the difference between reaching the door and staring at a cached UI.
+  //
+  // The whole `/standby` namespace, query-tolerant like the two above: `/standby/health` is a proxy's
+  // health check, `/standby` is the page, `/standby/takeover` is the confirm, and Collie will never
+  // route a UI page under that prefix.
+  /^\/standby(?:[/?]|$)/,
 ] as const;
 
 /**

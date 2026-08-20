@@ -40,7 +40,17 @@ import {
   TIMESTAMP_HEADER,
 } from "./signing.ts";
 import type { PinnedDeputy } from "./admission.ts";
-import type { TrustedMember, TrustStore, TrustStoreData } from "./trust-store.ts";
+import { parsePairingSync, type SyncedDevice, type PairingSync } from "./standby-devices.ts";
+import {
+  checkTakeoverClaim,
+  commitTakeover,
+  parseTakeoverRequest,
+  probeAnswer,
+  LEAD_IS_ALIVE,
+  type TakeoverRefusal,
+  type TakeoverRequest,
+} from "./takeover.ts";
+import type { TrustedMember, TrustStore, TrustStoreData, Warrant } from "./trust-store.ts";
 import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
 import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
 import type { SnapshotResponse } from "../types.ts";
@@ -94,6 +104,23 @@ export const PACK_LEAVE_PATH = "/pack/v1/leave";
  * can climb it.
  */
 export const PACK_WARRANT_PATH = "/pack/v1/warrant";
+/**
+ * `POST` — the deputy asks a peer to witness, and then to re-pin (RFC §7, §18.16).
+ *
+ * **Two-phase, and the phase is additive-optional whose absent reading is `probe`** — the reading
+ * that changes nothing anywhere. It is the one route a caller admitted **as the deputy** may use, and
+ * it is also answerable by a collie that still believes it leads: there it is a deposition, exactly as
+ * `/pack/v1/warrant` is, because it is the same proof arriving at a different kind of recipient.
+ */
+export const PACK_TAKEOVER_PATH = "/pack/v1/takeover";
+/**
+ * `POST` — the lead syncs its paired-device registry to the DEPUTY ONLY (RFC §6.5, §18.14).
+ *
+ * Hashes only. It lands in `standby-devices.json` and is **never** merged into this collie's own
+ * `paired-devices.json` — `PairingStore.enforced()` is "the registry is non-empty", so a merge would
+ * silently arm this machine's own write gate for its own operator (RFC §16, decision 5).
+ */
+export const PACK_PAIRING_PATH = "/pack/v1/pairing";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -114,6 +141,15 @@ export const HANDOVER_NOT_APPROVED = "handover_not_approved";
  * (§10.2's fourth state, `conflicted`), and `boot-gate.ts` reads it as the evidence that deposes.
  */
 export const LEAD_CONFLICT = "lead_conflict";
+
+/**
+ * The machine-readable `code` on a refused pairing sync: **a label already exists here** (RFC §6.5).
+ *
+ * Refuse and report, never namespace-and-merge (RFC §16, decision 6). It is a `code` rather than
+ * prose because the LEAD is the machine whose operator can fix it, and `pack status` there has to
+ * name the labels rather than parse a sentence.
+ */
+export const PAIRING_LABEL_COLLISION = "pairing_label_collision";
 
 /**
  * The routes a caller may authenticate with a §8.6 signature — deliberately a closed set.
@@ -140,25 +176,41 @@ const SIGNABLE_PATHS: ReadonlySet<string> = new Set([
   // its deposition. Idempotent by construction (supersession is monotone on both axes, §18.3), which
   // is what makes it safe to add to `MEMBERSHIP_PATHS` below alongside `leave` and `lead`.
   PACK_WARRANT_PATH,
+  // §18.16's takeover, on the same reasoning as the warrant above and for the same one delivery: a
+  // takeover travels deputy → peer over a pinned handshake, EXCEPT when the recipient is a collie
+  // that still believes it leads. That listener pins nothing inbound (§8.1), so without a signature
+  // the deposed machine could not admit the very member that can prove its deposition. Idempotent by
+  // construction — a doubled deposition lands the same store — which is what makes it safe beside
+  // `leave` and `lead` in `MEMBERSHIP_PATHS`.
+  PACK_TAKEOVER_PATH,
 ]);
 
 /** The subset of {@link SIGNABLE_PATHS} that CHANGES STATE, and therefore advances the replay floor. */
-const MEMBERSHIP_PATHS: ReadonlySet<string> = new Set([PACK_LEAVE_PATH, PACK_LEAD_PATH, PACK_WARRANT_PATH]);
+const MEMBERSHIP_PATHS: ReadonlySet<string> = new Set([
+  PACK_LEAVE_PATH,
+  PACK_LEAD_PATH,
+  PACK_WARRANT_PATH,
+  PACK_TAKEOVER_PATH,
+]);
 
 /**
  * The routes that accept a caller admitted **as the deputy** rather than as a roster member.
  *
- * **Empty, and that is the whole of the deputy's reach on this build: zero.** A peer anchors its
- * deputy's certificate so that a takeover can be *asked for* one day (§18.5); until the route that
- * asks exists, an admitted deputy is refused on every route this build has — the snapshot, the
- * proxied pane family, the membership routes, `hello`, all of them. A second anchor therefore buys
- * a compromised deputy a completed TLS handshake and nothing behind it.
+ * **Exactly two, and the deputy reaches nothing else** — not the snapshot, not the proxied pane
+ * family, not `hello`, not the membership routes. A second anchor buys a completed TLS handshake and
+ * these two routes, both of which refuse anything but the warrant this peer's own lead signed:
  *
- * It is a declaration rather than an `if` so that the takeover and witness routes have somewhere to
- * opt in, instead of each re-deriving "is this the deputy?" from a warrant — which is how one route
- * ends up deriving it differently from the next.
+ *   • {@link PACK_TAKEOVER_PATH} — the witness question and the re-pin (RFC §7);
+ *   • {@link PACK_WARRANT_PATH} — RFC §9's reconciliation, and it is the SAME decision as a commit.
+ *     A peer that was down during the takeover still pins the old lead, and the new lead's first
+ *     contact carries the warrant; the peer verifies it, checks the caller against the warrant's
+ *     `deputyFingerprint`, and re-pins. One round trip, once per member, never again.
+ *
+ * It is a declaration rather than an `if` so that both routes ask "is this the deputy?" in one place
+ * instead of each re-deriving it — which is how one route ends up deriving it differently from
+ * the next.
  */
-const DEPUTY_ROUTES: ReadonlySet<string> = new Set<string>();
+const DEPUTY_ROUTES: ReadonlySet<string> = new Set<string>([PACK_TAKEOVER_PATH, PACK_WARRANT_PATH]);
 
 /**
  * This collie's own snapshot body, for the one merged route (§9.2). `undefined` ⇒ the `?session=`
@@ -183,6 +235,24 @@ export type ApiDispatch = (req: Request, url: URL, from: string) => Promise<Resp
 export interface PackSurface {
   readonly snapshot?: SnapshotSource;
   readonly dispatch?: ApiDispatch;
+}
+
+/**
+ * What the two standby-shaped routes need from the process, injected rather than reached for — the
+ * silence lives in memory (`lead-contact.ts`), the synced registry lives in its own file
+ * (`standby-devices.ts`), and neither is a decision this module should be making.
+ */
+export interface StandbySurface {
+  /** A verified warrant names THIS machine as deputy. Read from the same place the listener's second anchor is. */
+  readonly warrantsSelf: () => boolean;
+  /** Gap A's silence, in ms — **the same number** `pack status` and the door read (RFC §10.1). */
+  readonly silentForMs: () => number;
+  /** The arming threshold this collie was started with (`standby.ts` → `armThresholdMs`). */
+  readonly armMs: number;
+  /** Which of the incoming labels already exist in this machine's OWN paired-device registry. */
+  readonly collidingLabels: (devices: readonly SyncedDevice[]) => readonly string[];
+  /** Replace `standby-devices.json` wholesale. A sync is never a merge. */
+  readonly applySync: (sync: PairingSync) => Promise<void>;
 }
 
 export interface PackRouterDeps {
@@ -249,6 +319,12 @@ export interface PackRouterDeps {
    */
   readonly onDeposed?: (state: DeposedState) => void;
   /**
+   * The standby half (RFC §6, §7), supplied **only** by a peer that holds a verified warrant naming
+   * itself. Absent everywhere else, and its absence is what makes `/pack/v1/pairing` refuse and a
+   * takeover probe read as maximally silent — both of which are the closed readings.
+   */
+  readonly standby?: StandbySurface;
+  /**
    * This build's own version string, for `hello` (§5, §7.1) — bare, as `collie version` names it
    * without its parenthetical (`bridge/version.ts`'s `collieVersionBare`).
    *
@@ -273,6 +349,17 @@ interface SignedCaller {
   readonly member: string | null;
   readonly timestamp?: number;
   readonly refusal?: RefusedFactor;
+}
+
+/**
+ * Read this request's `X-Pack-Timestamp` and say whether it is inside §8.6's skew window.
+ *
+ * `signedAt: 0` — the window only. The monotonic floor is per ROSTER MEMBER (`TrustedMember.signedAt`)
+ * and there is no such record for a caller that is not one, which is the deputy's case below.
+ */
+function withinSkew(req: Request, now: number): boolean {
+  const timestamp = parseTimestamp(req.headers.get(TIMESTAMP_HEADER));
+  return timestamp !== null && timestampVerdict(timestamp, now, 0) === "ok";
 }
 
 /**
@@ -419,6 +506,30 @@ function leadConflict(
   return new Response(JSON.stringify(body), { status: 409, headers: packResponseHeaders(self) });
 }
 
+/**
+ * RFC §9's reconciliation body, read as a takeover COMMIT.
+ *
+ * It arrives on `/pack/v1/warrant` because that is the route §9 names, and it is a commit because
+ * that is what §9 describes it doing ("checks the caller's identity against the warrant's
+ * `deputyFingerprint`, and re-pins"). The phase is not negotiable here: a deputy-admitted warrant
+ * push is only ever a new lead telling a member that was down what it missed.
+ */
+function rePinRequestOf(body: JsonObject | null): TakeoverRequest | null {
+  const proof = parseWarrant(body?.warrant);
+  if (proof === null) return null;
+  const address = typeof body?.address === "string" && body.address !== "" ? body.address : null;
+  return { phase: "commit", warrant: proof, address };
+}
+
+/** What a refused takeover claim is TOLD. The signature failure is NOT here — that is the 401. */
+function takeoverRefusalText(reason: Exclude<TakeoverRefusal, "bad-signature">): string {
+  if (reason === "not-a-peer") return "this collie is not a peer of the lead that signed this warrant";
+  if (reason === "foreign") return "this warrant is not from this collie's own lead, or not for this pack";
+  if (reason === "not-the-deputy") return "this warrant names a different machine, or a different key";
+  if (reason === "generation") return "this warrant is older than the one this collie already holds";
+  return "this warrant is past its validity on this collie's clock — re-run `collie pack deputy`";
+}
+
 /** The one body `/pack/v1/warrant` answers with. `applied: false` is a success, not a refusal. */
 function warrantAnswer(self: string, generation: number, applied: boolean): Response {
   return new Response(JSON.stringify({ generation, applied }), {
@@ -519,7 +630,27 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     if (signature !== null && data !== null) {
       signedBody = req.method === "GET" || req.method === "HEAD" ? "" : await req.text();
       signed = verifySigned(data, req, url, signature, signedBody, now());
-      if (signed.refusal !== undefined) return refuse(pathname, signed.refusal);
+      // A signature the ROSTER cannot account for is normally the uniform 401. One caller is exempt,
+      // and only from the refusal: the DEPUTY this listener anchored. RFC §9's reconciliation is a
+      // signed warrant push from a machine that has just become the lead, and it is signed because
+      // the OTHER recipient of that same dial — a collie that still believes it leads — pins nothing
+      // inbound and could not otherwise admit it. A peer must therefore not refuse the identical
+      // request just because the signer is not in its one-entry roster.
+      //
+      // **Nothing is GRANTED here.** The signature is only prevented from being a refusal; identity
+      // still comes from the dial attestation (`resolveDial` → `admitPackRequest`), which is the same
+      // key and the same certificate, and the skew window is still enforced.
+      const deputySigned =
+        deps.deputyAnchor !== undefined &&
+        verifyRequestSignature(deps.deputyAnchor.certPem, signature, {
+          method: req.method,
+          path: url.pathname,
+          body: signedBody,
+          timestamp: parseTimestamp(req.headers.get(TIMESTAMP_HEADER)) ?? 0,
+        }) &&
+        withinSkew(req, now());
+      if (signed.refusal !== undefined && !deputySigned) return refuse(pathname, signed.refusal);
+      if (deputySigned) signed = { member: null };
     }
 
     // The dial attestation (§8.6, §8.1's 2026-08-20 amendment). Read on EVERY path — unlike the §8.6
@@ -546,7 +677,9 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     // ZERO REACH FOR THE DEPUTY, in one place (see {@link DEPUTY_ROUTES}). A caller admitted as the
     // second anchor is refused on every route this build has, and it is refused HERE — before the
     // receipt below, before the conflict answer, before dispatch — so no route can forget to ask.
-    if (verdict.caller === "deputy") return deputyAnswer(pathname, verdict.self);
+    if (verdict.caller === "deputy") {
+      return deputyAnswer(req, url, signedBody, verdict.deputy, verdict.self, data);
+    }
 
     // Gap A (RFC §10.1): every landed call from the lead is a receipt. Stamped here, once, after both
     // factors and before any route runs, so a proxied pane read counts exactly as a poll does.
@@ -607,6 +740,18 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     }
     if (pathname === PACK_WARRANT_PATH && req.method === "POST") {
       return warrant(req, signedBody, verdict.member, verdict.self);
+    }
+    if (pathname === PACK_PAIRING_PATH && req.method === "POST") {
+      return pairingSync(req, signedBody, verdict.member, verdict.self, data);
+    }
+    if (pathname === PACK_TAKEOVER_PATH && req.method === "POST") {
+      // A takeover arriving at a collie that still believes it LEADS is a deposition, not a witness
+      // question — the same proof, at a different kind of recipient, exactly as `/pack/v1/warrant`
+      // is. Any other member reaching this route is a member exceeding its role.
+      if (data !== null && isLeading(data)) {
+        return takeoverAtLead(req, signedBody, verdict.member, verdict.self, data);
+      }
+      return refuse(PACK_TAKEOVER_PATH, "not-a-pack-member");
     }
     if (pathname === PACK_LEAD_PATH && req.method === "POST") {
       return newLead(req, signedBody, verdict.member, verdict.self);
@@ -694,18 +839,103 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
   };
 
   /**
-   * What a caller admitted **as the deputy** gets. Today, on every route: the uniform 401.
+   * What a caller admitted **as the deputy** gets: the two routes of {@link DEPUTY_ROUTES}, and the
+   * uniform 401 on every other path this build serves.
    *
-   * Audited as a refused factor, like `secret`'s role check — this is a machine the operator
-   * deliberately anchored, exceeding what an anchor grants. That is not a stranger, and the peer's own
-   * log should be able to tell the difference even though the wire deliberately cannot.
+   * A route outside the set is audited as a refused factor, like `secret`'s role check — this is a
+   * machine the operator deliberately anchored, exceeding what an anchor grants. That is not a
+   * stranger, and the peer's own log should be able to tell the difference even though the wire
+   * deliberately cannot.
    */
-  function deputyAnswer(pathname: string, self: string): Response {
-    if (!DEPUTY_ROUTES.has(pathname)) return refuse(pathname, "not-a-pack-member");
-    // A route named itself in DEPUTY_ROUTES but this build dispatches nothing for it. That is a
-    // wiring bug on this side, not a fault of the caller, so it is a 400 on an admitted link and not
-    // a silent success — the set and the dispatch must be extended together or not at all.
-    return badRequest(self, "this route accepts the deputy but is not implemented on this build");
+  async function deputyAnswer(
+    req: Request,
+    url: URL,
+    cached: string | null,
+    deputy: PinnedDeputy,
+    self: string,
+    data: TrustStoreData | null,
+  ): Promise<Response> {
+    const { pathname } = url;
+    if (!DEPUTY_ROUTES.has(pathname) || req.method !== "POST") return refuse(pathname, "not-a-pack-member");
+    if (data === null) return refuse(pathname, "not-a-pack-member");
+    const body = asRecord(await readJson(req, cached));
+    // Both routes carry the SAME proof and are answered by the SAME decision (`takeover.ts`); what
+    // differs is only which of them a caller has reason to use — the standby door's exchange runs on
+    // `/pack/v1/takeover`, and RFC §9's reconciliation on `/pack/v1/warrant`, which is the route that
+    // sentence names. Two doors, one implementation, so they cannot drift apart.
+    const request =
+      pathname === PACK_TAKEOVER_PATH
+        ? parseTakeoverRequest(body)
+        : rePinRequestOf(body);
+    if (request === null) return badRequest(self, "a takeover needs a well-formed `warrant`");
+
+    const claim = checkTakeoverClaim(data, request.warrant, deputy, now());
+    if (claim.kind === "refuse") {
+      // A signature that does not verify is the uniform 401 for the reason it is on every other
+      // receiving path: it is the one refusal an attacker could also provoke. Everything else is a
+      // fixable fault on the DEPUTY's side and is owed a sentence — the caller cleared both factors.
+      if (claim.reason === "bad-signature") return refuse(pathname, "certificate");
+      return badRequest(self, takeoverRefusalText(claim.reason));
+    }
+    if (request.phase === "probe") {
+      // CHANGES NOTHING, ANYWHERE. That is the whole contract of the probe round, and it is why the
+      // exchange is two-phase: a peer whose lead called it inside the arming window is evidence the
+      // deputy is the one that is cut off, and the deputy must be able to learn that before it writes.
+      const silent = deps.standby?.silentForMs() ?? Number.POSITIVE_INFINITY;
+      const armMs = deps.standby?.armMs ?? 0;
+      return new Response(JSON.stringify(probeAnswer(silent, armMs)), {
+        status: 200,
+        headers: packResponseHeaders(self),
+      });
+    }
+
+    if (request.address === null) {
+      return badRequest(self, "a takeover commit needs `address` — where this peer should dial its new lead");
+    }
+    const applied = await commitPackChange(deps.store, deps.audit, (current) =>
+      current === null ? null : commitTakeover(current, claim, request.address ?? "", now()),
+    );
+    // A redelivery applies nothing and is still a success: the deputy's question is "does this member
+    // follow me now?", and it does. Reporting that is what stops the reconciliation re-dialling.
+    if (applied !== null) membershipChanged();
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        adopted: applied !== null,
+        restartRequired: true,
+        generation: applied?.generation ?? currentWarrant(data)?.warrant.generation ?? claim.warrant.generation,
+      }),
+      { status: 200, headers: packResponseHeaders(self) },
+    );
+  }
+
+  /**
+   * `POST /pack/v1/takeover` **at a collie that still believes it leads** — the deposition, reached by
+   * the second of its two doors.
+   *
+   * It is deliberately the *same* function `/pack/v1/warrant` uses: one proof, one set of clauses, one
+   * self-heal. A `probe` is answered honestly rather than specially — this collie IS the lead and it
+   * IS answering, which is exactly the `lead_is_alive` the deputy must abort on.
+   */
+  async function takeoverAtLead(
+    req: Request,
+    cached: string | null,
+    from: TrustedMember,
+    self: string,
+    data: TrustStoreData,
+  ): Promise<Response> {
+    const body = asRecord(await readJson(req, cached));
+    const request = parseTakeoverRequest(body);
+    if (request === null) return badRequest(self, "a takeover needs a well-formed `warrant`");
+    if (request.phase === "probe") {
+      // The most honest witness answer there is: the lead is not merely reachable, it is the one
+      // reading this request. `lastDialledAgoMs: 0` is literally true.
+      return new Response(JSON.stringify({ ok: false, code: LEAD_IS_ALIVE, lastDialledAgoMs: 0 }), {
+        status: 200,
+        headers: packResponseHeaders(self),
+      });
+    }
+    return depose(request.warrant, from, self, data);
   }
 
   /**
@@ -786,7 +1016,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     // handing back a warrant this collie signed. That is not a push to store — it is a deposition, and
     // it is answered here rather than on a route of its own because it is the same object arriving at
     // a different kind of recipient, exactly as `/pack/v1/lead` is (§14).
-    if (data !== null && isLeading(data)) return depose(req, cached, from, self, data);
+    if (data !== null && isLeading(data)) {
+      const proof = parseWarrant(asRecord(await readJson(req, cached))?.warrant);
+      if (proof === null) return badRequest(self, "a warrant push needs a well-formed `warrant`");
+      return depose(proof, from, self, data);
+    }
     if (data === null || data.lead === null || data.lead.memberId !== from.memberId) {
       // Not our lead. Audited as a refused factor for the reason `secret` gives: this is a pinned
       // member exceeding its role rather than a stranger, and that distinction belongs in the log.
@@ -807,7 +1041,10 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       return warrantAnswer(self, verdict.generation, false);
     }
     const applied = await commitPackChange(deps.store, deps.audit, (current) =>
-      current === null ? null : storeWarrant(current, verdict.stored),
+      // The roster rides along ONLY when this collie is the deputy the warrant names (RFC §7.4), and
+      // `checkWarrantPush` is what decided that — a peer never stores pins for machines it must never
+      // dial (§4), and a deputy without one could not lead the pack it is about to inherit.
+      current === null ? null : storeWarrant(current, verdict.stored, verdict.roster),
     );
     // Stored on disk, INERT at the transport: this process pinned its `ca` list at bind time and
     // `server.reload({tls})` does not swap it (§8.1), so the second anchor the warrant authorises
@@ -815,6 +1052,66 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     // and it is exactly the "warrant stored, anchor INACTIVE" state §18 asks the operator to see.
     if (applied !== null) membershipChanged();
     return warrantAnswer(self, applied?.generation ?? verdict.stored.warrant.generation, applied !== null);
+  }
+
+  /**
+   * `POST /pack/v1/pairing` — the lead syncs its paired-device registry to the DEPUTY (RFC §6.5).
+   *
+   * Three questions, and all three must answer yes:
+   *
+   *   1. **the caller is this collie's own lead** — the same role check `/pack/v1/secret` carries and
+   *      for the same reason (§5: *admitted* and *allowed to do this* are different questions);
+   *   2. **this collie holds a verified warrant naming ITSELF.** Every other peer that ever receives
+   *      one refuses it. A registry on a machine that is not the deputy is a credential store nobody
+   *      asked for, on a machine with no door to check it at;
+   *   3. **no label collides with this machine's own paired devices.** Refuse and report, never
+   *      namespace-and-merge (RFC §16, decision 6): labels are the revoke handle, and a silently
+   *      renamed device is one the operator cannot revoke by the name they know it by.
+   *
+   * What lands is `standby-devices.json`, its own file, **never** merged into `paired-devices.json` —
+   * `PairingStore.enforced()` is "the registry is non-empty", so a merge would silently arm this
+   * machine's own write gate for its own operator (`standby-devices.ts` says it at length).
+   */
+  async function pairingSync(
+    req: Request,
+    cached: string | null,
+    from: TrustedMember,
+    self: string,
+    data: TrustStoreData | null,
+  ): Promise<Response> {
+    const standby = deps.standby;
+    if (data === null || data.lead === null || data.lead.memberId !== from.memberId) {
+      // Not our lead. Audited as a refused factor for `secret`'s reason: a pinned member exceeding
+      // its role is not a stranger, and the log should say which it was.
+      return refuse(PACK_PAIRING_PATH, "not-a-pack-member");
+    }
+    if (standby === undefined || !standby.warrantsSelf()) {
+      return refuse(PACK_PAIRING_PATH, "not-a-pack-member");
+    }
+    const sync = parsePairingSync(await readJson(req, cached));
+    if (sync === null) return badRequest(self, "a pairing sync needs `packId`, `leadMemberId` and `devices`");
+    if (data.pack === null || sync.packId !== data.pack.packId || sync.leadMemberId !== from.memberId) {
+      return badRequest(self, "this pairing sync is not from this collie's own lead, or not for this pack");
+    }
+    const collisions = standby.collidingLabels(sync.devices);
+    if (collisions.length > 0) {
+      // Reported, not steamrolled — and reported to the LEAD, which is the machine whose operator can
+      // rename the device. `409`: the two sides disagree about a name, which is what that status is
+      // for on this surface (§7, §18.10 use it the same way).
+      return new Response(
+        JSON.stringify({
+          error: `this machine already has paired devices called "${collisions.join('", "')}" — rename one, or revoke it here`,
+          code: PAIRING_LABEL_COLLISION,
+          labels: collisions,
+        }),
+        { status: 409, headers: packResponseHeaders(self) },
+      );
+    }
+    await standby.applySync(sync);
+    return new Response(JSON.stringify({ devices: sync.devices.length, applied: true }), {
+      status: 200,
+      headers: packResponseHeaders(self),
+    });
   }
 
   /**
@@ -840,15 +1137,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
    * for the same reason it is on the storing path: it is the one refusal an attacker could provoke.
    */
   async function depose(
-    req: Request,
-    cached: string | null,
+    proof: Warrant,
     from: TrustedMember,
     self: string,
     data: TrustStoreData,
   ): Promise<Response> {
-    const record = asRecord(await readJson(req, cached));
-    const proof = parseWarrant(record?.warrant);
-    if (proof === null) return badRequest(self, "a warrant push needs a well-formed `warrant`");
     if (proof.deputyMemberId !== from.memberId) {
       // Not the member this warrant names. Audited as a refused factor for the reason `secret` gives:
       // a pinned member exceeding its role is not a stranger, and the log should say which it was.
