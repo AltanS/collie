@@ -1,8 +1,20 @@
 import { deposedOutcomeLines } from "../bridge/pack/deposed.ts";
 import type { OpsRecord } from "../bridge/pack/ops-store.ts";
-import { armThresholdMs as bridgeArmThresholdMs } from "../bridge/pack/standby.ts";
+import {
+  armingReport,
+  armThresholdMs as bridgeArmThresholdMs,
+  armThresholdWarning,
+  coldReason,
+  humanSilence,
+  silenceOf,
+  standbyPortOf,
+  STANDBY_PORT_ENV,
+  warrantNamesSelf,
+  type StandbyFacts,
+} from "../bridge/pack/standby.ts";
+import type { StandbyDevices } from "../bridge/pack/standby-devices.ts";
 import { checkpointStale, type PackRuntimeMarker } from "../bridge/pack/staleness.ts";
-import type { TrustStoreData, Warrant } from "../bridge/pack/trust-store.ts";
+import type { TrustedMember, TrustStoreData, Warrant } from "../bridge/pack/trust-store.ts";
 import { currentWarrant, verifyWarrantSignature, warrantExpired, warrantExpiresAt } from "../bridge/pack/warrant.ts";
 import type { Environment } from "./context.ts";
 import type { Tone, TonedLine } from "./render.ts";
@@ -230,7 +242,9 @@ export function leadContactLines(
     ];
   }
   const dialled = marker.leadLastDialledAt;
-  const silence = Math.max(0, now - Math.max(dialled ?? 0, marker.bootedAt));
+  // The door's own formula, called rather than re-derived (§10.1's one-clock rule). The two used to
+  // agree by having the same arithmetic written twice, which is not the same thing as agreeing.
+  const silence = silenceOf(contactFacts(marker), now);
   const rows: TonedLine[] = [];
   if (dialled === null) {
     rows.push(
@@ -304,5 +318,146 @@ export function peerWarrantLines(
     line(head, "warn"),
     line("       verified · stored, NOT anchored — this collie's listener was built before it landed.", "warn"),
     line("       Restart here to arm it: `herdr plugin action invoke restart --plugin herdr.collie`.", "dim"),
+  ];
+}
+
+// ── The deputy's own door (RFC §6.2, §6.3, §10.1) ────────────────────────────
+
+/** The marker's two receipts, in the shape the door's own clock reads. One holder, one formula. */
+function contactFacts(marker: PackRuntimeMarker) {
+  return {
+    lastDialledAt: marker.leadLastDialledAt,
+    processStartedAt: marker.bootedAt,
+    leadRefusedSecretAt: marker.leadRefusedSecretAt,
+  };
+}
+
+/**
+ * Break one of `standby.ts`'s own sentences into rows a terminal can hold.
+ *
+ * The words are the door's, unchanged. A second wording of "why this door is cold" is a second thing
+ * to keep true, and the page an operator reads at 23:00 and the verb they ran at 22:00 disagreeing
+ * about it is exactly the failure §10.1 exists to prevent.
+ */
+function wrapped(text: string, indent: string, width = 98): TonedLine[] {
+  const rows: string[] = [];
+  let row = "";
+  for (const word of text.split(" ")) {
+    if (row !== "" && `${indent}${row} ${word}`.length > width) {
+      rows.push(row);
+      row = word;
+      continue;
+    }
+    row = row === "" ? word : `${row} ${word}`;
+  }
+  if (row !== "") rows.push(row);
+  return rows.map((r) => line(`${indent}${r}`, "dim"));
+}
+
+/**
+ * **The arming state of this machine's standby door** — the fact the door decides on, printed by the
+ * verb (RFC §6.3, §10.1).
+ *
+ * Every input is the door's own function: {@link warrantNamesSelf} for the warrant, `silenceOf` for
+ * the clock, `armThresholdMs` for the formula, `armingReport` for the verdict and `coldReason` for
+ * the sentence. Nothing here re-derives any of them, because a `pack status` that computed its own
+ * arming would be a second door — one that arms on paper while the real one stays shut, or the
+ * reverse. It reads state and grants nothing.
+ *
+ * Silent on every machine that is not the named deputy: a peer with no warrant has no door, and a
+ * heading about one would be four lines of nothing on every `pack status` in the pack.
+ */
+export function standbyDoorLines(
+  data: TrustStoreData,
+  marker: PackRuntimeMarker | null,
+  devices: StandbyDevices | null,
+  env: Environment,
+  now: number,
+): TonedLine[] {
+  if (!warrantNamesSelf("peer", data, now)) return [];
+  const port = standbyPortOf(env);
+  if (port === null) {
+    // RFC §6.2's "absent means closed", said out loud. The warrant is real and a keyboard promotion
+    // still works; what is missing is the page a phone would tap, and nothing else says so.
+    return [
+      line(`standby door — CLOSED: ${STANDBY_PORT_ENV} is unset, so nothing is bound here`, "warn"),
+      line("       This machine holds the warrant and could take over, but only from a keyboard", "dim"),
+      line("       (`collie promote`). Set the port, restart here, and put both machines behind one", "dim"),
+      line("       origin — the phone's credential and its installed app are per-origin (RFC §14.2).", "dim"),
+    ];
+  }
+  if (marker === null || checkpointStale(marker, now, CHECKPOINT_INTERVAL_MS)) {
+    // No live process, so no listener and no receipts. An arming verdict computed here would be a
+    // statement about a door nobody is serving — the one thing this surface must never make.
+    return [line(`standby door — configured on :${port}, but no bridge is running here to bind it`, "warn")];
+  }
+  const facts: StandbyFacts = {
+    warrantsSelf: true,
+    silentForMs: silenceOf(contactFacts(marker), now),
+    armMs: armThresholdMs(env),
+    deviceCount: devices?.devices.length ?? 0,
+    // The witnesses step (b) would ask. It shapes the page's wording, never the verdict, so a peer's
+    // short roster cannot make this line disagree with the door's own answer.
+    witnessCount: data.peers.filter((p) => p.status === "enrolled").length,
+    leadMemberId: data.lead?.memberId ?? null,
+    selfMemberId: data.self.memberId,
+    packName: data.pack?.name ?? null,
+  };
+  const report = armingReport(facts);
+  const rows: TonedLine[] = report.armed
+    ? [
+        line(`standby door — ARMED on :${port} · silent for ${humanSilence(facts.silentForMs)}`, "bad"),
+        line("       The page is live and its button is on it. Arming grants nothing by itself, and", "warn"),
+        line("       the lead's next landed call disarms it — nothing is persisted either way.", "dim"),
+      ]
+    : [
+        line(`standby door — cold on :${port} · arms after ${humanSilence(facts.armMs)} of silence`, "good"),
+        ...wrapped(coldReason(facts, report), "       "),
+      ];
+  const warning = armThresholdWarning(env);
+  return warning === null ? rows : [...rows, line(warning, "warn")];
+}
+
+// ── The lead's pairing sync (RFC §6.5; RFC §16, decision 6) ──────────────────
+
+/**
+ * The deputy refused the last pairing sync, because it already holds one of those labels (§18.14).
+ *
+ * It is the lead's operator who can fix it — the labels are theirs — so the finding is printed here
+ * and nowhere else. It is read off the runtime marker rather than the trust store because it is an
+ * observation of one process's traffic, and it clears itself: the lead re-offers the refused sync on
+ * every sweep, so the rename takes effect with no verb and no restart.
+ */
+export function pairingCollisionLines(marker: PackRuntimeMarker | null, now: number): TonedLine[] {
+  const collision = marker?.pairingCollision ?? null;
+  if (collision === null) return [];
+  const labels = collision.labels.map((l) => `"${l}"`).join(", ");
+  return [
+    line(`⚠ pairing sync REFUSED ${humanAge(now - collision.at)} ago — the deputy already has ${labels}`, "warn"),
+    line("  Until it lands, that deputy's standby door has nothing to check a takeover against and", "dim"),
+    line("  refuses to arm. A label is the revoke handle, so the sync refuses rather than renaming a", "dim"),
+    line("  device you could then not revoke by name. Free the name on one side and the next sweep", "dim"),
+    line("  syncs by itself — `collie devices revoke <label>` there, or re-pair under another name here.", "dim"),
+  ];
+}
+
+// ── The new lead's unfinished business (RFC §7.1, §9) ────────────────────────
+
+/**
+ * One member a takeover could not reach, under its roster row.
+ *
+ * `rePinPending` is how §7.1's partial success is represented, and it names **no operator step on
+ * purpose**: §9's reconciliation is this lead's own sweep, which pushes the proof on first contact
+ * and clears the flag. So the remedy sentence says what is true — there is nothing to run — because a
+ * row that looked like a task would be a task nobody can perform.
+ */
+export function memberRePinLines(member: TrustedMember): TonedLine[] {
+  if (member.rePinPending !== true) return [];
+  return [
+    line("    re-pin  PENDING — this member has not been told the crown moved", "warn"),
+    line("            It still follows the machine that led before the takeover, so it answers this", "dim"),
+    line("            collie nothing. There is no step to run: this lead pushes the signed proof on", "dim"),
+    line("            first contact and clears the row by itself (§9). A row that stays is a machine", "dim"),
+    line("            that is simply not back yet.", "dim"),
   ];
 }

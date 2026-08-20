@@ -4,6 +4,7 @@ import { commitPackChange } from "../bridge/pack/enrollment.ts";
 import { currentWarrant, mintWarrant, warrantExpired, type WarrantPush } from "../bridge/pack/warrant.ts";
 import { EXIT } from "./io.ts";
 import { clientFor, failureLine, linkOf, parsePackArgs } from "./pack.ts";
+import { pairedRegistryOf } from "./pairing.ts";
 import { firstLine, restartScript, runProbe, transportFailure, type PackAddDeps, type RemoteRunner } from "./remote.ts";
 
 // `collie pack deputy <member>` / `--revoke` — the operator names the ONE peer that may take the
@@ -89,6 +90,7 @@ export async function cmdPackDeputy(deps: PackAddDeps, args: readonly string[]):
 
   const named = revoking ? ok(null) : refuseOrName(deps, data, positional[0]);
   if (!named.ok) return named.code;
+  if (!revoking && !refuseUnpaired(deps)) return EXIT.STATE;
 
   const minted = await mintOrReuse(deps, data, named.memberId, revoking);
   if (!minted.ok) return minted.code;
@@ -160,6 +162,54 @@ function refuseOrName(deps: PackAddDeps, data: TrustStoreData, memberId: string 
     return stop(EXIT.STATE);
   }
   return ok(memberId);
+}
+
+/**
+ * **A lead with nothing paired gets no deputy** (RFC §6.4). `false` ⇒ the verb stops, having minted,
+ * written and sent nothing.
+ *
+ * The standby door is authenticated by the phone's own pairing credential and by nothing else, and
+ * `PairingStore.enforced()` is *the registry is non-empty* — so a lead with an empty registry would
+ * sync an empty one, and the door would refuse to arm rather than arm ungated. Every step of the
+ * designation would succeed and the result would be a door that can never open. The refusal is here
+ * rather than at the door because this is where the operator is standing, and the remedy is one verb.
+ *
+ * **A revocation is never refused by this.** Un-naming a deputy must work on any pack, in any state;
+ * it is the un-doing, and a state that blocks the un-doing is a trap.
+ */
+function refuseUnpaired(deps: PackAddDeps): boolean {
+  if (pairedRegistryOf(deps.files, deps.ctx.stateDir).devices.length > 0) return true;
+  deps.io.err("error: this lead has no paired device, so a deputy's standby door could never arm.");
+  deps.io.err("       That door is authenticated by the phone's own pairing credential and by nothing");
+  deps.io.err("       else (RFC §6.4) — with an empty registry there is nothing to check a takeover");
+  deps.io.err("       against, so it refuses to arm rather than arming ungated. Nothing was minted,");
+  deps.io.err("       written or sent. Pair the phone you would take over FROM first:");
+  deps.io.err("         collie pair");
+  return false;
+}
+
+/**
+ * The same-origin prerequisite, said once, at designation time (RFC §14.2; RFC §16, decision 4).
+ *
+ * **A warning, never a refusal.** A pack without a failover proxy keeps every other part of this
+ * feature — the warrant, the deposition, the self-heal — and its recovery path is `collie promote`
+ * from a keyboard, which is unchanged. What it does not get is the phone-first half, and that is
+ * worth one paragraph rather than a veto: Collie cannot see the operator's ingress from here, and a
+ * verb that refused on a heuristic about somebody else's proxy would be refusing on a guess.
+ *
+ * `COLLIE_PUBLIC_URL` is the signal because it is already the one place this deployment names its
+ * real front-door origin (PACK_PROTOCOL.md §5's address ladder). Unset means nothing here knows of a
+ * shared origin — not that none exists.
+ */
+function sameOriginNotice(deps: PackAddDeps): void {
+  if ((deps.ctx.env.COLLIE_PUBLIC_URL ?? "").trim() !== "") return;
+  deps.io.out("");
+  deps.io.out("note: COLLIE_PUBLIC_URL is unset here, so this machine knows of no shared origin.");
+  deps.io.out("  The phone's pairing credential and its installed app are BOTH per-origin, so a standby");
+  deps.io.out("  page served under a different hostname is a page that phone cannot authenticate to.");
+  deps.io.out("  The deputy is real either way and `collie promote` from a keyboard still works — what");
+  deps.io.out("  needs one failover proxy in front of both machines is the phone-first half (RFC §14.2).");
+  deps.io.out("  Collie grows no second credential to work around it.");
 }
 
 // ── The mint, and why a re-run does not mint ─────────────────────────────────
@@ -479,6 +529,7 @@ function report(deps: PackAddDeps, data: TrustStoreData, warrant: Warrant, rows:
   deps.io.out("  Nothing has changed about what that machine does today: a deputy is still a peer, it");
   deps.io.out("  publishes no front door and it promotes nothing by itself. What it now has is a standing,");
   deps.io.out("  signed permission — spendable only by you, and only from a machine you are holding.");
+  sameOriginNotice(deps);
 }
 
 /** Restart the local service so the running lead issues the warrant it just signed. */

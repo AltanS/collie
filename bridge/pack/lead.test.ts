@@ -716,3 +716,76 @@ describe("PackLead — the warrant re-push, on the sweep the lead already runs",
     expect(h.calls).toEqual(["laptop"]);
   });
 });
+
+// ── The pairing sync's two decided outcomes (RFC §6.5, §18.14) ────────────────
+
+describe("PackLead — a refused pairing sync is REPORTED, never swallowed", () => {
+  const sync = { packId: "pack-1", leadMemberId: "desk", devices: [] };
+
+  /** A lead syncing its registry to `deputy`, with a scripted answer from that deputy. */
+  function syncing(deputy: string | null, answer: () => PeerOutcome<unknown>) {
+    const said: (readonly string[] | null)[] = [];
+    const members = [member({ memberId: "laptop" })];
+    const l = new PackLead({
+      registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async () => ok(body),
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      now: () => NOW,
+      pairing: {
+        deputy: () => deputy,
+        current: () => ({ sync, digest: "d1" }),
+        push: async () => answer(),
+        collision: (labels) => void said.push(labels),
+      },
+    });
+    return { lead: l, said };
+  }
+
+  const collision = (labels: readonly string[]): PeerOutcome<unknown> => ({
+    ok: false,
+    state: "refused",
+    reason: "pairing: this machine already has paired devices called \"phone\"",
+    code: "pairing_label_collision",
+    status: 409,
+    labels,
+    receivedAt: NOW,
+  });
+
+  test("the labels the deputy named are carried out of the sweep, verbatim", async () => {
+    const h = syncing("laptop", () => collision(["phone", "tablet"]));
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.said).toEqual([["phone", "tablet"]]);
+  });
+
+  test("a sync that LANDS clears the finding — the operator's rename needs no verb", async () => {
+    const h = syncing("laptop", () => ok(null));
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.said).toEqual([null]);
+  });
+
+  test("a deputy that could not be reached reports NOTHING — silence is not a collision", async () => {
+    const h = syncing("laptop", () => down);
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.said).toEqual([]);
+  });
+
+  test("a refusal is re-offered: only a landed sync is remembered as delivered", async () => {
+    const h = syncing("laptop", () => collision(["phone"]));
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.said).toEqual([["phone"], ["phone"]]);
+  });
+
+  test("a pack with no deputy syncs to nobody and reports nothing", async () => {
+    const h = syncing(null, () => ok(null));
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.said).toEqual([]);
+  });
+});

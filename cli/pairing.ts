@@ -47,15 +47,25 @@ export interface PairingDeps {
 const pendingPath = (ctx: CliContext): string => join(ctx.stateDir, PENDING_FILENAME);
 const registryPath = (ctx: CliContext): string => join(ctx.stateDir, DEVICES_FILENAME);
 
-/** The registry as it is on disk. Absent, unreadable or malformed all read as "nothing paired". */
-function readRegistry(deps: PairingDeps): PairedRegistry {
-  const raw = deps.files.read(registryPath(deps.ctx));
+/**
+ * The registry as it is on disk. Absent, unreadable or malformed all read as "nothing paired".
+ *
+ * Exported because `pack deputy` asks the same question for a different reason (RFC §6.4: a lead with
+ * nothing paired could never arm a standby door), and two readers of one credential file is two
+ * places for "is anything paired?" to answer differently.
+ */
+export function pairedRegistryOf(files: Files, stateDir: string): PairedRegistry {
+  const raw = files.read(join(stateDir, DEVICES_FILENAME));
   if (raw === null) return coerceRegistry(null);
   try {
     return coerceRegistry(JSON.parse(raw));
   } catch {
     return coerceRegistry(null);
   }
+}
+
+function readRegistry(deps: PairingDeps): PairedRegistry {
+  return pairedRegistryOf(deps.files, deps.ctx.stateDir);
 }
 
 /** Owner-only, and the directory too: both files are credentials-in-hash-form. */

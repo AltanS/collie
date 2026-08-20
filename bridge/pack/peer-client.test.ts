@@ -817,6 +817,47 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   });
 });
 
+describe("PeerClient — pairing_label_collision, the other 409 (§18.14)", () => {
+  const sync = { packId: "pack-1", leadMemberId: "desk", devices: [] };
+  const collisionBody = (over: Record<string, JsonValue | undefined> = {}) => ({
+    error: 'this machine already has paired devices called "phone" — rename one, or revoke it here',
+    code: "pairing_label_collision",
+    labels: ["phone"],
+    ...over,
+  });
+
+  test("it is a REFUSAL that carries the labels, never §7's version skew", async () => {
+    const { fetch } = replying(collisionBody(), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).pairing(laptop, sync);
+    if (outcome.ok) throw new Error("expected a failure");
+    if (outcome.state !== "refused") throw new Error(`expected refused, got ${outcome.state}`);
+    expect(outcome.code).toBe("pairing_label_collision");
+    expect(outcome.labels).toEqual(["phone"]);
+    // Verbatim: the labels are that member's OWN device names, and only that member can know them.
+    expect(outcome.reason).toContain('already has paired devices called "phone"');
+  });
+
+  test("a collision naming no label is still a refusal — with nothing to rename", async () => {
+    const { fetch } = replying(collisionBody({ labels: undefined }), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).pairing(laptop, sync);
+    if (outcome.ok || outcome.state !== "refused") throw new Error("expected refused");
+    expect(outcome.labels).toEqual([]);
+  });
+
+  test("a label list with junk in it keeps the strings and drops the rest", async () => {
+    const { fetch } = replying(collisionBody({ labels: ["phone", 7, null] }), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).pairing(laptop, sync);
+    if (outcome.ok || outcome.state !== "refused") throw new Error("expected refused");
+    expect(outcome.labels).toEqual(["phone"]);
+  });
+
+  test("a 409 without the code is untouched — it still reads as the skew, the closed reading", async () => {
+    const { fetch } = replying(collisionBody({ code: undefined }), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).pairing(laptop, sync);
+    expect(outcome.ok === false && outcome.state).toBe("incompatible");
+  });
+});
+
 describe("PeerClient — every dial is attested (§8.6)", () => {
   const key = material("desk").keyPem;
   const withDial = (over: { sign?: PeerClientDeps["sign"] } = {}) => ({

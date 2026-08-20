@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
-import { LEAD_CONFLICT, PACK_PREFIX } from "./router.ts";
+import { LEAD_CONFLICT, PACK_PREFIX, PAIRING_LABEL_COLLISION } from "./router.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
@@ -259,6 +259,13 @@ export type PeerFailure =
       readonly reason: string;
       readonly code: string;
       readonly status: number;
+      /**
+       * The labels the refusal named, when it named any — today only `pairing_label_collision`
+       * (§18.14), where the far side's own device labels are the fact its operator's counterpart has
+       * to act on. Absent everywhere else, and **absent means none**: a refusal that names no label
+       * is not a refusal about labels.
+       */
+      readonly labels?: readonly string[];
     }
   /**
    * **The far side follows a different lead** — §18.10's named `409`, with `code: "lead_conflict"`.
@@ -742,6 +749,20 @@ export class PeerClient {
           warrant: conflict.warrant,
         });
       }
+      // §18.14's label collision, and it is a REFUSAL rather than a skew. The receiver read this body
+      // perfectly and declined it for a reason on its own disk, so classifying it as `incompatible`
+      // would blame the protocol for a duplicate device label — and would leave the lead unable to
+      // name the labels, which is the one thing its operator can act on.
+      const collision = pairingCollisionOf(body);
+      if (collision !== null) {
+        return this.fail({
+          state: "refused",
+          reason: `${route}: ${collision.error}`,
+          code: PAIRING_LABEL_COLLISION,
+          status: res.status,
+          labels: collision.labels,
+        });
+      }
       // The peer refused *us* for skew (§7). It already named both sides; the body is the reason
       // string the operator sees verbatim in `pack status`, so it is read rather than paraphrased.
       const mismatch = readMismatch(body);
@@ -894,6 +915,19 @@ function leadConflictOf(body: JsonObject | null) {
     // against its own certificate before a byte of it is acted on.
     warrant: parseWarrant(body.warrant),
   };
+}
+
+/**
+ * The pairing-collision reading (§18.14), or `null` when this 409 is not one.
+ *
+ * The labels are read but never re-derived: they are that member's own device names, which only that
+ * member can know, and the lead's `pack status` prints them as it received them.
+ */
+function pairingCollisionOf(body: JsonObject | null) {
+  if (body === null || body.code !== PAIRING_LABEL_COLLISION) return null;
+  const labels = Array.isArray(body.labels) ? body.labels.filter((l): l is string => typeof l === "string") : [];
+  const error = typeof body.error === "string" ? body.error : "a device with that label already exists there";
+  return { error, labels };
 }
 
 /** §7's `expected`/`received` reading, tolerating a peer that sends neither. */

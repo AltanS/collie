@@ -45,17 +45,18 @@ describe("the marker", () => {
       mode: "lead",
       roster: ["peer:nas"],
       // The boot write IS its own first checkpoint, and a process that has just started holds none
-      // of the four runtime facts (§18.9).
+      // of the runtime facts (§18.9).
       checkpointedAt: T0,
       anchoredGeneration: null,
       leadLastDialledAt: null,
       leadRefusedSecretAt: null,
       deposed: null,
+      pairingCollision: null,
     });
     expect(parseMarker(formatMarker(marker))).toEqual(marker);
   });
 
-  test("a checkpoint carries the four facts only the running process holds (§18.9)", () => {
+  test("a checkpoint carries the facts only the running process holds (§18.9)", () => {
     const data = peerStore();
     const boot = markerFor(data, T0, 7);
     const live = checkpointMarker(
@@ -65,6 +66,7 @@ describe("the marker", () => {
         leadLastDialledAt: T0 + 4_000,
         leadRefusedSecretAt: null,
         deposed: null,
+        pairingCollision: null,
       },
       T0 + 15_000,
     );
@@ -88,7 +90,20 @@ describe("the marker", () => {
       leadLastDialledAt: null,
       leadRefusedSecretAt: null,
       deposed: null,
+      pairingCollision: null,
     });
+  });
+
+  test("a pairing collision round-trips, and a mark naming no label is no mark", () => {
+    const boot = markerFor(leadStore(), T0, 7);
+    const live = checkpointMarker(boot, { ...boot, pairingCollision: { at: T0, labels: ["phone"] } }, T0);
+    expect(parseMarker(formatMarker(live))?.pairingCollision).toEqual({ at: T0, labels: ["phone"] });
+    // The labels ARE the finding: a collision surface with nothing to rename is a warning nobody can
+    // act on, so it reads as no finding at all rather than as an empty one.
+    const empty = JSON.stringify({ ...live, pairingCollision: { at: T0, labels: [] } });
+    expect(parseMarker(empty)?.pairingCollision).toBeNull();
+    const junk = JSON.stringify({ ...live, pairingCollision: { labels: ["phone"] } });
+    expect(parseMarker(junk)?.pairingCollision).toBeNull();
   });
 
   test("a deposed mark this build cannot read is simply no mark — nothing acts on it", () => {

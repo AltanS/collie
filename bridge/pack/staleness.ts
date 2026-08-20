@@ -68,6 +68,22 @@ export interface PackRuntimeFacts {
   readonly leadRefusedSecretAt: number | null;
   /** §18.12's state, with its outcome resolved as of the checkpoint. `null` on a collie that leads. */
   readonly deposed: DeposedState | null;
+  /**
+   * §18.14's refusal, as the running LEAD last saw it: the deputy declined a pairing sync because it
+   * already holds those labels. `null` on every other machine and on a lead whose last sync landed.
+   *
+   * It is here rather than in the trust store for the reason every other field on this interface is:
+   * it is an **observation of one process's traffic**, not trust material, and it must not survive
+   * into a store that would then state it with the store's authority. The lead re-offers the sync on
+   * every sweep, so a success clears it without anything having to remember to.
+   */
+  readonly pairingCollision: PairingCollision | null;
+}
+
+/** One refused sync: when this process was told, and the labels the deputy named. */
+export interface PairingCollision {
+  readonly at: number;
+  readonly labels: readonly string[];
 }
 
 /** The facts of a process that has resolved none of them — a solo instance, or a boot-time marker. */
@@ -76,6 +92,7 @@ export const NO_RUNTIME_FACTS: PackRuntimeFacts = {
   leadLastDialledAt: null,
   leadRefusedSecretAt: null,
   deposed: null,
+  pairingCollision: null,
 };
 
 /** What the running bridge resolved at boot, as it left it on disk, plus {@link PackRuntimeFacts}. */
@@ -179,6 +196,18 @@ function parseDeposed(value: JsonValue | undefined): DeposedState | null {
   };
 }
 
+/**
+ * §18.14's refused sync, or `null`. A mark naming no label is no mark: the labels ARE the finding,
+ * and a collision surface with nothing to rename would be a warning nobody can act on.
+ */
+function parsePairingCollision(value: JsonValue | undefined): PairingCollision | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) return null;
+  const c: JsonObject = value;
+  if (typeof c.at !== "number" || !Number.isFinite(c.at)) return null;
+  const labels = Array.isArray(c.labels) ? c.labels.filter((l): l is string => typeof l === "string") : [];
+  return labels.length === 0 ? null : { at: c.at, labels };
+}
+
 /** Tolerant by design: a marker we cannot read is simply no marker, never a reason to fail a verb. */
 export function parseMarker(raw: string | null): PackRuntimeMarker | null {
   if (raw === null || raw.trim() === "") return null;
@@ -209,6 +238,7 @@ export function parseMarker(raw: string | null): PackRuntimeMarker | null {
     leadLastDialledAt: optionalNumber(v.leadLastDialledAt),
     leadRefusedSecretAt: optionalNumber(v.leadRefusedSecretAt),
     deposed: parseDeposed(v.deposed),
+    pairingCollision: parsePairingCollision(v.pairingCollision),
   };
 }
 

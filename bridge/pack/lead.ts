@@ -4,6 +4,7 @@ import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forwar
 import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnapshotBody } from "./merge.ts";
 import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
+import { PAIRING_LABEL_COLLISION } from "./router.ts";
 import type { PairingSync } from "./standby-devices.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
@@ -167,6 +168,15 @@ export interface PairingDistribution {
   current(): { readonly sync: PairingSync; readonly digest: string } | null;
   /** Deliver it. Failure is a value here as everywhere else in the pack client. */
   push(link: PackLink, sync: PairingSync): Promise<PeerOutcome<unknown>>;
+  /**
+   * What the last delivered sync came to: the labels the deputy refused on (§18.14), or `null` for
+   * "it landed". Optional, and a lead that wires none simply reports none.
+   *
+   * Only the two *decided* outcomes are reported. A sync that could not be delivered at all says
+   * nothing here on purpose: an unreachable deputy is already rendered as unreachable, and a
+   * collision finding raised by silence would be a fact this lead never learned.
+   */
+  collision?(labels: readonly string[] | null): void;
 }
 
 /**
@@ -357,7 +367,14 @@ export class PackLead {
         // Remembered only on success. A refused sync (a label collision, RFC §16 decision 6) is
         // re-offered on the next sweep, which is what makes the operator's rename take effect without
         // a restart — and what keeps `pack status` honest about a deputy that is still behind.
-        if (outcome.ok) this.pairingPushed = payload.digest;
+        if (outcome.ok) {
+          this.pairingPushed = payload.digest;
+          distribution.collision?.(null);
+        } else if (outcome.state === "refused" && outcome.code === PAIRING_LABEL_COLLISION) {
+          // The one refusal whose remedy is on the OPERATOR's side, so it is carried out of this
+          // process to `pack status` (§18.9's checkpoint) rather than only logged here.
+          distribution.collision?.(outcome.labels ?? []);
+        }
       } catch (err) {
         console.warn(`[pack] pairing sync failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
