@@ -262,10 +262,19 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/pack/v1/secret` | the lead | Hands a peer the rotated pack secret (§8.4). Refused unless the caller is *this collie's own lead*: the secret is pack-wide, so any other admitted member accepting one could lock the lead out of its own pack. Authenticated by the **outgoing** secret and carrying the incoming one — there is no instant in which both are accepted. |
 | `POST` | `/pack/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the pack secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/pack/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
-| `POST` | `/pack/v1/warrant` | the lead | Delivers or refreshes the warrant naming the pack's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `pack status` finding, never an error. |
+| `POST` | `/pack/v1/warrant` | the lead | Delivers or refreshes the warrant naming the pack's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `pack status` finding, never an error. **It is also the one route with two kinds of recipient** — arriving at a collie that still believes it leads, a warrant it signed itself is a *deposition* rather than a push to store (§18.12), exactly as `/pack/v1/lead` is one fact arriving at two kinds of recipient. |
 
 Everything except `enroll` sits behind the same two factors as the rest of the prefix, and each
 carries a role check on top: *admitted* and *allowed to do this* are different questions.
+
+**Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`
+and, since 2026-08-20, `warrant`. It is exactly the routes that travel **peer → lead**, the one
+direction where the transport cannot pin (§8.1), and `warrant` joined it for the delivery that
+matters most: a new lead telling the old one that the crown has moved (§18.12). The proxy surface is
+not on the list and must not be — those calls run lead → peer over a pinned handshake, and admitting a
+signature there would mean hashing a request body on the security path, turning a streamed upload
+(§13) into a buffered one. `enroll` is not on it either: at that instant the joiner is pinned by
+nobody (§8.2).
 
 **Reserved paths.** `/pack/v1/` must never collide with `/auth`, `/auth/*` (reserved for a fronting
 proxy, `bridge/server.ts:1347`, matched `:383`) or `/cdn-cgi/`. It is also **denylisted in the service
@@ -355,7 +364,11 @@ updated machines, so build skew is the steady state (§7), and this section is t
   is another (absent ⇒ "older than this amendment", rendered as such); §18's `warrantGeneration` /
   `warrantRefreshedAt` are a third (an absent pair ⇒ "holds no warrant", which makes the lead *push*
   — never "already current"); and §18's `/pack/v1/warrant` route is a fourth (a `404` ⇒ the member
-  cannot hold a warrant, which is the closed reading of every question that route answers). An addition that **cannot** be
+  cannot hold a warrant, which is the closed reading of every question that route answers); and
+  §18.10's `lead_conflict` is a fifth, and the only one that is a **new answer on an existing route**
+  rather than a new field. It is still additive in the sense that matters: `409` is a status this
+  document already assigns to "we do not agree about who we are talking to", an older dialler renders
+  an unexpected `409` as a refusal rather than as data, and it never turns a refusal into a grant. An addition that **cannot** be
   expressed this way is a version-2 change and takes `X-Pack-Protocol` with it — it does not get to
   ship inside `1` with a compatibility claim nobody tested.
 
@@ -439,7 +452,8 @@ that something is listening.
 >
 > Two consequences follow, and both are load-bearing:
 >
-> - **A peer's `ca` list holds exactly one certificate.** A peer's roster holds exactly one member
+> - **A peer's `ca` list holds exactly one certificate** *(amended 2026-08-20 — see below)*. A peer's
+>   roster holds exactly one member
 >   (§8.2 step 4), so an admitted connection can only be its lead. Admission therefore takes the
 >   transport's verdict as a **boolean attestation** (`transportPinned`) set by the code that built
 >   the listener, never read from a header — and resolves it to the pinned lead. A peer that cannot
@@ -461,6 +475,29 @@ that something is listening.
 > unaffected (the claim goes to the old lead, over §8.6). With three or more, the peers that are not
 > the old lead must be re-enrolled — which is the rule §14 and §8.4 already state for an unreachable
 > member, now reached for a second reason.
+
+> **Amended 2026-08-20 — a peer's `ca` list holds AT MOST TWO certificates, and the second is named
+> by a warrant.**
+>
+> The rule above becomes: **its lead's certificate, plus at most one more — the deputy named by a
+> warrant this peer has verified against that same lead's key** (§18.5). Every other reading
+> of a warrant leaves the list at exactly one anchor, which is the pre-amendment behaviour: a missing,
+> malformed, foreign, unsigned, expired or revoked warrant, a certificate that is not the one the
+> warrant's fingerprint names, or a warrant naming this peer itself or its own lead. **Never fewer
+> anchors than before** — the lead's own certificate is never in question and is never dropped, so an
+> existing lead's handshake is unaffected and this is not a wire change.
+>
+> **The consequence for the boolean, stated rather than discovered.** With one anchor,
+> `transportPinned` named a unique member and was sufficient rather than lossy. With two it names
+> *one of two*, and Bun still exposes no accessor for the certificate a caller presented — so a
+> two-anchored peer resolves an **unsigned** admitted request to its lead, and a deputy dialling it
+> unsigned would be read as its lead. That cannot be closed at the transport (`server.reload` does not
+> re-pin, and refusing unsigned requests would refuse the lead's own poll), so it is **the reach the
+> operator granted when they named the deputy**: a compromised deputy reaches what a compromised lead
+> reaches, on every peer that has anchored it, without waiting for a takeover. §8.5's mitigation is
+> the one that applies — *make the deputy the second machine you most trust* — and a pack that names
+> no deputy is unaffected, byte for byte. **A future amendment that wants this closed has to make the
+> lead sign its own lead→peer calls; nothing weaker distinguishes the two anchors.**
 
 ### 8.2 Enrollment — `collie join <lead-address> <token>`
 
@@ -834,13 +871,14 @@ never crosses a pack link.
 - The peer sweep is a *part of* the existing poll, not a second timer. A solo lead runs no sweep at
   all (§11).
 
-### 10.2 Three distinct states, never conflated
+### 10.2 Four distinct states, never conflated *(a fourth added 2026-08-20)*
 
 | State | Meaning | Retried on the poll? | Presented as |
 |---|---|---|---|
 | **reachable** | Last poll succeeded within budget | yes | live |
 | **unreachable** | Timeout, connection refused, TLS failure, auth failure | yes | last-good state, **stale**, with `lastSeenAt` |
 | **incompatible** | `X-Pack-Protocol` mismatch (§7) | no (probed on a slow backoff) | last-good state, **incompatible**, with the peer's reason |
+| **conflicted** *(added 2026-08-20)* | The member answered §18.10's named `409`: it follows a **different lead** | no — there is nothing useful to fetch from a machine that belongs to someone else's view of the pack | last-good state, **conflicted**, naming the lead it follows and that lead's warrant generation |
 
 - **Unreachable is a value, never an error.** A down, slow, skewed or unauthenticated peer **never**
   produces a 5xx for the whole pack and never produces a blank phone. The lead's snapshot always
@@ -868,6 +906,12 @@ never crosses a pack link.
   beside an old receipt is a normal, common state, and writes to such a member are **not** refused
   (§10.3 refuses on the lead's boolean alone). A surface may therefore only print "unreachable", or
   claim that replies and keys are refused, when that boolean is false.
+- **`conflicted` is none of the other three, and a surface may not spell it as one.** It is not
+  `unreachable` — the member answered, and answered precisely. It is not `incompatible` — this build
+  reads that member's protocol perfectly well; the two merely share a `409`, told apart by the body's
+  `code` (§18.10). And it is not a refusal of an *action*: it refuses the caller's whole premise about
+  who leads. Rendering it as any of the three sends the operator to the wrong remedy — a cable, a
+  build, or a verb — when the real one is that the pack has moved on.
 
 ### 10.3 Writes to a member that is not reachable
 
@@ -1600,7 +1644,7 @@ route, signature or warrant can climb that wall.
 | Phase | What happens | When it takes effect |
 |---|---|---|
 | **1 — stored** | The lead pushes the warrant to every member (`POST /pack/v1/warrant`, §5). Each verifies the lead's signature, checks the generation and persists it beside its trust material. | Immediately. The member now *knows* who the deputy is. |
-| **2 — anchored** | The member's next restart builds its listener with the deputy's certificate as a second anchor. | At the restart. Until then a takeover from that member's side is **impossible**, not merely refused. |
+| **2 — anchored** | The member's next restart builds its listener with the deputy's certificate as a second anchor — **iff** the stored warrant verifies against the certificate it already pinned as its lead's, is for this pack, names a deputy that is neither itself nor its own lead, arrives with the certificate its fingerprint names, and is not expired on this member's own clock. Any other reading leaves exactly the one anchor it has always had. The full rule, and the honest consequence of a second anchor for §8.1's boolean, are at §8.1's 2026-08-20 amendment. | At the restart. Until then a takeover from that member's side is **impossible**, not merely refused. |
 
 **The push carries the deputy's certificate PEM alongside the warrant**, and the receiver accepts it
 only if `sha256(certPem)` equals the warrant's `deputyFingerprint`. This is the identical rule §8.2
@@ -1655,6 +1699,208 @@ updated members in order to add a feature that degrades gracefully on its own.
 
 ### 18.8 Not specified here
 
-The takeover exchange, the standby door a deputy binds while armed, the deposed state of a former
-lead, the boot-time gate against a split brain, and the `collie pack deputy` verb itself. Each is its
-own amendment; none of them changes anything above.
+The takeover exchange, the standby door a deputy binds while armed, and the `collie pack deputy` verb
+itself. Each is its own amendment; none of them changes anything above.
+
+*(The deposed state, the self-heal and the boot gate were on this list until 2026-08-20 and are now
+§18.11 and §18.12 below.)*
+
+### 18.9 A peer knows when its lead last called *(added 2026-08-20)*
+
+**`lastDialledAt`: the epoch-ms receipt of the last **admitted** pack request from this peer's lead,
+stamped on the peer's own clock.** Every admitted request refreshes it — a poll, a proxied pane read,
+a forwarded write — which is §10.2's *every landed call is a receipt* rule, reached from the other
+side of the link and for the same reason: the sweep relaxes to `COLLIE_POLL_IDLE_MS` while a phone
+watching a pane polls at 1.5 s, so a receipt only the sweep refreshed would describe a perfectly
+healthy link as quiet.
+
+- **In memory, never persisted.** It describes a *process*, and §7.1's rule for exactly this shape
+  applies: a persisted receipt would survive the restart it is meant to report and would then state a
+  falsehood with the authority of the trust store. The **process start time** covers the boot case —
+  a collie that has just started has never been dialled by anybody, so silence is measured from the
+  **later** of the last dial and that start, or a reboot would read as maximal silence from its first
+  instant.
+- **A refusal is not a receipt.** Both factors must pass first; the number describes calls that
+  *landed*, not calls that arrived.
+- **A refusal on the SECRET is recorded separately, and is not silence either.** A `secret` factor
+  means the identity was fine, and on a peer the only identity the transport can attest is its
+  lead's — so it is precisely *my lead is calling me and I no longer hold the pack secret*, which is
+  §8.4's rotation seen from the side that was dropped. It is what lets §18.12's *stranded by a
+  rotation* be **named** rather than guessed at. The request is still refused, exactly as before.
+- **There is exactly one of this number.** A door that arms on a fact `pack status` does not print is
+  a door nobody can explain, so every reader — the status line, and the deputy's arming rule when it
+  lands — reads this one.
+
+**Nothing about it crosses the wire.** It is a fact a peer holds about calls it received; no field,
+no header, no route.
+
+### 18.10 `lead_conflict` — a named answer when a peer follows a different lead *(added 2026-08-20)*
+
+**Before this amendment** a lead dialling a peer that follows someone else got either a TLS refusal
+(if it was no longer in that peer's anchors) or an admitted request served against a roster that
+silently disagreed with it. Neither says what happened.
+
+**Now:** a collie whose pinned lead is **not** the caller answers **`409 Conflict`** — the status §7
+already uses for "we do not agree about who we are talking to" — with:
+
+```json
+{ "error": "this collie follows lead \"nas\" since warrant generation 7",
+  "code": "lead_conflict",
+  "leadMemberId": "nas",
+  "warrantGeneration": 7,
+  "warrant": { "…": "the warrant that deposed the caller, when this collie holds it" } }
+```
+
+- **Only a collie that HAS a lead answers it.** A lead pins its members individually and each of them
+  is a legitimate caller, so the same comparison on a lead would refuse its whole roster.
+- **It is decided on the caller's claimed identity, and that is sound *for a refusal*.** A verified
+  §8.6 signature names the member outright; absent one, `X-Pack-Member` is a hint the transport
+  cannot corroborate (§6). A hint is never enough to *admit* and nothing here admits anything — the
+  caller has already cleared both factors — and the worst a forged header buys is a `409` naming this
+  collie's own lead plus a deliberately public object.
+- **It names the new lead's member id, its generation, and the warrant — and nothing else.** Not an
+  address, not a certificate: the answering member is not a directory, and a member id is already
+  knowable to any admitted caller (§5).
+- **The warrant rides along only when it IS the proof** — a warrant naming the member this collie now
+  follows. A revocation, or one naming somebody else, proves nothing about this conflict. That
+  distinction is what turns a deposition into a **self-heal** rather than a park (§18.12).
+- **It carries §6's headers.** The status is shared with §7's protocol mismatch; a `409` with no
+  version banner would be read as a version skew, which is the one reading it must never get.
+- **The dialling side renders it as a state, never as a generic failure** — §10.2's fourth,
+  `conflicted` — and does not poll it: there is nothing useful to fetch from a machine that belongs
+  to someone else's view of the pack.
+
+### 18.11 The boot-time gate against a split brain *(added 2026-08-20)*
+
+**The failure this closes:** the old lead was down during a takeover, so nobody could tell it
+anything. It comes back up hours later, reads a trust store that still says `lead`, publishes,
+answers the failover proxy's health check with `200` — and the proxy swings the operator's phone back
+onto a machine with a stale roster and no knowledge of what happened since.
+
+**So: a collie booting into `lead` mode with a non-empty roster probes its members before it
+publishes anything.**
+
+- **Budget:** §10.4's patient budget, concurrent, **once**. It arms no timer and it repeats never.
+- **A conflicting answer deposes it before it serves a byte** — either §18.10's named answer, or a
+  member reporting a `warrantGeneration` **higher** than this machine's own (the counter lives on the
+  lead and never resets, §18.3, so a member ahead of its own lead has been told something by somebody
+  else). Because the named answer carries the warrant, the deposition and §18.12's self-heal happen
+  in the **same boot**: a machine that was merely down during a takeover comes back up as a working
+  peer, in one restart, having published nothing in between. That is the common case and it is the
+  whole reason the gate sits at boot rather than at first conflict.
+- **An answer with a proof beats one without.** Two members may both contradict this machine; taking
+  the first would turn a healable deposition into a parked one for no reason but arrival order.
+- **Silence from every member publishes anyway.** Fail-open on *no answer* is forced: the common case
+  for "nobody answered" is a lead rebooting first after a power cut, and a lead that refuses to come
+  up because its peers are still booting is an outage manufactured out of a safety check. Fail-closed
+  on a *conflicting answer* is the point — **an answer is evidence, silence is not.**
+- **An empty roster asks nothing.** A lead with no members has nobody who could contradict it.
+
+**This is not a peer-side timer and it is not an election** (§15). It changes no state on any machine
+it asks.
+
+### 18.12 The deposed state, and the self-heal that ends it *(added 2026-08-20)*
+
+**A former lead that learns the crown has moved stops being a lead, loudly — and then finishes its own
+demotion all the way to `peer`, on materials both machines already hold.**
+
+### What counts as learning
+
+Exactly one thing: **a warrant of a generation at least as high as its own, naming a deputy other
+than nobody, verified against its own certificate's public key.** A lead can verify its own
+signature, and that is the whole reason the warrant is signed by the lead rather than attested by the
+deputy: what deposes a machine is its own past consent handed back to it. Nothing else does — not a
+peer refusing it, not an unreachable roster, not a timeout.
+
+**Expiry is deliberately not a clause.** A warrant's 30 days gate what it may *arm* (§18.4), not what
+it *proves*: a machine that refused to believe an expired proof would keep leading a pack that has
+already moved on, which is the split brain this section exists to close.
+
+Two delivery paths, in order of reliability:
+
+1. **The new lead tells it** — `POST /pack/v1/warrant`, arriving at a collie that still believes it
+   leads. The old lead's listener pins nothing inbound (§8.1), so the call is admitted on the pack
+   secret plus a §8.6 signature, which is why that route joined the signable set (§5). The caller
+   must be the member the warrant **names**: a warrant is public (§8.5), so anyone who ever held one
+   could replay it, and requiring the presenter to be the named deputy means a replay by a third
+   member proves nothing.
+2. **A peer tells it** — §18.10's answer, when the old lead dials that peer. **Best-effort and
+   time-boxed**: it works only while that peer's anchor list still contains the old lead's
+   certificate, i.e. until its next restart. Do not build on this path; build on (1) and on §18.11.
+
+### What a deposed collie does immediately
+
+- **Stops polling.** Its roster is void as a *lead's* roster; dialling it would be a second lead's
+  traffic. It keeps the roster's **contents** — the self-heal reads the new lead's certificate out of
+  it.
+- **Stops serving the app front door, and FAILS its health check.** `GET /standby/health` answers
+  non-`200`, so a failover proxy stops routing to it *before* an operator notices. This is the
+  property the whole state exists for.
+- **Keeps one page, at every path, at `200`**, naming the pack, the machine that leads now, the
+  generation, and **which of the three outcomes below it is in**. A `200` here beside a non-`200` on
+  health is deliberate: a human who reaches it deserves an answer; a proxy asking whether to route
+  here deserves a refusal. It is `text/plain` — it interpolates an operator-typed pack name, and
+  plain text has no escaping question to get wrong on a machine already in a degraded state.
+- **Announces the transition, and never re-enters silently** — an audit line (`pack.deposed`) and a
+  log line. A machine rejoining a pack by itself must be a thing the operator reads about, not a
+  thing they discover; the announcement is part of the security property, not the UX.
+- **Does NOT tear down its own front door.** `tailscale serve` is a publishing act owned by
+  `collie serve`/`unserve` and by *this* machine's operator, who may be elsewhere (ADR 0001). Failing
+  the health check is what makes the un-torn-down door harmless meanwhile, and the page names the
+  command.
+
+### The self-heal
+
+On a verified proof the machine completes the demotion in **one committed transition**:
+
+1. **Resolve the new lead from its own roster.** Take the warrant's `deputyMemberId`, find that member
+   locally, and require `sha256(certPem) === warrant.deputyFingerprint`. **The certificate comes from
+   its own disk, never from the wire** — a fingerprint is only a pin if the certificate behind it was
+   already held.
+2. **Rewrite the trust store:** `role: peer`, `lead: <that member>`, `peers: []`, **pack secret kept,
+   own identity and member id kept**, the proof stored as the warrant it holds (so the generation
+   advances and an older one can never be replayed at it), the deputy designation and any pending
+   handover cleared. One write, one audit line — §14.5's *a role change, not a re-enrollment*,
+   reached from the other direction.
+3. **It takes effect at the next process start.** Nothing here restarts the bridge: the supervision
+   tier is the CLI's knowledge, and an unsupervised bridge that exited to be revived would simply be
+   gone. This is the same shape §14's demotion already has — *demoted on disk, still a lead in
+   memory* — and the deposed page plus the failing health check are what make the interval harmless.
+   **The exception is §18.11's boot gate**, which runs before anything is wired: a machine deposed
+   there resolves its mode from the healed store and comes up a peer in the same boot, with no second
+   process involved.
+4. **Wait to be dialled.** A peer never initiates. The new lead is already polling this machine's
+   address — it adopted that roster entry at the takeover — so the first successful `hello`/`snapshot`
+   completes the re-entry. There is no rejoin handshake, because there is nothing to negotiate.
+
+**Nothing is minted and nothing is learned.** Every certificate involved was pinned before the event,
+the pack secret is unchanged, and no fingerprint is learned from the message that delivered it. The
+transition is strictly **privilege-decreasing** — from the role §8.5 describes as reaching
+"everything, on every member" to the one that reaches its own terminals and nothing else — which is
+what makes an automatic membership change tolerable here and nowhere else.
+
+### Three outcomes, and `pack status` must name which one
+
+| Outcome | Condition | State |
+|---|---|---|
+| **healed** | The warrant verifies and the roster holds a certificate matching `deputyFingerprint`. | Transitional. An ordinary peer at the next restart, and a *reachable* one at the new lead's next sweep. |
+| **parked — unverifiable** | The signature does not verify against this machine's own certificate, **or** the roster holds no certificate matching `deputyFingerprint`, **or** the conflict arrived with no warrant at all. | **Terminal.** One page, failing health, and the failing check named. Recovery is `collie pack add` from the new lead, or `collie join` with a fresh token. |
+| **parked — stranded by a rotation** | Healed, but the pack secret rotated while this machine was away (§8.4). | **Terminal until the operator acts**, for §8.4's reason and not this feature's. |
+
+**Why a failed proof parks rather than retries.** A warrant that does not verify is not a stale
+message; it is a machine being told something by someone who cannot prove they may say it, and
+retrying is how a refusal becomes a poll. A warrant naming a deputy this machine never enrolled is
+either a hand-edited store or a pack it does not belong to. Either way the honest answer is to stop.
+
+**The rotation case is reached AFTER the heal, never at it.** At the instant a takeover commits the
+secret is unchanged (§14.5 reuses it), so nothing at heal time can tell that a rotation is coming.
+What tells the returning machine is §8.4's own mechanics: the new lead rotated while it was away,
+marked it `unenrolled`, and now dials it with a secret it does not hold — so its lead is *identified
+and refused on the second factor*, which is exactly the fact §18.9 records. §8.4's rule is **not
+relaxed**; what this section adds is that the state is **named** rather than mistaken for silence,
+for a failure of the self-heal, or for `unreachable` (§10.2's states are not to be conflated).
+
+### Not specified here
+
+The takeover exchange that produces the deposition in the first place, the standby door, and the
+`pack status` rendering of any of the above.

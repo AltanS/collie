@@ -38,7 +38,8 @@ import {
   TIMESTAMP_HEADER,
 } from "./signing.ts";
 import type { TrustedMember, TrustStore, TrustStoreData } from "./trust-store.ts";
-import { checkWarrantPush, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
+import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
+import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
 import type { SnapshotResponse } from "../types.ts";
 
 // The `/pack/v1/*` surface. This module exists **so that `bridge/server.ts` contains no pack route
@@ -101,6 +102,17 @@ export const PACK_WARRANT_PATH = "/pack/v1/warrant";
 export const HANDOVER_NOT_APPROVED = "handover_not_approved";
 
 /**
+ * The machine-readable `code` on §18.10's named refusal: **this collie follows a different lead.**
+ *
+ * One answer, one code, read by two features. Today: a lead that was deposed while it was down comes
+ * back up and dials a member that has already re-pinned — and gets a sentence naming the member that
+ * leads now, plus the warrant that proves it, instead of a request served against a roster that
+ * silently disagrees with it. The dialling side renders it as a state, never as a generic failure
+ * (§10.2's fourth state, `conflicted`), and `boot-gate.ts` reads it as the evidence that deposes.
+ */
+export const LEAD_CONFLICT = "lead_conflict";
+
+/**
  * The routes a caller may authenticate with a §8.6 signature — deliberately a closed set.
  *
  * These are exactly the routes that travel **peer → lead**, which is the one direction where the
@@ -114,10 +126,21 @@ export const HANDOVER_NOT_APPROVED = "handover_not_approved";
  * turning a streamed upload (§13) into a buffered one on the security path. `enroll` is not on it
  * either — at that instant the joiner is pinned by nobody (§8.2).
  */
-const SIGNABLE_PATHS: ReadonlySet<string> = new Set([PACK_LEAVE_PATH, PACK_LEAD_PATH, PACK_HELLO_PATH]);
+const SIGNABLE_PATHS: ReadonlySet<string> = new Set([
+  PACK_LEAVE_PATH,
+  PACK_LEAD_PATH,
+  PACK_HELLO_PATH,
+  // §18.12's delivery path, and the reason it joins this closed set: a warrant travels lead → peer on
+  // a pinned handshake, EXCEPT for the one delivery that matters most — a new lead telling the old
+  // one that the crown has moved. That call runs peer → lead, into a listener that pins nothing
+  // (§8.1), so without a signature the deposed machine could not admit the one member that can prove
+  // its deposition. Idempotent by construction (supersession is monotone on both axes, §18.3), which
+  // is what makes it safe to add to `MEMBERSHIP_PATHS` below alongside `leave` and `lead`.
+  PACK_WARRANT_PATH,
+]);
 
 /** The subset of {@link SIGNABLE_PATHS} that CHANGES STATE, and therefore advances the replay floor. */
-const MEMBERSHIP_PATHS: ReadonlySet<string> = new Set([PACK_LEAVE_PATH, PACK_LEAD_PATH]);
+const MEMBERSHIP_PATHS: ReadonlySet<string> = new Set([PACK_LEAVE_PATH, PACK_LEAD_PATH, PACK_WARRANT_PATH]);
 
 /**
  * This collie's own snapshot body, for the one merged route (§9.2). `undefined` ⇒ the `?session=`
@@ -171,6 +194,31 @@ export interface PackRouterDeps {
    * notification, never a control: it takes nothing and it is not awaited.
    */
   readonly onMembershipChange?: () => void;
+  /**
+   * Gap A (RFC §10.1): **an admitted request from this collie's own lead just landed**, stamped on
+   * this collie's clock. Every admitted request refreshes it — a poll, a proxied read, a forwarded
+   * write — mirroring §10.2's "every landed call is a receipt".
+   *
+   * A notification, never a control: it takes nothing back and it is not awaited. In memory on the
+   * far side and deliberately never persisted (`bridge/pack/lead-contact.ts` says why).
+   */
+  readonly onLeadDialled?: (at: number) => void;
+  /**
+   * The pinned lead was **identified and refused on the pack secret** — §8.4's rotation, seen from
+   * the side that was dropped. Recorded so RFC §8.3's *stranded by a rotation* can be named rather
+   * than mistaken for silence; see `lead-contact.ts`.
+   */
+  readonly onLeadRefused?: (at: number) => void;
+  /**
+   * This collie has been **deposed**: a member it leads delivered a warrant of at least its own
+   * generation, naming a deputy, signed by this collie's own key (§18.12). The store has already been
+   * rewritten as a peer's when this fires with a `healed` state.
+   *
+   * A notification, exactly like {@link PackRouterDeps.onMembershipChange} — the bridge does not
+   * restart itself (the supervision tier is the CLI's knowledge), so what this buys is the process
+   * SAYING so and serving the one page a deposed machine serves until it is restarted.
+   */
+  readonly onDeposed?: (state: DeposedState) => void;
   /**
    * This build's own version string, for `hello` (§5, §7.1) — bare, as `collie version` names it
    * without its parenthetical (`bridge/version.ts`'s `collieVersionBare`).
@@ -296,6 +344,52 @@ function badRequest(self: string, reason: string): Response {
   });
 }
 
+/**
+ * §18.10's named answer, or `null` when this caller and this collie agree about who leads.
+ *
+ * **The question is asked of the caller's CLAIMED identity, and that is sound here.** A verified §8.6
+ * signature names the member outright; absent one, `X-Pack-Member` is a hint the transport cannot
+ * corroborate (§6) — but a hint is enough to *refuse* on. The worst a forged header buys is a 409
+ * that names this collie's own lead and hands over a public object, which is exactly what an admitted
+ * caller may already learn (§5), and any caller reaching this line has already cleared both factors.
+ * A hint is never enough to *admit*, and nothing here admits anything.
+ *
+ * Only a collie that HAS a lead can answer it: a lead pins its members individually and each of them
+ * is a legitimate caller, so the same comparison there would refuse the whole roster.
+ *
+ * It names the new lead's member id, its generation, and the warrant — **and nothing else**. Not an
+ * address, not a certificate: the answering member is not a directory. The warrant is deliberately a
+ * public object (RFC §12, F6) and it is the whole point of the answer, because it is the proof that
+ * lets a stale lead depose itself and self-heal in the same breath (§18.12) instead of parking.
+ */
+function leadConflict(
+  data: TrustStoreData,
+  req: Request,
+  signedMember: string | null,
+  self: string,
+): Response | null {
+  const lead = data.lead;
+  if (lead === null || lead.status !== "enrolled") return null;
+  const claimed = signedMember ?? req.headers.get(MEMBER_HEADER);
+  if (claimed === null || claimed === "" || claimed === lead.memberId) return null;
+
+  const stored = currentWarrant(data);
+  const generation = stored?.warrant.generation ?? 0;
+  const body: JsonObject = {
+    error: `this collie follows lead "${lead.memberId}" since warrant generation ${generation}`,
+    code: LEAD_CONFLICT,
+    leadMemberId: lead.memberId,
+    warrantGeneration: generation,
+  };
+  // The proof rides along only when it IS the proof: a warrant naming the member this collie now
+  // follows is what deposed the caller. A revocation, or a warrant naming somebody else entirely,
+  // proves nothing about this conflict and is not evidence to hand over.
+  if (stored !== null && stored.warrant.deputyMemberId === lead.memberId) {
+    body.warrant = { ...stored.warrant };
+  }
+  return new Response(JSON.stringify(body), { status: 409, headers: packResponseHeaders(self) });
+}
+
 /** The one body `/pack/v1/warrant` answers with. `applied: false` is a success, not a refusal. */
 function warrantAnswer(self: string, generation: number, applied: boolean): Response {
   return new Response(JSON.stringify({ generation, applied }), {
@@ -360,8 +454,24 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     const verdict = admitPackRequest(data, factsFrom(req, { transportPinned, signedMember: signed.member }));
     if (!verdict.ok) {
       if (verdict.refusal === "protocol_mismatch") return protocolMismatchResponse(verdict.received);
+      // §8.4's rotation, seen from the side that was dropped. A `secret` factor means identity was
+      // fine — and on a peer the only identity the transport can attest is its lead's — so this is
+      // precisely "my lead is calling me and I no longer hold the pack secret". Recorded, never acted
+      // on: the request is still refused, exactly as before (`lead-contact.ts` says what reads it).
+      if (verdict.factor === "secret" && data?.lead !== null) deps.onLeadRefused?.(now());
       return refuse(pathname, verdict.factor);
     }
+
+    // Gap A (RFC §10.1): every landed call from the lead is a receipt. Stamped here, once, after both
+    // factors and before any route runs, so a proxied pane read counts exactly as a poll does.
+    if (data !== null && data.lead !== null && verdict.member.memberId === data.lead.memberId) {
+      deps.onLeadDialled?.(now());
+    }
+
+    // §18.10, and it runs before dispatch because it is an answer about the CALLER rather than about
+    // the route: a member that follows somebody else has nothing useful to say on any of them.
+    const conflict = data === null ? null : leadConflict(data, req, signed.member, verdict.self);
+    if (conflict !== null) return conflict;
 
     // The replay floor moves BEFORE the request is handled, so a captured request replayed against a
     // slow handler cannot land twice (§8.6). Only for a signed MEMBERSHIP call: `hello` changes
@@ -571,6 +681,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
    */
   async function warrant(req: Request, cached: string | null, from: TrustedMember, self: string): Promise<Response> {
     const data = await deps.store.load();
+    // §18.12's delivery path 1: this collie still believes it leads, and a member of its OWN roster is
+    // handing back a warrant this collie signed. That is not a push to store — it is a deposition, and
+    // it is answered here rather than on a route of its own because it is the same object arriving at
+    // a different kind of recipient, exactly as `/pack/v1/lead` is (§14).
+    if (data !== null && isLeading(data)) return depose(req, cached, from, self, data);
     if (data === null || data.lead === null || data.lead.memberId !== from.memberId) {
       // Not our lead. Audited as a refused factor for the reason `secret` gives: this is a pinned
       // member exceeding its role rather than a stranger, and that distinction belongs in the log.
@@ -599,6 +714,69 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     // and it is exactly the "warrant stored, anchor INACTIVE" state §18 asks the operator to see.
     if (applied !== null) membershipChanged();
     return warrantAnswer(self, applied?.generation ?? verdict.stored.warrant.generation, applied !== null);
+  }
+
+  /**
+   * `POST /pack/v1/warrant` **at a collie that still believes it leads** — §18.12's deposition.
+   *
+   * Four clauses, and every one of them is a question about material this collie already holds:
+   *
+   *   1. the caller must be the member the warrant NAMES as deputy. A warrant is public (RFC §12,
+   *      F6), so anyone who ever held one could replay it; requiring the presenter to be the named
+   *      one means a replay by a third member proves nothing. The caller is the admitted, pinned,
+   *      §8.6-signed member — the transport cannot pin here (§8.1), which is exactly why this route
+   *      is signable;
+   *   2. the warrant must be for this pack, name a deputy, and carry a generation at least this
+   *      collie's own (`isDepositionProof`);
+   *   3. it must verify against **this collie's own certificate**. A lead can verify its own
+   *      signature, and that is the whole reason the warrant is signed by the lead rather than
+   *      attested by the claimant: what deposes a machine is its own past consent handed back to it,
+   *      never a conclusion it drew or a claim it chose to believe (ADR 0026's rule 3);
+   *   4. the self-heal resolves the new lead out of this collie's **own roster** and refuses if the
+   *      fingerprint does not match a certificate it already pinned — so no trust is created here.
+   *
+   * A refusal costs no write, exactly as a warrant push's does. A failed signature is the uniform 401
+   * for the same reason it is on the storing path: it is the one refusal an attacker could provoke.
+   */
+  async function depose(
+    req: Request,
+    cached: string | null,
+    from: TrustedMember,
+    self: string,
+    data: TrustStoreData,
+  ): Promise<Response> {
+    const record = asRecord(await readJson(req, cached));
+    const proof = parseWarrant(record?.warrant);
+    if (proof === null) return badRequest(self, "a warrant push needs a well-formed `warrant`");
+    if (proof.deputyMemberId !== from.memberId) {
+      // Not the member this warrant names. Audited as a refused factor for the reason `secret` gives:
+      // a pinned member exceeding its role is not a stranger, and the log should say which it was.
+      return refuse(PACK_WARRANT_PATH, "not-a-pack-member");
+    }
+    if (!isDepositionProof(data, proof)) return refuse(PACK_WARRANT_PATH, "certificate");
+
+    const heal = selfHeal(data, proof);
+    const state = deposedStateFrom(data, proof, heal, now());
+    if (heal.outcome === "healed") {
+      await commitPackChange(deps.store, deps.audit, (current) => (current === null ? null : heal.change));
+    } else {
+      // Terminal, and it earns its own line: the store is untouched, so what the operator has to
+      // read is *why* — a warrant this machine signed that names a deputy it cannot resolve out of
+      // its own roster is a hand-edited store or a pack it does not belong to (RFC §8.3).
+      deps.audit?.record({
+        action: "pack.deposed",
+        detail: { lead: state.leadMemberId, generation: state.generation, outcome: "parked", reason: heal.reason },
+      });
+    }
+    // Announced, never silent (RFC §12, F11): a machine rejoining a pack by itself must be a thing
+    // the operator reads about rather than discovers. This process is still a lead in memory —
+    // nothing here restarts it, for `newLead`'s reason — so what the hook buys is the deposed page,
+    // the failing health check, and the sentence in this machine's own journal.
+    deps.onDeposed?.(state);
+    return new Response(JSON.stringify({ deposed: self, lead: state.leadMemberId, outcome: state.outcome }), {
+      status: 200,
+      headers: packResponseHeaders(self),
+    });
   }
 
   /**

@@ -4,6 +4,7 @@ import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forwar
 import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnapshotBody } from "./merge.ts";
 import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
+import type { Warrant } from "./trust-store.ts";
 import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
 
 // The lead's side of the pack, assembled: sweep the peers, remember the last-good body, merge.
@@ -120,6 +121,17 @@ export interface PackLeadDeps {
   /** Called for a member the registry has dropped (`leave`/revocation/rotation) — see PeerNotifier.forget. */
   readonly onPeerGone?: (memberId: string) => void;
   /**
+   * A member answered §18.10's named `lead_conflict`: **it follows somebody else now.**
+   *
+   * This is the fast path of §18.12's delivery — best-effort and time-boxed, because it only works
+   * while this lead is still in that member's TLS anchor list, i.e. until that member's next restart.
+   * The boot gate is the reliable path and this must never be built on instead of it.
+   *
+   * The warrant is handed over unverified: verifying it is the receiver's job and it verifies against
+   * its OWN certificate (`deposed.ts`), so nothing in the sweep decides anything about trust.
+   */
+  readonly onLeadConflict?: (memberId: string, warrant: Warrant | null) => void;
+  /**
    * Warrant distribution (§18). Absent ⇒ this lead distributes none, which is every lead that has
    * never named a deputy and every test that is not about warrants.
    */
@@ -201,6 +213,11 @@ export class PackLead {
         // poll exactly as §10.1 requires. A refusal, a reset or a DNS failure is skipped: those are
         // answers from the world, and re-asking them slowly would only be slower.
         if (!outcome.ok && outcome.state === "unreachable" && outcome.timedOut === true) this.probe(link);
+        // §18.10: this member follows somebody else. Handed straight over — a lead that has been
+        // deposed stops sweeping, so there is nothing here to back off or remember.
+        if (!outcome.ok && outcome.state === "conflicted") {
+          this.deps.onLeadConflict?.(memberId, outcome.warrant);
+        }
         const previous = this.memory.get(memberId);
         const next = foldPeerMemory(previous, outcome, this.now());
         this.memory.set(memberId, next);

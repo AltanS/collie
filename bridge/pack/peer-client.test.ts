@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonValue } from "../json.ts";
+
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
-import { PACK } from "./fixtures.ts";
+import { leadStore, member, PACK, T0 } from "./fixtures.ts";
+import { mintWarrant } from "./warrant.ts";
 import {
   COLD_LINK,
   DEFAULT_PACK_HELLO_TIMEOUT_MS,
@@ -261,7 +264,10 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     const outcome = await client(fetch).hello(laptop);
     expect(outcome).toEqual({
       ok: true,
-      value: { protocol: 1, member: "laptop", version: null },
+      // `version` and `warrantGeneration` are both OPTIONAL on the wire and both read as `null` when
+      // absent (§7.1, §18.7) — never as "up to date", which is what makes the lead push rather than
+      // assume and what keeps the boot gate from reading a silent member as agreement.
+      value: { protocol: 1, member: "laptop", version: null, warrantGeneration: null },
       status: 200,
       member: "laptop",
       receivedAt: 1_000, // the injected lead clock — never a header from the peer (§6)
@@ -712,5 +718,89 @@ describe("warrant — the lead's push (§18)", () => {
     const outcome = await client(fetch).warrant(laptop, { warrant });
     expect(!outcome.ok && outcome.state).toBe("unreachable");
     expect(!outcome.ok && outcome.reason).toBe("warrant: HTTP 404");
+  });
+});
+
+describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => {
+  /** A warrant `desk` really signed naming `nas` — the proof a re-pinned member hands back. */
+  const proof = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
+
+  const conflictBody = (over: Record<string, JsonValue | undefined> = {}) => ({
+    error: 'this collie follows lead "nas" since warrant generation 1',
+    code: "lead_conflict",
+    leadMemberId: "nas",
+    warrantGeneration: 1,
+    warrant: { ...proof },
+    ...over,
+  });
+
+  test("a 409 with the named code is CONFLICTED, and the warrant comes through intact", async () => {
+    const { fetch } = replying(conflictBody(), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).snapshot(laptop);
+    if (outcome.ok) throw new Error("expected a failure");
+    if (outcome.state !== "conflicted") throw new Error(`expected conflicted, got ${outcome.state}`);
+    expect(outcome.leadMemberId).toBe("nas");
+    expect(outcome.warrantGeneration).toBe(1);
+    // Parsed, never trusted: the reader verifies it against its OWN certificate before acting.
+    expect(outcome.warrant).toEqual(proof);
+    // Verbatim, like every other refusal a member composes for an operator to read.
+    expect(outcome.reason).toContain('follows lead "nas"');
+  });
+
+  test("it is NOT incompatible — this build reads that member's protocol perfectly well", async () => {
+    // The two answers share a status, and conflating them would put a member that answered precisely
+    // onto §10.2's slow protocol backoff and tell the operator to go update a build.
+    const { fetch } = replying(conflictBody(), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).snapshot(laptop);
+    expect(outcome.ok === false && outcome.state).not.toBe("incompatible");
+    expect(outcome.ok === false && outcome.state).not.toBe("unreachable");
+    expect(outcome.ok === false && outcome.state).not.toBe("refused");
+  });
+
+  test("a conflict with no warrant is still a conflict — it just carries no proof", async () => {
+    const { fetch } = replying(conflictBody({ warrant: undefined }), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).snapshot(laptop);
+    if (outcome.ok || outcome.state !== "conflicted") throw new Error("expected conflicted");
+    expect(outcome.warrant).toBeNull();
+  });
+
+  test("a malformed warrant on an otherwise good conflict reads as no proof, never as a broken link", async () => {
+    const { fetch } = replying(conflictBody({ warrant: { packId: 7 } }), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).snapshot(laptop);
+    if (outcome.ok || outcome.state !== "conflicted") throw new Error("expected conflicted");
+    expect(outcome.warrant).toBeNull();
+  });
+
+  test("a 409 that names no lead falls back to the SKEW reading — the closed one", async () => {
+    // Without a member id the answer names nothing, and a conflict naming nobody is indistinguishable
+    // from a 409 that happened to carry the code.
+    const { fetch } = replying(conflictBody({ leadMemberId: "" }), { status: 409, protocol: "1" });
+    const outcome = await client(fetch).snapshot(laptop);
+    expect(outcome.ok === false && outcome.state).toBe("incompatible");
+  });
+
+  test("§7's protocol mismatch is untouched — the body is read ONCE and both readings come off it", async () => {
+    const { fetch } = replying(
+      { error: "pack protocol mismatch", code: "protocol_mismatch", expected: 2, received: 1 },
+      { status: 409, protocol: "1" },
+    );
+    const outcome = await client(fetch).snapshot(laptop);
+    if (outcome.ok || outcome.state !== "incompatible") throw new Error("expected incompatible");
+    expect(outcome.expected).toBe(2);
+  });
+
+  test("hello reads the warrant generation, absent-means-closed", async () => {
+    const withGen = replying({ protocol: 1, member: "laptop", warrantGeneration: 4 });
+    expect((await client(withGen.fetch).hello(laptop)).ok).toBe(true);
+    const outcome = await client(withGen.fetch).hello(laptop);
+    expect(outcome.ok && outcome.value.warrantGeneration).toBe(4);
+
+    // Anything that is not a safe integer is "reported nothing" — never a reason to refuse a link,
+    // and never read as agreement by the boot gate.
+    for (const bad of [null, "4", 1.5, {}]) {
+      const { fetch } = replying({ protocol: 1, member: "laptop", warrantGeneration: bad });
+      const o = await client(fetch).hello(laptop);
+      expect(o.ok && o.value.warrantGeneration).toBeNull();
+    }
   });
 });
