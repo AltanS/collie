@@ -1,6 +1,7 @@
 import type { StyledLine } from "../../blocks";
 import {
   classifyFooter,
+  isAlienBuffer,
   isBlank,
   isHorizontalRule,
   isMultiStepHeader,
@@ -52,7 +53,6 @@ export function isFreeTextLabel(label: string): boolean {
     /^type a custom\b/i.test(label) ||
     /^write-in\b/i.test(label) ||
     /^tell agy\b/i.test(label) ||
-    /^tell claude\b/i.test(label) ||
     /^custom response\b/i.test(label)
   );
 }
@@ -68,36 +68,24 @@ export interface PromptRegion {
 
 export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | null {
   const texts = lines.map(lineText);
+  if (isAlienBuffer(texts)) return null;
 
-  // Find last non-blank line
+  // 1. Footer must be the last non-blank line and classify as a valid dialog footer.
   let fi = texts.length - 1;
   while (fi >= 0 && isBlank(texts[fi]!)) fi--;
   if (fi < 0) return null;
 
-  // Check if tail is a cursor/prompt symbol like "❯" or ">"
-  if (fi > 0 && /^(?:[❯›>$?]\s*)$/.test(texts[fi]!.trim())) {
-    fi--;
-    while (fi >= 0 && isBlank(texts[fi]!)) fi--;
-    if (fi < 0) return null;
-  }
+  const family = classifyFooter(texts[fi]!);
+  if (!family) return null;
 
-  let family = classifyFooter(texts[fi]!);
   const footerIndex = fi;
 
+  // 2. Numbered option rows just above the footer.
   const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
   const rows: OptionRow[] = [];
-
-  const tailOption = parseOptionRow(texts[fi]!);
-  if (tailOption !== null) {
-    for (let i = from; i <= fi; i++) {
-      const parsed = parseOptionRow(texts[i]!);
-      if (parsed) rows.push({ index: i, n: parsed.n, label: parsed.label });
-    }
-  } else {
-    for (let i = from; i < fi; i++) {
-      const parsed = parseOptionRow(texts[i]!);
-      if (parsed) rows.push({ index: i, n: parsed.n, label: parsed.label });
-    }
+  for (let i = from; i < fi; i++) {
+    const parsed = parseOptionRow(texts[i]!);
+    if (parsed) rows.push({ index: i, n: parsed.n, label: parsed.label });
   }
 
   if (rows.length < 2) return null;
@@ -110,23 +98,19 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
 
   if (footerIndex - lastOpt > MAX_FOOTER_GAP) return null;
 
-  if (family === "select" || !family) {
+  if (family === "select") {
     const top = Math.max(0, firstOpt - QUESTION_SCAN_LIMIT);
     for (let i = top; i < footerIndex; i++) {
       if (isMultiStepHeader(texts[i]!)) return null;
     }
   }
 
-  // Scan upward for question
+  // 3. Scan upward for question
   let question = "";
   for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < QUESTION_SCAN_LIMIT; i--, seen++) {
     const t = texts[i]!;
     if (isHorizontalRule(t)) break;
-    if (
-      t.includes("?") ||
-      t.endsWith(":") ||
-      /^(?:question|select|choose|allow|which|what|how)\b/i.test(t.trim())
-    ) {
+    if (t.includes("?")) {
       question = t.trim();
       break;
     }
@@ -137,14 +121,6 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
       question = prev;
     } else {
       return null;
-    }
-  }
-
-  if (!family) {
-    if (/\b(?:allow|permission|proceed|y\/n)\b/i.test(question)) {
-      family = "permission";
-    } else {
-      family = "select";
     }
   }
 

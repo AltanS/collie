@@ -1,0 +1,12 @@
+────────────────────────────────────────────────────────────
+> Run test suite
+
+● Bash(npm test)
+
+Allow bash command: `npm test`?
+
+❯ 1. Yes
+  2. No
+  3. Always allow for this session
+────────────────────────────────────────────────────────────
+Tab to amend · Esc to cancel

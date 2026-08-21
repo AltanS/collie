@@ -1,0 +1,7 @@
+────────────────────────────────────────────────────────────
+Do you trust this workspace directory and wish to proceed?
+
+❯ 1. Yes, trust this folder
+  2. No, exit
+────────────────────────────────────────────────────────────
+Enter to confirm · Esc to cancel
