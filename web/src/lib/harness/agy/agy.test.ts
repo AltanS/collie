@@ -1,11 +1,44 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { splitLines } from "../../blocks";
 import { agyAdapter, antigravityAdapter } from "./index";
 import { detectPromptSelect } from "./prompt-select";
+import { describeAdapterConformance } from "../conformance";
 
-describe("agyAdapter", () => {
+const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
+
+const allAgyFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("agy--") && f.endsWith(".txt"))
+  .sort();
+const allClaudeFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
+  .sort();
+const allOmpFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
+  .sort();
+
+const NEUTRAL = ["agy--fresh-idle.txt", "agy--working.txt", "agy--done.txt"];
+
+const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.includes(f));
+const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.includes(f));
+const foreignFixtures = [...allClaudeFixtures, ...allOmpFixtures];
+
+describeAdapterConformance(agyAdapter, {
+  ownFixtures,
+  foreignFixtures,
+  neutralFixtures,
+});
+
+describeAdapterConformance(antigravityAdapter, {
+  ownFixtures,
+  foreignFixtures,
+  neutralFixtures,
+});
+
+describe("agyAdapter unit & footer safety", () => {
   it("claims agent 'agy' and 'antigravity'", () => {
     expect(agyAdapter.agent).toBe("agy");
     expect(antigravityAdapter.agent).toBe("antigravity");
@@ -35,46 +68,20 @@ describe("agyAdapter", () => {
     expect(blocks.some((b) => b.kind === "prompt-select")).toBe(true);
   });
 
-  it("detects an AskUserQuestion prompt where options are at the tail without explicit footer", () => {
+  it("declines a numbered list without a dialog footer (ADR 0009 safety)", () => {
     const raw = [
-      "Which theme or primary color accent would you prefer for the Collie AGY experience?",
-      "  1. Google Blue (#1A73E8) - Classic Antigravity styling",
-      "  2. Dark Indigo (#4F46E5) - Modern terminal contrast",
-      "  3. Emerald (#10B981) - Clean status accent",
-      "  4. Keep default theme without custom accent",
+      "Available skills:",
+      "  1. agy-customizations - Guide and reference",
+      "  2. graphify - Knowledge graph analysis",
+      "  3. antigravity-guide - Overview and quick reference",
     ].join("\n");
     const lines = splitLines(parseAnsi(raw));
 
     const model = detectPromptSelect(lines);
-    expect(model).not.toBeNull();
-    expect(model!.question).toBe(
-      "Which theme or primary color accent would you prefer for the Collie AGY experience?",
-    );
-    expect(model!.family).toBe("select");
-    expect(model!.options).toHaveLength(4);
-    expect(model!.options[0]!.label).toBe("Google Blue (#1A73E8) - Classic Antigravity styling");
-    expect(model!.options[0]!.keys).toEqual(["1", "Enter"]);
-    expect(model!.options[3]!.label).toBe("Keep default theme without custom accent");
-    expect(model!.options[3]!.keys).toEqual(["4", "Enter"]);
+    expect(model).toBeNull();
 
     const blocks = agyAdapter.buildBlocks(lines);
-    expect(blocks.some((b) => b.kind === "prompt-select")).toBe(true);
-  });
-
-  it("detects radio/checkbox and bracketed option styles", () => {
-    const raw = [
-      "Select a build target:",
-      "  ( ) 1. Development build",
-      "  (*) 2. Production build",
-      "  ( ) 3. Staging build",
-    ].join("\n");
-    const lines = splitLines(parseAnsi(raw));
-
-    const model = detectPromptSelect(lines);
-    expect(model).not.toBeNull();
-    expect(model!.options).toHaveLength(3);
-    expect(model!.options[0]!.label).toBe("Development build");
-    expect(model!.options[1]!.label).toBe("Production build");
+    expect(blocks.every((b) => b.kind === "raw")).toBe(true);
   });
 
   it("detects tool permission prompt and extracts digit key alone", () => {
@@ -113,3 +120,4 @@ describe("agyAdapter", () => {
     expect(agyAdapter.composerReady!(lines)).toBe(true);
   });
 });
+

@@ -26,9 +26,6 @@ export function adapterFor(agent: string | undefined): HarnessAdapter | undefine
   if (agent === undefined || agent === null) return undefined;
   const key = agent.toLowerCase().trim();
   if (Object.hasOwn(ADAPTERS, key)) return ADAPTERS[key];
-  if (key.startsWith("claude")) return claudeAdapter;
-  if (key.startsWith("omp")) return ompAdapter;
-  if (key.startsWith("agy") || key.startsWith("antigravity")) return agyAdapter;
   return undefined;
 }
 

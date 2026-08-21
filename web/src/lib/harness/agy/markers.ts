@@ -37,9 +37,18 @@ export type { PromptFamily };
 
 export function classifyFooter(text: string): PromptFamily | null {
   const t = text.toLowerCase();
-  if (/\benter to select\b/.test(t) || /\bto select\b/.test(t) || /\bpress enter\b/.test(t)) return "select";
-  if (/\benter to confirm\b/.test(t) || /\bconfirm\b/.test(t)) return "trust";
-  if (/\bplan\b/.test(t)) return "plan";
-  if (/\btab to amend\b/.test(t) || /\bproceed\b/.test(t) || /\by\/n\b/.test(t) || /\bpermission\b/.test(t) || /\ballow\b/.test(t)) return "permission";
+  if (/\benter to select\b/.test(t)) return "select";
+  if (/\benter to confirm\b/.test(t)) return "trust";
+  if (/ctrl\+g to edit\b/.test(t) || /\.antigravity\/plans\//.test(t) || /\.agy\/plans\//.test(t)) return "plan";
+  if (/\btab to amend\b/.test(t)) return "permission";
   return null;
 }
+
+export function isAlienBuffer(texts: string[]): boolean {
+  for (const text of texts) {
+    if (/Claude Code|\.claude\/|Claude Sonnet|Claude Opus|Claude Max|AskUserQuestion/i.test(text)) return true;
+    if (/╭─ Ask ─╮|oh-my-pi/i.test(text)) return true;
+  }
+  return false;
+}
+

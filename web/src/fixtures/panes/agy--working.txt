@@ -1,0 +1,11 @@
+────────────────────────────────────────────────────────────
+> Add a centralized button for trim.
+
+● Read(~/Dev/sandbox/src/InputPanel.svelte)
+● Edit(~/Dev/sandbox/src/InputPanel.svelte)
+⣟  Generating...
+└ Tip: Use /btw to ask a question without breaking context.
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> 
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+esc to cancel                                                               accept-edits · Gemini 3.7 Flash · low

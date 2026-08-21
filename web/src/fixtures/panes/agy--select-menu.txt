@@ -1,0 +1,16 @@
+────────────────────────────────────────────────────────────
+> Configure theme settings
+
+● AskQuestion(Which color theme should the dashboard use?)
+
+Which color theme should the dashboard use?
+
+❯ 1. Red
+     A warm, high-energy theme with red as the primary accent color.
+  2. Green
+     A calm, natural theme with green as the primary accent color.
+  3. Blue
+     A cool, professional theme with blue as the primary accent color.
+  4. Type something.
+────────────────────────────────────────────────────────────
+Enter to select · ↑/↓ to navigate · Esc to cancel
