@@ -21,6 +21,9 @@ import { panePath, spacePath } from "@/lib/nav";
 // navigates to. Recent and Spaces fold; fold both and the page is the triaged herd and nothing else.
 // Tapping an agent opens its pane; tapping a space drills into /space/:id.
 export function HomeRoute() {
+  // SAFETY: ROOT_ROUTE_ID names the route whose `loader` is rootLoader (router.tsx pairs the two),
+  // and this route is one of its children — so it only ever renders under a settled run of that
+  // loader, whose return type IS HomeData.
   const data = useRouteLoaderData(ROOT_ROUTE_ID) as HomeData;
   // A stalled load (a black-holed poll, or a pane-open tap whose navigation hangs) gallops the
   // Collie mark within the threshold — instant feedback while you're still on the dashboard, even
@@ -66,6 +69,8 @@ export function HomeRoute() {
             onRecentDirChange={setRecentDir}
             recentOpen={prefs.recentOpen}
             onRecentOpenChange={setRecentOpen}
+            error={data.error}
+            lastSeenAt={data.lastSeenAt}
           />
           <SpaceOverview
             workspaces={data.workspaces}

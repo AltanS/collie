@@ -59,6 +59,77 @@ export function meaningfulTabLabel(
   return trimmed;
 }
 
+// A leading status glyph on an OSC title, e.g. Claude's `◐ Reviewing the diff`. The classes are the
+// symbol blocks a harness draws a spinner from — Geometric Shapes (◐◑◒◓), Miscellaneous Symbols,
+// Dingbats (✳✻✽✢), Misc Symbols and Arrows, emoji — plus the bare `*` and `·` some use.
+//
+// The trailing `\s` is the safety, and it is why this is a whitelist of BLOCKS rather than of
+// individual frames: a status glyph is always followed by a space before the title text, so
+// requiring one lets this strip spinner frames nobody has observed yet without eating a title that
+// merely OPENS with punctuation (`(main) vim`, `— draft`). Bounded to 2 glyphs; no real prefix is
+// longer, and an unbounded run on hostile input would scan the whole string.
+const STATUS_GLYPH_CLASS = "■-◿☀-⛿✀-➿⬀-⯿\\u{1F300}-\\u{1FAFF}*·";
+const LEADING_STATUS_GLYPH = new RegExp(`^[${STATUS_GLYPH_CLASS}]{1,2}\\s+`, "u");
+/** A title with no prose in it at all — a bare spinner frame, which names nothing. Needed separately
+ *  because the strip above requires trailing whitespace, so `"◐"` alone would otherwise survive. */
+const GLYPHS_ONLY = new RegExp(`^[${STATUS_GLYPH_CLASS}\\s]+$`, "u");
+/** A shell's default OSC title — bash's `\u@\h:\w` and friends: `user@host`, optionally `:` and a
+ *  path (Debian puts a space after the colon). Neither half may contain a space, `@` or `:`, so a
+ *  title that merely mentions an address (`foo@bar baz`, `re: user@host`) is not one of these. */
+const SHELL_LOCATOR = /^[^\s@:]+@[^\s@:]+(:.*)?$/;
+
+/**
+ * A terminal title worth putting on screen, or `undefined` when it says nothing.
+ *
+ * Herdr reports the pane's OSC title and its own stripped form. The stripped form is NOT usable
+ * directly: it removes the settled `✳` but leaves Claude's rotating spinner frames (live-observed
+ * 2026-08-15 in one snapshot — `✳ Read Notes From Underground` stripped, `◐ Custom UI for Collie…`
+ * not). Since those frames advance on every poll, binding a row's label to it makes every working
+ * agent's name flicker. So Collie strips the glyph itself, on whichever of the two strings is
+ * already the shorter — Herdr having done the job is a fine head start, it just can't be trusted to
+ * have finished it.
+ *
+ * A title is dropped when it repeats what the row already shows: the agent's own name (Herdr falls
+ * back to the process name, so an agent that sets no title reports `claude`), or the workspace
+ * label that is line one of every row. Case-insensitive, because neither comparison is about case.
+ *
+ * A shell's locator title (`altan@bluefin:~/projects/collie`) is dropped for the same reason: it is
+ * not what the process is doing, it is a restatement of the cwd the row already carries on that very
+ * line — longer, and rewritten on every `cd`. Dropped unconditionally rather than only when the path
+ * matches: the row's cwd is the fresher of the two (a locator only updates at the next prompt), and
+ * `\w`'s `~` belongs to a user the bridge cannot resolve a HOME for. Titles a shell sets for a
+ * running command (`vim foo.ts`, `htop`) are not locators and survive — those are the work.
+ *
+ * Pure + exported so the rule is unit-tested and lives in ONE place, exactly as
+ * {@link meaningfulTabLabel} is.
+ */
+export function meaningfulTerminalTitle(
+  title: string | null | undefined,
+  stripped: string | null | undefined,
+  agent: string,
+  workspaceLabel: string,
+): string | undefined {
+  // Prefer whichever string is shorter once trimmed — that is Herdr's strip when it fired, and the
+  // raw title when it didn't. Comparing length rather than trusting `stripped` to exist keeps an
+  // older server (which omits it entirely) on the same path.
+  const candidates = [title, stripped]
+    .map((s) => s?.trim())
+    .filter((s): s is string => !!s)
+    .sort((a, b) => a.length - b.length);
+  const shortest = candidates[0];
+  if (!shortest) return undefined;
+  if (GLYPHS_ONLY.test(shortest)) return undefined;
+
+  const cleaned = shortest.replace(LEADING_STATUS_GLYPH, "").trim();
+  if (!cleaned) return undefined;
+  if (SHELL_LOCATOR.test(cleaned)) return undefined;
+
+  const fold = cleaned.toLowerCase();
+  if (fold === agent.trim().toLowerCase()) return undefined;
+  if (fold === workspaceLabel.trim().toLowerCase()) return undefined;
+  return cleaned;
+}
+
 /**
  * Coerce an untrusted parsed value into an {@link ActivityFile}, dropping anything malformed and
  * anything older than {@link PRUNE_AFTER_MS}. Pure + exported so the file-shape and prune handling

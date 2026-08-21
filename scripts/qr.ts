@@ -1,6 +1,6 @@
 // Render a URL as a QR code in the terminal, so a phone can scan its way onto the bridge instead of
 // typing a MagicDNS name on a phone keyboard. Called only by `collie-ctl.sh qr`, which decides WHICH
-// url (the tailnet front door, or COLLIE_PUBLIC_URL under Variant C/E) and whether it's worth one.
+// url (the tailnet front door, or COLLIE_PUBLIC_URL under DEPLOYMENT.md's Variant C/E) and whether it's worth one.
 //
 // A plain dependency, NOT an optional one like web-push (bridge/push.ts). The distinction is which
 // contract it belongs to: push is optional at RUNTIME (no VAPID keys, no push, bridge unaffected),

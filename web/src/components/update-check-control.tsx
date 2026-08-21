@@ -49,7 +49,11 @@ export function UpdateCheckControl() {
     }
   }
 
-  const upToDate = Boolean(update && !update.releaseAvailable && !update.bridgeStale);
+  // A pending MAJOR is not "up to date" either — it is the one thing the routine update won't take
+  // (ADR 0020), so the banner's consent line must not be contradicted three inches above it.
+  const upToDate = Boolean(
+    update && !update.releaseAvailable && !update.bridgeStale && !update.majorAvailable,
+  );
 
   return (
     <Card className="gap-0 py-0">
