@@ -3,7 +3,10 @@ import { describe, expect, it } from "bun:test";
 import {
   compareSemver,
   githubReleaseUrl,
+  latestReleaseAboveMajor,
+  latestReleaseInMajor,
   latestReleaseTag,
+  majorOf,
   parseSemverTag,
   shouldNotify,
   stampOf,
@@ -19,6 +22,37 @@ describe("compareSemver", () => {
     expect(compareSemver("1.0.0", "0.99.99")).toBe(1);
     expect(compareSemver("0.11.0", "0.11.0")).toBe(0);
     expect(compareSemver("0.11.2", "0.11.10")).toBe(-1); // numeric, not lexical
+  });
+
+  it("sorts a prerelease below the release it leads to", () => {
+    // The running version can be `1.0.0-beta.5` while every tag is strict, so the tail must be
+    // parsed rather than handed to `Number` (which yielded NaN and an arbitrary answer).
+    expect(compareSemver("1.0.0-beta.5", "1.0.0")).toBe(-1);
+    expect(compareSemver("1.0.0", "1.0.0-beta.5")).toBe(1);
+    expect(compareSemver("1.0.0-beta.5", "0.31.1")).toBe(1);
+    expect(compareSemver("1.0.0-beta.5+ab12cd3", "1.0.1")).toBe(-1);
+  });
+});
+
+describe("majorOf / latestReleaseInMajor / latestReleaseAboveMajor", () => {
+  const tags = ["v0.31.1", "v0.32.0", "v1.0.0", "v1.1.0", "v1.1.0-rc.1", "v2.0.0", "nightly"];
+
+  it("reads the major off a version, prerelease and build metadata included", () => {
+    expect(majorOf("1.0.0-beta.5+ab12cd3")).toBe(1);
+    expect(majorOf("0.31.1")).toBe(0);
+    expect(majorOf("unknown")).toBeNull();
+  });
+
+  it("keeps the routine target inside the running major", () => {
+    expect(latestReleaseInMajor(tags, 0)).toBe("0.32.0");
+    expect(latestReleaseInMajor(tags, 1)).toBe("1.1.0"); // the rc is invisible, as everywhere
+    expect(latestReleaseInMajor(tags, 3)).toBeNull();
+  });
+
+  it("reports a higher major separately — announcing it is not taking it", () => {
+    expect(latestReleaseAboveMajor(tags, 0)).toBe("2.0.0");
+    expect(latestReleaseAboveMajor(tags, 1)).toBe("2.0.0");
+    expect(latestReleaseAboveMajor(tags, 2)).toBeNull();
   });
 });
 
@@ -119,6 +153,36 @@ describe("UpdateMonitor", () => {
       releaseAvailable: true,
     });
     expect(monitor.status().checkedAt).not.toBeNull();
+  });
+
+  it("splits the answer: the newest release of MY major, and a higher major named apart from it", async () => {
+    // The banner has to say WHICH kind of behind you are (ADR 0020) — a routine update fixes one and
+    // refuses the other, so one field could not carry both.
+    const { monitor } = makeMonitor({
+      current: "0.31.1",
+      fetchTags: async () => ["v0.31.1", "v0.32.0", "v1.0.0", "v1.0.1"],
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({
+      latest: "0.32.0",
+      releaseAvailable: true,
+      majorAvailable: "1.0.1",
+      majorUrl: "https://github.com/AltanS/collie/releases/tag/v1.0.1",
+    });
+  });
+
+  it("a 1.x install sees only 1.x releases, and no major above it", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.0.0-beta.5",
+      fetchTags: async () => ["v0.32.0", "v1.0.0"],
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({
+      latest: "1.0.0", // the beta is behind its own release
+      releaseAvailable: true,
+      majorAvailable: null,
+      majorUrl: null,
+    });
   });
 
   it("githubReleaseUrl reconstructs the vX.Y.Z tag page", () => {

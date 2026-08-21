@@ -7,6 +7,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
+import { loadDraft } from "@/lib/drafts";
 import { server } from "@/test/setup";
 import { recordReply } from "@/test/handlers";
 import { Composer } from "./composer";
@@ -44,16 +45,34 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+    prefs: { wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
+    setTapToFocus: vi.fn(),
     onSent: vi.fn(),
     ...overrides,
   };
   const router = createMemoryRouter([{ path: "/", element: <Composer {...props} /> }]);
   render(<RouterProvider router={router} />);
   return props;
+}
+
+/**
+ * Wait for a send that can never verify to reach its terminal `stalled` outcome.
+ *
+ * A reply handler that doesn't `recordReply` leaves the fake pane's input line empty, so the
+ * type-then-verify guard polls POLL_ATTEMPTS × POLL_DELAY_MS (~2.8s) and only then reports. That
+ * report is a `setStatus` on a MODULE-SCOPED singleton, which outlives the test that started it: a
+ * test that returns first hands its stall to whichever test is running ~2.8s later, past this file's
+ * `clearStatus()`, where it reads as that test's own failure. Every test that fires a send it never
+ * lets verify ends with this. Needs a status sentinel in the render (`renderComposerWithStatus`).
+ */
+async function awaitTerminalStall() {
+  await waitFor(
+    () => expect(screen.getByTestId("status")).toHaveTextContent(/didn't reach the input box/i),
+    { timeout: 5000 },
+  );
 }
 
 function StatusSentinel() {
@@ -73,10 +92,11 @@ function renderComposerWithStatus(overrides: Partial<ComponentProps<typeof Compo
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+    prefs: { wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
+    setTapToFocus: vi.fn(),
     onSent: vi.fn(),
     ...overrides,
   };
@@ -251,7 +271,7 @@ describe("Composer — send", () => {
     );
     // The pre-clear keys on the RAW line (the actual current "❯" content), independent of whether the
     // draft ever stabilised into a visible preview — a stranded raw draft is still swept before send.
-    renderComposer({ terminalDraft: null, rawTerminalDraft: "leftover" });
+    renderComposerWithStatus({ terminalDraft: null, rawTerminalDraft: "leftover" });
     const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "new message");
@@ -262,7 +282,8 @@ describe("Composer — send", () => {
     // Draft length + the 32-Backspace overshoot (mid-poll-gap host typing margin) + the ctrl+k.
     expect(sentKeys).toHaveLength([..."leftover"].length + 33);
     expect(sentKeys!.slice(1).every((k) => k === "Backspace")).toBe(true);
-  });
+    await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
+  }, 15000);
 
   // The burst is the only destructive keystroke path in the app not bound to the screen that
   // authorised it. Ordering ("the read happens first") is not a freshness bound: the read's answer
@@ -420,10 +441,11 @@ describe("Composer — send", () => {
               text="pane output"
               terminalDraft={null}
               rawTerminalDraft="leftover"
-              prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+              prefs={{ wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true }}
               setWrap={vi.fn()}
               stepFontSize={vi.fn()}
               setRawTerminal={vi.fn()}
+              setTapToFocus={vi.fn()}
               onSent={vi.fn()}
             />
           </>
@@ -459,14 +481,15 @@ describe("Composer — send", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
-    renderComposer({ terminalDraft: null });
+    renderComposerWithStatus({ terminalDraft: null });
     const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "hello");
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(callOrder).toEqual(["reply"]));
-  });
+    await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
+  }, 15000);
 
   it("sequential sends with no stranded draft do not call keys before reply", async () => {
     const user = userEvent.setup();
@@ -511,10 +534,11 @@ describe("Composer — send", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
+      setTapToFocus: vi.fn(),
       onSent: vi.fn(),
     };
     const router = createMemoryRouter([
@@ -606,10 +630,11 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+            prefs={{ wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true }}
             setWrap={vi.fn()}
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
             onSent={vi.fn()}
           />
         </>
@@ -641,6 +666,124 @@ describe("Composer — typing into the terminal", () => {
       expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
     );
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  });
+
+  // The disarm above is invisible while the page is hidden — lib/status.ts expires a non-error in
+  // 2.5s, so a message published on the way out is gone before anyone can read it. Coming back to a
+  // focused field with the mode silently off is how keystrokes meant for the terminal end up in the
+  // reply draft instead, so the message has to wait for the return trip.
+  it("says the mode stopped once the page comes back", async () => {
+    renderComposerWithStatus();
+    startDirectTyping();
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
+    );
+    expect(screen.getByTestId("status")).not.toHaveTextContent(/backgrounded/i);
+
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/stopped typing into the terminal/i),
+    );
+  });
+
+  // The notice above expires; a focused field does not. Handing the composer back with the keyboard
+  // still up is what turns "the mode stopped" into keystrokes buffered as a reply, so the disarm
+  // puts the keyboard away — same as the blur on a failed batch.
+  it("puts the keyboard away when the page is hidden, rather than leaving the field primed", async () => {
+    renderComposerWithStatus();
+    const box = startDirectTyping();
+    box.focus();
+    expect(document.activeElement).toBe(box);
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(document.activeElement).not.toBe(box));
+    expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull();
+
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/stopped typing into the terminal/i),
+    );
+    // Still not focused on the way back: the reply field must be entered on purpose.
+    expect(document.activeElement).not.toBe(box);
+  });
+
+  // The blur above is deferred, so it can outlive the disarm that scheduled it. Re-arming is the
+  // ordinary way that happens: you come back, tap Type again, and the old timer must not fire into
+  // the session that replaced it and drop the keyboard you just asked for. What prevents it is
+  // activate()'s cancelPendingBlur() — remove that one line and this test fails, which is the whole
+  // reason it runs the timers by hand instead of waiting them out.
+  it("does not blur a re-armed session with the disarm it already superseded", () => {
+    renderComposerWithStatus();
+    const box = startDirectTyping();
+    const blurred = vi.spyOn(box, "blur");
+
+    // Fake timers only for the race itself: the deferred blur must be held, not waited out.
+    vi.useFakeTimers();
+    try {
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      fireEvent(document, new Event("visibilitychange")); // schedules the blur
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      fireEvent(document, new Event("visibilitychange"));
+      fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i })); // re-arm
+      act(() => vi.runOnlyPendingTimers());
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(blurred).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
+  });
+
+  // The notice is owed by the pane that was armed, and a pane can change WHILE the page is hidden —
+  // a push notification deep-links straight into another one. Delivering it on arrival would tell
+  // you the mode stopped on a pane where it was never running.
+  it("does not announce the background disarm over a pane it was never armed on", async () => {
+    function Harness() {
+      const [paneId, setPaneId] = useState("w1:p1");
+      return (
+        <>
+          <StatusSentinel />
+          <button type="button" onClick={() => setPaneId("w1:p2")}>
+            Switch pane
+          </button>
+          <Composer
+            paneId={paneId}
+            agent="claude"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={false}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
+            onSent={vi.fn()}
+          />
+        </>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    startDirectTyping();
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent.click(screen.getByRole("button", { name: "Switch pane" }));
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument());
+    expect(screen.getByTestId("status")).not.toHaveTextContent(/backgrounded/i);
   });
 
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
@@ -810,10 +953,11 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, rawTerminal: false }}
+            prefs={{ wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true }}
             setWrap={vi.fn()}
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
             onSent={vi.fn()}
           />
         </>
@@ -896,6 +1040,126 @@ describe("Composer — blocked pre-flight override", () => {
     await waitFor(() => expect(calls).toContain("type"));
     expect(calls).not.toContain("submit");
     expect(box).toHaveValue("use fable please");
+    await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
+  }, 15000);
+});
+
+// A draft too big for the disk tier survives a pane switch but not the app closing, and the only
+// thing that makes that difference visible is this row. Before it, the oversize write was skipped
+// and a remount silently restored an OLDER, SHORTER draft — text the user never wrote.
+describe("Composer — oversize draft notice", () => {
+  it("says an oversize draft won't survive the app closing, and stops saying it when it fits", async () => {
+    const props = renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    expect(screen.queryByText(/too long to keep as a saved draft/i)).not.toBeInTheDocument();
+
+    // Paste, rather than type: 8 KiB of userEvent keystrokes would take minutes.
+    fireEvent.change(box, { target: { value: "# heading\n".repeat(1200) } });
+    expect(await screen.findByText(/too long to keep as a saved draft/i)).toBeInTheDocument();
+    // …and the whole paste is still what the store hands back, which is the actual fix.
+    expect(loadDraft(undefined, props.paneId)).toHaveLength(12000);
+
+    fireEvent.change(box, { target: { value: "short again" } });
+    await waitFor(() =>
+      expect(screen.queryByText(/too long to keep as a saved draft/i)).not.toBeInTheDocument(),
+    );
+  });
+});
+
+// #103. A password prompt is the one refusal that never becomes a success: `sudo` turns echo off, so
+// the evidence Send needs is exactly what the screen is refusing to show, and the reporter tapped Send
+// at it for three days. These pin the two halves of the answer — say what it is, and get the operator
+// into the mode that works without leaving the secret behind.
+describe("Composer — password prompt", () => {
+  const SUDO = "$ sudo systemctl restart collie\n[sudo] password for altan:";
+
+  function serveSudo(calls: string[]) {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ paneId: "w1:p1", text: SUDO, truncated: false, revision: 1 }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string; submit?: boolean };
+        calls.push(body.submit ? "submit" : "type");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+  }
+
+  it("names the prompt and offers Type, without replacing the override", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveSudo(calls);
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hunter2hunter2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    // The refusal names the mechanism, not "a menu or dialog is probably up".
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/password prompt/i),
+    );
+    // The prompt is quoted off the mirror, so the claim is checkable against the screen.
+    expect(screen.getByText("[sudo] password for altan:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
+    // The pre-existing override is untouched — a false positive costs a dismissal, not an action.
+    expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument();
+    expect(calls).toEqual([]);
+  });
+
+  it("the handoff clears the draft before arming Type", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveSudo(calls);
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hunter2hunter2");
+    // The write-through has already put the secret in the 48h store, before any send was attempted —
+    // the leak #103 asked about. Asserted here so the assertion below isn't vacuously true.
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toContain("hunter2hunter2");
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: /use type/i }));
+
+    // Armed, and the secret is gone from the field (and from its localStorage copy with it) — which
+    // is also what lets it arm at all: useDirectTyping refuses while any draft is present.
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/type into the terminal/i)).toHaveValue(""),
+    );
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
+    expect(screen.queryByRole("button", { name: /use type/i })).not.toBeInTheDocument();
+    expect(calls).toEqual([]); // nothing was ever typed by the reply path
+  });
+
+  it("drops the stored draft the moment it recognises the prompt, button or no button", async () => {
+    // The reporter's actual behaviour: tap Send, give up, walk to a laptop. No button is ever pressed,
+    // so a handoff that clears on its way through would never have run — and the pane-leave save would
+    // have written the password back out. The store has to be empty from the refusal onwards.
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    serveSudo(calls);
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "hunter2hunter2");
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toContain("hunter2hunter2");
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("button", { name: /use type/i });
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
+    // Through the store's own reader, not just the storage key: the draft store has a second,
+    // in-memory tier (lib/drafts.ts) and a secret surviving in a tier this assertion cannot see
+    // would be #103 all over again, invisibly. clearDraft must empty both.
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
+
+    // Dismissing keeps the text on screen — the operator may still need to read it — but the typing
+    // that happened while the notice was up was never stored either.
+    await user.click(screen.getByRole("button", { name: /dismiss password-prompt notice/i }));
+    expect(box).toHaveValue("hunter2hunter2");
+    expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
   });
 });
 
@@ -951,10 +1215,11 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       readOnly: false,
       dialogPresent: false,
       text: "pane output",
-      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
+      setTapToFocus: vi.fn(),
       onSent: vi.fn(),
       ...rest,
       terminalDraft: stable,
@@ -1221,10 +1486,11 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       text: "pane output",
       terminalDraft: draft,
       rawTerminalDraft: draft,
-      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
+      setTapToFocus: vi.fn(),
       onSent: vi.fn(),
     };
     return (
@@ -1755,10 +2021,11 @@ describe("Composer — draft persistence", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { wrap: true, fontSize: 11, rawTerminal: false },
+      prefs: { wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
+      setTapToFocus: vi.fn(),
       onSent: vi.fn(),
       ...overrides,
     };

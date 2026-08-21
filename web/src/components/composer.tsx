@@ -17,14 +17,17 @@ import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
 import { commandsFor } from "@/lib/agent-commands";
+import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-config";
+import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
-import { loadDraft, saveDraft } from "@/lib/drafts";
+import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
+import { NoEchoNotice } from "@/components/no-echo-notice";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -62,6 +65,7 @@ interface ComposerProps {
   setWrap: (wrap: boolean) => void;
   stepFontSize: (delta: number) => void;
   setRawTerminal: (raw: boolean) => void;
+  setTapToFocus: (tapToFocus: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
 }
@@ -134,7 +138,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, onSent },
+  { paneId, session, agent, isShell, gone, readOnly, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -163,24 +167,40 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // text can never surface in pane B.
   const draftPaneRef = useRef({ session, paneId });
 
-  /** Set the draft AND persist it. Every write to `input` goes through here — an empty value removes
-   *  the stored key, so the deliberate-clear paths (verified send, user emptying the box) need no
-   *  special case. */
+  /**
+   * Set the draft AND persist it. Every write to `input` goes through here — an empty value removes
+   * the stored key, so the deliberate-clear paths (verified send, user emptying the box) need no
+   * special case.
+   *
+   * PERSISTENCE STOPS while a password prompt is on screen (#103). By the time the notice appears the
+   * secret is already in the 48h store — the write-through ran on every keystroke, before any send was
+   * attempted — so `noEchoRef` gates the save AND the pane-leave save below, and the outcome that sets
+   * it removes the stored copy outright. The button was never enough: the operator who taps Send,
+   * gives up and walks to a laptop (which is exactly what #103 reports doing, for three days) never
+   * presses anything, and the pane-leave path would have re-saved it on the way out.
+   *
+   * Gating on a REF, not the state, because the two must change in the same tick as the outcome that
+   * decides it — a render behind is a render in which the next keystroke is still being stored.
+   * The in-memory draft is untouched: a false positive costs one draft its ability to survive the OS
+   * killing the PWA, which is a cheap price for never storing a real one.
+   */
   function updateInput(next: string | ((prev: string) => string)) {
     const value = typeof next === "function" ? next(inputValueRef.current) : next;
     inputValueRef.current = value;
     setInput(value);
+    if (noEchoRef.current !== null) return;
     saveDraft(session, paneId, value);
   }
 
   useEffect(() => {
     const prev = draftPaneRef.current;
     if (prev.paneId === paneId && prev.session === session) return;
-    saveDraft(prev.session, prev.paneId, inputValueRef.current);
+    if (noEchoRef.current === null) saveDraft(prev.session, prev.paneId, inputValueRef.current);
     draftPaneRef.current = { session, paneId };
     const restored = loadDraft(session, paneId) ?? "";
     inputValueRef.current = restored;
     setInput(restored);
+    noticeNoEcho(null); // it described the pane we just left
   }, [session, paneId]);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -242,12 +262,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // explaining WHY nothing was typed before deciding to overrule it.
   const forceConfirm = usePendingConfirm(10_000);
 
+  // The password prompt the last refused send was looking at, if it was one (#103). Set from the
+  // guard's own live read — never re-derived from `display`, which is a snapshot — and cleared by the
+  // ✕, by arming Type, by a send that goes through, and by leaving the pane. Not persisted: it is a
+  // statement about what is on screen right now.
+  //
+  // It is state AND a ref because it has two jobs on two clocks: the strip renders from the state,
+  // while the draft write-through (updateInput, above) has to stop storing keystrokes in the same tick
+  // the outcome lands, not on the render after. `noticeNoEcho` is the only writer of both — go through
+  // it, or the two disagree and the gap is measured in stored passwords.
+  const [noEcho, setNoEcho] = useState<{ prompt: string; typed: boolean } | null>(null);
+  const noEchoRef = useRef<{ prompt: string; typed: boolean } | null>(null);
+
+  /** Raise or clear the password-prompt notice. Raising it also DROPS the stored draft: at that moment
+   *  we know the field holds a secret the pane never accepted, and leaving it in a 48h store to be
+   *  restored on the next visit is the leak #103 asked about. The in-memory value stays — the operator
+   *  can still read it, hand it to Type, or dismiss the notice and carry on. */
+  function noticeNoEcho(next: { prompt: string; typed: boolean } | null) {
+    noEchoRef.current = next;
+    setNoEcho(next);
+    if (next !== null) clearDraft(session, paneId);
+  }
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const direct = useDirectTyping({
     paneKey: `${session ?? ""}\0${paneId}`,
     inputRef,
-    replyDraft: input,
+    // The ref, not `input`: the password-prompt handoff clears the draft and arms in one tick.
+    replyDraft: () => inputValueRef.current,
     canActivate: () => !(locked || sending || uploading),
     // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
     // deliberately not added here: the mode already disarms on a failed batch, which is the same
@@ -258,6 +301,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onActivate: () => {
       sendConfirm.reset();
       forceConfirm.reset();
+      noticeNoEcho(null); // the notice's whole job was to get you here
     },
     focusInput: focusInputEnd,
   });
@@ -380,7 +424,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     focusInputEnd();
   }
 
-  const commands = commandsFor(agent);
+  // The operator's own palette rows, resolved against the shipped catalog for both the button's
+  // visibility test here and the palette's own list below (same call, same arguments).
+  const operatorCommands = useOperatorCommands();
+  const commands = commandsFor(agent, operatorCommands);
+  // The Keys tray's preset row, resolved the same way from the same one-shot read of /api/config.
+  const keyPresets = ctrlPresetsFor(agent, useOperatorKeys());
 
   function focusInputImmediately() {
     const el = inputRef.current;
@@ -514,6 +563,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
         lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
         forceConfirm.reset(); // a clean send disarms any leftover override
+        noticeNoEcho(null); // whatever prompt it described, the pane has moved past it
         onSent(); // you just acted — snap the mirror back to the live tail to see the result
         return true;
       } else if (res.status === "blocked") {
@@ -522,6 +572,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // the same two-tap shape as the destructive-send confirm. The second tap skips the pre-flight
         // ONLY; the type-then-verify guard still runs, so Enter is never fired blind either way.
         forceConfirm.confirm("force");
+        // A password prompt gets the notice AND keeps the override: the notice explains the screen and
+        // offers the control that works, the override stays for the case where the detection is wrong.
+        noticeNoEcho(res.noEcho !== undefined ? { prompt: res.noEcho, typed: false } : null);
         setStatus(`${res.error} Tap Send again to type anyway.`, "error");
         return false;
       } else {
@@ -530,6 +583,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // submit failed. Either way the draft stays put: the user checks the pane rather than
         // double-sending, and on a stall their message is still here to re-send once the dialog is
         // answered.
+        //
+        // Except at a password prompt, where the draft staying put is the wrong call and the notice
+        // says so: the text is already IN the pane (unsubmitted), so a re-send types a second copy of
+        // a secret rather than recovering a lost message. The notice's handoff is what clears it.
+        noticeNoEcho(
+          res.status === "stalled" && res.noEcho !== undefined
+            ? { prompt: res.noEcho, typed: true }
+            : null,
+        );
         setStatus(res.error, "error");
         return false;
       }
@@ -690,7 +752,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             BottomSheet below (it's a palette, not a pad). */}
         {drawer === "keys" && (
           <ComposerDock title="Keys" onClose={closeDrawer}>
-            <NavTray onSend={pressKeys} onQueueChange={setQueuedKeys} disabled={locked} />
+            <NavTray
+              onSend={pressKeys}
+              presets={keyPresets}
+              onQueueChange={setQueuedKeys}
+              disabled={locked}
+            />
           </ComposerDock>
         )}
         {drawer === "quick" && (
@@ -711,6 +778,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               setWrap={setWrap}
               stepFontSize={stepFontSize}
               setRawTerminal={setRawTerminal}
+              setTapToFocus={setTapToFocus}
             />
           </ComposerDock>
         )}
@@ -827,9 +895,45 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
           />
         )}
+        {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other two
+            strips, because that is where the eye already is when a send is refused — and it is a
+            NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}
+        {noEcho !== null && !direct.active && (
+          <NoEchoNotice
+            prompt={noEcho.prompt}
+            typed={noEcho.typed}
+            // Withdrawn, not disabled, when the mode can't be armed at all: a gone pane, a read-only
+            // device, the idle pause. Offering a control that would refuse is worse than offering none.
+            onUseType={
+              locked
+                ? null
+                : () => {
+                    // The draft is a password we know the pane never accepted, and it is already in
+                    // localStorage. Clear it BEFORE arming — both because leaving a secret in a 48h
+                    // store is the leak this issue asked about, and because `activate` refuses while
+                    // any draft is present, which would make the offered remedy fail on the spot.
+                    updateInput("");
+                    requestDrawer(null);
+                    direct.activate();
+                  }
+            }
+            onDismiss={() => noticeNoEcho(null)}
+          />
+        )}
         {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
             deliberately NOT only on the button and textarea — see the component. */}
         {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
+        {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
+            memory tier holds it whole — but not the app closing, and that difference is invisible
+            without saying so: the old behaviour silently restored an OLDER, SHORTER draft instead.
+            Derived at render rather than pushed through setStatus, because this is a CONDITION that
+            lasts as long as the text does, and a status auto-clears in 2.5s and would re-fire on
+            every keystroke. Self-clearing: trim the draft or send it and the row is simply gone. */}
+        {!direct.active && !fitsDraftStore(input) && (
+          <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
+            Too long to keep as a saved draft — it survives switching panes, but not closing the app.
+          </p>
+        )}
         {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
             field and Send, and the old spacing left them looking joined. */}
         <div className="flex items-end gap-3">
@@ -953,6 +1057,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         open={drawer === "cmd"}
         onClose={closeDrawer}
         agent={agent}
+        mine={operatorCommands}
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />

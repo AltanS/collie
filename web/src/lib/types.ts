@@ -50,6 +50,13 @@ export interface AgentView {
    */
   tabLabel?: string;
   /**
+   * What the pane's process says it is doing — its OSC title, glyph-stripped and dropped when
+   * uninformative bridge-side (see `meaningfulTerminalTitle` in bridge/activity.ts). Unlike
+   * `paneLabel` and `sessionName`, which are set once by hand, this follows the work as it moves.
+   * Render as text only, never markup — same XSS boundary as `paneLabel`.
+   */
+  terminalTitle?: string;
+  /**
    * Epoch ms of this agent's last status transition, as the bridge observed it. Absent on an older
    * bridge — which is exactly why triage degrades cleanly; see `triage()`.
    */
@@ -65,13 +72,16 @@ export interface AgentView {
 
 /**
  * The name to show for a pane, in priority order: an explicit user label (herdr `pane.rename`) wins,
- * then Claude's own `/rename` session name, then the agent name (or "shell"). Both label and session
- * name are rendered only as React text nodes by callers — never markup — so they stay within the
- * pane-output XSS boundary.
+ * then Claude's own `/rename` session name, then the pane's terminal title, then the agent name (or
+ * "shell"). The two hand-set names outrank the title because a name you chose should not be
+ * overwritten by one the process is rewriting every turn; the title outranks the agent name because
+ * "claude" tells you nothing when four rows say it. All three are rendered only as React text nodes
+ * by callers — never markup — so they stay within the pane-output XSS boundary.
  */
 export function paneDisplayName(pane: AgentView): string {
   if (pane.paneLabel) return pane.paneLabel;
   if (pane.sessionName) return pane.sessionName;
+  if (pane.terminalTitle) return pane.terminalTitle;
   return pane.kind === "shell" ? "shell" : pane.agent;
 }
 
@@ -151,6 +161,11 @@ export interface UpdateInfo {
   latestUrl: string | null;
   /** A newer release than `current` exists upstream — the update action will fetch it. */
   releaseAvailable: boolean;
+  /** Newest release of a HIGHER major than `current`, or null. A routine update never crosses it —
+   *  `update --major` is the consent (ADR 0020), so the banner names that command. */
+  majorAvailable: string | null;
+  /** GitHub release page for `majorAvailable`, or null when there is none. */
+  majorUrl: string | null;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */
@@ -254,11 +269,50 @@ export interface CreatedPane {
 /** Result of creating a new tab/space — on success `pane` is the fresh shell to navigate into. */
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
+/**
+ * One operator-declared palette row (a `[[commands]]` table in their `commands.toml`). Mirrors
+ * OperatorCommand in
+ * bridge/types.ts. Resolved against the shipped catalog by `commandsFor()`, which hands a pane
+ * these rows instead of the catalog when any of them address it — see agent-commands.ts for why a
+ * plugin- or user-registered command can only arrive this way.
+ */
+export interface OperatorCommand {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  command: string;
+  description: string;
+  takesArg: boolean;
+  argHint: string;
+  /** The operator marking their own row dangerous. Optional so an older bridge stays readable. */
+  confirm?: boolean;
+}
+
+/**
+ * One operator-declared Keys-tray preset (a `[[keys]]` table in their `keys.toml`). Mirrors
+ * OperatorKeyRow in bridge/types.ts. Resolved against the shipped presets by `ctrlPresetsFor()`,
+ * which hands a pane these rows instead of the shipped ones when any of them address it. Only the
+ * tray's preset CATALOG is configurable — its keyboard is fixed.
+ */
+export interface OperatorKeyRow {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  /** The button's text, and its identity within one scope. */
+  label: string;
+  /** Chords in Herdr's `pane.send_keys` spelling; more than one is sent as ONE ordered batch. */
+  keys: string[];
+  /** The operator putting their own row behind the tray's two-tap confirm. */
+  danger?: boolean;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
+  /** The operator's own palette rows. Absent when there is no `commands.toml`. */
+  operatorCommands?: OperatorCommand[];
+  /** The operator's own Keys-tray presets. Absent when there is no `keys.toml`. */
+  operatorKeys?: OperatorKeyRow[];
 }
 
 /**

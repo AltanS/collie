@@ -59,6 +59,15 @@ export interface AgentView {
    */
   tabLabel?: string;
   /**
+   * What the pane's own process says it is doing — its OSC title, glyph-stripped and dropped when
+   * uninformative (see `meaningfulTerminalTitle`). Claude rewrites this per turn, so unlike
+   * `paneLabel` and `sessionName` — both set once, by hand — it tracks the work as it moves, which
+   * is what tells several agents in ONE project apart in the herd list.
+   *
+   * Absent when the title says nothing, and on Herdr servers too old to report it.
+   */
+  terminalTitle?: string;
+  /**
    * Epoch ms of this agent's last observed status transition (bridge/activity.ts). The only thing
    * that can make a pane read as unseen. Absent until the ledger has an entry, and on the very
    * first poll after a fresh install.
@@ -199,6 +208,14 @@ export interface UpdateStatus {
   latestUrl: string | null;
   /** `latest` is strictly newer than `current`. */
   releaseAvailable: boolean;
+  /**
+   * Newest release of a major ABOVE the running one (dotted `X.Y.Z`), or null. Reported apart from
+   * `latest` because a routine `update` never crosses a major — the crossing is consented to by
+   * `update --major` (ADR 0020), and the banner names that command instead.
+   */
+  majorAvailable: string | null;
+  /** GitHub release page for `majorAvailable`, or null when there is none. */
+  majorUrl: string | null;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */
@@ -268,12 +285,63 @@ export interface CreatedPane {
  */
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
 
+/**
+ * One operator-declared slash command (a `[[commands]]` row in their `commands.toml`). A pane any of
+ * these rows address shows them INSTEAD of the shipped Agent-commands catalog; a pane none of them
+ * address keeps it (ADR 0018). This is the escape hatch for commands the shipped catalog cannot know
+ * about — plugin- or user-registered ones like omp's `/fork-in-herdr` — which exist only on THIS
+ * operator's machine and so must never be hard-coded into `web/src/lib/agent-commands.ts`.
+ */
+export interface OperatorCommand {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  /** Includes the leading slash. */
+  command: string;
+  /** One-line description shown in the palette (also searched). */
+  description: string;
+  /** True when tapping should insert `/cmd ` into the composer instead of submitting it. */
+  takesArg: boolean;
+  /** Placeholder shown after insert, e.g. `<name>`. Empty when {@link takesArg} is false. */
+  argHint: string;
+  /**
+   * The operator marking their own row dangerous — it then gets the same two-tap confirmation a
+   * shipped dangerous command gets. Only ever ADDS: a row naming a shipped command inherits that
+   * command's confirm regardless (rule 3 in agent-commands.ts), and `false` cannot lift it.
+   */
+  confirm: boolean;
+}
+
+/**
+ * One operator-declared Keys-tray preset (a `[[keys]]` row in their `keys.toml`). A pane any of
+ * these rows address shows them INSTEAD of the shipped Ctrl presets; a pane none of them address
+ * keeps the shipped ones (ADR 0018, the same rule `commands.toml` follows). Only the PRESETS are
+ * configurable — the tray's keyboard (Esc/arrows/Enter/Tab/Space, modifiers, digits, F1–F12) is
+ * fixed.
+ */
+export interface OperatorKeyRow {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  /** The button's text, and its identity within one scope. */
+  label: string;
+  /**
+   * The chords to send, already normalised to Herdr's `pane.send_keys` spelling. More than one is
+   * sent as ONE batch, in order — the same call a composed key queue makes.
+   */
+  keys: string[];
+  /** The operator putting their own row behind the tray's existing two-tap confirm. */
+  danger: boolean;
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
+  /** The operator's own palette rows. Absent/empty when there is no `commands.toml`. */
+  operatorCommands?: OperatorCommand[];
+  /** The operator's own Keys-tray presets. Absent/empty when there is no `keys.toml`. */
+  operatorKeys?: OperatorKeyRow[];
 }
 
 /** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */

@@ -7,6 +7,8 @@ import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
+import { createOperatorCommands } from "./operator-commands.ts";
+import { createOperatorKeys } from "./operator-keys.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -147,6 +149,10 @@ export function startServer(opts: {
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
   // whose agents write into the same root. Which harnesses have journals at all is decided in
   // journal/registry.ts, never here.
+  // One reader per process; it owns the mtime cache that keeps commands.toml off the hot path.
+  const operatorCommands = createOperatorCommands(cfg.commandsFile);
+  // Its sibling, on the same contract: one reader, one mtime cache, keys.toml off the hot path.
+  const operatorKeys = createOperatorKeys(cfg.keysFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -286,18 +292,29 @@ export function startServer(opts: {
 
       // ── Misc API ─────────────────────────────────────────────────────────
       if (pathname === "/api/config") {
-        // Read-level, like the other non-terminal endpoints. Nothing here is secret — the VAPID
-        // public key is handed to every browser by design — but this was the one route that skipped
-        // checkAccess entirely, so COLLIE_PUBLIC_HOSTS didn't cover it and a rebound DNS name could
-        // still read the build id. The client only ever calls this same-origin, and a refusal can't
-        // be mistaken for an outage: ConnectionBanner short-circuits to AuthErrorBanner before its
-        // red-state probe runs. Noted in #32.
+        // Read-level, like the other non-terminal endpoints. Nothing Collie puts here is a
+        // credential — the VAPID public key is handed to every browser by design — but the payload
+        // is no longer entirely Collie's: operatorCommands is operator-authored text, and any read
+        // client sees it verbatim (`.env.example` says so where it is set).
+        // It was also the one route that skipped checkAccess entirely, so COLLIE_PUBLIC_HOSTS
+        // didn't cover it and a rebound DNS name could read it. The client only ever calls this
+        // same-origin, and a refusal can't be mistaken for an outage: ConnectionBanner
+        // short-circuits to AuthErrorBanner before its red-state probe runs. Noted in #32.
         const denied = guard(req, cfg, "read");
         if (denied) return denied;
+        // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
+        // with no restart. The path is cfg's, never the request's.
+        const mine = await operatorCommands();
+        const myKeys = await operatorKeys();
         return json({
           push: push.enabled,
           vapidPublicKey: push.publicKey,
           build: await buildId(),
+          // Omitted entirely when there are none, so an operator who never wrote a commands.toml
+          // ships the same payload as before.
+          ...(mine.length > 0 ? { operatorCommands: mine } : {}),
+          // Same omit-when-empty rule: an operator with no keys.toml ships the payload they had.
+          ...(myKeys.length > 0 ? { operatorKeys: myKeys } : {}),
         } satisfies BridgeConfig, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {
@@ -312,7 +329,10 @@ export function startServer(opts: {
           return text("bad subscription", 400);
         }
         if (!isPushSubscription(body)) return text("bad subscription", 400);
-        await push.addSubscription(body);
+        await push.addSubscription(body, {
+          replaces: supersededEndpoint(body),
+          userAgent: req.headers.get("user-agent") ?? undefined,
+        });
         return secure(new Response(null, { status: 204 }));
       }
       if (pathname === "/api/notifications/snooze" && req.method === "POST") {
@@ -424,7 +444,7 @@ export function startupWarnings(cfg: Config): string[] {
     // an identity to enforce — trustedUser is dead config. Only nag when it's set (a likely mistake).
     if (cfg.trustedUser) {
       warnings.push(
-        `[bridge] WARNING: COLLIE_TRUSTED_USER has no effect under COLLIE_SKIP_SERVE=1 — without tailscale serve in front, the Tailscale-User-Login header is never injected. Use COLLIE_DEVICE_HEADER for per-device auth (see README → Variant C).`,
+        `[bridge] WARNING: COLLIE_TRUSTED_USER has no effect under COLLIE_SKIP_SERVE=1 — without tailscale serve in front, the Tailscale-User-Login header is never injected. Use COLLIE_DEVICE_HEADER for per-device auth (see DEPLOYMENT.md → Variant C).`,
       );
     }
   } else if (!cfg.trustedUser) {
@@ -1289,6 +1309,20 @@ function isPushSubscription(v: unknown): v is PushSubscription {
     typeof keys.p256dh === "string" &&
     typeof keys.auth === "string"
   );
+}
+
+/**
+ * The endpoint a subscribe body says it supersedes (`replaces`) — the row the same device last
+ * registered, which nothing else can identify (bridge/push.ts, SubscriptionMeta).
+ *
+ * A bad value is IGNORED rather than rejected: the subscription itself is well-formed and must be
+ * stored, and a client that got this field wrong would otherwise lose push entirely over a
+ * housekeeping hint. The cap is only there so a junk field can't be persisted at length.
+ */
+function supersededEndpoint(body: unknown): string | undefined {
+  const replaces = (body as { replaces?: unknown }).replaces;
+  if (typeof replaces !== "string" || replaces === "" || replaces.length > 2048) return undefined;
+  return replaces;
 }
 
 // Build id of the bundle currently on disk (written by the Vite build to dist/build-info.json).

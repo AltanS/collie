@@ -5,6 +5,7 @@ import { setupServer } from "msw/node";
 
 import { handlers, resetTypedDraft } from "./handlers";
 import { __resetConnectionHealth } from "@/lib/connection-health";
+import { __resetDraftPrune } from "@/lib/drafts";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`.
 export const server = setupServer(...handlers);
@@ -17,12 +18,16 @@ beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));
 beforeEach(() => __resetConnectionHealth());
 // Persisted state (composer drafts, prefs) must not leak between cases — a draft saved by one test
 // would be restored into the next test's freshly-mounted composer.
+// `localStorage.clear()` alone stopped being enough when the draft store grew a second, in-memory
+// tier (lib/drafts.ts) for drafts too large to persist: that one lives in module scope, which a
+// storage clear cannot reach and which outlives every unmount by design.
 beforeEach(() => {
   try {
     localStorage.clear();
   } catch {
     // ignore
   }
+  __resetDraftPrune();
 });
 afterEach(() => {
   cleanup();

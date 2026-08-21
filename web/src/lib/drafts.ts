@@ -17,15 +17,46 @@ const PREFIX = "collie:draft:";
 /** Drafts older than this are pruned on first use — an ancient half-thought must never resurface. */
 const MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
-/** Upper bound per stored draft. Nobody types 8 KiB on a phone; a value that big is a paste gone
- *  wrong or a bug. Oversize is SKIPPED, never truncated — a silently half-saved message that you
- *  then send is worse than no draft at all. */
+/** Upper bound per PERSISTED draft. Nobody types 8 KiB on a phone; a value that big is a paste gone
+ *  wrong or a bug. Oversize is never truncated — a silently half-saved message that you then send is
+ *  worse than no draft at all — and, since the memory tier below took over the job of surviving a
+ *  remount, it is no longer merely skipped either: skipping LEFT THE PREVIOUS, SHORTER DRAFT in
+ *  place, so pasting a long file over a short note and coming back showed the note. Wrong text is
+ *  worse than no text, one tier up. See {@link fitsDraftStore} for the notice that narrates it. */
 const MAX_CHARS = 8 * 1024;
+
+/**
+ * Ceiling on everything the memory tier holds at once, in characters. Bounded by TOTAL rather than
+ * entry count because the count is operator-scale (the panes in a herd) while a single entry is
+ * whatever got pasted — so the pathological session is a few huge files across a few panes, not many
+ * small drafts. Oldest-first eviction, and never the entry being written.
+ */
+const MEMORY_MAX_CHARS = 4 * 1024 * 1024;
 
 interface DraftEntry {
   text: string;
   at: number;
 }
+
+/**
+ * The memory tier: this page-session's drafts, uncapped per entry, gone on reload.
+ *
+ * It exists because the disk tier refuses anything over {@link MAX_CHARS}, and "too big to persist"
+ * should not also mean "lost when you glance at another pane". The pane view is keyed by paneId, so
+ * a pane switch remounts the composer — this is what it remounts from.
+ *
+ * IT IS COVERED BY ADR 0017 ONLY BECAUSE EVERY WRITE AND CLEAR GOES THROUGH `saveDraft` /
+ * `clearDraft`. The password-prompt gates live upstream of both (composer.tsx's `noEchoRef` guards
+ * the keystroke write-through and the pane-leave save; the recognising outcome calls `clearDraft`),
+ * so a recognised prompt reaches neither tier and purges both in the same tick. A cache written from
+ * anywhere else — component state, a second module — would re-open #103 in RAM, where nothing is
+ * gating it. Don't add one.
+ *
+ * No age prune, deliberately: `MAX_AGE_MS` exists because localStorage outlives the process and an
+ * ancient half-thought resurfacing is jarring. A entry here cannot be older than this page session,
+ * which is exactly how long the composer would have held it had it never unmounted.
+ */
+const memory = new Map<string, DraftEntry>();
 
 function keyFor(session: string | undefined, paneId: string): string {
   return `${PREFIX}${session ?? "default"}:${paneId}`;
@@ -81,9 +112,14 @@ function parse(raw: string | null): DraftEntry | null {
   }
 }
 
-/** The stored draft for a pane, or null if there is none (or it's expired/unreadable). */
-export function loadDraft(session: string | undefined, paneId: string): string | null {
-  prunedOnce();
+/** Whether a draft is small enough for the disk tier — i.e. whether it will survive the app closing.
+ *  The composer renders a notice from this; it is the only honest warning the user gets. */
+export function fitsDraftStore(text: string): boolean {
+  return text.length <= MAX_CHARS;
+}
+
+/** The disk tier's entry for a pane, expiring (and removing) anything past MAX_AGE_MS. */
+function loadStored(session: string | undefined, paneId: string): DraftEntry | null {
   const store = storage();
   if (!store) return null;
   try {
@@ -93,10 +129,26 @@ export function loadDraft(session: string | undefined, paneId: string): string |
       store.removeItem(keyFor(session, paneId));
       return null;
     }
-    return entry.text;
+    return entry;
   } catch {
     return null;
   }
+}
+
+/**
+ * The stored draft for a pane, or null if there is none (or it's expired/unreadable).
+ *
+ * The NEWER of the two tiers wins rather than memory unconditionally: another tab or a second app
+ * instance writes only to disk, and this tier has never seen it. Memory wins every ordinary tie
+ * because it is written first and holds what the disk tier refused.
+ */
+export function loadDraft(session: string | undefined, paneId: string): string | null {
+  prunedOnce();
+  const cached = memory.get(keyFor(session, paneId)) ?? null;
+  const stored = loadStored(session, paneId);
+  if (cached === null) return stored?.text ?? null;
+  if (stored === null) return cached.text;
+  return stored.at > cached.at ? stored.text : cached.text;
 }
 
 /**
@@ -106,32 +158,72 @@ export function loadDraft(session: string | undefined, paneId: string): string |
  */
 export function saveDraft(session: string | undefined, paneId: string, text: string): void {
   prunedOnce();
-  const store = storage();
-  if (!store) return;
   if (text.trim() === "") {
     clearDraft(session, paneId);
     return;
   }
-  if (text.length > MAX_CHARS) return; // see MAX_CHARS — skip, don't truncate
+  const key = keyFor(session, paneId);
+  const at = Date.now();
+
+  // Memory first, and unconditionally: it is the tier that has to hold what the disk tier won't, and
+  // it must be written even where there is no storage at all (SSR, Safari private mode).
+  memory.set(key, { text, at });
+  evictMemory(key);
+
+  const store = storage();
+  if (!store) return;
+  if (!fitsDraftStore(text)) {
+    // CLEAR rather than skip: leaving the previous entry means a remount restores an older, shorter
+    // draft, and the user acts on text they never wrote. The memory tier above still has the whole
+    // thing, so this only bites when the process actually dies — which fitsDraftStore's notice has
+    // been saying on screen the entire time.
+    clearStored(store, key);
+    return;
+  }
   try {
-    const entry: DraftEntry = { text, at: Date.now() };
-    store.setItem(keyFor(session, paneId), JSON.stringify(entry));
+    const entry: DraftEntry = { text, at };
+    store.setItem(key, JSON.stringify(entry));
   } catch {
     // Quota / private mode. The in-memory draft is still on screen; only its persistence is lost.
   }
 }
 
-export function clearDraft(session: string | undefined, paneId: string): void {
-  const store = storage();
-  if (!store) return;
+/** Hold the memory tier under {@link MEMORY_MAX_CHARS}, oldest first, never evicting `keep`. */
+function evictMemory(keep: string): void {
+  let total = 0;
+  for (const entry of memory.values()) total += entry.text.length;
+  if (total <= MEMORY_MAX_CHARS) return;
+  const byAge = [...memory.entries()]
+    .filter(([key]) => key !== keep)
+    .sort((a, b) => a[1].at - b[1].at);
+  for (const [key, entry] of byAge) {
+    memory.delete(key);
+    total -= entry.text.length;
+    if (total <= MEMORY_MAX_CHARS) return;
+  }
+}
+
+function clearStored(store: Storage, key: string): void {
   try {
-    store.removeItem(keyFor(session, paneId));
+    store.removeItem(key);
   } catch {
     // ignore
   }
 }
 
-/** Test seam — forgets the once-per-load prune so a case can control when pruning happens. */
+/** Drop a pane's draft from BOTH tiers. The password-prompt outcome (ADR 0017) calls this, and it is
+ *  the reason the memory tier needs no gate of its own — see the note on `memory`. */
+export function clearDraft(session: string | undefined, paneId: string): void {
+  const key = keyFor(session, paneId);
+  memory.delete(key);
+  const store = storage();
+  if (!store) return;
+  clearStored(store, key);
+}
+
+/** Test seam — forgets the once-per-load prune so a case can control when pruning happens, and
+ *  empties the memory tier, which `localStorage.clear()` in a test's setup cannot reach. */
 export function __resetDraftPrune(): void {
   pruned = false;
+  memory.clear();
 }

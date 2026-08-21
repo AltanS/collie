@@ -18,12 +18,27 @@ export interface DisplayPrefs {
    * The universal fallback, made user-controllable.
    */
   rawTerminal: boolean;
+  /**
+   * Whether a tap on the terminal mirror focuses the composer (default: true).
+   *
+   * On, it is the fastest path from reading to replying — the whole mirror is one big "start typing"
+   * target. Off, the mirror is a document: taps land on the text, so you can put a caret in it, and
+   * the keyboard only appears when you tap the composer itself. Reported from the outside as the
+   * mirror "absorbing the click", by someone expecting to interact with a line rather than reply to
+   * it — which Collie cannot offer (herdr's `pane.read` strips the OSC 8 hyperlinks a terminal like
+   * Termux makes tappable, so the link target never reaches us). Getting out of the way is the part
+   * that IS ours to give.
+   */
+  tapToFocus: boolean;
 }
 
+// NOT bumped for `tapToFocus`: loadPrefs defaults each field independently, so a v4 payload written
+// before it existed simply reads the default. Bumping would silently reset everyone's wrap, size and
+// raw-terminal choice to buy nothing.
 const STORAGE_KEY = "collie:display-prefs:v4";
 export const FONT_MIN = 9;
 export const FONT_MAX = 16;
-const DEFAULTS: DisplayPrefs = { wrap: true, fontSize: 12, rawTerminal: false };
+const DEFAULTS: DisplayPrefs = { wrap: true, fontSize: 12, rawTerminal: false, tapToFocus: true };
 
 function clampFont(n: number): number {
   return Math.max(FONT_MIN, Math.min(FONT_MAX, Math.round(n)));
@@ -40,6 +55,7 @@ function loadPrefs(): DisplayPrefs {
       wrap: typeof p.wrap === "boolean" ? p.wrap : DEFAULTS.wrap,
       fontSize: typeof p.fontSize === "number" ? clampFont(p.fontSize) : DEFAULTS.fontSize,
       rawTerminal: typeof p.rawTerminal === "boolean" ? p.rawTerminal : DEFAULTS.rawTerminal,
+      tapToFocus: typeof p.tapToFocus === "boolean" ? p.tapToFocus : DEFAULTS.tapToFocus,
     };
   } catch {
     return DEFAULTS;
@@ -66,6 +82,8 @@ export interface UseDisplayPrefsReturn {
   stepFontSize: (delta: number) => void;
   /** Toggle or explicitly set the raw-terminal escape hatch. */
   setRawTerminal: (raw: boolean) => void;
+  /** Toggle or explicitly set whether a mirror tap focuses the composer. */
+  setTapToFocus: (tapToFocus: boolean) => void;
 }
 
 export function useDisplayPrefs(): UseDisplayPrefsReturn {
@@ -103,5 +121,13 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
-  return { prefs, setWrap, setFontSize, stepFontSize, setRawTerminal };
+  const setTapToFocus = useCallback((tapToFocus: boolean) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, tapToFocus };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
+  return { prefs, setWrap, setFontSize, stepFontSize, setRawTerminal, setTapToFocus };
 }

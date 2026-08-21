@@ -1,0 +1,46 @@
+       [0m[38;5;4mif [0m(user.email.[0m[38;5;3mincludes[0m([0m[38;5;1m"@"[0m)) {
+         [0m[38;5;4mreturn true[0m;
+       }
+     }
+   }
+   [0m[38;5;4mreturn false[0m;
+ }
+
+ module.exports = { validate };
+
+ [0m[1mApproach[0m
+
+ Replace the nested [0m[38;2;177;185;249mif [0mchain with early returns (guard clauses), flattening the function to a single level:
+
+ [0m[38;5;4mfunction [0m[38;5;3mvalidate[0m(user) {
+   [0m[38;5;4mif [0m(!user) [0m[38;5;4mreturn false[0m;
+   [0m[38;5;4mif [0m(!user.email) [0m[38;5;4mreturn false[0m;
+   [0m[38;5;4mreturn [0muser.email.[0m[38;5;3mincludes[0m([0m[38;5;1m"@"[0m);
+ }
+
+ module.exports = { validate };
+
+ This preserves the exact same behavior (returns [0m[38;2;177;185;249mtrue [0monly when [0m[38;2;177;185;249muser [0mand [0m[38;2;177;185;249muser.email [0mare truthy and [0m[38;2;177;185;249muser.email [0mcontains [0m[38;2;177;185;249m"@"[0m, [0m[38;2;177;185;249mfalse[0m
+ otherwise) while removing all nesting.
+
+ [0m[1mFile to modify[0m
+
+ - [0m[38;2;177;185;249m/tmp/collie-probe/validate.js[0m
+
+ [0m[1mVerification[0m
+
+ - Run [0m[38;2;177;185;249mnode -e 'const {validate}=require("./validate.js"); console.log(validate(undefined), validate({}), validate({email:"a"}),[0m
+ [0m[38;2;177;185;249mvalidate({email:"a@b.com"}))' [0mfrom [0m[38;2;177;185;249m/tmp/collie-probe [0mand confirm output is [0m[38;2;177;185;249mfalse false false true[0m, matching the original
+ implementation's behavior.
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+
+[0m[38;2;72;150;140m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[38;2;153;153;153mClaude has written up a plan and is ready to execute. Would you like to proceed?[0m
+
+   [0m[38;2;153;153;153m1. [0mYes, clear context (4% used) and use auto mode
+   [0m[38;2;153;153;153m2. [0mYes, and use auto mode
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m3. [0m[38;2;177;185;249mYes, manually approve edits[0m
+   [0m[38;2;153;153;153m4. [0muse a guard clause instead
+      [0m[38;2;153;153;153mshift+tab to approve with this feedback[0m
+
+ [0m[38;2;153;153;153mctrl+g to edit in Vim · ~/.claude/plans/refactor-validate-in-validate-js-snazzy-pelican.md[0m

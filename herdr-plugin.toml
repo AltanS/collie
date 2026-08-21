@@ -1,6 +1,6 @@
 id = "herdr.collie"
 name = "Collie"
-version = "0.28.0"
+version = "0.32.0"
 min_herdr_version = "0.7.0"
 description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
 platforms = ["linux", "macos"]
@@ -53,6 +53,17 @@ title = "Update plugin"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "update"]
 
+# The consent for a MAJOR upgrade (ADR 0020). `update` stays inside the major this install is on, so
+# crossing one is a separate, deliberate invocation — and it has to be invokable from HERE, because a
+# plugin action runs with no TTY and the phone banner that announces the major has no terminal at
+# all. The flag IS the consent; there is no prompt behind it. See scripts/collie-ctl.sh →
+# update_checkout.
+[[actions]]
+id = "update-major"
+title = "Update across a major version"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "update", "--major"]
+
 [[actions]]
 id = "url"
 title = "Show bridge URL"
@@ -70,3 +81,24 @@ id = "version"
 title = "Show version"
 contexts = ["workspace"]
 command = ["bash", "scripts/collie-ctl.sh", "version"]
+
+# Turning push on is two steps that both used to happen OUTSIDE Herdr: generate a VAPID keypair with
+# a tool you had to know about, then hand-edit a .env in a directory you had to go looking for. Both
+# are actions now, because "which .env" is the part that actually goes wrong — `push-keys` writes to
+# the same config dir every other verb resolves, and `push-test` proves the result without waiting
+# for an agent to block. Restart between them; the keys are read at start.
+#
+# NOTE: on Herdr <0.8.0 a managed install invokes the action set cached at INSTALL time (ADR 0006),
+# so these two appear only after the next `herdr plugin install`. The shell verbs work immediately
+# either way.
+[[actions]]
+id = "push-keys"
+title = "Generate push keys"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "push-keys"]
+
+[[actions]]
+id = "push-test"
+title = "Send a test notification"
+contexts = ["workspace"]
+command = ["bash", "scripts/collie-ctl.sh", "push-test"]
