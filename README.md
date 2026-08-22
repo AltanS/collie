@@ -87,6 +87,9 @@ The sharp edges:
   local users out; Collie's port is TCP, so they're all in. The per-device gate closes the write half
   of that; reads stay open, so it bounds damage, not disclosure (details:
   [ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
+- **POSIX mode bits are not Windows ACLs.** On Windows, the repo's state and audit dirs rely on the
+  single-user assumption described here, not on owner-only ACLs. `state`, `audit.log`, uploads and
+  other files under the state dir need the host account to be the only local user you trust.
 - **One bridge fronts _every_ session** under your config root by default, sandbox ones included
   (details: [Multi-session](#multi-session)).
 - **Every write is appended to `<state-dir>/audit.log`** — replies, keys, uploads, pane and tab
@@ -127,6 +130,11 @@ Push](#web-push-optional)).
 
 **Linux and macOS are the supported hosts.** The bridge itself also runs on **Windows**
 (experimental) against Herdr's Windows beta — see [Windows](#windows-experimental).
+
+On Windows, use Bun's native Windows build 1.1 or newer, install Git, and install Herdr's Windows
+beta from <https://herdr.dev/docs/windows-beta/>. Run lifecycle commands with
+`bun scripts/ctl/main.ts <verb>` where `<verb>` is one of the real ctl verbs, and use Git Bash for
+pre-push hooks because they still shell out to POSIX tools.
 
 ## Install
 
@@ -514,17 +522,30 @@ isn't in the path at all, [`DEPLOYMENT.md`](./DEPLOYMENT.md) has the rest:
 
 The **bridge** runs on Windows against Herdr's Windows beta; the **launcher** does not. Herdr there
 exposes its control socket as a *named pipe* named after the full socket path, not an AF_UNIX
-socket, so Collie dials it through `node:net` instead of `Bun.connect` — one shim,
+socket, so Collie dials it through `node:net` instead of `Bun.connect`, one shim,
 [`bridge/dial.ts`](./bridge/dial.ts), which explains the mapping at the top of the file.
+
+If you want the lifecycle commands on Windows, run them with Bun directly:
+
+```powershell
+bun scripts/ctl/main.ts start
+bun scripts/ctl/main.ts stop
+bun scripts/ctl/main.ts status
+```
 
 What that means in practice:
 
-- **Run the bridge directly** — `bun run bridge/index.ts`. There's no systemd unit, and the Herdr
-  action buttons shell out to `bash`, so they only work if Git Bash is on `PATH`. The manifest
-  therefore still declares `linux`/`macos` only, rather than advertising buttons that may not fire.
+- **Use Bun 1.1+ on Windows**, plus Git and Herdr's Windows beta from
+  <https://herdr.dev/docs/windows-beta/>.
+- **Pre-push hooks need Git Bash.** The hook scripts still shell out to POSIX tools, so plain
+  `cmd.exe` or PowerShell won't run them.
+- **Run the ctl entry point directly** for lifecycle work: `bun scripts/ctl/main.ts start`,
+  `stop`, `restart`, `status`, `url`, `version`, `qr`, `logs`, `build`, `serve`, `unserve`,
+  `uninstall`, `update`, `push-keys`, and `push-test`. There's no systemd unit on Windows.
 - **`tailscale serve` isn't wired up here.** Use the
-  [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) posture: loopback bind, your own ingress in front, `COLLIE_PUBLIC_HOSTS` pinned. The security
-  rules in [§Security](#%EF%B8%8F-security--read-before-you-run-it) are not relaxed on Windows.
+  [Variant E](./DEPLOYMENT.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
+  fallback with `COLLIE_SKIP_SERVE=1` when Tailscale CLI isn't installed, which is the stock
+  Windows case on a fresh machine.
 - **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
   (an explicit `\\.\pipe\…` value is passed through untouched).
