@@ -11,18 +11,22 @@
 import type { HarnessAdapter } from "./types";
 import { claudeAdapter } from "./claude";
 import { ompAdapter } from "./omp";
+import { agyAdapter, antigravityAdapter } from "./agy";
 
 // Built FROM the adapter list (not a hand-written literal) so a key can't silently drift from its
 // adapter's own `agent` string — the map key IS `adapter.agent`.
 const ADAPTERS: Record<string, HarnessAdapter> = Object.fromEntries(
-  [claudeAdapter, ompAdapter].map((a) => [a.agent, a]),
+  [claudeAdapter, ompAdapter, agyAdapter, antigravityAdapter].map((a) => [a.agent, a]),
 );
 
 /** The adapter for `agent`, or undefined when the agent is unknown/absent (→ raw fallback). `Object.hasOwn`
  *  (not a truthy `ADAPTERS[agent]`) so an inherited Object.prototype key ("toString", "constructor",
  *  "__proto__", …) can't resolve to a non-adapter and crash the render path. */
 export function adapterFor(agent: string | undefined): HarnessAdapter | undefined {
-  return agent !== undefined && Object.hasOwn(ADAPTERS, agent) ? ADAPTERS[agent] : undefined;
+  if (agent === undefined || agent === null) return undefined;
+  const key = agent.toLowerCase().trim();
+  if (Object.hasOwn(ADAPTERS, key)) return ADAPTERS[key];
+  return undefined;
 }
 
 /** Whether `agent` has block grammars (an adapter). The gate agent-chat's status strip shares with

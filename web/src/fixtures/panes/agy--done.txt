@@ -1,0 +1,14 @@
+────────────────────────────────────────────────────────────
+> Add a centralized button for trim.
+
+● Read(~/Dev/sandbox/src/InputPanel.svelte)
+● Edit(~/Dev/sandbox/src/InputPanel.svelte)
+
+  Added a dedicated ⌖ CENTER button for the steering trim (InputPanel.svelte):
+  1. Instant Zeroing: Clicking ⌖ CENTER instantly snaps steeringTrim back to 0.0%.
+  2. Dynamic Offset Highlight: Lights up with emerald glow when offset from dead-center.
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> 
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+? for shortcuts                                                             accept-edits · Gemini 3.7 Flash · low

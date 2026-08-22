@@ -1,0 +1,12 @@
+────────────────────────────────────────────────────────────
+Plan ready for execution:
+1. Update database schema
+2. Run migrations
+3. Verify endpoints
+
+Would you like to proceed with the execution plan?
+
+❯ 1. Yes, proceed with plan
+  2. No, cancel
+────────────────────────────────────────────────────────────
+ctrl+g to edit in editor · ~/.antigravity/plans/plan-2026.md

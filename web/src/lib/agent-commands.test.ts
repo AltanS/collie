@@ -57,6 +57,15 @@ describe("commandsFor", () => {
     }
   });
 
+  it("returns the agy catalog for 'agy' and 'antigravity'", () => {
+    const agyCmds = commandsFor("agy");
+    expect(agyCmds.length).toBeGreaterThan(0);
+    expect(agyCmds.some((c) => c.command === "/grill-me")).toBe(true);
+    expect(agyCmds.some((c) => c.command === "/learn")).toBe(true);
+    expect(commandsFor("antigravity")).toEqual(agyCmds);
+    expect(commandsFor("agy-cli")).toEqual(agyCmds);
+  });
+
   it("is case-insensitive", () => {
     expect(commandsFor("CLAUDE")).toBe(commandsFor("claude"));
     expect(commandsFor("Codex")).toBe(commandsFor("codex"));

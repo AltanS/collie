@@ -1,0 +1,11 @@
+────────────────────────────────────────────────────────────
+> Update layout style
+
+● Edit(src/app.css)
+
+Allow file modification to `src/app.css`?
+
+❯ 1. Yes
+  2. No
+────────────────────────────────────────────────────────────
+Tab to amend · Esc to cancel
