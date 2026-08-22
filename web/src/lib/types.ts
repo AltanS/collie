@@ -166,7 +166,7 @@ export interface UpdateInfo {
   majorAvailable: string | null;
   /** GitHub release page for `majorAvailable`, or null when there is none. */
   majorUrl: string | null;
-  /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
+  /** The running bridge PROCESS is behind the on-disk code — restart the bridge to pick it up. */
   bridgeStale: boolean;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */
   checkedAt: number | null;
