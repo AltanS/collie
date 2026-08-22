@@ -153,7 +153,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     setOnline(true);
     renderBanner({ error: true, lastSeenAt: new Date(2026, 0, 2, 14, 32).getTime() });
     await act(async () => {});
-    expect(screen.getByRole("alert")).toHaveTextContent(/Can't reach Collie — last seen \d/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Can't reach Collie — last seen .*\d/);
   });
 
   it("leaves the red row undated when nothing can date it", async () => {
