@@ -70,6 +70,12 @@ function deps(
       build: async () => {
         calls.push("build");
       },
+      refreshRegistry: async () => {
+        calls.push("refresh-registry");
+      },
+      serve: async () => {
+        calls.push("serve");
+      },
       unserve: async () => {
         calls.push("unserve");
       },
@@ -126,8 +132,36 @@ describe("ctl lifecycle verbs", () => {
 
       await start(loggedCtx, lifecycle);
 
-      expect(calls).toEqual(["ensure-build", "install", "start", "ready:8787"]);
+      expect(calls).toEqual(["ensure-build", "install", "start", "ready:8787", "serve"]);
       expect(output.flat().join(" ")).toContain("https://collie.example");
+    } finally {
+      await clean(root);
+    }
+  });
+
+  test("start keeps the ready bridge running when front-door publication fails", async () => {
+    const { root, ctx } = await fixture("start-serve-failure");
+    try {
+      const calls: string[] = [];
+      const output: unknown[][] = [];
+      const loggedCtx: Ctx = { ...ctx, log: (...args) => output.push(args) };
+      const lifecycle = deps(loggedCtx, calls, {
+        ops: {
+          ensureBuild: async () => {
+            calls.push("ensure-build");
+          },
+          serve: async () => {
+            calls.push("serve");
+            throw new Error("tailscale unavailable");
+          },
+        },
+      });
+
+      await start(loggedCtx, lifecycle);
+
+      expect(calls).toEqual(["ensure-build", "install", "start", "ready:8787", "serve"]);
+      expect(output.flat().join(" ")).toContain("tailscale unavailable");
+      expect(output.flat().join(" ")).toContain("http://127.0.0.1:8787");
     } finally {
       await clean(root);
     }
@@ -183,7 +217,7 @@ describe("ctl lifecycle verbs", () => {
     }
   });
 
-  test("advances a linked clone with fetch plus ff-only pull, then rebuilds and restarts", async () => {
+  test("advances a linked clone to the pinned upstream commit, then rebuilds and restarts", async () => {
     const { root, ctx } = await fixture("linked");
     try {
       const origin = await originRepo(root, "1.0.0");
@@ -206,13 +240,14 @@ describe("ctl lifecycle verbs", () => {
       expect(calls).toContain("build");
       expect(calls).toContain("stop");
       expect(calls).toContain("start");
+      expect(calls).toContain("refresh-registry");
       expect((await git(clone, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("main");
     } finally {
       await clean(root);
     }
   });
 
-  test("advances a detached checkout by fetching and checking out FETCH_HEAD", async () => {
+  test("refuses a detached checkout when the remote has no release tags", async () => {
     const { root, ctx } = await fixture("detached");
     try {
       const origin = await originRepo(root, "1.0.0");
@@ -228,11 +263,41 @@ describe("ctl lifecycle verbs", () => {
 
       const calls: string[] = [];
       const lifecycle = deps({ ...ctx, rootDir: managed }, calls, { rootDir: managed });
-      await update({ ...ctx, rootDir: managed }, lifecycle);
+      const before = (await git(managed, ["rev-parse", "HEAD"])).trim();
 
-      expect(await readFile(join(managed, "VERSION"), "utf8")).toBe("1.0.1");
-      expect(calls).toContain("build");
+      await expect(update({ ...ctx, rootDir: managed }, lifecycle)).rejects.toThrow(
+        "no release tags",
+      );
+
+      expect((await git(managed, ["rev-parse", "HEAD"])).trim()).toBe(before);
+      expect(await readFile(join(managed, "VERSION"), "utf8")).toBe("1.0.0");
+      expect(calls).not.toContain("build");
       expect((await git(managed, ["symbolic-ref", "-q", "HEAD"], 1)).trim()).toBe("");
+    } finally {
+      await clean(root);
+    }
+  });
+
+  test("refuses a linked update when the target manifest version is unreadable", async () => {
+    const { root, ctx } = await fixture("linked-invalid-version");
+    try {
+      const origin = await originRepo(root, "1.0.0");
+      const clone = join(root, "clone");
+      const cloneResult = await runShell("git", ["clone", "-q", origin, clone]);
+      expect(cloneResult.exitCode, cloneResult.stderr).toBe(0);
+      await writeFile(join(origin, "VERSION"), "untrusted", "utf8");
+      await writeFile(join(origin, "herdr-plugin.toml"), "name = \"missing-version\"\n", "utf8");
+      await commit(origin, "invalid manifest");
+      const before = (await git(clone, ["rev-parse", "HEAD"])).trim();
+      const calls: string[] = [];
+      const lifecycle = deps({ ...ctx, rootDir: clone }, calls, { rootDir: clone });
+
+      await expect(update({ ...ctx, rootDir: clone }, lifecycle)).rejects.toThrow(
+        "cannot verify target version",
+      );
+
+      expect((await git(clone, ["rev-parse", "HEAD"])).trim()).toBe(before);
+      expect(calls).not.toContain("build");
     } finally {
       await clean(root);
     }

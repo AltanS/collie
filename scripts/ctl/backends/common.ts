@@ -10,6 +10,20 @@ export type InstalledServiceBackend = ServiceBackend & {
 /** The checkout containing scripts/ctl when no test or embedding override is supplied. */
 export const DEFAULT_CHECKOUT_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
+/** Build an actionable ctl error for a non-zero command result. */
+export function shellFailure(
+  command: string,
+  args: readonly string[],
+  result: ShellResult,
+): Error {
+  const detail = result.stderr.trim() || result.stdout.trim();
+  return new Error(
+    `command failed (${result.exitCode}): ${[command, ...args].join(" ")}${
+      detail.length > 0 ? `\n${detail}` : ""
+    }`,
+  );
+}
+
 /** Run a command and turn a non-zero result into an actionable ctl error. */
 export async function checkedShell(
   ctx: Ctx,
@@ -17,14 +31,7 @@ export async function checkedShell(
   args: readonly string[] = [],
 ): Promise<ShellResult> {
   const result = await ctx.shell(command, args);
-  if (result.exitCode !== 0) {
-    const detail = result.stderr.trim() || result.stdout.trim();
-    throw new Error(
-      `command failed (${result.exitCode}): ${[command, ...args].join(" ")}${
-        detail.length > 0 ? `\n${detail}` : ""
-      }`,
-    );
-  }
+  if (result.exitCode !== 0) throw shellFailure(command, args, result);
   return result;
 }
 
@@ -58,9 +65,9 @@ export function checkoutRoot(rootDir: string | undefined): string {
   return rootDir ?? DEFAULT_CHECKOUT_ROOT;
 }
 
-/** Use a bare Bun command by default, while allowing installations with a non-standard binary. */
+/** Resolve an absolute Bun executable while allowing explicit installation overrides. */
 export function bunBinary(binary: string | undefined): string {
-  return binary ?? process.env.BUN_BINARY ?? "bun";
+  return binary ?? process.env.BUN_BINARY ?? process.execPath;
 }
 
 /** Escape a value for use as PowerShell single-quoted string content. */

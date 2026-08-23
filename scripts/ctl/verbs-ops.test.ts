@@ -10,6 +10,7 @@ import {
   parseManagedMapping,
   pushTest,
   readManagedMapping,
+  refreshRegistry,
   serializeManagedMapping,
   serve,
   tailscaleRootAvailability,
@@ -78,9 +79,17 @@ describe("ctl operational verbs", () => {
 
       expect(await readFile(join(dist, "index.html"), "utf8")).toBe("new");
       await expect(readFile(join(root, "web", "dist-staging"))).rejects.toMatchObject({ code: "ENOENT" });
-      expect(calls[0]).toContain("bun scripts/check-version.ts");
-      expect(calls.some((call) => call.includes("bun run typecheck"))).toBe(true);
-      expect(calls.some((call) => call.includes("bun install") && call.includes(join(root, "web")))).toBe(true);
+      expect(calls[0]).toContain(`${process.execPath} scripts/check-version.ts`);
+      expect(
+        calls.some((call) => call.includes(`${process.execPath} run typecheck`)),
+      ).toBe(true);
+      expect(
+        calls.some(
+          (call) =>
+            call.includes(`${process.execPath} install`) &&
+            call.includes(join(root, "web")),
+        ),
+      ).toBe(true);
     } finally {
       await clean(root);
     }
@@ -193,6 +202,23 @@ describe("ctl operational verbs", () => {
     }
   });
 
+  test("refreshes Herdr registration for a linked checkout", async () => {
+    const { root, ctx } = await fixture();
+    try {
+      const calls: string[][] = [];
+      await refreshRegistry(ctx, {
+        executor: async (argv) => {
+          calls.push(argv);
+          return result();
+        },
+      });
+
+      expect(calls).toEqual([["herdr", "plugin", "link", root]]);
+    } finally {
+      await clean(root);
+    }
+  });
+
   test("adapts the shared ctl shell contract without invoking a command interpreter", async () => {
     const { root, ctx: base } = await fixture();
     try {
@@ -209,7 +235,11 @@ describe("ctl operational verbs", () => {
         },
       };
       await pushTest(ctx, ["title"]);
-      expect(invocation).toEqual({ command: "bun", args: ["scripts/push-test.ts", "title"], cwd: root });
+      expect(invocation).toEqual({
+        command: process.execPath,
+        args: ["scripts/push-test.ts", "title"],
+        cwd: root,
+      });
     } finally {
       await clean(root);
     }
@@ -218,19 +248,23 @@ describe("ctl operational verbs", () => {
   test("exec-bridge passes the bridge environment and redirects both streams", async () => {
     const { root, ctx } = await fixture();
     try {
+      const logFile = join(ctx.stateDir, "collie.log");
+      await writeFile(logFile, "stale failure\n", "utf8");
       let received: { argv: string[]; options: { cwd: string; env: Record<string, string>; stdout: unknown; stderr: unknown } } | undefined;
       await execBridge(ctx, {
+        bun: "bun",
         spawner: async (argv, options) => {
           received = { argv, options };
           return 0;
         },
       });
-      expect(received?.argv).toEqual(["bun", "bridge/index.ts"]);
+      expect(received?.argv).toEqual(["bun", join(root, "bridge", "index.ts")]);
       expect(received?.options.cwd).toBe(root);
       expect(received?.options.stdout).toBe(join(ctx.stateDir, "collie.log"));
       expect(received?.options.stderr).toBe(join(ctx.stateDir, "collie.log"));
       expect(received?.options.env.HERDR_PLUGIN_CONFIG_DIR).toBe(ctx.configDir);
       expect(received?.options.env.HERDR_PLUGIN_STATE_DIR).toBe(ctx.stateDir);
+      expect(await readFile(logFile, "utf8")).toBe("");
     } finally {
       await clean(root);
     }

@@ -196,7 +196,8 @@ export async function status(ctx: CtlCtx, deps: InfoDeps = {}): Promise<string> 
 
 export async function url(ctx: CtlCtx, deps: InfoDeps = {}): Promise<string> {
   const resolved = resolveDeps(deps);
-  const serve = await readServeState(ctx, resolved, false);
+  const serve = await readServeState(ctx, resolved, true);
+  if (serve.kind === "skipped") return serve.publicUrl;
   if (serve.kind === "mapped") return serveUrl(serve.record);
   if (serve.kind === "invalid") throw new Error("invalid Collie-managed tailscale serve mapping");
   throw new Error("no Collie-managed tailscale serve mapping found");

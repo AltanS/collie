@@ -16,10 +16,14 @@ export interface LifecycleOps {
   build?: (ctx: Ctx) => Promise<void>;
   /** Optional explicit rebuild alias for callers that distinguish build from rebuild. */
   rebuild?: (ctx: Ctx) => Promise<void>;
+  /** Refresh Herdr's registry after a linked checkout changes. */
+  refreshRegistry?: (ctx: Ctx) => Promise<void>;
   /** Optional first-run build operation. */
   ensureBuild?: (ctx: Ctx) => Promise<void>;
   /** Compatibility spelling for callers porting the shell verb literally. */
   ensure_build?: (ctx: Ctx) => Promise<void>;
+  /** Publish Collie's managed front door after the bridge becomes ready. */
+  serve?: (ctx: Ctx) => Promise<void>;
   /** Remove only Collie's recorded Tailscale mapping. */
   unserve?: (ctx: Ctx) => Promise<void>;
 }
@@ -59,8 +63,10 @@ export interface LifecycleDeps {
   /** Flat aliases are accepted for callers that inject the verbs-ops exports directly. */
   build?: LifecycleOps["build"];
   rebuild?: LifecycleOps["rebuild"];
+  refreshRegistry?: LifecycleOps["refreshRegistry"];
   ensureBuild?: LifecycleOps["ensureBuild"];
   ensure_build?: LifecycleOps["ensure_build"];
+  serve?: LifecycleOps["serve"];
   unserve?: LifecycleOps["unserve"];
   rootDir?: string;
   env?: Record<string, string | undefined>;
@@ -133,8 +139,10 @@ function normalizeDeps(deps: LifecycleDeps): LifecycleDeps {
   const direct: LifecycleOps = {
     build: deps.build,
     rebuild: deps.rebuild,
+    refreshRegistry: deps.refreshRegistry,
     ensureBuild: deps.ensureBuild,
     ensure_build: deps.ensure_build,
+    serve: deps.serve,
     unserve: deps.unserve,
   };
   const hasDirect = Object.values(direct).some((operation) => operation !== undefined);
@@ -392,6 +400,17 @@ async function printReadyUrl(
   ctx.log(`open: ${await resolveUrl(ctx, deps, environment, port)}`);
 }
 
+async function publishFrontDoor(ctx: Ctx, deps: LifecycleDeps): Promise<void> {
+  const publish = deps.ops?.serve;
+  if (publish === undefined) return;
+  try {
+    await publish(operationContext(ctx, deps));
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    ctx.log(`note: the front door did not come up (${error.message}); the bridge is still on loopback`);
+  }
+}
+
 /** Start the bridge: first-run build, service registration, service start, readiness, and URL. */
 export function start(
   ctx: Ctx,
@@ -416,6 +435,7 @@ export async function start(
   if (!(await waitUntilReady(deps, port))) {
     throw new Error(`bridge did not become ready on 127.0.0.1:${port}`);
   }
+  await publishFrontDoor(ctx, deps);
   await printReadyUrl(ctx, deps, environment, port);
 }
 
@@ -647,23 +667,28 @@ async function updateLinked(
     "@{u}",
   ]);
   const ref = upstream.exitCode === 0 ? upstream.stdout.trim() : "";
-  if (ref && !wantsMajor(args)) {
-    const targetVersion = await manifestAtRef(ctx, deps, root, ref);
-    const installedMajor = majorOf(installed);
-    const targetMajor = majorOf(targetVersion);
-    if (
-      installedMajor !== undefined &&
-      targetMajor !== undefined &&
-      targetMajor > installedMajor
-    ) {
+  if (ref === "") {
+    throw new Error("cannot verify update target: linked checkout has no upstream");
+  }
+  const targetCommit = (
+    await checkedGit(ctx, deps, root, ["rev-parse", `${ref}^{commit}`])
+  ).stdout.trim();
+  const targetVersion = await manifestAtRef(ctx, deps, root, targetCommit);
+  const installedMajor = majorOf(installed);
+  const targetMajor = majorOf(targetVersion);
+  if (installedMajor === undefined || targetMajor === undefined) {
+    throw new Error(
+      `cannot verify target version (${installed || "unreadable"} -> ${targetVersion || "unreadable"})`,
+    );
+  }
+  if (!wantsMajor(args) && targetMajor > installedMajor) {
       ctx.log(`refusing to update: ${installed} -> ${targetVersion} (${ref}) crosses a MAJOR version.`);
       ctx.log(`      Consent explicitly with: ${MAJOR_ACTION} (or pass --major directly)`);
       ctx.log("      (nothing was pulled - this checkout is unchanged)");
       return false;
-    }
   }
-  ctx.log("updating linked checkout (git pull --ff-only)...");
-  await checkedGit(ctx, deps, root, ["pull", "--ff-only"]);
+  ctx.log(`updating linked checkout (fast-forward to ${targetCommit.slice(0, 12)})...`);
+  await checkedGit(ctx, deps, root, ["merge", "--ff-only", targetCommit]);
   const after = await currentHead(ctx, deps, root);
   return before !== after;
 }
@@ -677,8 +702,7 @@ async function updateDetached(
 ): Promise<boolean> {
   const installedMajor = majorOf(installed);
   if (installedMajor === undefined) {
-    ctx.log("updating detached checkout (no readable version - following origin HEAD)...");
-    return await detachOnto(ctx, deps, root, "HEAD");
+    throw new Error("cannot verify installed version; refusing detached update");
   }
 
   const tagsResult = await runGit(ctx, deps, root, ["ls-remote", "--tags", "origin"]);
@@ -689,11 +713,8 @@ async function updateDetached(
     );
   }
   const tags = parseReleaseTags(tagsResult.stdout);
-  // Older/local repositories may have no release tags at all. Preserve ADR 0006's original
-  // fetch-and-detach behavior in that case; once strict release tags exist, ADR 0020 governs.
   if (tags.length === 0) {
-    ctx.log("updating detached checkout (no release tags - following origin HEAD)...");
-    return await detachOnto(ctx, deps, root, "HEAD");
+    throw new Error("remote has no release tags; refusing detached update");
   }
 
   const nextMajor = nextMajorTag(tags, installedMajor);
@@ -713,7 +734,7 @@ async function updateDetached(
   }
 
   ctx.log(`updating detached checkout (fetch + detach onto ${target.name})...`);
-  return await detachOnto(ctx, deps, root, `refs/tags/${target.name}`);
+  return await detachOnto(ctx, deps, root, target.commit);
 }
 
 /** Advance a checkout according to ADR 0006 and the ADR 0020 major gate. */
@@ -753,12 +774,16 @@ export async function update(
 ): Promise<void> {
   const invocation = parseUpdateInvocation(input, other);
   const { deps, args } = invocation;
+  const root = rootDir(ctx, deps);
+  const linked =
+    (await runGit(ctx, deps, root, ["symbolic-ref", "-q", "HEAD"])).exitCode === 0;
   if (!(await updateCheckout(ctx, deps, args))) return;
   const operation = operationContext(ctx, deps);
   const rebuild = deps.ops?.rebuild ?? deps.ops?.build;
   if (!rebuild) throw new Error("ctl update requires an injected build operation");
   await rebuild(operation);
   await restartService(ctx, deps);
+  if (linked) await deps.ops?.refreshRegistry?.(operation);
   ctx.log("update complete");
 }
 

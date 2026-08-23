@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { Ctx, ShellOptions, ShellResult, Verb, VerbHandler } from "./types.ts";
-import { selectBackendName, waitForTcpReadiness } from "./types.ts";
+import { handlers } from "./runtime.ts";
+import type { Ctx, ShellOptions, ShellResult, Verb } from "./types.ts";
 
 export {
   hasLaunchd,
@@ -13,13 +13,6 @@ export {
   selectBackendName,
   waitForTcpReadiness,
 } from "./types.ts";
-import * as lifecycle from "./verbs-lifecycle.ts";
-import * as info from "./verbs-info.ts";
-import * as ops from "./verbs-ops.ts";
-import type { InstalledServiceBackend } from "./backends/common.ts";
-import { windowsBackend } from "./backends/windows.ts";
-import { systemdBackend } from "./backends/systemd.ts";
-import { launchdBackend } from "./backends/launchd.ts";
 
 /** User-facing verbs handled by ctl. */
 export const PUBLIC_VERBS = [
@@ -126,90 +119,6 @@ export function createContext(): Ctx {
     shell: runShell,
   };
 }
-
-/**
- * The supervisor backend for THIS machine, or undefined when no supported one is present.
- *
- * Selection order matches the shell original: systemd first (servers), then launchd (macOS),
- * then the Windows Task Scheduler.
- */
-function defaultBackend(): InstalledServiceBackend | undefined {
-  switch (selectBackendName()) {
-    case "windows-task":
-      return windowsBackend;
-    case "systemd":
-      return systemdBackend;
-    case "launchd":
-      return launchdBackend;
-    default:
-      return undefined;
-  }
-}
-
-/** The backend the lifecycle verbs require — every ctl host runs exactly one supported supervisor. */
-function requireBackend(): InstalledServiceBackend {
-  const backend = defaultBackend();
-  if (backend === undefined) {
-    throw new Error(
-      "no supported service supervisor found (systemd, launchd, or Windows Task Scheduler)",
-    );
-  }
-  return backend;
-}
-
-/** Operational seams shared by the lifecycle verbs; build doubles as rebuild by design. */
-const lifecycleOps = {
-  build: (ctx: Ctx) => ops.build(ctx),
-  rebuild: (ctx: Ctx) => ops.build(ctx),
-  unserve: (ctx: Ctx) => ops.unserve(ctx),
-};
-
-/** Info-verb dependencies wired to the real backend when one exists, graceful otherwise. */
-function infoDeps(ctx: Ctx): info.InfoDeps {
-  const backend = defaultBackend();
-  if (backend === undefined) return {};
-  return {
-    backend: {
-      isActive: () => backend.isActive(ctx),
-      logsCmd: async (lines?: number) => {
-        const command = backend.logsCmd(ctx, lines);
-        return [command.command, ...command.args].join(" ");
-      },
-    },
-  };
-}
-
-const handlers: Record<Verb, VerbHandler> = {
-  start: (ctx) =>
-    lifecycle.start(ctx, {
-      backend: requireBackend(),
-      ops: lifecycleOps,
-      ensureBuild: (c) => lifecycle.ensureBuild(c, requireBackend(), lifecycleOps),
-      waitForReadiness: (port: number, options?: lifecycle.ReadinessOptions) =>
-        waitForTcpReadiness(port, options),
-    }),
-  stop: (ctx) => lifecycle.stop(ctx, requireBackend()),
-  restart: (ctx) => lifecycle.restart(ctx, requireBackend()),
-  uninstall: (ctx) => lifecycle.uninstall(ctx, requireBackend()),
-  update: (ctx, args) => lifecycle.update(ctx, args, { backend: requireBackend(), ...lifecycleOps }),
-  build: (ctx) => ops.build(ctx),
-  serve: (ctx) => ops.serve(ctx),
-  unserve: (ctx) => ops.unserve(ctx),
-  status: async (ctx) => ctx.log(await info.status(ctx, infoDeps(ctx))),
-  url: async (ctx) => ctx.log(await info.url(ctx, infoDeps(ctx))),
-  version: async (ctx) => ctx.log(await info.version()),
-  qr: async (ctx) => ctx.log(await info.qr(ctx, infoDeps(ctx))),
-  logs: async (ctx, args) => ctx.log(await info.logs(ctx, infoDeps(ctx), Number(args[0]) || 50)),
-  "push-keys": (ctx, args) => ops.pushKeys(ctx, args),
-  "push-test": (ctx, args) => ops.pushTest(ctx, args),
-  "exec-bridge": (ctx) => ops.execBridge(ctx),
-  // The shell implementation re-executed itself post-pull because bash could not resume cleanly;
-  // this implementation performs the rebuild+restart inline inside `update`, so the internal verb
-  // only exists to fail informatively if a stale service definition still invokes it.
-  "apply-update": async () => {
-    throw new Error("apply-update is folded into 'update' by this implementation");
-  },
-};
 
 function isVerb(value: string | undefined): value is Verb {
   return value !== undefined && ALL_VERBS.some((candidate) => candidate === value);

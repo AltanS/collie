@@ -126,7 +126,7 @@ function rootDir(ctx: OpsContext, options: OpsOptions = {}): string {
 }
 
 function bunCommand(options: OpsOptions): string {
-  return options.bun ?? process.env.BUN_BINARY ?? "bun";
+  return options.bun ?? process.env.BUN_BINARY ?? process.execPath;
 }
 
 function emitLog(ctx: OpsContext, ...args: unknown[]): void {
@@ -616,6 +616,25 @@ export async function pushTest(ctx: OpsContext, args: readonly string[] = [], op
   await checked(ctx, argv, options, root, env);
 }
 
+/** Best-effort registry refresh for linked checkouts; detached managed installs never call this. */
+export async function refreshRegistry(
+  ctx: OpsContext,
+  options: OpsOptions = {},
+): Promise<void> {
+  const root = rootDir(ctx, options);
+  const env = await childEnv(ctx, options);
+  const argv = ["herdr", "plugin", "link", root];
+  const result = await execute(ctx, argv, options, root, env);
+  if (result.exitCode !== 0) {
+    emitLog(
+      ctx,
+      `note: Herdr registry refresh failed; run: herdr plugin link "${root}"`,
+    );
+    return;
+  }
+  emitLog(ctx, "herdr registry refreshed");
+}
+
 /**
  * Start the bridge process under the selected service supervisor. The service backend owns restart
  * policy; this verb owns the child argv, environment, and combined log redirection.
@@ -624,12 +643,13 @@ export async function execBridge(ctx: OpsContext, options: ExecBridgeOptions = {
   const root = rootDir(ctx, options);
   const logFile = options.logFile ?? join(ctx.stateDir, "collie.log");
   await mkdir(ctx.stateDir, { recursive: true });
+  await writeFile(logFile, "", "utf8");
   const env = await childEnv(ctx, options, {
     HERDR_PLUGIN_CONFIG_DIR: ctx.configDir,
     HERDR_PLUGIN_STATE_DIR: ctx.stateDir,
     ...(ctx.socketPath ? { HERDR_SOCKET_PATH: ctx.socketPath } : {}),
   });
-  const argv = [bunCommand(options), "bridge/index.ts"];
+  const argv = [bunCommand(options), join(root, "bridge", "index.ts")];
   if (options.spawner) {
     const spawned = await options.spawner(argv, { cwd: root, env, stdout: logFile, stderr: logFile });
     const exitCode = typeof spawned === "number" ? spawned : await spawned.exited;
@@ -654,9 +674,11 @@ export const cmdUnserve = unserve;
 export const cmdPushKeys = pushKeys;
 export const cmdPushTest = pushTest;
 export const cmdExecBridge = execBridge;
+export const cmdRefreshRegistry = refreshRegistry;
 export const runBuild = build;
 export const runServe = serve;
 export const runUnserve = unserve;
 export const runPushKeys = pushKeys;
 export const runPushTest = pushTest;
 export const runExecBridge = execBridge;
+export const runRefreshRegistry = refreshRegistry;

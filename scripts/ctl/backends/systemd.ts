@@ -37,6 +37,19 @@ export function systemdUnitFile(options: SystemdBackendOptions = {}): string {
   return join(resolved.homeDir, ".config", "systemd", "user", `${resolved.unitName}.service`);
 }
 
+function systemdLiteral(value: string): string {
+  return `"${value
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\\"')
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll("\t", "\\t")}"`;
+}
+
+function systemdEnvironment(name: string, value: string): string {
+  return `Environment=${systemdLiteral(`${name}=${value}`)}`;
+}
+
 /** Render the generated systemd --user unit, preserving collie-ctl.sh's service policy. */
 export function renderSystemdUnit(ctx: Ctx, options: SystemdBackendOptions = {}): string {
   const resolved = resolvedOptions(options);
@@ -49,18 +62,18 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-WorkingDirectory=${rootDir}
-ExecStart=${resolved.bun} scripts/ctl/main.ts exec-bridge
+WorkingDirectory=${systemdLiteral(rootDir)}
+ExecStart=${systemdLiteral(resolved.bun)} scripts/ctl/main.ts exec-bridge
 Restart=on-failure
 RestartSec=5
 # Keep the remote shell bridge unprivileged and isolate its temporary files.
 NoNewPrivileges=yes
 PrivateTmp=yes
-Environment=HERDR_SOCKET_PATH=${ctx.socketPath}
+${systemdEnvironment("HERDR_SOCKET_PATH", ctx.socketPath)}
 Environment=COLLIE_PORT=8787
-Environment=HERDR_PLUGIN_CONFIG_DIR=${ctx.configDir}
-Environment=HERDR_PLUGIN_STATE_DIR=${ctx.stateDir}
-EnvironmentFile=-${join(ctx.configDir, ".env")}
+${systemdEnvironment("HERDR_PLUGIN_CONFIG_DIR", ctx.configDir)}
+${systemdEnvironment("HERDR_PLUGIN_STATE_DIR", ctx.stateDir)}
+EnvironmentFile=-${systemdLiteral(join(ctx.configDir, ".env"))}
 
 [Install]
 WantedBy=default.target

@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { Ctx, ShellCommand } from "../types.ts";
 import {
@@ -91,9 +91,11 @@ export function renderTaskRegistration(ctx: Ctx, options: WindowsBackendOptions 
 
 /** Render the bounded process query used by Windows stop's force-kill fallback. */
 export function renderBridgePidQuery(rootDir: string): string {
+  const bridgePath = resolve(rootDir, "bridge", "index.ts");
   return [
-    `$root = ${powershellLiteral(rootDir)}`,
-    `Get-CimInstance Win32_Process -Filter ${powershellLiteral("Name = 'bun.exe'")} | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('exec-bridge') -and ($_.CommandLine.Contains($root) -or $_.CommandLine.Contains('scripts/ctl/main.ts')) } | Select-Object -ExpandProperty ProcessId`,
+    `$bridge = ${powershellLiteral(bridgePath)}`,
+    "$bridgePattern = '(?i)(?:^|\\s|\")' + [regex]::Escape($bridge) + '(?=$|\\s|\")'",
+    `Get-CimInstance Win32_Process -Filter ${powershellLiteral("Name = 'bun.exe'")} | Where-Object { $_.CommandLine -and $_.CommandLine -match $bridgePattern } | Select-Object -ExpandProperty ProcessId`,
   ].join("; ");
 }
 

@@ -160,6 +160,12 @@ function lifecycleDeps(
       rebuild: async () => {
         options.events.push("rebuild");
       },
+      refreshRegistry: async () => {
+        options.events.push("refresh-registry");
+      },
+      serve: async () => {
+        options.events.push("serve");
+      },
       unserve: async () => {
         options.events.push("unserve");
       },
@@ -257,7 +263,13 @@ async function exerciseHappy(verb: RoutedVerb, value: Fixture): Promise<void> {
       await dispatchInjected(value.ctx, verb, [], {
         lifecycle: lifecycleDeps(value, { events }),
       });
-      expect(events).toEqual(["ensure-build", "install", "start", "ready:8787"]);
+      expect(events).toEqual([
+        "ensure-build",
+        "install",
+        "start",
+        "ready:8787",
+        "serve",
+      ]);
       expect(loggedText(value)).toContain("https://collie.example");
       return;
     }
@@ -308,7 +320,10 @@ async function exerciseHappy(verb: RoutedVerb, value: Fixture): Promise<void> {
         if (command === "rev-parse --abbrev-ref --symbolic-full-name @{u}") {
           return result(0, "origin/main\n");
         }
-        if (command === "show origin/main:herdr-plugin.toml") {
+        if (command === "rev-parse origin/main^{commit}") {
+          return result(0, "target-commit\n");
+        }
+        if (command === "show target-commit:herdr-plugin.toml") {
           return result(0, 'version = "0.32.1"\n');
         }
         return result();
@@ -317,8 +332,8 @@ async function exerciseHappy(verb: RoutedVerb, value: Fixture): Promise<void> {
 
       await dispatchInjected(value.ctx, verb, [], { lifecycle: deps });
       expect(gitCalls).toContainEqual(["fetch", "origin"]);
-      expect(gitCalls).toContainEqual(["pull", "--ff-only"]);
-      expect(events).toEqual(["rebuild", "stop", "start"]);
+      expect(gitCalls).toContainEqual(["merge", "--ff-only", "target-commit"]);
+      expect(events).toEqual(["rebuild", "stop", "start", "refresh-registry"]);
       expect(loggedText(value)).toContain("update complete");
       return;
     }
@@ -483,7 +498,10 @@ async function exerciseHappy(verb: RoutedVerb, value: Fixture): Promise<void> {
         },
       };
       await dispatchInjected(value.ctx, verb, [], { ops: options });
-      expect(argvSeen).toEqual(["fake-bun", "bridge/index.ts"]);
+      expect(argvSeen).toEqual([
+        "fake-bun",
+        join(value.root, "bridge", "index.ts"),
+      ]);
       return;
     }
     case "apply-update": {
