@@ -483,6 +483,28 @@ export interface BridgeConfig {
    * watch controls disappear while a cached config is in flight (lib/mux-capability.ts).
    */
   mux?: MuxConfig;
+  /**
+   * Speech-to-text, when the operator configured a provider (ADR 0029). Mirrors `SttCapability` in
+   * bridge/types.ts.
+   *
+   * **Absent is the feature being off**, and it is also what every bridge older than the field
+   * sends — so the phone reads "no key" as "no microphone" and draws no record button at all. The
+   * feature is absent, not disabled.
+   */
+  stt?: SttCapability;
+}
+
+/**
+ * What `/api/config` says about speech-to-text — a label and a yes/no, never the endpoint, the model
+ * or the credential. The phone decides whether to draw a button, not where the audio goes.
+ */
+export interface SttCapability {
+  /** The provider's id, e.g. `openai-compatible`. A label to show, never a branch. */
+  provider: string;
+  /** Whether it could serve a request right now. */
+  available: boolean;
+  /** Operator-facing prose when it could not. Absent when it could. */
+  reason?: string;
 }
 
 /**

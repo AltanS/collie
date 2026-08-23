@@ -579,3 +579,48 @@ export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<
     })(),
   );
 }
+
+/** One transcription attempt. A refusal is a VALUE here, not a throw — see {@link transcribeAudio}. */
+export type SttResult =
+  | { ok: true; text: string }
+  | { ok: false; status: number; error: string | null };
+
+/**
+ * Send one recorded clip to `POST /api/stt` and get its transcript (ADR 0029).
+ *
+ * The body is RAW AUDIO BYTES and the `Content-Type` names the container — no multipart envelope,
+ * because there is exactly one thing to send (bridge/stt/http.ts says the same from its side). It
+ * is pane-agnostic: audio is not terminal state, so no scope goes on the wire.
+ *
+ * Unlike every other call here it RESOLVES on a refusal instead of throwing. Each failure status
+ * earns its own operator-facing sentence (lib/stt.ts `sttErrorMessage`), and a thrown ApiError
+ * carries its status only inside a formatted message — so the status is returned as a value, and
+ * only a transport failure (offline, timeout) still throws.
+ */
+export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<SttResult> {
+  return trackBusy(
+    (async () => {
+      const res = await fetch("/api/stt", {
+        method: "POST",
+        body: audio,
+        headers: {
+          // The recorder's own container, which is the one thing the bridge needs in order to name
+          // a demuxer. Its codec parameter rides along; the bridge splits it off.
+          "content-type": audio.type || "audio/webm",
+          [XHR_HEADER]: XHR_HEADER_VALUE,
+          ...authHeader(),
+        },
+        signal: withTimeout(signal, UPLOAD_TIMEOUT_MS),
+      });
+      const detail = await errorDetail(res);
+      notePairing("POST", res.status, res.ok ? undefined : detail);
+      const body = parseJsonObject(detail);
+      const text = body === undefined ? undefined : asJsonString(body.text);
+      if (res.ok && text !== undefined) return { ok: true as const, text };
+      const error = body === undefined ? null : (asJsonString(body.error) ?? null);
+      // A 200 whose body is not the documented shape is still a failure, and one the operator can do
+      // nothing about — report it as the bridge's own status rather than inventing a transcript.
+      return { ok: false as const, status: res.ok ? 502 : res.status, error };
+    })(),
+  );
+}

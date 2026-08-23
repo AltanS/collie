@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, ImagePlus, Keyboard, Loader2, Send, Settings2, Slash, Terminal, X, Zap } from "lucide-react";
+import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -31,6 +31,9 @@ import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
+import { RecordingStrip } from "@/components/recording-strip";
+import { useSttRecorder } from "@/hooks/use-stt-recorder";
+import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
 
 export interface ComposerHandle {
@@ -361,6 +364,78 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     },
     focusInput: focusInputEnd,
   });
+  // ── VOICE (ADR 0029) ──────────────────────────────────────────────────────────────────────────
+  //
+  // `null` unless the bridge published a provider AND this browser can actually record — one
+  // predicate in lib/stt.ts, so the button here and the row in Settings can never disagree. Absent
+  // is the feature being off: no button at all, not a disabled one.
+  const stt = useSttCapability();
+  const handsFree = useHandsFree();
+  // The microphone is armed state, and it obeys the same rules as "Type into terminal": it dies on a
+  // pane switch, on any composer lock, and on a hidden page, and it is never persisted. The clip is
+  // DISCARDED on each of those, not finished — see the hook's header for why an orphaned transcript
+  // is worse than no transcript.
+  const recorder = useSttRecorder({
+    enabled: stt?.available === true && !locked && !direct.active,
+    paneKey: `${scopeId}\0${paneId}`,
+    suspended: locked || direct.active,
+    onTranscript: acceptTranscript,
+    onError: (message) => setStatus(message, "error"),
+  });
+
+  /**
+   * What happens to a finished transcript.
+   *
+   * DEFAULT: it lands in the draft at the caret, and the operator reads it before sending — a
+   * transcript is text of unusually low confidence going into a real terminal.
+   *
+   * HANDS-FREE: it goes out through `send()`, the same guarded path the Send button uses, with every
+   * pre-flight and the reply guard intact (ADR 0029 — through the guards, never around them). Three
+   * things withdraw it, and all three fall back to inserting rather than refusing:
+   *
+   *  • **A draft is already in the box.** Merging dictated words onto text the operator typed and
+   *    sending the result would send a sentence nobody has read. The two get combined in the box
+   *    instead, where the Send button is still theirs to press.
+   *  • **A password prompt is on screen** (ADR 0017). Typing behaves the same way there — the pane
+   *    gets nothing until the operator acts — and a spoken secret is the last thing to auto-submit.
+   *  • **The composer can't send at all** (locked, or a dialog owns the keyboard). `send()` would
+   *    refuse anyway; inserting keeps the words.
+   */
+  function acceptTranscript(transcript: string) {
+    const draftEmpty = inputValueRef.current.trim() === "";
+    const mayHandsFree =
+      handsFree && draftEmpty && noEchoRef.current === null && !locked && !dialogPresent;
+    if (mayHandsFree) {
+      void send(transcript, false);
+      return;
+    }
+    insertTranscript(transcript);
+  }
+
+  /** Splice a transcript into the draft AT THE CARET (the field is where the operator left it, and
+   *  dictating a clause into the middle of a sentence is the whole point of a caret), padded with a
+   *  space when it would otherwise weld itself to the word in front of it. */
+  function insertTranscript(transcript: string) {
+    direct.deactivateSilently();
+    const el = inputRef.current;
+    const prev = inputValueRef.current;
+    const start = el?.selectionStart ?? prev.length;
+    const end = el?.selectionEnd ?? prev.length;
+    const before = prev.slice(0, start);
+    const after = prev.slice(end);
+    const inserted = before !== "" && !/\s$/.test(before) ? ` ${transcript}` : transcript;
+    updateInput(`${before}${inserted}${after}`);
+    const caret = start + inserted.length;
+    // Deferred like every other focus in this component: React has to swap the controlled value
+    // before a selection range means anything.
+    setTimeout(() => {
+      const field = inputRef.current;
+      if (!field) return;
+      field.focus();
+      field.setSelectionRange(caret, caret);
+    }, 0);
+  }
+
   const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What we last sent, and when — so we can recognise our OWN reply momentarily echoing on the "❯"
@@ -990,6 +1065,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
             deliberately NOT only on the button and textarea — see the component. */}
         {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
+        {/* The microphone's armed strip, in the same in-flow slot and for the same reason. Stop and
+            ✕ are different actions: one transcribes the clip, the other throws it away. */}
+        {recorder.busy && recorder.phase !== "requesting" && (
+          <RecordingStrip
+            elapsed={recorder.elapsedLabel}
+            transcribing={recorder.phase === "transcribing"}
+            handsFree={handsFree && input.trim() === "" && noEcho === null}
+            onStop={recorder.stopAndSend}
+            onDiscard={recorder.discard}
+          />
+        )}
         {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
             memory tier holds it whole — but not the app closing, and that difference is invisible
             without saying so: the old behaviour silently restored an OLDER, SHORTER draft instead.
@@ -1054,13 +1140,56 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // matters: a textarea is inline-level by default, so the wrapper inherits a few px of
               // baseline gap beneath it and the absolutely-positioned button hangs past the field's
               // bottom edge.
-              "block pr-11",
+              // pr-20 with the microphone beside it (two 36px buttons + the gaps), pr-11 without —
+              // reserving the wider strip unconditionally would eat a thumb's worth of the field on
+              // every collie that ships no microphone.
+              stt !== null ? "block pr-20" : "block pr-11",
               direct.active &&
                 "border-primary focus-visible:border-primary focus-visible:ring-primary/30",
             )}
             disabled={locked}
             rows={1}
           />
+            {/* The microphone sits INSIDE the field beside the attach control, not beside Send.
+                Both are "add something to this message" — the message is still composed, reviewed and
+                sent by the operator — whereas Send is the act itself, and a split primary action is
+                exactly the mistake the Type toggle was moved out of (see the Controls row above).
+                Same size and chrome as its neighbour, one slot to the left. Rendered only when a
+                provider exists AND this browser can record; a provider that cannot serve right now
+                renders DISABLED, wearing the bridge's own reason. */}
+            {stt !== null && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "absolute bottom-1 right-10 size-9 rounded-full",
+                  recorder.busy ? "text-destructive" : "text-muted-foreground",
+                )}
+                disabled={!stt.available || locked || direct.active || sending || recorder.phase === "transcribing"}
+                aria-pressed={recorder.busy}
+                // The bridge's own words when it cannot serve — the operator's next move is on the
+                // host, so the button says what is wrong rather than just refusing.
+                aria-label={
+                  !stt.available
+                    ? (stt.reason ?? "Voice input is unavailable")
+                    : recorder.phase === "recording"
+                      ? "Stop recording"
+                      : "Record a voice message"
+                }
+                title={stt.available ? undefined : stt.reason}
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => (recorder.phase === "recording" ? recorder.stopAndSend() : recorder.start())}
+              >
+                {recorder.phase === "transcribing" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : recorder.phase === "recording" ? (
+                  <Square className="size-4 fill-current" />
+                ) : (
+                  <Mic className="size-4" />
+                )}
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
