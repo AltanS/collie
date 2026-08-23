@@ -1,20 +1,21 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchConfig } from "@/lib/api";
-import type { OperatorCommand, OperatorKeyRow } from "@/lib/types";
+import type { Launcher, OperatorCommand, OperatorKeyRow } from "@/lib/types";
 
-// The operator's own rows — their `commands.toml` palette AND their `keys.toml` tray presets — read
-// from ONE /api/config call and held in module state. Both files ride the same request because both
-// are the same kind of thing: startup-resolved operator config the client reads once. Modelled on the lib/server-build.ts store idiom: plain module state + subscribe +
-// a useSyncExternalStore hook, so the composer participates without prop-drilling through the route
-// tree.
+// The operator's own rows — their `commands.toml` palette, their `keys.toml` tray presets AND
+// their `launchers.toml` dashboard row — read from ONE /api/config call and held in module state.
+// All three files ride the same request because all three are the same kind of thing:
+// startup-resolved operator config the client reads once. Modelled on the lib/server-build.ts store
+// idiom: plain module state + subscribe + a useSyncExternalStore hook, so the composer participates
+// without prop-drilling through the route tree.
 //
 // THE CONTRACT: one SUCCESSFUL read is cached for the life of the page; a failed attempt is not
 // cached, so a later mount tries again. Never polled, and deliberately not folded into the 1.5s
-// snapshot: this is startup config on the bridge side (loadConfig() runs once, bridge/index.ts), so
-// re-reading it every tick would spend bytes on a value that cannot change without a bridge
-// restart. Which is also why changing it takes a bridge restart AND a page load, not just the
-// restart — the same contract every other COLLIE_* var has, and what `.env.example` promises.
+// snapshot: the bridge re-reads these files behind an mtime check, so an edit is live THERE without
+// a restart, but nothing in an already-open tab depends on hearing about it within the second. So
+// re-reading every tick would spend bytes on a value that changes when the operator edits a file
+// they are looking at — which is why applying an edit takes a page load, and only a page load.
 //
 // A FAILED FETCH IS NOT AN ERROR STATE. With no rows, every pane falls back to its shipped catalog,
 // which is exactly what a user without this var already sees. So a refusal (read-only
@@ -25,6 +26,7 @@ import type { OperatorCommand, OperatorKeyRow } from "@/lib/types";
 
 let current: readonly OperatorCommand[] = [];
 let currentKeys: readonly OperatorKeyRow[] = [];
+let currentLaunchers: readonly Launcher[] = [];
 let inflight: Promise<void> | null = null;
 let loaded = false;
 const listeners = new Set<() => void>();
@@ -41,6 +43,7 @@ export function loadOperatorCommands(): Promise<void> {
     .then((cfg) => {
       current = cfg.operatorCommands ?? [];
       currentKeys = cfg.operatorKeys ?? [];
+      currentLaunchers = cfg.launchers ?? [];
       loaded = true;
       emit();
     })
@@ -59,6 +62,10 @@ export function getOperatorCommands(): readonly OperatorCommand[] {
 
 export function getOperatorKeys(): readonly OperatorKeyRow[] {
   return currentKeys;
+}
+
+export function getLaunchers(): readonly Launcher[] {
+  return currentLaunchers;
 }
 
 export function subscribeOperatorConfig(cb: () => void): () => void {
@@ -85,10 +92,19 @@ export function useOperatorKeys(): readonly OperatorKeyRow[] {
   return useSyncExternalStore(subscribeOperatorConfig, getOperatorKeys, getOperatorKeys);
 }
 
+/** Reactive read of the dashboard launcher rows. Same one-shot fetch, same contract. */
+export function useLaunchers(): readonly Launcher[] {
+  useEffect(() => {
+    void loadOperatorCommands();
+  }, []);
+  return useSyncExternalStore(subscribeOperatorConfig, getLaunchers, getLaunchers);
+}
+
 /** Test helper — reset module state between cases. */
 export function __resetOperatorCommands(): void {
   current = [];
   currentKeys = [];
+  currentLaunchers = [];
   inflight = null;
   loaded = false;
   listeners.clear();

@@ -19,6 +19,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
 import { FindBar } from "@/components/find-bar";
+import { LaunchTrigger } from "@/components/launch-trigger";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
@@ -623,6 +624,14 @@ export function AgentChat({
                   <ScrollText className="size-4" />
                 </button>
               )}
+              {/* A launch from inside a pane is the case the dashboard's strip cannot serve: you are
+                  reading an agent and want a glance at something else, which used to cost Home →
+                  tap → Back. Sized to this cluster (size-8, `-mr-1`), not the roomier header gear,
+                  and it hides itself when no launchers are declared. */}
+              <LaunchTrigger
+                readOnly={readOnly}
+                className="-mr-1 size-8 rounded-lg hover:bg-transparent active:bg-muted/60"
+              />
               {isShell ? (
                 <ShellBadge stale={connecting} />
               ) : (

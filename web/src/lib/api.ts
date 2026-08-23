@@ -399,6 +399,17 @@ export function createWorkspace(
   });
 }
 
+// POST /api/launch — the command string here is an allowlist KEY the bridge must recognise, not an
+// arbitrary line the client gets to run. Anything not in `launchers.toml` is a 400 before herdr is
+// ever touched, and that lookup is the whole security story of the route. Session-scoped like
+// /api/tab and /api/workspace: the throwaway Space is created in the session you are viewing.
+export function launch(command: string, session?: string): Promise<CreateResponse> {
+  return req<CreateResponse>(withSession("/api/launch", session), {
+    method: "POST",
+    body: JSON.stringify({ command }),
+  });
+}
+
 export function fetchConfig(): Promise<BridgeConfig> {
   return req<BridgeConfig>("/api/config");
 }

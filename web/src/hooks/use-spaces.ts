@@ -81,5 +81,17 @@ export function useSpaceActions() {
     [open],
   );
 
-  return { newTab, newSpace };
+  const launch = useCallback(
+    async (command: string) => {
+      if (readOnlyRef.current) return setStatus("Read-only — device not authorised", "error");
+      try {
+        open(await api.launch(command, sessionRef.current), "space");
+      } catch (e) {
+        setStatus(e instanceof Error ? e.message : String(e), "error");
+      }
+    },
+    [open],
+  );
+
+  return { newTab, newSpace, launch };
 }

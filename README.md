@@ -326,6 +326,35 @@ is fixed and not configurable. Chords are herdr's spelling: `ctrl+c` (never `C-c
 open a pane, tap **Keys → Presets**, your buttons are there. Rejected row?
 `journalctl --user -u collie -n 20` names it and why.
 
+### Your own launchers
+
+One tap to open a new Space and run a command you declared, in `launchers.toml` next to `keys.toml`:
+
+```bash
+cp launchers.toml.example "$(herdr plugin config-dir herdr.collie)/launchers.toml"
+```
+
+```toml
+[[launchers]]
+command = "rumen-peek"         # required; shell line typed verbatim into the new Space
+label = "Runs & quota"         # optional; defaults to the first word of command
+# cwd = "~/dev/collie"         # optional; defaults to your home dir, ~ expanded
+```
+
+Tapping a row creates a new Space labelled with its `label` in its `cwd`, types the `command`
+verbatim into the fresh shell and sends Enter — the command owns its own lifetime, so a
+self-closing peek takes the whole Space with it when you quit while `htop` sits there until you
+close it. This file is the allowlist: `POST /api/launch` only accepts a `command` that matches a
+row here exactly, so nothing absent from it can be launched from a phone. No restart — edits are
+live, though an already-open tab reads the rows once per load.
+
+Your rows appear twice: as a **Launch** section on the dashboard, between the agent list and
+Spaces, which folds like Spaces and Recent; and behind the 🚀 in the Space and pane headers, which
+opens them as a sheet showing each command under its label — that is the one you want when you are
+reading an agent and do not want to go Home first. Declare none and neither appears. Verify: reload
+the dashboard, your buttons are under the herd. Rejected row?
+`journalctl --user -u collie -n 20` names it and why.
+
 ### Multi-session
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useRevalidator, useRouteLoaderData } from "reac
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
+import { LaunchTrigger } from "@/components/launch-trigger";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
 import { TabStrip } from "@/components/tab-strip";
@@ -67,13 +68,16 @@ export function SpaceRoute() {
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The space header: same shell as the dashboard, minus the session switcher (you switch
-          sessions from home). Wordmark + shared pill + Settings gear. */}
+          sessions from home). Wordmark + the launch control + shared pill + Settings gear. The
+          launcher rows have no strip of their own here — this screen is a navigator, not a place to
+          park buttons — so the sheet is how you reach them without going home first. */}
       <AppHeader
         bridge={data.bridge}
         error={data.error}
         stalled={stalled}
         onHome={toDashboard}
         wordmark
+        rightLead={<LaunchTrigger readOnly={isReadOnly(data.device)} />}
         rightTrail={<SettingsGear session={data.session} />}
       />
 

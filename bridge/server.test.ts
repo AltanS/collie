@@ -4,6 +4,7 @@ import {
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
+  launch,
   marksPaneSeen,
   SEEN_HEADER,
   deviceAuth,
@@ -55,6 +56,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
     keysFile: "/nope/keys.toml",
+    launchersFile: "/nope/launchers.toml",
     trustedUser: "",
     auditContent: "preview",
     deviceHeader: "",
@@ -908,3 +910,154 @@ describe("marksPaneSeen — CSRF guard on marking a pane seen", () => {
     expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "anything" }), undefined)).toBe(true);
   });
 });
+
+// POST /api/launch — the launcher strip's one-tap: a workspace whose cwd/label come from the row,
+// then the command + Enter typed into its fresh shell. The allowlist is the configured rows themselves.
+describe("launch — allowlisted workspace.create + pane.send_text/keys", () => {
+  function request(body: unknown): Request {
+    return new Request("http://localhost/api/launch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function auditEntries(): { audit: AuditLog; entries: Array<Record<string, unknown>> } {
+    const entries: Array<Record<string, unknown>> = [];
+    return {
+      audit: new AuditLog((line) => {
+        entries.push(JSON.parse(line));
+      }),
+      entries,
+    };
+  }
+
+  // Minimal fake herdr that records createWorkspace + send calls. Close exists only to verify rollback.
+  class FakeLaunchClient {
+    createArgs: unknown = null;
+    readonly texts: Array<[string, string]> = [];
+    readonly keys: Array<[string, string[]]> = [];
+    closes: string[] = [];
+    failOn: "create" | "text" | "keys" | null = null;
+    createResult = {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "MySpace",
+      tabId: "w1:t1",
+      cwd: "/home/op",
+    };
+
+    async createWorkspace(opts: { cwd: string; label?: string }): Promise<typeof this.createResult> {
+      this.createArgs = opts;
+      if (this.failOn === "create") throw new Error("create failed");
+      return this.createResult;
+    }
+
+    async sendPaneText(paneId: string, text: string): Promise<void> {
+      this.texts.push([paneId, text]);
+      if (this.failOn === "text") throw new Error("text failed");
+    }
+
+    async sendPaneKeys(paneId: string, keys: string[]): Promise<void> {
+      this.keys.push([paneId, keys]);
+      if (this.failOn === "keys") throw new Error("keys failed");
+    }
+
+    async closePane(paneId: string): Promise<void> {
+      this.closes.push(paneId);
+    }
+  }
+
+  function getLaunchers(commands: Array<{ command: string; label: string; cwd: string }>) {
+    return async () => commands;
+  }
+
+  test("unlisted command rejected without creating anything", async () => {
+    const client = new FakeLaunchClient();
+    const { audit, entries } = auditEntries();
+    const res = await launch(
+      client as unknown as HerdrClient,
+      request({ command: "intruder" }),
+      audit,
+      null,
+      "default",
+      getLaunchers([{ command: "rumen-peek", label: "Runs & quota", cwd: "/home/op" }]),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false });
+    expect(client.createArgs).toBeNull();
+    expect(client.texts).toEqual([]);
+    expect(client.keys).toEqual([]);
+    expect(entries).toHaveLength(0);
+  });
+
+  test("a listed row creates a workspace with that row's label AND cwd and types command + Enter", async () => {
+    const client = new FakeLaunchClient();
+    const { audit, entries } = auditEntries();
+    const res = await launch(
+      client as unknown as HerdrClient,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      getLaunchers([{ command: "rumen-peek", label: "Runs & quota", cwd: "/home/op/project" }]),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    // Workspace created with the row's cwd and label (same threat model as createWorkspace).
+    expect(client.createArgs).toEqual({ cwd: "/home/op/project", label: "Runs & quota" });
+    // Command typed verbatim plus a bare Enter — NOT cfg.submitKeys.
+    expect(client.texts).toEqual([["w1:p1", "rumen-peek"]]);
+    expect(client.keys).toEqual([["w1:p1", ["Enter"]]]);
+    // Audited as workspace.launch with the explicit detail the envelope already answers.
+    expect(entries[0]?.action).toBe("workspace.launch");
+    expect(entries[0]?.detail).toEqual({
+      command: "rumen-peek",
+      label: "Runs & quota",
+      cwd: "/home/op/project",
+    });
+  });
+
+  test("a send failure closes the created pane and answers ok:false", async () => {
+    const client = new FakeLaunchClient();
+    client.failOn = "keys";
+    const { audit } = auditEntries();
+    const res = await launch(
+      client as unknown as HerdrClient,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      getLaunchers([{ command: "rumen-peek", label: "Runs", cwd: "/home/op" }]),
+    );
+    // Must not leave a half-born Space behind — the pane is closed.
+    expect(client.closes).toEqual(["w1:p1"]);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(typeof body.error).toBe("string");
+  });
+
+  test("a closePane failure during rollback is swallowed, still answering ok:false", async () => {
+    const client = new FakeLaunchClient();
+    client.failOn = "text";
+    // Make close itself fail.
+    client.closePane = async () => {
+      throw new Error("close failed");
+    };
+    const { audit } = auditEntries();
+    const res = await launch(
+      client as unknown as HerdrClient,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      getLaunchers([{ command: "rumen-peek", label: "Runs", cwd: "/home/op" }]),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+  });
+});
+

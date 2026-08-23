@@ -139,6 +139,10 @@ the unit name; the Herdr action runs from anywhere.
   Ctrl presets on the panes they address (ADR 0018 again), and only those presets: the tray's
   keyboard is fixed. Both files share one reader (`bridge/operator-file.ts`) and one scope ladder
   (`web/src/lib/operator-scope.ts`); teach both, never one.
+- **`launchers.toml` is `commands.toml`'s sibling on the dashboard** — its rows are the allowlist
+  `POST /api/launch` matches exactly, so the client names a row and never supplies a command line;
+  the bridge re-reads the file behind an mtime check, so edits are live and need no restart. Do not
+  add a second allowlist or let the client supply a command line.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).
