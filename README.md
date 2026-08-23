@@ -337,9 +337,10 @@ open a pane, tap **Keys → Presets**, your buttons are there. Rejected row?
 ### Multi-session
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your
-config root, switchable from the header; `COLLIE_MULTI_SESSION=off` serves only the primary one. Every
-session it finds is drivable through the same URL — including a private or sandbox one, which is why
-[Security](#%EF%B8%8F-security--read-before-you-run-it) lists this as a sharp edge.
+config root, switchable from the header. Windows session paths are supported, so you don't need to
+turn it off there. `COLLIE_MULTI_SESSION=off` serves only the primary one. Every session it finds is
+drivable through the same URL, including a private or sandbox one, which is why [Security](#%EF%B8%8F-security--read-before-you-run-it)
+lists this as a sharp edge.
 
 ## Dark mode / light mode
 
@@ -520,18 +521,24 @@ isn't in the path at all, [`DEPLOYMENT.md`](./DEPLOYMENT.md) has the rest:
 
 ## Windows (experimental)
 
-The **bridge** runs on Windows against Herdr's Windows beta; the **launcher** does not. Herdr there
-exposes its control socket as a *named pipe* named after the full socket path, not an AF_UNIX
-socket, so Collie dials it through `node:net` instead of `Bun.connect`, one shim,
+The bridge runs on Windows against Herdr's Windows beta, and the launcher does too. The Windows
+service path is Task Scheduler, driven by `bun scripts/ctl/main.ts`.
+
+Herdr there exposes its control socket as a *named pipe* named after the full socket path, not an
+AF_UNIX socket, so Collie dials it through `node:net` instead of `Bun.connect`, one shim,
 [`bridge/dial.ts`](./bridge/dial.ts), which explains the mapping at the top of the file.
 
-If you want the lifecycle commands on Windows, run them with Bun directly:
+Run the lifecycle commands on Windows with Bun directly:
 
 ```powershell
 bun scripts/ctl/main.ts start
-bun scripts/ctl/main.ts stop
 bun scripts/ctl/main.ts status
+bun scripts/ctl/main.ts stop
 ```
+
+`start` creates or refreshes a per-user Limited Task Scheduler task, sets it to run at login, and
+turns on restart on failure. `status` reports the task state, the bridge probe, and the front-door
+URL. `stop` stops the bridge while leaving the login task registered for the next `start` or login.
 
 What that means in practice:
 
@@ -540,19 +547,27 @@ What that means in practice:
 - **Pre-push hooks need Git Bash.** The hook scripts still shell out to POSIX tools, so plain
   `cmd.exe` or PowerShell won't run them.
 - **Run the ctl entry point directly** for lifecycle work: `bun scripts/ctl/main.ts start`,
-  `stop`, `restart`, `status`, `url`, `version`, `qr`, `logs`, `build`, `serve`, `unserve`,
-  `uninstall`, `update`, `push-keys`, and `push-test`. There's no systemd unit on Windows.
-- **`tailscale serve` isn't wired up here.** Use the
-  [Variant E](./DEPLOYMENT.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
-  fallback with `COLLIE_SKIP_SERVE=1` when Tailscale CLI isn't installed, which is the stock
-  Windows case on a fresh machine.
-- **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
+  `status`, `stop`, `restart`, `url`, `version`, `qr`, `logs`, `build`, `serve`, `unserve`,
+  `uninstall`, `update`, `push-keys`, and `push-test`.
+- **Tailscale is supported on Windows when it is installed.** When the host has no Tailscale CLI,
+  use the [Variant E](./DEPLOYMENT.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
+  fallback with `COLLIE_SKIP_SERVE=1` and let another mesh or proxy own ingress.
+- **Windows session paths are supported.** Leave `COLLIE_MULTI_SESSION` at the default unless you
+  want to serve only the primary session.
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
   (an explicit `\\.\pipe\…` value is passed through untouched).
 
-**Want the lifecycle too?** The bridge has spoken Windows' named pipe since 0.15.0; a
-community-maintained Task Scheduler setup (start/stop/update, no supported-tree guarantees) lives in
-[`contrib/windows/`](./contrib/windows/README.md).
+**Want the lifecycle too?** The bridge has spoken Windows' named pipe since 0.15.0, and the
+supported service backend is Task Scheduler. The task is per-user, Limited, runs at login, and
+restarts on failure. The supported Windows path is `bun scripts/ctl/main.ts start|status|stop`, with
+`restart`, `url`, `version`, `qr`, `logs`, `build`, `serve`, `unserve`, `uninstall`, `update`,
+`push-keys`, and `push-test` on the same entry point.
+
+`start` creates the task, starts the bridge, and best-effort publishes the configured front door.
+`status` shows whether the task and bridge are healthy. `stop` stops the task and bridge but keeps
+the registration; `uninstall` removes that registration and Collie's managed front-door mapping.
+The forced-stop caveat still applies, so the last debounce window can be lost. Logs are written to
+`%LOCALAPPDATA%\collie\state\collie.log`.
 
 **Is it actually working?** The bridge logs `[events] stream up` on start — the event stream works
 over the pipe, so Windows gets the same live updates as Linux, not degraded polling.

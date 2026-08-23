@@ -1,7 +1,7 @@
 # Architecture decision records
 
-Decisions with a **blast radius wider than the diff that made them** — the ones a future
-contributor (or a future agent) would otherwise re-derive from scratch, or quietly reverse because
+Decisions with a **blast radius wider than the diff that made them**, the ones a future
+contributor, or a future agent, would otherwise re-derive from scratch or quietly reverse because
 the reasoning lived only in a PR thread.
 
 One file per decision, numbered in the order they were accepted:
@@ -75,6 +75,7 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | [0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) | Recognising a password prompt changes what Collie says, never what it sends | Accepted |
 | [0018](./0018-operator-command-rows-replace-the-catalog.md) | The operator's command rows replace the catalog, never merge into it | Accepted |
 | [0020](./0020-a-major-upgrade-is-consented-by-flag.md) | A major upgrade is consented by flag; routine update follows tags within the major | Accepted |
+| [0021](./0021-windows-service-backend.md) | Windows uses a per-user Task Scheduler service backend | Accepted |
 
 **0011–0016 and 0019 are not missing** — they are the pack/federation and lint-gate decisions,
 accepted on the `v1`

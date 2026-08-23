@@ -2,10 +2,12 @@
 
 The bridge always binds **loopback only**; what changes between deployments is *what sits in front
 of it* and *how a request proves who it is*. [Variant A](./README.md#variant-a--tailscale-serve--person-identity-default),
-plain `tailscale serve`, identity by tailnet person, is the default and lives in the README. On stock
-Windows setups the Tailscale CLI is often absent, so Variant E is the fallback shape to use there.
-If you are using the Windows host path, read the README Windows install section first and then come
-back here. The four shapes here are for everything else. Pick one.
+plain `tailscale serve`, identity by tailnet person, is the default and lives in the README. On the
+validated Windows host, the Tailscale executable and service were absent, so the run used documented
+Variant E with `COLLIE_SKIP_SERVE=1`. That is the Windows fallback shape when another authenticated
+mesh or proxy owns ingress. Loopback by itself is not phone-accessible. If you are using the Windows
+host path, read the README Windows install section first and then come back here. The four shapes here
+are for everything else. Pick one.
 
 - [Variant B — identity-aware proxy + per-device authorisation](#variant-b--identity-aware-proxy--per-device-authorisation)
 - [Variant C — reverse proxy as the only front door (no Tailscale)](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
@@ -339,16 +341,18 @@ and a convenience in `collie-ctl.sh`; the bridge itself is a loopback HTTP serve
 `Host`, `Origin`, and two optional headers. Anything that can reach `127.0.0.1:$COLLIE_PORT` can
 front it.
 
-Collie deliberately **manages** only one front door — the one this project runs and tests. For every
+Collie deliberately **manages** only one front door, the one this project runs and tests. For every
 other tunnel you own the ingress and Collie stays out of the way:
 
 ```bash
 COLLIE_SKIP_SERVE=1                                 # never run tailscale serve
-COLLIE_PUBLIC_HOSTS=collie.example.com              # exact public host — blocks DNS rebinding
+COLLIE_PUBLIC_HOSTS=collie.example.com              # exact public host, blocks DNS rebinding
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
 ```
 
-That skip flag is the fallback procedure on Windows when Tailscale CLI isn't there.
+That skip flag is the documented Windows fallback when the Tailscale executable or service is
+absent. Use it with another authenticated mesh or proxy that owns ingress. The bridge on loopback
+alone can't be reached from a phone.
 
 Then point your tunnel at `127.0.0.1:$COLLIE_PORT` and start it however you start your other
 services. `netbird expose 8787`, a ZeroTier-routed reverse proxy and `cloudflared tunnel` all work
