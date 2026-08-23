@@ -81,7 +81,9 @@ describe("Windows Task Scheduler backend", () => {
     expect(calls[0]?.args.at(-1)).toContain("exec-bridge");
     expect(calls[0]?.args.at(-1)).toContain("RestartCount 999");
     expect(calls[0]?.args.at(-1)).toContain("RestartInterval (New-TimeSpan -Minutes 1)");
-    expect(calls[0]?.args.at(-1)).toContain("C:\\Users\\collie\\state\\collie.log");
+    // Single writer: exec-bridge owns collie.log, so the wrapper must NOT redirect into it
+    // (double-open fails with EBUSY on Windows).
+    expect(calls[0]?.args.at(-1)).not.toContain("collie.log");
 
     await backend.start(ctx);
     expect(calls[1]).toEqual({

@@ -59,17 +59,17 @@ function powershellArgs(script: string): readonly string[] {
 
 /**
  * The action that Task Scheduler launches at logon. The environment is explicit because a task
- * does not inherit the shell that invoked `ctl`, and the final redirection keeps supervisor output
- * in Collie's state directory even when the bridge exits before exec-bridge can create its child.
+ * does not inherit the shell that invoked `ctl`. NO file redirection happens here: exec-bridge
+ * owns `collie.log` (single writer — a wrapper redirect would hold the handle open and make the
+ * bridge's own Bun.file(logFile) open fail with EBUSY on Windows).
  */
 function taskActionArguments(ctx: Ctx, options: ResolvedWindowsOptions): string {
-  const logFile = join(ctx.stateDir, "collie.log");
   const action = [
     `New-Item -ItemType Directory -Force -Path ${powershellLiteral(ctx.stateDir)} | Out-Null`,
     `$env:HERDR_PLUGIN_CONFIG_DIR = ${powershellLiteral(ctx.configDir)}`,
     `$env:HERDR_PLUGIN_STATE_DIR = ${powershellLiteral(ctx.stateDir)}`,
     `$env:HERDR_SOCKET_PATH = ${powershellLiteral(ctx.socketPath)}`,
-    `& ${powershellLiteral(options.bun)} ${powershellLiteral("scripts/ctl/main.ts")} ${powershellLiteral("exec-bridge")} *> ${powershellLiteral(logFile)}`,
+    `& ${powershellLiteral(options.bun)} ${powershellLiteral("scripts/ctl/main.ts")} ${powershellLiteral("exec-bridge")}`,
   ].join("; ");
   return `-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& { ${action} }"`;
 }
