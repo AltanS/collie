@@ -1419,6 +1419,115 @@ assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie devices revoke <label>
 # Not one of them shelled out to anything: no systemctl, no tailscale, no herdr.
 assert_eq "$(cat "$PAIR_CALLS")" ""
 
+# ── Speech-to-text (ADR 0029) ────────────────────────────────────────────────
+# `stt setup` is the third verb that writes a CREDENTIAL to disk, and — on the codex provider — the
+# only one that records a consent to put somebody else's name on the wire. What only this file can
+# prove is that under `env -i` it lands owner-only in the state dir the BRIDGE resolves, that the
+# consent gate holds when there is no terminal to ask, and that nothing shells out on the way.
+# Behaviour is covered against fakes in cli/stt.test.ts.
+STT_STATE="${TMP_ROOT}/stt-state"
+mkdir -p "$STT_STATE"
+STT_JSON="${STT_STATE}/stt.json"
+: > "$PAIR_CALLS"
+# A fake `codex`, so the consent test below is deterministic: without one, the refusal could just as
+# well be "no codex binary found", which is a different refusal and not the one being pinned.
+cat > "${BIN_DIR}/codex" <<EOF
+#!/bin/sh
+echo "codex \$*" >> "$PAIR_CALLS"
+exit 0
+EOF
+chmod +x "${BIN_DIR}/codex"
+stt_env() {
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$STT_STATE" \
+    PATH="$BIN_DIR" "$@"
+}
+
+# Off is the default, and asking materialises nothing.
+stt_env "$BIN" stt status || fail "\`collie stt status\` failed with nothing configured: ${STDERR}"
+assert_contains "$STDOUT" "speech-to-text: off"
+[ -z "$(ls -A "$STT_STATE")" ] || fail "\`stt status\` wrote into the state dir with nothing configured"
+
+# Fully scriptable: every question answered by a flag, so this runs with no terminal at all.
+stt_env "$BIN" stt setup --provider openai-compatible --url https://stt.example/v1 \
+  --model whisper-1 --key sk-test-4321 || fail "\`collie stt setup\` failed under env -i: ${STDERR}"
+[ -f "$STT_JSON" ] || fail "\`collie stt setup\` wrote no ${STT_JSON}"
+assert_contains "$STDOUT" "no restart needed"
+assert_eq "$(stat -c '%a' "$STT_JSON" 2>/dev/null || stat -f '%Lp' "$STT_JSON")" "600"
+assert_contains "$(cat "$STT_JSON")" '"provider": "openai-compatible"'
+assert_contains "$(cat "$STT_JSON")" '"baseUrl": "https://stt.example/v1"'
+assert_contains "$(cat "$STT_JSON")" '"model": "whisper-1"'
+# The key is in the file (that is what 0600 is for) and never on the screen.
+assert_contains "$(cat "$STT_JSON")" '"apiKey": "sk-test-4321"'
+case "$STDOUT$STDERR" in
+  *sk-test-4321*) fail "\`stt setup\` echoed the API key" ;;
+esac
+# The temporary the atomic write went through is not left behind.
+[ ! -e "${STT_JSON}.tmp" ] || fail "\`stt setup\` left ${STT_JSON}.tmp behind"
+
+# `status` reads back what was written, and attributes every row to the file.
+stt_env "$BIN" stt status || fail "\`collie stt status\` failed with a config: ${STDERR}"
+assert_contains "$STDOUT" "speech-to-text: on"
+assert_contains "$STDOUT" "openai-compatible"
+assert_contains "$STDOUT" "https://stt.example/v1"
+assert_contains "$STDOUT" "(stt.json)"
+assert_contains "$STDOUT" "set (…4321)"
+case "$STDOUT" in
+  *sk-test-4321*) fail "\`stt status\` printed the API key" ;;
+esac
+
+# An environment variable outranks the file, and `status` says which one won.
+stt_env COLLIE_STT_MODEL=gpt-4o-transcribe "$BIN" stt status || fail "\`stt status\` failed with an env override: ${STDERR}"
+assert_contains "$STDOUT" "(COLLIE_STT_MODEL)"
+
+# The codex provider refuses BEFORE it runs anything when the risks cannot be accepted: no terminal
+# and no `--accept-risk` means no probe, no file, and a message naming the flag a script would use.
+set +e
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$STT_STATE" \
+  PATH="$BIN_DIR" "$BIN" stt setup --provider codex >"${TMP_ROOT}/out" 2>"${TMP_ROOT}/err" </dev/null
+rc=$?
+set -e
+assert_eq "$rc" "1"
+assert_contains "$(cat "${TMP_ROOT}/out")" "PRIVATE and UNSUPPORTED"
+assert_contains "$(cat "${TMP_ROOT}/out")" "YOUR ChatGPT account"
+assert_contains "$(cat "${TMP_ROOT}/err")" "--accept-risk"
+# The refusal is total: the earlier openai-compatible config is untouched, and `codex` never ran.
+assert_contains "$(cat "$STT_JSON")" '"provider": "openai-compatible"'
+assert_eq "$(cat "$PAIR_CALLS")" ""
+
+# `off` removes that one file and nothing else, and a second `off` is a clean no-op.
+touch "${STT_STATE}/paired-devices.json"
+stt_env "$BIN" stt off || fail "\`collie stt off\` failed: ${STDERR}"
+[ ! -f "$STT_JSON" ] || fail "\`collie stt off\` left ${STT_JSON} behind"
+[ -f "${STT_STATE}/paired-devices.json" ] || fail "\`collie stt off\` removed a file that was not its own"
+stt_env "$BIN" stt off || fail "a second \`collie stt off\` failed: ${STDERR}"
+assert_contains "$STDOUT" "already off"
+
+# An env-only configuration is still ON, and every row names the variable it came from.
+stt_env COLLIE_STT_URL=https://env.example/v1 "$BIN" stt status || fail "\`stt status\` failed on an env-only config: ${STDERR}"
+assert_contains "$STDOUT" "speech-to-text: on"
+assert_contains "$STDOUT" "(COLLIE_STT_URL)"
+assert_contains "$STDOUT" "https://env.example/v1"
+# …and `off` says so rather than claiming the feature is gone.
+stt_env COLLIE_STT_URL=https://env.example/v1 "$BIN" stt off || fail "\`collie stt off\` failed with an env override: ${STDERR}"
+assert_contains "$STDOUT" "the environment wins"
+assert_contains "$STDOUT" "COLLIE_STT_URL"
+
+# Bare `stt` and a misspelt sub-verb are usage errors (2).
+for args in "stt" "stt nonsense"; do
+  set +e
+  # shellcheck disable=SC2086
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$STT_STATE" \
+    PATH="$BIN_DIR" "$BIN" $args >/dev/null 2>"${TMP_ROOT}/err"
+  rc=$?
+  set -e
+  assert_eq "$rc" "2"
+done
+assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie stt {setup|test|status|off}"
+
+# Not one of them shelled out to anything — `stt` never runs a tool it was not told to.
+assert_eq "$(cat "$PAIR_CALLS")" ""
+rm -f "${BIN_DIR}/codex"
+
 # ── Push subscriptions ───────────────────────────────────────────────────────
 # `push list` and `push forget` are what an operator runs when push is BROKEN — no VAPID keys, no
 # `web-push`, and (here) no environment at all. What only this file can prove is that they still
@@ -1829,6 +1938,7 @@ echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny
 echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
 echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one line per check"
 echo "✓ collie CLI pairing: 0600 pending file with no code in it, re-mint, list/revoke, exit codes"
+echo "✓ collie CLI stt: 0600 stt.json under env -i, no key on screen, codex consent gate refuses before it runs anything"
 echo "✓ collie CLI push: list/forget answer with no VAPID and no environment, no keys on screen, exit codes"
 echo "✓ collie CLI push-keys: writes the resolved .env at 0600, refuses live keys / a bad subject / a symlink"
 echo "✓ collie CLI link: a real symlink not a copy, idempotent, take-over, every refusal untouched, doctor reports"

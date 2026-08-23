@@ -65,7 +65,16 @@ import { cmdPackDeputy } from "./pack-deputy.ts";
 import { cmdPackUpdate } from "./pack-update.ts";
 import { cmdPackAdd, packAddDeps, type PackAddDeps } from "./remote.ts";
 import { cmdServe, cmdUnserve } from "./serve.ts";
-import { realFiles } from "./sys.ts";
+import {
+  cmdStt,
+  cmdSttOff,
+  cmdSttSetup,
+  cmdSttStatus,
+  cmdSttTest,
+  STT_SUBCOMMANDS,
+  type SttDeps,
+} from "./stt.ts";
+import { realExec, realFiles } from "./sys.ts";
 import { bridgeUrl } from "./tailnet.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 
@@ -196,6 +205,27 @@ function linkDeps(io: Io): LinkDeps {
  */
 function hooksDeps(io: Io): HooksDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
+/**
+ * `stt`: the pairing set (context + filesystem — `stt.json` lives beside the pairing files, under the
+ * state dir the bridge resolves), plus `exec` to locate the operator's `codex` binary and the two
+ * prompts `setup` asks its questions through.
+ *
+ * The prompts are Bun's built-ins behind a tty check, exactly as `pack add` guards them: a question
+ * nobody can answer must abort legibly rather than read EOF as consent — and on the codex path that
+ * question IS the consent (ADR 0029).
+ */
+function sttDeps(io: Io): SttDeps {
+  const ctx = loadContext(io.err);
+  return {
+    ctx,
+    io,
+    files: realFiles,
+    exec: realExec(ctx.env, ctx.home),
+    interactive: process.stdin.isTTY === true,
+    prompt: (question) => (process.stdin.isTTY === true ? prompt(question) : null),
+  };
 }
 
 /**
@@ -444,6 +474,38 @@ export const COMMANDS: readonly Command[] = [
       },
     ],
     run: (args, s) => cmdPush(pushDeps(s.io), args),
+  },
+  // ── Speech-to-text (ADR 0029) ──────────────────────────────────────────────
+  // Declared beside `pair` and `push` because it is the third thing the operator's own terminal is
+  // the only right place for: `stt setup` writes a provider credential — or records a consent to
+  // impersonate — into the state dir, and the bridge picks it up per request with no restart.
+  {
+    name: "stt",
+    summary: `speech-to-text (off until you run it): ${STT_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "setup",
+        summary: "pick a provider and write it into the state dir (interactive, or all by flag)",
+        run: (args, s) => cmdSttSetup(sttDeps(s.io), args),
+      },
+      {
+        name: "test",
+        summary: "one real round trip through what is configured",
+        run: (_args, s) => cmdSttTest(sttDeps(s.io)),
+      },
+      {
+        name: "status",
+        summary: "the provider, where each setting came from, and whether it is on",
+        run: (_args, s) => cmdSttStatus(sttDeps(s.io)),
+      },
+      {
+        name: "off",
+        summary: "remove stt.json — speech-to-text is absent again",
+        run: (_args, s) => cmdSttOff(sttDeps(s.io)),
+      },
+    ],
+    // Bare or misspelt lands here, and `cmdStt` owns that message — as `cmdDevices` does.
+    run: (args, s) => cmdStt(sttDeps(s.io), args),
   },
   // ── The pack (M4/07) ───────────────────────────────────────────────────────
   // The only way a machine enters or leaves a pack. Every one of them resolves its seams through

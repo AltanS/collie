@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { PACK_SUBCOMMANDS } from "./pack.ts";
 import { DEVICES_SUBCOMMANDS } from "./pairing.ts";
 import { PUSH_SUBCOMMANDS } from "./push.ts";
+import { STT_SUBCOMMANDS } from "./stt.ts";
 import {
   type Command,
   COMMANDS,
@@ -72,6 +73,11 @@ const PAIRING_VERBS = ["pair", "devices"];
 // because it answers the same question about a different register.
 const PUSH_VERBS = ["push"];
 
+// Speech-to-text (ADR 0029). Declared after `push` because it belongs to the same group: things the
+// operator's own terminal is the only right place to configure, because they mint or accept a
+// credential.
+const STT_VERBS = ["stt"];
+
 function capture(): Io & { stdout: string[]; stderr: string[] } {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -87,6 +93,7 @@ describe("the verb table", () => {
       ...BEACON_VERBS,
       ...PAIRING_VERBS,
       ...PUSH_VERBS,
+      ...STT_VERBS,
       ...PACK_VERBS,
       "help",
     ]);
@@ -226,12 +233,17 @@ describe("the subcommand trees", () => {
     expect(findCommand("push")?.subcommands?.map((s) => s.name)).toEqual([...PUSH_SUBCOMMANDS]);
   });
 
+  test("`stt` declares exactly `cli/stt.ts`'s sub-verbs, in its order", () => {
+    expect(findCommand("stt")?.subcommands?.map((s) => s.name)).toEqual([...STT_SUBCOMMANDS]);
+  });
+
   test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
     expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual([
       "hooks",
       "beacon",
       "devices",
       "push",
+      "stt",
       "pack",
     ]);
   });
@@ -329,6 +341,10 @@ describe("exit codes", () => {
       // Every `push` sub-verb resolves the real state dir, and `push test` would send to this host's
       // own subscribed phones. cli/push.test.ts drives all three against a throwaway dir.
       ...PUSH_VERBS,
+      // `stt setup` writes a provider credential into the developer's own state dir, and every other
+      // sub-verb resolves that same real dir before it decides anything. cli/stt.test.ts drives all
+      // four against fakes.
+      ...STT_VERBS,
       // `hooks` edits the developer's own ~/.claude/settings.json, and `hooks status` resolves the
       // same real paths before it reads them. cli/hooks.test.ts drives all three against fakes.
       // `beacon` is world-touching in the other direction: it would write a beacon into this host's
