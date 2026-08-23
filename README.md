@@ -40,7 +40,7 @@ ships none of its own.
 - [Manage & update](#manage--update) · [Migrating from 0.x](#migrating-from-0x)
 - [Deployment variants](#deployment-variants) · [B–E in `DEPLOYMENT.md`](./DEPLOYMENT.md)
 - [Windows (experimental)](#windows-experimental)
-- [Web Push](#web-push-optional)
+- [Voice input](#voice-input-optional) · [Web Push](#web-push-optional)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
 - [Developing this plugin](#developing-this-plugin)
@@ -432,6 +432,7 @@ as `invoke <cmd>`). The ones you'll actually use:
 | **Devices** — list / revoke paired devices | `collie devices list` · `collie devices revoke <label>` | — (CLI only) |
 | **Link** — put `collie` on your PATH ([below](#put-collie-on-your-path)) | `collie link` · `collie unlink` | — (CLI only) |
 | **Logs** — tail the journal / log file | `collie logs` | — (CLI only) |
+| **Voice** — configure / check / disable [voice input](#voice-input-optional) | `collie stt setup` · `stt test` · `stt status` · `stt off` | — (CLI only) |
 | **Push keys** — generate the VAPID keypair into your `.env` | `collie push-keys` | `invoke push-keys` |
 | **Push test** — send one notification to prove it works | `collie push-test` | `invoke push-test` |
 
@@ -772,6 +773,94 @@ over the pipe, so Windows gets the same live updates as Linux, not degraded poll
 
 `COLLIE_HERDR_DIAL=net` forces that same dialer on Linux/macOS. It exists so the Windows code path
 can be exercised — and regression-tested — without a Windows box; `bridge/dial.test.ts` uses it.
+
+## Voice input (optional)
+
+A **microphone button in the composer**, and a **hands-free switch** in Settings. Tap the button,
+speak, and the transcript lands in the message box for you to read and send. With hands-free on it is
+sent for you — down the same guarded reply path a typed message takes, never around it.
+
+**It does not exist until you run `collie stt setup`.** No button is drawn, no audio leaves the
+phone, no credential is held, no child process runs. Absent, not disabled. Two providers:
+
+| provider | what it is |
+| --- | --- |
+| **`openai-compatible`** | Any endpoint that speaks `POST /audio/transcriptions` — the public OpenAI API, a cloud Whisper clone, or **a local engine on the same machine, which is the zero-egress choice** ([below](#zero-egress-point-it-at-your-own-engine)). |
+| **`codex`** | Borrows the `codex` binary you already trust for a short-lived token. No new account, no new key — and a **private, unsupported** endpoint that carries a consent step you have to type `yes` to ([below](#the-codex-provider-what-you-are-accepting)). |
+
+Setup is a CLI act for the reason [pairing](#pair-a-device--the-write-credential) is one: this
+surface accepts a credential, so it belongs on the host's keyboard. There is no web setup form.
+
+```console
+$ bin/collie stt setup
+Which speech-to-text provider?
+  openai-compatible  any endpoint that speaks POST /audio/transcriptions —
+                     the public OpenAI API, or a local whisper.cpp / parakeet.cpp
+                     server, which is the zero-egress choice and the one to prefer.
+  codex              borrow your own `codex` sign-in. No new key, no new account —
+                     and a private endpoint that may break without notice.
+provider [openai-compatible]:
+The API base, INCLUDING its version prefix — the provider appends /audio/transcriptions.
+  local  http://127.0.0.1:8080/v1     (whisper.cpp / parakeet.cpp — nothing leaves the host)
+  cloud  https://api.openai.com/v1    (room audio leaves this machine)
+base URL: http://127.0.0.1:8080/v1
+The model the endpoint understands. Empty takes Collie's default, gpt-4o-transcribe.
+model [gpt-4o-transcribe]: whisper-1
+API key [none]:
+✓ speech-to-text configured — /home/you/.local/state/collie/stt.json (owner-only)
+  Live immediately — no restart needed. The bridge re-reads this file per request.
+  Check it end to end with `collie stt test`.
+```
+
+Every question above has a flag (`--provider` · `--url` · `--model` · `--key`), so a provisioning
+run needs no terminal. Leaving the key empty is a supported mode — a keyless endpoint is dialled
+with no `Authorization` header at all, rather than an empty one.
+
+**Did it work?** `stt test` sends a fifth of a second of generated silence through the real
+provider:
+
+```console
+$ bin/collie stt test
+provider: openai-compatible (http://127.0.0.1:8080/v1, model whisper-1)
+sending:  0.2 s of generated silence (audio/wav)
+✓ round trip in 214 ms
+  transcript: (empty) — expected from silence, and the empty answer still proves the pipeline.
+```
+
+An **empty transcript is a pass** — silence transcribes to nothing, and the round trip is what was
+being proved. If it fails, the error names its kind (auth, endpoint, response shape). Then reload
+Collie on the phone: a microphone sits beside the message box. `collie stt status` says what is
+configured and *where each setting came from* (the file, or an environment variable that outranks
+it); `collie stt off` removes `stt.json` and the button is gone again, no restart either way.
+
+### Zero-egress — point it at your own engine
+
+The reason `openai-compatible` is the provider to reach for: give it a local base URL and **no room
+audio ever leaves the host**. Two engines serve an OpenAI-compatible transcription endpoint —
+[**whisper.cpp**](https://github.com/ggml-org/whisper.cpp)'s bundled `server`, and
+[**mudler/parakeet.cpp**](https://github.com/mudler/parakeet.cpp) (MIT). Build or install either by
+its own instructions, run it on loopback, and point `--url` at it:
+
+```bash
+bin/collie stt setup --provider openai-compatible --url http://127.0.0.1:8080/v1
+```
+
+That is the whole integration — Collie has no opinion about which engine answers.
+
+### The codex provider — what you are accepting
+
+`collie stt setup --provider codex` prints a consent block and stops until you type `yes`, because
+the honest sentence is this: recordings go to an **undocumented, unsupported ChatGPT endpoint**
+authorised by *your* sign-in, so your ChatGPT account carries the rate-limit and ban exposure, and it
+may break without notice.
+
+Collie asks that endpoint **under its own name first**. Only if the honest identity is refused does
+it fall back to the Codex CLI's headers — and that fallback is written into the config, in a word
+`collie stt status` reads back to you. Collie never reads or stores `~/.codex/auth.json`; the binary
+you already trust stays the only thing that touches it.
+
+The reasoning for all of the above — why this was declined twice, what changed, and why the seam
+looks like this — is [ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md).
 
 ## Web Push (optional)
 
