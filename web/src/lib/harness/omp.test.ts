@@ -27,6 +27,9 @@ const allOmpFixtures = readdirSync(PANES_DIR)
 const allClaudeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
   .sort();
+const allGrokFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
+  .sort();
 
 // Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
 // can draw (omp's tool-approval dialog, in particular, was never captured; see omp/index.ts). These
@@ -80,7 +83,7 @@ const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.includes(f));
 
 describeAdapterConformance(ompAdapter, {
   ownFixtures,
-  foreignFixtures: allClaudeFixtures,
+  foreignFixtures: [...allClaudeFixtures, ...allGrokFixtures],
   neutralFixtures,
 });
 

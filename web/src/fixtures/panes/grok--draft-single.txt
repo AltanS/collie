@@ -1,0 +1,8 @@
+Sandbox pane — a stranded one-line draft sits in the composer.
+
+  ╭────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ testing stuff                                                                    │
+  ╰─────────────────────────────────────────────────────────── Grok 4.6 (high) · auto ─╯
+
+  Shift+Tab:mode  │  Ctrl+.:shortcuts
+

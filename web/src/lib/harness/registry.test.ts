@@ -13,12 +13,23 @@ describe("hasBlockGrammar", () => {
   it("is true for every registered adapter", () => {
     expect(hasBlockGrammar("claude")).toBe(true);
     expect(hasBlockGrammar("omp")).toBe(true);
+    expect(hasBlockGrammar("grok")).toBe(true);
   });
 
   it("is false for every unregistered agent (no adapter ⇒ raw mirror)", () => {
     for (const agent of ["codex", "opencode", "pi", "shell", "unknown"]) {
       expect(hasBlockGrammar(agent)).toBe(false);
     }
+  });
+
+  // #99: prefix-matching in adapterFor is how Claude's (and later Grok's) live
+  // keystroke recipes would attach to a foreign agent string. Catalog folding of `grok-build` is
+  // canonicalAgent's job; the harness registry stays exact.
+  it("does not prefix-match — grok-build / GROK are not the grok adapter", () => {
+    expect(adapterFor("grok-build")).toBeUndefined();
+    expect(adapterFor("GROK")).toBeUndefined();
+    expect(hasBlockGrammar("grok-build")).toBe(false);
+    expect(adapterFor("grok")?.agent).toBe("grok");
   });
 
   it("is false for an absent agent", () => {

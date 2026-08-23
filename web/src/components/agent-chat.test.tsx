@@ -400,6 +400,25 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
     // …and the input box itself is preserved verbatim (no chrome stripping for a non-Claude agent).
     expect(screen.getByText(/❯/)).toBeInTheDocument();
   });
+
+  it("strips Grok's composer box and hoists the bottom-border status into the app strip", () => {
+    const grokBox = [
+      "Sandbox transcript",
+      "",
+      `  ╭${"─".repeat(60)}╮`,
+      "  │ ❯ testing stuff                                                     │",
+      `  ╰${"─".repeat(28)} Local Llama (xhigh) · plan ─╯`,
+      "",
+      "  Shift+Tab:mode  │  Ctrl+.:shortcuts",
+    ].join("\n");
+    const grokAgent = { ...codexAgent, agent: "grok", paneId: "w9:p5" };
+    renderChat({ text: grokBox, agent: grokAgent });
+    const strip = screen.getByText("Local Llama (xhigh) · plan");
+    expect(strip.closest("pre")).toBeNull();
+    expect(strip.textContent).toBe("Local Llama (xhigh) · plan");
+    expect(screen.queryByText(/Shift\+Tab:mode/)).toBeNull();
+    expect(screen.queryByText("╭")).toBeNull();
+  });
 });
 
 // Regression (user-reported on mobile): tapping a native prompt/wizard/preview option button popped
