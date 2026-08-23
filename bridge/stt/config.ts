@@ -29,12 +29,25 @@ export const STT_FILENAME = "stt.json";
 /** Collie's default model once an OpenAI-compatible endpoint is configured. */
 export const DEFAULT_STT_MODEL = "gpt-4o-transcribe";
 
-/**
- * The provider names this bridge can build. A one-member union today; the codex provider slots in
- * beside it without the file shape or this reader changing.
- */
-export const STT_PROVIDERS = ["openai-compatible"] as const;
+/** The provider names this bridge can build. */
+export const STT_PROVIDERS = ["openai-compatible", "codex"] as const;
 export type SttProviderName = (typeof STT_PROVIDERS)[number];
+
+/** The binary the codex provider borrows its auth from, when the operator names no other. */
+export const DEFAULT_CODEX_BIN = "codex";
+
+/**
+ * Which identity the codex provider wears on the wire (ADR 0029).
+ *
+ *  - `honest`   — `User-Agent: Collie/<version>` and NO `originator` header. Always tried first.
+ *  - `codex-cli` — the Codex CLI's own headers, verbatim. Only ever reached because
+ *    `collie stt setup` probed the endpoint, found `honest` refused, and WROTE this word into
+ *    `stt.json` where the operator can read it back. It is never a default and never inferred at
+ *    request time — the whole difference between this provider and the one that was declined is
+ *    that the impersonation is a recorded, readable choice.
+ */
+export const STT_WIRE_IDENTITIES = ["honest", "codex-cli"] as const;
+export type SttWireIdentity = (typeof STT_WIRE_IDENTITIES)[number];
 
 /** One configured OpenAI-compatible endpoint. */
 export interface OpenAiSttSettings {
@@ -54,14 +67,35 @@ export interface OpenAiSttSettings {
   apiKey?: string;
 }
 
-/** Everything a resolved provider can be. A union of exactly one, for now. */
-export type SttSettings = OpenAiSttSettings;
+/**
+ * The codex provider, configured.
+ *
+ * It holds NO credential of its own — that is the point of it. Everything here is about which
+ * binary to borrow the operator's ChatGPT session from and what to say about ourselves while using
+ * it; the token is fetched per use, lives in memory, and is never written anywhere.
+ */
+export interface CodexSttSettings {
+  provider: "codex";
+  /**
+   * The `codex` binary to spawn `app-server` from. Always resolved; {@link DEFAULT_CODEX_BIN} when
+   * unstated, which is a bare name and therefore resolved from the service's own `PATH`.
+   */
+  codexBin: string;
+  /** Always resolved; `honest` when unstated. See {@link STT_WIRE_IDENTITIES}. */
+  wireIdentity: SttWireIdentity;
+}
+
+/** Everything a resolved provider can be. */
+export type SttSettings = OpenAiSttSettings | CodexSttSettings;
 
 /** The environment keys this module reads. Named once so the CLI and the docs can cite them. */
 export const STT_ENV_KEYS = {
+  provider: "COLLIE_STT_PROVIDER",
   url: "COLLIE_STT_URL",
   model: "COLLIE_STT_MODEL",
   key: "COLLIE_STT_KEY",
+  codexBin: "COLLIE_CODEX_BIN",
+  wireIdentity: "COLLIE_STT_WIRE_IDENTITY",
 } as const;
 
 /** The path `stt.json` sits at, given the bridge's state dir. */
@@ -75,6 +109,8 @@ interface RawSettings {
   baseUrl?: string;
   model?: string;
   apiKey?: string;
+  codexBin?: string;
+  wireIdentity?: string;
 }
 
 /** A trimmed string, or undefined when the value is absent, not a string, or blank. */
@@ -98,15 +134,20 @@ export function coerceSttFile(raw: JsonValue | undefined): RawSettings {
     baseUrl: optionalString(o.baseUrl),
     model: optionalString(o.model),
     apiKey: optionalString(o.apiKey),
+    codexBin: optionalString(o.codexBin),
+    wireIdentity: optionalString(o.wireIdentity),
   };
 }
 
-/** The environment's half of the settings — the same three fields, none of them required. */
+/** The environment's half of the settings — the same fields, none of them required. */
 export function sttEnvSettings(env: Record<string, string | undefined>): RawSettings {
   return {
+    provider: optionalString(env[STT_ENV_KEYS.provider]),
     baseUrl: optionalString(env[STT_ENV_KEYS.url]),
     model: optionalString(env[STT_ENV_KEYS.model]),
     apiKey: optionalString(env[STT_ENV_KEYS.key]),
+    codexBin: optionalString(env[STT_ENV_KEYS.codexBin]),
+    wireIdentity: optionalString(env[STT_ENV_KEYS.wireIdentity]),
   };
 }
 
@@ -141,19 +182,30 @@ export function resolveSttSettings(
   env: RawSettings,
   warn: (message: string) => void,
 ): SttSettings | null {
-  const provider = file.provider ?? "openai-compatible";
+  const named = env.provider ?? file.provider;
+  const provider = named ?? "openai-compatible";
   const baseUrl = env.baseUrl ?? file.baseUrl;
   const model = env.model ?? file.model;
   const apiKey = env.apiKey ?? file.apiKey;
+  const codexBin = env.codexBin ?? file.codexBin;
+  const wireIdentity = env.wireIdentity ?? file.wireIdentity;
 
   // Nothing was configured at all — the ordinary case, and not something to warn about.
-  if (baseUrl === undefined && model === undefined && apiKey === undefined && file.provider === undefined) {
+  if (
+    named === undefined &&
+    baseUrl === undefined &&
+    model === undefined &&
+    apiKey === undefined &&
+    codexBin === undefined &&
+    wireIdentity === undefined
+  ) {
     return null;
   }
   if (!STT_PROVIDERS.some((known) => known === provider)) {
     warn(`speech-to-text is off: unknown provider "${provider}" (expected ${STT_PROVIDERS.join(", ")})`);
     return null;
   }
+  if (provider === "codex") return resolveCodex(codexBin, wireIdentity, warn);
   if (baseUrl === undefined) {
     warn(`speech-to-text is off: no endpoint configured (set ${STT_ENV_KEYS.url} or "baseUrl" in ${STT_FILENAME})`);
     return null;
@@ -182,6 +234,36 @@ export function resolveSttSettings(
   // of the field rather than a present-and-empty one the provider could send as a bearer token.
   if (apiKey !== undefined) settings.apiKey = apiKey;
   return settings;
+}
+
+/**
+ * The codex provider's half of the resolve. It needs nothing at all — naming the provider is the
+ * whole configuration, because the credential belongs to the operator's `codex` login and the
+ * endpoint is not theirs to choose.
+ *
+ * An unreadable `wireIdentity` is a refusal rather than a fall back to `honest`: this field is the
+ * operator's recorded consent to impersonate, and quietly reinterpreting a word nobody recognises
+ * would be a decision made on their behalf in exactly the way ADR 0029 refuses.
+ */
+function resolveCodex(
+  codexBin: string | undefined,
+  wireIdentity: string | undefined,
+  warn: (message: string) => void,
+): CodexSttSettings | null {
+  if (wireIdentity !== undefined && !STT_WIRE_IDENTITIES.some((known) => known === wireIdentity)) {
+    warn(
+      `speech-to-text is off: unknown wire identity "${wireIdentity}" ` +
+        `(expected ${STT_WIRE_IDENTITIES.join(", ")}) — run \`collie stt setup\` to probe for it`,
+    );
+    return null;
+  }
+  return {
+    provider: "codex",
+    codexBin: codexBin ?? DEFAULT_CODEX_BIN,
+    // SAFETY: the guard above proves this string is one of STT_WIRE_IDENTITIES; `undefined` took the
+    // documented default before the assertion is reached.
+    wireIdentity: (wireIdentity ?? "honest") as SttWireIdentity,
+  };
 }
 
 /**

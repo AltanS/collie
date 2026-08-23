@@ -56,6 +56,16 @@ export interface SttProvider {
   status(): Promise<SttStatus>;
   /** Transcribe one completed recording. Throws {@link SttError} on every failure. */
   transcribe(input: SttAudio): Promise<SttResult>;
+  /**
+   * Let go of whatever this provider is holding open — OPTIONAL, and absent on a provider that is
+   * nothing but a `fetch`.
+   *
+   * It exists for the codex provider, whose auth broker owns a long-running `codex app-server`
+   * child. The gate calls it when the settings change under it and once at shutdown, so a config
+   * edit replaces the child rather than accumulating one per edit. It must be safe to call twice
+   * and safe to call on a provider that never started anything.
+   */
+  close?(): void;
 }
 
 /**
