@@ -20,6 +20,8 @@
 //   2. EXACT AGENT STRING. Register `agent: "grok"` only. Prefix-matching in `adapterFor` was the
 //      other #99 reject: it widened claude/omp to any string with those prefixes. Catalog variant
 //      folding (`grok-build` → grok slash palette) lives in `canonicalAgent`, never here.
+//      Herdr reports `agent: "grok"` — live-checked 2026-08-23 against `herdr agent` kinds and
+//      every Grok Build pane on the capture host (kind list, pane.agent, agent_session.agent).
 //
 // Permission and ask cards REPLACE the composer. Plan approval LEAVES a composer; composerReady
 // is false because detectPlanMenu claims the screen. Option 1 on a permission card is

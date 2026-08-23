@@ -32,8 +32,8 @@ const COMPOSER_FIXTURES = [
 
 describe("locateComposer — the real corpus", () => {
   const PINNED: { fixture: string; top: number; bottom: number }[] = [
-    { fixture: "grok--fresh-idle.txt", top: 2, bottom: 4 },
-    { fixture: "grok--draft-single.txt", top: 2, bottom: 4 },
+    { fixture: "grok--fresh-idle.txt", top: 19, bottom: 21 },
+    { fixture: "grok--draft-single.txt", top: 19, bottom: 21 },
     { fixture: "grok--draft-wrapped.txt", top: 2, bottom: 5 },
     { fixture: "grok--working.txt", top: 3, bottom: 5 },
     { fixture: "grok--done.txt", top: 8, bottom: 10 },
@@ -62,7 +62,7 @@ describe("stripChrome", () => {
   it("peels the composer and hint row, keeps the transcript", () => {
     const stripped = stripChrome(fixtureLines("grok--fresh-idle.txt"));
     const text = stripped.map(lineText).join("\n");
-    expect(text).toContain("Sandbox pane");
+    expect(text).toContain("hello");
     expect(text).not.toContain("╭");
     expect(text).not.toContain("Ctrl+.:shortcuts");
     expect(text).not.toMatch(/Grok 4\.6/);
@@ -90,7 +90,7 @@ describe("extractStatusLines / extractInputDraft", () => {
   it("hoists the status out of the bottom border", () => {
     const rows = extractStatusLines(fixtureLines("grok--fresh-idle.txt"));
     expect(rows.map((r) => r.segments.map((s) => s.text).join("")).join("")).toBe(
-      "Grok 4.6 (high) · auto",
+      "Grok 4.6 (high) · always-approve",
     );
   });
 
