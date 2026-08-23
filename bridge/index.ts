@@ -28,6 +28,7 @@ import { ZELLIJ_BINARY_OPTION } from "./mux/zellij/adapter.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
+import { createSttGate } from "./stt/index.ts";
 import { runBootGate } from "./pack/boot-gate.ts";
 import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
 import { deposedAnswer, deposedStateFrom, outcomeNow, selfHeal, type DeposedState } from "./pack/deposed.ts";
@@ -416,6 +417,15 @@ await notifyPrefs.load();
 // `collie devices revoke` land on the RUNNING service without the restart every other backend change
 // needs. An empty registry — the state every existing install starts in — enforces nothing.
 const pairing = new PairingStore(filePairingIo(cfg.stateDir));
+
+// Speech-to-text (bridge/stt/). Constructed unconditionally and holding no settings of its own, for
+// exactly pairing's reason: it re-reads `<stateDir>/stt.json` per request (cached on mtime) and the
+// environment on top of it, so `collie stt setup` lands on the RUNNING service. No provider
+// resolving — the state every existing install is in — is the feature being off.
+const stt = createSttGate({
+  stateDir: cfg.stateDir,
+  warn: (message) => console.warn(`[stt] ${message}`),
+});
 
 // When each pane last moved, and when you last looked at it — the two numbers the dashboard sorts
 // and triages by (see activity.ts). Process-global and keyed by session name, because pane ids are
@@ -1140,6 +1150,7 @@ const server = startServer({
   activity,
   pack,
   pairing,
+  stt,
   packLead,
   peerNotifier,
   // Registered on the EXISTENCE of a trust store, not on the mode: a lead answering its very first

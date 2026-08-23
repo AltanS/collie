@@ -39,6 +39,8 @@ import { packDeviceOf, packGate } from "./pack/peer-gate.ts";
 import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
 import type { PackHandler, PackSurface } from "./pack/router.ts";
 import type { PackTlsOptions } from "./pack/transport.ts";
+import { createSttAdmission, sttCapability, transcribeRequest } from "./stt/http.ts";
+import type { SttProvider } from "./stt/provider.ts";
 import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
 import { MUX_LOGO_PATH, toPaneWire } from "./types.ts";
 import type {
@@ -53,6 +55,7 @@ import type {
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
+  SttCapability,
   UploadResponse,
 } from "./types.ts";
 
@@ -288,6 +291,11 @@ export function bridgeConfigBody(opts: {
   operatorCommands?: readonly OperatorCommand[];
   /** The operator's own Keys-tray rows. Same omit-when-empty rule as `operatorCommands`. */
   operatorKeys?: readonly OperatorKeyRow[];
+  /**
+   * Speech-to-text, when a provider resolved. Omitted entirely otherwise — an operator who
+   * configured none ships the same payload as before, the same rule `mode` follows.
+   */
+  stt?: SttCapability;
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
   const mine = opts.operatorCommands ?? [];
@@ -307,6 +315,9 @@ export function bridgeConfigBody(opts: {
   // phone (an older bridge, read as fully capable), so a Herdr bridge staying silent here would be
   // indistinguishable from one that cannot answer.
   if (opts.mux !== undefined) wire.mux = muxConfigBody(opts.mux);
+  // Appended after the mux block, and omit-when-absent for the reason `mode` is: no key means no
+  // microphone, which is precisely true of a collie with no provider configured.
+  if (opts.stt !== undefined) wire.stt = opts.stt;
   return wire;
 }
 
@@ -386,9 +397,23 @@ export function startServer(opts: {
    * `bridge/pack/standby-devices.ts`.
    */
   pairing?: PairingStore;
+  /**
+   * Speech-to-text, asked for per request rather than resolved once.
+   *
+   * A FUNCTION, not a provider, because the settings behind it are re-read behind an mtime check
+   * (`bridge/stt/config.ts`) — `collie stt setup` must go live without a `systemctl restart`, the
+   * same posture `commands.toml` has. `null` from it is the feature being off, which is also the
+   * whole of what makes this optional here: an instance that never calls it registers the route and
+   * answers 503, and one that was never given it does the same.
+   */
+  stt?: () => Promise<SttProvider | null>;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, pack } = opts;
   const pairing = opts.pairing;
+  const stt = opts.stt ?? (async () => null);
+  // One gate per Bun server, not per request: two slow uploads and their two provider calls share
+  // the same bounded process-local capacity (bridge/stt/http.ts).
+  const sttAdmission = createSttAdmission();
   /** Who the requester is, across both device gates — see {@link requestDevice}. */
   const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairing);
   const packLead = opts.packLead;
@@ -747,6 +772,10 @@ export function startServer(opts: {
         // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
         // eagerly in the constructor and never disposed.
         const activeMux = registry.get();
+        // Re-resolved per request for the same reason `commands.toml` is: `collie stt setup` is
+        // live, and this is where the phone learns whether to draw a microphone at all. `?? undefined`
+        // because "no provider" must OMIT the key, never send a null one (PACK_PROTOCOL.md §11).
+        const sttWire = (await sttCapability(await stt())) ?? undefined;
         return json(
           bridgeConfigBody({
             push: push.enabled,
@@ -756,6 +785,7 @@ export function startServer(opts: {
             operatorCommands: mine,
             operatorKeys: myKeys,
             mux: activeMux?.herdr,
+            stt: sttWire,
           }),
           req.headers.get("accept-encoding"),
         );
@@ -865,6 +895,23 @@ export function startServer(opts: {
         if (denied) return denied;
         await updateMonitor.checkRelease();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
+      }
+
+      // ── Speech-to-text (bridge/stt/) ─────────────────────────────────────
+      if (pathname === "/api/stt" && req.method === "POST") {
+        // WRITE-gated, exactly like typing into a pane — and for the same reason. This route's whole
+        // purpose is to put words in the composer, and the audio leaves the host for an
+        // operator-configured endpoint. A read-only device watches; it does not speak.
+        const denied = guard(req, cfg, "write", pairing);
+        if (denied) return denied;
+        // Deliberately NOT session- or pane-scoped: the transcript is text handed back to the
+        // phone, which then decides what to do with it. Nothing here touches a terminal, so there is
+        // no pane to attribute it to and no `x-collie-seen` meaning to claim.
+        const { response, attempt } = await transcribeRequest(await stt(), req, sttAdmission);
+        // One line per attempt, and route metadata only: the recording, the transcript and the
+        // provider's own words never reach the audit log.
+        audit.record({ action: "stt", device: whois(req).device, detail: { ...attempt } });
+        return secure(response);
       }
 
       // ── Device pairing (bridge/pairing.ts) ───────────────────────────────

@@ -509,6 +509,10 @@ describe("solo zero-tax — routes", () => {
       "/api/notifications/snooze",
       "/api/pair",
       "/api/snapshot",
+      // Speech-to-text (bridge/stt/) — a SOLO feature that legitimately extends this list, named
+      // here rather than exempted, exactly as device pairing is. It is off until an operator
+      // configures a provider, and it registers no pack route.
+      "/api/stt",
       "/api/subscribe",
       "/api/tab",
       "/api/update/check",
@@ -669,6 +673,9 @@ const STATE_DIR_ENTRIES = [
   "pairing-pending.json",
   "push-subscriptions.json",
   "snooze.json",
+  // Speech-to-text settings. Absent until the operator runs `collie stt setup`, and READ ONLY by
+  // the bridge — `bridge/stt/config.ts` names this path and never writes it.
+  "stt.json",
   "update-state.json",
   "uploads",
 ];
