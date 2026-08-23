@@ -1,7 +1,6 @@
-import type { JsonValue } from "../json.ts";
 import type { OpenAiSttSettings } from "./config.ts";
-import { jsonRecord, jsonStringField } from "./json.ts";
 import { SttError, type SttAudio, type SttProvider, type SttResult, type SttStatus } from "./provider.ts";
+import { MAX_PROVIDER_RESPONSE_BYTES, parseTranscript, readCapped } from "./transcript.ts";
 
 // ── THE OPENAI-COMPATIBLE PROVIDER ───────────────────────────────────────────────────────────
 //
@@ -26,8 +25,8 @@ import { SttError, type SttAudio, type SttProvider, type SttResult, type SttStat
 /** The whole-call deadline, headers and body together. */
 export const STT_TIMEOUT_MS = 60_000;
 
-/** How much of a provider response Collie will buffer. A transcript is text; this is generous. */
-export const MAX_PROVIDER_RESPONSE_BYTES = 256 * 1024;
+/** Re-exported so a reader of this provider sees the cap it claims above without a second hop. */
+export { MAX_PROVIDER_RESPONSE_BYTES };
 
 /** The `fetch` this provider dials through. Injected so the unit tests never open a socket. */
 export type FetchFn = (input: string, init: RequestInit) => Promise<Response>;
@@ -104,68 +103,4 @@ export function createOpenAiSttProvider(
       }
     },
   };
-}
-
-/**
- * The response body as text, refused the moment it passes the cap.
- *
- * Read through the stream rather than `response.text()` so an endpoint that promises 40 bytes and
- * sends 4 GB is cut off at 256 KiB instead of being buffered whole and measured afterwards.
- */
-async function readCapped(response: Response): Promise<string> {
-  if (response.body === null) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value === undefined) continue;
-      total += value.byteLength;
-      if (total > MAX_PROVIDER_RESPONSE_BYTES) throw new SttError("oversized");
-      chunks.push(value);
-    }
-  } finally {
-    await reader.cancel().catch(() => {
-      /* the stream is already done or already errored — nothing left to release */
-    });
-  }
-  const joined = new Uint8Array(total);
-  let at = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return new TextDecoder().decode(joined);
-}
-
-/**
- * The transcript inside a `{"text": "…"}` body.
- *
- * A body that is not that shape is a `refused`, not a crash: an endpoint claiming to be
- * OpenAI-compatible and answering something else has failed the contract, and saying so is more
- * useful than surfacing whatever it did send.
- */
-function parseTranscript(body: string): string {
-  let parsed: JsonValue;
-  try {
-    // SAFETY: `JSON.parse` output IS a JsonValue by construction, and `jsonStringField` is the only
-    // reader of it below — the `text` field is checked before a byte of it is believed.
-    parsed = JSON.parse(body) as JsonValue;
-  } catch {
-    throw new SttError("refused", "the transcription service answered with something that is not JSON");
-  }
-  const text = readTextField(parsed);
-  if (text === null) {
-    throw new SttError("refused", "the transcription service answered without a transcript");
-  }
-  return text;
-}
-
-/** The `text` field of a parsed body, or null when the body has no usable one. */
-function readTextField(parsed: JsonValue): string | null {
-  const record = jsonRecord(parsed);
-  if (record === null) return null;
-  return jsonStringField(record.text);
 }

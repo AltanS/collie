@@ -1228,6 +1228,9 @@ const shutdown = async () => {
   await server.stop();
   clearInterval(refreshTimer);
   registry.disposeAll();
+  // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
+  // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.
+  stt.close();
   // Writes are debounced, so the last few seconds of "you looked at this" live only in memory —
   // persist them before exiting, or every restart quietly resurrects alerts you'd already cleared.
   activity.stop();

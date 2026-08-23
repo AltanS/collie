@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import type { OperatorFileIo } from "../operator-file.ts";
+import type { OpenAiSttSettings, SttSettings } from "./config.ts";
 import {
+  DEFAULT_CODEX_BIN,
   DEFAULT_STT_MODEL,
   STT_FILENAME,
   coerceSttFile,
@@ -16,6 +18,19 @@ import {
 // injected {@link OperatorFileIo}, which is the same seam the operator TOML readers use.
 
 const NO_ENV = {};
+
+/**
+ * The openai-compatible arm of the union, asserted rather than assumed.
+ *
+ * The resolver became a two-provider switch when the codex provider landed, so a test that means to
+ * read `baseUrl` now has to say which arm it expected — and fails loudly on the wrong one instead of
+ * reading `undefined`.
+ */
+function openAi(settings: SttSettings | null): OpenAiSttSettings {
+  expect(settings?.provider).toBe("openai-compatible");
+  // SAFETY: the assertion above has already failed the test if this is anything but that arm.
+  return settings as OpenAiSttSettings;
+}
 
 /** Collect the warnings a resolve emitted, so a refusal can be asserted as a refusal-with-a-reason. */
 function collectWarnings() {
@@ -54,7 +69,7 @@ describe("stt settings — the file", () => {
       warn,
     );
 
-    expect(settings?.model).toBe(DEFAULT_STT_MODEL);
+    expect(openAi(settings).model).toBe(DEFAULT_STT_MODEL);
   });
 
   test("a keyless self-hosted endpoint is a supported mode — the field is ABSENT, not empty", () => {
@@ -78,7 +93,7 @@ describe("stt settings — the file", () => {
       warn,
     );
 
-    expect(settings?.baseUrl).toBe("http://127.0.0.1:9000/v1");
+    expect(openAi(settings).baseUrl).toBe("http://127.0.0.1:9000/v1");
   });
 
   test("configuring nothing is off, in silence", () => {
@@ -151,6 +166,103 @@ describe("stt settings — invalid shapes refuse loudly and stay off", () => {
   });
 });
 
+describe("stt settings — the codex provider", () => {
+  test("naming the provider is the whole configuration; the rest has defaults", () => {
+    const { warn, lines } = collectWarnings();
+    const settings = resolveSttSettings(coerceSttFile({ provider: "codex" }), sttEnvSettings(NO_ENV), warn);
+
+    expect(settings).toEqual({ provider: "codex", codexBin: DEFAULT_CODEX_BIN, wireIdentity: "honest" });
+    expect(lines).toEqual([]);
+  });
+
+  test("the environment alone switches provider, with no file at all", () => {
+    const { warn, lines } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile(undefined),
+      sttEnvSettings({ COLLIE_STT_PROVIDER: "codex" }),
+      warn,
+    );
+
+    expect(settings?.provider).toBe("codex");
+    expect(lines).toEqual([]);
+  });
+
+  test("the binary and the recorded identity are read from the file", () => {
+    const { warn } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ provider: "codex", codexBin: "/opt/codex/bin/codex", wireIdentity: "codex-cli" }),
+      sttEnvSettings(NO_ENV),
+      warn,
+    );
+
+    expect(settings).toEqual({
+      provider: "codex",
+      codexBin: "/opt/codex/bin/codex",
+      wireIdentity: "codex-cli",
+    });
+  });
+
+  test("each codex env key overrides its file field", () => {
+    const { warn } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ provider: "codex", codexBin: "old-codex", wireIdentity: "honest" }),
+      sttEnvSettings({ COLLIE_CODEX_BIN: "new-codex", COLLIE_STT_WIRE_IDENTITY: "codex-cli" }),
+      warn,
+    );
+
+    expect(settings).toEqual({ provider: "codex", codexBin: "new-codex", wireIdentity: "codex-cli" });
+  });
+
+  test("the environment can switch a codex file BACK to openai-compatible", () => {
+    const { warn } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ provider: "codex" }),
+      sttEnvSettings({ COLLIE_STT_PROVIDER: "openai-compatible", COLLIE_STT_URL: "http://127.0.0.1:9000/v1" }),
+      warn,
+    );
+
+    expect(settings?.provider).toBe("openai-compatible");
+  });
+
+  test("an unreadable wire identity is refused, never quietly read as honest", () => {
+    const { warn, lines } = collectWarnings();
+    expect(
+      resolveSttSettings(
+        coerceSttFile({ provider: "codex", wireIdentity: "chrome" }),
+        sttEnvSettings(NO_ENV),
+        warn,
+      ),
+    ).toBeNull();
+    expect(lines.join(" ")).toContain("chrome");
+    expect(lines.join(" ")).toContain("collie stt setup");
+  });
+
+  test("naming the binary alone is enough to configure the feature", () => {
+    const { warn, lines } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ codexBin: "/opt/codex/bin/codex" }),
+      sttEnvSettings(NO_ENV),
+      warn,
+    );
+
+    // No provider was named, so the default one applies — and it needs an endpoint it has not got.
+    expect(settings).toBeNull();
+    expect(lines.join(" ")).toContain("no endpoint configured");
+  });
+
+  test("an endpoint left over from the other provider is ignored, not an error", () => {
+    const { warn, lines } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ provider: "codex", baseUrl: "https://api.openai.com/v1", apiKey: "sk-old" }),
+      sttEnvSettings(NO_ENV),
+      warn,
+    );
+
+    expect(settings).toEqual({ provider: "codex", codexBin: DEFAULT_CODEX_BIN, wireIdentity: "honest" });
+    expect(lines).toEqual([]);
+  });
+});
+
 describe("stt settings — the environment wins, field by field", () => {
   test("each env key overrides its file field and leaves the others alone", () => {
     const { warn } = collectWarnings();
@@ -192,7 +304,7 @@ describe("stt settings — the environment wins, field by field", () => {
       warn,
     );
 
-    expect(settings?.baseUrl).toBe("http://kept:1/v1");
+    expect(openAi(settings).baseUrl).toBe("http://kept:1/v1");
   });
 });
 
@@ -235,13 +347,13 @@ describe("stt settings — the reader re-reads behind an mtime check", () => {
     const read = createSttSettingsReader({ stateDir: "/s", io, warn, env: NO_ENV });
 
     io.text = JSON.stringify({ baseUrl: "http://one:1/v1" });
-    expect((await read())?.baseUrl).toBe("http://one:1/v1");
+    expect(openAi(await read()).baseUrl).toBe("http://one:1/v1");
     expect(await read()).toEqual((await read())!);
     expect(io.reads).toBe(1);
 
     io.text = JSON.stringify({ baseUrl: "http://two:2/v1" });
     io.mtime_ = 2;
-    expect((await read())?.baseUrl).toBe("http://two:2/v1");
+    expect(openAi(await read()).baseUrl).toBe("http://two:2/v1");
     expect(io.reads).toBe(2);
   });
 
@@ -251,12 +363,12 @@ describe("stt settings — the reader re-reads behind an mtime check", () => {
     const read = createSttSettingsReader({ stateDir: "/s", io, warn, env: NO_ENV });
 
     io.text = JSON.stringify({ baseUrl: "http://good:1/v1" });
-    expect((await read())?.baseUrl).toBe("http://good:1/v1");
+    expect(openAi(await read()).baseUrl).toBe("http://good:1/v1");
 
     io.text = "{ this is not json";
     io.mtime_ = 2;
-    expect((await read())?.baseUrl).toBe("http://good:1/v1");
-    expect((await read())?.baseUrl).toBe("http://good:1/v1");
+    expect(openAi(await read()).baseUrl).toBe("http://good:1/v1");
+    expect(openAi(await read()).baseUrl).toBe("http://good:1/v1");
     expect(lines.filter((l) => l.includes("could not be parsed"))).toHaveLength(1);
   });
 
@@ -267,9 +379,9 @@ describe("stt settings — the reader re-reads behind an mtime check", () => {
     const read = createSttSettingsReader({ stateDir: "/s", io, warn, env });
 
     io.text = JSON.stringify({ baseUrl: "http://file:1/v1" });
-    expect((await read())?.baseUrl).toBe("http://file:1/v1");
+    expect(openAi(await read()).baseUrl).toBe("http://file:1/v1");
     env.COLLIE_STT_URL = "http://env:2/v1";
-    expect((await read())?.baseUrl).toBe("http://env:2/v1");
+    expect(openAi(await read()).baseUrl).toBe("http://env:2/v1");
     expect(io.reads).toBe(1);
   });
 });
