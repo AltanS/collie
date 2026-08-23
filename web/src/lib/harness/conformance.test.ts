@@ -55,13 +55,16 @@ const allClaudeFixtures = readdirSync(PANES_DIR)
 const allOmpFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
   .sort();
+const allGrokFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
+  .sort();
 
 const ownFixtures = allClaudeFixtures.filter((f) => !NEUTRAL.includes(f));
 const neutralFixtures = allClaudeFixtures.filter((f) => NEUTRAL.includes(f));
 
 describeAdapterConformance(claudeAdapter, {
   ownFixtures,
-  foreignFixtures: allOmpFixtures, // the second adapter's captures — cross-adapter fail-closed
+  foreignFixtures: [...allOmpFixtures, ...allGrokFixtures],
   neutralFixtures,
 });
 

@@ -17,6 +17,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { loadConfig } from "../bridge/config.ts";
+import { isGrokSessionId } from "../bridge/journal/grok.ts";
 import { buildJournalRegistry } from "../bridge/journal/registry.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "../bridge/journal/types.ts";
 
@@ -63,22 +64,33 @@ const MAX_CANDIDATES = 12;
  * Rebuild the session ref Herdr would have reported for this log, per harness.
  *
  * This is the part worth probing: each adapter's resolve() is a different strategy (Claude scans flat
- * project dirs, Codex walks date partitions, pi takes the path straight), and each derives from a
- * differently-shaped filename.
+ * project dirs, Codex walks date partitions, pi takes the path straight, Grok names the session
+ * directory and keeps a fixed `chat_history.jsonl`), and each derives from a differently-shaped path.
+ *
+ * Exported so the Grok parent-dir case has a regression test — a filename-only UUID walk reports
+ * "no logs found" for every real Grok session.
  */
-function refFor(agent: string, path: string): AgentSessionRef | null {
+export function refFor(agent: string, path: string): AgentSessionRef | null {
+  if (agent === "pi") return { kind: "path", value: path };
+  if (agent === "grok") {
+    const slash = path.lastIndexOf("/");
+    if (slash <= 0) return null;
+    const dir = path.slice(0, slash);
+    const id = dir.slice(dir.lastIndexOf("/") + 1);
+    return isGrokSessionId(id) ? { kind: "id", value: id } : null;
+  }
   const file = path.slice(path.lastIndexOf("/") + 1).replace(/\.jsonl$/, "");
   const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(file)?.[0];
-  if (agent === "pi") return { kind: "path", value: path };
   return uuid ? { kind: "id", value: uuid } : null;
 }
 
 /**
  * Candidate session refs for one harness, newest first.
  *
- * Two shapes of storage, so two strategies: the file-backed harnesses (claude/codex/pi) name their
- * sessions in `.jsonl` FILENAMES, while OpenCode has no per-session file at all — its sessions are
- * rows in `<root>/opencode.db`, which no amount of directory walking will find. Both branches stay
+ * Three shapes of storage, so three strategies: the file-backed harnesses that name sessions in
+ * `.jsonl` FILENAMES (claude/codex/pi), Grok which uses a fixed `chat_history.jsonl` under a
+ * session-uuid directory, and OpenCode which has no per-session file at all — its sessions are rows
+ * in `<root>/opencode.db`, which no amount of directory walking will find. All branches stay
  * read-only and content-free, as this script's header promises: the sqlite branch selects ids only.
  */
 async function candidateRefs(

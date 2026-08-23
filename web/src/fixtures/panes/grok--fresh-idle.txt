@@ -1,0 +1,8 @@
+Sandbox pane — generic transcript above the composer.
+
+  ╭────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                  │
+  ╰─────────────────────────────────────────────────────────── Grok 4.6 (high) · auto ─╯
+
+  Shift+Tab:mode  │  Ctrl+.:shortcuts
+
