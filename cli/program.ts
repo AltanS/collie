@@ -286,7 +286,7 @@ export const COMMANDS: readonly Command[] = [
   lifecycleCommand("serve", "publish the single managed `tailscale serve` front door", (deps) => {
     const code = cmdServe(deps);
     if (code !== EXIT.OK) return code;
-    deps.io.out(`open: ${bridgeUrl(deps.exec, deps.ctx.serveMode, deps.ctx.port)}`);
+    deps.io.out(`open: ${bridgeUrl(deps.exec, deps.ctx)}`);
     return EXIT.OK;
   }),
   lifecycleCommand("unserve", "tear down the front door we published", cmdUnserve),

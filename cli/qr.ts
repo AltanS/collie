@@ -1,7 +1,7 @@
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec } from "./sys.ts";
-import { bridgeUrl, tailnetInboundBlocked } from "./tailnet.ts";
+import { bridgeUrl, configuredPublicUrl, tailnetInboundBlocked } from "./tailnet.ts";
 import { renderQr } from "../scripts/qr.ts";
 
 // `qr` — scan your way onto the bridge instead of typing a MagicDNS name on a phone keyboard.
@@ -23,8 +23,9 @@ export interface QrDeps {
 }
 
 /**
- * The URL to encode, or null with the reason already reported. Two refusals, both because a QR is a
- * promise that scanning it gets you somewhere:
+ * The URL to encode, or null with the reason already reported. `COLLIE_PUBLIC_URL` answers it
+ * outright wherever it is set — see `configuredPublicUrl`. Without one, two refusals, both because
+ * a QR is a promise that scanning it gets you somewhere:
  *
  *  - `COLLIE_SKIP_SERVE=1` with no `COLLIE_PUBLIC_URL` — Collie publishes no front door there
  *    (ADR 0001), so only the operator can say what the ingress URL is;
@@ -32,18 +33,18 @@ export interface QrDeps {
  *    localhost.
  */
 function urlToEncode(deps: QrDeps): string | null {
+  // Named by the operator: encode exactly that, and skip the tailnet probes below — they describe a
+  // front door Collie published, which this URL by definition isn't.
+  const named = configuredPublicUrl(deps.ctx.env);
+  if (named !== null) return named;
   if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
-    const url = deps.ctx.env.COLLIE_PUBLIC_URL?.trim();
-    if (!url) {
-      deps.io.err(
-        "no URL to encode: COLLIE_SKIP_SERVE=1 and COLLIE_PUBLIC_URL is unset — set it to your",
-      );
-      deps.io.err("reverse-proxy URL, or drop COLLIE_SKIP_SERVE to publish the tailnet front door.");
-      return null;
-    }
-    return url;
+    deps.io.err(
+      "no URL to encode: COLLIE_SKIP_SERVE=1 and COLLIE_PUBLIC_URL is unset — set it to your",
+    );
+    deps.io.err("reverse-proxy URL, or drop COLLIE_SKIP_SERVE to publish the tailnet front door.");
+    return null;
   }
-  const url = bridgeUrl(deps.exec, deps.ctx.serveMode, deps.ctx.port);
+  const url = bridgeUrl(deps.exec, deps.ctx);
   if (url.includes("(Tailscale name unavailable)")) {
     deps.io.err("no URL to encode: the tailnet front door isn't up (run 'collie serve')");
     return null;
