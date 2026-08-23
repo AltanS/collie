@@ -1,0 +1,20 @@
+collie-user@collies-macbook-pro-1 tmp.qHRsClGbNh % codex
+
+[0m[2m╭───────────────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.149.0)                            │[0m
+[0m[2m│                                                       │[0m
+[0m[2m│ model:     [0mgpt-5.6-sol high[0m[2m   [0m[38;5;6m/model[0m[2m to change        │[0m
+[0m[2m│ directory: [0m/private/var/folders/r_/…/T/tmp.qHRsClGbNh[0m[2m │[0m
+[0m[2m╰───────────────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m Run [0m[38;5;6mcodex app[0m to open the Desktop app (it installs on macOS if needed).
+
+[0m[38;5;3m⚠ Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this[0m
+  [0m[38;5;3mwarning, set `suppress_unstable_features_warning = true` in /Users/collie-user/.codex/config.toml.[0m
+
+[0m[2m• [0mYou have 1 usage limit reset available. Run /usage to use one.
+ 
+[0m[48;2;65;69;76m                                                                                                                                                                      [0m
+[0m[1m[48;2;65;69;76m›[0m[48;2;65;69;76m hi there                                                                                                                                                            [0m
+[0m[48;2;65;69;76m                                                                                                                                                                      [0m
+  [0m[38;2;246;226;183mgpt-5.6-sol high[0m[2m · [0m[38;2;171;223;167m/private/var/folders/r_/sanitizedtempdirtoken000000000/T/tmp.qHRsClGbNh[0m[2m · [0m[38;2;242;181;144mContext 100% left[0m[2m · [0m[38;2;233;144;169mweekly 88% left[0m
