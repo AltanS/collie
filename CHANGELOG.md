@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.15] - 2026-08-23
+
+### Fixed
+- `url`/`status`/`serve`/`qr` now defer to `COLLIE_PUBLIC_URL` wherever it's set, instead of printing
+  the bare tailnet name when `tailscale serve` isn't on :443 (#122) (c6d6220)
+
 ## [1.0.0-beta.14] - 2026-08-20
 
 **The deputy and the takeover** — a pack can now name a standby peer ahead of time and let the
