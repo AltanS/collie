@@ -94,6 +94,25 @@ describe("status", () => {
     expect(out).toContain("serve: none");
   });
 
+  test("renders stopped when a stale socket remains after the backend stops", async () => {
+    const out = await status(
+      CTX,
+      makeDeps(
+        { [CTX.socketPath]: "stale-socket" },
+        {
+          backend: {
+            kind: "systemd",
+            isActive: async () => false,
+          },
+        },
+      ),
+    );
+
+    expect(out.split("\n")[0]).toBe("stopped");
+    expect(out).toContain("backend: inactive (systemd)");
+    expect(out).toContain("socket: present");
+  });
+
   test("renders no-backend when no backend is injected", async () => {
     const out = await status(CTX, makeDeps());
     expect(out).toContain("no-backend");

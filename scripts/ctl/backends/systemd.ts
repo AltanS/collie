@@ -8,7 +8,7 @@ import {
   bunBinary,
   checkedShell,
   checkoutRoot,
-  logLineCount,
+  tailCommand,
   type BackendFactoryOptions,
   type InstalledServiceBackend,
 } from "./common.ts";
@@ -115,11 +115,8 @@ export function createSystemdBackend(options: SystemdBackendOptions = {}): Insta
       }
     },
 
-    logsCmd(_ctx: Ctx, lines?: number): ShellCommand {
-      return {
-        command: "journalctl",
-        args: ["--user", "-u", unitName, "-n", String(logLineCount(lines)), "--no-pager"],
-      };
+    logsCmd(ctx: Ctx, lines?: number): ShellCommand {
+      return tailCommand(join(ctx.stateDir, "collie.log"), lines);
     },
   });
 }

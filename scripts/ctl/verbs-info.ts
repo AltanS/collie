@@ -185,7 +185,12 @@ export async function status(ctx: CtlCtx, deps: InfoDeps = {}): Promise<string> 
     servePromise,
   ]);
   const backendActive = backendActiveRaw === null ? null : Boolean(backendActiveRaw);
-  const state = resolved.backend === null ? "no-backend" : socketPresent ? "running" : "stopped";
+  const state =
+    resolved.backend === null
+      ? "no-backend"
+      : backendActive && socketPresent
+        ? "running"
+        : "stopped";
   return [
     state,
     `  backend: ${backendLabel(resolved.backend, backendActive)}`,

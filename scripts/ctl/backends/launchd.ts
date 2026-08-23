@@ -13,6 +13,7 @@ import {
   type BackendFactoryOptions,
   type InstalledServiceBackend,
 } from "./common.ts";
+import { unsupervisedBackend } from "./unsupervised.ts";
 
 export const LAUNCHD_AGENT_LABEL = "herdr.collie";
 export const AGENT_LABEL = LAUNCHD_AGENT_LABEL;
@@ -28,6 +29,8 @@ export interface LaunchdBackendOptions extends BackendFactoryOptions {
   label?: string;
   /** Wait between transient bootstrap failures; production waits one second. */
   retryWait?: LaunchdRetryWaiter;
+  /** Process fallback used when the per-user launchd domain cannot bootstrap. */
+  fallback?: InstalledServiceBackend;
 }
 
 interface ResolvedLaunchdOptions {
@@ -37,6 +40,7 @@ interface ResolvedLaunchdOptions {
   uid: string;
   label: string;
   retryWait: LaunchdRetryWaiter;
+  fallback?: InstalledServiceBackend;
 }
 
 interface LaunchdBootstrapOptions {
@@ -54,6 +58,7 @@ function resolvedOptions(options: LaunchdBackendOptions): ResolvedLaunchdOptions
     uid: String(uid),
     label: options.label ?? LAUNCHD_AGENT_LABEL,
     retryWait: options.retryWait ?? ((milliseconds) => Bun.sleep(milliseconds)),
+    fallback: options.fallback,
   };
 }
 
@@ -170,17 +175,26 @@ export function createLaunchdBackend(options: LaunchdBackendOptions = {}): Insta
       // bootout makes start idempotent when an earlier install is still loaded.
       await bestEffortShell(ctx, "launchctl", ["bootout", target]);
       await bestEffortShell(ctx, "launchctl", ["enable", target]);
-      await bootstrapLaunchd(ctx, bootstrapOptions);
+      try {
+        await bootstrapLaunchd(ctx, bootstrapOptions);
+      } catch (error) {
+        if (resolved.fallback === undefined) throw error;
+        const detail = error instanceof Error ? error.message : String(error);
+        ctx.log(`note: launchd bootstrap failed (${detail}); using unsupervised fallback`);
+        await resolved.fallback.start(ctx);
+      }
     },
 
     async stop(ctx: Ctx): Promise<void> {
       // Disable persists across logins; bootout stops the currently loaded agent.
       await bestEffortShell(ctx, "launchctl", ["disable", target]);
       await bestEffortShell(ctx, "launchctl", ["bootout", target]);
+      await resolved.fallback?.stop(ctx);
     },
 
     async uninstall(ctx: Ctx): Promise<void> {
       await rm(agentFile, { force: true });
+      await resolved.fallback?.uninstall?.(ctx);
       // Reset launchd's disabled bit so reinstalling the same label can run at login.
       await bestEffortShell(ctx, "launchctl", ["enable", target]);
     },
@@ -188,12 +202,19 @@ export function createLaunchdBackend(options: LaunchdBackendOptions = {}): Insta
     async isActive(ctx: Ctx): Promise<boolean> {
       try {
         const result = await ctx.shell("launchctl", ["print", target]);
-        if (result.exitCode !== 0) return false;
-        return /(?:^|\n)\s*pid\s*=\s*\d+/i.test(result.stdout)
-          || /(?:^|\n)\s*state\s*=\s*running/i.test(result.stdout);
+        if (
+          result.exitCode === 0 &&
+          (
+            /(?:^|\n)\s*pid\s*=\s*\d+/i.test(result.stdout) ||
+            /(?:^|\n)\s*state\s*=\s*running/i.test(result.stdout)
+          )
+        ) {
+          return true;
+        }
       } catch {
-        return false;
+        // Fall through to the unsupervised process when launchd is unavailable.
       }
+      return await resolved.fallback?.isActive(ctx) ?? false;
     },
 
     logsCmd(_ctx: Ctx, lines?: number): ShellCommand {
@@ -205,6 +226,8 @@ export function createLaunchdBackend(options: LaunchdBackendOptions = {}): Insta
   });
 }
 
-export const launchdBackend = createLaunchdBackend();
+export const launchdBackend = createLaunchdBackend({
+  fallback: unsupervisedBackend,
+});
 export const backend = launchdBackend;
 export default launchdBackend;

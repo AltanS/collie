@@ -163,7 +163,7 @@ describe("Windows Task Scheduler backend", () => {
 });
 
 describe("systemd --user backend", () => {
-  test("writes the unit and preserves enable, stop, reset, and journal commands", async () => {
+  test("writes the unit and preserves enable, stop, reset, and file logs", async () => {
     const home = await temporaryHome();
     try {
       const { ctx, calls } = context();
@@ -179,8 +179,8 @@ describe("systemd --user backend", () => {
       await backend.start(ctx);
       await backend.stop(ctx);
       expect(backend.logsCmd(ctx, 9)).toEqual({
-        command: "journalctl",
-        args: ["--user", "-u", "collie", "-n", "9", "--no-pager"],
+        command: "tail",
+        args: ["-n", "9", join(ctx.stateDir, "collie.log")],
       });
       await backend.uninstall(ctx);
       expect(calls).toEqual([

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Ctx, ShellResult } from "../types.ts";
+import type { InstalledServiceBackend } from "./common.ts";
 import { bunBinary } from "./common.ts";
 import { createLaunchdBackend } from "./launchd.ts";
-import { renderSystemdUnit } from "./systemd.ts";
+import { createSystemdBackend, renderSystemdUnit } from "./systemd.ts";
 import { renderBridgePidQuery } from "./windows.ts";
 
 type Call = { command: string; args: readonly string[] };
@@ -114,6 +115,16 @@ describe("backend regression fixes", () => {
     );
   });
 
+  test("reads systemd bridge logs from the file exec-bridge writes", () => {
+    const { ctx } = context();
+    const command = createSystemdBackend().logsCmd(ctx, 17);
+
+    expect(command).toEqual({
+      command: "tail",
+      args: ["-n", "17", "C:\\Users\\collie\\state\\collie.log"],
+    });
+  });
+
   test("retries transient launchd bootstrap failures three times", async () => {
     // Given: cleanup succeeds, then bootstrap fails twice before succeeding.
     const { ctx, calls } = context([
@@ -163,6 +174,45 @@ describe("backend regression fixes", () => {
     await expect(backend.start(ctx)).rejects.toThrow(finalFailure);
     expect(waits).toEqual([1000, 1000]);
     expect(calls.filter((call) => call.args[0] === "bootstrap")).toHaveLength(3);
+  });
+
+  test("falls back to an unsupervised process after launchd retries are exhausted", async () => {
+    const { ctx } = context([
+      result(),
+      result(),
+      result("", "bootstrap failed first", 5),
+      result("", "bootstrap failed second", 5),
+      result("", "bootstrap failed third", 5),
+    ]);
+    const fallbackCalls: string[] = [];
+    const fallback: InstalledServiceBackend = {
+      async install() {},
+      async start() {
+        fallbackCalls.push("start");
+      },
+      async stop() {
+        fallbackCalls.push("stop");
+      },
+      async uninstall() {
+        fallbackCalls.push("uninstall");
+      },
+      async isActive() {
+        fallbackCalls.push("is-active");
+        return true;
+      },
+      logsCmd() {
+        return { command: "tail", args: [] };
+      },
+    };
+    const backend = createLaunchdBackend({
+      uid: 42,
+      fallback,
+      retryWait: async () => {},
+    });
+
+    await backend.start(ctx);
+
+    expect(fallbackCalls).toEqual(["start"]);
   });
 
   test("does not retry unexpected launchd bootstrap errors", async () => {

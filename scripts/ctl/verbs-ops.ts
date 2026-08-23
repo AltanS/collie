@@ -647,8 +647,10 @@ export async function execBridge(ctx: OpsContext, options: ExecBridgeOptions = {
   const env = await childEnv(ctx, options, {
     HERDR_PLUGIN_CONFIG_DIR: ctx.configDir,
     HERDR_PLUGIN_STATE_DIR: ctx.stateDir,
-    ...(ctx.socketPath ? { HERDR_SOCKET_PATH: ctx.socketPath } : {}),
   });
+  if (!env.HERDR_SOCKET_PATH && ctx.socketPath) {
+    env.HERDR_SOCKET_PATH = ctx.socketPath;
+  }
   const argv = [bunCommand(options), join(root, "bridge", "index.ts")];
   if (options.spawner) {
     const spawned = await options.spawner(argv, { cwd: root, env, stdout: logFile, stderr: logFile });

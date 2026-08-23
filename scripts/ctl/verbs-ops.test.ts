@@ -249,7 +249,13 @@ describe("ctl operational verbs", () => {
     const { root, ctx } = await fixture();
     try {
       const logFile = join(ctx.stateDir, "collie.log");
+      const configuredSocket = join(root, "custom-herdr.sock");
       await writeFile(logFile, "stale failure\n", "utf8");
+      await writeFile(
+        join(ctx.configDir, ".env"),
+        `HERDR_SOCKET_PATH=${configuredSocket}\n`,
+        "utf8",
+      );
       let received: { argv: string[]; options: { cwd: string; env: Record<string, string>; stdout: unknown; stderr: unknown } } | undefined;
       await execBridge(ctx, {
         bun: "bun",
@@ -264,6 +270,7 @@ describe("ctl operational verbs", () => {
       expect(received?.options.stderr).toBe(join(ctx.stateDir, "collie.log"));
       expect(received?.options.env.HERDR_PLUGIN_CONFIG_DIR).toBe(ctx.configDir);
       expect(received?.options.env.HERDR_PLUGIN_STATE_DIR).toBe(ctx.stateDir);
+      expect(received?.options.env.HERDR_SOCKET_PATH).toBe(configuredSocket);
       expect(await readFile(logFile, "utf8")).toBe("");
     } finally {
       await clean(root);
