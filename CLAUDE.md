@@ -261,8 +261,10 @@ lint guard or the pack-wire guard.
 ## The journal (scrollback the mirror can't give you)
 
 `bridge/journal/` reads the agent's own session log off disk, per harness (`claude` / `codex` / `pi`,
-registered in `registry.ts`). It is the **only** thing in the bridge that touches the filesystem, so
-the containment rule in [`files.ts`](./bridge/journal/files.ts) is absolute: **every** path an
+registered in `registry.ts`). It is the **only** thing in the bridge that touches the filesystem —
+**unless the operator ran `collie stt setup`**, which adds one file, `stt.json` in the state dir, read
+and written by `bridge/stt/config.ts` ([ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md)).
+Nothing else moved: the containment rule in [`files.ts`](./bridge/journal/files.ts) is absolute: **every** path an
 adapter is about to read goes through `containedRealpath` — after symlink resolution, on the real
 paths, including paths derived from one already checked. The client never supplies a path. Run
 `bun scripts/journal-probe.ts` against real logs after touching an adapter; unit tests pin the
@@ -274,6 +276,15 @@ Loopback bind only · exactly one hardened front door — `tailscale serve` (nev
 conforming reverse proxy per DEPLOYMENT.md Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate ·
 optional identity/device gates · strict CSP. A socket call can type into a real terminal — treat a
 collie as remote shell access.
+
+**The bridge makes no outbound call and spawns no long-running child for content — unless the
+operator ran `collie stt setup`.** Speech-to-text (`bridge/stt/`, CLI `cli/stt.ts`) is a registered
+provider seam, absent until that verb writes `stt.json`: it then holds a provider credential at 0600,
+opens an operator-configured outbound path carrying microphone audio, and on the `codex` provider
+spawns a `codex app-server` child. All three costs are declined by doing nothing, the local-engine
+configuration keeps the egress on loopback, and the wire identity is probed honest-first and recorded
+([ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md)). Setup is a CLI act, never
+a web form, for the reason pairing is.
 
 **Two device gates guard writes, independently, and compose by AND.** `COLLIE_DEVICE_HEADER` trusts
 a name a proxy injects; **pairing** (`bridge/pairing.ts`, `collie pair` / `collie devices`) requires a
