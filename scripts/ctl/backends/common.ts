@@ -85,4 +85,3 @@ export interface BackendFactoryOptions {
 export function asInstalledBackend<T extends InstalledServiceBackend>(backend: T): T {
   return backend;
 }
-
