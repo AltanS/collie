@@ -667,6 +667,27 @@ EOF
   assert_contains "$out" "tailnet front door isn't up"
 }
 
+# `url` must defer to an operator-named front door before inferring anything from Tailscale — issue
+# #122: it used to print the bare tailnet name with no port, ignoring COLLIE_PUBLIC_URL entirely.
+test_url_verb_honors_public_url() {
+  setup_case url
+  install_fake_tailscale
+
+  local out
+  out="$(COLLIE_PUBLIC_URL=https://host.example:9443 run_ctl url)" ||
+    fail "url failed with COLLIE_PUBLIC_URL set"
+  assert_eq "$out" "https://host.example:9443"
+
+  # A trailing slash is stripped, not doubled into whatever path handling follows.
+  out="$(COLLIE_PUBLIC_URL=https://host.example:9443/ run_ctl url)" ||
+    fail "url failed with a trailing slash"
+  assert_eq "$out" "https://host.example:9443"
+
+  # Unset: falls back to inferring the tailnet URL, as before.
+  out="$(run_ctl url)" || fail "url failed without COLLIE_PUBLIC_URL"
+  assert_contains "$out" "https://host.example"
+}
+
 # `bootout` doesn't promise to wait for the job to finish tearing down, and the bridge drains
 # connections on SIGTERM — so `restart` (and therefore `update`) can reach `bootstrap` while the old
 # job is still going, which launchd answers with "Bootstrap failed: 5: Input/output error". Unretried
@@ -1249,6 +1270,7 @@ test_launchd_agent_lifecycle
 test_launchd_status_line
 test_tailnet_acl_warning
 test_qr_subcommand
+test_url_verb_honors_public_url
 test_launchd_bootstrap_retries
 test_bun_resolution
 test_non_absolute_bun_never_reaches_path
