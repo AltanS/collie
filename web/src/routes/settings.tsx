@@ -12,6 +12,7 @@ import { PairedDevices } from "@/components/paired-devices";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
+import { HandsFreeControl } from "@/components/hands-free-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
@@ -88,6 +89,11 @@ export function SettingsRoute() {
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}
         <HapticsControl />
+
+        {/* Voice, when this collie has any: also "how this phone treats you", and it belongs beside
+            haptics rather than with the herd settings below. Renders nothing where no provider is
+            configured or the browser cannot record. */}
+        <HandsFreeControl />
 
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">
