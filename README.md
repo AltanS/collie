@@ -41,7 +41,7 @@ public access, Collie isn't built for it. Read the
 - [Commands](#commands)
 - [Manage & update](#manage--update)
 - [Deployment variants](#deployment-variants) · [B–E in `DEPLOYMENT.md`](./DEPLOYMENT.md)
-- [Windows (experimental)](#windows-experimental)
+- [Windows](#windows)
 - [Web Push](#web-push-optional)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
@@ -87,6 +87,9 @@ The sharp edges:
   local users out; Collie's port is TCP, so they're all in. The per-device gate closes the write half
   of that; reads stay open, so it bounds damage, not disclosure (details:
   [ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
+- **POSIX mode bits are not Windows ACLs.** On Windows, the repo's state and audit dirs rely on the
+  single-user assumption described here, not on owner-only ACLs. `state`, `audit.log`, uploads and
+  other files under the state dir need the host account to be the only local user you trust.
 - **One bridge fronts _every_ session** under your config root by default, sandbox ones included
   (details: [Multi-session](#multi-session)).
 - **Every write is appended to `<state-dir>/audit.log`** — replies, keys, uploads, pane and tab
@@ -117,16 +120,20 @@ On the **host** (the tailnet node your agents run on). Need Herdr 0.7.0+ — che
 | [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, the bridge is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
 
-Soft dependencies: **Node.js** (the control script uses it to extract your MagicDNS name from
-`tailscale status --json`; without it the banner falls back to the loopback URL) and a **service
-supervisor** — `systemd --user` on Linux, **launchd** on macOS (both ship with the OS); a host with
-neither falls back to an unsupervised `nohup` process. You never install JS
+Soft dependency: a **service supervisor** — `systemd --user` on Linux, **launchd** on macOS, or
+Task Scheduler on Windows (all ship with the OS); a host with neither falls back to an unsupervised
+process. You never install JS
 deps by hand — the build runs `bun install` for you; the backend imports only Bun + `node:*`.
 [`web-push`](https://www.npmjs.com/package/web-push) is optional and lazy (see [Web
 Push](#web-push-optional)).
 
-**Linux and macOS are the supported hosts.** The bridge itself also runs on **Windows**
-(experimental) against Herdr's Windows beta — see [Windows](#windows-experimental).
+**Linux, macOS, and Windows are supported hosts.** Windows uses Herdr's Windows beta and a per-user
+Task Scheduler backend — see [Windows](#windows).
+
+On Windows, use Bun's native Windows build 1.1 or newer, install Git, and install Herdr's Windows
+beta from <https://herdr.dev/docs/windows-beta/>. Run lifecycle commands with
+`bun scripts/ctl/main.ts <verb>` where `<verb>` is one of the real ctl verbs, and use Git Bash for
+pre-push hooks because they still shell out to POSIX tools.
 
 ## Install
 
@@ -150,13 +157,13 @@ herdr plugin action invoke start --plugin herdr.collie
 Either way, `start` does four things:
 
 1. **builds** `web/dist` if it's missing (typechecked, staged, swapped in atomically),
-2. **starts the bridge** as the `systemd --user` service `collie` (`nohup` fallback without systemd),
+2. **starts the bridge** under the host service backend (with an unsupervised fallback),
 3. **publishes it on the tailnet** — literally `tailscale serve --bg 8787`: HTTPS on the host's
    MagicDNS name, `:443 → 127.0.0.1:8787`, tailnet-only,
 4. **prints the banner** with the URL to open — walked through line by line in
    [First run](#first-run--what-youll-see).
 
-> No Herdr? Run `scripts/collie-ctl.sh start` directly — same effect (config then lives in
+> No Herdr? Run `bun scripts/ctl/main.ts start` directly — same effect (config then lives in
 > `~/.config/collie/.env`).
 
 ## First run — what you'll see
@@ -166,7 +173,7 @@ Herdr's JSON envelope instead** — the same text is the action's *captured stdo
 `herdr plugin log list --plugin herdr.collie`.
 
 ```console
-$ scripts/collie-ctl.sh start
+$ bun scripts/ctl/main.ts start
 building web UI (first run)…                    # linked clone only; a GitHub install already built
 …bun install · typecheck · vite build output…
 bridge started (systemd --user: collie)
@@ -329,9 +336,10 @@ open a pane, tap **Keys → Presets**, your buttons are there. Rejected row?
 ### Multi-session
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your
-config root, switchable from the header; `COLLIE_MULTI_SESSION=off` serves only the primary one. Every
-session it finds is drivable through the same URL — including a private or sandbox one, which is why
-[Security](#%EF%B8%8F-security--read-before-you-run-it) lists this as a sharp edge.
+config root, switchable from the header. Windows session paths are supported, so you don't need to
+turn it off there. `COLLIE_MULTI_SESSION=off` serves only the primary one. Every session it finds is
+drivable through the same URL, including a private or sandbox one, which is why [Security](#%EF%B8%8F-security--read-before-you-run-it)
+lists this as a sharp edge.
 
 ## Dark mode / light mode
 
@@ -348,28 +356,30 @@ apps no way to change that at runtime.)
 
 ## Commands
 
-Every command works two ways: the **control script** on the host (`scripts/collie-ctl.sh <cmd>`) or
+Every command works two ways: the **TypeScript ctl entry point** on the host
+(`bun scripts/ctl/main.ts <cmd>`) or
 the equivalent **Herdr action** (`herdr plugin action invoke <cmd> --plugin herdr.collie`, written
-below as `invoke <cmd>`). The ones you'll actually use:
+below as `invoke <cmd>`). The POSIX shell wrapper remains as a compatibility path. The commands
+you'll actually use:
 
-| Action | Control script | Herdr action |
+| Action | Direct ctl | Herdr action |
 | --- | --- | --- |
-| **Start** — build if needed, serve, print the URL | `collie-ctl.sh start` | `invoke start` |
-| **Stop** — pause the bridge; removes nothing | `collie-ctl.sh stop` | `invoke stop` |
-| **Restart** | `collie-ctl.sh restart` | `invoke restart` |
-| **Status** — the *Collie is running* banner + URLs | `collie-ctl.sh status` | `invoke status` |
-| **URL** — print the tailnet URL | `collie-ctl.sh url` | `invoke url` |
-| **QR** — the same URL as a scannable code | `collie-ctl.sh qr` | — (script only) |
-| **Version** — the running version (`0.x.y+sha`) | `collie-ctl.sh version` | `invoke version` |
-| **Update** — advance the checkout + rebuild + restart | `collie-ctl.sh update` | `invoke update` |
-| **Uninstall** — remove the service; keep `.env` + checkout | `collie-ctl.sh uninstall` | `invoke uninstall` |
-| **Logs** — tail the journal / log file | `collie-ctl.sh logs` | — (script only) |
-| **Push keys** — generate the VAPID keypair into your `.env` | `collie-ctl.sh push-keys` | `invoke push-keys` |
-| **Push test** — send one notification to prove it works | `collie-ctl.sh push-test` | `invoke push-test` |
+| **Start** — build if needed, serve, print the URL | `bun scripts/ctl/main.ts start` | `invoke start` |
+| **Stop** — pause the bridge; removes nothing | `bun scripts/ctl/main.ts stop` | `invoke stop` |
+| **Restart** | `bun scripts/ctl/main.ts restart` | `invoke restart` |
+| **Status** — backend, bridge, and URLs | `bun scripts/ctl/main.ts status` | `invoke status` |
+| **URL** — print the tailnet URL | `bun scripts/ctl/main.ts url` | `invoke url` |
+| **QR** — the same URL as a scannable code | `bun scripts/ctl/main.ts qr` | — (direct only) |
+| **Version** — the installed version | `bun scripts/ctl/main.ts version` | `invoke version` |
+| **Update** — advance the checkout + rebuild + restart | `bun scripts/ctl/main.ts update` | `invoke update` |
+| **Uninstall** — remove the service; keep `.env` + checkout | `bun scripts/ctl/main.ts uninstall` | `invoke uninstall` |
+| **Logs** — tail the bridge log | `bun scripts/ctl/main.ts logs` | — (direct only) |
+| **Push keys** — generate the VAPID keypair into your `.env` | `bun scripts/ctl/main.ts push-keys` | `invoke push-keys` |
+| **Push test** — send one notification to prove it works | `bun scripts/ctl/main.ts push-test` | `invoke push-test` |
 
-The actions are declared in `herdr-plugin.toml` and each one shells out to the control script; list
+The actions are declared in `herdr-plugin.toml` and invoke the same TypeScript ctl entry point; list
 them live with `herdr plugin action list --plugin herdr.collie`. `build` · `serve` · `unserve` are
-script-only too.
+direct-only too.
 
 `start` and `status` end with the **Collie is running** banner — annotated line by line in
 [First run](#first-run--what-youll-see). Its version comes from the *served* bundle stamp, so it is
@@ -384,7 +394,7 @@ banner** — the human-readable output is the action's *captured stdout*, read w
 Pause the bridge without removing anything (a later `start` brings it right back):
 
 ```bash
-scripts/collie-ctl.sh stop      # or: herdr plugin action invoke stop --plugin herdr.collie
+bun scripts/ctl/main.ts stop    # or: herdr plugin action invoke stop --plugin herdr.collie
 ```
 
 To tear the service down completely — stop + disable it, remove the service definition (the
@@ -393,7 +403,7 @@ Collie's own `tailscale serve` mapping (port-scoped, so other tailnet mappings o
 use `uninstall`. It leaves your `.env` and the checkout untouched:
 
 ```bash
-scripts/collie-ctl.sh uninstall # or: herdr plugin action invoke uninstall --plugin herdr.collie
+bun scripts/ctl/main.ts uninstall # or: herdr plugin action invoke uninstall --plugin herdr.collie
 ```
 
 Then `herdr plugin uninstall herdr.collie` (or, for a linked clone, just deleting the directory)
@@ -404,7 +414,7 @@ removes the plugin registration itself.
 The checkout *is* the plugin, and Herdr has no `plugin update` of its own. One command does the lot:
 
 ```bash
-scripts/collie-ctl.sh update    # or: herdr plugin action invoke update --plugin herdr.collie
+bun scripts/ctl/main.ts update  # or: herdr plugin action invoke update --plugin herdr.collie
 ```
 
 It advances the checkout, rebuilds the UI and restarts the bridge (re-execing itself, so it's safe
@@ -416,7 +426,7 @@ means you have to change something, so it is never inherited from a routine upda
 a new major is out and names the one that takes it —
 
 ```bash
-herdr plugin action invoke update-major --plugin herdr.collie   # or: scripts/collie-ctl.sh update --major
+herdr plugin action invoke update-major --plugin herdr.collie   # or: bun scripts/ctl/main.ts update --major
 ```
 
 The flag is the whole consent; there is no prompt, because a Herdr action has no terminal to answer
@@ -510,28 +520,55 @@ isn't in the path at all, [`DEPLOYMENT.md`](./DEPLOYMENT.md) has the rest:
 - **[D — off-host identity proxy over the tailnet](./DEPLOYMENT.md#variant-d--off-host-identity-proxy-over-the-tailnet)** — one central ingress node fronting Collie among your other services.
 - **[E — any other mesh or tunnel](./DEPLOYMENT.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)** — NetBird, ZeroTier, Cloudflare Tunnel: you own the ingress, Collie publishes nothing.
 
-## Windows (experimental)
+## Windows
 
-The **bridge** runs on Windows against Herdr's Windows beta; the **launcher** does not. Herdr there
-exposes its control socket as a *named pipe* named after the full socket path, not an AF_UNIX
-socket, so Collie dials it through `node:net` instead of `Bun.connect` — one shim,
+The bridge runs on Windows against Herdr's Windows beta, and the launcher does too. The Windows
+service path is Task Scheduler, driven by `bun scripts/ctl/main.ts`.
+
+Herdr there exposes its control socket as a *named pipe* named after the full socket path, not an
+AF_UNIX socket, so Collie dials it through `node:net` instead of `Bun.connect`, one shim,
 [`bridge/dial.ts`](./bridge/dial.ts), which explains the mapping at the top of the file.
+
+Run the lifecycle commands on Windows with Bun directly:
+
+```powershell
+bun scripts/ctl/main.ts start
+bun scripts/ctl/main.ts status
+bun scripts/ctl/main.ts stop
+```
+
+`start` creates or refreshes a per-user Limited Task Scheduler task, sets it to run at login, and
+turns on restart on failure. `status` reports the task state, the bridge probe, and the front-door
+URL. `stop` stops the bridge while leaving the login task registered for the next `start` or login.
 
 What that means in practice:
 
-- **Run the bridge directly** — `bun run bridge/index.ts`. There's no systemd unit, and the Herdr
-  action buttons shell out to `bash`, so they only work if Git Bash is on `PATH`. The manifest
-  therefore still declares `linux`/`macos` only, rather than advertising buttons that may not fire.
-- **`tailscale serve` isn't wired up here.** Use the
-  [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) posture: loopback bind, your own ingress in front, `COLLIE_PUBLIC_HOSTS` pinned. The security
-  rules in [§Security](#%EF%B8%8F-security--read-before-you-run-it) are not relaxed on Windows.
-- **Set `COLLIE_MULTI_SESSION=off`** — session discovery derives POSIX paths.
+- **Use Bun 1.1+ on Windows**, plus Git and Herdr's Windows beta from
+  <https://herdr.dev/docs/windows-beta/>.
+- **Pre-push hooks need Git Bash.** The hook scripts still shell out to POSIX tools, so plain
+  `cmd.exe` or PowerShell won't run them.
+- **Run the ctl entry point directly** for lifecycle work: `bun scripts/ctl/main.ts start`,
+  `status`, `stop`, `restart`, `url`, `version`, `qr`, `logs`, `build`, `serve`, `unserve`,
+  `uninstall`, `update`, `push-keys`, and `push-test`.
+- **Tailscale is supported on Windows when it is installed.** When the host has no Tailscale CLI,
+  use the [Variant E](./DEPLOYMENT.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
+  fallback with `COLLIE_SKIP_SERVE=1` and let another mesh or proxy own ingress.
+- **Windows session paths are supported.** Leave `COLLIE_MULTI_SESSION` at the default unless you
+  want to serve only the primary session.
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override with `HERDR_SOCKET_PATH`
   (an explicit `\\.\pipe\…` value is passed through untouched).
 
-**Want the lifecycle too?** The bridge has spoken Windows' named pipe since 0.15.0; a
-community-maintained Task Scheduler setup (start/stop/update, no supported-tree guarantees) lives in
-[`contrib/windows/`](./contrib/windows/README.md).
+**Want the lifecycle too?** The bridge has spoken Windows' named pipe since 0.15.0, and the
+supported service backend is Task Scheduler. The task is per-user, Limited, runs at login, and
+restarts on failure. The supported Windows path is `bun scripts/ctl/main.ts start|status|stop`, with
+`restart`, `url`, `version`, `qr`, `logs`, `build`, `serve`, `unserve`, `uninstall`, `update`,
+`push-keys`, and `push-test` on the same entry point.
+
+`start` creates the task, starts the bridge, and best-effort publishes the configured front door.
+`status` shows whether the task and bridge are healthy. `stop` stops the task and bridge but keeps
+the registration; `uninstall` removes that registration and Collie's managed front-door mapping.
+The forced-stop caveat still applies, so the last debounce window can be lost. Logs are written to
+`%LOCALAPPDATA%\collie\state\collie.log`.
 
 **Is it actually working?** The bridge logs `[events] stream up` on start — the event stream works
 over the pipe, so Windows gets the same live updates as Linux, not degraded polling.
@@ -730,7 +767,7 @@ Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 Clone it and `herdr plugin link` it ([Install](#install) above), then edit in place.
 
 - **The manifest is the plugin.** `herdr-plugin.toml` declares the actions listed in
-  [Commands](#commands), and each one shells out to `scripts/collie-ctl.sh`. Both are
+  [Commands](#commands), and each one invokes `scripts/ctl/main.ts`. Both are
   commented — read them, not a paraphrase of them here.
 - **One asymmetry in the dev loop:** `web/` rebuilds go live with no restart (the bridge serves
   `web/dist` from disk); `bridge/` changes need `systemctl --user restart collie`. Build, test and

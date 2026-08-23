@@ -28,6 +28,29 @@ jobs:
         run: bun run typecheck
       - name: Test (bridge)
         run: bun run test
+      - name: Test (ctl posix)
+        run: bun run test:ctl-posix
+
+      - name: Install (web)
+        run: cd web && bun install --frozen-lockfile
+      - name: Typecheck (web)
+        run: cd web && bun run typecheck
+      - name: Test (web)
+        run: cd web && bun run test
+
+  windows:
+    name: typecheck + tests (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+      - name: Typecheck (root)
+        run: bun run typecheck
+      - name: Test (bridge)
+        run: bun run test
 
       - name: Install (web)
         run: cd web && bun install --frozen-lockfile

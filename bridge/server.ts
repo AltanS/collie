@@ -1,11 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, join, normalize, sep } from "node:path";
+import { extname, join, normalize } from "node:path";
 import type { ActivityLedger } from "./activity.ts";
 import type { AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
+import { pathStartsWithChild } from "./pathcmp.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
@@ -1362,7 +1363,7 @@ export function withBuildHeader(res: Response, id: string): Response {
 
 /**
  * Resolve a request pathname to an absolute path under `webDir`, or null if it escapes. Pure +
- * exported for tests. The `full === webDir || full.startsWith(webDir + sep)` check rejects both
+ * exported for tests. The `pathStartsWithChild(full, webDir)` check rejects both
  * `..` traversal AND a sibling dir that merely shares the prefix (e.g. `web/dist-x` vs `web/dist`) —
  * a bare `startsWith(webDir)` would let the latter through.
  */
@@ -1372,7 +1373,7 @@ export function resolveStaticPath(
 ): { rel: string; full: string } | null {
   const rel = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const full = normalize(join(webDir, rel));
-  if (full !== webDir && !full.startsWith(webDir + sep)) return null;
+  if (!pathStartsWithChild(full, webDir)) return null;
   return { rel, full };
 }
 

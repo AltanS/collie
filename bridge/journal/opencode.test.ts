@@ -13,6 +13,9 @@ import {
 } from "./opencode.ts";
 import { MAX_RESULT_CHARS, MAX_TEXT_CHARS } from "./text.ts";
 
+const linkDirectory = (target: string, path: string) =>
+  symlink(target, path, process.platform === "win32" ? "junction" : "dir");
+
 // Builders mirroring the verified on-disk shape (opencode 1.18.9, 2026-08-03): a message row's `data`
 // json plus its parts' `data` json, composed by the source into one JSONL line per message.
 
@@ -296,7 +299,13 @@ describe("OpencodeTranscriptSource", () => {
     outer.close();
     const tricky = join(base, "tricky");
     await mkdir(tricky, { recursive: true });
-    await symlink(join(outside, "opencode.db"), join(tricky, "opencode.db"));
+    if (process.platform === "win32") {
+      // A file symlink needs elevation on Windows. The fixed database path is instead a junction to
+      // the outside directory; realpath still sees the same escape and rejects it before SQLite opens.
+      await linkDirectory(outside, join(tricky, "opencode.db"));
+    } else {
+      await symlink(join(outside, "opencode.db"), join(tricky, "opencode.db"));
+    }
 
     return { base, root, tricky };
   }

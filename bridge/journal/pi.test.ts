@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { isPiSessionId, parsePiTranscript, PiTranscriptSource } from "./pi.ts";
+
+const linkDirectory = (target: string, path: string) =>
+  symlink(target, path, process.platform === "win32" ? "junction" : "dir");
 
 // Row builders mirroring the verified on-disk shape (pi session logs, session format v3, 2026-07-29).
 // Every row carries its own `id`, so unlike Codex there is nothing to synthesise for paging.
@@ -153,23 +157,35 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
    *   base/outside.jsonl                          a file the root must never reach
    *   base/sessions/--repo--/sneaky.jsonl → ../../outside.jsonl   a symlink out of the root
    */
+  const OUTSIDE_SID = "ffffffff-1111-2222-3333-444444444444";
+
   async function fixture() {
-    const created = `${tmpdir()}/collie-pi-${Math.floor(performance.now() * 1000)}`;
+    const created = join(tmpdir(), `collie-pi-${Math.floor(performance.now() * 1000)}`);
     await mkdir(created, { recursive: true });
     const base = await realpath(created);
-    const root = `${base}/sessions`;
-    const project = `${root}/--var-home-you-repo--`;
+    const root = join(base, "sessions");
+    const project = join(root, "--var-home-you-repo--");
     await mkdir(project, { recursive: true });
-    const log = `${project}/2026-07-29T10-00-00-000Z_${SID}.jsonl`;
+    const log = join(project, `2026-07-29T10-00-00-000Z_${SID}.jsonl`);
     await Bun.write(log, speech("a", "user", "hi"));
-    const outside = `${base}/outside.jsonl`;
+    const outside = join(base, "outside.jsonl");
     await Bun.write(outside, speech("z", "user", "secrets"));
-    const sneaky = `${project}/2026-07-29T11-00-00-000Z_${OUTSIDE_SID}.jsonl`;
-    await symlink(outside, sneaky);
+    const escapedName = `2026-07-29T11-00-00-000Z_${OUTSIDE_SID}.jsonl`;
+    let sneaky: string;
+    if (process.platform === "win32") {
+      // A file symlink needs elevation on Windows. Junction the containing directory instead; the
+      // path still resolves outside the configured root, so the same realpath containment rule runs.
+      const escapedDir = join(base, "outside-sessions");
+      await mkdir(escapedDir, { recursive: true });
+      await Bun.write(join(escapedDir, escapedName), speech("z", "user", "secrets"));
+      await linkDirectory(escapedDir, join(project, "escape"));
+      sneaky = join(project, "escape", escapedName);
+    } else {
+      sneaky = join(project, escapedName);
+      await symlink(outside, sneaky);
+    }
     return { base, root, log, sneaky };
   }
-
-  const OUTSIDE_SID = "ffffffff-1111-2222-3333-444444444444";
 
   test("resolves a path ref that really is inside the root", async () => {
     const { base, root, log } = await fixture();
@@ -179,7 +195,7 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
 
   test("refuses a path ref pointing outside the root", async () => {
     const { base, root, log } = await fixture();
-    const escape = `${log}/../../../../etc/hosts`;
+    const escape = join(log, "..", "..", "..", "..", "etc", "hosts");
     expect(await new PiTranscriptSource(root).resolve({ kind: "path", value: escape })).toBeNull();
     await rm(base, { recursive: true, force: true });
   });
@@ -225,18 +241,18 @@ describe("PiTranscriptSource — several sessions roots", () => {
   const B = "019f4665-7df0-7540-a64f-7068335f21b0";
 
   async function fixture() {
-    const created = `${tmpdir()}/collie-pi-roots-${Math.floor(performance.now() * 1000)}`;
+    const created = join(tmpdir(), `collie-pi-roots-${Math.floor(performance.now() * 1000)}`);
     await mkdir(created, { recursive: true });
     const base = await realpath(created);
-    const first = `${base}/first`;
-    const second = `${base}/second`;
-    await mkdir(`${first}/--repo--`, { recursive: true });
-    await mkdir(`${second}/--side--`, { recursive: true });
-    const logA = `${first}/--repo--/2026-08-11T09-00-00-000Z_${A}.jsonl`;
-    const logB = `${second}/--side--/2026-08-11T10-00-00-000Z_${B}.jsonl`;
+    const first = join(base, "first");
+    const second = join(base, "second");
+    await mkdir(join(first, "--repo--"), { recursive: true });
+    await mkdir(join(second, "--side--"), { recursive: true });
+    const logA = join(first, "--repo--", `2026-08-11T09-00-00-000Z_${A}.jsonl`);
+    const logB = join(second, "--side--", `2026-08-11T10-00-00-000Z_${B}.jsonl`);
     await Bun.write(logA, speech("a", "user", "one"));
     await Bun.write(logB, speech("b", "user", "two"));
-    const outside = `${base}/outside.jsonl`;
+    const outside = join(base, "outside.jsonl");
     await Bun.write(outside, speech("z", "user", "secrets"));
     return { base, first, second, logA, logB, outside };
   }

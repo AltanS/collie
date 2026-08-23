@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   codexCursor,
@@ -9,6 +10,9 @@ import {
   isCodexSessionId,
   parseCodexTranscript,
 } from "./codex.ts";
+
+const linkDirectory = (target: string, path: string) =>
+  symlink(target, path, process.platform === "win32" ? "junction" : "dir");
 
 // Row builders mirroring the verified on-disk shape (codex rollout logs, cli 0.32.0, 2026-07-29).
 // `{timestamp,type,payload}` are the only top-level keys — note the absence of any per-row id, which
@@ -238,16 +242,16 @@ describe("CodexTranscriptSource — several sessions roots", () => {
    * base/outside.jsonl                      a file neither root may reach
    */
   async function fixture() {
-    const created = `${tmpdir()}/collie-codex-roots-${Math.floor(performance.now() * 1000)}`;
+    const created = join(tmpdir(), `collie-codex-roots-${Math.floor(performance.now() * 1000)}`);
     await mkdir(created, { recursive: true });
     const base = await realpath(created);
-    const a = `${base}/a`;
-    const b = `${base}/b`;
-    await mkdir(`${a}/2026/08/11`, { recursive: true });
-    await mkdir(`${b}/2026/08/11`, { recursive: true });
-    await Bun.write(`${a}/2026/08/11/rollout-2026-08-11T09-00-00-${A}.jsonl`, "{}\n");
-    await Bun.write(`${b}/2026/08/11/rollout-2026-08-11T10-00-00-${B}.jsonl`, "{}\n");
-    await Bun.write(`${base}/outside.jsonl`, "{}\n");
+    const a = join(base, "a");
+    const b = join(base, "b");
+    await mkdir(join(a, "2026", "08", "11"), { recursive: true });
+    await mkdir(join(b, "2026", "08", "11"), { recursive: true });
+    await Bun.write(join(a, "2026", "08", "11", `rollout-2026-08-11T09-00-00-${A}.jsonl`), "{}\n");
+    await Bun.write(join(b, "2026", "08", "11", `rollout-2026-08-11T10-00-00-${B}.jsonl`), "{}\n");
+    await Bun.write(join(base, "outside.jsonl"), "{}\n");
     return { base, a, b };
   }
 
@@ -269,10 +273,20 @@ describe("CodexTranscriptSource — several sessions roots", () => {
 
   test("a rollout symlinked out of its root is refused, and the next root still answers", async () => {
     const { base, a, b } = await fixture();
-    await symlink(`${base}/outside.jsonl`, `${a}/2026/08/11/rollout-2026-08-11T11-00-00-${B}.jsonl`);
+    const escapedName = `rollout-2026-08-11T11-00-00-${B}.jsonl`;
+    if (process.platform === "win32") {
+      // A file symlink needs elevation on Windows. Junction the date directory instead; the rollout
+      // still resolves outside the configured root and is rejected by the same containment check.
+      const escapedDay = join(base, "outside-rollouts");
+      await mkdir(escapedDay, { recursive: true });
+      await Bun.write(join(escapedDay, escapedName), "{}\n");
+      await linkDirectory(escapedDay, join(a, "2026", "08", "12"));
+    } else {
+      await symlink(join(base, "outside.jsonl"), join(a, "2026", "08", "11", escapedName));
+    }
     const src = new CodexTranscriptSource([a, b]);
     expect(await src.resolve({ kind: "id", value: B })).toBe(
-      `${b}/2026/08/11/rollout-2026-08-11T10-00-00-${B}.jsonl`,
+      join(b, "2026", "08", "11", `rollout-2026-08-11T10-00-00-${B}.jsonl`),
     );
     await rm(base, { recursive: true, force: true });
   });

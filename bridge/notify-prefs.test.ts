@@ -79,8 +79,14 @@ describe("NotifyPrefsStore", () => {
     const cfg = await tempCfg();
     const store = new NotifyPrefsStore(cfg);
     await store.set({ blocked: false });
-    const mode = (await stat(join(cfg.stateDir, "notify-prefs.json"))).mode & 0o777;
-    expect(mode).toBe(0o600);
+    const file = await stat(join(cfg.stateDir, "notify-prefs.json"));
+    if (process.platform === "win32") {
+      // Windows does not expose POSIX permission bits; the awaited set() call and regular file
+      // prove that persistence happened, while mode bits are meaningless on this filesystem.
+      expect(file.isFile()).toBe(true);
+    } else {
+      expect(file.mode & 0o777).toBe(0o600);
+    }
   });
 
   test("a partial saved file fills the missing key from defaults", async () => {

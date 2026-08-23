@@ -3,84 +3,84 @@ name = "Collie"
 version = "0.32.1"
 min_herdr_version = "0.7.0"
 description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
-platforms = ["linux", "macos"]
+platforms = ["linux", "macos", "windows"]
 
-# This plugin is a thin launcher. The actual bridge runs as a systemd --user service so it
-# outlives Herdr restarts (see ARCHITECTURE.md §3). The actions below shell out to
-# scripts/collie-ctl.sh, which gets HERDR_SOCKET_PATH / HERDR_PLUGIN_CONFIG_DIR injected.
+# This plugin is a thin launcher. The actual bridge runs through scripts/ctl/main.ts with
+# platform-specific backends so it outlives Herdr restarts (see ARCHITECTURE.md §3).
+# The build and actions below invoke scripts/ctl/main.ts, which gets HERDR_SOCKET_PATH /
+# HERDR_PLUGIN_CONFIG_DIR injected.
 
 # Build the web UI at install time. Herdr runs [[build]] steps ONLY on `herdr plugin install`
 # (GitHub) — NOT on `herdr plugin link` (local dev), which instead builds lazily on first `start`
-# (collie-ctl.sh's ensure_build). Delegating to `collie-ctl.sh build` keeps a single build
-# definition (version gate → cd web && bun install && bun run build) shared with the `update` action.
-# Still needs Bun on PATH — building the frontend is the one unavoidable Bun step.
+# (scripts/ctl/main.ts build). Delegating to `scripts/ctl/main.ts build` keeps a single
+# build definition (version gate → cd web && bun install && bun run build) shared with the `update`
+# action. Still needs Bun on PATH — building the frontend is the one unavoidable Bun step.
 [[build]]
-command = ["bash", "scripts/collie-ctl.sh", "build"]
-platforms = ["linux", "macos"]
+command = ["bun", "scripts/ctl/main.ts", "build"]
 
 [[actions]]
 id = "start"
 title = "Start web bridge"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "start"]
+command = ["bun", "scripts/ctl/main.ts", "start"]
 
 [[actions]]
 id = "stop"
 title = "Stop web bridge"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "stop"]
+command = ["bun", "scripts/ctl/main.ts", "stop"]
 
 [[actions]]
 id = "restart"
 title = "Restart web bridge"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "restart"]
+command = ["bun", "scripts/ctl/main.ts", "restart"]
 
-# Full teardown: stops + disables the service, removes the systemd --user unit, and resets
+# Full teardown: stops + disables the service, removes its registration, and resets
 # tailscale serve. Leaves the .env and the checkout (so `start` can bring it right back). See
-# scripts/collie-ctl.sh → cmd_uninstall.
+# scripts/ctl/verbs-lifecycle.ts → uninstall.
 [[actions]]
 id = "uninstall"
 title = "Uninstall web bridge (remove service)"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "uninstall"]
+command = ["bun", "scripts/ctl/main.ts", "uninstall"]
 
 # Link-mode plugins ARE their on-disk git checkout (Herdr has no native `plugin update`), so this
-# action pulls + rebuilds + restarts in one step. See scripts/collie-ctl.sh → cmd_update.
+# action pulls + rebuilds + restarts in one step. See scripts/ctl/verbs-lifecycle.ts → update.
 [[actions]]
 id = "update"
 title = "Update plugin"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "update"]
+command = ["bun", "scripts/ctl/main.ts", "update"]
 
 # The consent for a MAJOR upgrade (ADR 0020). `update` stays inside the major this install is on, so
 # crossing one is a separate, deliberate invocation — and it has to be invokable from HERE, because a
 # plugin action runs with no TTY and the phone banner that announces the major has no terminal at
-# all. The flag IS the consent; there is no prompt behind it. See scripts/collie-ctl.sh →
-# update_checkout.
+# all. The flag IS the consent; there is no prompt behind it. See scripts/ctl/verbs-lifecycle.ts →
+# updateCheckout.
 [[actions]]
 id = "update-major"
 title = "Update across a major version"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "update", "--major"]
+command = ["bun", "scripts/ctl/main.ts", "update", "--major"]
 
 [[actions]]
 id = "url"
 title = "Show bridge URL"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "url"]
+command = ["bun", "scripts/ctl/main.ts", "url"]
 
 [[actions]]
 id = "status"
 title = "Bridge status"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "status"]
+command = ["bun", "scripts/ctl/main.ts", "status"]
 
 [[actions]]
 id = "version"
 title = "Show version"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "version"]
+command = ["bun", "scripts/ctl/main.ts", "version"]
 
 # Turning push on is two steps that both used to happen OUTSIDE Herdr: generate a VAPID keypair with
 # a tool you had to know about, then hand-edit a .env in a directory you had to go looking for. Both
@@ -89,16 +89,16 @@ command = ["bash", "scripts/collie-ctl.sh", "version"]
 # for an agent to block. Restart between them; the keys are read at start.
 #
 # NOTE: on Herdr <0.8.0 a managed install invokes the action set cached at INSTALL time (ADR 0006),
-# so these two appear only after the next `herdr plugin install`. The shell verbs work immediately
-# either way.
+# so these two appear only after the next `herdr plugin install`. The direct shell wrapper works
+# immediately either way.
 [[actions]]
 id = "push-keys"
 title = "Generate push keys"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "push-keys"]
+command = ["bun", "scripts/ctl/main.ts", "push-keys"]
 
 [[actions]]
 id = "push-test"
 title = "Send a test notification"
 contexts = ["workspace"]
-command = ["bash", "scripts/collie-ctl.sh", "push-test"]
+command = ["bun", "scripts/ctl/main.ts", "push-test"]

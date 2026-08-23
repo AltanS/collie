@@ -216,7 +216,7 @@ export interface UpdateStatus {
   majorAvailable: string | null;
   /** GitHub release page for `majorAvailable`, or null when there is none. */
   majorUrl: string | null;
-  /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
+  /** The running process is behind the on-disk bridge source — restart the bridge to pick it up. */
   bridgeStale: boolean;
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */
   checkedAt: number | null;

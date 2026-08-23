@@ -1,5 +1,6 @@
 import { basename, dirname, join } from "node:path";
 
+import { pathEq } from "./pathcmp.ts";
 import type { EventPoker } from "./event-poker.ts";
 import type { HerdrClient } from "./herdr-client.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
@@ -42,7 +43,7 @@ export function herdTagFor(isPrimary: boolean, name: string): string {
 export function deriveConfigRoot(socketPath: string): string {
   const dir = dirname(socketPath); // <root>  OR  <root>/sessions/<name>
   const parent = dirname(dir); // <parentOfRoot>  OR  <root>/sessions
-  if (basename(parent) === "sessions") return dirname(parent);
+  if (pathEq(basename(parent), "sessions")) return dirname(parent);
   return dir;
 }
 
@@ -52,7 +53,7 @@ export function deriveConfigRoot(socketPath: string): string {
  */
 export function sessionNameFor(socketPath: string, configRoot: string): string {
   const dir = dirname(socketPath); // <root>  OR  <root>/sessions/<name>
-  if (dir === configRoot) return DEFAULT_SESSION_NAME;
+  if (pathEq(dir, configRoot)) return DEFAULT_SESSION_NAME;
   return basename(dir);
 }
 

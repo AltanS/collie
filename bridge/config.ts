@@ -227,11 +227,44 @@ export function defaultSocketPath(
   return join(home, ".config", "herdr", "herdr.sock");
 }
 
+/**
+ * Collie's default state directory: `~/.local/state/collie` on Unix,
+ * `%LOCALAPPDATA%\collie\state` on Windows. Pure so both branches are unit-testable on any
+ * platform.
+ */
+export function defaultStateDir(
+  platform: NodeJS.Platform = process.platform,
+  env: Record<string, string | undefined> = process.env,
+  home: string = homedir(),
+): string {
+  if (platform === "win32") {
+    const localAppData = env.LOCALAPPDATA ?? join(home, "AppData", "Local");
+    return join(localAppData, "collie", "state");
+  }
+  return join(home, ".local", "state", "collie");
+}
+
+/**
+ * Collie's default config directory: `~/.config/collie` on Unix,
+ * `%APPDATA%\collie` on Windows. Pure so both branches are unit-testable on any platform.
+ */
+export function defaultConfigDir(
+  platform: NodeJS.Platform = process.platform,
+  env: Record<string, string | undefined> = process.env,
+  home: string = homedir(),
+): string {
+  if (platform === "win32") {
+    const appData = env.APPDATA ?? join(home, "AppData", "Roaming");
+    return join(appData, "collie");
+  }
+  return join(home, ".config", "collie");
+}
+
 export function loadConfig(): Config {
   const stateDir =
     process.env.HERDR_PLUGIN_STATE_DIR ??
     process.env.COLLIE_STATE_DIR ??
-    join(homedir(), ".local", "state", "collie");
+    defaultStateDir();
 
   const submitKeys = envList("COLLIE_SUBMIT_KEYS");
 
@@ -239,8 +272,8 @@ export function loadConfig(): Config {
   // Resolved exactly the way scripts/collie-ctl.sh resolves it MINUS the `herdr` shell-out: the
   // launcher passes HERDR_PLUGIN_CONFIG_DIR into the unit (and the launchd plist) precisely so this
   // process never has to ask the CLI, and the two entry points must not disagree about which dir
-  // that is. ~/.config/collie is the same last-resort default the shim ends on.
-  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), ".config", "collie");
+  // that is. The helper keeps the platform-specific last-resort default the shim ends on.
+  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? defaultConfigDir();
 
   return {
     socketPath: process.env.HERDR_SOCKET_PATH ?? defaultSocketPath(),

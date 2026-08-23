@@ -28,5 +28,9 @@ export default defineConfig({
     css: false,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // userEvent-driven component tests are wall-clock sensitive on loaded Windows hosts (several
+    // agents often run alongside CI-style runs here); the default 5 s cliff turns machine load
+    // into random failures. Same assertions, more wall time.
+    testTimeout: 20_000,
   },
 });

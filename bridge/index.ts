@@ -209,13 +209,13 @@ const server = startServer({ cfg, registry, push, snooze, notifyPrefs, updateMon
 
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");
-  // Stop accepting new connections and let in-flight requests drain briefly (non-forced stop)
-  // before we tear down the poll loops and exit.
+  // POSIX signal path only: Windows may end in a forced kill (e.g. taskkill), so
+  // `process.on("exit")` is not an async persistence hook. Debounce-period flushes keep activity
+  // correct while running; a hard kill can still drop the last debounce window, and this final
+  // flush is best-effort.
   await server.stop();
   clearInterval(refreshTimer);
   registry.disposeAll();
-  // Writes are debounced, so the last few seconds of "you looked at this" live only in memory —
-  // persist them before exiting, or every restart quietly resurrects alerts you'd already cleared.
   activity.stop();
   await activity.flush();
   clearInterval(sweepTimer);

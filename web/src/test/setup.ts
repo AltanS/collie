@@ -3,6 +3,49 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { setupServer } from "msw/node";
 
+// Windows/Node ≥22 gap: the experimental global localStorage is absent unless the process was
+// started with --localstorage-file, and jsdom's per-window storage isn't what vitest exposes as
+// the environment global here. Provide a spec-shaped fallback so storage-backed tests run on
+// every platform; where a real Storage already exists it is left untouched.
+//
+// The fallback is a CLASS whose methods live on its prototype, installed as `Storage` when the
+// environment has none: tests that intercept persistence via vi.spyOn(Storage.prototype, …)
+// (e.g. the Safari-private-mode quota test) must see the spy, so instance calls have to reach
+// the prototype rather than shadow it with own properties.
+class ShimStorage {
+  #map = new Map<string, string>();
+  getItem(key: string): string | null {
+    return this.#map.has(key) ? (this.#map.get(key) as string) : null;
+  }
+  setItem(key: string, value: string): void {
+    this.#map.set(String(key), String(value));
+  }
+  removeItem(key: string): void {
+    this.#map.delete(key);
+  }
+  clear(): void {
+    this.#map.clear();
+  }
+  key(index: number): string | null {
+    return Array.from(this.#map.keys())[index] ?? null;
+  }
+  get length(): number {
+    return this.#map.size;
+  }
+}
+if (typeof globalThis.localStorage === "undefined") {
+  // Replace any existing Storage too: the environment may expose jsdom's Storage constructor
+  // without a working instance (exactly this gap), and a prototype spy against the REAL Storage
+  // would never see our fallback instance. The env's own constructor cannot produce a usable
+  // object here, so swapping it in the TEST environment loses nothing.
+  try {
+    (globalThis as any).Storage = ShimStorage;
+  } catch {
+    // non-configurable — proceed with the instance anyway; only prototype-spy tests would notice
+  }
+  globalThis.localStorage = new ShimStorage();
+}
+
 import { handlers, resetTypedDraft } from "./handlers";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { __resetDraftPrune } from "@/lib/drafts";

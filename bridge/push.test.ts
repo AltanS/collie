@@ -245,8 +245,14 @@ describe("Push — persistence", () => {
     await push.addSubscription(sub("one"));
 
     expect(await fileEndpoints(cfg.stateDir)).toEqual(["one"]);
-    const mode = (await stat(join(cfg.stateDir, "push-subscriptions.json"))).mode & 0o777;
-    expect(mode).toBe(0o600);
+    const file = await stat(join(cfg.stateDir, "push-subscriptions.json"));
+    if (process.platform === "win32") {
+      // Windows does not expose POSIX permission bits; the awaited addSubscription() call and
+      // regular file prove persistence, while mode bits are meaningless on this filesystem.
+      expect(file.isFile()).toBe(true);
+    } else {
+      expect(file.mode & 0o777).toBe(0o600);
+    }
   });
 
   test("concurrent saves serialise to a consistent final file", async () => {

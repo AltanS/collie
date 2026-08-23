@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSocketPath, loadConfig } from "./config.ts";
+import { defaultConfigDir, defaultSocketPath, defaultStateDir, loadConfig } from "./config.ts";
 
 // loadConfig is the deployment contract — env vars in, a resolved Config out. Pure (just reads
 // process.env + homedir), so we drive it by mutating the environment and restoring it after.
@@ -72,13 +72,14 @@ describe("loadConfig", () => {
     expect(cfg.transcript).toBe(true);
     // One root by default, and it is a list of one rather than a special case (issue #92).
     expect(cfg.journalRoots.claude).toHaveLength(1);
-    expect(cfg.journalRoots.claude[0]).toEndWith("/.claude/projects");
+    expect(cfg.journalRoots.claude[0]).toBe(join(homedir(), ".claude", "projects"));
     // OpenCode keeps ONE sqlite database at the top of its XDG data dir — no per-session files.
     expect(cfg.journalRoots.opencode).toEqual([join(homedir(), ".local", "share", "opencode")]);
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
     expect(cfg.allowedOrigins).toEqual([]);
     expect(cfg.notifyDelayMs).toBe(30_000);
+    expect(cfg.stateDir).toBe(defaultStateDir());
     // Host-header validation is opt-in (empty = off, legacy behaviour).
     expect(cfg.publicHosts).toEqual([]);
     // Per-device auth is off by default (empty header = feature disabled).
@@ -185,9 +186,9 @@ describe("loadConfig", () => {
     process.env.PI_CODING_AGENT_DIR = "/srv/pi";
     process.env.XDG_DATA_HOME = "/srv/share";
     const cfg = loadConfig();
-    expect(cfg.journalRoots.codex).toEqual(["/srv/codex/sessions"]);
-    expect(cfg.journalRoots.pi).toEqual(["/srv/pi/sessions"]);
-    expect(cfg.journalRoots.opencode).toEqual(["/srv/share/opencode"]);
+    expect(cfg.journalRoots.codex).toEqual([join("/srv/codex", "sessions")]);
+    expect(cfg.journalRoots.pi).toEqual([join("/srv/pi", "sessions")]);
+    expect(cfg.journalRoots.opencode).toEqual([join("/srv/share", "opencode")]);
   });
 
   test("an explicit COLLIE_* root beats the harness's home var", () => {
@@ -203,8 +204,16 @@ describe("loadConfig", () => {
     expect(loadConfig().commandsFile).toBe(join("/srv/herdr/plugins/collie", "commands.toml"));
     expect(loadConfig().keysFile).toBe(join("/srv/herdr/plugins/collie", "keys.toml"));
     delete process.env.HERDR_PLUGIN_CONFIG_DIR;
-    expect(loadConfig().commandsFile).toBe(join(homedir(), ".config", "collie", "commands.toml"));
-    expect(loadConfig().keysFile).toBe(join(homedir(), ".config", "collie", "keys.toml"));
+    expect(loadConfig().commandsFile).toBe(join(defaultConfigDir(), "commands.toml"));
+    expect(loadConfig().keysFile).toBe(join(defaultConfigDir(), "keys.toml"));
+  });
+
+  test("HERDR_PLUGIN_STATE_DIR still overrides COLLIE_STATE_DIR and the platform fallback", () => {
+    process.env.COLLIE_STATE_DIR = "/legacy/state";
+    process.env.HERDR_PLUGIN_STATE_DIR = "/plugin/state";
+    expect(loadConfig().stateDir).toBe("/plugin/state");
+    delete process.env.HERDR_PLUGIN_STATE_DIR;
+    expect(loadConfig().stateDir).toBe("/legacy/state");
   });
 
   test("reads the per-device auth header and allowlist", () => {
@@ -296,6 +305,31 @@ describe("loadConfig", () => {
 
 // Pure — both platform branches are testable from any host (expectations use join() so the
 // host's separator never leaks into the assertion).
+describe("defaultStateDir/defaultConfigDir", () => {
+  test("win32 falls back to AppData-backed dirs when env is absent", () => {
+    expect(defaultStateDir("win32", {}, "C:\\Users\\u")).toBe(
+      join("C:\\Users\\u", "AppData", "Local", "collie", "state"),
+    );
+    expect(defaultConfigDir("win32", {}, "C:\\Users\\u")).toBe(
+      join("C:\\Users\\u", "AppData", "Roaming", "collie"),
+    );
+  });
+
+  test("win32 honours LOCALAPPDATA and APPDATA when present", () => {
+    expect(defaultStateDir("win32", { LOCALAPPDATA: "D:\\Local" }, "C:\\Users\\u")).toBe(
+      join("D:\\Local", "collie", "state"),
+    );
+    expect(defaultConfigDir("win32", { APPDATA: "D:\\Roaming" }, "C:\\Users\\u")).toBe(
+      join("D:\\Roaming", "collie"),
+    );
+  });
+
+  test("unix defaults stay unchanged", () => {
+    expect(defaultStateDir("linux", {}, "/home/u")).toBe(join("/home/u", ".local", "state", "collie"));
+    expect(defaultConfigDir("linux", {}, "/home/u")).toBe(join("/home/u", ".config", "collie"));
+  });
+});
+
 describe("defaultSocketPath", () => {
   test("unix default lives under ~/.config/herdr", () => {
     expect(defaultSocketPath("linux", {}, "/home/u")).toBe(join("/home/u", ".config", "herdr", "herdr.sock"));

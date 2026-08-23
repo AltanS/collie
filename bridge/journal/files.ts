@@ -22,7 +22,8 @@
 // conversation), but it reaches further back — `COLLIE_TRANSCRIPT=off` disables the feature wholesale.
 
 import { realpath, stat } from "node:fs/promises";
-import { sep } from "node:path";
+
+import { pathStartsWithChild } from "../pathcmp.ts";
 
 /** Most bytes we will ever pull off one log. Beyond this we keep the TAIL (newest turns). */
 export const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024; // 32 MB
@@ -49,7 +50,7 @@ export async function containedRealpath(candidate: string, root: string): Promis
   const real = await realpath(candidate).catch(() => null);
   const realRoot = await realpath(root).catch(() => null);
   if (real === null || realRoot === null) return null;
-  return real === realRoot || real.startsWith(realRoot + sep) ? real : null;
+  return pathStartsWithChild(real, realRoot) ? real : null;
 }
 
 /**

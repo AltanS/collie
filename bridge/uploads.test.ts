@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { basename } from "node:path";
 
 import { filesToPrune, sweepUploads, type UploadFs } from "./uploads.ts";
 
@@ -38,12 +39,12 @@ describe("sweepUploads", () => {
     const fs: UploadFs = {
       readdir: () => Promise.resolve(Object.keys(files)),
       stat: (p) => {
-        const name = p.split("/").pop()!;
+        const name = basename(p);
         if (opts.failStat?.has(name)) return Promise.reject(new Error("stat gone"));
         return Promise.resolve({ mtimeMs: files[name]! });
       },
       unlink: (p) => {
-        const name = p.split("/").pop()!;
+        const name = basename(p);
         if (opts.failUnlink?.has(name)) return Promise.reject(new Error("unlink gone"));
         unlinked.push(name);
         return Promise.resolve();
