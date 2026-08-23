@@ -7,7 +7,7 @@ import { EXIT, type Io } from "./io.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
-import { bridgeUrl } from "./tailnet.ts";
+import { bridgeUrl, configuredPublicUrl } from "./tailnet.ts";
 import {
   AGENT_FILE_MODE,
   agentFilePath,
@@ -373,7 +373,7 @@ export async function cmdStatus(deps: LifecycleDeps): Promise<number> {
 }
 
 export function cmdUrl(deps: LifecycleDeps): number {
-  deps.io.out(bridgeUrl(deps.exec, deps.ctx.serveMode, deps.ctx.port));
+  deps.io.out(bridgeUrl(deps.exec, deps.ctx));
   return EXIT.OK;
 }
 
@@ -485,15 +485,13 @@ export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
   rows.push({ label: "service", value: serviceDescription(deps) });
   rows.push({ label: "local", value: `http://127.0.0.1:${deps.ctx.port}` });
   if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
-    const url = deps.ctx.env.COLLIE_PUBLIC_URL?.trim();
+    const url = configuredPublicUrl(deps.ctx.env);
     rows.push({
       label: "proxy",
-      value: url
-        ? url
-        : "(COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)",
+      value: url ?? "(COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)",
     });
   } else {
-    rows.push({ label: "tailnet", value: bridgeUrl(deps.exec, deps.ctx.serveMode, deps.ctx.port) });
+    rows.push({ label: "tailnet", value: bridgeUrl(deps.exec, deps.ctx) });
   }
   return {
     running,

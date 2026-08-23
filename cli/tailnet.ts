@@ -1,5 +1,5 @@
 import type { JsonValue } from "../bridge/json.ts";
-import type { ServeMode } from "./context.ts";
+import type { CliContext, Environment, ServeMode } from "./context.ts";
 import type { Exec } from "./sys.ts";
 
 // `tailscale status --json` → this host's name. The shell piped that JSON through an inline
@@ -24,6 +24,22 @@ export function selfDnsName(statusJson: string): string | null {
 }
 
 /**
+ * The operator's own answer to "what do I type on my phone", or null when they haven't given one.
+ * `COLLIE_PUBLIC_URL` is the only truth about the front door whenever Collie didn't publish it —
+ * a reverse proxy (Variants C/E), or a `tailscale serve` the operator runs by hand on a port that
+ * isn't 443 because something else owns 443. Collie's own record (`tailscale-managed-handler`)
+ * can't answer that: `cmdServe` publishes https on 443 and nothing else, and under
+ * `COLLIE_SKIP_SERVE=1` it publishes — and records — nothing at all.
+ *
+ * A trailing slash is dropped so this reads the same as every URL Collie builds itself.
+ */
+export function configuredPublicUrl(env: Environment): string | null {
+  const raw = env.COLLIE_PUBLIC_URL?.trim();
+  if (raw === undefined || raw === "") return null;
+  return raw.replace(/\/+$/, "");
+}
+
+/**
  * The URL to open. `https://<name>` in https mode (tailscale terminates TLS on 443),
  * `http://<name>:<port>` in http mode, and a loopback URL that SAYS why when the tailnet name is
  * unavailable — an operator on Headscale reads that line to find out their setup isn't published.
@@ -40,8 +56,13 @@ export function tailnetName(exec: Exec): string | null {
   return selfDnsName(r.stdout);
 }
 
-export function bridgeUrl(exec: Exec, mode: ServeMode, port: number): string {
-  return bridgeUrlFrom(tailnetName(exec), mode, port);
+/**
+ * The one resolver behind every "where is it" answer — `url`, the `status` banner, `serve`'s `open:`
+ * line and the `qr` code. An explicit `COLLIE_PUBLIC_URL` wins, because it is the operator telling
+ * Collie something Collie cannot observe; only without one is the tailnet name inferred.
+ */
+export function bridgeUrl(exec: Exec, ctx: CliContext): string {
+  return configuredPublicUrl(ctx.env) ?? bridgeUrlFrom(tailnetName(exec), ctx.serveMode, ctx.port);
 }
 
 // ── Is anyone allowed in? ────────────────────────────────────────────────────

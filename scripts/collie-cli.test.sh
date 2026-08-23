@@ -340,6 +340,15 @@ assert_eq "$STDOUT" "https://host.example"
 cli COLLIE_SERVE_MODE=http "$BIN" url || fail "\`collie url\` failed in http mode"
 assert_eq "$STDOUT" "http://host.example:${PORT}"
 
+# The operator's own front door wins over the inferred one — a `tailscale serve` on a port that
+# isn't 443 is invisible from here, and printing the bare name sends a phone to whatever owns 443.
+cli COLLIE_PUBLIC_URL=https://host.example:9443 "$BIN" url || fail "\`collie url\` failed with COLLIE_PUBLIC_URL"
+assert_eq "$STDOUT" "https://host.example:9443"
+
+cli COLLIE_SKIP_SERVE=1 COLLIE_PUBLIC_URL=https://collie.example.com/ "$BIN" url \
+  || fail "\`collie url\` failed under COLLIE_SKIP_SERVE=1"
+assert_eq "$STDOUT" "https://collie.example.com"
+
 cli "$BIN" logs 7 || fail "\`collie logs\` failed"
 assert_contains "$(cat "$L_CALLS")" "journalctl --user -u collie -n 7 --no-pager"
 
