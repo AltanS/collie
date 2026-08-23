@@ -575,6 +575,17 @@ export function createWorkspace(
   });
 }
 
+// POST /api/launch — the command string here is an allowlist KEY the bridge must recognise, not an
+// arbitrary line the client gets to run. Anything not in `launchers.toml` is a 400 before the
+// multiplexer is ever touched, and that lookup is the whole security story of the route. Scoped
+// like /api/tab and /api/workspace: the throwaway Space is created where you are looking.
+export function launch(command: string, scope?: Scope): Promise<CreateResponse> {
+  return req<CreateResponse>(withScope("/api/launch", scope), {
+    method: "POST",
+    body: JSON.stringify({ command }),
+  });
+}
+
 /** The worktrees of the repo a space sits in. Empty-handed when the space is not in one. */
 export function listWorktrees(workspaceId: string, scope?: Scope): Promise<WorktreeListResponse> {
   return req<WorktreeListResponse>(

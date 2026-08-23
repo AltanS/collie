@@ -134,5 +134,19 @@ export function useSpaceActions() {
     [open, blockedText],
   );
 
-  return { newTab, newSpace, newWorktree, showWorktree };
+  // A launcher arrives as a SPACE too, and takes the same route for the same reason: the bridge
+  // matched the row and created the pane, so what comes back is a created pane like any other.
+  const launch = useCallback(
+    async (command: string) => {
+      if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      try {
+        open(await api.launch(command, scopeRef.current), "space");
+      } catch (e) {
+        setStatus(describeThrownError(e), "error");
+      }
+    },
+    [open, blockedText],
+  );
+
+  return { newTab, newSpace, newWorktree, showWorktree, launch };
 }

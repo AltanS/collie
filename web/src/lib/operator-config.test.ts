@@ -9,8 +9,10 @@ import { fetchConfig } from "@/lib/api";
 import type { BridgeConfig } from "@/lib/types";
 import {
   __resetOperatorCommands,
+  getLaunchers,
   getOperatorCommands,
   loadOperatorCommands,
+  useLaunchers,
   useOperatorCommands,
   useOperatorKeys,
   useOperatorQuickReplies,
@@ -26,11 +28,15 @@ const forkIn = {
   argHint: "",
 };
 
-const config = (operatorCommands?: BridgeConfig["operatorCommands"]): BridgeConfig => ({
+const config = (
+  operatorCommands?: BridgeConfig["operatorCommands"],
+  extra?: Partial<BridgeConfig>,
+): BridgeConfig => ({
   push: false,
   vapidPublicKey: "",
   // Optional on BridgeConfig: an absent key and an explicit `undefined` read the same downstream.
   operatorCommands,
+  ...extra,
 });
 
 beforeEach(() => asked.mockReset());
@@ -126,5 +132,33 @@ describe("the Quick-dock groups ride the same one read", () => {
     const dock = renderHook(() => useOperatorQuickReplies());
     await waitFor(() => expect(asked).toHaveBeenCalled());
     expect(dock.result.current).toEqual([]);
+  });
+});
+
+describe("the launcher rows ride the same single fetch", () => {
+  it("one fetch answers commands, keys and launchers", async () => {
+    const interrupt = { label: "Interrupt", keys: ["ctrl+c"], danger: false };
+    const peek = { command: "rumen-peek", label: "Runs & quota", cwd: "/home" };
+    asked.mockResolvedValue({
+      ...config([forkIn], { operatorKeys: [interrupt], launchers: [peek] }),
+    });
+
+    const keys = renderHook(() => useOperatorKeys());
+    const commands = renderHook(() => useOperatorCommands());
+    const launchers = renderHook(() => useLaunchers());
+    await waitFor(() => expect(launchers.result.current).toEqual([peek]));
+    expect(commands.result.current).toEqual([forkIn]);
+    expect(keys.result.current).toEqual([interrupt]);
+    // Three hooks, still one /api/config call — a second store would mean a second GET
+    // racing over which response wins.
+    expect(asked).toHaveBeenCalledTimes(1);
+  });
+
+  it("a bridge without launchers yields an empty list", async () => {
+    asked.mockResolvedValue(config());
+    const launchers = renderHook(() => useLaunchers());
+    await waitFor(() => expect(asked).toHaveBeenCalled());
+    expect(launchers.result.current).toEqual([]);
+    expect(getLaunchers()).toEqual([]);
   });
 });

@@ -1,0 +1,35 @@
+# Your own rows for Collie's launcher menu. Copy to your plugin config dir, next to `.env`:
+#   cp launchers.toml.example "$(herdr plugin config-dir herdr.collie)/launchers.toml"
+#
+# This file configures ONE thing: your launcher rows — the dashboard's Launch section and the
+# rocket sheet in the Space and pane headers, which list the same rows. Each row is a button that,
+# when tapped, creates a NEW Space (labelled with the row's label, in the row's cwd), types
+# the row's `command` verbatim into its fresh shell, and sends Enter — the command is run
+# exactly as written. This file IS the allowlist: `POST /api/launch` only accepts a `command`
+# string that matches a row here exactly, so nothing absent from this file can be launched
+# from a phone.
+#
+# The command owns its own lifetime: a self-closing peek (it prints and exits, closing its
+# pane) takes the whole Space with it when you quit — Herdr deletes a Space whose last pane
+# closed — while something like `htop` sits there until you close it.
+#
+# Edits are picked up live — no restart. Reload the page to see them.
+#
+# Fields: `command` (required, the shell line typed verbatim), `label` (optional; defaults to
+# the command's first whitespace-separated token), `cwd` (optional; defaults to the operator's
+# home dir, leading `~` is expanded).
+#
+# With every row commented out (as shipped) neither surface appears — no Launch section and no
+# rocket, exactly as shipped. A malformed row is dropped with a warning — never the whole file —
+# and a later row for the same `command` replaces the earlier one in place.
+
+# A self-closing peek with an explicit label — it runs, shows output, and when you quit the
+# Space goes away with it.
+# [[launchers]]
+# command = "rumen-peek"
+# label = "Runs & quota"
+
+# With a cwd — the new Space opens in that directory. `label` omitted, so it defaults to "htop".
+# [[launchers]]
+# command = "htop"
+# cwd = "~/dev/collie"

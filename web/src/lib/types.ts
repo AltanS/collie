@@ -750,6 +750,22 @@ export interface OperatorFontRow {
   weight?: string;
 }
 
+/**
+ * One operator-declared launcher row (`launchers.toml`). Mirrors Launcher in
+ * bridge/types.ts. A tap creates a throwaway Space and types this shell line verbatim
+ * into its fresh shell — herdr deletes a Space when its last pane closes, so quit → gone
+ * with nothing to clean up. The label is what the dashboard button shows; when the
+ * operator omits it the bridge defaults it to the command's first token.
+ */
+export interface Launcher {
+  /** The shell line typed into the new Space's shell, verbatim. Also the allowlist key /api/launch matches. */
+  command: string;
+  /** Button label. Defaults to the command's first whitespace-separated token. */
+  label: string;
+  /** Absolute directory the new Space opens in. */
+  cwd: string;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
@@ -769,6 +785,8 @@ export interface BridgeConfig {
   operatorQuickReplies?: OperatorQuickReplyRow[];
   /** The operator's own UI typefaces. Absent when there is no `theme.toml` (ADR 0033). */
   operatorFonts?: OperatorFontRow[];
+  /** The operator's own launcher rows. Absent when there is no `launchers.toml`. */
+  launchers?: Launcher[];
   /**
    * The multiplexer and its declared capabilities. **Absent on a bridge older than this field**, and
    * that absence is read as "everything is supported" — a mid-upgrade Herdr operator must never

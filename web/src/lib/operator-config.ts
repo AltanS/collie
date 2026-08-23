@@ -4,6 +4,7 @@ import { fetchConfig } from "@/lib/api";
 import { acceptOperatorFonts, applyOperatorFonts, type OperatorFontFace } from "@/lib/operator-fonts";
 import { designPrefs, subscribeDesign } from "@/lib/design";
 import type {
+  Launcher,
   MuxConfig,
   OperatorCommand,
   OperatorKeyRow,
@@ -13,9 +14,9 @@ import type {
 
 // The startup-resolved half of /api/config, read ONCE and held in module state: the operator's own
 // rows (their `commands.toml` palette, their `keys.toml` tray presets and their
-// `quick-replies.toml` dock groups) and the multiplexer's declared capabilities (M10/06). They all
-// ride the same request because they are the same kind of thing — config the bridge resolves at
-// startup and the client reads once.
+// `quick-replies.toml` dock groups, their `launchers.toml` rows) and the multiplexer's declared
+// capabilities (M10/06). They all ride the same request because they are the same kind of thing —
+// config the bridge resolves at startup and the client reads once.
 //
 // THE CAPABILITIES BELONG HERE RATHER THAN IN A SECOND STORE for the reason the header already
 // gives: this is ONE /api/config call, never a second channel. A capability store with its own
@@ -55,6 +56,7 @@ let currentMux: MuxConfig | null = null;
 // are the same value on purpose, because both mean "there is no microphone here" (ADR 0029). Absent
 // is the feature being off, so nothing has to distinguish them.
 let currentStt: SttCapability | null = null;
+let currentLaunchers: readonly Launcher[] = [];
 let inflight: Promise<void> | null = null;
 let loaded = false;
 const listeners = new Set<() => void>();
@@ -81,6 +83,7 @@ export function loadOperatorCommands(): Promise<void> {
       applyOperatorFonts(currentFonts, designPrefs().font);
       currentMux = cfg.mux ?? null;
       currentStt = cfg.stt ?? null;
+      currentLaunchers = cfg.launchers ?? [];
       loaded = true;
       emit();
     } catch {
@@ -157,6 +160,14 @@ export function initOperatorFonts(): void {
   subscribeDesign(() => applyOperatorFonts(currentFonts, designPrefs().font));
 }
 
+/**
+ * The operator's launcher rows. Empty until a read succeeds and on a bridge with no
+ * `launchers.toml` — both mean the same thing to the surfaces that read it: draw nothing.
+ */
+export function getLaunchers(): readonly Launcher[] {
+  return currentLaunchers;
+}
+
 export function subscribeOperatorConfig(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
@@ -201,6 +212,14 @@ export function useOperatorQuickReplies(): readonly OperatorQuickReplyRow[] {
   );
 }
 
+/** Reactive read of the dashboard launcher rows. Same one-shot fetch, same contract. */
+export function useLaunchers(): readonly Launcher[] {
+  useEffect(() => {
+    void loadOperatorCommands();
+  }, []);
+  return useSyncExternalStore(subscribeOperatorConfig, getLaunchers, getLaunchers);
+}
+
 /** Test helper — reset module state between cases. */
 export function __resetOperatorCommands(): void {
   current = [];
@@ -209,6 +228,7 @@ export function __resetOperatorCommands(): void {
   currentFonts = [];
   currentMux = null;
   currentStt = null;
+  currentLaunchers = [];
   inflight = null;
   loaded = false;
   listeners.clear();

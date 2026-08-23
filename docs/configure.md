@@ -116,6 +116,33 @@ otherwise only receive `y`/`n`. Changes apply immediately without a restart. To 
 and tap **Quick** to see your groups. If a row fails to load, `journalctl --user -u collie -n 20`
 prints the error.
 
+## Your own launchers
+
+One tap opens a new Space and runs a command you declared, in `launchers.toml` next to `keys.toml`:
+
+```bash
+cp launchers.toml.example ~/.config/collie/launchers.toml
+```
+
+```toml
+[[launchers]]
+command = "htop"             # required; the shell line, typed verbatim into the new Space
+label = "Top"                # optional; defaults to the first word of command
+# cwd = "~/dev/collie"       # optional; defaults to your home directory, ~ expanded
+```
+
+A tap creates a Space named after the row, in its `cwd`, types the `command` and sends Enter. The
+command owns its own lifetime. A command that closes itself takes the Space with it, and `htop`
+stays until you quit it. This file is the allowlist. `POST /api/launch` accepts only a command that
+matches a row here exactly, so a phone can start nothing that is not in the file. Changes apply
+immediately without a restart, but an already-open tab reads the rows once per load.
+
+Your rows appear twice: as a **Launch** section on the dashboard, which folds like Spaces and
+Recent, and behind the rocket button in the Space and pane headers, which opens them as a sheet
+with each command printed under its label. Declare no rows and neither surface appears. To verify,
+reload the dashboard and look under the herd. If a row fails to load,
+`journalctl --user -u collie -n 20` prints the error.
+
 ## Your own typefaces
 
 The interface font is a per-device setting. Under **Settings → Typeface**, you can choose between

@@ -746,6 +746,21 @@ export interface OperatorFontRow {
   weight?: string;
 }
 
+/**
+ * One operator-declared launcher row (`launchers.toml`). A phone tap creates a new herdr workspace
+ * (a Space) labelled with the row's label, running in the row's cwd, and types the command into its
+ * fresh shell — the whole security story of `POST /api/launch` is that the bridge matches the client's
+ * `command` string EXACTLY against this list and 400s anything else before herdr is touched.
+ */
+export interface Launcher {
+  /** The shell line typed into the new Space's shell, verbatim. Also the allowlist key /api/launch matches. */
+  command: string;
+  /** Button label. Defaults to the command's first whitespace-separated token. */
+  label: string;
+  /** Absolute directory the new Space opens in. */
+  cwd: string;
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;
@@ -771,6 +786,8 @@ export interface BridgeConfig {
    * bridge resolved is ever echoed to a phone (ADR 0033).
    */
   operatorFonts?: OperatorFontRow[];
+  /** The operator's own launcher rows. Absent/empty when there is no `launchers.toml`. */
+  launchers?: Launcher[];
   /**
    * The multiplexer this collie drives, and what it can do. Absent only on a bridge older than
    * M10/06 — which a client reads as "every capability present", i.e. exactly today's Herdr app.

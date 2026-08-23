@@ -275,6 +275,11 @@ lint guard or the pack-wire guard.
   reader, same mtime liveness; the opposite posture, because a font cannot fire an action and so
   shadows nothing ([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)). Don't dilute
   ADR 0018's replace-law to cover it.
+- **`launchers.toml` is the operator's fifth file, and the only one whose rows CREATE a pane** — its
+  rows are the allowlist `POST /api/launch` matches exactly, so the client names a row and never
+  supplies a command line. Same reader, same mtime liveness; no scope ladder, because a row that
+  makes its own pane has nothing to address. Do not add a second allowlist and do not let the client
+  supply a command line.
 - **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by

@@ -36,6 +36,7 @@ import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
+import { LaunchTrigger } from "@/components/launch-trigger";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
@@ -1056,18 +1057,25 @@ export function AgentChat({
           // callbacks rather than unrendered buttons; the sheet hides a row it was given no callback for.
           rightLead={
             agent ? (
-              <button
-                type="button"
-                onClick={() => setDrawer("paneMenu")}
-                aria-label={t("chat.paneMenu.aria")}
-                // A real 44px box, stated, for the same reason SettingsGear states one and with no
-                // negative margin for the same reason: the two icons this replaces were size-8 with
-                // `-mr-1`, i.e. 32px drawn and 28px of unshared hit area at the very edge of the row.
-                // One control can afford the floor.
-                className="grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-              >
-                <EllipsisVertical className="size-5" />
-              </button>
+              <>
+                {/* A launch from inside a pane is the case the dashboard's strip cannot serve: you
+                    are reading an agent and want a glance at something else, which otherwise costs
+                    Home, tap, Back. It hides itself when no launchers are declared, so the cluster
+                    a pane already had is the cluster it keeps. */}
+                <LaunchTrigger readOnly={readOnly} />
+                <button
+                  type="button"
+                  onClick={() => setDrawer("paneMenu")}
+                  aria-label={t("chat.paneMenu.aria")}
+                  // A real 44px box, stated, for the same reason SettingsGear states one and with no
+                  // negative margin for the same reason: the two icons this replaces were size-8 with
+                  // `-mr-1`, i.e. 32px drawn and 28px of unshared hit area at the very edge of the row.
+                  // One control can afford the floor.
+                  className="grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                >
+                  <EllipsisVertical className="size-5" />
+                </button>
+              </>
             ) : undefined
           }
         >

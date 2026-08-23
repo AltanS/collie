@@ -322,9 +322,10 @@ graph TD
   rebuild. On a pane they address they **replace** the shipped catalog rather than merging into it —
   [ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md). Their **Keys-tray presets**
   ride the same request on the same terms, from `keys.toml` (`bridge/operator-keys.ts`), and their
-  **Quick-dock groups** from `quick-replies.toml` (`bridge/operator-quick-replies.ts`); the three
-  files share one reader (`bridge/operator-file.ts`) and one scope ladder
-  (`web/src/lib/operator-scope.ts`).
+  **Quick-dock groups** from `quick-replies.toml` (`bridge/operator-quick-replies.ts`), and their
+  **launcher rows** from `launchers.toml` (`bridge/operator-launchers.ts`); the four files share one
+  reader (`bridge/operator-file.ts`), and the first three share one scope ladder
+  (`web/src/lib/operator-scope.ts`). A launcher row creates its own pane, so it carries no scope.
 
 - **UI strings are translated by a typed dictionary, not a library** (`web/src/lib/i18n/`, six
   locales, English the compile-time source of truth) — `t()`/`tn()` plus the `useLocale()` hook
