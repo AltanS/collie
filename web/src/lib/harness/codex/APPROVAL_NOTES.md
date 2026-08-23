@@ -35,8 +35,9 @@ its class: the FIRST row must be `Yes, proceed`, the LAST row must be `No, and t
 to do differently`, and every row between must match `don't ask again` (persistent — never a
 button). Any other row shape refuses the whole card. Digits are consecutive `1..n`; the footer
 and the `Would you like to run the following command?` header must both be on screen. The
-header, Reason, and `$ command` rows stay in the raw mirror above the buttons, so the operator
-reads exactly what they are approving.
+header, Reason, `$ command`, and persistent "don't ask again" rows stay in the raw mirror
+above the buttons, so the operator reads exactly what they are approving and still sees the
+persist option even though it is never a button.
 
 Only the exec-command approval is captured; other approval kinds (patch application, MCP
 consents, …) have different headers and fail closed until captured and probed.

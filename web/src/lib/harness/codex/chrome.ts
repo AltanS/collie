@@ -26,9 +26,10 @@ export interface ComposerBox {
 }
 
 // A draft wraps onto indented continuation rows between the prompt row and the status row.
-// Captured drafts show one; the bound is slack for longer phone-typed messages, and a run
-// deeper than this is not a composer (fail closed — locateComposer returns null).
-const MAX_DRAFT_ROWS = 8;
+// Captured drafts show one; the bound is slack for longer phone-typed messages. 8 stranded a
+// wrap (locateComposer returned null and the app reported a dialog). Same 100 as omp/Grok/
+// Claude. A run deeper than this is not a composer (fail closed — locateComposer returns null).
+const MAX_DRAFT_ROWS = 100;
 
 // Continuation rows are exactly two-space-indented text. Deeper indents belong to dialogs and
 // transcript blocks; a `› ` or `• ` row is never a continuation.
