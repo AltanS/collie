@@ -6,6 +6,21 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.16] - 2026-08-23
+
+**Voice input** — a microphone in the composer, off until you run `collie stt setup`. Ports the work
+of [#91](https://github.com/AltanS/collie/pull/91) (@en-ver) and
+[#115](https://github.com/AltanS/collie/pull/115) (@ardaaltinors), both previously declined;
+[ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md) records what changed, and
+[`README.md`](./README.md#voice-input-optional) has the setup.
+
+### Added
+
+- **ADR 0029 + the provider seam** — `bridge/stt/`, registered not special-cased, absent until configured; the `openai-compatible` provider covers the public API, the cloud clones and a local whisper.cpp / parakeet.cpp server (the zero-egress choice) (58e3783)
+- **The `codex` provider** — a short-lived token from the operator's own `codex app-server` over `getAuthStatus`, never `~/.codex/auth.json`; the wire identity is probed honest-first, the fallback needs typed consent, and whichever won is written into the config (0c8e49a)
+- **The microphone, and hands-free** — a record button beside the composer's attach control, drawn only when the bridge published a provider *and* the browser can actually record; the hands-free toggle sends through the guarded reply path, never around it (84799f9)
+- `collie stt setup | test | status | off` — interactive or fully by flag, writes `stt.json` at 0600, live with no restart; `test` is one real round trip, `status` names the source of every field (7565189)
+
 ## [1.0.0-beta.15] - 2026-08-23
 
 ### Fixed
