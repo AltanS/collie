@@ -15,7 +15,7 @@ import { describeAdapterConformance, isValidHerdrKey } from "./conformance";
 //
 // The FOREIGN cohort is the omp corpus — the second adapter's captures. Until it existed this leg was
 // vacuous (`foreignFixtures: []`), so "an adapter must stay raw on another harness's screens" was a
-// documented promise nothing checked. Claude's grammars return raw-only on all 20 omp captures today,
+// documented promise nothing checked. Claude's grammars return raw-only on all 21 omp captures today,
 // and the mirror-image assertion lives in harness/omp.test.ts.
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
