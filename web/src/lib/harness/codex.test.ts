@@ -126,6 +126,31 @@ describe("chrome", () => {
     const real = ["› draft text", "", "  model x · /some/dir · Context 50% left"].join("\n");
     expect(locateComposer(splitLines(parseAnsi(real)))).not.toBeNull();
   });
+
+  it("a draft that wraps past 8 rows is still a composer", () => {
+    // The old bound of 8 stranded a phone wrap: locateComposer returned null and the pane
+    // reported a dialog. 1 prompt + 8 continuations is 9 rows, the first case that failed.
+    const cont = Array.from({ length: 8 }, (_, i) => `  word${i}`);
+    const lines = splitLines(
+      parseAnsi(["› start", ...cont, "", "  model x · /some/dir · Context 50% left"].join("\n")),
+    );
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe(
+      ["start", ...Array.from({ length: 8 }, (_, i) => `word${i}`)].join(" "),
+    );
+  });
+
+  it("declines a draft taller than MAX_DRAFT_ROWS", () => {
+    const cont = Array.from({ length: 100 }, (_, i) => `  word${i}`);
+    const status = "  model x · /some/dir · Context 50% left";
+    expect(
+      locateComposer(splitLines(parseAnsi(["› start", ...cont, "", status].join("\n")))),
+    ).toBeNull();
+    expect(
+      locateComposer(splitLines(parseAnsi(["› start", ...cont.slice(1), "", status].join("\n")))),
+    ).not.toBeNull();
+  });
 });
 
 describe("codexBuildBlocks", () => {
@@ -159,13 +184,18 @@ describe("codexBuildBlocks", () => {
       "No, and tell Codex what to do differently",
     ]);
     expect(prompt.prompt.options.map((o) => o.keys)).toEqual([["1"], ["3"]]);
-    // The header, Reason and `$ command` rows stay in the raw mirror above the buttons.
+    expect(prompt.prompt.options.some((o) => /don't ask again/i.test(o.label))).toBe(false);
+    // Header, Reason, `$ command`, and the persistent row stay in the raw mirror — swallowing
+    // the whole option run hid digit 2 from both the buttons and the phone.
     const raw = blocks[0];
     expect(raw?.kind).toBe("raw");
     if (raw?.kind !== "raw") return;
     const above = raw.lines.map(lineText).join("\n");
     expect(above).toContain("Would you like to run the following command?");
     expect(above).toContain("$ touch /tmp/collie-codex-probe.txt");
+    expect(above).toMatch(/2\.\s+Yes, and don't ask again/);
+    expect(prompt.lines.map(lineText).join("\n")).not.toMatch(/don't ask again/);
+    expect(lineText(prompt.lines[0]!)).toMatch(/3\.\s+No, and tell Codex/);
   });
 
   it("lifts a question card with per-row digits; the question stays in the mirror", () => {

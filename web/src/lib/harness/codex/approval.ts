@@ -76,14 +76,14 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
   }
   if (headerRow < 0) return null;
 
-  const start = bottom - n + 1;
   const signature = regionSignature(lines, headerRow, fi + 1);
   if (signature === "") return null;
 
   return {
-    // The block replaces the OPTIONS down; the header, Reason and `$ command` rows stay in the
-    // raw mirror — the same question-stays-visible contract as Claude's prompt-select.
-    startLine: start,
+    // Persistent rows sit between Yes and the reject. Replacing from the first option
+    // swallowed them (they are never buttons). The block starts at the reject so they
+    // stay in the raw mirror with the header, Reason, and `$ command`.
+    startLine: bottom,
     model: {
       question: "Would you like to run the following command?",
       options: [
