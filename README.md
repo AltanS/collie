@@ -606,9 +606,49 @@ design, so while a prerelease train is running it keeps answering the last stabl
 that trusts it silently stalls on an old version. The tags are the contract; the Latest badge is only
 a hint for people.
 
+#### Testing the v1 beta
+
+The v1 line is a prerelease train — `v1.0.0-beta.N` tags cut off the `v1` branch. **A routine update
+never lands on one, and that is the design, not a gap:** `collie update` and the in-app banner resolve
+strict `vX.Y.Z` tags only ([above](#resolving-the-newest-release-from-a-script)), so on 0.x `update`
+stays on 0.x and `update --major` answers *"no release above major 0 exists yet — nothing to cross
+to."* Taking a beta is a deliberate act, by one of two routes.
+
+**Herdr-managed, pinned to the tag:**
+
+```bash
+herdr plugin install AltanS/collie --ref v1.0.0-beta.16 --yes
+herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
+```
+
+A pinned install does not self-update: `update` on a beta checkout reports *"no release of major 1 yet
+— leaving this checkout where it is."* Take the next beta the way you took this one, with the newer
+tag.
+
+**Linked clone:**
+
+```bash
+git fetch --tags && git checkout v1   # or a tag: git checkout v1.0.0-beta.16
+bin/collie build && bin/collie restart
+```
+
+**To go back**, reinstall without the pin. It lands on the default-branch tip, which is the 0.x stable
+line until v1 merges:
+
+```bash
+herdr plugin install AltanS/collie --yes
+herdr plugin action invoke restart --plugin herdr.collie
+```
+
+Nothing you configured moves either way: `.env` and the `tailscale serve` record live in the plugin
+config dir, paired devices and `stt.json` in the state dir — all outside the checkout.
+
+What's new to exercise is in the `1.0.0-beta.*` entries of the [CHANGELOG](./CHANGELOG.md); the newest
+surface is [voice input](#voice-input-optional), which is off until you run `collie stt setup`.
+
 ### Migrating from 0.x
 
-The last 0.x release is **0.31.1**. Going from there to 1.0 crosses a major, so a routine `update`
+The last 0.x release is **0.32.1**. Going from there to 1.0 crosses a major, so a routine `update`
 will not do it — it will tell you 1.0 is out and name this command instead:
 
 ```bash
