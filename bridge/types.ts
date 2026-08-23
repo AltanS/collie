@@ -474,6 +474,30 @@ export interface BridgeConfig {
    * M10/06 — which a client reads as "every capability present", i.e. exactly today's Herdr app.
    */
   mux?: MuxConfig;
+  /**
+   * Speech-to-text, when a provider is configured. **Absent is the feature being off**, which is
+   * also exactly what an older bridge sends — so a client reads "no key" as "no microphone" and a
+   * collie whose operator configured nothing ships the byte-identical body it always did.
+   *
+   * It carries a label and a yes/no, and never the endpoint, the model or the credential: the phone
+   * decides whether to draw a button, not where the audio goes.
+   */
+  stt?: SttCapability;
+}
+
+/**
+ * What `/api/config` says about speech-to-text. The whole of what leaves the bridge on this subject.
+ *
+ * The provider's own status lives behind `SttProvider.status()` (bridge/stt/provider.ts); this is
+ * its wire shape.
+ */
+export interface SttCapability {
+  /** The provider's id — a label the UI may show, e.g. `openai-compatible`. */
+  provider: string;
+  /** Whether it could serve a request right now. */
+  available: boolean;
+  /** Operator-facing prose when it could not. Absent when it could. */
+  reason?: string;
 }
 
 /** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */
