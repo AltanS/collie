@@ -617,13 +617,24 @@ to."* Taking a beta is a deliberate act, by one of two routes.
 **Herdr-managed, pinned to the tag:**
 
 ```bash
+# Fetches that one tag and detaches the checkout onto it, then builds the UI right there
+# (the manifest's [[build]] step, GitHub installs only) — see above.
 herdr plugin install AltanS/collie --ref v1.0.0-beta.16 --yes
 herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
+
+# NEW in v1: every verb now lives at <checkout>/bin/collie. Putting `collie` on your PATH is
+# its own act — one symlink, never a copy, never a side effect of install/build/update:
+bin/collie link                                            # ~/.local/bin/collie → <checkout>/bin/collie
+collie stt setup                                           # …and bare `collie` works from anywhere
 ```
 
 A pinned install does not self-update: `update` on a beta checkout reports *"no release of major 1 yet
 — leaving this checkout where it is."* Take the next beta the way you took this one, with the newer
 tag.
+
+`link` is itself a v1 feature worth exercising — [details](#put-collie-on-your-path),
+reasoning in [ADR 0021](./.adr/0021-the-path-name-is-a-pointer-never-a-copy.md). Skip it and every
+command below reads `bin/collie …` from the checkout instead.
 
 **Linked clone:**
 
@@ -636,9 +647,15 @@ bin/collie build && bin/collie restart
 line until v1 merges:
 
 ```bash
-herdr plugin install AltanS/collie --yes
+bin/collie unlink                                          # FIRST, if you linked — see below
+herdr plugin install AltanS/collie --yes                   # default-branch tip, still detached + shallow
 herdr plugin action invoke restart --plugin herdr.collie
 ```
+
+**Take the link down before you roll back.** 0.x has no `cli/` and no compiled binary — its verbs are
+the shim's own — so nothing on that line ever builds or refreshes `<checkout>/bin/collie`, and a
+`collie` left on your PATH resolves to a stale v1 binary or to nothing at all. `unlink` removes the
+name only while it still points at *this* checkout, so run it before the reinstall, not after.
 
 Nothing you configured moves either way: `.env` and the `tailscale serve` record live in the plugin
 config dir, paired devices and `stt.json` in the state dir — all outside the checkout.
