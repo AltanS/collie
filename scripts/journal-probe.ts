@@ -83,14 +83,14 @@ function refFor(agent: string, path: string): AgentSessionRef | null {
  */
 async function candidateRefs(
   agent: string,
-  roots: readonly string[],
+  root: string,
 ): Promise<{ refs: AgentSessionRef[]; total: number }> {
-  // A harness can have several roots (one per profile home — see config.ts). Probe them all: the
-  // point of this script is to catch a root whose logs the adapter can't read, and the second root is
-  // exactly where that now happens.
-  const perRoot = await Promise.all(roots.map((root) => candidateRefsUnder(agent, root)));
-  const refs = perRoot.flatMap((r) => r.refs).slice(0, MAX_CANDIDATES);
-  return { refs, total: perRoot.reduce((n, r) => n + r.total, 0) };
+  // One root per call, capped per root. A harness can have several roots (one per profile home —
+  // see config.ts) and `probe` walks them SEPARATELY: flattening them into one capped, newest-first
+  // list let a populated healthy first root starve the second one out of the list entirely — the
+  // exact "root whose logs the adapter can't read" condition this script exists to catch.
+  const { refs, total } = await candidateRefsUnder(agent, root);
+  return { refs: refs.slice(0, MAX_CANDIDATES), total };
 }
 
 async function candidateRefsUnder(
@@ -146,14 +146,13 @@ function summarise(entries: TranscriptEntry[]): string {
   return `${entries.length} turns (${byRole}), ${parts} parts, ${results} tool results`;
 }
 
-async function probe(adapter: JournalAdapter, roots: readonly string[]): Promise<"ok" | "empty" | "fail"> {
-  const label = adapter.agent.padEnd(8);
-  const { refs, total } = await candidateRefs(adapter.agent, roots);
-  if (refs.length === 0) {
-    console.log(`${label} — no logs found under ${roots.join(", ")} (harness not installed here?)`);
-    return "empty";
-  }
-
+async function probeRoot(
+  adapter: JournalAdapter,
+  label: string,
+  root: string,
+  refs: AgentSessionRef[],
+  total: number,
+): Promise<boolean> {
   let tried = 0;
   let lastProblem = "no candidate produced turns";
   for (const ref of refs) {
@@ -179,25 +178,50 @@ async function probe(adapter: JournalAdapter, roots: readonly string[]): Promise
         `${dupes > 0 ? ` ⚠ ${dupes} duplicate cursors` : ""}`,
     );
     console.log(`${" ".repeat(10)}${resolved}  (candidate ${tried} of ${total})`);
-    return "ok";
+    return true;
   }
 
-  // Every candidate failed: either the logs moved, or a format drifted under the parser.
-  console.log(`${label} ✗ ${tried} candidate(s) tried, none readable — last: ${lastProblem}`);
-  return "fail";
+  // Every candidate under this root failed: the logs moved, or a format drifted under the parser.
+  console.log(`${label} ✗ ${tried} candidate(s) tried under ${root}, none readable — last: ${lastProblem}`);
+  return false;
 }
 
-const cfg = loadConfig();
-const registry = buildJournalRegistry(cfg.journalRoots);
-// Keyed lookup rather than a cast: JournalRoots is a closed shape on purpose (adding a harness
-// should be a type error here until its root is wired), so widen it explicitly.
-const roots = new Map<string, readonly string[]>(Object.entries(cfg.journalRoots));
+async function probe(adapter: JournalAdapter, roots: readonly string[]): Promise<"ok" | "empty" | "fail"> {
+  const label = adapter.agent.padEnd(8);
+  // Every POPULATED root must produce a readable log — one healthy root must never vouch for a
+  // broken sibling. Roots with no candidates at all are simply not installed there.
+  let populated = 0;
+  let failed = 0;
+  for (const root of roots) {
+    const { refs, total } = await candidateRefs(adapter.agent, root);
+    if (refs.length === 0) continue;
+    populated++;
+    if (!(await probeRoot(adapter, label, root, refs, total))) failed++;
+  }
+  if (populated === 0) {
+    console.log(`${label} — no logs found under ${roots.join(", ")} (harness not installed here?)`);
+    return "empty";
+  }
+  return failed === 0 ? "ok" : "fail";
+}
 
-console.log("journal adapters — probing real logs\n");
-const results = await Promise.all(
-  Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? [])),
-);
-const failed = results.filter((r) => r === "fail").length;
-const ok = results.filter((r) => r === "ok").length;
-console.log(`\n${ok} ok, ${results.length - ok - failed} with no logs, ${failed} failed`);
-process.exit(failed > 0 ? 1 : 0);
+async function main(): Promise<void> {
+  const cfg = loadConfig();
+  const registry = buildJournalRegistry(cfg.journalRoots);
+  // Keyed lookup rather than a cast: JournalRoots is a closed shape on purpose (adding a harness
+  // should be a type error here until its root is wired), so widen it explicitly.
+  const roots = new Map<string, readonly string[]>(Object.entries(cfg.journalRoots));
+
+  console.log("journal adapters — probing real logs\n");
+  const results = await Promise.all(
+    Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? [])),
+  );
+  const failed = results.filter((r) => r === "fail").length;
+  const ok = results.filter((r) => r === "ok").length;
+  console.log(`\n${ok} ok, ${results.length - ok - failed} with no logs, ${failed} failed`);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+if (import.meta.main) {
+  await main();
+}
