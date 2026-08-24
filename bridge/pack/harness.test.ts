@@ -18,7 +18,7 @@ import {
   cmdReconnect,
   type PackDeps,
 } from "../../cli/pack.ts";
-import type { CliContext } from "../../cli/context.ts";
+import { DEFAULT_SERVE_PORT, type CliContext } from "../../cli/context.ts";
 import type { Exec, ExecResult } from "../../cli/sys.ts";
 import { realFiles } from "../../cli/sys.ts";
 import { PackOpsStore } from "./ops-store.ts";
@@ -316,6 +316,7 @@ function depsFor(instance: Instance, captured: Captured): PackDeps {
     env: { COLLIE_POLL_MS: "300" },
     port: instance.port,
     serveMode: "http",
+    servePort: DEFAULT_SERVE_PORT,
     socket: instance.socketPath,
     handlerFile: join(instance.home, "config", "tailscale-managed-handler"),
     stateDir: instance.stateDir,

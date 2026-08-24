@@ -404,7 +404,7 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
   if (raw === null) {
     // No record. On a peer that is the correct state; on a lead it is a pack with no published URL.
     const proxy = `http://127.0.0.1:${deps.ctx.port}`;
-    const listener = deps.ctx.serveMode === "http" ? deps.ctx.port : 443;
+    const listener = deps.ctx.serveMode === "http" ? deps.ctx.port : deps.ctx.servePort;
     let availability;
     try {
       availability = rootAvailability(status, listener, deps.ctx.serveMode, proxy);

@@ -12,7 +12,9 @@ import {
   collieVersionBare,
   collieVersionFrom,
   deriveSettings,
+  effectiveServePort,
   parseEnvFile,
+  parseServePort,
   PLUGIN_ID,
   resolveConfigDir,
   resolveHome,
@@ -271,6 +273,7 @@ describe("derived settings", () => {
     expect(deriveSettings({}, HOME)).toEqual({
       port: 8787,
       serveMode: "https",
+      servePort: 443,
       socket: join(HOME, ".config", "herdr", "herdr.sock"),
     });
   });
@@ -278,10 +281,15 @@ describe("derived settings", () => {
   test("env overrides each of them", () => {
     expect(
       deriveSettings(
-        { COLLIE_PORT: "9000", COLLIE_SERVE_MODE: "http", HERDR_SOCKET_PATH: "/run/h.sock" },
+        {
+          COLLIE_PORT: "9000",
+          COLLIE_SERVE_MODE: "http",
+          COLLIE_SERVE_PORT: "8443",
+          HERDR_SOCKET_PATH: "/run/h.sock",
+        },
         HOME,
       ),
-    ).toEqual({ port: 9000, serveMode: "http", socket: "/run/h.sock" });
+    ).toEqual({ port: 9000, serveMode: "http", servePort: 8443, socket: "/run/h.sock" });
   });
 
   test("a non-numeric port falls back rather than becoming NaN", () => {
@@ -291,6 +299,39 @@ describe("derived settings", () => {
   test("only the literal `http` leaves https — a typo does not silently disable TLS", () => {
     expect(deriveSettings({ COLLIE_SERVE_MODE: "htpp" }, HOME).serveMode).toBe("https");
     expect(deriveSettings({ COLLIE_SERVE_MODE: "HTTP" }, HOME).serveMode).toBe("https");
+  });
+});
+
+describe("COLLIE_SERVE_PORT", () => {
+  test("unset or empty is 443 — the default install is untouched", () => {
+    expect(parseServePort({})).toEqual({ ok: true, port: 443 });
+    expect(parseServePort({ COLLIE_SERVE_PORT: "" })).toEqual({ ok: true, port: 443 });
+    expect(parseServePort({ COLLIE_SERVE_PORT: "  " })).toEqual({ ok: true, port: 443 });
+    expect(effectiveServePort({})).toBe(443);
+  });
+
+  test("a port in range is taken, surrounding whitespace and all", () => {
+    expect(parseServePort({ COLLIE_SERVE_PORT: "8443" })).toEqual({ ok: true, port: 8443 });
+    expect(parseServePort({ COLLIE_SERVE_PORT: " 8443 " })).toEqual({ ok: true, port: 8443 });
+    expect(parseServePort({ COLLIE_SERVE_PORT: "1" })).toEqual({ ok: true, port: 1 });
+    expect(parseServePort({ COLLIE_SERVE_PORT: "65535" })).toEqual({ ok: true, port: 65535 });
+  });
+
+  test("anything else is refused BY NAME — 0, out of range, not a whole number", () => {
+    const refusal = (value: string): string => {
+      const parsed = parseServePort({ COLLIE_SERVE_PORT: value });
+      if (parsed.ok) throw new Error(`expected a refusal for: ${value}`);
+      return parsed.message;
+    };
+    for (const bad of ["0", "70000", "8x", "-1", "84.43"]) {
+      expect(refusal(bad)).toContain("COLLIE_SERVE_PORT");
+    }
+  });
+
+  test("the lenient half falls back rather than throwing — no unrelated verb dies on a typo", () => {
+    // `url`, `status`, `qr` and `doctor` all read the context; only `collie serve` refuses.
+    expect(effectiveServePort({ COLLIE_SERVE_PORT: "70000" })).toBe(443);
+    expect(deriveSettings({ COLLIE_SERVE_PORT: "8x" }, HOME).servePort).toBe(443);
   });
 });
 

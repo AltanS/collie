@@ -9,6 +9,7 @@ four shapes here are for everything else. Pick one.
 - [Variant C — reverse proxy as the only front door (no Tailscale)](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
 - [Variant D — off-host identity proxy over the tailnet](#variant-d--off-host-identity-proxy-over-the-tailnet)
 - [Variant E — any other mesh or tunnel](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
+- [Several Collies on one host](#several-collies-on-one-host) — a URL per developer on a shared box
 - [The standby door — a pack's failover path](#the-standby-door--a-packs-failover-path) (packs only)
 
 The security rules in [README → Security](./README.md#%EF%B8%8F-security--read-before-you-run-it)
@@ -378,6 +379,42 @@ Three things to get right, none of them Collie-specific:
 > the auth in front of it is the only thing between a stranger and that shell, so treat a shared PIN
 > the way you'd treat a root password — and prefer a tunnel scoped to your own devices over a public
 > URL with a gate on it.
+
+## Several Collies on one host
+
+A tailnet name belongs to the **machine**, not to a person on it. So when a team shares one VPS and
+each developer wants their own Collie, they are all reaching for the same `https://<host>.<tailnet>.ts.net`
+— and `tailscale serve` has exactly one root mount on :443 to give. `COLLIE_SERVE_PORT` hands each
+Collie a listener port of its own, and the URL a port suffix to match:
+
+```bash
+# ~/.config/herdr/plugins/config/herdr.collie/.env — one per Unix user
+COLLIE_PORT=8801                       # this user's loopback bridge port — unique per user
+COLLIE_SERVE_PORT=8443                 # this user's tailnet https listener — unique per user
+COLLIE_TRUSTED_USER=dev-a@example.com  # only this tailnet login may drive these agents
+```
+
+`collie url` then prints `https://<host>.<tailnet>.ts.net:8443`, the next developer gets `:8444`, and
+each door is still Collie's one managed front door — same certificate, same identity header, same
+teardown rule ([ADR 0001](./.adr/0001-one-managed-front-door.md)). Only the port is yours to pick.
+
+Three things to get right:
+
+1. **One Unix user per developer, each running their own `herdr` and their own Collie.** Collie
+   drives whatever panes its herdr can see; two developers sharing one herdr share one set of
+   terminals, which is not what anyone means by "my own Collie".
+2. **Set `COLLIE_TRUSTED_USER`.** Every developer on the tailnet can reach every port on the host,
+   and without it each Collie accepts all of them. It is the only thing making `:8443` yours rather
+   than the team's, and Collie warns at startup while it is unset.
+3. **The serve step needs privilege the developer may not have.** `tailscale serve` requires root or
+   the single Tailscale operator user (`tailscale set --operator=<user>` names exactly one). So an
+   admin runs `collie serve` once per user account — the mapping is `--bg` and persists across
+   reboots, and each developer's own `collie start`/`restart` then leaves it alone. If a developer
+   sees `access denied` from `tailscale serve`, that is this, not a Collie problem.
+
+Ports are free-form here: `tailscale serve --https=<port>` takes any port. Only `funnel` — which
+Collie never runs — is restricted to 443/8443/10000. An unusable `COLLIE_SERVE_PORT` makes
+`collie serve` refuse before it touches anything, rather than quietly falling back to :443.
 
 ## The standby door — a pack's failover path
 

@@ -62,6 +62,20 @@ describe("the ownership record", () => {
     });
   });
 
+  test("an https record on a COLLIE_SERVE_PORT listener round-trips too", () => {
+    // The https arm used to accept the literal `https:443`; the port is the operator's now, and a
+    // record we cannot read is a mapping we cannot tear down.
+    const line = "https:8443|host.ts.net:8443|http://127.0.0.1:8787";
+    const record = parseRecord(`${line}\n`);
+    expect(record).toEqual({
+      mode: "https",
+      port: 8443,
+      hostPort: "host.ts.net:8443",
+      proxy: OURS,
+    });
+    expect(formatRecord(record)).toBe(`${line}\n`);
+  });
+
   test("rejects every malformed shape rather than guessing at what we own", () => {
     const bad = (line: string): string => {
       try {
@@ -71,8 +85,9 @@ describe("the ownership record", () => {
       }
       throw new Error(`expected a refusal for: ${line}`);
     };
-    // https is only ever :443 — tailscale terminates TLS there and nowhere else.
-    expect(bad("https:8443|host:8443|http://127.0.0.1:8787")).toContain("invalid managed");
+    // A port that is not a number is not a handler we wrote, on either protocol.
+    expect(bad("https:8x|host:8x|http://127.0.0.1:8787")).toContain("invalid managed");
+    expect(bad("https:|host:|http://127.0.0.1:8787")).toContain("invalid managed");
     expect(bad("ftp:21|host:21|http://127.0.0.1:8787")).toContain("invalid managed");
     expect(bad("http:|host:|http://127.0.0.1:8787")).toContain("invalid managed");
     expect(bad("http:8787|host.ts.net:8787")).toContain("invalid managed");
@@ -224,6 +239,8 @@ describe("serve — publishing", () => {
     expect(cmdServe(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
     expect(h.files.read(HANDLER_FILE)).toBe("https:443|host.example:443|http://127.0.0.1:8787\n");
+    // The default install's argv is unchanged: no listener flag at all.
+    expect(h.exec.calls.some((c) => c.includes("--https="))).toBe(false);
   });
 
   test("a foreign root refuses with exit 1, publishes nothing and records nothing", () => {
@@ -295,6 +312,78 @@ describe("serve — publishing", () => {
     expect(cmdServe(nameless.deps)).toBe(EXIT.FAIL);
     expect(nameless.io.stderr.join("\n")).toContain("untrackable root mount");
     expect(nameless.files.exists(HANDLER_FILE)).toBe(false);
+  });
+});
+
+describe("serve — COLLIE_SERVE_PORT (one tailnet name, a listener port per developer)", () => {
+  const AT_8443 = { COLLIE_SERVE_PORT: "8443" };
+
+  test("the chosen port is what gets published, recorded and announced", () => {
+    const h = harness({ env: AT_8443 });
+    expect(cmdServe(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("tailscale serve --bg --https=8443 --set-path=/ 8787");
+    expect(h.files.read(HANDLER_FILE)).toBe("https:8443|host.example:8443|http://127.0.0.1:8787\n");
+    expect(h.io.stdout.join("\n")).toContain(
+      "tailscale serve (https) → tailnet :8443 -> 127.0.0.1:8787",
+    );
+  });
+
+  test("the availability gate is asked about 8443, not about 443", () => {
+    const adopt = harness({
+      env: AT_8443,
+      serveStatus: `{${tcp(8443, "HTTPS")},${web("host.example:8443", "/", OURS)}}`,
+    });
+    expect(cmdServe(adopt.deps)).toBe(EXIT.OK);
+    expect(adopt.io.stdout.join("\n")).toContain("adopting the existing Collie root mount on :8443");
+
+    const taken = harness({
+      env: AT_8443,
+      serveStatus: `{${tcp(8443, "HTTPS")},${web("host.example:8443", "/", "http://127.0.0.1:7000")}}`,
+    });
+    expect(cmdServe(taken.deps)).toBe(EXIT.FAIL);
+    expect(taken.io.stderr.join("\n")).toContain("unowned root mount on :8443");
+    expect(taken.files.exists(HANDLER_FILE)).toBe(false);
+  });
+
+  test("an unusable value refuses BEFORE anything is touched — no teardown, no publish", () => {
+    // A config error must have no side effect at all: tearing the live door down on the way to
+    // reporting a typo would take the app offline to say "I cannot read your settings".
+    const RECORD = "https:443|host.example:443|http://127.0.0.1:8787\n";
+    for (const bad of ["70000", "8x", "0"]) {
+      const h = harness({
+        env: { COLLIE_SERVE_PORT: bad },
+        serveStatus: `{${tcp(443, "HTTPS")},${web("host.example:443", "/", OURS)}}`,
+        files: { [HANDLER_FILE]: RECORD },
+      });
+      expect(cmdServe(h.deps)).toBe(EXIT.FAIL);
+      expect(h.io.stderr.join("\n")).toContain("COLLIE_SERVE_PORT");
+      expect(h.exec.calls.some((c) => c.includes("off") || c.includes("--bg"))).toBe(false);
+      expect(h.files.read(HANDLER_FILE)).toBe(RECORD);
+    }
+  });
+
+  test("in http mode it is a refusal, not a second listener", () => {
+    // There the tailnet listener already IS COLLIE_PORT; honouring both would publish on a port
+    // neither setting names.
+    const h = harness({ env: AT_8443, serveMode: "http" });
+    expect(cmdServe(h.deps)).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("COLLIE_SERVE_PORT");
+    expect(err).toContain("COLLIE_SERVE_MODE=http");
+    expect(h.exec.calls.some((c) => c.includes("--bg"))).toBe(false);
+    expect(h.files.exists(HANDLER_FILE)).toBe(false);
+  });
+
+  test("teardown closes the door it opened, never :443 by default", () => {
+    const h = harness({
+      env: AT_8443,
+      serveStatus: `{${tcp(8443, "HTTPS")},${web("host.example:8443", "/", OURS)}}`,
+      files: { [HANDLER_FILE]: "https:8443|host.example:8443|http://127.0.0.1:8787\n" },
+    });
+    expect(cmdUnserve(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("tailscale serve --https=8443 --set-path=/ off");
+    expect(h.io.stdout.join("\n")).toContain("removed Collie's managed https:8443 mapping");
+    expect(h.files.exists(HANDLER_FILE)).toBe(false);
   });
 });
 

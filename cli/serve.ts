@@ -1,5 +1,5 @@
 import type { CliContext, ServeMode } from "./context.ts";
-import { instanceSuffix } from "./context.ts";
+import { DEFAULT_SERVE_PORT, instanceSuffix, parseServePort } from "./context.ts";
 import {
   fingerprintRoot,
   formatRecord,
@@ -120,6 +120,26 @@ const frontDoorDeps = (deps: ServeDeps): FrontDoorDeps => ({
 // ── Publishing ───────────────────────────────────────────────────────────────
 
 export function cmdServe(deps: ServeDeps): number {
+  // Both refusals below come BEFORE the teardown call: a misconfigured front door must have no side
+  // effect at all, and tearing down the live mapping on the way to reporting a typo would take the
+  // app offline to say "I cannot read your settings".
+  const requested = deps.ctx.env.COLLIE_SERVE_PORT?.trim();
+  if (requested !== undefined && requested !== "" && deps.ctx.serveMode === "http") {
+    // In http mode the listener IS the bridge port, so honouring both would be publishing on a port
+    // neither setting names. One question, one answer.
+    deps.io.err(
+      "error: COLLIE_SERVE_PORT applies to the https front door only — under COLLIE_SERVE_MODE=http " +
+        "the tailnet listener is COLLIE_PORT. Unset one of them.",
+    );
+    return EXIT.FAIL;
+  }
+  const parsedServePort = parseServePort(deps.ctx.env);
+  if (!parsedServePort.ok) {
+    deps.io.err(`error: ${parsedServePort.message}`);
+    return EXIT.FAIL;
+  }
+  const httpsPort = parsedServePort.port;
+
   // Skipping teardown would strand a mapping published BEFORE the flag was flipped on, leaving the
   // app reachable by a path the operator thinks is closed. So Variant C/E publishes nothing — and
   // still tears down. (DEPLOYMENT.md Variants C/E; bridge/config.ts exposes the flag as `skipServe`.)
@@ -149,7 +169,7 @@ export function cmdServe(deps: ServeDeps): number {
   }
 
   const proxy = `http://127.0.0.1:${deps.ctx.port}`;
-  const listenerPort = deps.ctx.serveMode === "http" ? deps.ctx.port : 443;
+  const listenerPort = deps.ctx.serveMode === "http" ? deps.ctx.port : httpsPort;
   if (!ensureRootAvailable(deps, listenerPort, deps.ctx.serveMode, proxy)) return EXIT.FAIL;
 
   // Write-ahead ownership: the record goes down BEFORE the serve call, so a serve that half-lands
@@ -162,10 +182,7 @@ export function cmdServe(deps: ServeDeps): number {
   };
   deps.files.write(deps.ctx.handlerFile, formatRecord(record));
 
-  const args =
-    deps.ctx.serveMode === "http"
-      ? ["serve", "--bg", `--http=${deps.ctx.port}`, "--set-path=/", String(deps.ctx.port)]
-      : ["serve", "--bg", "--set-path=/", String(deps.ctx.port)];
+  const args = publishArgs(deps.ctx.serveMode, deps.ctx.port, httpsPort);
   const r = deps.exec.capture("tailscale", args);
   // The shell captured this into ${CONFIG_DIR}/serve.out and `cat`-ed it on failure; the file stays
   // so an operator who went looking for it after a failed publish still finds it.
@@ -175,7 +192,7 @@ export function cmdServe(deps: ServeDeps): number {
     deps.io.out(
       deps.ctx.serveMode === "http"
         ? `tailscale serve (http) → tailnet :${deps.ctx.port} -> 127.0.0.1:${deps.ctx.port}`
-        : `tailscale serve (https) → tailnet :443 -> 127.0.0.1:${deps.ctx.port}`,
+        : `tailscale serve (https) → tailnet :${httpsPort} -> 127.0.0.1:${deps.ctx.port}`,
     );
     return EXIT.OK;
   }
@@ -187,6 +204,20 @@ export function cmdServe(deps: ServeDeps): number {
   );
   if (output.trim() !== "") deps.io.out(output.trimEnd());
   return EXIT.FAIL;
+}
+
+/**
+ * The `tailscale serve` publish invocation.
+ *
+ * On the default https port the argument list stays byte-identical to the one the shell shipped:
+ * bare `tailscale serve` already means :443, so a host that never set `COLLIE_SERVE_PORT` publishes
+ * exactly what it published before, down to the argv. Only a chosen port adds `--https=<port>`.
+ */
+function publishArgs(mode: ServeMode, bridgePort: number, httpsPort: number): string[] {
+  const target = String(bridgePort);
+  if (mode === "http") return ["serve", "--bg", `--http=${bridgePort}`, "--set-path=/", target];
+  if (httpsPort === DEFAULT_SERVE_PORT) return ["serve", "--bg", "--set-path=/", target];
+  return ["serve", "--bg", `--https=${httpsPort}`, "--set-path=/", target];
 }
 
 /** Per-instance, like every other file the CLI drops in the config dir — two instances may share one. */

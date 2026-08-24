@@ -58,7 +58,7 @@ import {
 import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/staleness.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
-import { collieVersionBare, type CliContext } from "./context.ts";
+import { collieVersionBare, DEFAULT_SERVE_PORT, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
   deposedLines,
@@ -340,7 +340,12 @@ export function resolveSelfAddress(
   const name = tailnetName(deps.exec);
   if (name === null) return null;
   // http mode publishes no TLS front door at all, so both kinds are the bridge port there.
-  if (kind === "front-door" && deps.ctx.serveMode === "https") return { address: name, source: "derived" };
+  if (kind === "front-door" && deps.ctx.serveMode === "https") {
+    // Portless only on 443, which is what a bare host dials. A front door moved by
+    // `COLLIE_SERVE_PORT` must carry its port, or every peer would dial :443 and find nothing.
+    const address = deps.ctx.servePort === DEFAULT_SERVE_PORT ? name : `${name}:${deps.ctx.servePort}`;
+    return { address, source: "derived" };
+  }
   return { address: `${name}:${deps.ctx.port}`, source: "derived" };
 }
 

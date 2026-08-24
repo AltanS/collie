@@ -1,6 +1,6 @@
 import { type OpsRecord, PackOpsStore } from "../bridge/pack/ops-store.ts";
 import type { CliContext, Environment } from "./context.ts";
-import { instanceSuffix } from "./context.ts";
+import { effectiveServePort, instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
 import type { LinkProbe, LinkWriter } from "./link.ts";
 import type { Exec, ExecResult, Files } from "./sys.ts";
@@ -219,6 +219,9 @@ export function context(
     env,
     port: 8787,
     serveMode: "https",
+    // Derived from the fixture env rather than pinned, exactly as `loadContext` derives it: a test
+    // that sets COLLIE_SERVE_PORT would otherwise get a context disagreeing with its own env.
+    servePort: effectiveServePort(env),
     socket: "/home/pat/.config/herdr/herdr.sock",
     handlerFile: `${CONFIG}/tailscale-managed-handler${instanceSuffix(instance)}`,
     stateDir: STATE,
