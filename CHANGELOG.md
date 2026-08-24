@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.18] - 2026-08-24
+
+### Added
+
+- **Language setting** — Collie's UI in English, Deutsch, Español, 한국어, 日本語 and 中文, picked in Settings by native name and remembered per device; the terminal mirror, agent output, quick replies and screen-printed menu labels stay untranslated ([ADR 0030](./.adr/0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md)) (012e8c3)
+- **Bridge error codes** — every displayable refusal carries a stable `code` plus named `detail` beside its unchanged English sentence, so the phone renders it in its own language; additive on the pack link (§7.1), version stays 1 (8fea793)
+
 ## [1.0.0-beta.17] - 2026-08-24
 
 ### Added
