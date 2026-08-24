@@ -157,6 +157,13 @@ export class FakeHerdr implements HerdrRpc {
     await Promise.resolve();
   }
 
+  /** The operator renames a tab in Herdr's own TUI, with the event stream saying nothing. */
+  async pokeTopologyOutOfBand(): Promise<void> {
+    const tab = this.tabs[0];
+    if (tab !== undefined) tab.label = `out-of-band-${String(this.tabs.length)}`;
+    await Promise.resolve();
+  }
+
   /** Announce a herd-structure change on the event stream. */
   pokeTopology(): void {
     this.emit("pane_created", { pane_id: "" });
@@ -445,6 +452,7 @@ export const herdrConformanceFixture: MuxConformanceFixture = {
       focusOutOfBand: (paneId) => fake.focusPane(paneId),
       changePane: (paneId) => fake.changePane(paneId),
       endPane: (paneId) => fake.endPane(paneId),
+      pokeTopologyOutOfBand: () => fake.pokeTopologyOutOfBand(),
       pokeTopology: () => fake.pokeTopology(),
       pokePane: (paneId) => fake.pokePane(paneId),
       close: () => {

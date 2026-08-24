@@ -193,7 +193,7 @@ lint guard or the pack-wire guard.
 - **The phone moves the operator's terminal only on the "Show in terminal" tap** (`setFocus`, one
   row in the pane sheet). `MuxPane.focused` is a fact the snapshot reports, "Follow terminal" reads it
   the other way and is off by default, and neither direction may become a side effect of navigation
-  ([ADR 0031](./.adr/)).
+  ([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)).
 - **The operator's rows in `commands.toml` replace the shipped command catalog on the panes they
   address, never merge into it** ([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md));
   the bridge re-reads the file behind an mtime check, so edits are live and need no restart.
@@ -268,6 +268,10 @@ lint guard or the pack-wire guard.
 - **The Herdr socket is never dialled across a machine boundary, and no Herdr vocabulary crosses a
   pack link** — the lead consumes a peer's Collie API, never its Herdr socket
   ([ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)).
+- **How soon Collie sees an out-of-band change is DECLARED (`topologyLatency`), never measured**, and
+  `refresh()` is on the floor of the port so the phone can ask for a look now
+  ([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)). Every mutating route refreshes before
+  it answers; `POST /api/refresh` is a read because it mutates nothing.
 
 ## The journal (scrollback the mirror can't give you)
 

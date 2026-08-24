@@ -278,6 +278,19 @@ export class FakeTmux implements TmuxExec {
     await Promise.resolve();
   }
 
+  /** The operator renames a window in tmux itself. No control-mode line is emitted. */
+  async pokeTopologyOutOfBand(): Promise<void> {
+    const window = this.windows[0];
+    if (window !== undefined) {
+      window.name = `out-of-band-${String(this.windows.length)}`;
+      // Cleared alongside the name, because that is what tmux does: a window the operator named is
+      // no longer auto-named, and a fixture that left the flag set would describe a state tmux never
+      // produces.
+      window.autoNamed = false;
+    }
+    await Promise.resolve();
+  }
+
   /** Announce a herd-structure change on the control-mode stream. */
   pokeTopology(): void {
     this.emit("%window-add @999");
@@ -724,6 +737,7 @@ export function tmuxWorld(fake: FakeTmux): MuxConformanceWorld {
     focusOutOfBand: (paneId) => fake.focusOutOfBand(paneId),
     changePane: (paneId) => fake.changePane(paneId),
     endPane: (paneId) => fake.endPane(paneId),
+    pokeTopologyOutOfBand: () => fake.pokeTopologyOutOfBand(),
     pokeTopology: () => fake.pokeTopology(),
     pokePane: (paneId) => fake.pokePane(paneId),
     close: () => {

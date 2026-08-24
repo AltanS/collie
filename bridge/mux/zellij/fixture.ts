@@ -200,6 +200,18 @@ export class FakeZellij implements ZellijExec {
   }
 
   /**
+   * The operator renames a tab in zellij itself.
+   *
+   * On zellij EVERY topology change is out of band — the CLI announces none of them — so this is not
+   * a special case here, it is the only case. It is what `refresh()` exists for on this adapter.
+   */
+  async pokeTopologyOutOfBand(): Promise<void> {
+    const tab = this.tabs[0];
+    if (tab !== undefined) tab.name = `out-of-band-${String(this.tabs.length)}`;
+    await Promise.resolve();
+  }
+
+  /**
    * Announce one pane's repaint on the stream.
    *
    * There is deliberately NO `pokeTopology` sibling: zellij has no channel to announce a structure
@@ -502,6 +514,7 @@ export function zellijWorld(fake: FakeZellij): ZellijFixtureWorld {
       focusOutOfBand: (paneId) => fake.focusOutOfBand(paneId),
       changePane: (paneId) => fake.changePane(paneId),
       endPane: (paneId) => fake.endPane(paneId),
+      pokeTopologyOutOfBand: () => fake.pokeTopologyOutOfBand(),
       pokePane: (paneId) => fake.pokePane(paneId),
       close: () => {
         fake.shutdown();
