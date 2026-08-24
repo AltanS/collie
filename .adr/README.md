@@ -96,6 +96,7 @@ the pointer, it was a supersede.
 | [0027](./0027-the-deputy-is-named-ahead-of-time.md) | The deputy is named ahead of time, and takes over on the operator's word | Accepted |
 | [0028](./0028-the-standby-door-is-a-second-listener.md) | The standby door is a second listener that arms on silence (amends 0013) | Accepted |
 | [0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md) | Speech-to-text is a provider seam Collie owns; Codex auth rides the operator's own binary | Accepted |
+| [0030](./0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md) | The UI is translated by a typed dictionary, not an i18n library | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
