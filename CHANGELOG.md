@@ -6,6 +6,20 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.21] - 2026-08-25
+
+**The phone keeps up with the terminal.** Freshness, focus and how many spaces a multiplexer can hold are now declared by each mux adapter and rendered from the declaration — [ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md).
+
+### Added
+
+- **`refresh()` on the mux floor + declared topology latency** — "look now" for every adapter; `/api/config` says `push` or `bounded` (zellij: 12 s) (ed2e18e)
+- **Attention-coupled census + `POST /api/refresh`** — zellij checks every 1.5–3 s while a phone watches; every phone-initiated create/rename/close/focus re-reads before it answers (2584603)
+- **Pull-to-refresh, refresh on foreground, "synced Ns ago"** on a bounded mux (244409c, 2be919d)
+- **`setFocus` capability + `POST /api/pane/:id/focus`** — Herdr and tmux; zellij declines (its `focus-pane-id` is a no-op, probed) (034de50, 682bf7d)
+- **"Show in terminal"** row in the pane actions and a **"Follow terminal"** setting (off by default; held by a draft, an armed Type, or an open sheet) (e935fec)
+- **`spaces: one | many`** declared per mux — the space strip disappears on zellij (ee32e97, e935fec)
+- Conformance: `pokeTopologyOutOfBand`, `focusOutOfBand`, and four new read-only live checks (698f006, 77b04e1)
+
 ## [1.0.0-beta.20] - 2026-08-25
 
 ### Fixed
