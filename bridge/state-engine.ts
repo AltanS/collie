@@ -74,6 +74,41 @@ export function extractClaudeSessionName(text: string): string | undefined {
 const SHELL = "shell";
 
 /**
+ * The interactive shells whose presence in a pane's foreground means "nothing is running here".
+ *
+ * A closed list of program names, matched on the base name only. It decides ONE thing — whether a
+ * terminal title has outlived the program that printed it — and it may decide nothing else: it is
+ * not an agent check, not a status, and it never reaches `agent` (mux/types.ts § MuxPane.agent,
+ * which is the whole reason this list is allowed to be a guess).
+ */
+const INTERACTIVE_SHELLS: ReadonlySet<string> = new Set(["bash", "zsh", "fish", "sh", "dash", "nu", "pwsh"]);
+
+/**
+ * Is this pane's terminal title left over from a program that has already exited?
+ *
+ * A multiplexer keeps a pane's title after the program that set it is gone — live-observed on tmux, a
+ * bare `bash` still advertising a finished agent's task ("✳ waiting for soak time…"). Two raw facts
+ * the adapter already reports say so together: an interactive SHELL in the foreground, and a title
+ * that is not that shell's own name. Neither alone means anything, and the pair is evidence rather
+ * than proof — which is exactly why the answer is a rendering hint and never a deletion: the title
+ * stays on the wire, and the phone shows it quietly instead of as the pane's name.
+ *
+ * A pane whose adapter reports no foreground command at all (Herdr) is never stale: there is nothing
+ * to read the emptiness as.
+ *
+ * Pure + exported so the rule is unit-tested and lives in ONE place.
+ */
+export function terminalTitleIsStale(pane: MuxPane): boolean {
+  const title = pane.terminalTitle?.trim() ?? "";
+  if (title.length === 0) return false;
+  const argv0 = pane.foregroundCommand?.trim().split(/\s+/)[0] ?? "";
+  const command = (argv0.split("/").pop() ?? "").toLowerCase();
+  if (command.length === 0 || !INTERACTIVE_SHELLS.has(command)) return false;
+  // A shell that titles the pane after itself is describing the present, not the past.
+  return title.toLowerCase() !== command;
+}
+
+/**
  * One pane the multiplexer reported, as the view Collie's clients read.
  *
  * Almost a rename, and that is the point: the port already carries everything a pane IS, so this
@@ -101,6 +136,9 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // Denormalised alongside workspaceLabel so no client has to join tabs[].
   if (pane.tabLabel) view.tabLabel = pane.tabLabel;
   if (pane.terminalTitle) view.terminalTitle = pane.terminalTitle;
+  // The title is still on the wire; this only says the phone should read it quietly. Set only when
+  // true, so every pane that was byte-identical before this field existed still is.
+  if (terminalTitleIsStale(pane)) view.terminalTitleStale = true;
   // How the agent named its session — SERVER-SIDE ONLY (stripped by toPaneWire). Whether a ref is
   // meaningful is the journal adapter's call; absent simply means "no history for this pane".
   if (pane.agentSession) view.agentSession = pane.agentSession;

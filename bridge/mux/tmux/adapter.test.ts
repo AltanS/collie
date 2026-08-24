@@ -3,11 +3,13 @@ import { describe, expect, test } from "bun:test";
 import { TmuxMux } from "./adapter.ts";
 import { FakeTmux } from "./fixture.ts";
 
-// THE TWO THINGS CONFORMANCE CANNOT ASK FOR, pinned here on the real adapter over the real fake.
+// THE THINGS CONFORMANCE CANNOT ASK FOR, pinned here on the real adapter over the real fake.
 //
-// Conformance (../conformance.test.ts) drives every capability of this adapter already. What it has
-// no vocabulary for is a hazard that belongs to ONE multiplexer's binary, and a transport that dies
-// mid-call:
+// Conformance (../conformance.test.ts) drives every capability of this adapter already — including
+// the contract's *Pane naming* rule, which the world contract CAN express (a program printing a
+// title is a perturbation). What it has no vocabulary for is what that rule costs on tmux
+// specifically — a title outliving its program, and a label outliving the process that remembers it
+// — plus a hazard that belongs to ONE multiplexer's binary and a transport that dies mid-call:
 //
 //  • **The #4849 spawn guard.** tmux ≤ 3.6b segfaults its whole SERVER when it spawns a window while
 //    the global `window-size` is `manual` — so the interesting assertion is that the argv was never
@@ -27,6 +29,88 @@ const REFUSAL =
 function spawned(fake: FakeTmux): boolean {
   return fake.invocations().some((group) => group.at(0) === "new-window" || group.at(0) === "new-session");
 }
+
+/** The pane the seeded world gives a title to, and the title it carries. */
+const TITLED_PANE = "%3";
+
+/** One pane out of a fresh snapshot. */
+async function paneOf(adapter: TmuxMux, paneId: string) {
+  const pane = (await adapter.snapshot()).panes.find((candidate) => candidate.paneId === paneId);
+  if (pane === undefined) throw new Error(`the fake lost pane ${paneId}`);
+  return pane;
+}
+
+describe("tmux's one title slot", () => {
+  test("a title the pane printed is a terminalTitle — never the operator's label", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    await fake.setProgramTitle(TITLED_PANE, "✳ waiting for soak time - server performance");
+
+    const pane = await paneOf(adapter, TITLED_PANE);
+    expect(pane.paneLabel).toBeUndefined();
+    // Verbatim, glyph included: it is the program's own text, and Collie does not edit it.
+    expect(pane.terminalTitle).toBe("✳ waiting for soak time - server performance");
+  });
+
+  test("a label set THROUGH Collie is the operator's, and clearing it hands the slot back", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+
+    await adapter.renamePane(TITLED_PANE, "deploy");
+    const labelled = await paneOf(adapter, TITLED_PANE);
+    expect(labelled.paneLabel).toBe("deploy");
+    // One slot, one string: the label is not ALSO reported as something the program said.
+    expect(labelled.terminalTitle).toBeUndefined();
+
+    await adapter.renamePane(TITLED_PANE, null);
+    await fake.setProgramTitle(TITLED_PANE, "✳ back to being the program's");
+    const cleared = await paneOf(adapter, TITLED_PANE);
+    expect(cleared.paneLabel).toBeUndefined();
+    expect(cleared.terminalTitle).toBe("✳ back to being the program's");
+  });
+
+  test("a program that overwrites the operator's label takes the slot back with it", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    await adapter.renamePane(TITLED_PANE, "deploy");
+    await fake.setProgramTitle(TITLED_PANE, "✳ Reticulating splines");
+
+    const pane = await paneOf(adapter, TITLED_PANE);
+    expect(pane.paneLabel).toBeUndefined();
+    expect(pane.terminalTitle).toBe("✳ Reticulating splines");
+  });
+
+  test("the memory is this process's: a fresh adapter reads its own earlier label as a title", async () => {
+    const fake = new FakeTmux();
+    await new TmuxMux(fake).renamePane(TITLED_PANE, "deploy");
+
+    // What a `systemctl restart collie` looks like from tmux's side: the slot still holds the label,
+    // and nothing alive remembers setting it. It degrades to a title — visible, never a false claim.
+    const pane = await paneOf(new TmuxMux(fake), TITLED_PANE);
+    expect(pane.paneLabel).toBeUndefined();
+    expect(pane.terminalTitle).toBe("deploy");
+  });
+
+  // A pane that goes away drops its remembered label (`forgetGonePanes`), and that is memory hygiene
+  // rather than behaviour: tmux never recycles a pane id (identity rule 4, pinned by conformance), so
+  // no snapshot can ever be made to show the difference. There is nothing here to assert without
+  // reaching into the adapter's private map, which would pin the mechanism instead of the rule.
+
+  test("an exited program leaves `bash` in the foreground and its title behind", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    await fake.setProgramTitle(TITLED_PANE, "✳ waiting for soak time - server performance");
+    await fake.exitProgram(TITLED_PANE);
+
+    const pane = await paneOf(adapter, TITLED_PANE);
+    // Both raw facts, reported as raw facts. Reading them TOGETHER as a stale title is the bridge's
+    // job (state-engine.ts) — the adapter neither drops the title nor explains it.
+    expect(pane.foregroundCommand).toBe("bash");
+    expect(pane.terminalTitle).toBe("✳ waiting for soak time - server performance");
+    expect(pane.paneLabel).toBeUndefined();
+    expect(pane.agent).toBe("shell");
+  });
+});
 
 describe("the #4849 spawn guard", () => {
   test("a create on tmux 3.6b under `window-size manual` is refused, and NOTHING is spawned", async () => {

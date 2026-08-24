@@ -43,7 +43,7 @@ push or a poll is what the two `push*Events` capabilities below declare.
 | `agentSessionRef` | `GET /api/pane/:id/history` | the pane record carries the session an agent named (**API** § Object shapes) | **no** (**T**) — history is declared absent, not empty | **no** (**Z**) |
 | `typeText` | `POST …/reply` step 1 | `pane.send_text` (**API**) | `send-keys -t <pane> 'text'` (**T**) | `write-chars --pane-id <id> -- <text>` (**Z**). Refused past 128 KiB: zellij takes the text as an argv element with no stdin path, and 200 000 characters answered `Argument list too long` — the message is refused, never split (ADR 0010). **`paste` is deliberately not used**: probed, it wraps the text in `ESC[200~ … ESC[201~`, an input path neither other adapter takes |
 | `sendKeys` | `POST …/reply` step 2, `POST …/keys` | `+`-joined, e.g. `ctrl+c`; paging/edit keys refused (**API** § key grammar) | `C-c`, `BTab`, `PPage`, `DC` — its own names, and it sends the whole alphabet including the six Herdr refuses (**T**); it has no Super/Command key, so a `meta` chord is refused | `send-keys "Ctrl a"`, space-separated (**Z**); `Esc` is the one renamed key and every other name in the alphabet was accepted, so `unsupportedKeys` is empty. It REFUSES a name it does not know (exit 2) rather than typing it. `Super a` exits 0 and delivers a bare `a`, so a `meta` chord is refused |
-| `renamePane` | `POST …/rename` | `pane.rename`, `null` clears (**API** § Rename) | `select-pane -T <label>`, and `-T ""` clears (**T**) — tmux's ONE title slot, which is why `terminalTitle` is never reported on tmux | `rename-pane --pane-id <id> -- <label>` (**Z**); an empty label restores zellij's own name, which is how `null` clears. zellij's ONE title slot, which is why `terminalTitle` is never reported on zellij |
+| `renamePane` | `POST …/rename` | `pane.rename`, `null` clears (**API** § Rename) | `select-pane -T <label>`, and `-T ""` clears (**T**) — tmux's ONE title slot, shared with whatever the pane's program prints, so the adapter remembers what it set (see § Contract-owned rules, *Pane naming*) | `rename-pane --pane-id <id> -- <label>` (**Z**); an empty label restores zellij's own name, which is how `null` clears. zellij's ONE title slot, shared the same way and split the same way |
 | `closePane` | `POST …/close` | `pane.close` (**API** § Close) | `kill-pane` (**T**) | `close-pane --pane-id <id>` (**Z**) |
 | `createTab` | `POST /api/tab` | `tab.create`, returns the fresh shell (**API**) | `new-window -d -P -F` returns the fresh pane's ids (**T**); `-d` so nothing the operator is looking at moves. **Refused** on tmux < 3.7 while the global `window-size` is `manual`: the spawn segfaults the whole server (tmux #4849, fixed in 3.7), so the adapter reads the option first and hands the operator the `tmux set -g window-size latest` that clears it — it never sets the option itself | `new-tab [--name] [--cwd]` prints the new tab's stable id; the fresh pane comes from the listing straight after, which the probe found already populated (**Z**) |
 | `renameTab` | `POST /api/tab/:id/rename` | `tab.rename`, non-null only (**API** § Rename) | `rename-window -t @N -- <label>` (**T**) | `rename-tab-by-id <n> <label>` (**Z**) |
@@ -119,7 +119,7 @@ it re-runs the session's commands, so it stays the operator's own `attach` to ma
 
 ## Contract-owned rules
 
-Five things the contract owns outright, because an adapter deciding them independently is how the
+Six things the contract owns outright, because an adapter deciding them independently is how the
 seam rots.
 
 | Rule | What the contract says | How each adapter meets it |
@@ -128,9 +128,10 @@ seam rots.
 | **Keys** ([`keys.ts`](./bridge/mux/keys.ts)) | One neutral spelling: `+`-joined lower-case modifiers in canonical order `ctrl alt shift meta`, then a single character or one CapitalCase name from a **closed, complete** alphabet | Herdr's grammar is nearly it, minus `meta`→`super`/`cmd` (**API**); tmux and zellij each need a real translation table (**T**, **Z**) |
 | **The grid** | Already rendered by the multiplexer, colour only. Collie runs no terminal emulator ([ADR 0008](./.adr/0008-collie-does-not-run-a-terminal-emulator.md)) — an adapter may **decline** the grid; it never gets a VT parser written for it | all three render on demand (**API**, **T**, **Z**) |
 | **Refusal** | One shape, four reasons, and `unsupported` is not a failure — the UI explains it (M10/06) instead of reporting an error | every adapter returns it rather than throwing; conformance checks both directions (M10/03) |
+| **Pane naming** | `paneLabel` is ONLY a name an operator gave the pane THROUGH COLLIE (`renamePane`). A title the pane's own program wrote is `terminalTitle`, never `paneLabel`. A multiplexer with one title slot cannot tell the two apart from its listing, so its adapter remembers the labels it set itself — in memory, keyed by pane id, cleared by `renamePane(null)` and when the pane leaves the listing — and reports everything else in that slot as `terminalTitle`. After a bridge restart an operator's earlier label therefore degrades to `terminalTitle`: still visible, less prominent, never a lie | Herdr has two slots and needs no memory — `label` is the operator's, `terminal_title` is the program's (**API** § Object shapes); tmux (`pane_title`, **T**) and zellij (the listing's `title`, **Z**) have one each and keep the memory described here |
 | **Transport death** | An adapter whose transport died *during* a call answers `unreachable`, never `refused`. `refused` means the multiplexer understood and said no, so retrying is pointless — a transport that went away mid-call is the opposite, and mis-reporting it puts a red per-tap error where the disconnected banner and its retry belong | a dropped socket / closed stream (**API**); tmux's `server exited unexpectedly` and `lost server` classify with "no server running" (**T**, `tmux/protocol.ts`); a dead session's verb (**Z**). Pinned per adapter — the conformance world has no perturbation for it, because killing a live transport mid-call is shaped differently in each transport and a shared knob would only model one of them |
 
-Two traps worth naming, both found while writing this table:
+Three traps worth naming, the first two found while writing this table:
 
 - **Scrollback is not history.** zellij's `dump-screen --full` is untyped screen text; the journal
   reads the *agent's own log* and knows turns, tools and content ([`bridge/journal/`](./bridge/journal/)).
@@ -138,3 +139,9 @@ Two traps worth naming, both found while writing this table:
 - **The pane list is not the pane.** Collie's `AgentView` carries things only Collie knows (when you
   last looked, whether a pane is unseen). Those are the bridge's, not the multiplexer's, and
   `MuxPane` deliberately stops short of them.
+- **A title outlives the program that wrote it.** tmux keeps a pane's `pane_title` after the program
+  that printed it has exited (live-observed: a bare `bash` still advertising a finished agent's task).
+  The adapter reports both raw facts — the title as `terminalTitle`, the foreground command as
+  `foregroundCommand` — and the bridge marks the pair "a shell + a title" as a stale title
+  (`bridge/state-engine.ts`), which the phone renders quietly instead of as the pane's name. Nothing
+  is dropped: a title is never deleted on a guess about who wrote it.

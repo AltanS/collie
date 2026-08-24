@@ -193,6 +193,29 @@ export class FakeTmux implements TmuxExec {
     await Promise.resolve();
   }
 
+  /**
+   * The PROGRAM in a pane prints an OSC title. The same one slot `select-pane -T` writes — which is
+   * the whole hazard, and why the adapter has to remember what it set rather than read the slot.
+   */
+  async setProgramTitle(paneId: string, title: string): Promise<void> {
+    const pane = this.panes.find((candidate) => candidate.id === paneId);
+    if (pane !== undefined) pane.title = title;
+    await Promise.resolve();
+  }
+
+  /**
+   * The program in a pane EXITS, leaving the shell that launched it — and its title behind.
+   *
+   * Both halves are tmux's real behaviour: `pane_current_command` falls back to the shell, and
+   * `pane_title` keeps whatever the dead program last printed. Live-observed, and the bug this
+   * fixture exists to pin.
+   */
+  async exitProgram(paneId: string): Promise<void> {
+    const pane = this.panes.find((candidate) => candidate.id === paneId);
+    if (pane !== undefined) pane.command = "bash";
+    await Promise.resolve();
+  }
+
   /** The pane paints another line. What a keystroke landing would have done. */
   async changePane(paneId: string): Promise<void> {
     const pane = this.panes.find((candidate) => candidate.id === paneId);
@@ -532,7 +555,10 @@ export class FakeTmux implements TmuxExec {
 
   /**
    * The world every conformance world starts in: three live panes across two sessions and two
-   * windows, one of them carrying an operator-set title.
+   * windows, one of them carrying a title in tmux's one title slot.
+   *
+   * Nobody set that title THROUGH COLLIE, so the adapter reports it as a `terminalTitle` and not as
+   * the operator's label — which is the contract's *Pane naming* rule seen from the fixture side.
    *
    * The engine's world contract asks for exactly this. A single bare shell would let half the suite
    * pass vacuously — nothing about a space join, nothing about ids staying unique across two spaces.
@@ -540,8 +566,8 @@ export class FakeTmux implements TmuxExec {
   private seed(): void {
     const first = this.newSessionNamed("collie");
     const firstTab = this.newWindowIn(first, "agents", false);
-    const labelled = this.newPaneIn(firstTab, "/home/dev/collie");
-    labelled.title = "the pane the operator named";
+    const titled = this.newPaneIn(firstTab, "/home/dev/collie");
+    titled.title = "the title the pane printed";
     this.newPaneIn(firstTab, "/home/dev/collie");
 
     const second = this.newSessionNamed("scratch");
@@ -605,6 +631,7 @@ export function tmuxWorld(fake: FakeTmux): MuxConformanceWorld {
     reconnect: () => fake.reconnect(),
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
+    setProgramTitle: (paneId, title) => fake.setProgramTitle(paneId, title),
     changePane: (paneId) => fake.changePane(paneId),
     endPane: (paneId) => fake.endPane(paneId),
     pokeTopology: () => fake.pokeTopology(),

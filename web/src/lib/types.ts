@@ -60,6 +60,16 @@ export interface AgentView {
    */
   terminalTitle?: string;
   /**
+   * True when `terminalTitle` was left behind by a program that has already EXITED — a multiplexer
+   * keeps a pane's title after the program that printed it is gone, so a bare shell can sit under a
+   * finished agent's sentence for hours. Derived bridge-side; absent on an older bridge, which reads
+   * as "not known to be stale" and renders exactly as it always did.
+   *
+   * It demotes, it never hides: a stale title is not the pane's NAME (see {@link paneDisplayName}),
+   * but it still shows on the muted line, because it is the only trace of what ran here.
+   */
+  terminalTitleStale?: boolean;
+  /**
    * A finished sentence the bridge composed about this pane, for the operator to read. Absent on
    * almost every pane, and on every bridge older than the version that introduced it.
    *
@@ -101,11 +111,15 @@ export interface AgentView {
  * overwritten by one the process is rewriting every turn; the title outranks the agent name because
  * "claude" tells you nothing when four rows say it. All three are rendered only as React text nodes
  * by callers — never markup — so they stay within the pane-output XSS boundary.
+ *
+ * A STALE title names nothing: the program that wrote it has exited, so it is a fact about the past,
+ * and a past task standing in as a live pane's name is the bug this rule exists to stop. Such a pane
+ * falls back to what it would be called with no title at all.
  */
 export function paneDisplayName(pane: AgentView): string {
   if (pane.paneLabel) return pane.paneLabel;
   if (pane.sessionName) return pane.sessionName;
-  if (pane.terminalTitle) return pane.terminalTitle;
+  if (pane.terminalTitle && !pane.terminalTitleStale) return pane.terminalTitle;
   return pane.kind === "shell" ? "shell" : pane.agent;
 }
 

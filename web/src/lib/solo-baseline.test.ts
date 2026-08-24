@@ -96,6 +96,9 @@ const AGENT_VIEW_KEYS = {
   // title). Recorded here because the tripwire is exhaustive over `keyof AgentView`, not because it
   // carries a host.
   terminalTitle: true,
+  // Also not a pack dimension: a presentation flag on the field above, set only when the title
+  // outlived the program that printed it.
+  terminalTitleStale: true,
   // Also not a pack dimension: an optional sentence the bridge composes about one kind of pane
   // (M11/05), rendered as text and absent everywhere else.
   hint: true,
@@ -169,6 +172,7 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "tabId",
       "tabLabel",
       "terminalTitle",
+      "terminalTitleStale",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",
