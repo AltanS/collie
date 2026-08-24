@@ -411,6 +411,13 @@ updated machines, so build skew is the steady state (§7), and this section is t
   optional fields, and declining is a closed reading, so there is nothing a newer member must refuse
   it over.
 
+- **The error bodies the shared session routes serve gained optional `code` and `detail`** (added
+  2026-08-24, `bridge/error-codes.ts`): a stable machine name for the refusal and the named values its
+  sentence was built from, beside the English `error` that route always sent. The sentence is
+  unchanged and stays the fallback, so a peer or a lead that ignores both fields behaves exactly as it
+  does today, and a code a reader does not recognise reads as *no code* — which renders that same
+  sentence. `PACK_PROTOCOL_VERSION` stays `1`.
+
 - **Skew is an observation, and it is rendered.** `collie pack status` compares each member's reported
   version against this build's and marks a difference as a `warn:`-class finding naming **both**
   versions and the remedy — `collie pack update <member>` on the lead, which levels that machine to

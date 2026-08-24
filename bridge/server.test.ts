@@ -320,6 +320,7 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
       ok: false,
       textDelivered: true,
       error: "typed into the pane but not submitted — check the pane before resending",
+      code: "reply.not_submitted",
     });
     expect(client.calls).toEqual(["text", "keys"]);
   });
@@ -327,14 +328,28 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
   test("text step fails → nothing delivered, surfaces Herdr's message (safe to resend)", async () => {
     const client = new FakeClient("text");
     const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"], noSleep);
-    expect(out).toEqual({ ok: false, textDelivered: false, error: "text rejected" });
+    // The English is byte-for-byte the multiplexer's own words, as it always was; `code` and
+    // `detail.reason` are the machine half the phone translates against (bridge/error-codes.ts).
+    expect(out).toEqual({
+      ok: false,
+      textDelivered: false,
+      error: "text rejected",
+      code: "reply.send_failed",
+      detail: { reason: "text rejected" },
+    });
     expect(client.calls).toEqual(["text"]); // never reached the keys step
   });
 
   test("submit-only (empty text) failure is a plain failure, not the partial-delivery message", async () => {
     const client = new FakeClient("keys");
     const out = await sendReplySteps(client, "p1", "", true, ["Enter"], noSleep);
-    expect(out).toEqual({ ok: false, textDelivered: false, error: "keys rejected" });
+    expect(out).toEqual({
+      ok: false,
+      textDelivered: false,
+      error: "keys rejected",
+      code: "reply.send_failed",
+      detail: { reason: "keys rejected" },
+    });
     expect(client.calls).toEqual(["keys"]); // no text typed
   });
 
@@ -573,6 +588,24 @@ describe("pane write prompt binding", () => {
     expect(await res.json()).toMatchObject({ ok: false, code: "prompt_changed" });
     expect(client.keys).toEqual([]);
     expect(client.texts).toEqual([]);
+  });
+
+  test("a refused key batch carries the multiplexer's words AND a code the phone can translate", async () => {
+    // The refusal an operator actually meets: the words are the multiplexer's, so they stay byte for
+    // byte what they were, and the machine half rides beside them (bridge/error-codes.ts). A client
+    // with no translation shows `error`; one with a translation reads `code` and quotes
+    // `detail.reason`.
+    const client = new FakePaneClient();
+    client.sendPaneKeys = () => Promise.reject(new Error("no such pane"));
+    const { audit } = auditEntries();
+    const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"] }), audit, null, "default");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: "no such pane",
+      code: "keys.send_failed",
+      detail: { reason: "no such pane" },
+    });
   });
 
   test("rejects oversized and non-string expected_prompt before a keys write", async () => {
@@ -1459,8 +1492,12 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
     // are its own business and reach the lead over the pack API, never out of this registry.
     expect(src).toContain("const activeMux = registry.get();");
-    // An unknown or ill-formed host is a 404, mirroring unknownSession() (§4)…
-    expect(src).toMatch(/`unknown host: \$\{host\.kind === "member" \? host\.id : host\.raw\}`/);
+    // An unknown or ill-formed host is a 404, mirroring unknownSession() (§4)… The words now come
+    // from the error catalogue (bridge/error-codes.ts), so what this pins is the SELECTION — that
+    // both host shapes still name themselves in the refusal, and both still land on `host.unknown`.
+    expect(src).toContain(
+      'apiError("host.unknown", { host: host.kind === "member" ? host.id : host.raw })',
+    );
     // …and a KNOWN peer is forwarded, with the peer's own response handed back (§5, §9.1). The
     // forward is the gate's own branch — no route may grow a second one.
     expect([...src.matchAll(/packLead!\.forward\(/g)]).toHaveLength(1);
