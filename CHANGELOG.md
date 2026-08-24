@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.19] - 2026-08-24
+
+### Fixed
+
+- **tmux: a new tab no longer kills the tmux server** — creating a tab or space on tmux < 3.7 while the global `window-size` is `manual` segfaults the whole server (tmux [#4849](https://github.com/tmux/tmux/issues/4849), fixed in 3.7); Collie now reads the option first and refuses with the `tmux set -g window-size latest` that clears it, never setting it itself (a6e9aa5)
+- **tmux: a server that dies mid-call reads as disconnected** — `server exited unexpectedly` / `lost server` now raise the disconnected banner and its retry instead of a red refusal (a6e9aa5)
+
 ## [1.0.0-beta.18] - 2026-08-24
 
 ### Added
