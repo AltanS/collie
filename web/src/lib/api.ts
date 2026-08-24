@@ -7,7 +7,7 @@ import { markLive } from "./connection-health";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
-import { normalizeScope, paneScopeKey, type Scope } from "./scope";
+import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import type {
   ActionResponse,
@@ -409,8 +409,15 @@ export function sendKeys(
  * stale as it already was, and every call site's next act is a revalidation that reports the truth
  * anyway. Swallowing it here is what lets a caller write `await refreshNow(); revalidate();` with no
  * ceremony around the first half.
+ *
+ * **A scope naming a PEER is a no-op, and that is the honest answer rather than a shortcut.** The
+ * route is not on the pack link's forwarding table (`bridge/pack/forward.ts`), because what is stale
+ * about a peer on the lead's screen is the LEAD's swept copy of it, which the lead refreshes on its
+ * own sweep — not the peer's census, which the peer tightens itself the moment the lead forwards a
+ * pane read to it. Sending it anyway would spend one legible 501 per foreground to change nothing.
  */
 export async function refreshNow(scope?: Scope): Promise<void> {
+  if (!isLead(scope)) return;
   try {
     await req<ActionResponse>(withScope("/api/refresh", scope), { method: "POST" });
   } catch {
