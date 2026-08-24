@@ -115,7 +115,7 @@ const SECURITY_HEADERS = {
 // (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|focus))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -235,6 +235,9 @@ export function muxConfigBody(mux: MuxPublication): MuxConfig {
     capabilities: { ...decl.supports },
     unsupportedKeys: [...decl.unsupportedKeys],
     notes,
+    // Unconditional, like `capabilities`: the declaration is total, so there is nothing to omit and
+    // an absent key means "a bridge too old to know", which the phone already reads as `"many"`.
+    spaces: decl.spaces,
   };
   // Assigned only when the adapter actually has a mark — the key's ABSENCE is what tells the phone
   // to render its text alone, so a bridge that published `logoUrl` unconditionally would point every
@@ -603,6 +606,7 @@ export function startServer(opts: {
       if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit_, device, session);
       if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit_, device, session);
       if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit_, device, session);
+      if (action === "focus" && req.method === "POST") return focusPane(herdr, paneId, req, audit_, device, session);
       return text("method not allowed", 405);
     }
 
@@ -1558,6 +1562,37 @@ async function closePane(
     );
   }
   audit.record({ action: "pane.close", paneId, session, device, detail: {} });
+  return json({ ok: true } satisfies ActionResponse, ae);
+}
+
+/**
+ * Put a pane on the OPERATOR's own screen — the "Show in terminal" row, and nothing else.
+ *
+ * The only route in the bridge that moves a human's terminal, and it exists because the alternative
+ * — following the phone's navigation automatically — would move it as a side effect of scrolling a
+ * list. It is a write like any other: same device gate, same audit line, no body to validate.
+ *
+ * `unsupported` arrives here as a failure with the adapter's own sentence, and that is correct
+ * BEHIND a UI that hides the row when the capability is absent: the row is gone, so this answer is
+ * only ever seen by a client whose config is stale.
+ */
+async function focusPane(
+  herdr: MuxAdapter,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  const focused = await herdr.setFocus(paneId);
+  if (!focused.ok) {
+    return json(
+      { ok: false, ...apiError("pane.focus_failed", { reason: focused.detail }) } satisfies ActionResponse,
+      ae,
+    );
+  }
+  audit.record({ action: "pane.focus", paneId, session, device, detail: {} });
   return json({ ok: true } satisfies ActionResponse, ae);
 }
 

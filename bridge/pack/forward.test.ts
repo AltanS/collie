@@ -149,7 +149,7 @@ describe("which routes cross a link", () => {
     const tab = server.match(/^const TAB_ACTION_ROUTE = (.+);$/m)![1]!;
     const alternation = /\(([a-z]+(?:\|[a-z]+)+)\)/;
     const paneActions = pane.match(alternation)![1]!.split("|").toSorted();
-    expect(paneActions).toEqual(["close", "history", "keys", "rename", "reply", "upload"]);
+    expect(paneActions).toEqual(["close", "focus", "history", "keys", "rename", "reply", "upload"]);
     for (const action of paneActions) expect(packRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);

@@ -42,9 +42,10 @@ export const API_ERROR_CODES = [
   "prompt_changed",
   "prompt.read_failed",
 
-  // Pane structure — POST /api/pane/:id/{close,rename}
+  // Pane structure — POST /api/pane/:id/{close,rename,focus}
   "pane.close_failed",
   "pane.rename_failed",
+  "pane.focus_failed",
 
   // Tab & space structure — POST /api/tab[/:id/…], /api/workspace
   "tab.create_failed",

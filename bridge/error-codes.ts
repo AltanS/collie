@@ -64,9 +64,11 @@ export const ERROR_CODES = {
   /** The pre-write re-read of the pane did not happen at all (502), so nothing could be verified. */
   "prompt.read_failed": "{mux} read failed: {detail}",
 
-  // ── Pane structure: POST /api/pane/:id/{close,rename} → ActionResponse ─────────────
+  // ── Pane structure: POST /api/pane/:id/{close,rename,focus} → ActionResponse ───────
   "pane.close_failed": "{reason}",
   "pane.rename_failed": "{reason}",
+  /** The multiplexer would not put this pane on the operator's screen (gone, or it cannot). */
+  "pane.focus_failed": "{reason}",
 
   // ── Tab & space structure: POST /api/tab[/:id/…] , /api/workspace → CreateResponse ─
   "tab.create_failed": "{reason}",

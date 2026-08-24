@@ -1261,6 +1261,14 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
     expect(Object.keys(notes).toSorted()).toEqual(["agentSessionRef", "createSpace"]);
   });
 
+  test("how many spaces the multiplexer can hold rides too, and defaults to `many`", () => {
+    // `partial` declares nothing about spaces, and the wire says `many` — the fail-open direction,
+    // where at worst a space strip shows one chip instead of hiding navigation that exists.
+    expect(muxConfigBody({ mux: "partial", capabilities: partial }).spaces).toBe("many");
+    const single = declareCapabilities({ supports: ["paneGrid"], spaces: "one" });
+    expect(muxConfigBody({ mux: "single", capabilities: single }).spaces).toBe("one");
+  });
+
   test("the name and the refused keys ride verbatim", () => {
     const wire = muxConfigBody({ mux: "reference", capabilities: everything });
     expect(wire.name).toBe("reference");
