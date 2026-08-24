@@ -44,9 +44,9 @@
 //   - STRUCTURAL, for every screen omp can draw: `ompBuildBlocks` returns one `raw` block
 //     unconditionally. There is no detector to mis-fire, so no screen — captured or not — can be
 //     up-levelled. That covers the tool-approval dialog by construction.
-//   - TESTED, for the twenty screens in this corpus: nine composer states, six picker screens
+//   - TESTED, for the twenty-one screens in this corpus: ten composer states, six picker screens
 //     (`/model`, `/settings`, `/resume`, each with a moved-selection twin) and five Ask-tool screens.
-//     harness/omp.test.ts asserts raw-only over all twenty and `composerReady === false` over the
+//     harness/omp.test.ts asserts raw-only over all twenty-one and `composerReady === false` over the
 //     eleven modals, so the declining is a test result rather than an accident. Each is declined
 //     because it is out of scope above, or a widget whose `handleInput` we have not read, or one
 //     whose options include a free-text row that would strand a phone user — the fail-closed
@@ -108,7 +108,7 @@ export const ompAdapter: HarnessAdapter = {
   // is exactly the condition under which typing would land in a modal instead.
   composerReady: hasComposer,
   // …and the region that pre-flight's verdict is bound to on the wire. omp's `╰─ … ─╯` sits at the
-  // tail on seven of the nine composer captures and behind at most five palette rows on the other
+  // tail on eight of the ten composer captures and behind at most five palette rows on the other
   // two, so it is well inside the tail window the bridge accepts a binding within.
   composerPrompt,
   // `draftCarriesSend` / `draftIsOpaque` are deliberately ABSENT, which is the documented default:

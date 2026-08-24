@@ -13,10 +13,10 @@ import { describeAdapterConformance, isValidHerdrKey } from "./conformance";
 // captures whose block may still be wiring up (a not-yet-detecting own fixture is tolerated by the
 // suite, see conformance.ts).
 //
-// The FOREIGN cohort is the other adapters' corpora (omp + codex). Until a second corpus existed this
-// leg was vacuous (`foreignFixtures: []`), so "an adapter must stay raw on another harness's screens"
-// was a documented promise nothing checked. The mirror-image assertions live in harness/omp.test.ts
-// and harness/codex.test.ts.
+// The FOREIGN cohort is the other adapters' corpora (omp + codex + grok). Until a second corpus
+// existed this leg was vacuous (`foreignFixtures: []`), so "an adapter must stay raw on another
+// harness's screens" was a documented promise nothing checked. The mirror-image assertions live in
+// harness/omp.test.ts, harness/codex.test.ts and harness/grok.test.ts.
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 

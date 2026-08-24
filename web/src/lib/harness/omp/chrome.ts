@@ -22,6 +22,7 @@ import type { StyledLine } from "../../blocks";
 import {
   composerBottomText,
   composerContText,
+  composerGhost,
   isBlank,
   isComposerTop,
   lineText,
@@ -96,12 +97,12 @@ const MAX_DRAFT_ROWS = 100;
 // `composerReady` false forever, and every reply refused with "the input box isn't on screen" while no
 // dialog exists.
 //
-// Against that, the check was never what discriminated. Across the whole 58-capture corpus the
-// `╰─ … ─╯` bottom border occurs exactly ONCE in each of the 9 composer captures and NOWHERE else:
+// Against that, the check was never what discriminated. Across the whole 59-capture corpus the
+// `╰─ … ─╯` bottom border occurs exactly ONCE in each of the 10 composer captures and NOWHERE else:
 // zero occurrences in the 11 modal captures (`/model`, `/settings`, resume, select, multi-select),
 // zero in the welcome panel, zero in the 38 Claude captures. Every other box omp draws closes
 // corner-to-corner (`╰────╯`). And omp paints its pickers at the composer's own 189 cells, so width
-// could not have separated them even in principle — the corpus measures 189/189 on all 9 composer
+// could not have separated them even in principle — the corpus measures 189/189 on all 10 composer
 // captures too, i.e. the exact check was never observed failing OR discriminating. What pins the shape
 // is the literal, the contiguous `│  …  │` run above it, the `╭─…─╮` directly above that run, the tail
 // anchor, and the two caps — every one of them a claim about glyphs both renderers agree on.
@@ -215,7 +216,7 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   //     now also refuses any shape with one of omp's boxes UNDER it. What this step does NOT prove is
   //     that the two-row shape belongs to the composer specifically — `╭─…─╮` is drawn by at least
   //     seven omp widgets, so the discrimination rests entirely on the bottom border's one-space
-  //     gutter, which across all 58 captures occurs once per composer capture and nowhere else. That
+  //     gutter, which across all 59 captures occurs once per composer capture and nowhere else. That
   //     census is the evidence, and it is a claim about omp 17.2.12's renderer rather than a proof:
   //     a widget that ever writes a label INTO its bottom border the way the composer does would be
   //     indistinguishable here. index.ts records it as a known limit of the Tier-1 lift.
@@ -327,9 +328,12 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
  * empty composer (verified across every idle capture in the corpus), so an empty box yields `""` and
  * this returns null. `null` also covers "no box at the tail".
  *
- * Load-bearing beyond the preview: once the adapter is registered, reply-action.ts switches omp panes
- * from the legacy one-shot send to type-then-verify, and THIS is the verify half — a wrong answer
- * stalls every free-text send with "Message didn't reach the input box".
+ * Load-bearing beyond the preview: reply-action.ts runs omp panes through type-then-verify, and THIS
+ * is the verify half — a wrong answer stalls every free-text send with "Message didn't reach the
+ * input box". The bottom border's tail therefore has omp's INLINE SUGGESTION taken off it
+ * (`composerGhost`, markers.ts): that ghost is not in the input buffer, so leaving it in made the
+ * guard compare a screen the operator never typed against the message it had just sent, and every
+ * send omp offered a completion for stalled.
  */
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
@@ -340,7 +344,10 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   for (let i = box.firstDraftRow; i < box.bottom; i++) {
     parts.push(composerContText(texts[i]!)!.trim());
   }
-  parts.push(composerBottomText(texts[box.bottom]!)!.trim());
+  const tail = rstrip(composerBottomText(texts[box.bottom]!)!);
+  const ghost = composerGhost(lines[box.bottom]!);
+  const typed = ghost.length > 0 && tail.endsWith(ghost) ? tail.slice(0, -ghost.length) : tail;
+  parts.push(typed.trim());
 
   const draft = parts.filter((p) => p.length > 0).join(" ");
   return draft.length === 0 ? null : draft;

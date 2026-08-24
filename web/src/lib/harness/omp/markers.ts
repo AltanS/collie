@@ -6,7 +6,7 @@
 // *between* glyphs, so a regex over the raw buffer would miss (omp paints a border's corner and the
 // statusline inside it as separate styled segments). Pure functions, no I/O, no React.
 
-import { isBlank, lineText } from "../../blocks";
+import { isBlank, lineText, type StyledLine } from "../../blocks";
 
 // `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
 // neutral core (lib/blocks.ts). Re-exported here so the omp grammars keep their single import site —
@@ -52,17 +52,77 @@ export function isComposerTop(text: string): boolean {
 // The composer's BOTTOM border, and the single most load-bearing literal in this adapter: omp writes
 // the LAST fragment of the draft INTO the bottom border, between a `╰─ ` opener and a ` ─╯` closer, so
 // the border carries a one-space gutter on each side that nothing else in the TUI has. Across the
-// whole 58-fixture corpus (38 claude + 20 omp) this shape occurs exactly ONCE per composer capture and
+// whole 59-fixture corpus (38 claude + 21 omp) this shape occurs exactly ONCE per composer capture and
 // nowhere else: every other omp box — the welcome panel, a tool-result box, an Ask dialog, `/model`,
 // `/settings` — closes corner-to-corner with an unbroken rule (`╰────╯`) and no gutter. That is why
 // the composer gate can be lexical here where Claude's had to be positional.
 const COMPOSER_BOTTOM = /^╰─ ([\s\S]*) ─╯$/;
+/** The opener `COMPOSER_BOTTOM` matches, whose length is where the row's inner span starts. */
+const BOTTOM_OPEN = "╰─ ";
 
 /** The draft tail written into the composer's bottom border (UNTRIMMED — the caller decides), or null
  *  when the line is not that border. An empty composer yields `""`, which is a match, not a miss. */
 export function composerBottomText(text: string): string | null {
   const m = COMPOSER_BOTTOM.exec(rstrip(text));
   return m === null ? null : m[1]!;
+}
+
+// omp paints an INLINE COMPLETION SUGGESTION — a "ghost" — into the composer, after the operator's
+// own text: unaccepted, absent from the input buffer, and deleted by no Backspace. Live capture
+// (sandbox omp pane, 2026-08-23) of the bottom border after typing `leftover draft here`:
+//
+//   ESC[38;2;190;149;255m╰─ ESC[0mleftover draft hereESC[0mESC[38;2;111;115;119m'sESC[0m … ─╯
+//
+// The typed text is ONE segment with no foreground colour; the suggestion is a trailing segment that
+// carries one. That one rendering detail cost omp panes their whole reply path: `extractInputDraft`
+// read back `leftover draft here's`, `draftCarriesSend` (lib/reply-action.ts) requires the visible
+// draft to be CONTAINED in what was typed, `'s` is not — so the submit key was withheld and every
+// send stalled with "Message didn't reach the input box" while the message really was in the box.
+// Each retry re-typed, omp re-suggested, and the stall repeated forever.
+//
+// The rule below is RELATIVE and names no colour: omp's suggestion colour is a theme value, while the
+// operator's text is painted in the terminal's DEFAULT foreground (verified for plain text, for a
+// `/command` and for an `@mention`, which omp does not highlight). So a ghost is "the trailing run of
+// COLOURED segments that follows UNSTYLED text", and it is claimed only on the bottom border, which
+// is the row the caret is on — omp windows a long draft, so the tail is always the caret's row.
+//
+// Both refusals are the fail-closed direction, because a wrongly-claimed ghost SHORTENS the draft the
+// reply guard verifies: a row with no unstyled text of its own (the shape a row omp painted in one
+// colour arrives as) claims nothing, and a row whose last segment is unstyled claims nothing.
+export function composerGhost(line: StyledLine): string {
+  const inner = COMPOSER_BOTTOM.exec(rstrip(lineText(line)))?.[1];
+  if (inner === undefined || inner.length === 0) return "";
+  const start = BOTTOM_OPEN.length;
+  const end = start + inner.length;
+
+  // The row's segments clipped to that inner span, so neither border corner — both coloured — can be
+  // mistaken for a suggestion.
+  const parts: { text: string; colored: boolean }[] = [];
+  let at = 0;
+  for (const seg of line.segments) {
+    const from = Math.max(at, start);
+    const to = Math.min(at + seg.text.length, end);
+    if (to > from) {
+      parts.push({ text: seg.text.slice(from - at, to - at), colored: seg.fg !== undefined });
+    }
+    at += seg.text.length;
+    if (at >= end) break;
+  }
+
+  // omp pads the box out to the terminal's width in the default style, so that padding is neither
+  // draft nor suggestion — drop it before looking for the trailing coloured run.
+  while (parts.length > 0 && parts[parts.length - 1]!.text.trim() === "") parts.pop();
+
+  let cut = parts.length;
+  while (cut > 0 && parts[cut - 1]!.colored) cut--;
+  if (cut === parts.length) return "";
+  if (!parts.slice(0, cut).some((p) => !p.colored && p.text.trim() !== "")) return "";
+  return rstrip(
+    parts
+      .slice(cut)
+      .map((p) => p.text)
+      .join(""),
+  );
 }
 
 // A wrapped draft's CONTINUATION row: the box's vertical sides with a two-space gutter inside each.

@@ -187,7 +187,7 @@ chrome constants transfer and every one of these captures had to be re-derived.
 
 That adapter is **Tier 1**: it strips chrome and re-surfaces the statusline and a stranded draft, and
 it up-levels **nothing**. So every row below is a capture the adapter must leave as a raw block, and
-all twenty are asserted that way (`harness/omp.test.ts`). Nine carry a live composer; the other
+all twenty-one are asserted that way (`harness/omp.test.ts`). Ten carry a live composer; the other
 eleven are modals the reply pre-flight has to refuse, and they are **six picker screens** (`/model`,
 `/settings` and `/resume`, each with a moved-selection twin) plus **five `ask`-tool screens**.
 
@@ -210,6 +210,7 @@ Capturing it is the first thing the later Tier-2 contribution owes, ahead of any
 | `omp--done.txt` | Completed turn, and the `◀ N` variant: omp splices a transcript-scroll indicator into the SAME border it paints the statusline into. Pinned as a known limitation of `extractStatusLines` (the trim stops at the `1` segment) | `idle` |
 | `omp--done--tool-result.txt` | Completed turn ending in a boxed tool result (`╰───╯`, corner-to-corner) plus a `※ recap:` line. The negative control for the composer-bottom literal: this box closes with no gutter | `idle` |
 | `omp--draft-single.txt` | A stranded draft that fits one row, written into the bottom border: `╰─ list the files in this repo ─╯` | `idle` |
+| `omp--draft-ghost-suggestion.txt` | The same draft with omp's **inline completion suggestion** painted after it: `repo` unstyled, then `sitory` in a muted foreground, then the padding. The ghost is not in the input buffer, so `extractInputDraft` must read `list the files in this repo` — reading the row verbatim stalled every reply with "Message didn't reach the input box" (`composerGhost`, omp/markers.ts). **Derived** from `omp--draft-single.txt`: the SGR run and six ghost cells were spliced in and six padding cells taken out, so the row still measures 189 cells and every other byte is carried over | `idle` |
 | `omp--draft-wrapped.txt` | A 355-char draft soft-wrapped over three rows — two `│  …  │` continuations ABOVE the bottom border, which carries the tail (`hand`). Regression fixture for the fold direction | `idle` |
 | `omp--menu-dismissed.txt` | The welcome panel (a 100-cell `╭───┴───╮` box) plus an MCP failure notice above an empty composer. Negative control: a second, narrower box on screen must not be spliced into the composer's geometry | `idle` |
 | `omp--slash-palette.txt` | `/` typed: the autocomplete renders BELOW the box, at the box's own width, with one wrapped entry (3 rows) — a `skill:…` row, which omp assembles from the capturing machine and which is therefore NOT an omp built-in. `extractInputDraft` reads `"/"` | `idle` |
@@ -277,8 +278,9 @@ all-LF** — never mixed, never a lone `\r`, and none ends in a trailing newline
 count always equals its `wc -l`, one FEWER than the rows it draws (27 CRLFs ⇒ 28 rows). The counts
 below are that `wc -l`, i.e. what `grep -c` reports. Twelve are all-CRLF: `menu-dismissed` 27, `select-menu` and
 `select-menu-moved` 55, `menu-model*` / `menu-resume*` / `menu-settings*` 56, `select-multi*` 58. The
-other eight — `fresh-idle`, `working`, `done`, `done--tool-result`, `draft-single`, `draft-wrapped`,
-`slash-palette` and `slash-palette--filtered` — are all-LF with **zero**. The alternate screen is a
+other nine — `fresh-idle`, `working`, `done`, `done--tool-result`, `draft-single`,
+`draft-ghost-suggestion`, `draft-wrapped`, `slash-palette` and `slash-palette--filtered` — are all-LF
+with **zero**. The alternate screen is a
 good guess at which is which but not a rule: `omp--menu-dismissed.txt` paints an ordinary inline
 screen and is still all-CRLF, so re-measure rather than infer (`grep -c $'\r' <file>`). Any edit must
 be made in **binary mode**; a text-mode Python pass silently strips `\r` and changes every byte count.
