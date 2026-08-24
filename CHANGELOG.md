@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.20] - 2026-08-25
+
+### Fixed
+
+- **tmux/zellij: a program's terminal title is no longer shown as a name you chose** — both multiplexers have one title slot and any program can write it, so the adapters now report only what Collie's own rename set as `paneLabel` and everything else as the terminal title; a title left behind by an exited program is marked stale, never leads a row, and is never deleted (e8d5782)
+
 ## [1.0.0-beta.19] - 2026-08-24
 
 ### Fixed
