@@ -6,6 +6,8 @@ import { SectionHeader } from "@/components/section-header";
 import { paneParts } from "@/lib/pane-name";
 import { isAttention, sectionHeaderProps, triage } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface ThreadSidebarProps {
   agents: AgentView[];
@@ -47,9 +49,12 @@ export function ThreadSidebar({
   onShellsOpenChange,
   className,
 }: ThreadSidebarProps) {
+  useLocale();
   if (agents.length === 0 && shellPanes.length === 0) {
     return (
-      <div className="px-4 py-12 text-center text-sm text-muted-foreground">No agents running.</div>
+      <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+        {t("home.empty.noAgents")}
+      </div>
     );
   }
 
@@ -83,7 +88,7 @@ export function ThreadSidebar({
       {shellPanes.length > 0 && (
         <Section
           id="switch-shells"
-          label="Shells"
+          label={t("home.sidebar.shells")}
           count={shellPanes.length}
           dot="bg-status-unknown"
           {...(onShellsOpenChange ? { open: shellsOpen, onToggle: onShellsOpenChange } : {})}

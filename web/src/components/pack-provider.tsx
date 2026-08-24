@@ -9,6 +9,7 @@ import {
   type HostHealth,
 } from "@/lib/host-health";
 import type { ServerSummary } from "@/lib/types";
+import { useLocale } from "@/hooks/use-locale";
 
 // Who is in the pack, made available to every write surface without threading `servers` through
 // four layers of props.
@@ -75,18 +76,23 @@ export function PackProvider({
   // fresh body, so a poll that changes nothing else still re-dates the health it publishes; a
   // keep-previous-data render (a failed refresh) reuses the cached snapshot, whose `ts` is frozen —
   // which is right, because "how stale is what I'm holding" is tier 1's question, not this one's.
-  const value = useMemo<PackValue>(
-    () =>
-      servers === undefined || servers.length === 0
-        ? SOLO
-        : {
-            servers,
-            multi: isMultiHost(servers),
-            lead: leadHost(servers),
-            health: hostHealthMap(servers, { at: ts, pollMs }),
-          },
-    [servers, ts, pollMs],
-  );
+  // `locale` rides the dependency list purely to invalidate the memo: `hostHealthMap` calls `t()`
+  // for `lastSeenLabel`, so a language switch must recompute it even though `servers`/`ts`/`pollMs`
+  // haven't changed.
+  const { locale } = useLocale();
+  const value = useMemo<PackValue>(() => {
+    // Read (not just listed as a dep): `hostHealthMap` calls `t()` for `lastSeenLabel`, so this memo
+    // must recompute on a language switch even though `servers`/`ts`/`pollMs` haven't changed.
+    void locale;
+    return servers === undefined || servers.length === 0
+      ? SOLO
+      : {
+          servers,
+          multi: isMultiHost(servers),
+          lead: leadHost(servers),
+          health: hostHealthMap(servers, { at: ts, pollMs }),
+        };
+  }, [servers, ts, pollMs, locale]);
   return <PackContext.Provider value={value}>{children}</PackContext.Provider>;
 }
 

@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { Modifier } from "@/lib/key-queue";
 import { isDangerKey, keyLabel, modifierLabel } from "@/lib/key-queue";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 
 // The staging strip that sits at the top of the nav tray while composing: a chip per queued key
 // (tap to remove), a ghost chip + one-char input while any modifier is armed, and an explicit Send.
@@ -29,6 +31,7 @@ export function KeyQueueStrip({
   onBaseChar,
   disabled,
 }: KeyQueueStripProps) {
+  useLocale();
   // Self-guarding: nothing to show unless a modifier is armed or keys are queued.
   if (mods.length === 0 && queue.length === 0) return null;
 
@@ -46,7 +49,7 @@ export function KeyQueueStrip({
             key={`${key}-${i}`}
             type="button"
             onClick={() => onRemove(i)}
-            aria-label={`Remove ${label}`}
+            aria-label={t("keys.queue.removeAria", { label })}
             className={cn(
               "inline-flex h-8 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 text-xs font-medium",
               isDangerKey(key) && "border-destructive/40 text-destructive",
@@ -75,11 +78,11 @@ export function KeyQueueStrip({
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          placeholder="key"
+          placeholder={t("keys.queue.charPlaceholder")}
           value=""
           disabled={disabled}
           onChange={(e) => onBaseChar(e.target.value)}
-          aria-label="Type a key to combine"
+          aria-label={t("keys.queue.charAria")}
           className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:opacity-50"
         />
       )}
@@ -93,7 +96,7 @@ export function KeyQueueStrip({
           disabled={disabled || queue.length === 0}
           onClick={onSend}
         >
-          Send
+          {t("keys.queue.send")}
         </Button>
         <Button
           type="button"
@@ -102,7 +105,7 @@ export function KeyQueueStrip({
           className="size-8 text-muted-foreground"
           disabled={disabled}
           onClick={onClear}
-          aria-label="Clear queued keys"
+          aria-label={t("keys.queue.clearAria")}
         >
           <X className="size-4" />
         </Button>

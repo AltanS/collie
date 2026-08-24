@@ -1,6 +1,9 @@
 // Frontend mirror of the bridge's domain model (bridge/types.ts). Kept as a small, deliberate
 // duplicate so the web app builds independently of the Bun server's source tree.
 
+import type { ApiErrorCode, ApiErrorDetail } from "@/lib/api-error-codes";
+import { t } from "@/lib/i18n";
+
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
 export interface AgentView {
@@ -343,16 +346,26 @@ export type PaneHistoryResponse =
       fileTruncated: boolean;
     };
 
+/**
+ * `error` is the bridge's English sentence and stays what a client displays when it has nothing
+ * better; `code` + `detail` are the machine half, which `lib/api-error-message.ts` turns into the
+ * operator's language. `code` was once only ever `"prompt_changed"` — it now names any catalogued
+ * refusal, so a client must fall back on a code it doesn't recognise rather than treat it as a bug.
+ * Mirrors ActionResponse in bridge/types.ts.
+ */
 export type ActionResponse =
   | { ok: true }
   | {
       ok: false;
       error: string;
       textDelivered?: boolean;
-      code?: "prompt_changed";
+      code?: ApiErrorCode;
+      detail?: ApiErrorDetail;
     };
 
-export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };
+export type UploadResponse =
+  | { ok: true; path: string }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /** A freshly-created shell pane — enough to navigate into before the next poll lands. */
 export interface CreatedPane {
@@ -364,7 +377,9 @@ export interface CreatedPane {
 }
 
 /** Result of creating a new tab/space — on success `pane` is the fresh shell to navigate into. */
-export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
+export type CreateResponse =
+  | { ok: true; pane: CreatedPane }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /**
  * Which role the bridge plays in a pack (PACK_PROTOCOL.md §3). Mirrors PackMode in bridge/types.ts.
@@ -529,10 +544,8 @@ export const STATUS_RANK = {
   done: 4,
 } satisfies Record<AgentStatus, number>;
 
-export const STATUS_LABEL = {
-  blocked: "needs you",
-  working: "working",
-  idle: "idle",
-  done: "done",
-  unknown: "unknown",
-} satisfies Record<AgentStatus, string>;
+/** Translated status labels, resolved fresh on every call — a caller that renders one must also
+ *  call `useLocale()` so it re-renders when the active language changes (see hooks/use-locale.ts). */
+export function statusLabel(status: AgentStatus): string {
+  return t(`status.label.${status}`);
+}

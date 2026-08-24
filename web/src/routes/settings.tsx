@@ -13,10 +13,13 @@ import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
+import { LanguageControl } from "@/components/language-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
 import { usePushControl } from "@/hooks/use-push";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 import { type DevicesData } from "@/lib/loaders";
 import { homePath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
@@ -30,6 +33,7 @@ const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: []
 export function SettingsRoute() {
   const navigate = useNavigate();
   const scope = useScope();
+  useLocale();
   const { state, busy, setEnabled } = usePushControl();
   const [error, setError] = useState<string | null>(null);
 
@@ -74,17 +78,21 @@ export function SettingsRoute() {
           // size="icon" is 36px; the header's other controls are 44px since the tap-target pass.
           className="size-11"
           onClick={() => navigate(homePath(scope))}
-          aria-label="Back"
+          aria-label={t("settings.nav.back")}
         >
           <ArrowLeft className="size-5" />
         </Button>
-        <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
+        <h1 className="text-lg font-semibold tracking-tight">{t("settings.title")}</h1>
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         {/* First: it's the setting people come here to change, and below the notification stack it
             sat off-screen on a phone, a scroll into a 1240px page. */}
         <ThemeControl />
+
+        {/* Language sits right beside appearance — both are "how this phone presents itself" — and
+            ahead of device behaviour, which is more of a per-device tweak than a standing choice. */}
+        <LanguageControl />
 
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}
@@ -100,10 +108,8 @@ export function SettingsRoute() {
             <div className="flex min-w-0 items-start gap-3">
               <Bell className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
               <div className="min-w-0">
-                <div className="font-medium">Push notifications</div>
-                <p className="text-sm text-muted-foreground">
-                  Get a notification when an agent needs you.
-                </p>
+                <div className="font-medium">{t("settings.push.title")}</div>
+                <p className="text-sm text-muted-foreground">{t("settings.push.description")}</p>
               </div>
             </div>
             {/* Fixed slot the size of the Switch (h-6 w-11): the spinner is smaller, so without it
@@ -114,7 +120,7 @@ export function SettingsRoute() {
                   checked={on}
                   disabled={toggleDisabled}
                   onCheckedChange={toggle}
-                  aria-label="Push notifications"
+                  aria-label={t("settings.push.title")}
                 />
               ) : (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -169,28 +175,28 @@ export function SettingsRoute() {
 function reasonText(reason: PushAvailability | undefined): string {
   switch (reason) {
     case "insecure":
-      return "Push needs an HTTPS connection.";
+      return t("settings.push.reason.insecure");
     case "server-off":
-      return "Push isn't configured on the bridge (no VAPID keys).";
+      return t("settings.push.reason.serverOff");
     case "denied":
-      return "Notifications are blocked — enable them in your browser settings.";
+      return t("settings.push.reason.denied");
     case "unsupported":
-      return "This browser doesn't support push notifications.";
+      return t("settings.push.reason.unsupported");
     default:
-      return "Couldn't enable push notifications.";
+      return t("settings.push.reason.default");
   }
 }
 
 function availabilityNote(a: PushAvailability): string {
   switch (a) {
     case "insecure":
-      return "Unavailable over plain HTTP — serve Collie over HTTPS to enable push.";
+      return t("settings.push.availability.insecure");
     case "server-off":
-      return "The bridge has no VAPID keys configured, so push is disabled server-side.";
+      return t("settings.push.availability.serverOff");
     case "denied":
-      return "Notifications are blocked for this site. Re-enable them in your browser settings.";
+      return t("settings.push.availability.denied");
     case "unsupported":
-      return "This browser doesn't support push notifications.";
+      return t("settings.push.availability.unsupported");
     case "ready":
       return "";
   }

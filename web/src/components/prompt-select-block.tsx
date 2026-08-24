@@ -4,6 +4,8 @@ import { Loader2, MessageSquarePlus } from "lucide-react";
 import type { PromptFamily, PromptFeedbackPurpose, PromptModel, PromptOption } from "@/lib/blocks";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 
 /** What a tap on this block asks for: an option's keystroke plan, or feedback typed on the phone. */
 export type PromptBlockAction =
@@ -26,52 +28,60 @@ export interface PromptSelectBlockProps {
 
 // Family-aware caption above the options — orients the reader ("the terminal is asking you
 // something") without repeating the question, which stays in the raw scrollback just above.
-const FAMILY_CAPTION = {
-  select: "Choose an option",
-  permission: "Permission required",
-  trust: "Trust this folder?",
-  plan: "Review the plan",
-} satisfies Record<PromptFamily, string>;
+// A function, not a module-level object, so it re-reads the current locale on every call — a
+// component that calls `useLocale()` re-renders on a language switch and this is called fresh.
+function familyCaption(family: PromptFamily): string {
+  switch (family) {
+    case "select":
+      return t("prompt.family.select");
+    case "permission":
+      return t("prompt.family.permission");
+    case "trust":
+      return t("prompt.family.trust");
+    case "plan":
+      return t("prompt.family.plan");
+  }
+}
+
+interface FeedbackCopy {
+  offer: string | null;
+  editorLabel: string;
+  placeholder: string;
+  help: string;
+  send: string;
+  sending: string;
+  focused: string;
+  typedPrefix: string;
+}
 
 // Copy is purpose-aware: Claude's plan-approval input is deny-with-feedback; Grok's `z` row is
 // a custom answer. Missing purpose is Claude (the only row submitPromptFeedback will type into).
-const FEEDBACK_COPY = {
-  "plan-change": {
-    offer: "Tell Claude what to change",
-    editorLabel: "What should Claude change?",
-    placeholder: "Say what to do differently…",
-    help: "Sends the plan back with your notes — Claude keeps planning instead of starting work.",
-    send: "Send feedback",
-    sending: "Sending feedback…",
-    focused:
-      "The feedback box has the keyboard in the terminal — these buttons would type into it instead of answering. They resume when it closes.",
-    typedPrefix: "Feedback is being written in the terminal: ",
-  },
-  "free-text": {
+// A function (not a module-level object) for the same locale-freshness reason as familyCaption.
+function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
+  if (purpose === "free-text") {
     // No phone composer: the Claude plan-feedback send path is the wrong recipe for this row.
-    offer: null,
-    editorLabel: "",
-    placeholder: "",
-    help: "",
-    send: "",
-    sending: "",
-    focused:
-      "The free-text row has the keyboard in the terminal — these buttons would type into it instead of answering. They resume when it closes.",
-    typedPrefix: "A custom answer is being written in the terminal: ",
-  },
-} satisfies Record<
-  PromptFeedbackPurpose,
-  {
-    offer: string | null;
-    editorLabel: string;
-    placeholder: string;
-    help: string;
-    send: string;
-    sending: string;
-    focused: string;
-    typedPrefix: string;
+    return {
+      offer: null,
+      editorLabel: "",
+      placeholder: "",
+      help: "",
+      send: "",
+      sending: "",
+      focused: t("prompt.feedback.freeText.focused"),
+      typedPrefix: t("prompt.feedback.freeText.typedPrefix"),
+    };
   }
->;
+  return {
+    offer: t("prompt.feedback.planChange.offer"),
+    editorLabel: t("prompt.feedback.planChange.editorLabel"),
+    placeholder: t("prompt.feedback.planChange.placeholder"),
+    help: t("prompt.feedback.planChange.help"),
+    send: t("prompt.feedback.planChange.send"),
+    sending: t("prompt.feedback.planChange.sending"),
+    focused: t("prompt.feedback.planChange.focused"),
+    typedPrefix: t("prompt.feedback.planChange.typedPrefix"),
+  };
+}
 
 // Native, tappable rendering of a Claude single-choice dialog. Every visible string — the option
 // label and its description — is a React text node (the XSS boundary is unchanged; nothing is ever
@@ -95,6 +105,7 @@ const FEEDBACK_COPY = {
 // Only the empty, unfocused state offers the composer, whose Send drives digit → focus → type →
 // Enter and lands as DENY-with-feedback (the agent re-plans) — which is what the button says.
 export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBlockProps) {
+  useLocale();
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
@@ -110,7 +121,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
   const terminalFocused = feedback?.focused ?? false;
   const locked = Boolean(disabled) || sending !== null || terminalFocused;
   const feedbackCopy = feedback
-    ? FEEDBACK_COPY[feedback.purpose === "free-text" ? "free-text" : "plan-change"]
+    ? feedbackCopyFor(feedback.purpose === "free-text" ? "free-text" : "plan-change")
     : null;
 
   async function press(id: string, action: PromptBlockAction): Promise<boolean> {
@@ -135,12 +146,12 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
   }
 
   const busyIcon = (
-    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />
+    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
   );
 
   return (
     <PromptPanel ariaLabel={prompt.question}>
-      <OptionGroupCaption>{FAMILY_CAPTION[prompt.family]}</OptionGroupCaption>
+      <OptionGroupCaption>{familyCaption(prompt.family)}</OptionGroupCaption>
       <div className="flex flex-col gap-1">
         {prompt.options.map((option, index) => {
           const id = `opt-${index}`;
@@ -158,7 +169,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
                 busy ? (
                   <Loader2
                     className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
-                    aria-label="Sending"
+                    aria-label={t("prompt.sendingAria")}
                   />
                 ) : null
               }
@@ -185,7 +196,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
         <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
           <MessageSquarePlus
             className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-            aria-label="Feedback in the terminal"
+            aria-label={t("prompt.feedback.typedAria")}
           />
           <span className="min-w-0 flex-1 text-xs text-foreground/90">
             {feedbackCopy.typedPrefix}
@@ -208,7 +219,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
             onChange={(e) => setDraft(e.target.value)}
             maxLength={FEEDBACK_MAX_LENGTH}
             rows={3}
-            aria-label="Feedback text"
+            aria-label={t("prompt.feedback.planChange.textAria")}
             placeholder={feedbackCopy.placeholder}
             className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary/60"
           />
@@ -220,7 +231,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
               onClick={() => setEditorOpen(false)}
               className="rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
             >
-              Cancel
+              {t("prompt.feedback.cancel")}
             </button>
             <button
               type="button"

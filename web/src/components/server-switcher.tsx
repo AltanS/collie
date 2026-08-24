@@ -11,6 +11,8 @@ import { usePack } from "@/components/pack-provider";
 import { countsFor, hostCounts } from "@/lib/hosts";
 import type { Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary } from "@/lib/types";
+import { t, tn } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface ServerSwitcherProps {
   /** The snapshot's pack roster, lead first. Empty/one-entry on a solo install — the trigger hides. */
@@ -57,6 +59,7 @@ interface ServerSwitcherProps {
 const NO_PANES: AgentView[] = [];
 
 export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwitcherProps) {
+  useLocale();
   const current = scope.host;
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -74,7 +77,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
 
   const lead = servers.find((s) => s.isLead);
   const isActive = (s: ServerSummary): boolean => (current === undefined ? s.isLead : s.id === current);
-  const currentName = servers.find(isActive)?.name ?? current ?? lead?.name ?? "lead";
+  const currentName = servers.find(isActive)?.name ?? current ?? lead?.name ?? t("connection.host.lead");
   const counts = hostCounts(agents);
 
   function select(s: ServerSummary): void {
@@ -90,7 +93,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`Host: ${currentName}. Switch host`}
+        aria-label={t("connection.server.aria", { name: currentName })}
         className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 active:scale-95"
       >
         <Server className="size-3.5" />
@@ -100,7 +103,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
       {/* Portalled for the same reason as the session sheet: a backdrop-filter on the header would
           become the containing block and clip a `fixed inset-0` sheet to the header band. */}
       {createPortal(
-        <BottomSheet open={open} onClose={() => setOpen(false)} title="Machines">
+        <BottomSheet open={open} onClose={() => setOpen(false)} title={t("connection.server.title")}>
           <ul className="flex flex-col gap-1">
             {servers.map((s) => {
               const active = isActive(s);
@@ -129,7 +132,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                         {s.isLead && (
                           <span className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             <Crown className="size-2.5" aria-hidden />
-                            lead
+                            {t("connection.host.lead")}
                           </span>
                         )}
                         {/* Listed, never hidden (PACK_PROTOCOL.md §10.2): a member that is down or
@@ -137,7 +140,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                             A vanished machine reads as "I have no agents there", which is a lie. */}
                         {h.incompatible ? (
                           <span className="text-[11px] font-medium text-status-blocked">
-                            incompatible
+                            {t("connection.host.incompatible")}
                           </span>
                         ) : (
                           h.state !== "live" && (
@@ -152,7 +155,9 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                                   receipt beside `reachable: true` is an old receipt, not a down
                                   machine, and this row spelled it "unreachable" beside a peer whose
                                   every request was landing. See host-stale-banner.tsx's table. */}
-                              {h.writable ? h.lastSeenLabel : `unreachable · ${h.lastSeenLabel}`}
+                              {h.writable
+                                ? h.lastSeenLabel
+                                : t("connection.host.unreachableSuffix", { label: h.lastSeenLabel })}
                             </span>
                           )
                         )}
@@ -168,12 +173,12 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                         <div className="mt-1 flex items-center gap-1.5">
                           {c.blocked > 0 && (
                             <span className="rounded-full border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
-                              {c.blocked} needs you
+                              {tn("status.count.needsYou", c.blocked)}
                             </span>
                           )}
                           {c.working > 0 && (
                             <span className="rounded-full border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
-                              {c.working} working
+                              {tn("status.count.working", c.working)}
                             </span>
                           )}
                         </div>

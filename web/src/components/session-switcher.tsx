@@ -8,6 +8,8 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { homePath } from "@/lib/nav";
 import type { Scope } from "@/lib/scope";
 import type { SessionSummary } from "@/lib/types";
+import { t, tn } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface SessionSwitcherProps {
   /** The bridge's session registry (primary-first). */
@@ -23,6 +25,7 @@ interface SessionSwitcherProps {
 // The sheet lists every session; unreachable ones (crashed / stale socket) are greyed out and
 // non-clickable. Selecting one navigates home in that session (primary → no `?s=`).
 export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
+  useLocale();
   const current = scope.session;
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -49,7 +52,7 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`Session: ${currentName}. Switch session`}
+        aria-label={t("connection.session.aria", { name: currentName })}
         className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70 active:scale-95"
       >
         <Layers className="size-3.5" />
@@ -60,7 +63,7 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
           not an ancestor: any transform / filter / backdrop-filter on the app header (it has carried a
           backdrop-blur before) would make it the containing block and clip the sheet to the header band. */}
       {createPortal(
-        <BottomSheet open={open} onClose={() => setOpen(false)} title="Sessions">
+        <BottomSheet open={open} onClose={() => setOpen(false)} title={t("connection.session.title")}>
           <ul className="flex flex-col gap-1">
             {sessions.map((s) => {
               const active = isActive(s);
@@ -85,23 +88,25 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
                         <span className="truncate text-sm font-medium">{s.name}</span>
                         {s.isPrimary && (
                           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            primary
+                            {t("connection.session.primary")}
                           </span>
                         )}
                         {!s.reachable && (
-                          <span className="text-[11px] text-muted-foreground">unreachable</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {t("connection.session.unreachable")}
+                          </span>
                         )}
                       </div>
                       {s.reachable && (s.blocked > 0 || s.working > 0) && (
                         <div className="mt-1 flex items-center gap-1.5">
                           {s.blocked > 0 && (
                             <span className="rounded-full border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
-                              {s.blocked} needs you
+                              {tn("status.count.needsYou", s.blocked)}
                             </span>
                           )}
                           {s.working > 0 && (
                             <span className="rounded-full border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
-                              {s.working} working
+                              {tn("status.count.working", s.working)}
                             </span>
                           )}
                         </div>

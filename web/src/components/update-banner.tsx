@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { UpdateInfo } from "@/lib/types";
 import { useOptionalRootData } from "@/lib/route-data";
@@ -31,21 +33,24 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
   if (update.bridgeStale) {
     // No release page for "restart needed" — show the Herdr restart action to copy.
     return {
-      line: "Bridge restart needed",
+      line: t("settings.updateBanner.restart"),
       command: "herdr plugin action invoke restart --plugin herdr.collie",
     };
   }
   // Guard on `latest` too: without a version string there's nothing meaningful to name. The release
   // page (linked) carries the update commands, so the footer just links there.
   if (update.releaseAvailable && update.latest) {
-    return { line: `Collie ${update.latest} available`, href: update.latestUrl ?? undefined };
+    return {
+      line: t("settings.updateBanner.releaseAvailable", { version: update.latest }),
+      href: update.latestUrl ?? undefined,
+    };
   }
   // A MAJOR is out. It ranks below a routine release because it is the one thing the plain update
   // action will NOT take (ADR 0020) — so this line names the consent command instead of leaving the
   // operator to tap update, see it succeed, and still see a banner.
   if (update.majorAvailable) {
     return {
-      line: `Collie ${update.majorAvailable} — a new major`,
+      line: t("settings.updateBanner.majorAvailable", { version: update.majorAvailable }),
       href: update.majorUrl ?? undefined,
       command: "herdr plugin action invoke update-major --plugin herdr.collie",
     };
@@ -54,6 +59,7 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
 }
 
 export function UpdateBanner({ className }: { className?: string }) {
+  useLocale();
   const data = useOptionalRootData();
   const notice = updateNotice(data?.update);
   const [copied, setCopied] = useState(false);
@@ -98,7 +104,7 @@ export function UpdateBanner({ className }: { className?: string }) {
           <button
             type="button"
             onClick={copy}
-            aria-label={`Copy command: ${notice.command}`}
+            aria-label={t("settings.updateBanner.copyAria", { command: notice.command })}
             className="inline-flex items-center gap-1 align-middle rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-foreground/80"
           >
             <code>{notice.command}</code>

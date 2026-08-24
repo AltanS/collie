@@ -3,6 +3,8 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { t as translate } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 // Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
 // keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
@@ -32,6 +34,7 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ open, onClose, title, children, className }: BottomSheetProps) {
+  useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
   const [dragY, setDragY] = React.useState(0);
@@ -162,7 +165,7 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
               size="icon"
               className="size-8"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={translate("common.closeAria")}
             >
               <X className="size-4" />
             </Button>
@@ -196,6 +199,7 @@ export function SideSheet({
   footer,
   className,
 }: SideSheetProps) {
+  useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
   useDialogFocus(open, panelRef);
@@ -249,7 +253,7 @@ export function SideSheet({
               size="icon"
               className="size-8"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={translate("common.closeAria")}
             >
               <X className="size-4" />
             </Button>

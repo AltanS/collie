@@ -7,6 +7,8 @@ import { SectionHeader } from "@/components/section-header";
 import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
 import { AgentCard } from "./agent-card";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface AgentListProps {
   agents: AgentView[];
@@ -62,6 +64,7 @@ export function AgentList({
   error = false,
   lastSeenAt,
 }: AgentListProps) {
+  useLocale();
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
   const agentDetection = useMuxCapability("agentDetection");
@@ -77,8 +80,8 @@ export function AgentList({
           <WifiOff className="size-7" />
           <span className="text-sm">
             {lastSeenAt === undefined
-              ? "Disconnected"
-              : `Disconnected — last seen ${clockTime(lastSeenAt)}`}
+              ? t("home.empty.disconnected")
+              : t("home.empty.disconnectedAt", { time: clockTime(lastSeenAt) })}
           </span>
         </div>
       );
@@ -87,7 +90,7 @@ export function AgentList({
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
         <Inbox className="size-7" />
         <span className="text-sm">
-          {bridge === "connected" ? "No agents running." : "Waiting for Herdr…"}
+          {bridge === "connected" ? t("home.empty.noAgents") : t("home.empty.waiting")}
         </span>
         {/* PRESENTATION, not a gate (M10/06). Without `agentDetection` every pane arrives as a
             shell with an unknown status, so this list is empty on a machine that may be running
@@ -97,7 +100,7 @@ export function AgentList({
             multiplexer that reports agents, i.e. nothing on Herdr. */}
         {bridge === "connected" && !agentDetection.capable && agentDetection.note !== "" && (
           <p className="max-w-xs px-6 text-center text-xs leading-snug">
-            {agentDetection.note} Your panes are under Spaces.
+            {agentDetection.note} {t("home.empty.panesHint")}
           </p>
         )}
       </div>
@@ -118,7 +121,7 @@ export function AgentList({
       {allClear && (
         <p className="flex items-center gap-2 px-1 py-1 text-sm font-medium">
           <Check className="size-5 shrink-0 text-status-done" aria-hidden />
-          Nothing needs you
+          {t("home.allClear")}
         </p>
       )}
       {sections.map((s) => {
@@ -177,17 +180,14 @@ export function AgentList({
 // One tap flips the Recent order. Deliberately not a menu — the design offers a direction, not a
 // choice of sort keys. min-h-9 keeps it on the 36px touch floor.
 function SortToggle({ dir, onChange }: { dir: RecentDir; onChange: (dir: RecentDir) => void }) {
+  useLocale();
   const newest = dir === "newest";
   const Icon = newest ? ArrowDown : ArrowUp;
   return (
     <button
       type="button"
       onClick={() => onChange(flipDir(dir))}
-      aria-label={
-        newest
-          ? "Sorted by most recently used first — switch to oldest first"
-          : "Sorted by oldest first — switch to most recently used first"
-      }
+      aria-label={newest ? t("home.sort.aria.newest") : t("home.sort.aria.oldest")}
       // A bordered chip, not bare text: unstyled it read as an annotation ("sorted newest") rather
       // than something you can press. Fixed width so flipping it doesn't shift the header. No fill —
       // filled, it outweighed the heading it sits beside, which is backwards for a control that
@@ -195,7 +195,7 @@ function SortToggle({ dir, onChange }: { dir: RecentDir; onChange: (dir: RecentD
       className="flex min-h-9 items-center justify-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
     >
       <Icon className="size-3.5" aria-hidden />
-      <span className="w-[3.25rem] text-left">{newest ? "Newest" : "Oldest"}</span>
+      <span className="w-[3.25rem] text-left">{newest ? t("home.sort.newest") : t("home.sort.oldest")}</span>
     </button>
   );
 }

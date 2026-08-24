@@ -8,8 +8,9 @@ import { HostChip } from "@/components/host-chip";
 import { PaneHint } from "@/components/pane-hint";
 import { timeAgoShort } from "@/lib/format";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
-import { STATUS_LABEL } from "@/lib/types";
+import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
+import { useLocale } from "@/hooks/use-locale";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -65,6 +66,7 @@ export function AgentCard({
   statusStyle = "badge",
   density = "card",
 }: AgentCardProps) {
+  useLocale();
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
@@ -183,7 +185,7 @@ export function AgentCard({
           <ShellBadge />
         ) : cornerDot ? (
           /* The dot itself is colour-only and lives on the avatar; give SR users the word. */
-          <span className="sr-only">{STATUS_LABEL[agent.status]}</span>
+          <span className="sr-only">{statusLabel(agent.status)}</span>
         ) : (
           <StatusBadge status={agent.status} />
         )}

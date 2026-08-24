@@ -1,6 +1,8 @@
 import { groupPanesByTab } from "@/lib/spaces";
 import type { AgentView, TabView, WorkspaceView } from "@/lib/types";
 import { AgentCard } from "./agent-card";
+import { t, tn } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface SpaceViewProps {
   workspace: WorkspaceView;
@@ -20,6 +22,7 @@ interface SpaceViewProps {
 // labelled section when "All" is active. A freshly-created tab's shell shows up here so you can open
 // it and launch your own agent.
 export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, onOpen, host }: SpaceViewProps) {
+  useLocale();
   // Host-qualified: another machine's `w1` is not this space, however identically it is numbered.
   const allGroups = groupPanesByTab(workspace.workspaceId, tabs, agents, shellPanes, host);
   const groups = selectedTab ? allGroups.filter((g) => g.tabId === selectedTab) : allGroups;
@@ -29,8 +32,8 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
       <div className="px-1">
         <h2 className="truncate text-sm font-semibold">{workspace.label}</h2>
         <p className="text-xs text-muted-foreground">
-          {workspace.tabCount} {workspace.tabCount === 1 ? "tab" : "tabs"} ·{" "}
-          {workspace.paneCount} {workspace.paneCount === 1 ? "pane" : "panes"}
+          {tn("space.view.tabCount", workspace.tabCount)} ·{" "}
+          {tn("space.view.paneCount", workspace.paneCount)}
         </p>
       </div>
 
@@ -42,7 +45,7 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
             </h3>
           )}
           {g.panes.length === 0 ? (
-            <p className="px-1 text-xs text-muted-foreground">(empty tab)</p>
+            <p className="px-1 text-xs text-muted-foreground">{t("space.view.emptyTab")}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {/* scope="tab": this list already sits under its space heading and per-tab section,
@@ -62,7 +65,7 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
 
       {groups.length === 0 && (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-          {selectedTab ? "This tab has no panes." : "This space has no panes."}
+          {selectedTab ? t("space.view.noPanesInTab") : t("space.view.noPanesInSpace")}
         </p>
       )}
     </div>

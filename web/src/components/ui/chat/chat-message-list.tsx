@@ -4,6 +4,8 @@ import { ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAutoScroll } from "@/hooks/use-auto-scroll";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 export interface ChatMessageListHandle {
   /** Imperatively jump to the latest output (e.g. after sending a reply). */
@@ -29,6 +31,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
     { className, children, dep, onAtBottomChange, hasNew, ...props },
     ref,
   ) {
+    useLocale();
     const { scrollRef, isAtBottom, scrollToBottom, onScroll } = useAutoScroll<HTMLDivElement>({
       dep,
       onAtBottomChange,
@@ -62,7 +65,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
             size="icon"
             variant="outline"
             className="absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full shadow-md"
-            aria-label="Scroll to latest"
+            aria-label={t("common.scrollToLatestAria")}
           >
             <ArrowDown className="size-4" />
             {hasNew && (

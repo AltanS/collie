@@ -19,6 +19,7 @@ import { fetchPane, sendKeys, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectPromptSelect } from "./harness/claude/prompt-select";
+import { t } from "./i18n";
 import { FEEDBACK_MAX_LENGTH, submitPromptFeedback, submitPromptOption } from "./prompt-action";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -240,7 +241,7 @@ describe("submitPromptFeedback — the states it refuses BEFORE touching the pan
     const res = await submitPromptFeedback({ ...base, prompt: grokAsk, text: "navy" });
     expect(res).toEqual({
       status: "error",
-      error: "This dialog's free-text row is not typed from the phone",
+      error: t("promptAction.feedback.freeTextUnsupported"),
     });
     expect(mockFetchPane).not.toHaveBeenCalled();
     expect(mockSendKeys).not.toHaveBeenCalled();

@@ -5,6 +5,8 @@ import { usePairing } from "@/lib/pairing";
 import { isReadOnly } from "@/lib/types";
 import type { DeviceAuth } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 // The app's "you can look, but you can't type" strip, covering BOTH write gates — they are
 // independent on the bridge and compose by AND, so either one alone puts this device in the same
@@ -23,20 +25,22 @@ export function ReadOnlyBanner({
   device: DeviceAuth | undefined;
   className?: string;
 }) {
+  useLocale();
   const { refused } = usePairing();
 
   if (refused) {
     return (
       <Strip className={className} icon={<KeyRound className="size-3.5 shrink-0" />}>
-        Not paired — pair this device in Settings to type into agents.
+        {t("connection.readOnly.notPaired")}
       </Strip>
     );
   }
   if (!isReadOnly(device)) return null;
   return (
     <Strip className={className} icon={<Lock className="size-3.5 shrink-0" />}>
-      Read-only — this device isn’t authorised to type into agents
-      {device?.device ? ` (${device.device})` : ""}.
+      {t("connection.readOnly.device", {
+        deviceSuffix: device?.device ? ` (${device.device})` : "",
+      })}
     </Strip>
   );
 }

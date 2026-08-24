@@ -25,6 +25,7 @@
 // here can close a cycle.
 
 import { sendKeys } from "./api";
+import { describeApiError, describeThrownError } from "./api-error-message";
 import { type StyledLine } from "./blocks";
 import { adapterFor } from "./harness/registry";
 import {
@@ -142,11 +143,13 @@ export async function sendBoundKeys(
       region === undefined
         ? await sendKeys(target.paneId, keys, target.scope)
         : await sendKeys(target.paneId, keys, target.scope, region);
+    // The code is MATCHED here, not displayed: a rejected binding is its own outcome. Only the
+    // branch below turns a refusal into words, and that is the one that goes through the catalogue.
     if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
-    if (!res.ok) return { status: "error", error: res.error };
+    if (!res.ok) return { status: "error", error: describeApiError(res) };
     return { status: "sent" };
   } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
+    return { status: "error", error: describeThrownError(e) };
   }
 }
 

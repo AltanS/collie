@@ -1,0 +1,615 @@
+import type { Dictionary } from "./en";
+
+// Japanese. See de.ts for the typing contract. One plural category, so both suffixes match.
+
+export const ja: Dictionary = {
+  "settings.language.title": "言語",
+  "settings.language.description":
+    "Collie が使う言語を選びます。ターミナルの表示は翻訳されません。エージェントが出力したままを表示します。",
+  "settings.language.active": "Collie を{language}で表示しています。",
+  "settings.language.available.one": "{count} 言語を利用できます。",
+  "settings.language.available.other": "{count} 言語を利用できます。",
+
+  // --- settings (page chrome) ---
+  "settings.title": "設定",
+  "settings.nav.back": "戻る",
+
+  // --- settings.theme ---
+  "settings.theme.title": "外観",
+  "settings.theme.description": "端末の設定に従うか、固定します。",
+  "settings.theme.option.system": "システム",
+  "settings.theme.option.light": "ライト",
+  "settings.theme.option.dark": "ダーク",
+
+  // --- settings.haptics ---
+  "settings.haptics.title": "バイブレーション",
+  "settings.haptics.description": "キー操作やクイック返信時に短く振動します。",
+
+  // --- settings.handsFree ---
+  "settings.handsFree.title": "ハンズフリー音声",
+  "settings.handsFree.description":
+    "文字起こしをメッセージ欄に入れず、すぐに送信します。初期設定はオフです — 通常はターミナルに届く前に認識内容を確認します。",
+  "settings.handsFree.ariaLabel": "ハンズフリー音声: 文字起こしをすぐに送信",
+
+  // --- settings.push ---
+  "settings.push.title": "プッシュ通知",
+  "settings.push.description": "エージェントが応答を必要としているときに通知します。",
+  "settings.push.reason.insecure": "プッシュには HTTPS 接続が必要です。",
+  "settings.push.reason.serverOff": "ブリッジでプッシュが設定されていません（VAPID キーなし）。",
+  "settings.push.reason.denied": "通知はブロックされています — ブラウザの設定で許可してください。",
+  "settings.push.reason.unsupported": "このブラウザはプッシュ通知に対応していません。",
+  "settings.push.reason.default": "プッシュ通知を有効にできませんでした。",
+  "settings.push.availability.insecure":
+    "通常の HTTP では利用できません — プッシュを有効にするには Collie を HTTPS で配信してください。",
+  "settings.push.availability.serverOff":
+    "ブリッジに VAPID キーが設定されていないため、プッシュはサーバー側で無効になっています。",
+  "settings.push.availability.denied":
+    "このサイトの通知はブロックされています。ブラウザの設定で再度許可してください。",
+  "settings.push.availability.unsupported": "このブラウザはプッシュ通知に対応していません。",
+
+  // --- settings.notify ---
+  "settings.notify.title": "通知するタイミング",
+  "settings.notify.description": "すべてのデバイスに適用されます。",
+  "settings.notify.blocked.label": "入力待ち",
+  "settings.notify.blocked.hint": "エージェントが応答を待っているとき",
+  "settings.notify.done.label": "完了",
+  "settings.notify.done.hint": "エージェントがタスクを完了したとき",
+  "settings.notify.updates.label": "アプリの更新",
+  "settings.notify.updates.hint": "新しい Collie のバージョンが公開されたとき",
+
+  // --- settings.snooze ---
+  "settings.snooze.title": "通知を一時停止",
+  "settings.snooze.description.idle": "しばらくすべてのプッシュ通知を止めます。",
+  "settings.snooze.description.active": "{time} まで一時停止中 — それまでプッシュはありません。",
+  "settings.snooze.resume": "今すぐ再開",
+  "settings.snooze.preset.min30": "30分",
+  "settings.snooze.preset.hour1": "1時間",
+  "settings.snooze.preset.hour4": "4時間",
+
+  // --- settings.devices ---
+  "settings.devices.title": "ペアリング済みデバイス",
+  "settings.devices.description.enforced":
+    "すべての書き込みにペアリング済みデバイスが必要です。読み取りは制限されません。",
+  "settings.devices.description.open":
+    "ペアリングされたデバイスがないため、書き込みは制限されていません。デバイスをペアリングすると認証が必要になります。",
+  "settings.devices.pairedAs": "この端末は {device} としてペアリングされています。",
+  "settings.devices.loadError": "ブリッジからペアリング済みデバイスを読み込めませんでした。",
+  "settings.devices.thisDevice": "この端末",
+  "settings.devices.row.meta": "ペアリング {paired} · 最終アクセス {lastSeen}",
+  "settings.devices.revokeError": "そのデバイスを取り消せませんでした。",
+  "settings.devices.cancel": "キャンセル",
+  "settings.devices.unpairSelf": "この端末のペアリングを解除",
+  "settings.devices.revoke": "取り消す",
+  "settings.devices.revokeAria": "{label} を取り消す",
+  "settings.devices.pair.title": "この端末をペアリング",
+  "settings.devices.pair.hint": "ホストで {command} を実行し、表示されたコードを入力してください。",
+  "settings.devices.pair.codeLabel": "ペアリングコード",
+  "settings.devices.pair.codePlaceholder": "8文字",
+  "settings.devices.pair.nameLabel": "この端末の名前",
+  "settings.devices.pair.namePlaceholder": "例: 自分のスマホ",
+  "settings.devices.pair.networkError":
+    "ブリッジに接続してペアリングできませんでした。接続を確認して再試行してください。",
+  "settings.devices.pair.failure.noPending":
+    "待機中のペアリングコードがありません。ホストで `bin/collie pair` を実行して発行してください。",
+  "settings.devices.pair.failure.expired":
+    "このコードは期限切れです。ホストで `bin/collie pair` を実行し直してください。",
+  "settings.devices.pair.failure.exhausted":
+    "誤ったコードが多すぎたため、このペアリングは破棄されました。ホストで `bin/collie pair` を実行し直してください。",
+  "settings.devices.pair.failure.badCode":
+    "コードが一致しません。確認して再入力してください — さらに間違えると破棄されます。",
+  "settings.devices.pair.failure.duplicateLabel":
+    "その名前は既に別のデバイスが使用しています。別の名前を選んでください — コードはまだ有効です。",
+  "settings.devices.pair.failure.badRequest": "コードまたは名前が無効でした。名前は1〜48文字にしてください。",
+
+  // --- settings.connection ---
+  "settings.connection.title": "接続",
+  "settings.connection.description": "この端末の診断情報です。",
+  "settings.connection.row.endpoint": "エンドポイント",
+  "settings.connection.row.secure": "セキュアコンテキスト",
+  "settings.connection.row.bridge": "ブリッジ",
+  "settings.connection.row.deviceAccess": "デバイスアクセス",
+  "settings.connection.row.serverBuild": "サーバービルド",
+  "settings.connection.secure.yes": "はい",
+  "settings.connection.secure.no": "いいえ（通常の HTTP）",
+  "settings.connection.bridge.connected": "接続済み",
+  "settings.connection.bridge.offline": "Herdr オフライン",
+  "settings.connection.bridge.connecting": "接続中…",
+  "settings.connection.device.notEnforced": "未適用",
+  "settings.connection.device.fullAccessNamed": "フルアクセス · {device}",
+  "settings.connection.device.fullAccessLocal": "フルアクセス（ローカル）",
+  "settings.connection.device.readOnlyNamed": "読み取り専用 · {device}",
+  "settings.connection.device.readOnly": "読み取り専用",
+
+  // --- settings.update (update-check-control + footer update banner) ---
+  "settings.update.title": "アップデート",
+  "settings.update.check.prompt": "新しい Collie のバージョンがあるか確認します。",
+  "settings.update.check.running": "v{current} を実行中",
+  "settings.update.check.runningChecked": "v{current} を実行中 · 確認 {checked}",
+  "settings.update.action": "アップデートを確認",
+  "settings.update.checking": "確認中…",
+  "settings.update.error": "確認できませんでした。",
+  "settings.update.upToDate": "最新です",
+  "settings.updateBanner.restart": "ブリッジの再起動が必要です",
+  "settings.updateBanner.releaseAvailable": "Collie {version} が利用可能です",
+  "settings.updateBanner.majorAvailable": "Collie {version} — 新しいメジャーバージョン",
+  "settings.updateBanner.copyAria": "コマンドをコピー: {command}",
+
+  // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
+  "settings.display.wrap.label": "折り返し",
+  "settings.display.wrap.hint": "オフにすると TUI 表を列そのままで表示します — 代わりに横スクロールします。",
+  "settings.display.tapToType.label": "タップして入力",
+  "settings.display.tapToType.hint":
+    "オンでは画面のどこをタップしてもキーボードが開きます。オフでは画面はドキュメントのように動作し、タップはテキストに当たり、入力欄をタップしたときだけキーボードが開きます。",
+  "settings.display.rawTerminal.label": "生のターミナル",
+  "settings.display.rawTerminal.hint":
+    "タップ可能なプロンプトボタンや装飾、ステータス表示なしの素の画面を表示します。ダイアログが正しく表示されないとき、キー操作で手動操作したい場合に使います。",
+  "settings.display.textSize.label": "文字サイズ",
+  "settings.display.textSize.decrease": "文字サイズを小さくする",
+  "settings.display.textSize.increase": "文字サイズを大きくする",
+
+  // --- settings.buildStamp ---
+  "settings.buildStamp.tapToUpdate": "新しいビルド — タップして更新",
+  "settings.buildStamp.updating": "更新中…",
+
+  // --- composer (the reply box + its Keys/Quick/Display docks) ---
+  "composer.dock.closeAria": "{title}を閉じる",
+  "composer.controls.label": "コントロール",
+  "composer.controls.keys": "キー",
+  "composer.controls.typeAria": "ターミナルに入力",
+  "composer.controls.type": "入力",
+  "composer.controls.quick": "クイック",
+  "composer.controls.agent": "エージェント",
+  "composer.controls.displayAria": "表示設定",
+  "composer.controls.display": "表示",
+  "composer.sentPreview.label": "送信済み:",
+  "composer.placeholder.gone": "ペインがなくなりました",
+  "composer.placeholder.readOnly": "読み取り専用 — この端末は許可されていません",
+  "composer.placeholder.noMuxSend": "このターミナルにはここから入力できません",
+  "composer.placeholder.direct": "ターミナルに入力…",
+  "composer.placeholder.shell": "シェルコマンドを入力…",
+  "composer.placeholder.reply": "返信を入力…",
+  "composer.mic.unavailable": "音声入力は利用できません",
+  "composer.mic.stopAria": "録音を停止",
+  "composer.mic.recordAria": "音声メッセージを録音",
+  "composer.mic.transcribing": "文字起こし中…",
+  "composer.mic.recording": "録音中 {elapsed}",
+  "composer.mic.handsFreeHint": "停止すると送信されます",
+  "composer.mic.manualHint": "メッセージ欄に入ります",
+  "composer.mic.stop": "停止",
+  "composer.mic.discardAria": "録音を破棄",
+  "composer.attach.aria": "画像を添付",
+  "composer.send.typeAnyway": "それでも入力しますか？",
+  "composer.send.reallySend": "本当に送信しますか？",
+  "composer.send.stopTypingAria": "ターミナルへの入力を停止",
+  "composer.send.sendAria": "送信",
+  "composer.draft.tooLong":
+    "下書きとして保存するには長すぎます — ペインを切り替えても残りますが、アプリを閉じると消えます。",
+  "composer.status.dialogWaiting": "ダイアログが応答待ちです — 先に答えてから送信してください。",
+  "composer.status.paneNotWritable": "ペインへの書き込みができなくなりました — 何も送信していません",
+  "composer.status.inputChanged":
+    "消去中に入力欄が変わりました — 何も入力していません。ペインを確認してください。",
+  "composer.status.clearFailed": "ターミナルの入力を消去できませんでした",
+  "composer.status.sent": "送信しました ✓",
+  "composer.status.tapAgainToType": "{error} それでも入力するには送信をもう一度タップしてください。",
+  "composer.discard.confirmKeys.one": "待機中のキー{count}個を破棄するにはもう一度タップしてください",
+  "composer.discard.confirmKeys.other": "待機中のキー{count}個を破棄するにはもう一度タップしてください",
+  "composer.destructive.confirm": "破壊的操作: {reason} — 確認するには送信をもう一度タップ",
+  "composer.destructive.confirmOnHost": "破壊的操作: {host}での{reason} — 確認するには送信をもう一度タップ",
+  "composer.upload.success": "画像を追加しました — パスがメッセージに入っています",
+  "composer.noEcho.title": "パスワード入力 — 何も表示されません",
+  "composer.noEcho.noLiveTyped":
+    "入力した内容はすでにペインにありますが未送信です — ただしこの画面はライブではないため、ここからは何も送信できません。ターミナルで直接応答してください。",
+  "composer.noEcho.noLiveUntyped":
+    "何も入力されていません。この画面はライブではないため、必要なキーをここから送信できません。",
+  "composer.noEcho.liveTyped":
+    "入力した内容はすでにペインにあります — ただ確認できないため送信されていません。入力モードでEnterを押し、再送信しないでください。",
+  "composer.noEcho.liveUntyped":
+    "送信は入力内容を確認してから送りますが、このプロンプトには確認するものがありません。入力モードならEnterを含めキーがそのまま届きます。",
+  "composer.noEcho.useType": "入力モードを使う",
+  "composer.noEcho.dismissAria": "パスワード通知を閉じる",
+  "composer.draftPreview.title": "ターミナルに残った下書き",
+  "composer.draftPreview.takeOver": "引き継ぐ",
+
+  // --- sendMode (the armed "typing straight through" indicator) ---
+  "sendMode.armed.title": "ターミナルに入力中",
+  "sendMode.armed.hint": "キーがそのまま届きます",
+  "sendMode.armed.stop": "停止",
+
+  // --- chat (the pane view shell: header, mirror, switcher) ---
+  "chat.find.aria": "出力内を検索",
+  "chat.history.aria": "会話履歴",
+  "chat.header.openOverviewAria": "{workspace}の概要を開く",
+  "chat.header.agentGone": "（エージェントなし）",
+  "chat.scrollback.showHistory": "全履歴を表示",
+  "chat.scrollback.loadOlder": "過去分を読み込む",
+  "chat.scrollback.loading": "読み込み中…",
+  "chat.output.empty": "（最近の出力なし）",
+  "chat.switcher.aria": "ペインを切り替え",
+  "chat.switcher.title": "ペインを切り替え",
+  "chat.status.feedbackSent": "フィードバックを送信しました",
+  "chat.status.sent": "送信しました",
+  "chat.status.menuChanged": "メニューが変わったため更新します",
+  "chat.status.sendFailed": "送信に失敗しました",
+  "chat.status.wizardChanged": "ウィザードが変わったため更新します",
+  "chat.status.noteSaved": "メモを保存しました",
+  "chat.status.noteRemoved": "メモを削除しました",
+  "chat.status.dialogChanged": "ダイアログが変わったため更新します",
+  "chat.status.selectionChanged": "選択が変わったため更新します",
+  "chat.status.screenChanged": "画面が変わったため更新します",
+  "chat.status.readOnly": "読み取り専用 — この端末は許可されていません",
+
+  // --- prompt (the native prompt-select / plan-feedback block) ---
+  "prompt.family.select": "オプションを選んでください",
+  "prompt.family.permission": "許可が必要です",
+  "prompt.family.trust": "このフォルダを信頼しますか？",
+  "prompt.family.plan": "プランを確認",
+  "prompt.sendingAria": "送信中",
+  "prompt.feedback.cancel": "キャンセル",
+  "prompt.feedback.typedAria": "ターミナルへのフィードバック",
+  "prompt.feedback.planChange.offer": "Claudeに変更点を伝える",
+  "prompt.feedback.planChange.editorLabel": "Claudeに何を変えてほしいですか？",
+  "prompt.feedback.planChange.textAria": "フィードバックのテキスト",
+  "prompt.feedback.planChange.placeholder": "変えてほしい点を書いてください…",
+  "prompt.feedback.planChange.help":
+    "メモを添えてプランを差し戻します — Claudeは作業を始めずに計画を続けます。",
+  "prompt.feedback.planChange.send": "フィードバックを送信",
+  "prompt.feedback.planChange.sending": "フィードバックを送信中…",
+  "prompt.feedback.planChange.focused":
+    "フィードバック欄がターミナルのキーボードを使用中です — このボタンは応答の代わりにそこへ入力してしまいます。閉じると元に戻ります。",
+  "prompt.feedback.planChange.typedPrefix": "ターミナルにフィードバックを入力中です: ",
+  "prompt.feedback.freeText.focused":
+    "自由入力欄がターミナルのキーボードを使用中です — このボタンは応答の代わりにそこへ入力してしまいます。閉じると元に戻ります。",
+  "prompt.feedback.freeText.typedPrefix": "ターミナルに独自の回答を入力中です: ",
+
+  // --- paneActions (long-press sheet: rename / close a pane) ---
+  "paneActions.title.fallback": "ペイン",
+  "paneActions.readOnly": "読み取り専用 — この端末はペインの名前変更や終了ができません。",
+  "paneActions.hostBlockSuffix": "{hostBlock} — 応答するまで名前変更と終了は使えません。",
+  "paneActions.rename.label": "名前を変更",
+  "paneActions.rename.placeholder": "このペインの名前",
+  "paneActions.close.label": "ペインを閉じる",
+  "paneActions.close.confirm": "閉じるにはもう一度タップ",
+  "paneActions.close.closing": "閉じています…",
+  "paneActions.empty.fallback": "このマルチプレクサはペインに対する操作を提供していません。",
+  "paneActions.status.renamed": "名前を変更しました",
+  "paneActions.status.labelCleared": "ラベルを消去しました",
+  "paneActions.status.renameFailed": "名前変更に失敗しました",
+  "paneActions.status.closeFailed": "終了に失敗しました",
+
+  // --- keys (the inline Keys tray + its staging strip) ---
+  "keys.tab.keys": "キー",
+  "keys.presets.label": "プリセット",
+  "keys.fkeys.label": "Fキー",
+  "keys.confirm.label": "確認しますか？",
+  "keys.queue.removeAria": "{label}を削除",
+  "keys.queue.charPlaceholder": "キー",
+  "keys.queue.charAria": "組み合わせるキーを入力",
+  "keys.queue.send": "送信",
+  "keys.queue.clearAria": "待機中のキーを消去",
+
+  // --- nav (app header, Collie mark, settings gear) ---
+  "nav.settings.aria": "設定",
+  "nav.home.aria.default": "Collieホーム",
+  "nav.home.aria.lost": "Collieホーム — 未接続",
+  "nav.home.aria.reconnecting": "Collieホーム — 再接続中",
+  "nav.mux.onPrefix": "on",
+  "nav.prereleaseTitle": "プレリリースビルド — {version}",
+
+  // --- home (dashboard herd list) ---
+  "home.empty.disconnected": "切断されました",
+  "home.empty.disconnectedAt": "切断されました — 最終確認 {time}",
+  "home.empty.noAgents": "実行中のエージェントはありません。",
+  "home.empty.waiting": "Herdrを待機中…",
+  "home.empty.panesHint": "ペインはスペースの下にあります。",
+  "home.allClear": "対応が必要な項目はありません",
+  "home.sort.newest": "新しい順",
+  "home.sort.oldest": "古い順",
+  "home.sort.aria.newest": "最近使った順に並び替え中 — 古い順に切り替え",
+  "home.sort.aria.oldest": "古い順に並び替え中 — 最近使った順に切り替え",
+  "home.sidebar.shells": "シェル",
+  "home.sidebar.paneActionsTitle": "タップでペイン操作を表示",
+
+  // --- status (triage sections, status labels, counts) ---
+  "status.section.needsYou": "対応が必要",
+  "status.section.readyUnseen": "完了 · 未確認",
+  "status.section.working": "実行中",
+  "status.section.recent": "最近",
+  "status.label.blocked": "対応が必要",
+  "status.label.working": "実行中",
+  "status.label.idle": "待機中",
+  "status.label.done": "完了",
+  "status.label.unknown": "不明",
+  "status.count.needsYou.one": "{count}件が対応待ち",
+  "status.count.needsYou.other": "{count}件が対応待ち",
+  "status.count.working.one": "{count}件が実行中",
+  "status.count.working.other": "{count}件が実行中",
+  "status.shellBadge": "シェル",
+  "status.dismissAria": "閉じる",
+
+  // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
+  "space.overview.title": "スペース",
+  "space.overview.new.aria": "新規スペース",
+  "space.overview.filter.placeholder": "スペースを絞り込み…",
+  "space.overview.filter.aria": "スペースを絞り込み",
+  "space.overview.empty.none": "まだスペースがありません。",
+  "space.overview.empty.noMatch": "「{query}」に一致するスペースがありません。",
+  "space.overview.needsYou.one": "{count}件のスペースが対応待ち",
+  "space.overview.needsYou.other": "{count}件のスペースが対応待ち",
+  "space.overview.paneCount.one": "ペイン{count}件",
+  "space.overview.paneCount.other": "ペイン{count}件",
+  "space.strip.back": "戻る",
+  "space.strip.title": "スペース",
+  "space.strip.all": "すべて",
+  "space.view.tabCount.one": "タブ{count}件",
+  "space.view.tabCount.other": "タブ{count}件",
+  "space.view.paneCount.one": "ペイン{count}件",
+  "space.view.paneCount.other": "ペイン{count}件",
+  "space.view.emptyTab": "（空のタブ）",
+  "space.view.noPanesInTab": "このタブにはペインがありません。",
+  "space.view.noPanesInSpace": "このスペースにはペインがありません。",
+  "space.tabStrip.title": "タブ",
+  "space.tabStrip.all": "すべて",
+  "space.tabStrip.new.aria": "新規タブ",
+  "space.paneStrip.title": "ペイン",
+  "space.new.title": "新規スペース",
+  "space.new.dir.label": "ディレクトリ（任意）",
+  "space.new.dir.placeholder": "~（ホームディレクトリ）",
+  "space.new.label.label": "ラベル（任意）",
+  "space.new.label.placeholder": "このスペースの名前",
+  "space.new.create": "スペースを作成してシェルを開く",
+  "space.tab.titleFallback": "タブ",
+  "space.tab.titleWithLabel": "タブ {label}",
+  "space.tab.readOnly": "読み取り専用 — この端末はタブの名前変更や終了ができません。",
+  "space.tab.hostBlockSuffix": "{hostBlock} — 応答があるまで名前変更と終了は利用できません。",
+  "space.tab.rename": "名前を変更",
+  "space.tab.close": "タブを閉じる",
+  "space.tab.closing": "終了中…",
+  "space.tab.closeConfirm.one": "もう一度タップでペイン{count}件を終了",
+  "space.tab.closeConfirm.other": "もう一度タップでペイン{count}件を終了",
+  "space.tab.closeConfirmPlain": "もう一度タップで終了",
+  "space.tab.empty.fallback": "このマルチプレクサはタブの操作を提供していません。",
+  "space.tab.placeholder": "このタブの名前",
+  "space.tab.renamed": "名前を変更しました",
+  "space.tab.renameFailed": "名前の変更に失敗しました",
+  "space.tab.closeFailed": "終了に失敗しました",
+  "space.readOnly.notPaired": "未ペアリング — 設定でこの端末をペアリングしてください",
+  "space.readOnly.deviceUnauthorised": "読み取り専用 — この端末は許可されていません",
+  "space.create.ready": "新しい{what}の準備ができました — エージェントを起動してください",
+  "space.noun.tab": "タブ",
+  "space.noun.space": "スペース",
+
+  // --- actionSheet (shared rename/back/save rows behind pane + tab long-press sheets) ---
+  "actionSheet.back": "戻る",
+  "actionSheet.label": "ラベル",
+  "actionSheet.save": "保存",
+
+  // --- commands (agent command palette) ---
+  "commands.title": "エージェントコマンド",
+  "commands.search.placeholder": "{count}件のコマンドを検索…",
+  "commands.common.hint": "よく使う · 入力すると{count}件すべてを検索",
+  "commands.empty": "「{query}」に一致するコマンドがありません。",
+  "commands.confirm": "確認しますか？",
+
+  // --- quickActions (one-tap reply dock) ---
+  "quickActions.group.confirm": "確認",
+  "quickActions.group.common": "よく使う",
+
+  // --- find (the in-mirror / in-history find bar) ---
+  "find.placeholder": "{subject}を検索…",
+  "find.aria": "{subject}を検索",
+  "find.prevAria": "前の一致",
+  "find.nextAria": "次の一致",
+  "find.closeAria": "検索を閉じる",
+  "find.subject.output": "出力",
+  "find.subject.history": "履歴",
+
+  // --- connection (banner, read-only strip, host chip/stale banner, session/server switchers) ---
+  "connection.auth.message": "アクセスが拒否されました。接続の問題ではありません。",
+  "connection.auth.signIn": "サインイン",
+  "connection.reload.aria": "再読み込み",
+  "connection.retry": "再試行",
+  "common.closeAria": "閉じる",
+  "common.scrollToLatestAria": "最新へスクロール",
+  "connection.connected": "接続済み",
+  "connection.reconnecting": "再接続中…",
+  "connection.herdrDown": "ホスト上でHerdrがダウンしています",
+  "connection.offlineCantReach": "オフライン — Collieに接続できません",
+  "connection.cantReach": "Collieに接続できません",
+  "connection.withLastSeen": "{cause} — 最終確認 {time}",
+  "connection.readOnly.notPaired": "未ペアリング — 設定でこの端末をペアリングするとエージェントに入力できます。",
+  "connection.readOnly.device": "読み取り専用 — この端末はエージェントへの入力を許可されていません{deviceSuffix}。",
+  "connection.host.lastSeen": "最終確認 {time}",
+  "connection.host.neverSeen": "確認なし",
+  "connection.host.unreachablePlain": "接続不可",
+  "connection.host.unreachableSuffix": "接続不可 · {label}",
+  "connection.host.incompatible": "非互換",
+  "connection.host.lead": "lead",
+  "connection.host.onPrefix": "on",
+  "connection.host.ariaSends": "送信先ホスト: {name}{unreachable}",
+  "connection.host.ariaHost": "ホスト: {name}{unreachable}",
+  "connection.host.ariaUnreachableSuffix": "（接続不可）",
+  "connection.stale.incompatible": "{name}は非互換のCollieを実行しています",
+  "connection.stale.unreachable": "{name}に接続できません · {label}",
+  "connection.stale.nothingCached": "このマシンについてキャッシュされた情報がまだありません。",
+  "connection.stale.showingLastKnown": "最後に確認できた画面を表示しています — 応答があるまで返信とキー入力は拒否されます。",
+  "connection.stale.waitingFirst": "{name}からの応答がまだありません — 最初の応答を待っています。",
+  "connection.stale.messageTemplate": "{reason}。{detail}",
+  "connection.session.title": "セッション",
+  "connection.session.aria": "セッション: {name}。セッションを切り替え",
+  "connection.session.primary": "プライマリ",
+  "connection.session.unreachable": "接続不可",
+  "connection.server.title": "マシン",
+  "connection.server.aria": "ホスト: {name}。ホストを切り替え",
+
+  // --- error (boot splash, route-level error recovery) ---
+  "error.boot.loadingAria": "読み込み中",
+  "error.boot.connecting": "群れに接続中…",
+  "error.boot.title": "未接続",
+  "error.boot.body": "Collieに接続できません — ホストへの接続を確認してから、もう一度お試しください。",
+  "error.boot.retry": "再試行",
+  "error.root.title": "問題が発生しました",
+  "error.root.unknown": "不明なエラー",
+  "error.root.reload": "再読み込み",
+
+  // --- idle (the idle-pause cover) ---
+  "idle.dialogAria": "Collie一時停止中",
+  "idle.catchingUp.label": "最新情報を取得中",
+  "idle.catchingUp.title": "最新情報を取得中",
+  "idle.catchingUp.body": "群れの現在の状態を読み込んでいます。",
+  "idle.paused.title": "一時停止中",
+  "idle.paused.body": "この画面が操作されなかったためライブ更新を停止しました — 背後の内容は静止しています。再開すると中断した場所から続きます。",
+  "idle.resume": "タップして再開",
+
+  // --- pwa (self-update banner) ---
+  "pwa.updateAvailable": "新しいバージョン — タップして更新",
+
+  // --- history (pane transcript route) ---
+  "history.unavailable.disabled": "このブリッジでは会話履歴が無効です（COLLIE_TRANSCRIPT）。",
+  "history.unavailable.noSession": "このペインにはエージェントセッションがないため、読める履歴がありません。",
+  "history.unavailable.noLog": "このペインのセッションの履歴ファイルはまだ見つかっていません。",
+  "history.unavailable.error": "履歴を読み込めませんでした。戻ってもう一度お試しください。",
+  "history.findAria": "履歴内を検索",
+  "history.closeAria": "履歴を閉じる",
+  "history.title": "履歴",
+  "history.loadOlder": "過去の履歴を読み込む",
+  "history.loading": "読み込み中…",
+  "history.startClipped": "読める履歴の先頭です（ログは読み取り上限で切り捨てられました）",
+  "history.startOfConversation": "会話の先頭です",
+  "history.prevMessageAria": "前の送信メッセージ",
+  "history.nextMessageAria": "次の送信メッセージ",
+  "history.loadOlderFailed": "過去の履歴を読み込めませんでした",
+
+  // --- transcript (transcript-view turn rendering) ---
+  "transcript.summaryLabel": "コンテキスト圧縮済み",
+  "transcript.systemLabel": "システム",
+  "transcript.youLabel": "あなた",
+  "transcript.agentFallback": "エージェント",
+  "transcript.outputTruncated": "… 出力が省略されました",
+  "transcript.truncated": "… 省略されました",
+
+  // --- time (relative/clock formatting) ---
+  "time.justNow": "たった今",
+  "time.compact.now": "今",
+
+  // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
+  "dialog.sendingAria": "送信中",
+  "dialog.previousStepAria": "前のステップ",
+  "dialog.nextStepAria": "次のステップ",
+  "dialog.answeredAria": "回答済み",
+  "dialog.submitChip": "送信",
+  "dialog.stepPosition.step": "ステップ {index}/{total}、{label}",
+  "dialog.stepPosition.submit": "ステップ {index}/{total}、送信",
+  "dialog.chooseOption": "オプションを選択",
+  "dialog.questionsAria": "質問",
+  "dialog.reviewAnswers": "回答を確認",
+  "dialog.readySubmit": "回答を送信しますか？",
+  "dialog.incomplete": "すべての質問に回答していません",
+  "dialog.submitAnswers": "回答を送信",
+  "dialog.cancel": "キャンセル",
+  "dialog.endsQuestionsSuffix": "— 質問を終了します",
+  "dialog.menu.moveUp": "上へ移動",
+  "dialog.menu.moveDown": "下へ移動",
+  "dialog.menu.leftAria": "左 — {verb}（{label}）",
+  "dialog.menu.rightAria": "右 — {verb}（{label}）",
+  "dialog.preview.currentAnswerAria": "現在の回答",
+  "dialog.preview.previewedBelowAria": "下にプレビュー表示",
+  "dialog.preview.previewLabel": "プレビュー · {label}",
+  "dialog.preview.editingBanner": "ターミナルでメモを編集中です — 閉じるとコントロールが元に戻ります。",
+  "dialog.preview.noteForQuestion": "この質問へのメモ",
+  "dialog.preview.noteTextAria": "メモの内容",
+  "dialog.preview.notePlaceholder": "回答の背景を追加…",
+  "dialog.preview.saveNote": "メモを保存",
+  "dialog.preview.editNoteAria": "メモを編集",
+  "dialog.preview.removeNoteAria": "メモを削除",
+  "dialog.preview.noteAria": "メモ",
+  "dialog.preview.addNote": "この回答にメモを追加",
+
+  // --- reply (the free-text reply race guard, lib/reply-action.ts) ---
+  "reply.blocked.noBox":
+    "エージェントの入力欄が画面にありません — メニューかダイアログが開いている可能性があります。何も入力していません。",
+  "reply.blocked.noEcho":
+    "パスワード入力です — 入力しても何も表示されないため、送信はテキストの到着を確認できません。何も入力していません。",
+  "reply.blocked.composerLeft":
+    "入力行を消去している間にエージェントの入力欄が消えました — メニューかダイアログが開いている可能性があります。メッセージは入力されていません。",
+  "reply.stalled.noEcho":
+    "パスワード入力です — 入力しても何も表示されないためテキストを確認できず、送信されていません。入力した内容はすでにペインにあります。",
+  "reply.stalled.generic":
+    "メッセージが入力欄に届きませんでした — ダイアログが応答を待っている可能性があり、キーで答えていた場合はそのキーは届いた可能性が高いです。何も送信されていません。",
+
+  // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
+  "previewAction.note.notOpened": "メモ欄が開きませんでした — ペインを確認してください",
+  "previewAction.note.clearFailed": "既存のメモを消去できませんでした — ペインを確認してください",
+  "previewAction.note.textFailed": "メモの文字が届きませんでした — ペインを確認してください",
+  "previewAction.note.closeFailed": "メモ欄が閉じませんでした — ペインを確認してください",
+
+  // --- promptAction (the plan-feedback flow, lib/prompt-action.ts) ---
+  "promptAction.feedback.freeTextUnsupported":
+    "このダイアログの自由記述欄はスマートフォンから入力できません",
+  "promptAction.feedback.empty": "送信する内容がありません",
+  "promptAction.feedback.boxNotOpened": "フィードバック欄が開きませんでした — ペインを確認してください",
+  "promptAction.feedback.notArrived": "フィードバックが届きませんでした — 何も送信されていません",
+
+  // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
+  "stt.error.busy": "処理中です — 別の録音がまだ文字起こし中です。少し待って再試行してください。",
+  "stt.error.tooLong": "この録音は長すぎます — 短く録音してください。",
+  "stt.error.badFormat": "このブラウザは Collie が送信できない形式で録音しました。",
+  "stt.error.unconfigured": "この collie では音声入力が設定されていません。",
+  "stt.error.timeout": "文字起こしサービスが時間内に応答しませんでした — 再試行してください。",
+  "stt.error.unreachable": "文字起こしサービスに接続できませんでした — 再試行してください。",
+  "stt.error.generic": "文字起こしに失敗しました — もう一度録音して再試行してください。",
+  "stt.error.networkFailure": "文字起こしのために Collie に接続できませんでした — 再試行してください。",
+  "stt.error.recordingFailed": "録音に失敗しました — 何も記録されていません。",
+  "stt.error.noSpeechHeard": "その録音では何も聞き取れませんでした。",
+  "stt.error.nothingRecorded": "何も録音されませんでした。",
+  "stt.error.unsupportedBrowser": "このブラウザは音声を録音できません。",
+  "stt.error.micRefused": "マイクへのアクセスが拒否されました。",
+
+  // --- directTyping (the composer's "Type into terminal" mode, hooks/use-direct-typing.ts) ---
+  "directTyping.status.draftPending":
+    "ターミナルに入力する前に下書きを送信または消去してください。",
+  "directTyping.status.armed": "ターミナルに入力中 — キーがそのまま送信されます。",
+  "directTyping.status.disarmed": "返信送信モードに戻りました",
+  "directTyping.status.interrupted":
+    "ターミナルへの入力を停止しました — ペイン表示が中断されました。",
+  "directTyping.status.backgrounded":
+    "ターミナルへの入力を停止しました — アプリがバックグラウンドになりました。",
+
+  // --- apiError (the bridge's refusals, keyed by the code on the wire) ---
+  "apiError.unknown": "問題が発生しました。もう一度お試しください。",
+  "apiError.reply.not_submitted":
+    "メッセージはペインに入力されましたが送信されていません — 送り直す前にペインを確認してください。",
+  "apiError.reply.send_failed": "メッセージを送信できませんでした: {reason}",
+  "apiError.keys.send_failed": "キーを送信できませんでした: {reason}",
+  "apiError.prompt_changed": "送信前に画面が変わりました — ペインを確認してください。",
+  "apiError.prompt.read_failed":
+    "送信前にペインを読み取れませんでした — {mux} の応答: {detail}",
+  "apiError.pane.close_failed": "ペインを閉じられませんでした: {reason}",
+  "apiError.pane.rename_failed": "ペインの名前を変更できませんでした: {reason}",
+  "apiError.tab.create_failed": "タブを作成できませんでした: {reason}",
+  "apiError.tab.rename_failed": "タブの名前を変更できませんでした: {reason}",
+  "apiError.tab.close_failed": "タブを閉じられませんでした: {reason}",
+  "apiError.tab.workspace_required": "新しいタブのスペースが指定されていません。",
+  "apiError.workspace.create_failed": "スペースを作成できませんでした: {reason}",
+  "apiError.upload.too_large": "この画像は大きすぎます — 上限は 10 MB です。",
+  "apiError.upload.no_file": "ファイルが送信されていません。",
+  "apiError.upload.bad_type": "Collie が送信できないファイル形式です: {type}",
+  "apiError.upload.write_failed": "ホストに画像を保存できませんでした: {reason}",
+  "apiError.stt.unconfigured": "この collie では音声入力が設定されていません。",
+  "apiError.stt.too_large": "この録音は長すぎます — 短く録音してください。",
+  "apiError.stt.bad_format":
+    "このブラウザは Collie が送信できない形式で録音しました。",
+  "apiError.stt.busy":
+    "すでに 2 件の録音を文字起こし中です — 少し待って再試行してください。",
+  "apiError.stt.unreadable": "録音を読み取れませんでした。",
+  "apiError.stt.empty": "録音が空です。",
+  "apiError.stt.provider_failed": "文字起こしに失敗しました: {reason}",
+  "apiError.pairing.bad_request": "コードまたは名前が無効でした。名前は1〜48文字にしてください。",
+  "apiError.pairing.no_pending": "ホストで待機中のペアリングコードがありません。",
+  "apiError.pairing.expired": "このペアリングコードは期限切れです。",
+  "apiError.pairing.exhausted": "誤ったコードが多すぎたため、ペアリングは破棄されました。",
+  "apiError.pairing.bad_code": "コードが一致しません。",
+  "apiError.pairing.duplicate_label": "その名前は既に別のデバイスが使用しています。",
+  "apiError.device.unknown": "その名前のペアリング済みデバイスはありません。",
+  "apiError.session.unknown": "この collie に {session} というセッションはありません。",
+  "apiError.host.unknown": "この pack に {host} という collie はありません。",
+};

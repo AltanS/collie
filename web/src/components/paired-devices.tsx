@@ -4,11 +4,24 @@ import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 import { pairDevice, revokeDevice } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { clearDeviceToken, setDeviceToken, usePairing } from "@/lib/pairing";
 import type { DevicesData } from "@/lib/loaders";
 import type { PairFailure } from "@/lib/types";
+
+// Splits a translated sentence around ONE already-known substring (a name, a device id, a CLI
+// command) so that substring can carry its own styling — a `<span>`/`<code>` — instead of the whole
+// sentence losing its font. The split happens on the INTERPOLATED value, after `t()` has placed it,
+// so a translator is free to reorder the sentence around it; this only locates where the slot
+// landed, it never assembles the sentence itself.
+function splitAroundValue(message: string, value: string): [string, string] {
+  const idx = message.indexOf(value);
+  if (idx === -1) return [message, ""];
+  return [message.slice(0, idx), message.slice(idx + value.length)];
+}
 
 // The Settings surface for the bridge's second write gate (bridge/pairing.ts): who is paired, and
 // the card that pairs THIS phone. State comes from the settings route's loader (lib/loaders.ts
@@ -20,6 +33,7 @@ import type { PairFailure } from "@/lib/types";
 // whole point — a phone that could ask for one would be a phone that could pair itself.
 
 export function PairedDevices({ data }: { data: DevicesData }) {
+  useLocale();
   const revalidator = useRevalidator();
   const { token, refused } = usePairing();
 
@@ -29,30 +43,37 @@ export function PairedDevices({ data }: { data: DevicesData }) {
   // not evidence that this device is unpaired.
   const unpaired = !token || refused || (data.enforced && data.current === null && !data.error);
 
+  const pairedAsMessage = data.current
+    ? t("settings.devices.pairedAs", { device: data.current })
+    : null;
+  const [pairedAsBefore, pairedAsAfter] =
+    pairedAsMessage && data.current ? splitAroundValue(pairedAsMessage, data.current) : ["", ""];
+
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-start gap-3 p-4 pb-3">
         <KeyRound className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <div className="font-medium">Paired devices</div>
+          <div className="font-medium">{t("settings.devices.title")}</div>
           <p className="text-sm text-muted-foreground">
             {data.enforced
-              ? "Every write needs a paired device. Reading stays open."
-              : "Nothing is paired, so writes are ungated. Pair a device to require a credential."}
+              ? t("settings.devices.description.enforced")
+              : t("settings.devices.description.open")}
           </p>
         </div>
       </div>
 
       {data.current && (
         <p className="border-t border-border/60 px-4 py-2.5 text-sm">
-          This device is paired as{" "}
-          <span className="font-mono text-[13px] text-status-done">{data.current}</span>.
+          {pairedAsBefore}
+          <span className="font-mono text-[13px] text-status-done">{data.current}</span>
+          {pairedAsAfter}
         </p>
       )}
 
       {data.error && (
         <p className="border-t border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
-          Couldn’t load the paired devices from the bridge.
+          {t("settings.devices.loadError")}
         </p>
       )}
 
@@ -94,6 +115,7 @@ function DeviceRow({
   current: boolean;
   onRevoked: () => void;
 }) {
+  useLocale();
   // Two-tap confirm rather than a dialog: revoking is irreversible (the token can't be re-issued,
   // only re-paired from a fresh `bin/collie pair`), and revoking THIS device locks the phone you're
   // holding out of every write — so the second tap names that consequence instead of asking "sure?".
@@ -108,7 +130,7 @@ function DeviceRow({
       await revokeDevice(label);
       onRevoked();
     } catch {
-      setError("Couldn’t revoke that device.");
+      setError(t("settings.devices.revokeError"));
     } finally {
       setBusy(false);
       setConfirming(false);
@@ -123,23 +145,26 @@ function DeviceRow({
           <span className="truncate font-mono text-[13px]">{label}</span>
           {current && (
             <span className="shrink-0 rounded bg-status-done/15 px-1.5 py-0.5 text-[11px] font-medium text-status-done">
-              This device
+              {t("settings.devices.thisDevice")}
             </span>
           )}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Paired {timeAgo(createdAt)} · last seen {timeAgo(lastSeenAt)}
+          {t("settings.devices.row.meta", {
+            paired: timeAgo(createdAt),
+            lastSeen: timeAgo(lastSeenAt),
+          })}
         </p>
         {error && <p className="mt-0.5 text-xs text-status-blocked">{error}</p>}
       </div>
       {confirming ? (
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
-            Cancel
+            {t("settings.devices.cancel")}
           </Button>
           <Button variant="destructive" size="sm" disabled={busy} onClick={revoke}>
             {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {current ? "Unpair this phone" : "Revoke"}
+            {current ? t("settings.devices.unpairSelf") : t("settings.devices.revoke")}
           </Button>
         </div>
       ) : (
@@ -148,9 +173,9 @@ function DeviceRow({
           size="sm"
           className="shrink-0"
           onClick={() => setConfirming(true)}
-          aria-label={`Revoke ${label}`}
+          aria-label={t("settings.devices.revokeAria", { label })}
         >
-          Revoke
+          {t("settings.devices.revoke")}
         </Button>
       )}
     </li>
@@ -158,6 +183,7 @@ function DeviceRow({
 }
 
 function PairForm({ onPaired }: { onPaired: () => void }) {
+  useLocale();
   const [code, setCode] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
@@ -180,51 +206,63 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
       setLabel("");
       onPaired();
     } catch {
-      setError("Couldn’t reach the bridge to pair. Check the connection and try again.");
+      setError(t("settings.devices.pair.networkError"));
     } finally {
       setBusy(false);
     }
   }
 
+  // The CLI command itself is never translated (rule: CLI commands stay literal); the surrounding
+  // sentence is, so the command is placed via the same "locate the interpolated value" split as the
+  // paired-as sentence above, letting it keep its own <code> styling.
+  const command = "bin/collie pair";
+  const hintMessage = t("settings.devices.pair.hint", { command });
+  const [hintBefore, hintAfter] = splitAroundValue(hintMessage, command);
+
   return (
     <div className="flex flex-col gap-3 border-t border-border/60 p-4">
       <div>
-        <div className="font-medium">Pair this device</div>
+        <div className="font-medium">{t("settings.devices.pair.title")}</div>
         <p className="text-sm text-muted-foreground">
-          Run <code className="font-mono text-[13px]">bin/collie pair</code> on the host and type the
-          code it prints.
+          {hintBefore}
+          <code className="font-mono text-[13px]">{command}</code>
+          {hintAfter}
         </p>
       </div>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Pairing code</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("settings.devices.pair.codeLabel")}
+        </span>
         <input
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="8 characters"
+          placeholder={t("settings.devices.pair.codePlaceholder")}
           autoCapitalize="characters"
           autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
-          aria-label="Pairing code"
+          aria-label={t("settings.devices.pair.codeLabel")}
           className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Name for this device</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          {t("settings.devices.pair.nameLabel")}
+        </span>
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="e.g. my phone"
+          placeholder={t("settings.devices.pair.namePlaceholder")}
           autoCorrect="off"
           autoComplete="off"
-          aria-label="Name for this device"
+          aria-label={t("settings.devices.pair.nameLabel")}
           className="h-11 rounded-lg border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
       {error && <p className="text-xs text-status-blocked">{error}</p>}
       <Button className="h-11" disabled={!ready} onClick={submit}>
         {busy && <Loader2 className="size-4 animate-spin" />}
-        Pair this device
+        {t("settings.devices.pair.title")}
       </Button>
     </div>
   );
@@ -235,16 +273,16 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
 function failureText(reason: PairFailure): string {
   switch (reason) {
     case "no-pending":
-      return "No pairing code is waiting. Run `bin/collie pair` on the host to mint one.";
+      return t("settings.devices.pair.failure.noPending");
     case "expired":
-      return "That code has expired. Run `bin/collie pair` on the host for a fresh one.";
+      return t("settings.devices.pair.failure.expired");
     case "exhausted":
-      return "Too many wrong codes, so that pairing was destroyed. Run `bin/collie pair` on the host to mint a new one.";
+      return t("settings.devices.pair.failure.exhausted");
     case "bad-code":
-      return "That code doesn’t match. Check it and try again — a few more wrong tries and it’s destroyed.";
+      return t("settings.devices.pair.failure.badCode");
     case "duplicate-label":
-      return "A device is already using that name. Pick a different one — the code is still good.";
+      return t("settings.devices.pair.failure.duplicateLabel");
     case "bad-request":
-      return "The code or the name wasn’t usable. A name is 1–48 characters.";
+      return t("settings.devices.pair.failure.badRequest");
   }
 }

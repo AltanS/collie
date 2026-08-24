@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { DogGallop } from "@/components/dog-gallop";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 // The cover shown while the idle lock is engaged. It sits ABOVE a still-mounted router (see App), so
 // resuming returns you to the exact screen, draft and scroll position you left — nothing is unmounted
@@ -27,11 +29,12 @@ interface IdleLockProps {
 }
 
 export function IdleLock({ onUnlock, catchingUp = false }: IdleLockProps) {
+  useLocale();
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Collie paused"
+      aria-label={t("idle.dialogAria")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 px-6 backdrop-blur-[3px]"
     >
       {/* The panel carries its own, heavier blur so the copy stays readable over arbitrary pane text,
@@ -45,7 +48,7 @@ export function IdleLock({ onUnlock, catchingUp = false }: IdleLockProps) {
               // Same box, gallop swapped in for the static mark — exactly how CollieHome renders the
               // header mark when the connection is working, so "the dog is running" means one thing
               // everywhere: Collie is fetching.
-              <DogGallop running size="4rem" label="Catching up" />
+              <DogGallop running size="4rem" label={t("idle.catchingUp.label")} />
             ) : (
               <img src="/favicon.svg" alt="" className="size-16" />
             )}
@@ -54,23 +57,20 @@ export function IdleLock({ onUnlock, catchingUp = false }: IdleLockProps) {
         </div>
         {catchingUp ? (
           <div className="space-y-1">
-            <p className="font-medium">Catching up</p>
-            <p className="max-w-xs text-sm text-muted-foreground">Fetching the herd's current state.</p>
+            <p className="font-medium">{t("idle.catchingUp.title")}</p>
+            <p className="max-w-xs text-sm text-muted-foreground">{t("idle.catchingUp.body")}</p>
           </div>
         ) : (
           <div className="space-y-1">
-            <p className="font-medium">Paused</p>
-            <p className="max-w-xs text-sm text-muted-foreground">
-              Live updates stopped while this screen sat idle — what's behind this is frozen. Resuming
-              picks up right where you left off.
-            </p>
+            <p className="font-medium">{t("idle.paused.title")}</p>
+            <p className="max-w-xs text-sm text-muted-foreground">{t("idle.paused.body")}</p>
           </div>
         )}
         {/* The button doesn't just disable during the catch-up — it's replaced by the gallop above, so
             there's nothing to press twice and no dead control to look at. */}
         {!catchingUp && (
           <Button size="lg" onClick={onUnlock}>
-            Tap to resume
+            {t("idle.resume")}
           </Button>
         )}
       </div>

@@ -3,6 +3,8 @@ import { ChevronLeft, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 // Shared building blocks for the long-press action sheets — pane AND tab — so the two stay visually
 // and behaviourally identical (the user's ask: "they should be the same"). The plain action row, the
@@ -99,6 +101,7 @@ export function RenameView({
   canSave: boolean;
   placeholder: string;
 }) {
+  useLocale();
   function onInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -114,10 +117,10 @@ export function RenameView({
         className="flex items-center gap-1 self-start rounded-md py-1 pr-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted"
       >
         <ChevronLeft className="size-3.5" />
-        Back
+        {t("actionSheet.back")}
       </button>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Label</span>
+        <span className="text-xs font-medium text-muted-foreground">{t("actionSheet.label")}</span>
         <input
           ref={inputRef}
           value={label}
@@ -128,7 +131,7 @@ export function RenameView({
         />
       </label>
       <Button onClick={onSave} disabled={saving || !canSave} className="h-11">
-        {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+        {saving ? <Loader2 className="size-4 animate-spin" /> : t("actionSheet.save")}
       </Button>
     </div>
   );

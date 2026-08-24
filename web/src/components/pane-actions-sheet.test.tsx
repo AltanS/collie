@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -180,6 +180,36 @@ describe("PaneActionsSheet — close", () => {
     await user.click(screen.getByRole("button", { name: "Tap again to close" }));
     await waitFor(() => expect(props.onClosed).toHaveBeenCalledExactlyOnceWith("w1:p1"));
     expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PaneActionsSheet — locale", () => {
+  it("translates its action labels once the German bundle lands", async () => {
+    // Same recipe as theme-control.test.tsx: `vi.resetModules()` gives this test its own copy of
+    // `@/lib/i18n`, so the locale store driven here is the same one the freshly re-imported
+    // component reads from.
+    vi.resetModules();
+    const [{ PaneActionsSheet: FreshSheet }, { __resetLocale, setLocale, whenLocaleReady }] =
+      await Promise.all([import("./pane-actions-sheet"), import("@/lib/i18n")]);
+    __resetLocale();
+
+    render(
+      <FreshSheet
+        open={true}
+        onClose={vi.fn()}
+        pane={agent}
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+      />,
+    );
+
+    await act(async () => {
+      setLocale("de");
+      await whenLocaleReady("de");
+    });
+
+    expect(screen.getByRole("button", { name: "Umbenennen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pane schließen" })).toBeInTheDocument();
   });
 });
 

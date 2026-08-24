@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { hostName } from "@/lib/hosts";
 import type { HostState } from "@/lib/host-health";
 import { useHostHealth, usePack } from "@/components/pack-provider";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface HostChipProps {
   /** The machine this row/sheet/send is about. Undefined = nothing to say (and nothing renders). */
@@ -34,6 +36,7 @@ interface HostChipProps {
 // from the operator's `join` label and is rendered as text, never markup, like every other
 // user-supplied string that reaches this UI.
 export function HostChip({ host, state, variant = "tag", className }: HostChipProps) {
+  useLocale();
   const { servers, multi } = usePack();
   const health = useHostHealth(host);
   // No pack, or nothing to name: the whole dimension is invisible. (Hooks run first — the hide rule
@@ -67,7 +70,10 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
     <span
       // The name is decorative repetition for a screen reader if it were bare text, so the whole
       // chip carries one label that says what it MEANS.
-      aria-label={`${target ? "Sends to host" : "Host"}: ${name}${unreachable ? " (unreachable)" : ""}`}
+      aria-label={t(target ? "connection.host.ariaSends" : "connection.host.ariaHost", {
+        name,
+        unreachable: unreachable ? t("connection.host.ariaUnreachableSuffix") : "",
+      })}
       className={cn(
         "inline-flex max-w-[8rem] shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium",
         target ? "text-[11px]" : "text-[10px]",
@@ -82,7 +88,7 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
       <Server className="size-3 shrink-0" aria-hidden />
       {target && (
         <span className="shrink-0 text-muted-foreground/70" aria-hidden>
-          on
+          {t("connection.host.onPrefix")}
         </span>
       )}
       <span className="truncate" aria-hidden>

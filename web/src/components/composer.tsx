@@ -6,6 +6,8 @@ import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Squar
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
+import { useLocale } from "@/hooks/use-locale";
+import { t as translate, tn as translatePlural } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,7 @@ import { QuickActionsContent } from "@/components/quick-actions";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import * as api from "@/lib/api";
+import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-config";
@@ -151,7 +154,7 @@ function ComposerDock({
           size="icon"
           className="size-7 text-muted-foreground"
           onClick={onClose}
-          aria-label={`Close ${title}`}
+          aria-label={translate("composer.dock.closeAria", { title })}
         >
           <X className="size-4" />
         </Button>
@@ -166,6 +169,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   ref,
 ) {
   const revalidator = useRevalidator();
+  useLocale();
   // Every write affordance is off when the pane is gone, this device is read-only, OR the pane's
   // machine is unreachable from the lead. All three are "the write cannot land"; only the copy below
   // differs, because only the copy tells you what to do about it.
@@ -295,7 +299,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function requestDrawer(next: ComposerDrawer) {
     if (drawer === "keys" && next !== "keys" && queuedKeys > 0 && !discardConfirm.confirm("discard")) {
       setStatus(
-        `Tap again to discard ${queuedKeys} queued key${queuedKeys === 1 ? "" : "s"}`,
+        translatePlural("composer.discard.confirmKeys", queuedKeys, { count: queuedKeys }),
         "info",
       );
       return;
@@ -589,7 +593,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // queue-and-auto-send, because the text may be a reaction to state the dialog just changed —
     // sending is consent, and the conditions moved.
     if (dialogPresent) {
-      setStatus("A dialog is waiting — answer it first, then send.", "error");
+      setStatus(translate("composer.status.dialogWaiting"), "error");
       return false;
     }
     setSending(true);
@@ -629,7 +633,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // await — and unlike every other key this component sends, the burst does not go through
           // `pressKeys`, which refuses when locked. Re-read the live value instead of the closure's.
           if (lockedRef.current) {
-            return { ok: false as const, error: "Pane is no longer writable — nothing was sent" };
+            return { ok: false as const, error: translate("composer.status.paneNotWritable") };
           }
           // Overshoot well past the snapshotted length: the count comes from the LAST-POLLED line, so
           // anything the host typed inside the poll gap (~1.5s) isn't counted. Extra Backspace on an
@@ -657,10 +661,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             if (clearRes.code === "prompt_changed") {
               return {
                 ok: false as const,
-                error: "The input box changed while clearing it — nothing was typed. Check the pane.",
+                error: translate("composer.status.inputChanged"),
               };
             }
-            return { ok: false as const, error: clearRes.error ?? "Couldn't clear the terminal input" };
+            return {
+              ok: false as const,
+              error: describeApiError(clearRes, translate("composer.status.clearFailed")),
+            };
           }
           scheduleKeyRevalidate();
           await new Promise((resolve) => setTimeout(resolve, TUI_SETTLE_MS));
@@ -691,7 +698,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         setJustSent(true);
         if (sentTimer.current) clearTimeout(sentTimer.current);
         sentTimer.current = setTimeout(() => setJustSent(false), 1500);
-        setStatus("Sent ✓", "success");
+        setStatus(translate("composer.status.sent"), "success");
         const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
         setLastSent(preview);
         if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
@@ -709,7 +716,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // A password prompt gets the notice AND keeps the override: the notice explains the screen and
         // offers the control that works, the override stays for the case where the detection is wrong.
         noticeNoEcho(res.noEcho !== undefined ? { prompt: res.noEcho, typed: false } : null);
-        setStatus(`${res.error} Tap Send again to type anyway.`, "error");
+        setStatus(translate("composer.status.tapAgainToType", { error: res.error }), "error");
         return false;
       } else {
         // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
@@ -730,7 +737,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         return false;
       }
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
+      setStatus(describeThrownError(e), "error");
       return false;
     } finally {
       setSending(false);
@@ -753,8 +760,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // On a pack the confirm names the machine as well as the pattern: "rm -r" is a different
       // sentence depending on whose disk it runs on, and this line is the last thing read before the
       // second tap. Solo copy is unchanged, byte for byte.
-      const where = writeHostLabel ? ` on ${writeHostLabel}` : "";
-      setStatus(`Destructive: ${reason}${where} — tap Send again to confirm`, "info");
+      setStatus(
+        writeHostLabel
+          ? translate("composer.destructive.confirmOnHost", { reason, host: writeHostLabel })
+          : translate("composer.destructive.confirm", { reason }),
+        "info",
+      );
       return;
     }
     sendConfirm.reset();
@@ -795,13 +806,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       const res = await api.sendKeys(paneId, k, scope);
       if (!res.ok) {
-        setStatus(res.error ?? "Key send failed", "error");
+        setStatus(describeApiError(res), "error");
         return false;
       }
       scheduleKeyRevalidate();
       return true;
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
+      setStatus(describeThrownError(e), "error");
       return false;
     }
   }
@@ -826,12 +837,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         direct.deactivateSilently();
         updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
         focusInputEnd();
-        setStatus("Image added — path in message", "success");
+        setStatus(translate("composer.upload.success"), "success");
       } else {
-        setStatus(res.error, "error");
+        setStatus(describeApiError(res), "error");
       }
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err), "error");
+      setStatus(describeThrownError(err), "error");
     } finally {
       setUploading(false);
     }
@@ -872,7 +883,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3 shrink-0 animate-spin" />
             <span className="truncate">
-              <span className="font-medium">You sent:</span> {lastSent}
+              <span className="font-medium">{translate("composer.sentPreview.label")}</span> {lastSent}
             </span>
           </div>
         )}
@@ -889,7 +900,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             one-tap reply grids; Display mounts the labelled mirror prefs. Agent stays a covering
             BottomSheet below (it's a palette, not a pad). */}
         {drawer === "keys" && (
-          <ComposerDock title="Keys" host={writeHost} onClose={closeDrawer}>
+          <ComposerDock
+            title={translate("composer.controls.keys")}
+            host={writeHost}
+            onClose={closeDrawer}
+          >
             <NavTray
               // The chords THIS multiplexer refuses (M10/06). A key is not a capability: the Keys
               // door is `sendKeys` (the lock above), and this is the list of holes behind it, so a
@@ -903,7 +918,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </ComposerDock>
         )}
         {drawer === "quick" && (
-          <ComposerDock title="Quick" onClose={closeDrawer}>
+          <ComposerDock title={translate("composer.controls.quick")} onClose={closeDrawer}>
             <QuickActionsContent
               onSend={(t) => send(t, false)}
               onClose={closeDrawer}
@@ -914,7 +929,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </ComposerDock>
         )}
         {drawer === "display" && (
-          <ComposerDock title="Display" onClose={closeDrawer}>
+          <ComposerDock title={translate("composer.controls.display")} onClose={closeDrawer}>
             <DisplayPrefsContent
               prefs={prefs}
               setWrap={setWrap}
@@ -936,7 +951,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             sits above. */}
         <div className="relative mb-2 flex items-center gap-2 pt-3">
           <SectionLabel className="absolute left-0 top-0 text-[10px] leading-none opacity-80">
-            Controls
+            {translate("composer.controls.label")}
           </SectionLabel>
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
               again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
@@ -950,7 +965,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onClick={() => requestDrawer(drawer === "keys" ? null : "keys")}
           >
             <Keyboard className="size-4" />
-            Keys
+            {translate("composer.controls.keys")}
           </Button>
           {/* "Type into terminal" lives HERE, beside Keys, rather than on the Send button.
               It is the same problem split in half: Keys exists because the phone keyboard cannot
@@ -969,7 +984,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className={cn("h-8 flex-1 gap-1.5", direct.active ? CONTROL_ON : CONTROL_OFF)}
             disabled={locked || sending}
             aria-pressed={direct.active}
-            aria-label="Type into terminal"
+            aria-label={translate("composer.controls.typeAria")}
             onClick={() => {
               if (direct.active) {
                 direct.deactivate();
@@ -983,7 +998,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             }}
           >
             <Terminal className="size-4" />
-            Type
+            {translate("composer.controls.type")}
           </Button>
           <Button
             variant="ghost"
@@ -994,7 +1009,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onClick={() => requestDrawer(drawer === "quick" ? null : "quick")}
           >
             <Zap className="size-4" />
-            Quick
+            {translate("composer.controls.quick")}
           </Button>
           {commands.length > 0 && (
             <Button
@@ -1005,7 +1020,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onClick={() => requestDrawer("cmd")}
             >
               <Slash className="size-4" />
-              Agent
+              {translate("composer.controls.agent")}
             </Button>
           )}
           {/* Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view state, so a
@@ -1014,7 +1029,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             variant="ghost"
             size="icon"
             className={cn("size-8 shrink-0", drawer === "display" ? CONTROL_ON : CONTROL_OFF)}
-            aria-label="Display settings"
+            aria-label={translate("composer.controls.displayAria")}
             aria-expanded={drawer === "display"}
             onClick={() => requestDrawer(drawer === "display" ? null : "display")}
           >
@@ -1084,7 +1099,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             every keystroke. Self-clearing: trim the draft or send it and the row is simply gone. */}
         {!direct.active && !fitsDraftStore(input) && (
           <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
-            Too long to keep as a saved draft — it survives switching panes, but not closing the app.
+            {translate("composer.draft.tooLong")}
           </p>
         )}
         {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
@@ -1116,9 +1131,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onPaste={onPasteImage}
             placeholder={
               gone
-                ? "Pane is gone"
+                ? translate("composer.placeholder.gone")
                 : readOnly
-                  ? "Read-only — device not authorised"
+                  ? translate("composer.placeholder.readOnly")
                   : // Names the machine, because on a pack "why can't I type?" has two possible
                     // answers and only one of them is about this device.
                     hostBlock
@@ -1126,12 +1141,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     : // The multiplexer cannot type here at all — its own words where it gave any, so
                       // the placeholder says what is true of THIS terminal rather than blaming the app.
                       missingSend !== null
-                      ? missingSend.note || "This terminal can't be typed into from here"
+                      ? missingSend.note || translate("composer.placeholder.noMuxSend")
                     : direct.active
-                      ? "Type into the terminal…"
+                      ? translate("composer.placeholder.direct")
                       : isShell
-                        ? "Type a shell command…"
-                        : "Type a reply…"
+                        ? translate("composer.placeholder.shell")
+                        : translate("composer.placeholder.reply")
             }
             autoCorrect={direct.active ? "off" : undefined}
             spellCheck={direct.active ? false : undefined}
@@ -1172,10 +1187,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 // host, so the button says what is wrong rather than just refusing.
                 aria-label={
                   !stt.available
-                    ? (stt.reason ?? "Voice input is unavailable")
+                    ? (stt.reason ?? translate("composer.mic.unavailable"))
                     : recorder.phase === "recording"
-                      ? "Stop recording"
-                      : "Record a voice message"
+                      ? translate("composer.mic.stopAria")
+                      : translate("composer.mic.recordAria")
                 }
                 title={stt.available ? undefined : stt.reason}
                 onPointerDown={(e) => e.preventDefault()}
@@ -1201,7 +1216,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               disabled={uploading || locked || direct.active}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => fileRef.current?.click()}
-              aria-label="Attach image"
+              aria-label={translate("composer.attach.aria")}
             >
               {uploading ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -1219,9 +1234,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
               onClick={onSendClick}
               disabled={locked || !input.trim() || sending}
-              aria-label="Type anyway?"
+              aria-label={translate("composer.send.typeAnyway")}
             >
-              Type anyway?
+              {translate("composer.send.typeAnyway")}
             </Button>
           ) : !direct.active && confirmingSend ? (
             <Button
@@ -1229,9 +1244,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
               onClick={onSendClick}
               disabled={locked || !input.trim() || sending}
-              aria-label="Really send?"
+              aria-label={translate("composer.send.reallySend")}
             >
-              Really send?
+              {translate("composer.send.reallySend")}
             </Button>
           ) : (
             <Button
@@ -1239,7 +1254,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="size-11 shrink-0 rounded-full"
               onClick={direct.active ? () => direct.deactivate() : onSendClick}
               disabled={locked || sending}
-              aria-label={direct.active ? "Stop typing into terminal" : "Send"}
+              aria-label={
+                direct.active
+                  ? translate("composer.send.stopTypingAria")
+                  : translate("composer.send.sendAria")
+              }
               aria-pressed={direct.active}
             >
               {direct.active ? (

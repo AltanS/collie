@@ -1,5 +1,8 @@
 import { Loader2, Mic } from "lucide-react";
 
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
+
 // The armed indicator for a voice recording, in the same in-flow slot as the "You sent:" and
 // direct-typing strips — for the same reason the latter exists (components/direct-typing-strip.tsx):
 // a live microphone is state you can leave the phone holding, and the only thing in the field of
@@ -25,6 +28,7 @@ export function RecordingStrip({
   onStop: () => void;
   onDiscard: () => void;
 }) {
+  useLocale();
   return (
     <div className="flex items-center gap-2 px-1 pb-1 text-xs text-primary">
       {transcribing ? (
@@ -33,10 +37,13 @@ export function RecordingStrip({
         <Mic className="size-3.5 shrink-0 animate-pulse" />
       )}
       <span className="min-w-0 flex-1 truncate">
-        <span className="font-medium">{transcribing ? "Transcribing…" : `Recording ${elapsed}`}</span>
+        <span className="font-medium">
+          {transcribing ? t("composer.mic.transcribing") : t("composer.mic.recording", { elapsed })}
+        </span>
         {!transcribing && (
           <span className="text-muted-foreground">
-            {handsFree ? " — will send when you stop" : " — lands in the message box"}
+            {" — "}
+            {handsFree ? t("composer.mic.handsFreeHint") : t("composer.mic.manualHint")}
           </span>
         )}
       </span>
@@ -46,13 +53,13 @@ export function RecordingStrip({
           onClick={onStop}
           className="shrink-0 rounded-md px-2 py-0.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted"
         >
-          Stop
+          {t("composer.mic.stop")}
         </button>
       )}
       <button
         type="button"
         onClick={onDiscard}
-        aria-label="Discard recording"
+        aria-label={t("composer.mic.discardAria")}
         className="shrink-0 rounded-md px-2 py-0.5 font-medium text-muted-foreground underline-offset-2 transition-colors hover:underline active:bg-muted"
       >
         ✕

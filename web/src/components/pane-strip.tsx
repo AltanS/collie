@@ -9,6 +9,8 @@ import { useLongPress } from "@/hooks/use-long-press";
 import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface PaneStripProps {
   /** The panes that share the current tab (agents + shells), in stable order. */
@@ -39,6 +41,7 @@ export function PaneStrip({
   onRenamed,
   onClosed,
 }: PaneStripProps) {
+  useLocale();
   const [sheetPane, setSheetPane] = useState<AgentView | null>(null);
   // Actions need both callbacks wired (revalidate on rename, navigate on close); without them the
   // pills stay plain tap-to-switch — long-press is inert.
@@ -49,7 +52,7 @@ export function PaneStrip({
   return (
     <>
       <div className="flex items-center gap-2 overflow-x-auto border-t border-border/40 bg-muted/20 px-3 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <SectionLabel>Panes</SectionLabel>
+        <SectionLabel>{t("space.paneStrip.title")}</SectionLabel>
         {panes.map((p) => (
           <PanePill
             key={p.paneId}
@@ -117,7 +120,7 @@ function PanePill({
       onClick={onClick}
       {...longPress}
       aria-current={active ? "true" : undefined}
-      title={active && onTapActive ? "Tap for pane actions" : undefined}
+      title={active && onTapActive ? t("home.sidebar.paneActionsTitle") : undefined}
       className={cn(
         // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch callout,
         // whose native long-press gesture otherwise fires pointercancel and kills our hold timer.

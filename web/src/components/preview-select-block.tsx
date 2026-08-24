@@ -20,6 +20,8 @@ import {
 } from "@/components/option-button";
 import { NOTE_MAX_LENGTH } from "@/lib/preview-action";
 import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/wizard-model";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 /** One tap's intent, resolved to keystrokes by the injected handler (preview-action.ts). */
 export type PreviewBlockAction =
@@ -51,6 +53,7 @@ export interface PreviewSelectBlockProps {
 // terminal) EVERY control locks: any keystroke we sent would be typed into their note instead of
 // driving the dialog. A banner says so; polling clears it when the input blurs.
 export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelectBlockProps) {
+  useLocale();
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
@@ -85,7 +88,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
   const wizard = preview.steps !== null;
   const pointedLabel = preview.options.find((o) => o.pointed)?.label;
   const busyIcon = (
-    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />
+    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
   return (
@@ -105,7 +108,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
         />
       )}
       {wizard && <QuestionHeading>{preview.question}</QuestionHeading>}
-      {!wizard && <OptionGroupCaption>Choose an option</OptionGroupCaption>}
+      {!wizard && <OptionGroupCaption>{t("dialog.chooseOption")}</OptionGroupCaption>}
 
       {/* Options. Tapping one selects it outright (the handler drives digit → verify → Enter). Each
           row leads with the pointer chevron (whose preview shows below) then its terminal-menu digit
@@ -128,7 +131,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
                   "mt-[3px] size-3.5 shrink-0",
                   option.pointed ? "text-primary" : "text-transparent",
                 )}
-                aria-label={option.pointed ? "Previewed below" : undefined}
+                aria-label={option.pointed ? t("dialog.preview.previewedBelowAria") : undefined}
               />
               <KeyBadge tone={tone}>{option.n}</KeyBadge>
               <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
@@ -137,10 +140,10 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
               {busy ? (
                 <Loader2
                   className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
-                  aria-label="Sending"
+                  aria-label={t("dialog.sendingAria")}
                 />
               ) : option.chosen ? (
-                <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-label="Current answer" />
+                <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-label={t("dialog.preview.currentAnswerAria")} />
               ) : null}
             </button>
           );
@@ -152,7 +155,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
         <div className="rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
           {pointedLabel && (
             <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Preview · {pointedLabel}
+              {t("dialog.preview.previewLabel", { label: pointedLabel })}
             </div>
           )}
           <pre className="m-0 min-w-0 w-full max-w-full overflow-x-auto font-mono text-[10px] leading-[1.3] text-foreground/80">
@@ -165,7 +168,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           attached-note card with edit/remove, or the add-note affordance — plus our own editor. */}
       {terminalEditing ? (
         <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
-          Note is being edited in the terminal — controls resume when it closes.
+          {t("dialog.preview.editingBanner")}
           {preview.note.text ? <span className="text-muted-foreground"> ({preview.note.text})</span> : null}
         </div>
       ) : editorOpen ? (
@@ -175,7 +178,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
           >
             <StickyNote className="size-3.5 shrink-0" />
-            Note for this question
+            {t("dialog.preview.noteForQuestion")}
           </label>
           <textarea
             id="preview-note-text"
@@ -184,8 +187,8 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
             onChange={(e) => setDraft(e.target.value)}
             maxLength={NOTE_MAX_LENGTH}
             rows={2}
-            aria-label="Note text"
-            placeholder="Add context for your answer…"
+            aria-label={t("dialog.preview.noteTextAria")}
+            placeholder={t("dialog.preview.notePlaceholder")}
             className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary/60"
           />
           <div className="flex items-center justify-end gap-1.5">
@@ -195,7 +198,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
               onClick={() => setEditorOpen(false)}
               className="rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
             >
-              Cancel
+              {t("dialog.cancel")}
             </button>
             <button
               type="button"
@@ -204,17 +207,17 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
               className="flex items-center gap-1.5 rounded-md border border-primary/60 bg-primary/15 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
             >
               {sending === "note-save" ? busyIcon : null}
-              Save note
+              {t("dialog.preview.saveNote")}
             </button>
           </div>
         </div>
       ) : preview.note.state === "attached" ? (
         <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
-          <StickyNote className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label="Note" />
+          <StickyNote className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label={t("dialog.preview.noteAria")} />
           <span className="min-w-0 flex-1 text-xs text-foreground/90">{preview.note.text}</span>
           <button
             type="button"
-            aria-label="Edit note"
+            aria-label={t("dialog.preview.editNoteAria")}
             disabled={locked}
             onClick={() => {
               setDraft(preview.note.text);
@@ -226,7 +229,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           </button>
           <button
             type="button"
-            aria-label="Remove note"
+            aria-label={t("dialog.preview.removeNoteAria")}
             disabled={locked}
             onClick={() => void press("note-remove", { kind: "note", text: "" })}
             className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
@@ -245,7 +248,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           <StickyNote className="size-3.5 shrink-0" />
-          Add a note to this answer
+          {t("dialog.preview.addNote")}
         </button>
       )}
     </PromptPanel>

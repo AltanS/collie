@@ -49,6 +49,7 @@
 
 import { timeAgoShort } from "./format";
 import type { ServerSummary } from "./types";
+import { t } from "./i18n";
 
 /**
  * Three states and no more (PACK_PROTOCOL.md §10.2's table, read as presentation):
@@ -160,7 +161,9 @@ export interface HostHealthOptions {
 export function hostHealth(s: ServerSummary, { at, pollMs }: HostHealthOptions): HostHealth {
   const name = s.name || s.id;
   const lastSeenLabel =
-    s.lastSeenAt > 0 ? `last seen ${timeAgoShort(s.lastSeenAt, at)}` : "never seen";
+    s.lastSeenAt > 0
+      ? t("connection.host.lastSeen", { time: timeAgoShort(s.lastSeenAt, at) })
+      : t("connection.host.neverSeen");
   const incompatible = s.protocol === "incompatible";
   const base = {
     host: s.id,
@@ -251,7 +254,7 @@ export function departedHealth(host: string): HostHealth {
     writable: false,
     incompatible: false,
     lastSeenAt: 0,
-    lastSeenLabel: "never seen",
+    lastSeenLabel: t("connection.host.neverSeen"),
     isLead: false,
   };
 }
@@ -269,8 +272,9 @@ export function departedHealth(host: string): HostHealth {
 export function writeRefusal(h: HostHealth | undefined): string | undefined {
   if (h === undefined) return undefined;
   if (h.incompatible) {
-    return `${h.name} is running an incompatible Collie${h.protocolDetail ? ` — ${h.protocolDetail}` : ""}`;
+    const reason = t("connection.stale.incompatible", { name: h.name });
+    return h.protocolDetail ? `${reason} — ${h.protocolDetail}` : reason;
   }
-  if (!h.writable) return `${h.name} is unreachable · ${h.lastSeenLabel}`;
+  if (!h.writable) return t("connection.stale.unreachable", { name: h.name, label: h.lastSeenLabel });
   return undefined;
 }

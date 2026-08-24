@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { FONT_MAX, FONT_MIN } from "@/hooks/use-display-prefs";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 
 // The mirror's display prefs, as LABELLED rows behind the composer's ⚙ toggle.
 //
@@ -59,49 +61,50 @@ export function DisplayPrefsContent({
   setRawTerminal,
   setTapToFocus,
 }: DisplayPrefsContentProps) {
+  useLocale();
   return (
     <div className="divide-y divide-border/60 border-t border-border/60 bg-muted/30 px-3 py-1">
       <Row
-        label="Wrap lines"
-        hint="Off shows column-faithful output for TUI tables — you pan instead."
+        label={t("settings.display.wrap.label")}
+        hint={t("settings.display.wrap.hint")}
         htmlFor="pref-wrap"
         control={
           <Switch
             id="pref-wrap"
             checked={prefs.wrap}
             onCheckedChange={setWrap}
-            aria-label="Wrap lines"
+            aria-label={t("settings.display.wrap.label")}
           />
         }
       />
       <Row
-        label="Tap to type"
-        hint="On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document — taps land on the text and only the composer opens the keyboard."
+        label={t("settings.display.tapToType.label")}
+        hint={t("settings.display.tapToType.hint")}
         htmlFor="pref-tap-to-focus"
         control={
           <Switch
             id="pref-tap-to-focus"
             checked={prefs.tapToFocus}
             onCheckedChange={setTapToFocus}
-            aria-label="Tap to type"
+            aria-label={t("settings.display.tapToType.label")}
           />
         }
       />
       <Row
-        label="Raw terminal"
-        hint="Shows the plain mirror — no tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys."
+        label={t("settings.display.rawTerminal.label")}
+        hint={t("settings.display.rawTerminal.hint")}
         htmlFor="pref-raw"
         control={
           <Switch
             id="pref-raw"
             checked={prefs.rawTerminal}
             onCheckedChange={setRawTerminal}
-            aria-label="Raw terminal"
+            aria-label={t("settings.display.rawTerminal.label")}
           />
         }
       />
       <Row
-        label="Text size"
+        label={t("settings.display.textSize.label")}
         control={
           <div className="flex items-center gap-1">
             <Button
@@ -110,7 +113,7 @@ export function DisplayPrefsContent({
               className="size-9"
               disabled={prefs.fontSize <= FONT_MIN}
               onClick={() => stepFontSize(-1)}
-              aria-label="Decrease font size"
+              aria-label={t("settings.display.textSize.decrease")}
             >
               <AArrowDown className="size-4" />
             </Button>
@@ -123,7 +126,7 @@ export function DisplayPrefsContent({
               className="size-9"
               disabled={prefs.fontSize >= FONT_MAX}
               onClick={() => stepFontSize(1)}
-              aria-label="Increase font size"
+              aria-label={t("settings.display.textSize.increase")}
             >
               <AArrowUp className="size-4" />
             </Button>

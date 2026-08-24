@@ -3,6 +3,8 @@ import { Settings } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { isConnecting } from "@/lib/connection";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 import { useMuxLogoUrl, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { settingsPath } from "@/lib/nav";
@@ -62,6 +64,7 @@ export function AppHeader({
 }: AppHeaderProps) {
   // The same two shared-clock signals the ConnectionBanner reads, so the dog and the bar agree by
   // construction: gallop while troubled (≥4s not-live), rest muted once lost (≥15s, latched).
+  useLocale();
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
   const lost = useConnectionLost(connecting);
@@ -97,7 +100,7 @@ export function AppHeader({
                 flight all leave the header exactly as it was, never a "on unknown" placeholder. */}
             {wordmark && mux !== "" && (
               <span className="-ml-1 min-w-0 truncate text-xs text-muted-foreground">
-                on{" "}
+                {t("nav.mux.onPrefix")}{" "}
                 {/* The multiplexer's own mark, between "on" and its name. `alt=""` and nothing else:
                     the name is right there in the same sentence, so a screen reader announcing the
                     picture too would read the multiplexer twice — this is decoration OF that word.
@@ -139,11 +142,12 @@ export function AppHeader({
 // so the navigation stays on the session you're viewing.
 export function SettingsGear({ scope }: { scope?: Scope }) {
   const navigate = useNavigate();
+  useLocale();
   return (
     <button
       type="button"
       onClick={() => navigate(settingsPath(scope))}
-      aria-label="Settings"
+      aria-label={t("nav.settings.aria")}
       // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
       // keeps icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px
       // against a 12px gap, so a neighbour steals 12px of this one's hit area) and drags the last
