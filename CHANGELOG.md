@@ -6,6 +6,16 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.33.0] - 2026-08-24
+
+### Changed
+- **Host-header validation is on by default and fails closed.** A DNS-rebound `Host: evil.example` is rejected. `collie-ctl.sh` injects discovered Tailscale hosts so a normal tailnet install needs no manual allowlist. `COLLIE_ALLOW_ANY_HOST=1` is the opt-out.
+- **`COLLIE_TRUSTED_USER` rejects a missing `Tailscale-User-Login` as well as a mismatch.** Tagged nodes get no header from `tailscale serve`; that used to pass. `COLLIE_TRUSTED_USER_OPTIONAL=1` restores the old pass.
+- **A non-loopback `COLLIE_HOST` refuses to start** unless `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`. Non-loopback TCP peers are rejected.
+- **`collie-ctl.sh` parses `.env` as key=value** instead of sourcing it, so a malformed or hostile `.env` cannot run shell.
+- **Uploaded images are typed by magic bytes**, not the client-supplied Content-Type.
+- **An unversioned managed checkout pins `update` to the newest release tag**, never `origin HEAD`.
+
 ## [0.32.1] - 2026-08-23
 
 ### Fixed

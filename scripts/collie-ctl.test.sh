@@ -1057,17 +1057,22 @@ test_update_major_crosses_exactly_one_major() {
   assert_contains "$out" "crossing to Collie 11.0.0"
 }
 
-# A manifest we cannot read a major out of must never strand the install: fall back to the pre-gate
-# behaviour (origin HEAD), and SAY that is what happened.
+# A manifest we cannot read a major out of must never strand the install: pin to the newest
+# release tag (never origin HEAD — a moved default branch is not a release), and SAY that.
 test_update_falls_back_loudly_without_a_readable_version() {
   setup_case update-unknown-version
   stage_tagged_origin
+  echo "untagged" > "${ORIGIN_DIR}/UNRELEASED"
+  git_q -C "$ORIGIN_DIR" add -A
+  git_q -C "$ORIGIN_DIR" commit -q -m "untagged tip"
   local root; root="$(stage_managed_at refs/tags/v9.9.9)"
   rm -f "${root}/herdr-plugin.toml"
 
   local out; out="$(run_update_checkout "$root")" || fail "update_checkout failed: $out"
-  assert_contains "$out" "no readable version — following origin HEAD"
-  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(git -C "$ORIGIN_DIR" rev-parse HEAD)"
+  assert_contains "$out" "no readable version — pinning to newest release tag v9.10.0"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(git -C "$ORIGIN_DIR" rev-parse 'v9.10.0^{commit}')"
+  [ "$(git -C "$root" rev-parse HEAD)" != "$(git -C "$ORIGIN_DIR" rev-parse HEAD)" ] ||
+    fail "fallback followed origin HEAD instead of the newest release tag"
 }
 
 # The linked clone's gate is a PRE-FLIGHT, because its target is a branch tip rather than a tag: read
@@ -1258,6 +1263,37 @@ test_push_keys_refuses_a_symlinked_env() {
   assert_eq "$(cat "$real")" "COLLIE_PORT=8787"
 }
 
+# Sourcing .env used to run $(…) and backticks as the operator on every verb. Parsing must keep
+# the values as text and never create the files those substitutions would have written.
+test_env_is_parsed_not_executed() {
+  setup_case env-no-eval
+  cat > "${CONFIG_DIR}/.env" <<EOF
+COLLIE_PORT=9999
+PWNED=\$(touch "$CASE_DIR/pwned")
+ALSO_PWNED=\`touch "$CASE_DIR/pwned2"\`
+EOF
+  local harness="${CASE_DIR}/harness.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+echo "PORT=\$PORT"
+echo "PWNED=\$PWNED"
+echo "ALSO_PWNED=\$ALSO_PWNED"
+EOF
+  bash "$harness" > "${CASE_DIR}/harness.out" 2>&1 ||
+    fail "parsing .env failed: $(cat "${CASE_DIR}/harness.out")"
+  [ ! -e "${CASE_DIR}/pwned" ] || fail "command substitution in .env was executed"
+  [ ! -e "${CASE_DIR}/pwned2" ] || fail "backticks in .env were executed"
+  assert_contains "$(cat "${CASE_DIR}/harness.out")" "PORT=9999"
+  assert_contains "$(cat "${CASE_DIR}/harness.out")" 'PWNED=$(touch'
+  assert_contains "$(cat "${CASE_DIR}/harness.out")" 'ALSO_PWNED=`touch'
+}
+
+test_env_is_parsed_not_executed
 test_suite_ignores_an_inherited_git_dir
 test_push_keys_writes_the_resolved_env
 test_push_keys_refuses_a_symlinked_env
