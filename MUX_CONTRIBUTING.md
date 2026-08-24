@@ -48,6 +48,14 @@ visibly (M10/06) and a wrong `true` fails in the operator's hands.
 Declare less than you can build. An adapter that reads and types is a real adapter; the contract is
 what makes the rest addable later without a rewrite.
 
+**Two answers are not capabilities and you owe both anyway.** `MuxPane.focused` — the pane the
+operator's own terminal is showing — is on the floor, because every multiplexer knows it; only
+CHANGING it is a capability (`setFocus`), and a multiplexer that can bring a pane's container forward
+but cannot say which pane inside it ends up focused declares that ABSENT rather than half-keeping the
+promise (zellij is exactly that case). And `spaces: "one" | "many"` says how many spaces your
+multiplexer can hold — not how many exist today — so the UI can drop a level it does not have.
+Omitting it declares `"many"`, which is the harmless direction.
+
 ## What conformance demands
 
 [`bridge/mux/conformance.ts`](./bridge/mux/conformance.ts) is the gate, and it answers four questions.

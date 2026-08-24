@@ -37,7 +37,15 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
 | `pane.send_text` | `{pane_id, text}` | (ack) |
 | `pane.send_keys` | `{pane_id, keys}` | (ack) |
 | `agent.send` | `{target, text}` | (ack) — writes **literal** text, no Enter |
+| `pane.focus` | `{pane_id}` | `pane_info` → `{pane}` — moves the OPERATOR's screen |
 
+- **`pane.focus` moves pane, tab AND workspace in one call** — live-probed 2026-08-25 against the
+  `collie-demo` sandbox session (herdr protocol 20): the reply is `pane_info` for the target, and the
+  next `session.snapshot` reports `focused_pane_id`, `focused_tab_id` and `focused_workspace_id` all
+  moved with it, so `tab.focus` / `workspace.focus` (which also exist) are never needed. A pane that
+  is not there answers `pane_not_found`, probed read-only against the live server the same day. It
+  moves the operator's real screen, so Collie calls it from exactly one place: the "Show in terminal"
+  row (`bridge/mux/herdr/adapter.ts` `setFocus`).
 - `pane.read` `source` ∈ `visible | recent | recent_unwrapped | detection` — **snake_case on the
   wire**: `recent-unwrapped` gets `invalid_request: unknown variant` (live-probed 2026-08-03,
   herdr 0.7.5; the variant list above is quoted from that error). `detection`'s semantics are
