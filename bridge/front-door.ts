@@ -35,12 +35,18 @@ import { findTool } from "./tools.ts";
 // `https:443|host.ts.net:443|http://127.0.0.1:8787`. The format is NOT versioned, moved or
 // migrated — a host upgrading from the shell to the binary must find its existing record valid.
 
-/** `https` publishes on :443 with Tailscale's certificate; `http` publishes the bridge port plain. */
+/**
+ * `https` publishes with Tailscale's certificate on :443, or on the port `COLLIE_SERVE_PORT` names;
+ * `http` publishes the bridge port plain.
+ */
 export type ServeMode = "https" | "http";
 
 export interface OwnershipRecord {
   mode: ServeMode;
-  /** The listener port: `443` in https mode, the bridge port in http mode. */
+  /**
+   * The listener port: the https port in https mode (443 unless `COLLIE_SERVE_PORT` says otherwise),
+   * the bridge port in http mode.
+   */
   port: number;
   /** `<tailnet host>:<listener port>`. */
   hostPort: string;
@@ -79,11 +85,18 @@ export function parseRecord(raw: string): OwnershipRecord {
   return { mode: mode.mode, port: mode.port, hostPort, proxy };
 }
 
-/** `http:<digits>` or exactly `https:443` — nothing else is a handler we wrote. */
+/**
+ * `http:<digits>` or `https:<digits>` — nothing else is a handler we wrote.
+ *
+ * The https arm used to accept the literal `https:443` and nothing else, because that was the only
+ * port Collie could publish on. `COLLIE_SERVE_PORT` made the port the operator's choice, so both
+ * arms now read a number the same way; every `https:443` record written before that still parses,
+ * which is the compatibility the format promises.
+ */
 function readMode(handler: string): { mode: ServeMode; port: number } | null {
-  if (handler === "https:443") return { mode: "https", port: 443 };
-  const http = /^http:(\d+)$/.exec(handler);
-  return http === null ? null : { mode: "http", port: Number(http[1]) };
+  const m = /^(https?):(\d+)$/.exec(handler);
+  if (m === null) return null;
+  return { mode: m[1] === "https" ? "https" : "http", port: Number(m[2]) };
 }
 
 /** How the record names its handler in operator-facing output (`http:8787`, `https:443`). */
@@ -189,18 +202,26 @@ export interface FrontDoorDeps {
 
 /**
  * `tailscale serve … off` for ONE handler, scoped to the listener and the root path — never a
- * blanket reset, and never an unscoped shutdown of :443 that could take down a mapping someone else
- * put there. "Already gone" is success so teardown is idempotent; any other failure is real.
+ * blanket reset, and never an unscoped shutdown of the https listener that could take down a mapping
+ * someone else put there. The port comes from the record, never from a default: with
+ * `COLLIE_SERVE_PORT` the door we opened may not be on :443, and closing :443 instead would both
+ * leave ours open and reach for a stranger's. "Already gone" is success so teardown is idempotent;
+ * any other failure is real.
  */
 function removeHandler(deps: FrontDoorDeps, record: OwnershipRecord): boolean {
-  const listener = record.mode === "http" ? `--http=${record.port}` : "--https=443";
-  const r = deps.exec.capture("tailscale", ["serve", listener, "--set-path=/", "off"]);
+  const flag = record.mode === "http" ? "--http" : "--https";
+  const r = deps.exec.capture("tailscale", [
+    "serve",
+    `${flag}=${record.port}`,
+    "--set-path=/",
+    "off",
+  ]);
   if (r.found && r.code === 0) return true;
   const output = `${r.stdout}${r.stderr}`;
   if (output.includes("handler does not exist")) return true;
   if (output.trim() !== "") deps.io.err(output.trimEnd());
-  const description =
-    record.mode === "http" ? `HTTP :${record.port} root mount` : "HTTPS :443 root mount";
+  const protocol = record.mode === "http" ? "HTTP" : "HTTPS";
+  const description = `${protocol} :${record.port} root mount`;
   deps.io.err(`error: failed to remove Collie's ${description} mapping`);
   return false;
 }

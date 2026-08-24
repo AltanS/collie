@@ -24,12 +24,24 @@ describe("selfDnsName", () => {
 
 describe("bridgeUrlFrom", () => {
   test("https terminates on 443, http carries the port", () => {
-    expect(bridgeUrlFrom("host.example", "https", 8787)).toBe("https://host.example");
-    expect(bridgeUrlFrom("host.example", "http", 8787)).toBe("http://host.example:8787");
+    expect(bridgeUrlFrom("host.example", "https", 8787, 443)).toBe("https://host.example");
+    expect(bridgeUrlFrom("host.example", "http", 8787, 443)).toBe("http://host.example:8787");
+  });
+
+  test("an https front door away from 443 carries its listener port", () => {
+    // COLLIE_SERVE_PORT: several developers on one host, one tailnet name, a port each.
+    expect(bridgeUrlFrom("host.example", "https", 8787, 8443)).toBe("https://host.example:8443");
+    // The bridge port is NOT the one in the URL — the tailnet listener is.
+    expect(bridgeUrlFrom("host.example", "https", 9001, 8443)).toBe("https://host.example:8443");
+    // http mode ignores it: there the listener already is the bridge port.
+    expect(bridgeUrlFrom("host.example", "http", 8787, 8443)).toBe("http://host.example:8787");
   });
 
   test("without a name, says loopback AND why", () => {
-    expect(bridgeUrlFrom(null, "https", 8787)).toBe(
+    expect(bridgeUrlFrom(null, "https", 8787, 443)).toBe(
+      "http://127.0.0.1:8787 (Tailscale name unavailable)",
+    );
+    expect(bridgeUrlFrom(null, "https", 8787, 8443)).toBe(
       "http://127.0.0.1:8787 (Tailscale name unavailable)",
     );
   });

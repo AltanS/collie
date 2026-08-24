@@ -325,9 +325,11 @@ cp .env.example "$(herdr plugin config-dir herdr.collie)/.env"
 ```
 
 Collie reads `.env` only at startup — after any edit, `bin/collie restart`. See
-[`.env.example`](./.env.example) for the full option list — commonly `COLLIE_PORT`, or
-`COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains; read by the CLI when it runs
-`tailscale serve`).
+[`.env.example`](./.env.example) for the full option list — commonly `COLLIE_PORT`,
+`COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains) or `COLLIE_SERVE_PORT` (publish the
+https front door somewhere other than :443 — see
+[DEPLOYMENT.md → Several Collies on one host](./DEPLOYMENT.md#several-collies-on-one-host)). Both
+serve settings are read by the CLI when it runs `tailscale serve`, not by the bridge.
 
 Reading history from more than one agent home? List them all in `COLLIE_TRANSCRIPT_ROOT`,
 comma-separated.

@@ -1,5 +1,6 @@
 import type { JsonValue } from "../bridge/json.ts";
 import type { CliContext, Environment, ServeMode } from "./context.ts";
+import { DEFAULT_SERVE_PORT } from "./context.ts";
 import type { Exec } from "./sys.ts";
 
 // `tailscale status --json` → this host's name. The shell piped that JSON through an inline
@@ -26,10 +27,10 @@ export function selfDnsName(statusJson: string): string | null {
 /**
  * The operator's own answer to "what do I type on my phone", or null when they haven't given one.
  * `COLLIE_PUBLIC_URL` is the only truth about the front door whenever Collie didn't publish it —
- * a reverse proxy (Variants C/E), or a `tailscale serve` the operator runs by hand on a port that
- * isn't 443 because something else owns 443. Collie's own record (`tailscale-managed-handler`)
- * can't answer that: `cmdServe` publishes https on 443 and nothing else, and under
- * `COLLIE_SKIP_SERVE=1` it publishes — and records — nothing at all.
+ * a reverse proxy (Variants C/E), or a `tailscale serve` the operator runs by hand. Collie's own
+ * record (`tailscale-managed-handler`) can't answer that: `cmdServe` publishes only the one door it
+ * manages — https on 443, or on `COLLIE_SERVE_PORT` — and under `COLLIE_SKIP_SERVE=1` it publishes,
+ * and records, nothing at all.
  *
  * A trailing slash is dropped so this reads the same as every URL Collie builds itself.
  */
@@ -43,10 +44,20 @@ export function configuredPublicUrl(env: Environment): string | null {
  * The URL to open. `https://<name>` in https mode (tailscale terminates TLS on 443),
  * `http://<name>:<port>` in http mode, and a loopback URL that SAYS why when the tailnet name is
  * unavailable — an operator on Headscale reads that line to find out their setup isn't published.
+ *
+ * `servePort` is the https listener (`COLLIE_SERVE_PORT`, default 443) and only ever shows up as a
+ * suffix when it is not 443: an https URL carrying `:443` would be the same address typed longer,
+ * and every line Collie prints for a default install must read as it always did.
  */
-export function bridgeUrlFrom(name: string | null, mode: ServeMode, port: number): string {
+export function bridgeUrlFrom(
+  name: string | null,
+  mode: ServeMode,
+  port: number,
+  servePort: number,
+): string {
   if (name === null) return `http://127.0.0.1:${port} (Tailscale name unavailable)`;
-  return mode === "http" ? `http://${name}:${port}` : `https://${name}`;
+  if (mode === "http") return `http://${name}:${port}`;
+  return servePort === DEFAULT_SERVE_PORT ? `https://${name}` : `https://${name}:${servePort}`;
 }
 
 /** {@link selfDnsName} over a live `tailscale status --json`. A missing CLI reads as no name. */
@@ -62,7 +73,10 @@ export function tailnetName(exec: Exec): string | null {
  * Collie something Collie cannot observe; only without one is the tailnet name inferred.
  */
 export function bridgeUrl(exec: Exec, ctx: CliContext): string {
-  return configuredPublicUrl(ctx.env) ?? bridgeUrlFrom(tailnetName(exec), ctx.serveMode, ctx.port);
+  return (
+    configuredPublicUrl(ctx.env) ??
+    bridgeUrlFrom(tailnetName(exec), ctx.serveMode, ctx.port, ctx.servePort)
+  );
 }
 
 // ── Is anyone allowed in? ────────────────────────────────────────────────────
