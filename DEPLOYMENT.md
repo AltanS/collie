@@ -10,6 +10,8 @@ four shapes here are for everything else. Pick one.
 - [Variant D — off-host identity proxy over the tailnet](#variant-d--off-host-identity-proxy-over-the-tailnet)
 - [Variant E — any other mesh or tunnel](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
 
+Not a variant, but it crosses all of them: [Several Collies on one host](#several-collies-on-one-host).
+
 The security rules in [README → Security](./README.md#%EF%B8%8F-security--read-before-you-run-it)
 are not relaxed by any of them.
 
@@ -371,3 +373,36 @@ Three things to get right, none of them Collie-specific:
 > ⚠️ **Anything that publishes to the open internet is a `funnel` by another name** — see the rule in
 > [README → Security](./README.md#%EF%B8%8F-security--read-before-you-run-it). Prefer a tunnel scoped
 > to your own devices over a public URL with a gate on it.
+
+## Several Collies on one host
+
+One shared machine, one Unix user per developer, each running their own Herdr and their own Collie.
+The machine has a single tailnet name, so the thing that has to differ per user is the **port at both
+ends**: the loopback port the bridge binds, and the tailnet port `tailscale serve` publishes.
+
+Per user, in that user's `.env`:
+
+```bash
+COLLIE_PORT=8801                    # loopback port — unique per user
+COLLIE_SERVE_PORT=8443              # tailnet https listener — unique per user
+COLLIE_TRUSTED_USER=dev-a@example.com   # ONLY this tailnet person may reach this Collie
+```
+
+The next developer takes `8802` / `8444`, and so on. Each gets their own URL —
+`https://host.your-tailnet.ts.net:8443` — which `collie-ctl.sh url` and `qr` report as usual.
+
+Two things to get right:
+
+- **`COLLIE_TRUSTED_USER` is what keeps the herds apart.** Every developer is on the same tailnet, so
+  without it any of them can open any of the others' Collies and drive their agents. `tailscale serve`
+  injects the caller's tailnet login and Collie rejects every other identity.
+- **Publishing needs root or the Tailscale operator.** `tailscale serve` may be run only by root or by
+  the one user named in `tailscale set --operator=`, and there is exactly one such user per machine.
+  So either the admin runs the serve step for each developer, or grants them sudo for that one
+  command. It is a `--bg` mapping: it is published once and persists across restarts and reboots, so
+  this is a setup-time act, not a per-start one. Everything else — `start`, `restart`, `update` —
+  the developer runs as themselves.
+
+`COLLIE_SERVE_PORT` applies to the https front door only. Under `COLLIE_SERVE_MODE=http` the tailnet
+listener already *is* `COLLIE_PORT`, so setting both is a contradiction and `serve` refuses it rather
+than pick a winner.
