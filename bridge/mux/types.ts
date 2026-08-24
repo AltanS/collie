@@ -30,7 +30,7 @@ import type { AgentStatus } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
-export type { MuxCapability, MuxCapabilityDeclaration, MuxSpaceShape } from "./capabilities.ts";
+export type { MuxCapability, MuxCapabilityDeclaration, MuxSpaceCapacity } from "./capabilities.ts";
 export { declareCapabilities, MUX_CAPABILITIES, supportsCapability } from "./capabilities.ts";
 export type { MuxIdentity, MuxIdentityProblem } from "./identity.ts";
 export { checkIdentitySet, idsLostBetween, isValidMuxId } from "./identity.ts";
