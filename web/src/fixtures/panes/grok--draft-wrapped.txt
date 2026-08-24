@@ -1,0 +1,9 @@
+Sandbox pane — a wrapped draft inside the composer box.
+
+  ╭────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ This draft is long enough that Grok wraps it onto a                              │
+  │   continuation row inside the box rather than one line.                            │
+  ╰─────────────────────────────────────────────────────────── Grok 4.6 (high) · auto ─╯
+
+  Shift+Tab:mode  │  Ctrl+.:shortcuts
+

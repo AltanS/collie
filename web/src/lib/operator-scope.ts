@@ -11,6 +11,7 @@ export const AGENT_FAMILIES = [
   "pi",
   "opencode",
   "omp",
+  "grok",
   "agy",
   "antigravity",
 ] as const;
@@ -44,6 +45,9 @@ export function canonicalAgent(key: string): string {
   // `omp` is its own prefix — no other agent string in the catalog starts with it, and it must NOT
   // be reached by the `pi` rules above: oh-my-pi ships a different command set from pi.dev's.
   if (key.startsWith("omp")) return "omp";
+  // Catalog-only. Must not be copied into adapterFor — #99: prefix-matching there
+  // would attach Grok's chrome strip (and, later, any dialog grammars) to any `grok*` agent string.
+  if (key.startsWith("grok")) return "grok";
   if (key.startsWith("agy")) return "agy";
   if (key.startsWith("antigravity")) return "antigravity";
   return key;

@@ -15,9 +15,9 @@ import { parseKeyHintFooter } from "./menu-hints";
 // entire corpus rather than over a chosen subset: no interactive block kind is ever constructed, so no
 // tap can reach a keystroke. See harness/omp/index.ts for why the dialog layer is a later PR.
 //
-// This is also the first time the FOREIGN cohort is non-empty for anybody: `foreignFixtures` is every
-// claude capture, which pins the cross-adapter fail-closed leg that had never been exercised before.
-// The other half of that loop lives in conformance.test.ts, where Claude's leg now takes omp--*.
+// The FOREIGN cohort is every claude and codex capture, which pins the cross-adapter fail-closed leg.
+// The other directions of that loop live in conformance.test.ts (Claude's leg takes omp--* + codex--*)
+// and harness/codex.test.ts (codex's leg takes claude--* + omp--*).
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
@@ -26,6 +26,12 @@ const allOmpFixtures = readdirSync(PANES_DIR)
   .sort();
 const allClaudeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
+  .sort();
+const allCodexFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("codex--") && f.endsWith(".txt"))
+  .sort();
+const allGrokFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
   .sort();
 
 // Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
@@ -38,6 +44,7 @@ const DECLINED = [
   //   and stranded-draft probes re-surface what it carried.
   "omp--done--tool-result.txt",
   "omp--done.txt",
+  "omp--draft-ghost-suggestion.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
   "omp--fresh-idle.txt",
@@ -74,13 +81,13 @@ const DECLINED = [
 
 // Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
 // each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
-// raw-only on all 20 omp captures and all 38 claude ones.
+// raw-only on all 21 omp captures and all 38 claude ones.
 const ownFixtures: string[] = [];
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.includes(f));
 
 describeAdapterConformance(ompAdapter, {
   ownFixtures,
-  foreignFixtures: allClaudeFixtures,
+  foreignFixtures: [...allClaudeFixtures, ...allCodexFixtures, ...allGrokFixtures],
   neutralFixtures,
 });
 
@@ -91,6 +98,7 @@ describe("the omp corpus", () => {
   const PINNED = [
     "omp--done--tool-result.txt",
     "omp--done.txt",
+    "omp--draft-ghost-suggestion.txt",
     "omp--draft-single.txt",
     "omp--draft-wrapped.txt",
     "omp--fresh-idle.txt",
@@ -111,11 +119,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 20 captures this adapter was developed against", () => {
+  it("is exactly the 21 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all twenty — nothing is up-levelled", () => {
+  it("declines all twenty-one — nothing is up-levelled", () => {
     expect(neutralFixtures).toEqual(PINNED);
     expect(ownFixtures).toEqual([]);
   });
@@ -158,6 +166,7 @@ describe("ompBuildBlocks emits nothing but raw", () => {
 const COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
   "omp--done.txt",
+  "omp--draft-ghost-suggestion.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
   "omp--fresh-idle.txt",

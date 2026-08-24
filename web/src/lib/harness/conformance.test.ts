@@ -13,10 +13,10 @@ import { describeAdapterConformance, isValidHerdrKey } from "./conformance";
 // captures whose block may still be wiring up (a not-yet-detecting own fixture is tolerated by the
 // suite, see conformance.ts).
 //
-// The FOREIGN cohort is the omp corpus — the second adapter's captures. Until it existed this leg was
-// vacuous (`foreignFixtures: []`), so "an adapter must stay raw on another harness's screens" was a
-// documented promise nothing checked. Claude's grammars return raw-only on all 20 omp captures today,
-// and the mirror-image assertion lives in harness/omp.test.ts.
+// The FOREIGN cohort is the other adapters' corpora (omp + codex + grok). Until a second corpus
+// existed this leg was vacuous (`foreignFixtures: []`), so "an adapter must stay raw on another
+// harness's screens" was a documented promise nothing checked. The mirror-image assertions live in
+// harness/omp.test.ts, harness/codex.test.ts and harness/grok.test.ts.
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
@@ -55,13 +55,19 @@ const allClaudeFixtures = readdirSync(PANES_DIR)
 const allOmpFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
   .sort();
+const allCodexFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("codex--") && f.endsWith(".txt"))
+  .sort();
+const allGrokFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
+  .sort();
 
 const ownFixtures = allClaudeFixtures.filter((f) => !NEUTRAL.includes(f));
 const neutralFixtures = allClaudeFixtures.filter((f) => NEUTRAL.includes(f));
 
 describeAdapterConformance(claudeAdapter, {
   ownFixtures,
-  foreignFixtures: allOmpFixtures, // the second adapter's captures — cross-adapter fail-closed
+  foreignFixtures: [...allOmpFixtures, ...allCodexFixtures, ...allGrokFixtures], // the other adapters' captures — cross-adapter fail-closed
   neutralFixtures,
 });
 
