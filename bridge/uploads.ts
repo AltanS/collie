@@ -11,6 +11,46 @@ export const UPLOAD_TTL_MS = 48 * 60 * 60 * 1000; // 48 h
 /** How often the runner re-sweeps after the startup pass. */
 export const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 h
 
+/**
+ * How many leading bytes {@link imageExtFromBytes} needs. The longest signature we check is WebP's,
+ * which is "RIFF" at 0 plus "WEBP" at 8 — twelve bytes.
+ */
+export const SNIFF_BYTES = 12;
+
+/**
+ * The upload allow-list, keyed by what the file IS rather than by what the client SAID it is.
+ *
+ * This used to be a lookup on the multipart part's Content-Type, which the client writes.
+ * `IMAGE_EXT["__proto__"]` is Object.prototype and `IMAGE_EXT["constructor"]` is Object; both are
+ * truthy, so both passed the check. Sniffing removes the lookup entirely.
+ *
+ * SVG is absent on purpose and must stay absent — it is script-bearing markup, not a raster image.
+ */
+const SIGNATURES: { ext: string; bytes: number[]; at: number }[] = [
+  { ext: "png", at: 0, bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { ext: "jpg", at: 0, bytes: [0xff, 0xd8, 0xff] },
+  { ext: "gif", at: 0, bytes: [0x47, 0x49, 0x46, 0x38] },
+  { ext: "webp", at: 0, bytes: [0x52, 0x49, 0x46, 0x46] },
+  { ext: "webp", at: 8, bytes: [0x57, 0x45, 0x42, 0x50] },
+];
+
+function matchesAt(head: Uint8Array, at: number, bytes: number[]): boolean {
+  if (head.length < at + bytes.length) return false;
+  return bytes.every((b, i) => head[at + i] === b);
+}
+
+/**
+ * The file extension implied by a file's leading bytes, or null if they are not one of the four
+ * image formats Collie accepts. Pure — the whole decision, unit-tested.
+ */
+export function imageExtFromBytes(head: Uint8Array): string | null {
+  for (const ext of ["png", "jpg", "gif", "webp"]) {
+    const rows = SIGNATURES.filter((s) => s.ext === ext);
+    if (rows.every((r) => matchesAt(head, r.at, r.bytes))) return ext;
+  }
+  return null;
+}
+
 /** Names whose mtime is older than `ttlMs` before `now`. Pure — the whole decision, unit-tested. */
 export function filesToPrune(
   entries: { name: string; mtimeMs: number }[],
