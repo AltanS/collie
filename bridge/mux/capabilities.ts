@@ -45,6 +45,28 @@ export const MUX_CAPABILITIES = [
 export type MuxCapability = (typeof MUX_CAPABILITIES)[number];
 
 /**
+ * How soon Collie learns about a topology change nobody told it about — a pane opened, a tab renamed
+ * or a window killed **in the multiplexer's own UI**.
+ *
+ * NOT a capability, for the same reason `unsupportedKeys` is not: it answers "how fast", never
+ * "whether". Every adapter keeps `watch()`'s promise; this says what the bound behind that promise
+ * actually is, so a caller can stop guessing it from `pushTopologyEvents`.
+ *
+ *  • `push` — the multiplexer announces it, so the bound is the transport's own latency and there is
+ *    no number to state.
+ *  • `bounded` — the adapter censuses, and `ms` is the LONGEST a change can sit unseen. It is the
+ *    ceiling, never the floor: an adaptive census (zellij's) states the slowest it ever runs.
+ *
+ * It is DECLARED rather than discovered because the only alternative is the phone timing the bridge,
+ * and a number derived that way is indistinguishable from a slow network (ADR 0031). `/api/config`
+ * publishes it, and it is the whole reason the home screen can honestly say "synced 4s ago" under one
+ * multiplexer and stay silent under another.
+ */
+export type MuxTopologyLatency =
+  | { readonly kind: "push" }
+  | { readonly kind: "bounded"; readonly ms: number };
+
+/**
  * The route that consumes each capability — the evidence the set was derived rather than invented.
  *
  * Read as: "if this capability is absent, THAT is what degrades." Spec M10/06 turns each entry into
@@ -106,6 +128,19 @@ export interface MuxCapabilityDeclaration {
    * nobody needed, while a hidden strip over three spaces is navigation the operator cannot reach.
    */
   readonly spaces: MuxSpaceCapacity;
+  /**
+   * How soon an out-of-band topology change is seen. See {@link MuxTopologyLatency}.
+   *
+   * REQUIRED, and there is no default: a missing answer would read as `push` to anything that
+   * defaulted optimistically and as `bounded` to anything that defaulted safely, and those two are
+   * different promises to the operator.
+   *
+   * The opposite rule to {@link spaces} one line up, and the two disagree for a reason. An
+   * unanswered SHAPE has a harmless answer (`"many"` leaves every level reachable), so it may
+   * default. An unanswered BOUND has none: both directions promise the operator something the
+   * adapter never said.
+   */
+  readonly topologyLatency: MuxTopologyLatency;
 }
 
 /**
@@ -129,6 +164,8 @@ export interface MuxCapabilityInput {
    * rule the phone applies to an absent `mux` block, applied here so the two ends cannot disagree.
    */
   readonly spaces?: MuxSpaceCapacity;
+  /** Required — see {@link MuxCapabilityDeclaration.topologyLatency} for why there is no default. */
+  readonly topologyLatency: MuxTopologyLatency;
 }
 
 /**
@@ -165,6 +202,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     unsupportedKeys: input.unsupportedKeys ?? [],
     notes: input.notes ?? {},
     spaces: input.spaces ?? "many",
+    topologyLatency: input.topologyLatency,
   };
 }
 

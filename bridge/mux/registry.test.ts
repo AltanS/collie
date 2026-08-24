@@ -18,9 +18,10 @@ import { declareCapabilities, muxAck, muxOk, muxUnsupported, type MuxAdapter } f
 function stubAdapter(mux: string, target: MuxTarget): MuxAdapter {
   return {
     mux,
-    capabilities: declareCapabilities({ supports: ["paneGrid"] }),
+    capabilities: declareCapabilities({ supports: ["paneGrid"], topologyLatency: { kind: "push" } }),
     reachable: () => Promise.resolve(true),
     snapshot: () => Promise.resolve({ panes: [], spaces: [], tabs: [] }),
+    refresh: () => Promise.resolve(),
     readGrid: (paneId) =>
       Promise.resolve(muxOk({ paneId, text: target.endpoint, truncated: false, revision: 1 })),
     typeText: () => Promise.resolve(muxUnsupported("typeText", "stub")),

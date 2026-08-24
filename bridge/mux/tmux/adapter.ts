@@ -166,6 +166,11 @@ const TMUX_CAPABILITIES = declareCapabilities({
     "pushPaneEvents",
   ],
   unsupportedKeys: TMUX_UNSENDABLE_KEYS,
+  // `push`, and the 5-second resync behind it is a BACKSTOP rather than the bound: control mode
+  // announces windows and sessions appearing, closing and being renamed (watch.ts § the two ways).
+  // The census exists for the sessions no control client is attached to and for a tmux too old to
+  // have control mode at all — stating 5 s here would describe the fallback rather than the promise.
+  topologyLatency: { kind: "push" },
   notes: {
     agentDetection:
       "tmux does not know what an agent is. It can say which command is in the foreground, and that is not the same question — so every pane reads as a shell rather than as a guess that would pick the wrong grammar.",
@@ -229,6 +234,8 @@ export class TmuxMux implements MuxAdapter {
    * outlive the pane it described. It holds at most one short string per live pane.
    */
   private readonly ownLabels = new Map<string, string>();
+  /** The watches this adapter has handed out and that are still live — {@link refresh}'s subjects. */
+  private readonly watches = new Set<TmuxWatch>();
 
   constructor(private readonly exec: TmuxExec) {}
 
@@ -441,8 +448,36 @@ export class TmuxMux implements MuxAdapter {
   /** The contract's watch over control mode plus a bounded listing. All of it lives in watch.ts. */
   watch(options: MuxWatchOptions): MuxSubscription {
     const subscription = new TmuxWatch(this.exec, options);
+    this.watches.add(subscription);
     subscription.start();
-    return subscription;
+    // The handle the caller holds is a WRAPPER, so closing it also drops this adapter's own reference
+    // — `close()` on the watch alone would leave a dead object in the set forever. It stays
+    // idempotent, which is what the contract asks of a subscription.
+    return {
+      close: () => {
+        this.watches.delete(subscription);
+        subscription.close();
+      },
+    };
+  }
+
+  /**
+   * Look now: every live watch resyncs its listing and re-arms its backstop from zero.
+   *
+   * With no watch running this resolves having done nothing, and that is correct rather than lazy —
+   * {@link snapshot} is a fresh invocation every time, so the contract's "the next snapshot reflects
+   * the current topology" needs no help. What refresh buys on tmux is the CENSUS being pulled
+   * forward, and a census only exists inside a watch.
+   *
+   * Watches that ended on their own are pruned here rather than tracked with a callback: the poker
+   * drops a dead stream without closing it (event-poker.ts § onDown), so a set that only shrank on
+   * `close()` would grow one entry per reconnect for the life of the process.
+   */
+  async refresh(): Promise<void> {
+    for (const watch of this.watches) {
+      if (watch.ended) this.watches.delete(watch);
+    }
+    await Promise.all([...this.watches].map((watch) => watch.refresh()));
   }
 
   /**

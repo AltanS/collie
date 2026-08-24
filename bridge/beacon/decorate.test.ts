@@ -58,6 +58,7 @@ class StubAdapter implements MuxAdapter {
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
+    topologyLatency: { kind: "push" },
   });
   readonly calls: RecordedCall[] = [];
   panes: MuxPane[] = [shellPane("%1"), shellPane("%2")];
@@ -70,6 +71,11 @@ class StubAdapter implements MuxAdapter {
   reachable(): Promise<boolean> {
     this.note("reachable");
     return Promise.resolve(true);
+  }
+
+  refresh(): Promise<void> {
+    this.note("refresh");
+    return Promise.resolve();
   }
 
   snapshot(): Promise<MuxSnapshot> {
@@ -184,13 +190,13 @@ async function paneOf(adapter: MuxAdapter, paneId: string): Promise<MuxPane> {
 describe("withAgentBeacons refuses an adapter that already sees", () => {
   test("an adapter declaring agentDetection is refused at construction", () => {
     const adapter = new StubAdapter();
-    adapter.capabilities = declareCapabilities({ supports: ["agentDetection"] });
+    adapter.capabilities = declareCapabilities({ supports: ["agentDetection"], topologyLatency: { kind: "push" } });
     expect(() => decorate(adapter, [])).toThrow(/already declares agentDetection/u);
   });
 
   test("an adapter declaring agentSessionRef is refused at construction", () => {
     const adapter = new StubAdapter();
-    adapter.capabilities = declareCapabilities({ supports: ["agentSessionRef"] });
+    adapter.capabilities = declareCapabilities({ supports: ["agentSessionRef"], topologyLatency: { kind: "push" } });
     expect(() => decorate(adapter, [])).toThrow(/already declares agentSessionRef/u);
   });
 });
@@ -221,6 +227,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     logo: true,
     reachable: true,
     snapshot: true,
+    refresh: true,
     readGrid: true,
     typeText: true,
     sendKeys: true,

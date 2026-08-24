@@ -30,7 +30,12 @@ import type { AgentStatus } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
-export type { MuxCapability, MuxCapabilityDeclaration, MuxSpaceCapacity } from "./capabilities.ts";
+export type {
+  MuxCapability,
+  MuxCapabilityDeclaration,
+  MuxSpaceCapacity,
+  MuxTopologyLatency,
+} from "./capabilities.ts";
 export { declareCapabilities, MUX_CAPABILITIES, supportsCapability } from "./capabilities.ts";
 export type { MuxIdentity, MuxIdentityProblem } from "./identity.ts";
 export { checkIdentitySet, idsLostBetween, isValidMuxId } from "./identity.ts";
@@ -321,6 +326,15 @@ export interface MuxSpaceRequest {
 // ── Learning that something changed ───────────────────────────────────────────
 
 /**
+ * Whether a phone is watching this collie right now.
+ *
+ * `watched` means a read arrived recently enough that somebody is plainly looking at the screen;
+ * `idle` means nobody is. The bridge decides which (bridge/state-engine.ts), and it is the ONLY
+ * thing the port carries about attention — not a device, not a count, not a session.
+ */
+export type MuxAttention = "watched" | "idle";
+
+/**
  * How a watcher is told to look again.
  *
  * THE PROMISE IS THE CONTRACT'S AND IT IS SMALL, on purpose: *after something changes, a callback
@@ -339,6 +353,19 @@ export interface MuxSpaceRequest {
 export interface MuxWatchOptions {
   /** Panes whose content/status to watch. Empty = topology only. */
   readonly panes: readonly string[];
+  /**
+   * Is somebody looking right now? Read by an adapter that CENSUSES, and ignored by one that pushes.
+   *
+   * A census costs a process and a round trip, so its cadence is a trade between an idle host and a
+   * watching operator — and the bridge is the only party that knows which of the two it is (a request
+   * arrived within the last few seconds). The port carries the fact, never the numbers: how much
+   * faster `watched` runs is the adapter's own decision, stated in its `topologyLatency` ceiling.
+   *
+   * A GETTER, not a value, and not a setter on the handle: the watch reads it exactly when it
+   * re-arms, so nothing has to be pushed at a subscription and no second lifecycle appears beside
+   * the one `close()` already owns. Absent ⇒ the adapter behaves as it did before attention existed.
+   */
+  attention?(): MuxAttention;
   /** Something about the pane/tab/space structure changed. Re-read the snapshot. */
   onTopologyChange(): void;
   /** This pane's content or status changed. Re-read it. */
@@ -392,6 +419,26 @@ export interface MuxAdapter {
 
   /** Every pane, space and tab of the configured target. The floor. */
   snapshot(): Promise<MuxSnapshot>;
+
+  /**
+   * **Look now.** Take one fresh listing and, if this adapter's watch is a census, reset it to its
+   * floor. After the returned promise resolves, the very next {@link snapshot} reflects the
+   * multiplexer's CURRENT topology.
+   *
+   * ON THE FLOOR, NOT A CAPABILITY, and the reason is that every multiplexer can already do it: it
+   * asks for nothing the adapter does not do on its own schedule anyway. What it buys is the
+   * schedule — an operator who just tapped, or just came back to the app, should not wait out a
+   * census interval to see a tab they renamed in their own terminal (ADR 0031).
+   *
+   * It CHANGES NOTHING. That is what lets `POST /api/refresh` be gated as a read and lets the live
+   * conformance probe call it against somebody's real session.
+   *
+   * It never throws for a multiplexer that is simply not answering — a refresh that could not happen
+   * is one stale interval, exactly like the poll it was trying to short-cut, and the disconnected
+   * banner already carries that news. An adapter whose snapshot is always a fresh round trip (Herdr)
+   * keeps this promise by resolving immediately, and says so in its own doc comment.
+   */
+  refresh(): Promise<void>;
 
   /** One pane's rendered screen. Needs `paneGrid`; `recent` past the viewport needs `gridScrollback`. */
   readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>>;

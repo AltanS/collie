@@ -1232,6 +1232,7 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
     supports: [...MUX_CAPABILITIES],
     unsupportedKeys: ["PageUp", "End"],
     notes: { gridScrollback: "developer prose about a capability this adapter HAS" },
+    topologyLatency: { kind: "push" },
   });
   const partial = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
@@ -1239,6 +1240,7 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
       agentSessionRef: "a multiplexer keeps no agent session log for Collie to read.",
       createSpace: "one collie drives one session here, so a new one would not appear at all.",
     },
+    topologyLatency: { kind: "bounded", ms: 12_000 },
   });
 
   test("capabilities are TOTAL — every name answered, so nothing reads as absent by omission", () => {
@@ -1265,7 +1267,11 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
     // `partial` declares nothing about spaces, and the wire says `many` — the fail-open direction,
     // where at worst a space strip shows one chip instead of hiding navigation that exists.
     expect(muxConfigBody({ mux: "partial", capabilities: partial }).spaces).toBe("many");
-    const single = declareCapabilities({ supports: ["paneGrid"], spaces: "one" });
+    const single = declareCapabilities({
+      supports: ["paneGrid"],
+      spaces: "one",
+      topologyLatency: { kind: "push" },
+    });
     expect(muxConfigBody({ mux: "single", capabilities: single }).spaces).toBe("one");
   });
 
@@ -1362,7 +1368,7 @@ describe("muxLogoResponse — serving an adapter's mark", () => {
 
 describe("bridgeConfigBody — the mux block is appended, never reordering what came before", () => {
   const base = { push: true, vapidPublicKey: "BKey", build: "abc123", mode: "solo" } as const;
-  const mux = { mux: "reference", capabilities: declareCapabilities({ supports: ["paneGrid"] }) };
+  const mux = { mux: "reference", capabilities: declareCapabilities({ supports: ["paneGrid"], topologyLatency: { kind: "push" } }) };
 
   test("no adapter in hand: no key at all, which a client reads as an older bridge", () => {
     expect("mux" in bridgeConfigBody({ ...base })).toBe(false);

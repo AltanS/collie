@@ -124,6 +124,26 @@ export class TmuxWatch implements MuxSubscription {
     this.end("closed");
   }
 
+  /** Whether this watch has already ended. Read by the adapter, which prunes what it holds. */
+  get ended(): boolean {
+    return this.closed;
+  }
+
+  /**
+   * The port's `refresh()`, for this watch: one census NOW, and the backstop re-armed from zero.
+   *
+   * Re-arming matters as much as the census does. Without it a refresh landing 4.9 s into the cycle
+   * would be followed by another listing 100 ms later — two round trips for one question — and the
+   * operator's own tap would not have moved the schedule it was trying to move.
+   */
+  async refresh(): Promise<void> {
+    if (this.closed) return;
+    await this.sync();
+    if (this.closed) return;
+    if (this.ticker !== null) this.clock.clearInterval(this.ticker);
+    this.ticker = this.clock.setInterval(() => void this.sync(), RESYNC_MS);
+  }
+
   /**
    * One census poll: read the herd, report a change, and reconcile the control clients.
    *

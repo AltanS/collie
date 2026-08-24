@@ -55,6 +55,30 @@ export const ZELLIJ_CENSUS_MIN_MS = 3000;
 /** The census ceiling: the longest a quiet herd waits. The bridge's own idle cadence. */
 export const ZELLIJ_CENSUS_MAX_MS = 12_000;
 
+// ── THE SECOND PAIR OF NUMBERS: while somebody is actually looking ───────────────────────────────
+//
+// The two above are the cadence for a host nobody is watching, and they are chosen against a cost:
+// a census is a process. But that trade changes completely the moment a phone is polling — the
+// operator is in front of the screen, the herd is already costing a snapshot poll every 1.5 s, and
+// a tab they renamed in their own terminal taking twelve seconds to appear reads as Collie being
+// broken rather than Collie being frugal.
+//
+// So the watch asks (`MuxWatchOptions.attention`) and runs the SAME adaptive algorithm between a
+// tighter pair. It stays adaptive rather than pinning to the floor: a herd nobody is changing is
+// quiet whether or not it is being watched, and doubling out to 3 s costs the operator nothing they
+// can perceive.
+//
+// The floor is the frontend's own hot cadence, and the ceiling is that cadence doubled — the point
+// past which a change would outlive two of the phone's polls and start reading as a stale screen.
+// `topologyLatency` still declares the IDLE ceiling, because a declaration must be the bound that
+// always holds and attention is not something a caller can promise (adapter.ts).
+
+/** The census floor while a phone is watching. The frontend's own hot cadence. */
+export const ZELLIJ_WATCHED_MIN_MS = 1500;
+
+/** The census ceiling while a phone is watching. */
+export const ZELLIJ_WATCHED_MAX_MS = 3000;
+
 /** A pending timer, as the platform hands one back. */
 export type WatchTimer = ReturnType<typeof setTimeout>;
 
@@ -114,6 +138,27 @@ export class ZellijWatch implements MuxSubscription {
     this.end("closed");
   }
 
+  /** Whether this watch has already ended. Read by the adapter, which prunes what it holds. */
+  get ended(): boolean {
+    return this.closed;
+  }
+
+  /**
+   * The port's `refresh()`, for this watch: one census NOW, and the interval back to its floor.
+   *
+   * The floor is whichever pair attention currently names, so a refresh from a phone that is plainly
+   * looking lands the next census 1.5 s later rather than 3 s later. Nothing here reports a change
+   * the census itself would not have — `refresh` is a schedule change, never a second source.
+   */
+  async refresh(): Promise<void> {
+    if (this.closed) return;
+    await this.census();
+    if (this.closed) return;
+    this.interval = this.bounds().floor;
+    if (this.timer !== null) this.clock.clearTimeout(this.timer);
+    this.timer = this.clock.setTimeout(() => void this.census(), this.interval);
+  }
+
   /**
    * One census: read the herd, report a change, and reconcile the stream against what still exists.
    *
@@ -157,10 +202,27 @@ export class ZellijWatch implements MuxSubscription {
     }
   }
 
+  /**
+   * The pair of numbers in force right now — see the header's second block.
+   *
+   * Asked per re-arm rather than captured at construction, so attention arriving or leaving takes
+   * effect at the next census with no subscription lifecycle of its own. A caller that supplied no
+   * getter gets the idle pair, which is exactly what this watch did before attention existed.
+   */
+  private bounds(): { readonly floor: number; readonly ceiling: number } {
+    return this.options.attention?.() === "watched"
+      ? { floor: ZELLIJ_WATCHED_MIN_MS, ceiling: ZELLIJ_WATCHED_MAX_MS }
+      : { floor: ZELLIJ_CENSUS_MIN_MS, ceiling: ZELLIJ_CENSUS_MAX_MS };
+  }
+
   /** Schedule the next census: back to the floor after a change, doubling while nothing moves. */
   private rearm(changed: boolean): void {
     if (this.closed) return;
-    this.interval = changed ? ZELLIJ_CENSUS_MIN_MS : Math.min(this.interval * 2, ZELLIJ_CENSUS_MAX_MS);
+    const { floor, ceiling } = this.bounds();
+    // Clamped into the pair from BOTH ends, which is what lets attention change under a running
+    // watch: an interval that had relaxed to 12 s while nobody looked is pulled down to the watched
+    // ceiling at the very next re-arm rather than doubling on from where it was.
+    this.interval = changed ? floor : Math.min(Math.max(this.interval * 2, floor), ceiling);
     if (this.timer !== null) this.clock.clearTimeout(this.timer);
     this.timer = this.clock.setTimeout(() => void this.census(), this.interval);
   }
