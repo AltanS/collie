@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pencil, XCircle } from "lucide-react";
+import { Monitor, Pencil, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -65,6 +65,8 @@ export function PaneActionsSheet({
   // What the multiplexer underneath can actually do to a pane (M10/06) — asked per row, below.
   const canRename = useMuxCapability("renamePane");
   const canClose = useMuxCapability("closePane");
+  const canFocus = useMuxCapability("setFocus");
+  const [focusing, setFocusing] = useState(false);
 
   // Reset to the action list — and reprefill the label — whenever the sheet opens on a (new) pane,
   // AND whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the
@@ -122,6 +124,34 @@ export function PaneActionsSheet({
     }
   }
 
+  /**
+   * Put this pane on the operator's own screen.
+   *
+   * The ONE act in the app that moves a terminal nobody is holding, which is why it is a row you
+   * tap and never a consequence of navigating (ADR 0031). No confirm: it is reversible by the
+   * operator's own keyboard, unlike the close below it.
+   *
+   * The sheet closes on success, because the answer to "show it in the terminal" is on the other
+   * screen and the operator is about to look there.
+   */
+  async function showInTerminal() {
+    if (!pane || focusing) return;
+    setFocusing(true);
+    try {
+      const res = await api.focusPane(pane.paneId, scope);
+      if (res.ok) {
+        setStatus(t("paneActions.showInTerminal.done"), "success");
+        onClose();
+      } else {
+        setStatus(describeApiError(res, t("paneActions.showInTerminal.failed")), "error");
+      }
+    } catch (e) {
+      setStatus(describeThrownError(e), "error");
+    } finally {
+      setFocusing(false);
+    }
+  }
+
   const confirming = !!pane && pending === pane.paneId;
 
   return (
@@ -158,6 +188,13 @@ export function PaneActionsSheet({
               onClick={() => setMode("rename")}
             />
           )}
+          {canFocus.capable && (
+            <ActionRow
+              icon={<Monitor className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("paneActions.showInTerminal.label")}
+              onClick={() => void showInTerminal()}
+            />
+          )}
           {canClose.capable && (
             <DestructiveActionRow
               icon={<XCircle className="size-4 shrink-0" />}
@@ -172,9 +209,9 @@ export function PaneActionsSheet({
           {/* An EMPTY sheet is the one case that must speak. Long-pressing a pane and being handed
               a blank box says nothing at all, so when every row is gone the adapter's own reason
               takes their place — hide the meaningless, explain the expected. */}
-          {!canRename.capable && !canClose.capable && (
+          {!canRename.capable && !canClose.capable && !canFocus.capable && (
             <p className="py-2 text-sm leading-snug text-muted-foreground">
-              {canRename.note || canClose.note || t("paneActions.empty.fallback")}
+              {canRename.note || canClose.note || canFocus.note || t("paneActions.empty.fallback")}
             </p>
           )}
         </div>

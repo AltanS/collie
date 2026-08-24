@@ -26,6 +26,10 @@ export const de: Dictionary = {
   "settings.haptics.title": "Vibration",
   "settings.haptics.description": "Ein kurzer Impuls bei Tastendruck oder Schnellantwort.",
 
+  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
+  "settings.followTerminal.title": "Terminal folgen",
+  "settings.followTerminal.description": "Öffne das Pane, das dein Terminal gerade zeigt. Das Handy bewegt dein Terminal nie von selbst — nur wenn du „Im Terminal anzeigen“ antippst.",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "Freisprechen",
   "settings.handsFree.description":
@@ -276,6 +280,9 @@ export const de: Dictionary = {
   "paneActions.close.label": "Pane schließen",
   "paneActions.close.confirm": "Erneut antippen zum Schließen",
   "paneActions.close.closing": "Schließt…",
+  "paneActions.showInTerminal.label": "Im Terminal anzeigen",
+  "paneActions.showInTerminal.done": "Im Terminal angezeigt",
+  "paneActions.showInTerminal.failed": "Konnte es nicht im Terminal anzeigen",
   "paneActions.empty.fallback": "Dieser Multiplexer bietet keine Aktionen für ein Pane.",
   "paneActions.status.renamed": "Umbenannt",
   "paneActions.status.labelCleared": "Label gelöscht",
@@ -596,6 +603,7 @@ export const de: Dictionary = {
     "Pane konnte vor dem Senden nicht gelesen werden — {mux} meldet: {detail}",
   "apiError.pane.close_failed": "Pane konnte nicht geschlossen werden: {reason}",
   "apiError.pane.rename_failed": "Pane konnte nicht umbenannt werden: {reason}",
+  "apiError.pane.focus_failed": "Das Pane konnte nicht im Terminal angezeigt werden: {reason}",
   "apiError.tab.create_failed": "Tab konnte nicht erstellt werden: {reason}",
   "apiError.tab.rename_failed": "Tab konnte nicht umbenannt werden: {reason}",
   "apiError.tab.close_failed": "Tab konnte nicht geschlossen werden: {reason}",

@@ -403,6 +403,19 @@ export function closePane(paneId: string, scope?: Scope): Promise<ActionResponse
   });
 }
 
+/**
+ * Show this pane on the OPERATOR's own terminal — the one call in this file that moves a screen
+ * nobody is holding.
+ *
+ * It carries no body: the pane is the whole request. Only ever called from a named tap ("Show in
+ * terminal"), never from navigation — see components/pane-actions-sheet.tsx.
+ */
+export function focusPane(paneId: string, scope?: Scope): Promise<ActionResponse> {
+  return req<ActionResponse>(withScope(`/api/pane/${encodeURIComponent(paneId)}/focus`, scope), {
+    method: "POST",
+  });
+}
+
 /** Set (or clear) a pane's label. An empty/blank `label` clears it (the bridge sends `null` on). */
 export function renamePane(
   paneId: string,

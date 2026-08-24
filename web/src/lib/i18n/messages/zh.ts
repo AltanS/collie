@@ -26,6 +26,10 @@ export const zh: Dictionary = {
   "settings.haptics.title": "触感反馈",
   "settings.haptics.description": "按键或快速回复时轻微震动。",
 
+  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
+  "settings.followTerminal.title": "跟随终端",
+  "settings.followTerminal.description": "打开终端当前显示的窗格。除非你点按“在终端中显示”，手机不会移动你的终端。",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "免提语音",
   "settings.handsFree.description":
@@ -258,6 +262,9 @@ export const zh: Dictionary = {
   "paneActions.close.label": "关闭窗格",
   "paneActions.close.confirm": "再次点击以关闭",
   "paneActions.close.closing": "正在关闭…",
+  "paneActions.showInTerminal.label": "在终端中显示",
+  "paneActions.showInTerminal.done": "已在终端中显示",
+  "paneActions.showInTerminal.failed": "无法在终端中显示",
   "paneActions.empty.fallback": "此多路复用器不提供任何窗格操作。",
   "paneActions.status.renamed": "已重命名",
   "paneActions.status.labelCleared": "标签已清除",
@@ -566,6 +573,7 @@ export const zh: Dictionary = {
   "apiError.prompt.read_failed": "发送前无法读取窗格 — {mux} 返回：{detail}",
   "apiError.pane.close_failed": "无法关闭窗格：{reason}",
   "apiError.pane.rename_failed": "无法重命名窗格：{reason}",
+  "apiError.pane.focus_failed": "无法在终端中显示该窗格：{reason}",
   "apiError.tab.create_failed": "无法创建标签页：{reason}",
   "apiError.tab.rename_failed": "无法重命名标签页：{reason}",
   "apiError.tab.close_failed": "无法关闭标签页：{reason}",

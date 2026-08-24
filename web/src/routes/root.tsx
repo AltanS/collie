@@ -3,6 +3,7 @@ import { Outlet, useLoaderData, useParams, useRouteError, useRouteLoaderData } f
 import { intervalFor, usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
 import { useAgentTransitions } from "@/hooks/use-transitions";
+import { useFollowTerminal } from "@/hooks/use-follow-terminal";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
@@ -60,6 +61,10 @@ export function RootLayout() {
   // detector inside the router context.
   usePollBusy();
   useAgentTransitions(data.agents, paneId ?? null);
+  // "Follow terminal", when the operator turned it on: the pane the terminal shows becomes the pane
+  // the phone shows. Mounted here because this is where the snapshot is; it does nothing at all
+  // while the setting is off, which is its default.
+  useFollowTerminal(data, paneId);
   usePushSetup();
 
   // A viewport-height flex column: the top banners (when shown) are in-flow rows at the top and the

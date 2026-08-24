@@ -133,6 +133,59 @@ describe("New space — createSpace", () => {
   });
 });
 
+// ── How many spaces the multiplexer can hold → `spaces` ──────────────────────
+//
+// NOT a capability — a declared fact about the multiplexer's shape — but the same rule applies to it
+// and for the same reason: the UI reacts to the DECLARATION and never to a name, and an absent
+// answer fails OPEN so a level that exists is never hidden.
+
+/** Serve an `/api/config` whose mux block declares how many spaces the multiplexer can hold. */
+function declaresSpaces(spaces: "one" | "many"): void {
+  const mux: MuxConfig = { name: "reference", capabilities: {}, unsupportedKeys: [], notes: {}, spaces };
+  server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux })));
+}
+
+describe("The space strip — `spaces`", () => {
+  function strip(onBack?: () => void) {
+    render(
+      <SpaceStrip
+        workspaces={[workspace]}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewSpace={vi.fn()}
+        {...(onBack ? { onBack } : {})}
+      />,
+    );
+  }
+
+  it("drops the space chips where the multiplexer can only ever have one", async () => {
+    declaresSpaces("one");
+    strip();
+    await waitFor(() => expect(screen.queryByText("webapp")).toBeNull());
+    expect(screen.queryByText("Spaces")).toBeNull();
+  });
+
+  it("keeps the way back even with the chips gone", async () => {
+    declaresSpaces("one");
+    strip(vi.fn());
+    expect(await screen.findByText("Back")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("webapp")).toBeNull());
+  });
+
+  it("keeps the chips where the multiplexer can hold several", async () => {
+    declaresSpaces("many");
+    strip();
+    expect(await screen.findByText("webapp")).toBeInTheDocument();
+  });
+
+  it("a bridge that says nothing keeps them too — absent reads as many", async () => {
+    saysNothing();
+    strip();
+    expect(await screen.findByText("webapp")).toBeInTheDocument();
+  });
+});
+
 // ── Tab creation → createTab ─────────────────────────────────────────────────
 
 function tabStrip() {
@@ -195,6 +248,20 @@ describe("Pane actions — renamePane and closePane", () => {
     expect(screen.getByText("Close pane")).toBeInTheDocument();
   });
 
+  it("offers 'Show in terminal' only where the multiplexer can move focus", async () => {
+    declares({ renamePane: true, closePane: true, setFocus: true });
+    paneSheet();
+    expect(await screen.findByText("Show in terminal")).toBeInTheDocument();
+  });
+
+  it("drops 'Show in terminal' where it is declared absent — the other rows stay", async () => {
+    declares({ renamePane: true, closePane: true, setFocus: false });
+    paneSheet();
+    await waitFor(() => expect(screen.queryByText("Show in terminal")).toBeNull());
+    expect(screen.getByText("Rename")).toBeInTheDocument();
+    expect(screen.getByText("Close pane")).toBeInTheDocument();
+  });
+
   it("drops ONLY the row whose capability is missing", async () => {
     declares({ renamePane: false, closePane: true });
     paneSheet();
@@ -204,7 +271,7 @@ describe("Pane actions — renamePane and closePane", () => {
 
   it("explains rather than handing back an empty sheet when nothing is left", async () => {
     declares(
-      { renamePane: false, closePane: false },
+      { renamePane: false, closePane: false, setFocus: false },
       { renamePane: "this multiplexer will not label or kill a pane from outside." },
     );
     paneSheet();

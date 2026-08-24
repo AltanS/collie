@@ -2,6 +2,7 @@ import * as React from "react";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { holdFollowTerminal } from "@/lib/follow-terminal";
 import { Button } from "@/components/ui/button";
 import { t as translate } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -40,6 +41,16 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   const [dragY, setDragY] = React.useState(0);
   const titleId = React.useId();
   useDialogFocus(open, panelRef);
+
+  // An open sheet holds "Follow terminal" off, and it is done HERE — once, for every sheet in the
+  // app — rather than at each call site: a sheet is a decision the operator is in the middle of, and
+  // a jump to another pane while one is open would answer it for them. Keyed by this instance's id,
+  // so two open sheets are two holds and closing one does not release the other; released by the
+  // cleanup, so a sheet unmounted while open cannot strand one.
+  React.useEffect(() => {
+    holdFollowTerminal(`sheet:${titleId}`, open);
+    return () => holdFollowTerminal(`sheet:${titleId}`, false);
+  }, [open, titleId]);
 
   // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
   // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on. A
@@ -203,6 +214,16 @@ export function SideSheet({
   const panelRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
   useDialogFocus(open, panelRef);
+
+  // An open sheet holds "Follow terminal" off, and it is done HERE — once, for every sheet in the
+  // app — rather than at each call site: a sheet is a decision the operator is in the middle of, and
+  // a jump to another pane while one is open would answer it for them. Keyed by this instance's id,
+  // so two open sheets are two holds and closing one does not release the other; released by the
+  // cleanup, so a sheet unmounted while open cannot strand one.
+  React.useEffect(() => {
+    holdFollowTerminal(`sheet:${titleId}`, open);
+    return () => holdFollowTerminal(`sheet:${titleId}`, false);
+  }, [open, titleId]);
 
   // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
   // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on. A
