@@ -16,6 +16,67 @@ scripts/capture-fixture.sh <paneId> <name> [lines]   # paneIds: /api/snapshot
 (`less -R <file>`) for private content before `git add` — prefer generating states in a sandbox
 pane over capturing real work sessions.
 
+## Codex corpus (captured 2026-08-22, Codex v0.149.0, sandbox panes)
+
+Byte-faithful `format:ansi` captures with one sanitization pass, every substitution
+LENGTH-PRESERVING so row padding stays byte-identical: the operator's username and hostname
+(`collie-user`, `collies-macbook-pro-1` — painted in the shell prompt line and host config
+path, which no sandbox can avoid), the Darwin per-user temp-dir token
+(`sanitizedtempdirtoken000000000`), and the Codex session UUIDs from `codex resume` lines
+(`00000000-0000-7000-8000-…`). Codex's chrome is boxless: a
+`› ` prompt row (wrapping onto two-space-indented continuation rows) with a dot-separated status
+row beneath (`<model> · <cwd> · Context N% left · weekly N% left`); every section of a screen is
+separated by exactly one blank row. Approval dialogs need `-c approvals_reviewer=user` — with
+`auto_review` (the capture host's default) eligible requests route through a reviewer subagent
+and the observed commands were approved with no dialog painted.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--trust-prompt.txt` | First screen in an untrusted directory: trust paragraph, `› 1. Yes, continue / 2. No, quit`, `Press enter to continue`. Digit 2 live-probed: quit immediately | `blocked` |
+| `codex--fresh-idle.txt` | Welcome banner box, tips, empty `› Ask Codex to do anything` composer, status row | `idle` |
+| `codex--draft.txt` | One-line draft on the `› ` row | `idle` |
+| `codex--draft-wrapped.txt` | Long draft word-wrapped onto a two-space-indented continuation row | `idle` |
+| `codex--working.txt` | `• Working (3s • esc to interrupt)` above a still-visible composer (Codex queues mid-turn) | `working` |
+| `codex--approval-exec.txt` | Exec approval: header, Environment/Reason, `$ command`, options `1. Yes, proceed (y)` / `2. …don't ask again… (p)` / `3. No… (esc)`, enter/esc footer. Digits 1 and 3 live-probed (1 ran the command, 3 rejected it — file verified absent); `y` probed too | `blocked` |
+| `codex--ask-fruit.txt` | `request_user_input` card: `Question 1/1` header, options with descriptions plus the auto-added `None of the above`, notes footer. Digit live-probed: answers AND submits | `blocked` |
+| `codex--ask-wizard-q1.txt` | Two-question set, `Question 1/2`; footer adds `←/→ to navigate questions`. Digit probed: answers and advances | `blocked` |
+| `codex--ask-wizard-q2.txt` | Same set, `Question 2/2`; footer `enter to submit all`. Digit probed: submits the whole set | `blocked` |
+| `codex--ask-notes-focused.txt` | Notes box open (`› Add notes`, footer `tab or esc to clear notes`): a digit would TYPE — the adapter refuses to raw | `blocked` |
+## Grok corpus (live panes 2026-08-21–23)
+
+Grok's composer is a rounded box at the tail: `╭─…─╮` / `│ ❯ … │` / `╰─ <status> ─╯`, then a blank and a key-hint row. The status run is opaque (display name, optional effort, optional permission mode). User-message bubbles use **square** corners (`┌ ┐ └ ┘`) and must never be read as the composer. **All identifying content genericized** per the repo's public-repo rule.
+
+`grok--fresh-idle` and `grok--draft-single` are byte-faithful `pane.read format:ansi` captures from a sandbox pane on 2026-08-23 (Darwin temp-dir token length-preserved). The remaining Tier-1 chrome files (`grok--draft-wrapped`, `grok--working`, `grok--done`, `grok--user-bubble`) are **structure fixtures**: plain UTF-8, LF, no ESC. Live Grok splits the bottom-border status into three SGR runs (rule, status, rule); that shape is pinned in [`grok/markers.test.ts`](../../lib/harness/grok/markers.test.ts) against a reconstructed ANSI buffer from a 2026-08-21 probe. Dialog captures below **are** byte-faithful `format:ansi` from a sandbox pane the same day.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `grok--fresh-idle.txt` | Empty `│ ❯ │` box, status in the bottom border, idle hint row (`Shift+Tab:mode`). Byte-faithful `format:ansi` 2026-08-23 | `idle` |
+| `grok--draft-single.txt` | Stranded one-line draft `testing stuff` on the ❯ row; hint bar adds `Enter:send`. Byte-faithful `format:ansi` 2026-08-23 | `idle` |
+| `grok--draft-wrapped.txt` | Draft wrapped onto a continuation row inside the box | `idle` |
+| `grok--working.txt` | Mid-turn; empty box; working hint row under the box | `working` |
+| `grok--startup.txt` | Fresh-session welcome screen: banner box (logo, menu) above an idle composer whose under-box row is the bare `[stable]` channel chip, not the hint bar. composerReady must be TRUE. Byte-faithful `format:ansi` 2026-08-22 | `idle` |
+| `grok--done.txt` | Square user-message bubble ABOVE an idle composer — the bubble must survive the strip | `idle` |
+| `grok--user-bubble.txt` | Torn frame: square bubble, no composer. `locateComposer` must return null | — |
+| `grok--permission-rm.txt` | Bash `rm` permission card at the tail; `●` on option 1 (always-approve). Composer replaced. Byte-faithful `format:ansi` 2026-08-21 | `blocked` |
+| `grok--permission-rm-moved.txt` | Same card, `Tab` once, `●` on option 2 (Yes, proceed) | `blocked` |
+| `grok--permission-rm-feedback.txt` | Same card, `●` on option 3 (reject / type feedback). Digit 3 live-probed: rejects immediately; emitted as No, reject | `blocked` |
+| `grok--permission-edit.txt` | File-write permission card, FOUR options (`1` always-approve, `2` allow-all-edits-this-session, `3` Yes, `4` No, reject); footer `1/4:select`. Digits 3 and 4 live-probed 2026-08-22 (3 confirms once, does not persist; 4 rejects immediately). Byte-faithful `format:ansi` | `blocked` |
+| `grok--plan-approval.txt` | Plan preview above a composer with placeholder `Build anything`; footer `a:approve` / `q:quit plan`. Byte-faithful `format:ansi` 2026-08-21 | `blocked` |
+| `grok--ask-color.txt` | `ask_user_question` card: three color options + `z` free-text; footer `Tab:next answer`. Digit `2` live-probed as submit. Composer replaced | `blocked` |
+| `grok--ask-color-moved.txt` | Same card after `Tab` | `blocked` |
+| `grok--ask-wizard-q1.txt` | Two-question ask, step `[1/2]` Which layout?; `Enter:select` | `blocked` |
+| `grok--ask-wizard-q2.txt` | Same questionnaire, `[2/2]` Dark mode?; `Enter:submit` | `blocked` |
+| `grok--ask-multi.txt` | Checkbox ask (`[ ]`). Digit submits — stay raw | `blocked` |
+| `grok--ask-multi-checked.txt` | Same card, Pepperoni `[x]` after Tab+Space | `blocked` |
+| `grok--ask-size.txt` | Two-option radio + `z` row | `blocked` |
+| `grok--ask-z-focused.txt` | `z (●) ❯` empty; footer `Esc:back` | `blocked` |
+| `grok--ask-z-typed.txt` | `z (●) ❯ med` | `blocked` |
+| `grok--ask-esc-park.txt` | Card still up; footer `Tab/Space:question`. Bare digit probed 2026-08-22: silently swallowed; adapter emits `["Tab","N"]` (Tab re-enters, probed 2x) | `blocked` |
+| `grok--ask-z-parked.txt` | Esc from a focused `z`: z row repaints idle, footer says `Tab:next answer`, but inner hint reads `Enter:edit` — keyboard still on the free-text field; a digit TYPES (probed 2x). Buttons must lock. Byte-faithful `format:ansi` 2026-08-22 | `blocked` |
+| `grok--plan-tab-prompt.txt` | Plan review after `Tab:prompt`; composer empty; footer `Tab:plan` / `Esc:back` | `blocked` |
+| `grok--plan-request-changes.txt` | Same geometry after `s` (request changes = type in composer) | `blocked` |
+
+
 ## Corpus (captured 2026-07-04, Claude Code TUI as of that date)
 
 | Fixture | State / what's in it | Herdr status |

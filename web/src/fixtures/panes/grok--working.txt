@@ -1,0 +1,9 @@
+Sandbox pane — mid-turn, composer still at the tail with the working hint row.
+ ◆ Thought for 1.2s
+
+  ╭────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                  │
+  ╰───────────────────────────────────────────────── Grok 4.6 (high) · always-approve ─╯
+
+  Ctrl+e:expand thinking  │  Space:prompt  │  Esc:cancel  │  Ctrl+b:send to bg  │  Ctrl+.:shortcuts
+

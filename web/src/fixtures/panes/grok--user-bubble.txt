@@ -1,0 +1,6 @@
+Torn frame: a user message bubble with no composer at the tail.
+
+ ┌─────────────────────────────────────────────────────────┐
+ │   ❯ hello from a user bubble                            │
+ └─────────────────────────────────────────────────────────┘
+

@@ -239,10 +239,11 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
   // nothing). What gates these grammars is the registry lookup, not the string "claude".
   it("leaves an agent with no adapter as a single untouched raw block (conservative gating)", () => {
     const lines = fixtureLines("claude--select-menu.txt");
-    const blocks = buildBlocks(lines, { agent: "codex" });
+    // opencode: a real agent kind with NO adapter (codex graduated to one and no longer works here).
+    const blocks = buildBlocks(lines, { agent: "opencode" });
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
-    expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false); // NO menu lifting for codex
+    expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false); // NO menu lifting without an adapter
     expect(blocks[0]!.lines).toBe(lines); // untouched — same reference
   });
 

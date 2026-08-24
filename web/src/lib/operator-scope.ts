@@ -5,7 +5,7 @@
 // The rule and its reasoning are ADR 0018's; this module is only where it is computed.
 
 /** The catalog's own names for the agent families a scope may address. Pinned against CATALOG. */
-export const AGENT_FAMILIES = ["claude", "codex", "pi", "opencode", "omp"] as const;
+export const AGENT_FAMILIES = ["claude", "codex", "pi", "opencode", "omp", "grok"] as const;
 
 const FAMILIES: ReadonlySet<string> = new Set<string>(AGENT_FAMILIES);
 
@@ -36,6 +36,9 @@ export function canonicalAgent(key: string): string {
   // `omp` is its own prefix — no other agent string in the catalog starts with it, and it must NOT
   // be reached by the `pi` rules above: oh-my-pi ships a different command set from pi.dev's.
   if (key.startsWith("omp")) return "omp";
+  // Catalog-only. Must not be copied into adapterFor — #99: prefix-matching there
+  // would attach Grok's chrome strip (and, later, any dialog grammars) to any `grok*` agent string.
+  if (key.startsWith("grok")) return "grok";
   return key;
 }
 
