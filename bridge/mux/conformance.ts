@@ -505,7 +505,7 @@ const focusIsReportedHonestly: MuxReadCheck = {
   },
 };
 
-const spaceShapeMatchesTheWorld: MuxReadCheck = {
+const spaceCapacityMatchesTheWorld: MuxReadCheck = {
   name: "a multiplexer that declares one space has exactly one",
   async run(adapter) {
     if (adapter.capabilities.spaces !== "one") return [];
@@ -532,7 +532,7 @@ export const MUX_READ_ONLY_CHECKS: readonly MuxReadCheck[] = [
   undeclaredPaneFactsAreAbsent,
   gridReadAnswersTheContract,
   focusIsReportedHonestly,
-  spaceShapeMatchesTheWorld,
+  spaceCapacityMatchesTheWorld,
 ];
 
 // ── The world checks (fixture only — these write) ─────────────────────────────

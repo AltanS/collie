@@ -105,16 +105,16 @@ export interface MuxCapabilityDeclaration {
    * both the fail-open direction and the harmless one: a space strip over one space is a strip
    * nobody needed, while a hidden strip over three spaces is navigation the operator cannot reach.
    */
-  readonly spaces: MuxSpaceShape;
+  readonly spaces: MuxSpaceCapacity;
 }
 
 /**
- * How many spaces a multiplexer can hold — the declared shape of its world.
+ * How many spaces a multiplexer can hold — declared, because the UI reacts to it.
  *
  * Two values and no number: the question the UI asks is "is there a level above the tab strip?", and
  * a count would invite reading a momentary snapshot as a permanent shape.
  */
-export type MuxSpaceShape = "one" | "many";
+export type MuxSpaceCapacity = "one" | "many";
 
 /** What an adapter passes to {@link declareCapabilities}. Anything omitted is declared ABSENT. */
 export interface MuxCapabilityInput {
@@ -128,7 +128,7 @@ export interface MuxCapabilityInput {
    * (fail-closed), while an unanswered SHAPE must leave every level reachable (fail-open). The same
    * rule the phone applies to an absent `mux` block, applied here so the two ends cannot disagree.
    */
-  readonly spaces?: MuxSpaceShape;
+  readonly spaces?: MuxSpaceCapacity;
 }
 
 /**
