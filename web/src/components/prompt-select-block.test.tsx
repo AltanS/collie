@@ -530,3 +530,35 @@ describe("PromptSelectBlock — the feedback input row", () => {
     expect(mockSendReply).toHaveBeenCalledWith("w1:p1", "use a switch", false, undefined);
   });
 });
+
+describe("PromptSelectBlock — Grok's z row is not Claude's plan-feedback composer", () => {
+  const grokAsk: PromptModel = {
+    question: "Pick a size?",
+    family: "select",
+    options: [
+      { label: "Small", keys: ["1"] },
+      { label: "Large", keys: ["2"] },
+    ],
+    feedback: { key: "z", focused: false, text: "", purpose: "free-text" },
+    signature: "pick-a-size-region",
+    coreSignature: "pick-a-size-core",
+  };
+
+  it("does not offer Tell Claude what to change", () => {
+    render(<PromptSelectBlock prompt={grokAsk} onAction={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Tell Claude what to change/ })).toBeNull();
+    expect(screen.queryByText(/Claude keeps planning/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Small/ })).toBeEnabled();
+  });
+
+  it("locks the options while z has the keyboard, without the Claude banner", () => {
+    const focused = {
+      ...grokAsk,
+      feedback: { key: "z", focused: true, text: "", purpose: "free-text" as const },
+    };
+    render(<PromptSelectBlock prompt={focused} onAction={vi.fn()} />);
+    expect(screen.getByText(/free-text row has the keyboard/)).toBeInTheDocument();
+    expect(screen.queryByText(/feedback box has the keyboard/)).toBeNull();
+    for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+  });
+});

@@ -110,6 +110,13 @@ export async function submitPromptFeedback(
 ): Promise<PromptActionResult> {
   const row = args.prompt.feedback;
   if (!row || row.focused || row.text !== "") return { status: "changed" };
+  // Grok's `z` row is a custom answer, not Claude's deny-with-feedback input. The sequence
+  // below (digit → focus → type → Enter) was measured on Claude Code; running it on a
+  // free-text row would send the wrong key and the wrong Enter. The phone locks the option
+  // buttons while that row is focused and leaves typing to the terminal.
+  if (row.purpose === "free-text") {
+    return { status: "error", error: "This dialog's free-text row is not typed from the phone" };
+  }
   const text = sanitizeTypedText(args.text, FEEDBACK_MAX_LENGTH);
   if (text.length === 0) return { status: "error", error: "Nothing to send" };
 

@@ -7,6 +7,7 @@ import { splitLines } from "../../blocks";
 import {
   composerBottomText,
   composerContText,
+  composerGhost,
   isBlank,
   isComposerTop,
   lineText,
@@ -26,6 +27,11 @@ const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes
 function row(name: string, i: number): string {
   const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
   return rstrip(lineText(lines[i]!));
+}
+
+/** The same row STYLED — `composerGhost` reads the segments' colours, not the joined text. */
+function styledRow(name: string, i: number) {
+  return splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")))[i]!;
 }
 
 describe("lineText / isBlank / rstrip", () => {
@@ -54,6 +60,39 @@ describe("composerBottomText", () => {
     expect(composerBottomText(row("omp--menu-dismissed.txt", 20))).toBeNull(); // `╰───┴───╯`
     expect(composerBottomText(row("omp--select-menu.txt", 55))).toBeNull(); // Ask box `╰───╯`
     expect(composerBottomText(row("omp--done--tool-result.txt", 41))).toBeNull(); // tool box `╰───╯`
+  });
+});
+
+describe("composerGhost — omp's inline completion suggestion", () => {
+  const CORNER = "\x1b[38;2;74;80;88m";
+  const SUGGEST = "\x1b[38;2;111;115;119m";
+  const PAD = " ".repeat(10);
+
+  it("claims the trailing coloured run that follows the operator's own text", () => {
+    const borderRow = `${CORNER}╰─ \x1b[0mlist the files in this repo${SUGGEST}sitory\x1b[0m${PAD}${CORNER} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(borderRow))[0]!)).toBe("sitory");
+  });
+
+  it("reads it off the real capture, and leaves the plain one alone", () => {
+    expect(composerGhost(styledRow("omp--draft-ghost-suggestion.txt", 27))).toBe("sitory");
+    expect(composerGhost(styledRow("omp--draft-single.txt", 27))).toBe("");
+    expect(composerGhost(styledRow("omp--fresh-idle.txt", 27))).toBe("");
+  });
+
+  // Both of these keep a real draft whole. A wrongly-claimed ghost SHORTENS the text the reply guard
+  // verifies, so every ambiguous row must claim nothing.
+  it("claims nothing when the row carries no unstyled text to anchor the run against", () => {
+    const borderRow = `${SUGGEST}╰─ list the files in this repo${PAD} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(borderRow))[0]!)).toBe("");
+  });
+
+  it("claims nothing when the coloured run is not at the end of the draft", () => {
+    const borderRow = `${CORNER}╰─ \x1b[0m${SUGGEST}red\x1b[0m then plain text${PAD}${CORNER} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(borderRow))[0]!)).toBe("");
+  });
+
+  it("is not a border predicate — a row that is not the bottom border has no ghost", () => {
+    expect(composerGhost(splitLines(parseAnsi(`${SUGGEST}● Wrote the file\x1b[0m`))[0]!)).toBe("");
   });
 });
 

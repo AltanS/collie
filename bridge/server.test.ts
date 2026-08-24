@@ -75,6 +75,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       codex: ["/nope/codex"],
       pi: ["/nope/pi"],
       opencode: ["/nope/opencode"],
+      grok: ["/nope/grok"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
