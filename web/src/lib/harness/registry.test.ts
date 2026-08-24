@@ -12,12 +12,14 @@ describe("hasBlockGrammar", () => {
   // and does not claim to. What this predicate actually answers is "does an adapter exist".
   it("is true for every registered adapter", () => {
     expect(hasBlockGrammar("claude")).toBe(true);
+    expect(hasBlockGrammar("codex")).toBe(true);
     expect(hasBlockGrammar("omp")).toBe(true);
     expect(hasBlockGrammar("grok")).toBe(true);
   });
 
   it("is false for every unregistered agent (no adapter ⇒ raw mirror)", () => {
-    for (const agent of ["codex", "opencode", "pi", "shell", "unknown"]) {
+    // Exact strings only: the codex ADAPTER must not leak to variant spellings (#99).
+    for (const agent of ["opencode", "pi", "shell", "unknown", "Codex", "codex-cli"]) {
       expect(hasBlockGrammar(agent)).toBe(false);
     }
   });

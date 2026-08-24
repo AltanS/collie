@@ -4,7 +4,7 @@
 // read through a tolerant lookup) and deliberately NOT on the harness adapter registry: an adapter
 // is DETECTION only — grammars for lifting dialogs out of a terminal buffer — and a list of English
 // phrases is content policy, not detection. Bolting these onto HarnessAdapter would also strand
-// codex/pi/opencode, which have no adapter at all (they run the raw-mirror fallback) yet still want
+// pi/opencode, which have no adapter at all (they run the raw-mirror fallback) yet still want
 // quick replies. Keeping them here means a per-agent divergence later is a data edit, not a refactor.
 //
 // The split that actually matters TODAY is agent vs shell, not agent vs agent: "yes"/"continue" mean

@@ -179,6 +179,9 @@ self_dnsname() {
 }
 
 bridge_url() {
+  # An explicit COLLIE_PUBLIC_URL is the operator naming a front door Collie didn't publish —
+  # a reverse proxy, or a `tailscale serve` on a port that isn't 443. Nothing here can infer it.
+  if [ -n "${COLLIE_PUBLIC_URL:-}" ]; then echo "${COLLIE_PUBLIC_URL%/}"; return; fi
   local name; name="$(self_dnsname)"
   if [ -z "$name" ]; then echo "http://127.0.0.1:${PORT} (Tailscale name unavailable)"; return; fi
   if [ "$SERVE_MODE" = "http" ]; then echo "http://${name}:${PORT}"; else echo "https://${name}"; fi
