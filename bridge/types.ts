@@ -3,7 +3,7 @@
 
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
-import type { MuxCapability } from "./mux/capabilities.ts";
+import type { MuxCapability, MuxSpaceCapacity } from "./mux/capabilities.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
 // entry shape from here too, without reaching into an adapter module.
@@ -454,6 +454,16 @@ export interface MuxConfig {
    * come from — the adapter wrote them, they name the multiplexer, and they never blame Collie.
    */
   notes: Partial<Record<MuxCapability, string>>;
+  /**
+   * How many spaces this multiplexer can hold — `"one"` or `"many"`, straight off the adapter's
+   * declaration (bridge/mux/capabilities.ts).
+   *
+   * Not a capability and not a count of what exists right now: it is what the multiplexer CAN have.
+   * The phone drops the space strip on `"one"`, so an ABSENT value (an older bridge) must read as
+   * `"many"` — the fail-open direction, where at worst a strip shows one chip, instead of hiding
+   * navigation the operator needs.
+   */
+  spaces?: MuxSpaceCapacity;
   /**
    * Where this multiplexer's mark is served — {@link MUX_LOGO_PATH}, or absent.
    *

@@ -503,7 +503,9 @@ describe("solo zero-tax — routes", () => {
   test("server.ts registers exactly today's routes", () => {
     expect(declaredRoutes()).toEqual([
       "/",
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history))?$/",
+      // `focus` is the pane action that moves the OPERATOR's own terminal, and it is named here for
+      // the reason every other one is: a route arrives on purpose or it does not arrive.
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|focus))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       "/api/config",
       // Device pairing (bridge/pairing.ts) — a SOLO feature that legitimately extends this list.

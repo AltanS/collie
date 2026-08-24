@@ -52,7 +52,7 @@ export function packRouteFor(pathname: string): string | null {
  * but not across a link (or, worse, the reverse).
  */
 const FORWARDABLE: readonly RegExp[] = [
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history))?$/,
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|focus))?$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
   /^workspace$/,
