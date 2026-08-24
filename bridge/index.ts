@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { ActivityLedger } from "./activity.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, type Config } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
 import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
@@ -35,7 +35,15 @@ const UPDATE_FIRST_DELAY_MS = 90_000;
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
-const cfg = loadConfig();
+// loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
+// reason alone — a stack trace here buries the one line the operator needs.
+let cfg: Config;
+try {
+  cfg = loadConfig();
+} catch (err) {
+  console.error(`[bridge] FATAL: ${(err as Error).message}`);
+  process.exit(1);
+}
 
 // Ensure the state dir exists with private (0700) perms before push/snooze/uploads write into it —
 // it holds push subscription endpoints and uploaded images, so keep it owner-only.

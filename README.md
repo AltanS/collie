@@ -102,12 +102,14 @@ The sharp edges:
 - **Every write is appended to `<state-dir>/audit.log`** — replies, keys, uploads, pane and tab
   create/close. A trail is not a gate (details:
   [ARCHITECTURE.md §6](./ARCHITECTURE.md#6-security-model)).
-- **The defenses:** loopback bind only, never `0.0.0.0`; exactly one hardened front door —
+- **The defenses:** loopback bind only, never `0.0.0.0` (the bridge refuses to start on a wide bind
+  unless you set `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`); exactly one hardened front door —
   `tailscale serve` or a conforming reverse proxy, never `funnel` and never a bare port; a
   same-origin gate and a strict CSP, with pane output rendered as React text nodes rather than
-  `innerHTML`. Two settings are yours to switch on, and you should: `COLLIE_TRUSTED_USER` rejects any
-  tailnet login but yours, and `COLLIE_PUBLIC_HOSTS` blocks DNS rebinding (effectively mandatory
-  under `COLLIE_SERVE_MODE=http`). Authorising individual *devices* needs a proxy in front — see
+  `innerHTML`. Host-header validation is on by default and fails closed (`COLLIE_ALLOW_ANY_HOST=1`
+  turns it off). `COLLIE_TRUSTED_USER` rejects a mismatching *or missing* `Tailscale-User-Login`
+  (tagged nodes get no header; `COLLIE_TRUSTED_USER_OPTIONAL=1` restores the old missing-header
+  pass). Authorising individual *devices* needs a proxy in front — see
   [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 > 🚫 **Never `tailscale funnel` this** — funnel exposes it to the public internet; `serve` keeps it
