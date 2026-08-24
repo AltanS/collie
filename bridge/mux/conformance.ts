@@ -32,8 +32,9 @@
 // {@link MUX_WORLD_CHECKS}, which only ever runs against a fixture's fake world.
 //
 // WHAT AN ADAPTER OWES THIS SUITE is one {@link MuxConformanceFixture}: how to build itself against
-// an injected transport, and how to make that transport do the five things no adapter can simulate
-// from the outside (reconnect, mux restart, out-of-band rename, changed content, a pane dying).
+// an injected transport, and how to make that transport do the six things no adapter can simulate
+// from the outside (reconnect, mux restart, out-of-band rename, changed content, a pane dying, and a
+// structure change nobody announced).
 // Adding tmux (M10/04) or zellij (M10/05) is that fixture plus a registry entry — never a test file.
 
 import { MUX_CAPABILITIES, type MuxCapability } from "./capabilities.ts";
@@ -66,8 +67,8 @@ export interface MuxWrite {
 }
 
 /**
- * One adapter, built against a transport the fixture can drive — plus the five perturbations that
- * make identity and liveness checkable at all.
+ * One adapter, built against a transport the fixture can drive — plus the perturbations that make
+ * identity, liveness and freshness checkable at all.
  *
  * A world is SINGLE-USE. Checks that close panes, kill tabs or end the multiplexer get their own,
  * which is why {@link MuxConformanceFixture.create} is what the engine holds rather than a world.
@@ -118,6 +119,20 @@ export interface MuxConformanceWorld {
    * contract that holds even where `setFocus` is declined.
    */
   focusOutOfBand(paneId: string): Promise<void>;
+  /**
+   * The herd's SHAPE changes and nothing announces it — the operator renamed a tab with their own
+   * keyboard.
+   *
+   * The sibling of {@link pokeTopology} and its opposite: that one announces a change on a channel,
+   * this one changes the world in SILENCE. It is what makes `refresh()` testable at all, because a
+   * change that was announced would have reached the watch by itself and proved nothing about
+   * looking on demand.
+   *
+   * A tab rename rather than a new pane, and deliberately: every multiplexer Collie drives has tabs
+   * with labels, so the perturbation is one every fixture can simulate honestly (this file asks for
+   * exactly that of a shared world knob).
+   */
+  pokeTopologyOutOfBand(): Promise<void>;
   /**
    * Make the multiplexer announce a topology / pane change on its event channel.
    *
@@ -352,6 +367,48 @@ const declarationIsWellFormed: MuxReadCheck = {
   },
 };
 
+const latencyIsDeclared: MuxReadCheck = {
+  name: "the topology latency is declared, and a bound is a real number",
+  run(adapter) {
+    const problems: string[] = [];
+    const latency = adapter.capabilities.topologyLatency;
+    // Total and typed on the declaration, so this cannot fail on a build that compiled — which is
+    // the point: what it catches is an adapter assembling a declaration at runtime from data, and a
+    // `bounded` whose number came out of a config, an env var or an arithmetic slip.
+    if (latency.kind !== "push" && latency.kind !== "bounded") {
+      problems.push("topologyLatency is neither `push` nor `bounded` — a caller cannot read it");
+      return Promise.resolve(problems);
+    }
+    if (latency.kind === "bounded") {
+      // A bound of zero (or NaN, or a negative) is not a fast adapter, it is an unstated one: it
+      // would publish "synced 0s ago" forever and promise a freshness nothing keeps.
+      if (!Number.isFinite(latency.ms) || latency.ms <= 0) {
+        problems.push(`a bounded topologyLatency states ms=${String(latency.ms)}, which is not a bound`);
+      }
+    }
+    return Promise.resolve(problems);
+  },
+};
+
+const refreshIsHarmless: MuxReadCheck = {
+  name: "refresh() resolves against a live multiplexer and changes nothing",
+  async run(adapter) {
+    const before = await adapter.snapshot();
+    try {
+      await adapter.refresh();
+    } catch (err) {
+      return [`refresh() threw: ${err instanceof Error ? err.message : String(err)}`];
+    }
+    // The contract's own words: after refresh, the next snapshot reflects the CURRENT topology. On a
+    // quiescent herd that is the same herd, and this is the live probe's whole safety claim about
+    // the call — it is in the read-only set, so it must be provably safe to point at somebody's own
+    // work session (see MUX_READ_ONLY_CHECKS).
+    const after = await adapter.snapshot();
+    const lost = idsLostBetween(before.panes, after.panes);
+    return lost.length === 0 ? [] : [`refresh() lost the panes: ${lost.join(", ")}`];
+  },
+};
+
 const isReachable: MuxReadCheck = {
   name: "reachable() answers for a multiplexer that is answering",
   async run(adapter) {
@@ -533,6 +590,8 @@ export const MUX_READ_ONLY_CHECKS: readonly MuxReadCheck[] = [
   gridReadAnswersTheContract,
   focusIsReportedHonestly,
   spaceCapacityMatchesTheWorld,
+  latencyIsDeclared,
+  refreshIsHarmless,
 ];
 
 // ── The world checks (fixture only — these write) ─────────────────────────────
@@ -549,6 +608,36 @@ async function inWorld(
     await world.close();
   }
 }
+
+/** A snapshot's shape as one string — enough that any structural change is a different string. */
+function topologySignature(snapshot: MuxSnapshot): string {
+  const spaces = snapshot.spaces.map((space) => `${space.spaceId}=${space.label}`).join("|");
+  const tabs = snapshot.tabs.map((tab) => `${tab.tabId}=${tab.label}`).join("|");
+  const panes = snapshot.panes.map((pane) => pane.paneId).join("|");
+  return `${spaces}//${tabs}//${panes}`;
+}
+
+const refreshSeesASilentChange: MuxWorldCheck = {
+  name: "refresh() then snapshot() shows a change nothing announced",
+  run(fixture) {
+    return inWorld(fixture, async (world) => {
+      const { adapter } = world;
+      const before = topologySignature(await adapter.snapshot());
+      // NOT a poke on an event channel. A change that announced itself would have reached the watch
+      // by itself, and this check would then pass on every adapter while proving nothing about
+      // asking on demand — which is the one thing `refresh()` is for.
+      await world.pokeTopologyOutOfBand();
+      await adapter.refresh();
+      const after = topologySignature(await adapter.snapshot());
+      return after === before
+        ? [
+            "the herd changed with nothing announcing it, refresh() resolved, and the next snapshot " +
+              "still showed the old shape — the contract's promise is that the very next read is current",
+          ]
+        : [];
+    });
+  },
+};
 
 const declaredCapabilitiesWork: MuxWorldCheck = {
   name: "every declared capability actually works",
@@ -951,6 +1040,7 @@ const focusFollowsTheMultiplexer: MuxWorldCheck = {
  * panes, rename them, and kill them.
  */
 export const MUX_WORLD_CHECKS: readonly MuxWorldCheck[] = [
+  refreshSeesASilentChange,
   declaredCapabilitiesWork,
   declaredPaneFactsArePopulated,
   aPrintedTitleIsNeverAnOperatorLabel,

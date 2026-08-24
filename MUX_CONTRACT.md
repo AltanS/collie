@@ -17,6 +17,7 @@ Sources, once:
 | **API** | [`HERDR_API.md`](./HERDR_API.md) — the verified Herdr socket contract (0.7.2, protocol 16) |
 | **T** | First-hand probe of **tmux 3.6b** on a throwaway server — [M10/04 Ground Truth](./.tracker/M10-mux-drivers/04-the-tmux-adapter.md) |
 | **Z** | First-hand probe of **zellij 0.44.2** — [M10/05 Ground Truth](./.tracker/M10-mux-drivers/05-the-zellij-adapter.md) |
+| **L** | First-hand probe of this host's **live test instances** — 2026-08-25, tmux socket `/run/user/1000/collie-tmux.sock` and zellij session `collie-zellij` |
 | **?** | Not probed yet. The adapter's spec probes it and fills the cell in; **an unprobed cell is never declared supported.** |
 
 ## The floor — not capabilities
@@ -29,9 +30,44 @@ there is nothing to declare.
 | `reachable()` | any one-shot RPC answers (**API** § Transport) | `list-panes` exits 0 against the server (**T**) | `list-panes --json` parses for the configured session (**Z**) |
 | `snapshot()` — panes, spaces, tabs | `session.snapshot`, one round trip (**API** § session.snapshot) | `list-panes -a -F '…'` → `%0 probe 0 bluefin bash 80x24 0` (**T**) | `list-panes --all --json` + `list-tabs --all --json`, two calls (**Z**); plugin panes — tab bar, status bar, overlays — are dropped, and they are why the id is namespaced (`plugin_0` and `terminal_0` both existed in the probe) |
 | `watch()` — notify me to re-read | `events.subscribe` (**API** § Event stream) | control mode `tmux -C` (**T**) | `subscribe` for content + a bounded census for structure (**Z**) — the hybrid, and the only one of the three |
+| `refresh()` — look NOW | a no-op that resolves: every `snapshot()` is already a fresh RPC and the watch is a real stream, so there is no clock to move (**API** § Transport) | resync every live watch and re-arm the 5 s backstop — **L**: `refresh()` resolved in **4 ms** and produced a topology callback for a `rename-window` run from another shell | census now and drop the interval to its floor — **L**: after 20 s idle, an out-of-band `rename-tab-by-id` reached the watch **446 ms** after `refresh()` was called |
 
 `watch()` is on the floor because the *promise* is — "tell me to look again". Whether it is kept by a
 push or a poll is what the two `push*Events` capabilities below declare.
+
+`refresh()` is on the floor for the same reason: every multiplexer can take a listing on demand, and
+it asks for nothing an adapter does not already do on its own schedule. What it buys is the
+*schedule* — the operator's own tap, rather than the next census
+([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)). It writes nothing, which is what lets
+`POST /api/refresh` be gated as a read and lets the live probe call it against a real session.
+
+## The declared facts — not capabilities either
+
+| Fact | Herdr | tmux | zellij |
+| --- | --- | --- | --- |
+| `topologyLatency` — how soon a change nobody announced is seen | `push` (**API** § Event stream: workspace/tab/pane created, closed, renamed all arrive) | `push` (**T**) — control mode announces `%window-add` / `%window-renamed`; the 5 s resync is the backstop for unattached sessions and for a tmux with no control mode, never the bound | `bounded`, **12 000 ms** (**Z**) — the census ceiling, because zellij's CLI announces no structure change at all. **L**: an out-of-band rename reached the watch in **5 892 ms** with nobody looking and in **1 049 ms** while `attention` said `watched` |
+| `spaces` — how many spaces it can hold | `"many"` (**API**) | `"many"` (**T**) — a space is a tmux session, and a server holds any number | `"one"` (**Z**) — one adapter instance IS one session, because every zellij verb is scoped to one; see *What a space and a tab ARE* below for the mapping and the web rule |
+
+Both are **facts, not capabilities**: they answer "how fast" and "what shape", never "whether", so
+they sit beside `unsupportedKeys` on the declaration rather than in the capability list. Both are
+published under `mux` in `/api/config`, and the phone reacts to the declaration and never to the
+name. The number a `bounded` adapter states is its **ceiling** — the longest a change can sit
+unseen — because a bound that only holds while the herd happens to be busy is not a bound.
+
+The two defaults deliberately point opposite ways. `spaces` may be omitted and reads as `"many"`,
+because a strip over one space is harmless while a hidden strip over three is navigation the operator
+cannot reach. `topologyLatency` is **required**, because both of its answers promise the operator
+something: defaulting to `push` would hide real staleness, and defaulting to `bounded` would invent a
+counter for a multiplexer that is never stale.
+
+**Attention tightens a census; it never changes the declaration.** The bridge knows whether a phone
+read it within the last ten seconds (`bridge/state-engine.ts`) and hands that one word to `watch()`.
+zellij's census runs between 1.5 s and 3 s while somebody is looking and between 3 s and 12 s while
+nobody is; tmux and Herdr ignore it, because they push. The declaration keeps stating the idle
+ceiling: attention is something the bridge observes, never something a caller can promise.
+
+**L** — first-hand probe against this host's live test instances, 2026-08-25: tmux socket
+`/run/user/1000/collie-tmux.sock`, zellij session `collie-zellij`.
 
 ## Capabilities
 
@@ -139,7 +175,7 @@ seam rots.
 | **The grid** | Already rendered by the multiplexer, colour only. Collie runs no terminal emulator ([ADR 0008](./.adr/0008-collie-does-not-run-a-terminal-emulator.md)) — an adapter may **decline** the grid; it never gets a VT parser written for it | all three render on demand (**API**, **T**, **Z**) |
 | **Refusal** | One shape, four reasons, and `unsupported` is not a failure — the UI explains it (M10/06) instead of reporting an error | every adapter returns it rather than throwing; conformance checks both directions (M10/03) |
 | **Pane naming** | `paneLabel` is ONLY a name an operator gave the pane THROUGH COLLIE (`renamePane`). A title the pane's own program wrote is `terminalTitle`, never `paneLabel`. A multiplexer with one title slot cannot tell the two apart from its listing, so its adapter remembers the labels it set itself — in memory, keyed by pane id, cleared by `renamePane(null)` and when the pane leaves the listing — and reports everything else in that slot as `terminalTitle`. After a bridge restart an operator's earlier label therefore degrades to `terminalTitle`: still visible, less prominent, never a lie | Herdr has two slots and needs no memory — `label` is the operator's, `terminal_title` is the program's (**API** § Object shapes); tmux (`pane_title`, **T**) and zellij (the listing's `title`, **Z**) have one each and keep the memory described here |
-| **Focus** | `MuxPane.focused` is **the pane the operator's own terminal is showing** — a fact the snapshot reports, never a pane Collie chose. Every adapter answers it on the floor; only CHANGING it is a capability (`setFocus`), and the phone changes it on one named tap and never as a side effect of navigation ([ADR 0031](./.adr/)). Focus is per-client everywhere, so "no client attached" is a real answer: `false` on every pane | Herdr reports `focused` per pane, and `session.snapshot` carries `focused_pane_id`/`focused_tab_id`/`focused_workspace_id` beside it (**API** § Object shapes) — read straight through. tmux: the active pane of the active window, which is a property of the SESSION, so every client on it sees the same pane; WHICH session is in front comes from `list-clients`, filtered by `client_control_mode` so this adapter's own watch never counts as a person (**T**, probed 2026-08-25: Collie's watcher `1`, two real terminals `0`; with none attached the old last-activity ordering still answers). zellij: `is_focused` is per-TAB (probed: two panes of one tab both report it after a split) AND'd with the tab's `active`, so a detached session — which marks no tab active — honestly reports no focused pane (**Z**, probed 2026-08-25) |
+| **Focus** | `MuxPane.focused` is **the pane the operator's own terminal is showing** — a fact the snapshot reports, never a pane Collie chose. Every adapter answers it on the floor; only CHANGING it is a capability (`setFocus`), and the phone changes it on one named tap and never as a side effect of navigation ([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)). Focus is per-client everywhere, so "no client attached" is a real answer: `false` on every pane | Herdr reports `focused` per pane, and `session.snapshot` carries `focused_pane_id`/`focused_tab_id`/`focused_workspace_id` beside it (**API** § Object shapes) — read straight through. tmux: the active pane of the active window, which is a property of the SESSION, so every client on it sees the same pane; WHICH session is in front comes from `list-clients`, filtered by `client_control_mode` so this adapter's own watch never counts as a person (**T**, probed 2026-08-25: Collie's watcher `1`, two real terminals `0`; with none attached the old last-activity ordering still answers). zellij: `is_focused` is per-TAB (probed: two panes of one tab both report it after a split) AND'd with the tab's `active`, so a detached session — which marks no tab active — honestly reports no focused pane (**Z**, probed 2026-08-25) |
 | **Transport death** | An adapter whose transport died *during* a call answers `unreachable`, never `refused`. `refused` means the multiplexer understood and said no, so retrying is pointless — a transport that went away mid-call is the opposite, and mis-reporting it puts a red per-tap error where the disconnected banner and its retry belong | a dropped socket / closed stream (**API**); tmux's `server exited unexpectedly` and `lost server` classify with "no server running" (**T**, `tmux/protocol.ts`); a dead session's verb (**Z**). Pinned per adapter — the conformance world has no perturbation for it, because killing a live transport mid-call is shaped differently in each transport and a shared knob would only model one of them |
 
 Three traps worth naming, the first two found while writing this table:
