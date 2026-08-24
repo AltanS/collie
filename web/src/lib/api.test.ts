@@ -11,6 +11,7 @@ import {
   fetchPane,
   fetchSnapshot,
   getNotifyPrefs,
+  refreshNow,
   sendKeys,
   sendReply,
   uploadImage,
@@ -426,5 +427,49 @@ describe("api client — XHR marker for identity proxies", () => {
     const seen = captureHeaders();
     await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
     expect(seen[0].get("content-type")).toBeNull();
+  });
+});
+
+// "LOOK NOW" — the one write-shaped call that is a read, and the one scope it declines to make.
+describe("refreshNow", () => {
+  it("posts to /api/refresh for the local collie", async () => {
+    let calls = 0;
+    server.use(
+      http.post("/api/refresh", () => {
+        calls += 1;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    await refreshNow();
+    expect(calls).toBe(1);
+  });
+
+  it("carries the session so a named session refreshes its own multiplexer, not the primary's", async () => {
+    let seen = "";
+    server.use(
+      http.post("/api/refresh", ({ request }) => {
+        seen = new URL(request.url).search;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    await refreshNow({ session: "laptop" });
+    expect(seen).toBe("?session=laptop");
+  });
+
+  it("sends NOTHING for a peer — the route is not on the pack link's forwarding table", async () => {
+    let calls = 0;
+    server.use(
+      http.post("/api/refresh", () => {
+        calls += 1;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    await refreshNow({ host: "laptop" });
+    expect(calls).toBe(0);
+  });
+
+  it("swallows a refusal: the revalidation that follows is the one that reports", async () => {
+    server.use(http.post("/api/refresh", () => new HttpResponse("nope", { status: 503 })));
+    await expect(refreshNow()).resolves.toBeUndefined();
   });
 });
