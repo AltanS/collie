@@ -4,6 +4,12 @@
   <img src="assets/collie-hero.webp" alt="A collie herding a flock of sheep" width="640">
 </p>
 
+<p align="center">
+  <a href="https://colliepwa.dev/demo"><b>Try it in your browser — no install</b></a> ·
+  <a href="https://colliepwa.dev">colliepwa.dev</a><br>
+  <sub>A real Collie build running in the page against faked data.</sub>
+</p>
+
 A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL, see
 which agent is waiting on you, and answer it with your phone's keyboard.
 
@@ -53,6 +59,9 @@ A run through the herd from a phone: the dashboard floats the agent that **needs
 you drill into a space's tabs and panes (long-press a pane pill or a tab chip to rename or close it —
 and a Claude pane shows the name you gave it with `/rename`), answer an `AskUserQuestion` prompt with
 a tap, switch between herds, and pick up a push notification the moment an agent is waiting on input.
+
+To drive it yourself instead of watching, the [interactive demo](https://colliepwa.dev/demo) runs the
+real app in your browser against faked data — nothing to install.
 
 <table>
   <tr>
