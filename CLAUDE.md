@@ -197,6 +197,13 @@ lint guard or the pack-wire guard.
   Ctrl presets on the panes they address (ADR 0018 again), and only those presets: the tray's
   keyboard is fixed. Both files share one reader (`bridge/operator-file.ts`) and one scope ladder
   (`web/src/lib/operator-scope.ts`); teach both, never one.
+- **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
+  calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
+  `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by
+  `tsc`. Not translated: terminal/agent output, quick replies, menu/dialog labels the screen printed,
+  key caps, pack role names, push notifications, service-worker strings, pack-link errors, and the
+  slash-command descriptions in `web/src/lib/agent-commands.ts` (another tool's vocabulary — deferred)
+  ([ADR 0030](./.adr/0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md)).
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).

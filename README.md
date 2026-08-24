@@ -41,7 +41,7 @@ want a mic that doesn't depend on the keyboard, Collie has its own
 - [First run — what you'll see](#first-run--what-youll-see)
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
   [Multi-session](#multi-session)
-- [Dark mode / light mode](#dark-mode--light-mode)
+- [Dark mode / light mode](#dark-mode--light-mode) · [Language](#language)
 - [Commands](#commands) · [Put `collie` on your PATH](#put-collie-on-your-path) ·
   [Herdr actions](#herdr-actions)
 - [Manage & update](#manage--update) · [Migrating from 0.x](#migrating-from-0x)
@@ -422,6 +422,13 @@ Two things follow that are worth knowing:
 > **Installed on iOS?** In light mode the status-bar text stays white and can disappear against the
 > page. iOS gives web apps no way to change this at runtime — use the browser rather than the
 > installed app if it bothers you.
+
+## Language
+
+Collie's UI speaks six languages — English, Deutsch, Español, 한국어, 日本語, 中文. Open **Settings →
+Language** and pick one by its own name; the choice is per device, stored in the browser. The
+terminal mirror is never translated — it shows exactly what the agent printed, and quick replies,
+menu labels and key caps stay as the screen or the keyboard names them.
 
 ## Commands
 

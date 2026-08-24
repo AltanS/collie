@@ -191,6 +191,14 @@ app. Closing this needs the server-side blocking-message capture described above
   files share one reader (`bridge/operator-file.ts`) and one scope ladder
   (`web/src/lib/operator-scope.ts`).
 
+- **UI strings are translated by a typed dictionary, not a library** (`web/src/lib/i18n/`, six
+  locales, English the compile-time source of truth) — `t()`/`tn()` plus the `useLocale()` hook
+  (`web/src/hooks/use-locale.ts`), lazy per-locale chunks with an English fallback while one loads.
+  Bridge error bodies carry a stable `code` (`bridge/error-codes.ts`, mirrored at
+  `web/src/lib/api-error-codes.ts`) beside their English sentence, so the web side can translate a
+  known refusal and fall back to the bridge's own text for an unknown one
+  ([ADR 0030](./.adr/0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md)).
+
 ## 6. Security model
 
 This socket equals **arbitrary code execution on the host** (`agent.send` / `pane.send_text` type
