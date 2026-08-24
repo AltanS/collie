@@ -10,21 +10,17 @@ import { describeAdapterConformance } from "../conformance";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
-const allAgyFixtures = readdirSync(PANES_DIR)
-  .filter((f) => f.startsWith("agy--") && f.endsWith(".txt"))
+const allFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.endsWith(".txt"))
   .sort();
-const allClaudeFixtures = readdirSync(PANES_DIR)
-  .filter((f) => f.startsWith("claude--") && f.endsWith(".txt"))
-  .sort();
-const allOmpFixtures = readdirSync(PANES_DIR)
-  .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
-  .sort();
+
+const allAgyFixtures = allFixtures.filter((f) => f.startsWith("agy--"));
 
 const NEUTRAL = ["agy--fresh-idle.txt", "agy--working.txt", "agy--done.txt"];
 
 const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.includes(f));
 const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.includes(f));
-const foreignFixtures = [...allClaudeFixtures, ...allOmpFixtures];
+const foreignFixtures = allFixtures.filter((f) => !f.startsWith("agy--"));
 
 describeAdapterConformance(agyAdapter, {
   ownFixtures,
