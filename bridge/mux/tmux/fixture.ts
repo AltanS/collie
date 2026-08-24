@@ -108,10 +108,18 @@ export class FakeTmux implements TmuxExec {
   private readonly buffers = new Map<string, string>();
   private readonly controls = new Set<FakeControlClient>();
   private readonly recorded: MuxWrite[] = [];
+  /** Every command group this fake was asked to run, in order. What proves a spawn did NOT happen. */
+  private readonly ran: string[][] = [];
   /** Only ever climbs, so no id is ever handed to a second pane, window or session. */
   private minted = 0;
   /** False while the "connection" is down — every command fails, as a dead socket does. */
   private connected = true;
+  /** The server's answer for the GLOBAL `window-size`. tmux's own default is `latest`. */
+  private windowSize = "latest";
+  /** What `#{version}` reports. The version the whole adapter was probed against (M10/04). */
+  private version = "3.6b";
+  /** Set once the server has died under the call — see {@link killServerMidCall}. */
+  private crashed = false;
 
   constructor() {
     this.seed();
@@ -121,6 +129,32 @@ export class FakeTmux implements TmuxExec {
 
   writes(): readonly MuxWrite[] {
     return this.recorded;
+  }
+
+  /** The command groups run so far. Read by the unit tests, never by the conformance engine. */
+  invocations(): readonly (readonly string[])[] {
+    return this.ran;
+  }
+
+  /** The operator's global `window-size`, as this server would report it. */
+  setWindowSize(value: string): void {
+    this.windowSize = value;
+  }
+
+  /** Which tmux this fake claims to be. `3.6b` unless a test says otherwise. */
+  setVersion(value: string): void {
+    this.version = value;
+  }
+
+  /**
+   * The server dies while a command runs — a segfault, or the operator's own `kill-server`.
+   *
+   * Distinct from {@link reconnect}, which is a socket that was already gone: here the client had a
+   * server and lost it, so it prints `server exited unexpectedly` rather than `error connecting`, and
+   * the contract requires that to read as `unreachable` (MUX_CONTRACT.md § Contract-owned rules).
+   */
+  killServerMidCall(): void {
+    this.crashed = true;
   }
 
   /**
@@ -204,8 +238,10 @@ export class FakeTmux implements TmuxExec {
   async run(args: readonly string[], stdin?: string): Promise<TmuxRunResult> {
     await Promise.resolve();
     if (!this.connected) return { code: 1, stdout: "", stderr: "error connecting to /fake/tmux-socket\n" };
+    if (this.crashed) return { code: 1, stdout: "", stderr: "server exited unexpectedly\n" };
     let stdout = "";
     for (const group of splitCommands(args)) {
+      this.ran.push([...group]);
       const result = this.command(group, stdin);
       if (result.code !== 0) return result;
       stdout += result.stdout;
@@ -245,6 +281,7 @@ export class FakeTmux implements TmuxExec {
     if (verb === "kill-window") return this.killWindow(group);
     if (verb === "new-session") return this.newSession(group);
     if (verb === "display-message") return this.displayMessage(group);
+    if (verb === "show-options") return this.showOptions(group);
     return { code: 1, stdout: "", stderr: `unknown command: ${verb}\n` };
   }
 
@@ -372,8 +409,23 @@ export class FakeTmux implements TmuxExec {
    */
   private displayMessage(group: readonly string[]): TmuxRunResult {
     if (!group.includes("-p")) return said("");
-    const vars = new Map([["socket_path", FAKE_TMUX_SOCKET]]);
+    const vars = new Map([
+      ["socket_path", FAKE_TMUX_SOCKET],
+      ["version", this.version],
+    ]);
     return said(`${render(flagValue(group, "-F") ?? "", vars)}\n`);
+  }
+
+  /**
+   * `show-options -gv <name>` — one GLOBAL option's bare value, which is what `-v` means.
+   *
+   * Only `window-size` has an answer here, because it is the only global option the adapter asks
+   * about (the #4849 spawn guard). Everything else renders empty, as the real binary does for an
+   * option that is set to nothing.
+   */
+  private showOptions(group: readonly string[]): TmuxRunResult {
+    const name = flagValue(group, "-gv") ?? "";
+    return said(`${name === "window-size" ? this.windowSize : ""}\n`);
   }
 
   // ── Internals ──────────────────────────────────────────────────────────────
