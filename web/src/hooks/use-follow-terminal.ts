@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 
 import { useFollowTerminalActive } from "@/lib/follow-terminal";
+import { leadHost, paneSpaceKey, spaceKey } from "@/lib/hosts";
 import { panePath } from "@/lib/nav";
 import type { HomeData } from "@/lib/loaders";
 
@@ -17,8 +18,18 @@ import type { HomeData } from "@/lib/loaders";
 //  2. **It waits.** {@link SETTLE_MS} of the same answer before it moves. Focus in a terminal is
 //     something a human sweeps through — `prefix n` three times is three focused panes in half a
 //     second — and following each one would be a slideshow.
-//  3. **Ambiguity is not a signal.** Two focused panes (two machines in a pack, two terminals on one
-//     tmux server) mean two screens, and picking one would be picking at random. Nothing moves.
+//  3. **Ambiguity is not a signal.** No focused space, or more than one focused pane INSIDE it, means
+//     two screens (two machines in a pack, two terminals on one server) — picking one would be
+//     picking at random. Nothing moves.
+//
+// FOCUS IS PER SPACE, AND THE SPACE IS RESOLVED FIRST. `MuxPane.focused` is the active pane of an
+// active tab, which every space has — a tmux server with two sessions reports two focused panes at
+// all times, so a rule that read them herd-wide called every multi-session server ambiguous and
+// followed nothing (live evidence: `focused: ['%2','%1']` on a two-session server). The contract's
+// answer is one level up: the operator's terminal shows the focused pane OF THE FOCUSED SPACE
+// (MUX_CONTRACT.md § Focus), so the focused workspace is resolved first and the pane is taken inside
+// it. On a pack the listed workspaces are the LEAD's only (PACK_PROTOCOL.md §11), which is why the
+// pane is matched on host AND workspace id — two machines can both call a space `w1`.
 //
 // The fourth rule lives in lib/follow-terminal.ts: anything the jump would ruin — a draft, an armed
 // "Type into terminal", an open sheet — HOLDS the follow, and a held follow does not even keep a
@@ -29,7 +40,11 @@ const SETTLE_MS = 500;
 
 /** The one pane the whole herd agrees the operator is looking at, or null. */
 function focusedPaneId(data: HomeData): string | null {
-  const focused = [...data.agents, ...data.shellPanes].filter((pane) => pane.focused);
+  const spaces = data.workspaces.filter((space) => space.focused);
+  const space = spaces.length === 1 ? spaces[0] : undefined;
+  if (space === undefined) return null;
+  const key = spaceKey(leadHost(data.servers), space.workspaceId);
+  const focused = [...data.agents, ...data.shellPanes].filter((pane) => pane.focused && paneSpaceKey(pane) === key);
   return focused.length === 1 ? (focused[0]?.paneId ?? null) : null;
 }
 

@@ -139,6 +139,11 @@ describe("parseListing", () => {
     expect(parsed.panes).toHaveLength(1);
   });
 
+  test("a client record carries its tty — the only handle `switch-client` accepts", () => {
+    const client = parseListing(["C", "collie-tmux", "0", "42", "/dev/pts/3"].join(SEP)).clients.at(0);
+    expect(client).toEqual({ sessionId: "collie-tmux", control: false, activity: 42, tty: "/dev/pts/3" });
+  });
+
   test("the listing asks for its fields rather than parsing a human table", () => {
     expect(LISTING_ARGS).toContain("-F");
     // One invocation, four commands — sessions, windows, panes, clients — joined by tmux's own `;`

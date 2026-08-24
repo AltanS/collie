@@ -88,10 +88,12 @@ interface FakePane {
  * detached sessions — and the state the fallback rule exists for.
  */
 interface FakeClient {
-  /** tmux prints the session's NAME here, not its `$N` id (probed). */
-  readonly session: string;
+  /** tmux prints the session's NAME here, not its `$N` id (probed). Moved by `switch-client`. */
+  session: string;
   readonly control: boolean;
   readonly activity: number;
+  /** `client_tty`. tmux's only handle on a client, and what `switch-client -c` addresses. */
+  readonly tty: string;
 }
 
 /** One live control-mode client of the fake server. */
@@ -223,11 +225,21 @@ export class FakeTmux implements TmuxExec {
   }
 
   /** A terminal (or this adapter's own watch) attaches to a session. For the tests that need one. */
-  attachClient(sessionName: string, options: { control?: boolean; activity?: number } = {}): void {
+  attachClient(sessionName: string, options: { control?: boolean; activity?: number; tty?: string } = {}): void {
     this.clients = [
       ...this.clients,
-      { session: sessionName, control: options.control ?? false, activity: options.activity ?? this.clients.length + 1 },
+      {
+        session: sessionName,
+        control: options.control ?? false,
+        activity: options.activity ?? this.clients.length + 1,
+        tty: options.tty ?? `/dev/pts/${String(this.clients.length)}`,
+      },
     ];
+  }
+
+  /** Which session each attached client is showing now, by tty. What `switch-client` has to move. */
+  clientSessions(): ReadonlyMap<string, string> {
+    return new Map(this.clients.map((client) => [client.tty, client.session]));
   }
 
   /** Someone sets a pane's title in tmux itself — `select-pane -T` from the operator's own keyboard. */
@@ -357,6 +369,7 @@ export class FakeTmux implements TmuxExec {
     if (verb === "select-pane") return this.selectPane(group);
     if (verb === "select-window") return this.selectWindow(group);
     if (verb === "list-clients") return this.listClients(group);
+    if (verb === "switch-client") return this.switchClient(group);
     if (verb === "kill-pane") return this.killPane(group);
     if (verb === "new-window") return this.newWindow(group);
     if (verb === "rename-window") return this.renameWindow(group);
@@ -470,11 +483,30 @@ export class FakeTmux implements TmuxExec {
                 ["client_session", client.session],
                 ["client_control_mode", client.control ? "1" : "0"],
                 ["client_activity", String(client.activity)],
+                ["client_tty", client.tty],
               ]),
             )}\n`,
         )
         .join(""),
     );
+  }
+
+  /**
+   * `switch-client -c <tty> -t <session>` — the one verb that moves a TERMINAL to another session.
+   *
+   * Modelled because it is the half of `setFocus` that reaches the operator's screen: selecting a
+   * window changes what the target SESSION shows, and a client sitting on another session sees none
+   * of it. An unknown tty answers tmux's own `can't find client:`.
+   */
+  private switchClient(group: readonly string[]): TmuxRunResult {
+    const tty = flagValue(group, "-c") ?? "";
+    const target = flagValue(group, "-t") ?? "";
+    const client = this.clients.find((candidate) => candidate.tty === tty);
+    if (client === undefined) return missing("client", tty);
+    const session = this.sessions.find((candidate) => candidate.id === target || candidate.name === target);
+    if (session === undefined) return missing("session", target);
+    client.session = session.name;
+    return said("");
   }
 
   private killPane(group: readonly string[]): TmuxRunResult {

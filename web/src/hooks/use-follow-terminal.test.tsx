@@ -8,7 +8,7 @@ import {
   setFollowTerminalEnabled,
 } from "@/lib/follow-terminal";
 import type { HomeData } from "@/lib/loaders";
-import type { AgentView } from "@/lib/types";
+import type { AgentView, WorkspaceView } from "@/lib/types";
 import { panePath } from "@/lib/nav";
 import { useFollowTerminal } from "./use-follow-terminal";
 
@@ -22,13 +22,13 @@ vi.useFakeTimers({ shouldAdvanceTime: true });
 /** How long one focused pane must hold still before the phone follows it (the hook's own settle). */
 const SETTLE_MS = 500;
 
-function pane(paneId: string, focused: boolean): AgentView {
+function pane(paneId: string, focused: boolean, workspaceId = "w1"): AgentView {
   return {
     paneId,
-    workspaceId: "w1",
-    workspaceLabel: "collie",
+    workspaceId,
+    workspaceLabel: workspaceId,
     workspaceNumber: 1,
-    tabId: "w1:t1",
+    tabId: `${workspaceId}:t1`,
     agent: "claude",
     status: "idle",
     cwd: "/home/you/collie",
@@ -36,14 +36,19 @@ function pane(paneId: string, focused: boolean): AgentView {
   };
 }
 
-/** A herd carrying nothing but the panes — the only field this hook reads. */
-function home(panes: AgentView[]): HomeData {
+/** One space, focused or not. Every snapshot carries these; the hook resolves the space FIRST. */
+function space(workspaceId: string, focused: boolean): WorkspaceView {
+  return { workspaceId, number: 1, label: workspaceId, focused, activeTabId: `${workspaceId}:t1`, tabCount: 1, paneCount: 1 };
+}
+
+/** A herd of one focused space — the shape every solo snapshot has, and the file's default. */
+function home(panes: AgentView[], spaces: WorkspaceView[] = [space("w1", true)]): HomeData {
   return {
     bridge: undefined,
     device: undefined,
     agents: panes,
     shellPanes: [],
-    workspaces: [],
+    workspaces: spaces,
     tabs: [],
     sessions: [],
     servers: [],
@@ -135,10 +140,39 @@ describe("useFollowTerminal", () => {
     expect(world.where()).toBe("/");
   });
 
-  it("ignores an ambiguous herd — two focused panes are two screens", () => {
+  it("ignores an ambiguous herd — two focused panes in ONE space are two screens", () => {
     setFollowTerminalEnabled(true);
     const world = follow(home([pane("%1", true)]));
     world.rerender(home([pane("%2", true), pane("%3", true)]));
+    world.settle();
+    expect(world.where()).toBe("/");
+  });
+
+  // A tmux server with two sessions ALWAYS reports two focused panes — every space has an active
+  // pane. Reading them herd-wide called that ambiguous and followed nothing, which is bug 1.
+  const twoSpaces = [space("w1", true), space("w2", false)];
+
+  it("follows the focused SPACE's pane, though another space also has one", () => {
+    setFollowTerminalEnabled(true);
+    const world = follow(home([pane("%1", true), pane("%9", true, "w2")], twoSpaces));
+    world.rerender(home([pane("%2", true), pane("%9", true, "w2")], twoSpaces));
+    world.settle();
+    expect(world.where()).toBe(panePath("%2"));
+  });
+
+  it("a focus change in a space nobody is looking at moves nothing", () => {
+    setFollowTerminalEnabled(true);
+    const world = follow(home([pane("%1", true), pane("%9", true, "w2")], twoSpaces));
+    world.rerender(home([pane("%1", true), pane("%8", true, "w2")], twoSpaces));
+    world.settle();
+    expect(world.where()).toBe("/");
+  });
+
+  it("with no focused space there is no screen to follow", () => {
+    setFollowTerminalEnabled(true);
+    const spaces = [space("w1", false), space("w2", false)];
+    const world = follow(home([pane("%1", true)], spaces));
+    world.rerender(home([pane("%2", true)], spaces));
     world.settle();
     expect(world.where()).toBe("/");
   });
