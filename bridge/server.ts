@@ -244,6 +244,9 @@ export function muxConfigBody(mux: MuxPublication): MuxConfig {
   // to render its text alone, so a bridge that published `logoUrl` unconditionally would point every
   // header at a 404.
   if (mux.logo !== undefined) wire.logoUrl = MUX_LOGO_PATH;
+  // Unconditional, unlike the mark: every adapter answers this, and it is the whole point of the
+  // field that the phone can tell "this bridge says push" from "this bridge is too old to say".
+  wire.topologyLatency = decl.topologyLatency;
   return wire;
 }
 

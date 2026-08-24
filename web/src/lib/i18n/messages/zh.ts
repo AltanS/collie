@@ -486,6 +486,12 @@ export const zh: Dictionary = {
   "time.justNow": "刚刚",
   "time.compact.now": "现在",
 
+  // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
+  "sync.age": "已在 {age} 前同步",
+  "sync.pull.hint": "下拉刷新",
+  "sync.pull.release": "松开即可刷新",
+  "sync.pull.busy": "正在刷新…",
+
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "发送中",
   "dialog.previousStepAria": "上一步",

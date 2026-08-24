@@ -496,6 +496,12 @@ export const ko: Dictionary = {
   "time.justNow": "방금 전",
   "time.compact.now": "방금",
 
+  // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
+  "sync.age": "{age} 전에 동기화됨",
+  "sync.pull.hint": "당겨서 새로 고침",
+  "sync.pull.release": "놓으면 새로 고침",
+  "sync.pull.busy": "새로 고치는 중…",
+
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "전송 중",
   "dialog.previousStepAria": "이전 단계",

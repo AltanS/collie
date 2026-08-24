@@ -498,6 +498,12 @@ export const ja: Dictionary = {
   "time.justNow": "たった今",
   "time.compact.now": "今",
 
+  // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
+  "sync.age": "{age}前に同期しました",
+  "sync.pull.hint": "引いて更新",
+  "sync.pull.release": "離すと更新します",
+  "sync.pull.busy": "更新しています…",
+
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "送信中",
   "dialog.previousStepAria": "前のステップ",

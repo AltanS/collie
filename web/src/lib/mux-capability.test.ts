@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { keysSendable, muxCapability } from "./mux-capability";
+import { keysSendable, muxCapability, muxTopologyLatency } from "./mux-capability";
 import type { MuxConfig } from "./types";
 
 // The two rules every gated control in the app leans on, asserted where they live rather than
@@ -91,5 +91,31 @@ describe("keysSendable — a key is not a capability", () => {
   it("the `+` key survives its own splitting", () => {
     expect(keysSendable(["ctrl++"], ["Delete"])).toBe(true);
     expect(keysSendable(["ctrl++"], ["+"])).toBe(false);
+  });
+});
+
+// TOPOLOGY LATENCY — a declared fact, not a capability, and the one thing that decides whether the
+// home screen talks about freshness at all (ADR 0031). Its fail-open direction is the OPPOSITE
+// shape from a capability's and it is worth saying why: a capability defaults to present because
+// hiding a working control is unfixable; this defaults to `push` because inventing a staleness
+// counter for a bridge that never claimed to be stale is noise the operator cannot act on.
+describe("muxTopologyLatency — absent means push, and only an explicit bound is a bound", () => {
+  it("no config at all reads as push, so an older bridge says nothing about freshness", () => {
+    expect(muxTopologyLatency(null)).toEqual({ kind: "push" });
+  });
+
+  it("a config that does not carry the field reads as push", () => {
+    expect(muxTopologyLatency(cfg())).toEqual({ kind: "push" });
+  });
+
+  it("a declared bound is carried through with its number intact", () => {
+    expect(muxTopologyLatency(cfg({ topologyLatency: { kind: "bounded", ms: 12_000 } }))).toEqual({
+      kind: "bounded",
+      ms: 12_000,
+    });
+  });
+
+  it("an explicit push is push — the same answer as absence, arrived at honestly", () => {
+    expect(muxTopologyLatency(cfg({ topologyLatency: { kind: "push" } }))).toEqual({ kind: "push" });
   });
 });
