@@ -179,6 +179,11 @@ describe("the sentences tmux answers with", () => {
     expect(saysNoServer("duplicate session: other")).toBe(false);
     expect(saysNoServer("can't find pane: %999")).toBe(false);
   });
+
+  test("a server that died DURING the call is `unreachable` too — the transport, not a refusal", () => {
+    expect(saysNoServer("server exited unexpectedly")).toBe(true);
+    expect(saysNoServer("lost server")).toBe(true);
+  });
 });
 
 describe("classifyControlLine", () => {

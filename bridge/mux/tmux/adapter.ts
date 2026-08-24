@@ -93,6 +93,28 @@ export const DEFAULT_TMUX_TIMEOUT_MS = 5000;
 const TYPE_BUFFER = "collie-type";
 
 /**
+ * The global `window-size` value that kills a pre-3.7 tmux SERVER the moment it spawns a window.
+ *
+ * Not a Collie bug and not a guess: tmux ≤ 3.6b dereferences the not-yet-existing window's
+ * `manual_sx` in `spawn_window → default_window_size → clients_calculate_size`, and the whole server
+ * — every session the operator has — segfaults. Reproduced on scratch servers and confirmed by the
+ * coredump; upstream is tmux issue #4849, fixed by commit 7d41761e, first shipped in 3.7. Both create
+ * verbs trigger it (`new-window` AND `new-session`), and nothing else about the call matters —
+ * clients, control mode, `default-size` and `-x/-y` are all irrelevant. `latest`, `largest` and
+ * `smallest` are safe.
+ */
+const FATAL_WINDOW_SIZE = "manual";
+
+/**
+ * Read the effective `window-size`, and the version, in ONE invocation before a create spawns.
+ *
+ * `;`-joined exactly as {@link LISTING_ARGS} is, so the guard costs one round trip and never two. The
+ * version half is appended only until it is known — a running server cannot change its own binary.
+ */
+const WINDOW_SIZE_ARGS: readonly string[] = ["show-options", "-gv", "window-size"];
+const VERSION_ARGS: readonly string[] = ["display-message", "-p", "-F", "#{version}"];
+
+/**
  * How many request shapes one pane's revision tracker remembers.
  *
  * Generous next to what the bridge actually asks for (the mirror's read and the session-name scrape,
@@ -175,6 +197,16 @@ export class TmuxMux implements MuxAdapter {
    * a change (../types.ts § MuxGrid.revision).
    */
   private readonly revisions = new Map<string, PaneRevision>();
+
+  /**
+   * The tmux version this server runs, once it has said so. `null` until the first create asks.
+   *
+   * Cached because a running server cannot swap its own binary: the answer is fixed for the life of
+   * the socket, and a restarted server is a new process this adapter re-probes at its next create. An
+   * unreadable answer is NOT cached — it stays `null` and is asked again, which also keeps the guard
+   * conservative (see {@link spawnSurvivesManualWindowSize}).
+   */
+  private tmuxVersion: string | null = null;
 
   constructor(private readonly exec: TmuxExec) {}
 
@@ -346,8 +378,20 @@ export class TmuxMux implements MuxAdapter {
     return subscription;
   }
 
-  /** Run a create verb and read the identity it printed. */
+  /**
+   * Run a create verb and read the identity it printed — after the one thing that must be asked
+   * first.
+   *
+   * Both create verbs funnel through here, so the #4849 guard sits here once rather than twice. It
+   * REFUSES; it never repairs. Collie could make the spawn safe by setting `window-size` itself, and
+   * that option is the operator's own configuration — a phone tap must not rewrite the setting that
+   * governs every window on their desktop, and a Collie that silently "fixed" it would leave a server
+   * behaving differently from the `.tmux.conf` that describes it. So the operator is told the exact
+   * command instead, and stays the one who runs it.
+   */
   private async created(args: readonly string[]): Promise<MuxOutcome<MuxCreatedPane>> {
+    const guard = await this.refuseFatalSpawn();
+    if (guard !== null) return guard;
     const result = await this.attemptRun(args);
     if (!result.ok) return result;
     const created = parseCreated(result.value.stdout);
@@ -359,6 +403,32 @@ export class TmuxMux implements MuxAdapter {
       tabId: created.windowId,
       cwd: created.cwd,
     });
+  }
+
+  /**
+   * The refusal that stops a create from segfaulting the operator's whole tmux server, or `null`.
+   *
+   * Two facts decide it, both read in one invocation: the EFFECTIVE global `window-size` (which the
+   * operator can change at any moment, so it is asked every time) and the version (asked once —
+   * {@link tmuxVersion}). Only `manual` on a tmux that predates the fix refuses; every other
+   * combination spawns exactly as before, with no extra branch in the argv.
+   *
+   * A probe that does not come back is NOT a refusal. tmux gained `window-size` in 2.9, so a binary
+   * that answers `unknown option` has no hazard to guard against, and a probe that failed because the
+   * server is gone is answered honestly by the create's own outcome one line later. The guard only
+   * ever fires on a positive reading.
+   */
+  private async refuseFatalSpawn(): Promise<MuxRefusalOutcome | null> {
+    const args = this.tmuxVersion === null ? [...WINDOW_SIZE_ARGS, ";", ...VERSION_ARGS] : [...WINDOW_SIZE_ARGS];
+    const probe = await this.attemptRun(args);
+    if (!probe.ok) return null;
+    const lines = probe.value.stdout.split("\n");
+    const windowSize = (lines.at(0) ?? "").trim();
+    const version = this.tmuxVersion ?? readVersion(lines.at(1));
+    if (version !== null) this.tmuxVersion = version;
+    if (windowSize !== FATAL_WINDOW_SIZE) return null;
+    if (spawnSurvivesManualWindowSize(version)) return null;
+    return muxRefused(fatalWindowSizeDetail(version));
   }
 
   /** One tmux command, as the contract's outcome-or-refusal. A throw is `unreachable`, never a crash. */
@@ -406,6 +476,37 @@ function refusalFor(result: TmuxRunResult): MuxRefusalOutcome {
   if (saysMissing(detail)) return muxGone(detail);
   if (saysNoServer(detail)) return muxUnreachable(detail);
   return muxRefused(detail);
+}
+
+/** What `display-message -p -F '#{version}'` said, trimmed, or `null` when it said nothing usable. */
+function readVersion(reported: string | undefined): string | null {
+  const version = (reported ?? "").trim();
+  return version.length > 0 ? version : null;
+}
+
+/**
+ * Whether this tmux carries the #4849 fix — i.e. whether it survives spawning under `window-size
+ * manual`.
+ *
+ * `3.7` and later, and an unreadable version reads as UNSAFE. That asymmetry is deliberate: guessing
+ * "probably fine" costs the operator every session on the server, and guessing "probably not" costs
+ * them one refusal carrying the command that clears it. tmux spells its version `3.6b` / `3.7` /
+ * `next-3.7`, so the first `<major>.<minor>` in the string is the answer and the letter suffix — a
+ * patch level, never a feature — is ignored.
+ */
+function spawnSurvivesManualWindowSize(version: string | null): boolean {
+  if (version === null) return false;
+  const match = /(\d+)\.(\d+)/u.exec(version);
+  if (match === null) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 3 || (major === 3 && minor >= 7);
+}
+
+/** What the operator is told, and it ends in the exact command that clears the refusal. */
+function fatalWindowSizeDetail(version: string | null): string {
+  const named = version === null ? "this tmux" : `tmux ${version}`;
+  return `${named} crashes when it spawns a window while window-size is manual (tmux #4849, fixed in 3.7) — run: tmux set -g window-size latest`;
 }
 
 /** A cheap, stable content fingerprint. FNV-1a — this is a change detector, never a security check. */

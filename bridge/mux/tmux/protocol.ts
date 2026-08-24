@@ -240,10 +240,20 @@ export function parseCreated(stdout: string): TmuxCreated | null {
 const MISSING_TARGET = /can't find (?:pane|window|session|client)|(?:pane|window|session) not found/iu;
 
 /**
- * tmux is not answering at all: no server on that socket, or no binary to ask with. The contract's
- * `unreachable` — the only refusal worth retrying, and what drives the connected banner.
+ * tmux is not answering at all: no server on that socket, no binary to ask with — or a server that
+ * was answering when the call started and DIED while it ran. The contract's `unreachable` — the only
+ * refusal worth retrying, and what drives the connected banner.
+ *
+ * `server exited unexpectedly` and `lost server` are that last case, and they are the reason this
+ * list is not only about a server that was already absent: the client prints them when the socket
+ * goes away mid-command (a segfaulted server — see the #4849 guard in adapter.ts — or an operator's
+ * `kill-server`). Read as `refused` they would put a red "the tab couldn't be created" in front of an
+ * operator whose whole tmux is gone; read as `unreachable` they raise the disconnected banner and its
+ * retry, which is the true story. The contract owns this rule for every adapter (MUX_CONTRACT.md
+ * § Contract-owned rules).
  */
-const NO_SERVER = /no server running|error connecting|no such file or directory|failed to connect|no tmux binary/iu;
+const NO_SERVER =
+  /no server running|error connecting|no such file or directory|failed to connect|no tmux binary|server exited unexpectedly|lost server/iu;
 
 /** Whether this stderr says the addressed pane/window/session has gone away. */
 export function saysMissing(stderr: string): boolean {
