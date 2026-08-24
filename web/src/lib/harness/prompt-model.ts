@@ -24,6 +24,8 @@ export interface PromptOption {
    * The keys to send (in order) to choose this option, per the dialog family's verified recipe:
    * `select` needs the digit THEN `Enter` ("Enter to select"); `permission`/`trust`/`plan` confirm
    * on the digit ALONE (a trailing Enter there would leak into whatever renders next).
+   * When an option carries its own `keys`, those win over the family's default choreography —
+   * Codex question cards submit on the digit alone even though their family is `select`.
    */
   keys: string[];
   /**
