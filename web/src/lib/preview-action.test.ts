@@ -15,6 +15,7 @@ import { fetchPane, sendKeys, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectPreviewSelect } from "./harness/claude/preview-select";
+import { t } from "./i18n";
 import {
   NOTE_MAX_LENGTH,
   previewsEqual,
@@ -405,7 +406,7 @@ describe("submitPreviewNote — n → verify focus → clear → type → Escape
     const m = model({});
     mockFetchPane.mockResolvedValue(paneWith(buffer({}))); // editing state never appears
     const res = await submitPreviewNote({ ...base, preview: m, text: "hello" });
-    expect(res).toEqual({ status: "error", error: "Note input didn't open — check the pane" });
+    expect(res).toEqual({ status: "error", error: t("previewAction.note.notOpened") });
     expect(mockSendKeys.mock.calls).toEqual([
       ["w1:p1", ["n"], undefined, m.regionSignature],
     ]);

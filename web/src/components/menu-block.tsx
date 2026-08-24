@@ -12,6 +12,8 @@ import {
 } from "@/lib/harness/menu-hints";
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 /** What a tap asks for: the keys to send, and whether it is a non-committal arrow (which takes the
  *  weaker identity-only guard in lib/menu-action.ts). */
@@ -49,6 +51,7 @@ export interface MenuBlockProps {
 // There are NO digit buttons, and there never will be: in the `/model` picker a digit confirms AND
 // persists the choice as the user's default (.adr/0009). Only footer-named keys and arrows ship.
 export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
+  useLocale();
   const [sending, setSending] = useState<string | null>(null);
   const locked = disabled || sending !== null;
 
@@ -63,7 +66,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   }
 
   const spinner = (
-    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Sending" />
+    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
   const navButton = (id: string, label: string, keys: string[], icon: ReactNode) => (
@@ -109,9 +112,10 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
           nothing, so they take the weaker identity guard. */}
       {(menu.nav.upDown || menu.nav.leftRight !== undefined) && (
         <div className="flex items-center gap-1.5">
-          {menu.nav.upDown && navButton("up", "Move up", MENU_UP_KEYS, <ArrowUp className="size-4" />)}
           {menu.nav.upDown &&
-            navButton("down", "Move down", MENU_DOWN_KEYS, <ArrowDown className="size-4" />)}
+            navButton("up", t("dialog.menu.moveUp"), MENU_UP_KEYS, <ArrowUp className="size-4" />)}
+          {menu.nav.upDown &&
+            navButton("down", t("dialog.menu.moveDown"), MENU_DOWN_KEYS, <ArrowDown className="size-4" />)}
           {/* The ←/→ pair sits AROUND the value it adjusts ("←  ◐ Medium effort  →"): the arrows are
               meaningless without it, and the row is re-derived every poll, so the label tracks the
               live value. Rendered in app space, not mirror space — no `dark:` question arises. */}
@@ -119,7 +123,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {navButton(
                 "left",
-                `Left — ${menu.nav.leftRight.verb} (${menu.nav.leftRight.label})`,
+                t("dialog.menu.leftAria", { verb: menu.nav.leftRight.verb, label: menu.nav.leftRight.label }),
                 MENU_LEFT_KEYS,
                 <ArrowLeft className="size-4" />,
               )}
@@ -128,7 +132,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
               </span>
               {navButton(
                 "right",
-                `Right — ${menu.nav.leftRight.verb} (${menu.nav.leftRight.label})`,
+                t("dialog.menu.rightAria", { verb: menu.nav.leftRight.verb, label: menu.nav.leftRight.label }),
                 MENU_RIGHT_KEYS,
                 <ArrowRight className="size-4" />,
               )}

@@ -4,6 +4,8 @@ import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 import { checkForUpdates } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import type { UpdateInfo } from "@/lib/types";
@@ -16,12 +18,18 @@ import { useOptionalRootData } from "@/lib/route-data";
 // banner; here we only confirm an up-to-date result or surface a check failure.
 
 function describe(update: UpdateInfo | undefined): string {
-  if (!update) return "Check whether a new Collie version is available.";
-  const checked = update.checkedAt ? ` · checked ${timeAgo(update.checkedAt)}` : "";
-  return `Running v${update.current}${checked}`;
+  if (!update) return t("settings.update.check.prompt");
+  if (update.checkedAt) {
+    return t("settings.update.check.runningChecked", {
+      current: update.current,
+      checked: timeAgo(update.checkedAt),
+    });
+  }
+  return t("settings.update.check.running", { current: update.current });
 }
 
 export function UpdateCheckControl() {
+  useLocale();
   const data = useOptionalRootData();
   const update = data?.update;
   const revalidator = useRevalidator();
@@ -61,7 +69,7 @@ export function UpdateCheckControl() {
         <div className="flex min-w-0 items-start gap-3">
           <RefreshCw className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">Updates</div>
+            <div className="font-medium">{t("settings.update.title")}</div>
             <p className="text-sm text-muted-foreground">{describe(update)}</p>
           </div>
         </div>
@@ -72,16 +80,18 @@ export function UpdateCheckControl() {
           {busy ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              Checking…
+              {t("settings.update.checking")}
             </>
           ) : (
-            "Check for updates"
+            t("settings.update.action")
           )}
         </Button>
         {/* Lightweight result — the actionable "available"/"restart" case is left to the UpdateBanner. */}
-        {!busy && error && <span className="text-xs text-status-blocked">Couldn't check.</span>}
+        {!busy && error && (
+          <span className="text-xs text-status-blocked">{t("settings.update.error")}</span>
+        )}
         {!busy && !error && upToDate && (
-          <span className="text-xs text-muted-foreground">Up to date</span>
+          <span className="text-xs text-muted-foreground">{t("settings.update.upToDate")}</span>
         )}
       </div>
     </Card>

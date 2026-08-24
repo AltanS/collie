@@ -9,6 +9,7 @@
 // is what lets this file stay free of both the registry and the models.
 
 import { fetchPane } from "../api";
+import { describeThrownError } from "../api-error-message";
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
 import type { Scope } from "../scope";
@@ -87,7 +88,7 @@ export async function entryGuard<M>(
   try {
     fresh = await readModel(args.paneId, args.requestedLines, args.scope, detect);
   } catch (e) {
-    const error = e instanceof Error ? e.message : String(e);
+    const error = describeThrownError(e);
     return { ok: false, result: { status: "error", error } };
   }
 

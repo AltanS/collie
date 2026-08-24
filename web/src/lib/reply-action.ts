@@ -18,8 +18,10 @@
 // choreography submitPreviewNote already uses for the note field, applied to the main input.
 
 import { fetchPane, sendReply } from "./api";
+import { describeApiError, describeThrownError } from "./api-error-message";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
+import { t } from "./i18n";
 import { graphemeSegmenter } from "./env";
 import { adapterFor, type HarnessAdapter } from "./harness";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
@@ -280,7 +282,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   } catch (e) {
     return { status: "error", error: message(e) };
   }
-  if (!typed.ok) return { status: "error", error: typed.error };
+  if (!typed.ok) return { status: "error", error: describeApiError(typed) };
 
   const sleep = args.sleep ?? defaultSleep;
   // The last screen a verification read actually saw, kept only so the stall below can be named. The
@@ -333,25 +335,26 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     // password means the operator needs one Enter, not a retry, and a retry would type a second copy.
     return {
       status: "stalled",
-      error:
-        "That's a password prompt — it shows nothing as you type, so the text can't be confirmed and nothing was submitted. What you typed is already in the pane.",
+      error: t("reply.stalled.noEcho"),
       noEcho: lastSeen,
     };
   }
   return {
     status: "stalled",
-    error:
-      "Message didn't reach the input box — a dialog may be waiting, and if you were answering it by key that key likely landed. Nothing was submitted.",
+    error: t("reply.stalled.generic"),
   };
 }
 
-const NO_BOX =
-  "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.";
+function noBoxMessage(): string {
+  return t("reply.blocked.noBox");
+}
 
-/** Said instead of {@link NO_BOX} when the screen is a password prompt. It names the mechanism rather
- *  than the symptom, because the operator's next move depends on knowing that waiting won't help. */
-const NO_ECHO =
-  "That's a password prompt — it shows nothing as you type, so Send can never confirm the text arrived. Nothing was typed.";
+/** Said instead of {@link noBoxMessage} when the screen is a password prompt. It names the mechanism
+ *  rather than the symptom, because the operator's next move depends on knowing that waiting won't
+ *  help. */
+function noEchoMessage(): string {
+  return t("reply.blocked.noEcho");
+}
 
 /**
  * What the pre-flight decided. Two fields, and the second is the safety invariant of this module made
@@ -411,8 +414,8 @@ async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promi
     // ever work, because the evidence this guard needs is exactly what the prompt is refusing to show
     // (#103). Hand the prompt itself back so the caller can say so and offer "Type".
     const noEcho = detectNoEchoPrompt(seen);
-    if (noEcho !== null) return blind({ status: "blocked", error: NO_ECHO, noEcho });
-    return blind({ status: "blocked", error: NO_BOX });
+    if (noEcho !== null) return blind({ status: "blocked", error: noEchoMessage(), noEcho });
+    return blind({ status: "blocked", error: noBoxMessage() });
   }
 
   // The region the read's `true` was true OF. Computed here, from the same parse `composerReady` just
@@ -445,8 +448,7 @@ async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promi
       }
       return {
         status: "blocked",
-        error:
-          "The agent's input box left the screen while its input line was being cleared — a menu or dialog is probably up. Your message wasn't typed.",
+        error: t("reply.blocked.composerLeft"),
       };
     },
   };
@@ -461,7 +463,7 @@ async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
   // composer's callback was already a no-op here.
   try {
     const res = await sendReply(args.paneId, args.text, true, args.scope);
-    return res.ok ? { status: "sent" } : { status: "error", error: res.error };
+    return res.ok ? { status: "sent" } : { status: "error", error: describeApiError(res) };
   } catch (e) {
     return { status: "error", error: message(e) };
   }
@@ -479,8 +481,10 @@ async function submitOnly(args: GuardedReplyArgs): Promise<ReplyOutcome> {
     // The text is verifiably sitting in the input box and only the submit key failed — same shape as
     // the bridge's own partial-failure case. Tell the caller not to resend.
     return {
+      // The bridge's own `reply.not_submitted` case, reached from the client side — so it says it
+      // with the bridge's own catalogued sentence rather than a second copy of the English.
       status: "error",
-      error: "typed into the pane but not submitted — check the pane before resending",
+      error: t("apiError.reply.not_submitted"),
       textDelivered: true,
     };
   } catch (e) {
@@ -489,5 +493,7 @@ async function submitOnly(args: GuardedReplyArgs): Promise<ReplyOutcome> {
 }
 
 function message<TThrown>(e: TThrown): string {
-  return e instanceof Error ? e.message : String(e);
+  // A throw from lib/api.ts carries the bridge's code, so it can be said in the operator's language;
+  // a transport failure still falls through to its own message (lib/api-error-message.ts).
+  return describeThrownError(e);
 }

@@ -2,6 +2,8 @@ import { ServerOff } from "lucide-react";
 
 import type { HostHealth } from "@/lib/host-health";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 // TIER 2's pane-level surface: the lead is fine, this pane's MACHINE is not.
 //
@@ -56,6 +58,7 @@ export function HostStaleBanner({
   health: HostHealth | undefined;
   className?: string;
 }) {
+  useLocale();
   if (!health || health.state === "live") return null;
   const nothingCached = health.state === "unknown";
   // A merely-old receipt on a machine the lead still believes up is not news: writes are accepted,
@@ -63,23 +66,23 @@ export function HostStaleBanner({
   if (!health.incompatible && health.writable && !nothingCached) return null;
 
   const reason = health.incompatible
-    ? `${health.name} is running an incompatible Collie`
-    : `${health.name} is unreachable · ${health.lastSeenLabel}`;
+    ? t("connection.stale.incompatible", { name: health.name })
+    : t("connection.stale.unreachable", { name: health.name, label: health.lastSeenLabel });
   // `unknown` means the lead has never had anything from this machine, so there is no last-good
   // mirror under this banner — an empty pane that SAYS it is empty, never a spinner that can't resolve.
   // The refusal sentence is spoken only when a write really would be refused (`!writable`), which is
   // exactly `writeRefusal`'s own condition — one fact, one gate, in both places.
   const detail = nothingCached
-    ? "Nothing cached for this machine yet."
-    : "Showing the last known screen — replies and keys are refused until it answers.";
+    ? t("connection.stale.nothingCached")
+    : t("connection.stale.showingLastKnown");
   // The one case with nothing to refuse and nothing to show: the lead believes this machine is up
   // and simply has not heard from it yet. One sentence, in the present tense, naming neither a
   // refusal nor a machine that is down — and deliberately not "…yet. Nothing … yet.", which said the
   // same thing twice and read like two faults.
   const message =
     nothingCached && health.writable
-      ? `Nothing from ${health.name} yet — waiting for its first answer.`
-      : `${reason}. ${detail}`;
+      ? t("connection.stale.waitingFirst", { name: health.name })
+      : t("connection.stale.messageTemplate", { reason, detail });
 
   return (
     <output

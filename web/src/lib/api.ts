@@ -1,6 +1,7 @@
 // Thin REST client for the bridge. Everything is same-origin, so credentials/headers are
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
+import { parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
 import { markLive } from "./connection-health";
 import { abortSignalAfter, abortSignalAny } from "./env";
@@ -48,18 +49,40 @@ export type { NotifyPrefs, UpdateInfo };
 export const XHR_HEADER = "x-requested-with";
 export const XHR_HEADER_VALUE = "XMLHttpRequest";
 
+/**
+ * A non-2xx answer, thrown.
+ *
+ * `message` stays what it always was — `path → status body` — because it is what a log, a route error
+ * boundary and a test read. What is NEW is `fields`: the code/detail/sentence parsed out of that body
+ * at the moment of the throw, so `lib/api-error-message.ts` can say the refusal in the operator's
+ * language instead of putting a URL and a status code on a phone screen. Absent (`undefined`) for
+ * every non-JSON refusal — a proxy's HTML, a plain-text 403, an empty body.
+ */
 class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  readonly fields: ApiErrorFields | undefined;
+  constructor(message: string, status: number, fields?: ApiErrorFields) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.fields = fields;
   }
 }
 
 /** True when an API request failed with the given HTTP status. */
 export function isApiErrorStatus<TThrown>(error: TThrown, status: number): boolean {
   return error instanceof ApiError && error.status === status;
+}
+
+/**
+ * The bridge's error fields off a caught throw, or `undefined` when it did not come from here.
+ *
+ * The accessor exists so `ApiError` itself stays private to this module: `lib/api-error-message.ts`
+ * needs the fields, not the class, and exporting the class would invite `instanceof` checks in
+ * components that should be branching on {@link isApiErrorStatus} or on a code.
+ */
+export function apiErrorFields<TThrown>(thrown: TThrown): ApiErrorFields | undefined {
+  return thrown instanceof ApiError ? thrown.fields : undefined;
 }
 
 // Every request gets a deadline so a black-holed connection (phone sleep/wake, a Tailscale route
@@ -192,7 +215,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
     notePairing(method, res.status, detail);
     const recovered = recover?.(res.status, detail);
     if (recovered !== null && recovered !== undefined) return recovered;
-    throw new ApiError(`${path} → ${res.status} ${detail}`, res.status);
+    throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
   notePairing(method, res.status);
   if (res.status === 204) {
@@ -287,7 +310,8 @@ export async function fetchPane(
   }
 
   if (!res.ok) {
-    throw new ApiError(`${url} → ${res.status} ${await errorDetail(res)}`, res.status);
+    const detail = await errorDetail(res);
+    throw new ApiError(`${url} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
 
   // Parse the body BEFORE recording the ETag, so the cache only ever holds an (etag, text) pair
@@ -570,7 +594,7 @@ export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<
       if (!res.ok) {
         const detail = await errorDetail(res);
         notePairing("POST", res.status, detail);
-        throw new ApiError(`upload → ${res.status} ${detail}`, res.status);
+        throw new ApiError(`upload → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
       }
       notePairing("POST", res.status);
       // SAFETY: a 200 on `/api/pane/:id/upload` is the bridge's own `UploadResponse` by contract;
@@ -580,10 +604,23 @@ export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<
   );
 }
 
-/** One transcription attempt. A refusal is a VALUE here, not a throw — see {@link transcribeAudio}. */
+/**
+ * One transcription attempt. A refusal is a VALUE here, not a throw — see {@link transcribeAudio}.
+ *
+ * The refusal carries the bridge's `code`/`detail` beside its status: the status alone cannot tell
+ * "the recording is empty" from "the recording could not be read" (both 400), which is the reason
+ * `bridge/stt/http.ts` codes them separately. `status` stays, because it is still what an OLDER
+ * bridge — one that sends no code — is judged by.
+ */
 export type SttResult =
   | { ok: true; text: string }
-  | { ok: false; status: number; error: string | null };
+  | {
+      ok: false;
+      status: number;
+      error: string | null;
+      code?: string;
+      detail?: ApiErrorDetail;
+    };
 
 /**
  * Send one recorded clip to `POST /api/stt` and get its transcript (ADR 0029).
@@ -618,9 +655,18 @@ export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<SttR
       const text = body === undefined ? undefined : asJsonString(body.text);
       if (res.ok && text !== undefined) return { ok: true as const, text };
       const error = body === undefined ? null : (asJsonString(body.error) ?? null);
+      // The same fields every other refusal now carries, read off the same body — so the composer's
+      // one line can be the translated sentence rather than the bridge's English one.
+      const fields = parseApiErrorFields(detail);
       // A 200 whose body is not the documented shape is still a failure, and one the operator can do
       // nothing about — report it as the bridge's own status rather than inventing a transcript.
-      return { ok: false as const, status: res.ok ? 502 : res.status, error };
+      return {
+        ok: false as const,
+        status: res.ok ? 502 : res.status,
+        error,
+        code: fields?.code,
+        detail: fields?.detail,
+      };
     })(),
   );
 }

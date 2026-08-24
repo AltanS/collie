@@ -1,6 +1,8 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { type AgentStatus, STATUS_LABEL } from "@/lib/types";
+import { type AgentStatus, statusLabel } from "@/lib/types";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 const DOT = {
   blocked: "bg-status-blocked",
@@ -86,19 +88,21 @@ export function StatusBadge({
   stale?: boolean;
   className?: string;
 }) {
+  useLocale();
   return (
     <Badge
       variant="outline"
       className={cn("gap-1.5 transition-opacity", CHIP[status], stale && "opacity-40", className)}
     >
       <span className={cn("size-1.5 rounded-full", DOT[status])} />
-      {STATUS_LABEL[status]}
+      {statusLabel(status)}
     </Badge>
   );
 }
 
 /** Muted "shell" tag shown in place of a StatusBadge for a bare shell pane (no agent). */
 export function ShellBadge({ stale, className }: { stale?: boolean; className?: string }) {
+  useLocale();
   return (
     <span
       className={cn(
@@ -107,7 +111,7 @@ export function ShellBadge({ stale, className }: { stale?: boolean; className?: 
         className,
       )}
     >
-      shell
+      {t("status.shellBadge")}
     </span>
   );
 }

@@ -2,6 +2,8 @@ import { Info } from "lucide-react";
 
 import { BUILD, prereleaseLabel } from "@/lib/build";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface AlphaBarProps {
   /** Defaults to this bundle's own build version; injectable so tests don't have to fake the define. */
@@ -26,13 +28,14 @@ interface AlphaBarProps {
 // deliberately the ReadOnlyBanner's, so the app's two "this session is not normal" strips read as
 // one family.
 export function AlphaBar({ version = BUILD.version, className }: AlphaBarProps) {
+  useLocale();
   const label = prereleaseLabel(version);
   if (!label) return null;
   return (
     <div
       // Not role="status": this never changes after mount, and announcing it as a live region would
       // re-read it over every header update. It's a static line of text screen readers reach in order.
-      title={`Pre-release build — ${version}`}
+      title={t("nav.prereleaseTitle", { version })}
       className={cn(
         // One short line, py-0.5 + 11px text ⇒ ~20px tall, and it lives INSIDE the sticky header's
         // safe-area padding (see app-header.tsx), so it costs the pane mirror one line of height and

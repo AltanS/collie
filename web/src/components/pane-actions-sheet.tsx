@@ -6,7 +6,10 @@ import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
+import { useLocale } from "@/hooks/use-locale";
 import * as api from "@/lib/api";
+import { describeApiError, describeThrownError } from "@/lib/api-error-message";
+import { t } from "@/lib/i18n";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
 import { paneDisplayName } from "@/lib/types";
@@ -47,6 +50,7 @@ export function PaneActionsSheet({
   onRenamed,
   onClosed,
 }: PaneActionsSheetProps) {
+  useLocale();
   const [mode, setMode] = useState<Mode>("actions");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -85,14 +89,14 @@ export function PaneActionsSheet({
     try {
       const res = await api.renamePane(pane.paneId, next, scope);
       if (res.ok) {
-        setStatus(next ? "Renamed" : "Label cleared", "success");
+        setStatus(next ? t("paneActions.status.renamed") : t("paneActions.status.labelCleared"), "success");
         onRenamed();
         onClose();
       } else {
-        setStatus(res.error ?? "Rename failed", "error");
+        setStatus(describeApiError(res, t("paneActions.status.renameFailed")), "error");
       }
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
+      setStatus(describeThrownError(e), "error");
     } finally {
       setSaving(false);
     }
@@ -109,10 +113,10 @@ export function PaneActionsSheet({
         onClose();
         onClosed(pane.paneId);
       } else {
-        setStatus(res.error ?? "Close failed", "error");
+        setStatus(describeApiError(res, t("paneActions.status.closeFailed")), "error");
       }
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
+      setStatus(describeThrownError(e), "error");
     } finally {
       setClosing(false);
     }
@@ -121,18 +125,20 @@ export function PaneActionsSheet({
   const confirming = !!pane && pending === pane.paneId;
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={pane ? paneDisplayName(pane) : "Pane"}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={pane ? paneDisplayName(pane) : t("paneActions.title.fallback")}
+    >
       {readOnly ? (
-        <p className="py-2 text-sm text-muted-foreground">
-          Read-only — this device isn't authorised to rename or close panes.
-        </p>
+        <p className="py-2 text-sm text-muted-foreground">{t("paneActions.readOnly")}</p>
       ) : hostBlock ? (
         // Refused BEFORE anything is attempted (§10.3): no queue, no retry, no "try anyway" — the
         // lead would answer `host_unreachable` and the operator would be left guessing whether a
         // close half-landed. Offering the actions greyed out would suggest they're one tap from
         // working; naming the machine and its last-seen age says what to actually wait for.
         <p className="py-2 text-sm text-muted-foreground">
-          {hostBlock} — rename and close are unavailable until it answers.
+          {t("paneActions.hostBlockSuffix", { hostBlock })}
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
@@ -148,16 +154,16 @@ export function PaneActionsSheet({
           {canRename.capable && (
             <ActionRow
               icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
-              label="Rename"
+              label={t("paneActions.rename.label")}
               onClick={() => setMode("rename")}
             />
           )}
           {canClose.capable && (
             <DestructiveActionRow
               icon={<XCircle className="size-4 shrink-0" />}
-              label="Close pane"
-              confirmLabel="Tap again to close"
-              closingLabel="Closing…"
+              label={t("paneActions.close.label")}
+              confirmLabel={t("paneActions.close.confirm")}
+              closingLabel={t("paneActions.close.closing")}
               armed={confirming}
               closing={closing}
               onClick={() => void requestClose()}
@@ -168,7 +174,7 @@ export function PaneActionsSheet({
               takes their place — hide the meaningless, explain the expected. */}
           {!canRename.capable && !canClose.capable && (
             <p className="py-2 text-sm leading-snug text-muted-foreground">
-              {canRename.note || canClose.note || "This multiplexer offers no actions for a pane."}
+              {canRename.note || canClose.note || t("paneActions.empty.fallback")}
             </p>
           )}
         </div>
@@ -182,7 +188,7 @@ export function PaneActionsSheet({
           saving={saving}
           // A blank pane field clears the label (blank → null on the bridge), so Save stays enabled.
           canSave={true}
-          placeholder="name this pane"
+          placeholder={t("paneActions.rename.placeholder")}
         />
       )}
     </BottomSheet>

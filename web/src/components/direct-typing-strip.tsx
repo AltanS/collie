@@ -1,5 +1,8 @@
 import { Keyboard } from "lucide-react";
 
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
+
 // The armed indicator for direct typing, in the same in-flow slot as the "You sent:" strip.
 //
 // WHY THIS EXISTS ON TOP OF THE RESTYLED BUTTON AND TEXTAREA. Those two are exactly the elements a
@@ -13,19 +16,20 @@ import { Keyboard } from "lucide-react";
 // saying WHICH machine would be the one write path that doesn't. That component does not exist on
 // main, so the chip goes in at the merge, next to the label below.
 export function DirectTypingStrip({ onStop }: { onStop: () => void }) {
+  useLocale();
   return (
     <div className="flex items-center gap-2 px-1 pb-1 text-xs text-primary">
       <Keyboard className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate">
-        <span className="font-medium">Typing into terminal</span>
-        <span className="text-muted-foreground"> — keys go straight through</span>
+        <span className="font-medium">{t("sendMode.armed.title")}</span>
+        <span className="text-muted-foreground"> — {t("sendMode.armed.hint")}</span>
       </span>
       <button
         type="button"
         onClick={onStop}
         className="shrink-0 rounded-md px-2 py-0.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted"
       >
-        Stop
+        {t("sendMode.armed.stop")}
       </button>
     </div>
   );

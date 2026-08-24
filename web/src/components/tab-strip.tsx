@@ -9,6 +9,8 @@ import { hostKey } from "@/lib/hosts";
 import type { AgentView, TabView } from "@/lib/types";
 import { useMuxCapability } from "@/lib/mux-capability";
 import type { Scope } from "@/lib/scope";
+import { t as translate } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface TabStripProps {
   workspaceId: string;
@@ -53,6 +55,7 @@ export function TabStrip({
   onRenamed,
   onClosed,
 }: TabStripProps) {
+  useLocale();
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
   const newTab = useMuxCapability("createTab");
   // Actions need both callbacks wired (revalidate on rename, fall back on close); without them the
@@ -70,8 +73,14 @@ export function TabStrip({
     <>
       {/* shrink-0 for the same reason as SpaceStrip — see the note there. */}
       <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-border/40 px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <SectionLabel>Tabs</SectionLabel>
-        {allowAll && <Chip label="All" active={selected === null} onClick={() => onSelect(null)} />}
+        <SectionLabel>{translate("space.tabStrip.title")}</SectionLabel>
+        {allowAll && (
+          <Chip
+            label={translate("space.tabStrip.all")}
+            active={selected === null}
+            onClick={() => onSelect(null)}
+          />
+        )}
         {wsTabs.map((t) => (
           <Chip
             key={t.tabId}
@@ -97,7 +106,7 @@ export function TabStrip({
           <button
             type="button"
             onClick={() => onNewTab(workspaceId)}
-            aria-label="New tab"
+            aria-label={translate("space.tabStrip.new.aria")}
             className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
           >
             <Plus className="size-4" />

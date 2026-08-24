@@ -1,7 +1,14 @@
 import { useEffect, useSyncExternalStore } from "react";
 
+import type { SttResult } from "@/lib/api";
+import { isApiErrorCode } from "@/lib/api-error-codes";
+import { describeApiError } from "@/lib/api-error-message";
+import { t } from "@/lib/i18n";
 import { getSttCapability, loadOperatorCommands, subscribeOperatorConfig } from "@/lib/operator-config";
 import type { SttCapability } from "@/lib/types";
+
+/** The refusal half of one transcription attempt — the only shape `sttErrorMessage` has words for. */
+type SttFailure = Extract<SttResult, { ok: false }>;
 
 // THE PHONE'S HALF OF SPEECH-TO-TEXT (ADR 0029) — the policy, the support probe, the error words,
 // and the one persisted setting. The recorder mechanics live in hooks/use-stt-recorder.ts and the
@@ -82,19 +89,31 @@ export function useSttCapability(): SttCapability | null {
 /**
  * Operator-facing words for a failed transcription.
  *
- * The bridge already sends prose in `{ok:false,error}` and it is good prose — but it is written for
- * a terminal, and the composer has one line. These are the short forms, keyed by the status the
- * route assigns each failure kind (bridge/stt/http.ts). The bridge's own text is the fallback, so a
- * status this list has not met still says something true.
+ * THE CODE FIRST, the status only after it. A refusal from any current bridge carries the stable
+ * `code` this app has a translated sentence for (`apiError.stt.*`), and the code says things the
+ * status cannot: "the recording is empty" and "the recording could not be read" are both 400.
+ *
+ * The status ladder below is what remains for a bridge OLDER than the catalogue, which sends no code
+ * at all. It is deliberately still here and deliberately still English: it is the pre-catalogue
+ * behaviour, unchanged, and a phone talking to such a bridge is exactly the case where inventing a
+ * new mapping would be guessing.
  */
-export function sttErrorMessage(status: number, serverError: string | null): string {
-  if (status === 429) return "Busy — another recording is still transcribing. Try again in a moment.";
-  if (status === 413) return "That recording is too long — record a shorter one.";
-  if (status === 415) return "This browser recorded a format Collie can't send on.";
-  if (status === 503) return "Speech-to-text isn't configured on this collie.";
-  if (status === 504) return "The transcriber didn't answer in time — try again.";
-  if (status === 502) return "The transcriber couldn't be reached — try again.";
-  return serverError ?? "Transcription failed — record again to retry.";
+export function sttErrorMessage(failure: SttFailure): string {
+  if (isApiErrorCode(failure.code)) {
+    return describeApiError({
+      error: failure.error ?? undefined,
+      code: failure.code,
+      detail: failure.detail,
+    });
+  }
+  const { status, error: serverError } = failure;
+  if (status === 429) return t("stt.error.busy");
+  if (status === 413) return t("stt.error.tooLong");
+  if (status === 415) return t("stt.error.badFormat");
+  if (status === 503) return t("stt.error.unconfigured");
+  if (status === 504) return t("stt.error.timeout");
+  if (status === 502) return t("stt.error.unreachable");
+  return serverError ?? t("stt.error.generic");
 }
 
 // ── HANDS-FREE ──────────────────────────────────────────────────────────────────────────────────

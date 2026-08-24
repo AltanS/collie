@@ -2,6 +2,8 @@ import { Mic } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 import { setHandsFreeEnabled, useHandsFree, useSttCapability } from "@/lib/stt";
 
 // The one voice SETTING (ADR 0029). Everything else about speech-to-text is an operator act on the
@@ -18,6 +20,7 @@ import { setHandsFreeEnabled, useHandsFree, useSttCapability } from "@/lib/stt";
 // record (an insecure origin has no `mediaDevices`). Same predicate as the composer's button, so the
 // two can never disagree — a toggle for a feature that is absent teaches the user the app lies.
 export function HandsFreeControl() {
+  useLocale();
   const stt = useSttCapability();
   const enabled = useHandsFree();
   if (stt === null) return null;
@@ -28,10 +31,9 @@ export function HandsFreeControl() {
         <div className="flex min-w-0 items-start gap-3">
           <Mic className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">Hands-free voice</div>
+            <div className="font-medium">{t("settings.handsFree.title")}</div>
             <p className="text-sm text-muted-foreground">
-              Send the transcript immediately instead of putting it in the message box. Off by
-              default — you normally read what was heard before it reaches the terminal.
+              {t("settings.handsFree.description")}
             </p>
           </div>
         </div>
@@ -39,7 +41,7 @@ export function HandsFreeControl() {
           <Switch
             checked={enabled}
             onCheckedChange={setHandsFreeEnabled}
-            aria-label="Hands-free voice: send transcript immediately"
+            aria-label={t("settings.handsFree.ariaLabel")}
           />
         </div>
       </div>

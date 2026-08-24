@@ -9,9 +9,12 @@ import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { PackProvider } from "@/components/pack-provider";
 import { DogGallop } from "@/components/dog-gallop";
+import { describeThrownError } from "@/lib/api-error-message";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
 import { PANE_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 /**
  * The "last seen" stamp the ONE connection surface should show — the stamp of the data actually on
@@ -103,12 +106,13 @@ export function RootLayout() {
 // state: the dog rests, the copy says we can't reach Collie, and a Retry re-runs the loaders from
 // scratch (a full reload clears most transient failures). Below the threshold it's unchanged.
 export function BootSplash() {
+  useLocale();
   const stuck = useConnectionLost(true);
   if (!stuck) {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
-        <DogGallop running size="4rem" label="Loading" />
-        <span className="text-sm">Connecting to the herd…</span>
+        <DogGallop running size="4rem" label={t("error.boot.loadingAria")} />
+        <span className="text-sm">{t("error.boot.connecting")}</span>
       </div>
     );
   }
@@ -118,16 +122,14 @@ export function BootSplash() {
           rest-frame, whose full-stretch mid-stride pose looks frozen mid-run. The "Not connected"
           copy below carries the accessible meaning, so the icon is decorative. */}
       <img src="/favicon.svg" alt="" className="size-16 opacity-40 grayscale" />
-      <p className="font-medium text-foreground">Not connected</p>
-      <p className="max-w-xs text-sm text-muted-foreground">
-        Can&rsquo;t reach Collie — check your connection to the host, then try again.
-      </p>
+      <p className="font-medium text-foreground">{t("error.boot.title")}</p>
+      <p className="max-w-xs text-sm text-muted-foreground">{t("error.boot.body")}</p>
       <button
         type="button"
         onClick={() => window.location.reload()}
         className="text-sm underline underline-offset-4"
       >
-        Retry
+        {t("error.boot.retry")}
       </button>
     </div>
   );
@@ -136,11 +138,14 @@ export function BootSplash() {
 // Last-resort recovery screen for a render-phase error or a loader throw — a full reload re-runs the
 // loaders from scratch, which clears most transient failures.
 export function RootError() {
+  useLocale();
   const error = useRouteError();
-  const message = error instanceof Error ? error.message : "Unknown error";
+  // An ApiError knows the bridge's code and can therefore say the refusal in the operator's
+  // language; anything else (a render-phase throw, a router error) keeps its own message.
+  const message = error instanceof Error ? describeThrownError(error) : t("error.root.unknown");
   return (
     <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 p-6 text-center">
-      <p className="font-medium text-destructive">Something went wrong</p>
+      <p className="font-medium text-destructive">{t("error.root.title")}</p>
       <p className="max-w-xs text-sm text-muted-foreground">{message}</p>
       <button
         type="button"
@@ -151,7 +156,7 @@ export function RootError() {
         }}
         className="text-sm underline underline-offset-4"
       >
-        Reload
+        {t("error.root.reload")}
       </button>
     </div>
   );

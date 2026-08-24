@@ -3,6 +3,8 @@ import { BellRing, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useNotifyPrefs } from "@/hooks/use-notify-prefs";
+import { useLocale } from "@/hooks/use-locale";
+import { t, type MessageKey } from "@/lib/i18n";
 import type { NotifyPrefs } from "@/lib/api";
 
 // Which lifecycle events are worth a push. Bridge-wide (fans out to every device, like the snooze),
@@ -10,13 +12,18 @@ import type { NotifyPrefs } from "@/lib/api";
 // default off), and "App updates" (updates, default on). Optimistic toggle with revert on failure —
 // see useNotifyPrefs.
 
-const ROWS: ReadonlyArray<{ key: keyof NotifyPrefs; label: string; hint: string }> = [
-  { key: "blocked", label: "Needs input", hint: "an agent is waiting on you" },
-  { key: "done", label: "Finished", hint: "an agent completes its task" },
-  { key: "updates", label: "App updates", hint: "a new Collie version is available" },
+const ROWS: ReadonlyArray<{ key: keyof NotifyPrefs; labelKey: MessageKey; hintKey: MessageKey }> = [
+  { key: "blocked", labelKey: "settings.notify.blocked.label", hintKey: "settings.notify.blocked.hint" },
+  { key: "done", labelKey: "settings.notify.done.label", hintKey: "settings.notify.done.hint" },
+  {
+    key: "updates",
+    labelKey: "settings.notify.updates.label",
+    hintKey: "settings.notify.updates.hint",
+  },
 ];
 
 export function NotifyPrefsControl() {
+  useLocale();
   const { prefs, busy, toggle } = useNotifyPrefs();
 
   return (
@@ -25,8 +32,8 @@ export function NotifyPrefsControl() {
         <div className="flex min-w-0 items-start gap-3">
           <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <div className="font-medium">Notify when</div>
-            <p className="text-sm text-muted-foreground">Applies to all devices.</p>
+            <div className="font-medium">{t("settings.notify.title")}</div>
+            <p className="text-sm text-muted-foreground">{t("settings.notify.description")}</p>
           </div>
         </div>
         {!prefs && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
@@ -43,14 +50,14 @@ export function NotifyPrefsControl() {
             className="flex items-center justify-between gap-4 border-t border-border/60 px-4 py-3"
           >
             <div className="min-w-0">
-              <div className="text-sm font-medium">{row.label}</div>
-              <p className="text-xs text-muted-foreground">{row.hint}</p>
+              <div className="text-sm font-medium">{t(row.labelKey)}</div>
+              <p className="text-xs text-muted-foreground">{t(row.hintKey)}</p>
             </div>
             <Switch
               checked={prefs?.[row.key] ?? false}
               disabled={busy || !prefs}
               onCheckedChange={(next) => void toggle(row.key, next)}
-              aria-label={row.label}
+              aria-label={t(row.labelKey)}
             />
           </div>
       ))}

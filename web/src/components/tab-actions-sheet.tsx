@@ -7,10 +7,13 @@ import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostWriteBlock } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
+import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
 import type { TabView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
+import { t, tn } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface TabActionsSheetProps {
   open: boolean;
@@ -47,6 +50,7 @@ export function TabActionsSheet({
   onRenamed,
   onClosed,
 }: TabActionsSheetProps) {
+  useLocale();
   const [mode, setMode] = useState<Mode>("actions");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -78,14 +82,14 @@ export function TabActionsSheet({
     try {
       const res = await api.renameTab(tab.tabId, trimmed, scope);
       if (res.ok) {
-        setStatus("Renamed", "success");
+        setStatus(t("space.tab.renamed"), "success");
         onRenamed();
         onClose();
       } else {
-        setStatus(res.error ?? "Rename failed", "error");
+        setStatus(describeApiError(res, t("space.tab.renameFailed")), "error");
       }
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
+      setStatus(describeThrownError(e), "error");
     } finally {
       setSaving(false);
     }
@@ -102,10 +106,10 @@ export function TabActionsSheet({
         onClose();
         onClosed(tab.tabId);
       } else {
-        setStatus(res.error ?? "Close failed", "error");
+        setStatus(describeApiError(res, t("space.tab.closeFailed")), "error");
       }
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e), "error");
+      setStatus(describeThrownError(e), "error");
     } finally {
       setClosing(false);
     }
@@ -125,20 +129,21 @@ export function TabActionsSheet({
   // Closing a tab kills every pane in it — name the blast radius on the confirm so it's honest. The
   // count rides on the tab record (snapshot `pane_count`); fall back to a plain confirm if it's 0.
   const paneCount = tab?.paneCount ?? 0;
-  const confirmLabel =
-    paneCount > 0 ? `Tap again to close ${paneCount} pane${paneCount === 1 ? "" : "s"}` : "Tap again to close";
+  const confirmLabel = paneCount > 0 ? tn("space.tab.closeConfirm", paneCount) : t("space.tab.closeConfirmPlain");
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={tab ? `Tab ${tab.label}` : "Tab"}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={tab ? t("space.tab.titleWithLabel", { label: tab.label }) : t("space.tab.titleFallback")}
+    >
       {readOnly ? (
-        <p className="py-2 text-sm text-muted-foreground">
-          Read-only — this device isn't authorised to rename or close tabs.
-        </p>
+        <p className="py-2 text-sm text-muted-foreground">{t("space.tab.readOnly")}</p>
       ) : hostBlock ? (
         // Refused before it is attempted (§10.3) — closing a tab kills every pane in it, and a
         // half-known outcome on that is the worst one to hand somebody.
         <p className="py-2 text-sm text-muted-foreground">
-          {hostBlock} — rename and close are unavailable until it answers.
+          {t("space.tab.hostBlockSuffix", { hostBlock })}
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
@@ -149,16 +154,16 @@ export function TabActionsSheet({
           {canRename.capable && (
             <ActionRow
               icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
-              label="Rename"
+              label={t("space.tab.rename")}
               onClick={() => setMode("rename")}
             />
           )}
           {canClose.capable && (
             <DestructiveActionRow
               icon={<XCircle className="size-4 shrink-0" />}
-              label="Close tab"
+              label={t("space.tab.close")}
               confirmLabel={confirmLabel}
-              closingLabel="Closing…"
+              closingLabel={t("space.tab.closing")}
               armed={confirming}
               closing={closing}
               onClick={() => void requestClose()}
@@ -166,7 +171,7 @@ export function TabActionsSheet({
           )}
           {!canRename.capable && !canClose.capable && (
             <p className="py-2 text-sm leading-snug text-muted-foreground">
-              {canRename.note || canClose.note || "This multiplexer offers no actions for a tab."}
+              {canRename.note || canClose.note || t("space.tab.empty.fallback")}
             </p>
           )}
         </div>
@@ -181,7 +186,7 @@ export function TabActionsSheet({
           // A tab has no "clear" (herdr stores "" literally, rejects null), so a blank field can't be
           // saved — Save disables. This is the one rename difference from a pane.
           canSave={!!trimmed}
-          placeholder="name this tab"
+          placeholder={t("space.tab.placeholder")}
         />
       )}
     </BottomSheet>

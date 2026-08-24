@@ -10,6 +10,8 @@ import { useKeyQueue } from "@/hooks/use-key-queue";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useHoldRepeat } from "@/hooks/use-hold-repeat";
 import { KeyQueueStrip } from "@/components/key-queue-strip";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 import { keysSendable } from "@/lib/mux-capability";
 import { CONTROL_PRESETS, type CtrlDef } from "@/lib/operator-keys";
 
@@ -80,6 +82,7 @@ export function NavTray({
   disabled,
   unsupportedKeys = NO_REFUSED_KEYS,
 }: NavTrayProps) {
+  useLocale();
   const [tab, setTab] = useState<Tab>("keys");
   const [ctrlOpen, setCtrlOpen] = useState(false);
   const [fkeysOpen, setFkeysOpen] = useState(false);
@@ -228,7 +231,7 @@ export function NavTray({
           aria-pressed={tab === "keys"}
           className="h-8 text-sm font-medium"
         >
-          Keys
+          {t("keys.tab.keys")}
         </Button>
         <Button
           type="button"
@@ -295,7 +298,7 @@ export function NavTray({
               onClick={() => setCtrlOpen((o) => !o)}
               className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
             >
-              Presets
+              {t("keys.presets.label")}
               <ChevronDown className={cn("size-3 transition-transform", ctrlOpen && "rotate-180")} />
             </button>
             {ctrlOpen && (
@@ -319,7 +322,7 @@ export function NavTray({
                       )}
                     >
                       {isPending ? (
-                        "Confirm?"
+                        t("keys.confirm.label")
                       ) : phase === "done" ? (
                         <Check className="size-4" />
                       ) : (
@@ -341,7 +344,7 @@ export function NavTray({
               onClick={() => setFkeysOpen((o) => !o)}
               className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
             >
-              F keys
+              {t("keys.fkeys.label")}
               <ChevronDown className={cn("size-3 transition-transform", fkeysOpen && "rotate-180")} />
             </button>
             {fkeysOpen && (

@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface FindBarProps {
   query: string;
@@ -28,8 +30,10 @@ export function FindBar({
   onPrev,
   onNext,
   onClose,
-  subject = "output",
+  subject,
 }: FindBarProps) {
+  useLocale();
+  const resolvedSubject = subject ?? t("find.subject.output");
   const inputRef = useRef<HTMLInputElement>(null);
   // Focus (and pop the keyboard) as soon as the bar opens so the user can type immediately.
   useEffect(() => {
@@ -61,8 +65,8 @@ export function FindBar({
             onClose();
           }
         }}
-        placeholder={`Find in ${subject}…`}
-        aria-label={`Find in ${subject}`}
+        placeholder={t("find.placeholder", { subject: resolvedSubject })}
+        aria-label={t("find.aria", { subject: resolvedSubject })}
         className="h-9 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
       />
       <span className="shrink-0 whitespace-nowrap px-1 font-mono text-xs tabular-nums text-muted-foreground">
@@ -74,7 +78,7 @@ export function FindBar({
         className="size-9 shrink-0 text-muted-foreground"
         disabled={count === 0}
         onClick={onPrev}
-        aria-label="Previous match"
+        aria-label={t("find.prevAria")}
       >
         <ChevronUp className="size-4" />
       </Button>
@@ -84,7 +88,7 @@ export function FindBar({
         className="size-9 shrink-0 text-muted-foreground"
         disabled={count === 0}
         onClick={onNext}
-        aria-label="Next match"
+        aria-label={t("find.nextAria")}
       >
         <ChevronDown className="size-4" />
       </Button>
@@ -93,7 +97,7 @@ export function FindBar({
         size="icon"
         className="size-9 shrink-0 text-muted-foreground"
         onClick={onClose}
-        aria-label="Close find"
+        aria-label={t("find.closeAria")}
       >
         <X className="size-4" />
       </Button>

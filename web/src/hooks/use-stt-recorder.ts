@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
+import { t } from "@/lib/i18n";
 import {
   MAX_STT_AUDIO_BYTES,
   MAX_STT_DURATION_MS,
@@ -192,18 +193,18 @@ export function useSttRecorder({
     } catch {
       // A throw here is transport only — offline, or the request's own deadline. Every refusal the
       // bridge authored comes back as a value.
-      fail(operation, "Couldn't reach Collie to transcribe that — try again.");
+      fail(operation, t("stt.error.networkFailure"));
       return;
     }
     if (!isCurrent(operation)) return;
     if (!result.ok) {
-      fail(operation, sttErrorMessage(result.status, result.error));
+      fail(operation, sttErrorMessage(result));
       return;
     }
     const text = result.text.trim();
     teardown(true);
     if (text === "") {
-      onErrorRef.current("Nothing was heard in that recording.");
+      onErrorRef.current(t("stt.error.noSpeechHeard"));
       return;
     }
     onTranscriptRef.current(text);
@@ -216,7 +217,7 @@ export function useSttRecorder({
     releaseWakeLock();
     const recorder = recorderRef.current;
     if (recorder === null) {
-      fail(operation, "Recording failed — nothing was captured.");
+      fail(operation, t("stt.error.recordingFailed"));
       return;
     }
     // Move out of `recording` before the browser delivers its final events, so a second tap on the
@@ -225,7 +226,7 @@ export function useSttRecorder({
     try {
       recorder.stop();
     } catch {
-      fail(operation, "Recording failed — nothing was captured.");
+      fail(operation, t("stt.error.recordingFailed"));
     }
   }, []);
 
@@ -233,7 +234,7 @@ export function useSttRecorder({
     if (!enabled || phaseRef.current !== "idle") return;
     const mimeType = pickRecordingMimeType();
     if (mimeType === null || !navigator.mediaDevices?.getUserMedia) {
-      onErrorRef.current("This browser can't record audio.");
+      onErrorRef.current(t("stt.error.unsupportedBrowser"));
       return;
     }
     const operation = new AbortController();
@@ -245,7 +246,7 @@ export function useSttRecorder({
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch {
-        fail(operation, "Microphone access was refused.");
+        fail(operation, t("stt.error.micRefused"));
         return;
       }
       if (!isCurrent(operation)) {
@@ -265,7 +266,7 @@ export function useSttRecorder({
         try {
           recorder = new MediaRecorder(stream, { mimeType });
         } catch {
-          fail(operation, "This browser can't record audio.");
+          fail(operation, t("stt.error.unsupportedBrowser"));
           return;
         }
       }
@@ -279,11 +280,11 @@ export function useSttRecorder({
         // Refused HERE, mid-recording, rather than after the stop: the bridge would answer 413 and
         // the operator would have spent an 8 MiB upload to be told so.
         if (bytesRef.current > MAX_STT_AUDIO_BYTES) {
-          fail(operation, "That recording is too long — record a shorter one.");
+          fail(operation, t("stt.error.tooLong"));
         }
       });
       recorder.addEventListener("error", () =>
-        fail(operation, "Recording failed — nothing was captured."),
+        fail(operation, t("stt.error.recordingFailed")),
       );
       recorder.addEventListener("stop", () => {
         if (!isCurrent(operation)) return;
@@ -296,11 +297,11 @@ export function useSttRecorder({
         bytesRef.current = 0;
         const clip = new Blob(chunks, { type: mimeType });
         if (clip.size === 0) {
-          fail(operation, "Nothing was recorded.");
+          fail(operation, t("stt.error.nothingRecorded"));
           return;
         }
         if (clip.size > MAX_STT_AUDIO_BYTES) {
-          fail(operation, "That recording is too long — record a shorter one.");
+          fail(operation, t("stt.error.tooLong"));
           return;
         }
         void transcribe(operation, clip);

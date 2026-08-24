@@ -7,6 +7,7 @@ import type {
 } from "react";
 
 import { useOrderedKeySender } from "@/hooks/use-ordered-key-sender";
+import { t } from "@/lib/i18n";
 import { textToKeySequence } from "@/lib/key-queue";
 import { setStatus } from "@/lib/status";
 
@@ -115,7 +116,7 @@ export function useDirectTyping({
     // A buffered reply and live keystrokes cannot safely share one field. Keep the durable draft
     // exactly where it is and make the user send or clear it before arming direct terminal input.
     if (replyDraft().length > 0) {
-      setStatus("Send or clear the draft before typing into the terminal.", "info");
+      setStatus(t("directTyping.status.draftPending"), "info");
       return;
     }
     onActivate();
@@ -127,7 +128,7 @@ export function useDirectTyping({
     committedComposition.current = null;
     activeRef.current = true;
     setActive(true);
-    setStatus("Typing into the terminal — keys send as you type.", "success");
+    setStatus(t("directTyping.status.armed"), "success");
     // Focus synchronously while the long-press/contextmenu gesture still carries browser user
     // activation; a deferred focus selects the field but mobile browsers may refuse to open their
     // software keyboard once that activation has expired. The existing callback still runs after
@@ -183,7 +184,7 @@ export function useDirectTyping({
 
   function deactivate() {
     clearMode();
-    setStatus("Back to sending replies", "info");
+    setStatus(t("directTyping.status.disarmed"), "info");
   }
 
   function deactivateSilently() {
@@ -211,7 +212,7 @@ export function useDirectTyping({
   useEffect(() => {
     if (!active || !suspended) return;
     lifecycle.current.clearMode();
-    setStatus("Stopped typing into the terminal — the pane view was interrupted.", "info");
+    setStatus(t("directTyping.status.interrupted"), "info");
   }, [active, suspended]);
 
   // The backgrounded-tab disarm has to announce itself on the way BACK, not on the way out. A
@@ -239,7 +240,7 @@ export function useDirectTyping({
       }
       if (!backgrounded.current) return;
       backgrounded.current = false;
-      setStatus("Stopped typing into the terminal — the app was backgrounded.", "info");
+      setStatus(t("directTyping.status.backgrounded"), "info");
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);

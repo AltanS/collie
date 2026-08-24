@@ -21,6 +21,8 @@ import { isConnecting } from "@/lib/connection";
 import { clockTime } from "@/lib/format";
 import * as api from "@/lib/api";
 import type { BridgeStatus } from "@/lib/types";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 interface ConnectionBannerProps {
   /** Herdr link from the last snapshot (undefined before the first successful poll). */
@@ -79,6 +81,7 @@ export function ConnectionBanner({ bridge, error, authError, lastSeenAt }: Conne
 // so it still works if React is wedged. Reload stays alongside it, since a merely stale session on
 // an already-signed-in device recovers without leaving the app.
 function AuthErrorBanner() {
+  useLocale();
   return (
     <div className="grid shrink-0 grid-rows-[1fr] overflow-hidden opacity-100">
       <div className="min-h-0 overflow-hidden">
@@ -92,7 +95,7 @@ function AuthErrorBanner() {
         >
           <TriangleAlert className={cn("size-3.5 shrink-0", TINT.blocked.icon)} />
           <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-            Access refused. This is not a connection problem.
+            {t("connection.auth.message")}
           </span>
           <a
             href={PROXY_AUTH_PATH}
@@ -102,12 +105,12 @@ function AuthErrorBanner() {
             )}
           >
             <LogIn className="size-3.5" />
-            Sign in
+            {t("connection.auth.signIn")}
           </a>
           <Button
             size="icon"
             variant="ghost"
-            aria-label="Reload"
+            aria-label={t("connection.reload.aria")}
             className="size-6 text-muted-foreground"
             onClick={() => window.location.reload()}
           >
@@ -124,6 +127,7 @@ function ConnectionStateBanner({
   error,
   lastSeenAt,
 }: Omit<ConnectionBannerProps, "authError">) {
+  useLocale();
   const stalled = useLoadingStalled();
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
@@ -254,12 +258,12 @@ function ConnectionStateBanner({
                 ) : (
                   <RotateCw className="size-3.5" />
                 )}
-                Retry
+                {t("connection.retry")}
               </Button>
               <Button
                 size="icon"
                 variant="ghost"
-                aria-label="Reload"
+                aria-label={t("connection.reload.aria")}
                 className="size-6 text-muted-foreground"
                 onClick={() => window.location.reload()}
               >
@@ -283,21 +287,23 @@ function ConnectionStateBanner({
 // (and more actionable) fact than "we can't reach Collie", and both can be undated or dated.
 function resolveView(tone: Tone, online: boolean, probe: Probe, lastSeenAt?: number) {
   if (tone === "green") {
-    return { copy: "Connected", Icon: CheckCircle2, row: TINT.done.row, icon: TINT.done.icon } as const;
+    return { copy: t("connection.connected"), Icon: CheckCircle2, row: TINT.done.row, icon: TINT.done.icon } as const;
   }
   if (tone === "amber") {
     // Static Plug (no spinner) — the galloping dog carries the motion, and a spinner would fight
     // prefers-reduced-motion. Ambient by design.
-    return { copy: "Reconnecting…", Icon: Plug, row: TINT.working.row, icon: TINT.working.icon } as const;
+    return { copy: t("connection.reconnecting"), Icon: Plug, row: TINT.working.row, icon: TINT.working.icon } as const;
   }
   const cause =
     probe === "reachable"
-      ? { copy: "Herdr is down on the host", Icon: TriangleAlert }
+      ? { copy: t("connection.herdrDown"), Icon: TriangleAlert }
       : probe === "unreachable" && !online
-        ? { copy: "Offline — can't reach Collie", Icon: WifiOff }
-        : { copy: "Can't reach Collie", Icon: TriangleAlert };
+        ? { copy: t("connection.offlineCantReach"), Icon: WifiOff }
+        : { copy: t("connection.cantReach"), Icon: TriangleAlert };
   const copy =
-    lastSeenAt === undefined ? cause.copy : `${cause.copy} — last seen ${clockTime(lastSeenAt)}`;
+    lastSeenAt === undefined
+      ? cause.copy
+      : t("connection.withLastSeen", { cause: cause.copy, time: clockTime(lastSeenAt) });
   return { copy, Icon: cause.Icon, row: TINT.blocked.row, icon: TINT.blocked.icon } as const;
 }
 

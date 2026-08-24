@@ -7,7 +7,9 @@ import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
+import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
+import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -116,6 +118,7 @@ export function AgentChat({
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   const navigate = useNavigate();
+  useLocale();
   // Poll-truth "is the data on screen not live". The header (AppHeader) reads the same inputs to drive
   // the Collie mark + pill; here we use it to dim the StatusBadge, so the badge stops presenting the
   // last snapshot's status as current while we're reconnecting/lost, and restores instantly on recovery.
@@ -156,7 +159,7 @@ export function AgentChat({
    * missing host gate here means keys typed at a terminal the lead can't reach.
    */
   const refuseWrite = useCallback(
-    (): string | undefined => (readOnly ? "Read-only — device not authorised" : hostBlock),
+    (): string | undefined => (readOnly ? t("chat.status.readOnly") : hostBlock),
     [readOnly, hostBlock],
   );
 
@@ -388,15 +391,18 @@ export function AgentChat({
           ? await submitPromptOption({ ...base, option: action.option })
           : await submitPromptFeedback({ ...base, text: action.text });
       if (result.status === "sent") {
-        setStatus(action.kind === "feedback" ? "Feedback sent" : "Sent", "success");
+        setStatus(
+          action.kind === "feedback" ? t("chat.status.feedbackSent") : t("chat.status.sent"),
+          "success",
+        );
         setFollowing(true);
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
       } else if (result.status === "changed") {
-        setStatus("Menu changed — refreshing", "warn");
+        setStatus(t("chat.status.menuChanged"), "warn");
         revalidator.revalidate();
       } else {
-        setStatus(result.error || "Send failed", "error");
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
       // Reported back so the block can keep a refused feedback draft on screen rather than discard
       // what someone just thumb-typed. Option taps ignore it.
@@ -428,15 +434,15 @@ export function AgentChat({
         keys,
       });
       if (result.status === "sent") {
-        setStatus("Sent", "success");
+        setStatus(t("chat.status.sent"), "success");
         setFollowing(true);
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
       } else if (result.status === "changed") {
-        setStatus("Wizard changed — refreshing", "warn");
+        setStatus(t("chat.status.wizardChanged"), "warn");
         revalidator.revalidate();
       } else {
-        setStatus(result.error || "Send failed", "error");
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
@@ -471,17 +477,21 @@ export function AgentChat({
             : await submitPreviewKeys({ ...base, keys: action.keys });
       if (result.status === "sent") {
         setStatus(
-          action.kind === "note" ? (action.text ? "Note saved" : "Note removed") : "Sent",
+          action.kind === "note"
+            ? action.text
+              ? t("chat.status.noteSaved")
+              : t("chat.status.noteRemoved")
+            : t("chat.status.sent"),
           "success",
         );
         setFollowing(true);
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
       } else if (result.status === "changed") {
-        setStatus("Dialog changed — refreshing", "warn");
+        setStatus(t("chat.status.dialogChanged"), "warn");
         revalidator.revalidate();
       } else {
-        setStatus(result.error || "Send failed", "error");
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
         revalidator.revalidate();
       }
     },
@@ -510,15 +520,15 @@ export function AgentChat({
         intent: action,
       });
       if (result.status === "sent") {
-        setStatus("Sent", "success");
+        setStatus(t("chat.status.sent"), "success");
         setFollowing(true);
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
       } else if (result.status === "changed") {
-        setStatus("Selection changed — refreshing", "warn");
+        setStatus(t("chat.status.selectionChanged"), "warn");
         revalidator.revalidate();
       } else {
-        setStatus(result.error || "Send failed", "error");
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
@@ -547,15 +557,15 @@ export function AgentChat({
         nav: action.nav,
       });
       if (result.status === "sent") {
-        setStatus("Sent", "success");
+        setStatus(t("chat.status.sent"), "success");
         setFollowing(true);
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
       } else if (result.status === "changed") {
-        setStatus("The screen changed — refreshing", "warn");
+        setStatus(t("chat.status.screenChanged"), "warn");
         revalidator.revalidate();
       } else {
-        setStatus(result.error || "Send failed", "error");
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
@@ -662,7 +672,7 @@ export function AgentChat({
                 <button
                   type="button"
                   onClick={openFind}
-                  aria-label="Find in output"
+                  aria-label={t("chat.find.aria")}
                   className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
                 >
                   <Search className="size-4" />
@@ -672,7 +682,7 @@ export function AgentChat({
                 <button
                   type="button"
                   onClick={() => navigate(historyPath(paneId, scope))}
-                  aria-label="Conversation history"
+                  aria-label={t("chat.history.aria")}
                   className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
                 >
                   <ScrollText className="size-4" />
@@ -694,7 +704,7 @@ export function AgentChat({
           <button
             type="button"
             onClick={() => openSpace(agent.workspaceId)}
-            aria-label={`Open ${agent.workspaceLabel} overview`}
+            aria-label={t("chat.header.openOverviewAria", { workspace: agent.workspaceLabel })}
             className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
           >
             {isShell ? (
@@ -727,7 +737,7 @@ export function AgentChat({
           </button>
         ) : (
           <div className="min-w-0 flex-1">
-            <span className="truncate font-semibold">(agent gone)</span>
+            <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
           </div>
         )}
       </AppHeader>
@@ -836,7 +846,7 @@ export function AgentChat({
                     className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
                   >
                     <ScrollText className="size-3.5" />
-                    Show entire history
+                    {t("chat.scrollback.showHistory")}
                   </button>
                 ) : moreScrollback ? (
                   <button
@@ -850,7 +860,7 @@ export function AgentChat({
                     ) : (
                       <ArrowUpToLine className="size-3.5" />
                     )}
-                    {loadingOlder ? "Loading…" : "Load older"}
+                    {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
                   </button>
                 ) : null}
                 {/* EXPLAIN, don't hide (M10/06): on a multiplexer that keeps no agent session log,
@@ -885,7 +895,9 @@ export function AgentChat({
                 />
               </>
             ) : (
-              <div className="py-16 text-center text-sm text-muted-foreground">(no recent output)</div>
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                {t("chat.output.empty")}
+              </div>
             )}
           </ChatMessageList>
         </div>
@@ -903,7 +915,7 @@ export function AgentChat({
           {agents.length + shellPanes.length > 0 && (
             <button
               type="button"
-              aria-label="Switch pane"
+              aria-label={t("chat.switcher.aria")}
               {...swipe}
               onClick={() => setDrawer("switcher")}
               className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
@@ -981,7 +993,11 @@ export function AgentChat({
 
       {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
           Switch-only: pane closing lives in the pane pill's long-press sheet, not here. */}
-      <BottomSheet open={drawer === "switcher"} onClose={closeDrawer} title="Switch pane">
+      <BottomSheet
+        open={drawer === "switcher"}
+        onClose={closeDrawer}
+        title={t("chat.switcher.title")}
+      >
         <ThreadSidebar
           agents={agents}
           shellPanes={shellPanes}

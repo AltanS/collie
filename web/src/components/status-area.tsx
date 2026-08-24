@@ -2,6 +2,8 @@ import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react"
 
 import { cn } from "@/lib/utils";
 import { clearStatus, useStatus, type StatusTone } from "@/lib/status";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 // A slim, self-contained status line. Rendered inside a pointer-events-none positioning wrapper (an
 // overlay above the composer / at the bottom of home), it shows the latest status with a tone colour
@@ -22,6 +24,7 @@ const ICONS = {
 } as const;
 
 export function StatusArea({ className }: { className?: string }) {
+  useLocale();
   const status = useStatus();
   if (!status) return null;
   const Icon = ICONS[status.tone];
@@ -50,7 +53,7 @@ export function StatusArea({ className }: { className?: string }) {
       {dismissable && (
         <button
           type="button"
-          aria-label="Dismiss"
+          aria-label={t("status.dismissAria")}
           onClick={() => clearStatus()}
           className="absolute inset-0 cursor-pointer rounded-md"
         />

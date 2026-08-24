@@ -3,6 +3,8 @@ import { hasWindow } from "@/lib/env";
 import { Plug } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
+import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 import type { BridgeStatus, DeviceAuth } from "@/lib/types";
 
 // A small read-only diagnostics panel for Settings: where this client is connected, whether it's a
@@ -20,6 +22,7 @@ export function ConnectionInfo({
   /** Build id the bridge reports it's serving (from /api/config); omitted while loading/offline. */
   build?: string;
 }) {
+  useLocale();
   const b = bridgeLabel(bridge);
   const d = deviceLabel(device);
   const secure = hasWindow() && window.isSecureContext;
@@ -30,22 +33,24 @@ export function ConnectionInfo({
       <div className="flex items-center gap-3 p-4 pb-3">
         <Plug className="size-5 shrink-0 text-muted-foreground" />
         <div>
-          <div className="font-medium">Connection</div>
-          <p className="text-sm text-muted-foreground">Diagnostics for this device.</p>
+          <div className="font-medium">{t("settings.connection.title")}</div>
+          <p className="text-sm text-muted-foreground">{t("settings.connection.description")}</p>
         </div>
       </div>
       <dl className="divide-y divide-border/60 border-t border-border/60">
-        <Row label="Endpoint">{host}</Row>
-        <Row label="Secure context">{secure ? "Yes" : "No (plain HTTP)"}</Row>
-        <Row label="Bridge">
+        <Row label={t("settings.connection.row.endpoint")}>{host}</Row>
+        <Row label={t("settings.connection.row.secure")}>
+          {secure ? t("settings.connection.secure.yes") : t("settings.connection.secure.no")}
+        </Row>
+        <Row label={t("settings.connection.row.bridge")}>
           <span className={b.tone}>{b.text}</span>
         </Row>
-        <Row label="Device access">
+        <Row label={t("settings.connection.row.deviceAccess")}>
           <span className={d.tone}>{d.text}</span>
         </Row>
         {/* Always present, even before the value lands: appearing late grew this card and moved
             everything under it. An em dash is a truthful "not known yet" and the same height. */}
-        <Row label="Server build">{build ?? "—"}</Row>
+        <Row label={t("settings.connection.row.serverBuild")}>{build ?? "—"}</Row>
       </dl>
     </Card>
   );
@@ -67,23 +72,33 @@ interface StatusLine {
 }
 
 function bridgeLabel(bridge: BridgeStatus | undefined): StatusLine {
-  if (bridge === "connected") return { text: "Connected", tone: "text-status-done" };
-  if (bridge === "disconnected") return { text: "Herdr offline", tone: "text-status-working" };
-  return { text: "Connecting…", tone: "text-muted-foreground" };
+  if (bridge === "connected") {
+    return { text: t("settings.connection.bridge.connected"), tone: "text-status-done" };
+  }
+  if (bridge === "disconnected") {
+    return { text: t("settings.connection.bridge.offline"), tone: "text-status-working" };
+  }
+  return { text: t("settings.connection.bridge.connecting"), tone: "text-muted-foreground" };
 }
 
 // Mirrors the deviceAuth matrix on the bridge (see bridge/server.ts). "Local" = an authorised request
 // with no device header, i.e. the on-host loopback operator.
 function deviceLabel(device: DeviceAuth | undefined): StatusLine {
-  if (!device || !device.enforced) return { text: "Not enforced", tone: "text-muted-foreground" };
+  if (!device || !device.enforced) {
+    return { text: t("settings.connection.device.notEnforced"), tone: "text-muted-foreground" };
+  }
   if (device.authorized) {
     return {
-      text: device.device ? `Full access · ${device.device}` : "Full access (local)",
+      text: device.device
+        ? t("settings.connection.device.fullAccessNamed", { device: device.device })
+        : t("settings.connection.device.fullAccessLocal"),
       tone: "text-status-done",
     };
   }
   return {
-    text: device.device ? `Read-only · ${device.device}` : "Read-only",
+    text: device.device
+      ? t("settings.connection.device.readOnlyNamed", { device: device.device })
+      : t("settings.connection.device.readOnly"),
     tone: "text-status-working",
   };
 }

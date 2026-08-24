@@ -2,6 +2,8 @@ import { useCallback, useRef } from "react";
 import { useNavigate, useRevalidator } from "react-router";
 
 import * as api from "@/lib/api";
+import { describeApiError, describeThrownError } from "@/lib/api-error-message";
+import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { panePath } from "@/lib/nav";
 import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
@@ -27,19 +29,25 @@ export function useSpaceActions() {
   // names the pairing gate first where it applies, because that one is fixable from this phone.
   const { refused: notPaired } = usePairing();
   readOnlyRef.current = isReadOnly(root?.device) || notPaired;
-  const blockedTextRef = useRef("");
-  blockedTextRef.current = notPaired
-    ? "Not paired — pair this device in Settings"
-    : "Read-only — device not authorised";
+  const notPairedRef = useRef(false);
+  notPairedRef.current = notPaired;
   // The scope (machine + named session) the new tab/space must be created in, and navigated into.
   // Read via a ref so the returned callbacks stay stable across revalidations, like readOnly above.
   const scopeRef = useRef<Scope | undefined>(undefined);
   scopeRef.current = root?.scope;
 
+  const blockedText = useCallback(
+    () =>
+      notPairedRef.current
+        ? t("space.readOnly.notPaired")
+        : t("space.readOnly.deviceUnauthorised"),
+    [],
+  );
+
   const open = useCallback(
     (res: CreateResponse, what: "tab" | "space") => {
       if (!res.ok) {
-        setStatus(res.error, "error");
+        setStatus(describeApiError(res), "error");
         return;
       }
       const p = res.pane;
@@ -55,7 +63,8 @@ export function useSpaceActions() {
         focused: false,
         kind: "shell",
       };
-      setStatus(`New ${what} ready — launch your agent`, "success");
+      const noun = what === "tab" ? t("space.noun.tab") : t("space.noun.space");
+      setStatus(t("space.create.ready", { what: noun }), "success");
       revalidatorRef.current.revalidate();
       navigate(panePath(p.paneId, scopeRef.current), { state: { freshPane: fresh } });
     },
@@ -64,26 +73,26 @@ export function useSpaceActions() {
 
   const newTab = useCallback(
     async (workspaceId: string) => {
-      if (readOnlyRef.current) return setStatus(blockedTextRef.current, "error");
+      if (readOnlyRef.current) return setStatus(blockedText(), "error");
       try {
         open(await api.createTab(workspaceId, {}, scopeRef.current), "tab");
       } catch (e) {
-        setStatus(e instanceof Error ? e.message : String(e), "error");
+        setStatus(describeThrownError(e), "error");
       }
     },
-    [open],
+    [open, blockedText],
   );
 
   const newSpace = useCallback(
     async (opts: { label?: string; cwd?: string } = {}) => {
-      if (readOnlyRef.current) return setStatus(blockedTextRef.current, "error");
+      if (readOnlyRef.current) return setStatus(blockedText(), "error");
       try {
         open(await api.createWorkspace(opts, scopeRef.current), "space");
       } catch (e) {
-        setStatus(e instanceof Error ? e.message : String(e), "error");
+        setStatus(describeThrownError(e), "error");
       }
     },
-    [open],
+    [open, blockedText],
   );
 
   return { newTab, newSpace };

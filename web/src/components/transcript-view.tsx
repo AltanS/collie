@@ -5,6 +5,8 @@ import { AgentIcon } from "@/components/agent-icon";
 import { MarkdownText } from "@/components/markdown-text";
 import { splitHighlight } from "@/lib/transcript-search";
 import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
+import { getLocaleSnapshot, t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 
 // Renders an agent transcript — the conversation history a Claude pane's terminal structurally
 // cannot hold (it runs on the alternate screen, which keeps no scrollback ring; see
@@ -17,19 +19,22 @@ import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
 // AST which the renderer maps to React elements, so no HTML string is ever constructed. Do not
 // "improve" this by swapping in a markdown→HTML library without re-deriving that boundary.
 
-/** Times only — the date lives on the day divider, and a phone row has no width to spare. */
+/** Times only — the date lives on the day divider, and a phone row has no width to spare. Keyed on
+ *  the active app locale (not the browser default) so the clock format follows a language switch. */
 function clockTime(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  if (Number.isNaN(d.getTime())) return "";
+  const locale = getLocaleSnapshot().locale;
+  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
 function dayKey(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { dateStyle: "medium" });
+  if (Number.isNaN(d.getTime())) return "";
+  const locale = getLocaleSnapshot().locale;
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(d);
 }
 
 /** Plain text with find hits marked — for strings that are NOT Markdown (shell commands, output). */
@@ -92,7 +97,9 @@ function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool
       {open && result && (
         <pre className="overflow-x-auto border-t px-2 py-1.5 font-mono text-[11px] leading-snug whitespace-pre-wrap">
           {result.text}
-          {result.truncated && <span className="text-muted-foreground">{"\n… output truncated"}</span>}
+          {result.truncated && (
+            <span className="text-muted-foreground">{`\n${t("transcript.outputTruncated")}`}</span>
+          )}
         </pre>
       )}
     </div>
@@ -111,7 +118,9 @@ function Part({ part, query }: { part: TranscriptPart; query: string }) {
         query={query}
         className={part.kind === "thinking" ? "italic text-muted-foreground" : undefined}
       />
-      {part.truncated && <div className="text-xs text-muted-foreground">… truncated</div>}
+      {part.truncated && (
+        <div className="text-xs text-muted-foreground">{t("transcript.truncated")}</div>
+      )}
     </div>
   );
 }
@@ -137,7 +146,7 @@ function Turn({
       <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2">
         <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
           <Info className="size-3" />
-          {entry.role === "summary" ? "Context compacted" : "System"}
+          {entry.role === "summary" ? t("transcript.summaryLabel") : t("transcript.systemLabel")}
           {time && ` · ${time}`}
         </div>
         {entry.parts.map((part, i) => (
@@ -158,7 +167,7 @@ function Turn({
             <AgentIcon agent={agent ?? "claude"} className="size-4" />
           )}
           <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-            {isUser ? "You" : (agent ?? "agent")}
+            {isUser ? t("transcript.youLabel") : (agent ?? t("transcript.agentFallback"))}
           </span>
           {time && <span className="text-[11px] text-muted-foreground">{time}</span>}
         </div>
@@ -186,6 +195,7 @@ export function TranscriptView({
   /** The turn a find/jump landed on; ringed so you can see where you were sent. */
   focusedUuid?: string;
 }) {
+  useLocale();
   // Consecutive turns from the same speaker are GROUPED — only the first of a run carries the
   // role/time header. A real thread is overwhelmingly long runs of assistant turns (892 of 914 in a
   // measured session), so repeating "CLAUDE 06:43 PM" above every tool call would roughly double the
