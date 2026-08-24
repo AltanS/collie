@@ -186,6 +186,10 @@ function declarationFor(adapter: MuxAdapter, matcher: BeaconMatcher, lifted: boo
     // spaces the multiplexer has. Rebuilding the declaration without it would silently promote a
     // zellij collie to "many" the moment the hooks were installed.
     spaces: adapter.capabilities.spaces,
+    // Carried through, never restated: a beacon join changes what a pane IS, not how soon a pane
+    // appearing is noticed. That is still the wrapped adapter's census, and claiming otherwise here
+    // would be the decorator declaring a promise it makes nothing keep.
+    topologyLatency: adapter.capabilities.topologyLatency,
   });
 }
 
@@ -281,6 +285,9 @@ export function withAgentBeacons(
     },
 
     // ── Everything below is the wrapped adapter's, verbatim ────────────────────
+    // A beacon is not topology, so there is nothing extra to pull forward here — and pulling the
+    // wrapped adapter's census forward is exactly what a refresh should do either way.
+    refresh: () => adapter.refresh(),
     readGrid: (paneId, request) => adapter.readGrid(paneId, request),
     typeText: (paneId, text) => adapter.typeText(paneId, text),
     sendKeys: (paneId, keys) => adapter.sendKeys(paneId, keys),

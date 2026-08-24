@@ -114,7 +114,7 @@ class StubAdapter implements MuxAdapter {
   readonly mux = "stub";
   /** The adapter's mark, when a case gives it one. Absent by default, like an adapter with none. */
   logo?: string;
-  capabilities = declareCapabilities({ supports: ["paneGrid", "typeText"] });
+  capabilities = declareCapabilities({ supports: ["paneGrid", "typeText"], topologyLatency: { kind: "push" } });
   panes: MuxPane[] = [shellPane({ paneId: "%1", foregroundCommand: "claude" }), shellPane({ paneId: "%2" })];
   readonly calls: string[] = [];
   readonly subscription: MuxSubscription = { close: () => undefined };
@@ -122,6 +122,11 @@ class StubAdapter implements MuxAdapter {
   reachable(): Promise<boolean> {
     this.calls.push("reachable");
     return Promise.resolve(true);
+  }
+
+  refresh(): Promise<void> {
+    this.calls.push("refresh");
+    return Promise.resolve();
   }
 
   snapshot(): Promise<MuxSnapshot> {

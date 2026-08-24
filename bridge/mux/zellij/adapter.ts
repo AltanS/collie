@@ -107,7 +107,7 @@ import {
   type ZellijTabRecord,
 } from "./protocol.ts";
 import { ZellijSessionBinding, type ZellijCall } from "./session.ts";
-import { ZellijWatch } from "./watch.ts";
+import { ZELLIJ_CENSUS_MAX_MS, ZellijWatch } from "./watch.ts";
 
 /** The registry name this adapter answers to, and the value of {@link ZellijMux.mux}. */
 export const ZELLIJ_MUX = "zellij";
@@ -186,6 +186,13 @@ const ZELLIJ_CAPABILITIES = declareCapabilities({
     "pushPaneEvents",
   ],
   unsupportedKeys: ZELLIJ_UNSENDABLE_KEYS,
+  // The only `bounded` declaration in this build, and the number is the census CEILING — the longest
+  // a change nobody announced can sit unseen. Not the floor: an adaptive census runs faster than its
+  // ceiling most of the time, and a bound that only holds when the herd happens to be busy is not a
+  // bound. Not the watched ceiling either: attention is something the bridge observes, never
+  // something a caller can promise, so the declaration states the cadence that always holds
+  // (watch.ts § the cadence).
+  topologyLatency: { kind: "bounded", ms: ZELLIJ_CENSUS_MAX_MS },
   notes: {
     agentDetection:
       "zellij does not know what an agent is. It can say what a pane is called and which command it was launched with, and neither is the same question — so every pane reads as a shell rather than as a guess that would pick the wrong grammar.",
@@ -244,6 +251,8 @@ export class ZellijMux implements MuxAdapter {
    * the pane it described. It holds at most one short string per live pane.
    */
   private readonly ownLabels = new Map<string, string>();
+  /** The watches this adapter has handed out and that are still live — {@link refresh}'s subjects. */
+  private readonly watches = new Set<ZellijWatch>();
 
   constructor(private readonly session: ZellijSessionBinding) {}
 
@@ -476,8 +485,33 @@ export class ZellijMux implements MuxAdapter {
   /** The contract's watch over the pane stream plus a bounded census. All of it lives in watch.ts. */
   watch(options: MuxWatchOptions): MuxSubscription {
     const subscription = new ZellijWatch(this.session, options);
+    this.watches.add(subscription);
     subscription.start();
-    return subscription;
+    // A WRAPPER, so closing the handle also drops this adapter's own reference — see tmux's, which
+    // carries the same note for the same reason.
+    return {
+      close: () => {
+        this.watches.delete(subscription);
+        subscription.close();
+      },
+    };
+  }
+
+  /**
+   * Look now: every live watch censuses at once and drops its interval back to the floor.
+   *
+   * This is the adapter where `refresh()` earns its place on the floor of the port. zellij announces
+   * no structure change at all, so without it a tab the operator renamed in their own terminal waits
+   * out whatever the census had relaxed to — up to the twelve seconds this adapter declares.
+   *
+   * Watches that ended on their own are pruned rather than tracked with a callback; tmux's carries
+   * the argument.
+   */
+  async refresh(): Promise<void> {
+    for (const watch of this.watches) {
+      if (watch.ended) this.watches.delete(watch);
+    }
+    await Promise.all([...this.watches].map((watch) => watch.refresh()));
   }
 
   /**
