@@ -112,6 +112,9 @@ const HELLO_BUDGET_CEILING_MS = 60_000;
  *   • Bun's `fetch` DOES pool a pinned-TLS connection, even though `tls` rides each init and this
  *     module hands it a fresh object per dial — 5 sequential dials cost 1 TCP accept, measured
  *     through a counting proxy (`harness.test.ts`, "a cold handshake priced above the budget").
+ *     Bun ≥1.4 pools that dial only while its `tls` carries NO `checkServerIdentity` callback, which
+ *     is why `dialTls` pins the name via the certificate's own SAN instead — mechanism in
+ *     `transport.ts`. Everything below assumes pooling holds; break it and the deadlock returns.
  *   • But an ABORTED attempt leaves no pooled connection behind. So when the cold handshake alone
  *     costs more than the whole per-request budget, every attempt aborts mid-handshake, the next one
  *     starts cold again, and the link never bootstraps. Four attempts, four accepts, four timeouts.
