@@ -1,6 +1,7 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
+import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability } from "./mux/capabilities.ts";
 
@@ -321,6 +322,12 @@ export type PaneHistoryResponse =
  * carries the reason Herdr rejected it. `textDelivered` distinguishes the reply partial-failure case
  * (text was typed but the submit keypress failed) so the client knows NOT to resend — resending would
  * duplicate the already-typed text. Absent/false ⇒ nothing landed, so a resend is safe.
+ *
+ * `error` is English prose and stays the thing a client displays when it has nothing better;
+ * `code` + `detail` are the machine half, so the phone can say the same thing in the operator's
+ * language (bridge/error-codes.ts). `code` was once only ever `"prompt_changed"` — it now names any
+ * catalogued refusal, which is why a client must fall back on a code it does not recognise rather
+ * than treat it as a bug.
  */
 export type ActionResponse =
   | { ok: true }
@@ -328,11 +335,14 @@ export type ActionResponse =
       ok: false;
       error: string;
       textDelivered?: boolean;
-      code?: "prompt_changed";
+      code?: ErrorCode;
+      detail?: ApiErrorDetail;
     };
 
 /** POST /api/pane/:id/upload — image saved to a host file; `path` is the absolute path to ref. */
-export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };
+export type UploadResponse =
+  | { ok: true; path: string }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /** A freshly-created shell pane — enough for the client to navigate into before the next poll. */
 export interface CreatedPane {
@@ -347,7 +357,9 @@ export interface CreatedPane {
  * POST /api/tab | /api/workspace — created a new tab/space with a fresh shell. On success `pane`
  * is that shell, so the client can navigate straight into it before the next poll lands.
  */
-export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
+export type CreateResponse =
+  | { ok: true; pane: CreatedPane }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**
  * Which role this collie plays in a pack (PACK_PROTOCOL.md §3). `solo` is a lead with zero peers —

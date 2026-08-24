@@ -1,3 +1,4 @@
+import { apiError, type ApiErrorDetail, type ErrorCode } from "../error-codes.ts";
 import type { SttCapability } from "../types.ts";
 import { SttError, type SttProvider } from "./provider.ts";
 
@@ -44,8 +45,17 @@ const AUDIO_EXTENSIONS = new Map([
   ["audio/x-wav", "wav"],
 ]);
 
-/** What `POST /api/stt` answers, in both directions. */
-export type SttTranscribeResponse = { ok: true; text: string } | { ok: false; error: string };
+/**
+ * What `POST /api/stt` answers, in both directions.
+ *
+ * A failure carries the English sentence it always did, plus the stable `code` the phone translates
+ * (bridge/error-codes.ts). The client used to key its short forms off the STATUS alone
+ * (`web/src/lib/stt.ts`), which cannot tell "the recording is empty" from "the recording could not
+ * be read" — both 400. The code can.
+ */
+export type SttTranscribeResponse =
+  | { ok: true; text: string }
+  | { ok: false; error: string; code: ErrorCode; detail?: ApiErrorDetail };
 
 /** A process-local, non-queued admission gate. `acquire` returns the release, or null when full. */
 export interface SttAdmission {
@@ -106,23 +116,19 @@ export async function transcribeRequest(
   admission: SttAdmission,
 ): Promise<SttAttemptResult> {
   if (provider === null) {
-    return fail(
-      503,
-      "unconfigured",
-      "speech-to-text is not configured on this collie — run `collie stt setup`",
-    );
+    return fail(503, "unconfigured", "stt.unconfigured");
   }
 
   const declared = contentLength(req.headers.get("content-length"));
   if (declared !== null && declared > MAX_STT_AUDIO_BYTES) {
-    return fail(413, "invalid", "the recording is larger than 8 MiB");
+    return fail(413, "invalid", "stt.too_large", { maxBytes: MAX_STT_AUDIO_BYTES });
   }
 
   const mimeType = req.headers.get("content-type")?.trim() ?? "";
   const container = mimeType.split(";", 1)[0]!.trim().toLowerCase();
   const extension = AUDIO_EXTENSIONS.get(container);
   if (extension === undefined) {
-    return fail(415, "invalid", "that is not an audio format Collie sends on");
+    return fail(415, "invalid", "stt.bad_format");
   }
 
   // Admission is taken AFTER the cheap refusals and BEFORE the body is read: a slow upload holds a
@@ -130,7 +136,7 @@ export async function transcribeRequest(
   // consumes one at all.
   const release = admission.acquire();
   if (release === null) {
-    return fail(429, "busy", "two recordings are already being transcribed — try again in a moment");
+    return fail(429, "busy", "stt.busy");
   }
 
   try {
@@ -138,12 +144,18 @@ export async function transcribeRequest(
     try {
       audio = new Uint8Array(await req.arrayBuffer());
     } catch {
-      return fail(400, "invalid", "the recording could not be read");
+      return fail(400, "invalid", "stt.unreadable");
     }
-    if (audio.byteLength === 0) return fail(400, "invalid", "the recording is empty");
+    if (audio.byteLength === 0) return fail(400, "invalid", "stt.empty");
     // The declared length may have been absent or a lie; this is the measurement that counts.
     if (audio.byteLength > MAX_STT_AUDIO_BYTES) {
-      return fail(413, "invalid", "the recording is larger than 8 MiB", audio.byteLength);
+      return fail(
+        413,
+        "invalid",
+        "stt.too_large",
+        { maxBytes: MAX_STT_AUDIO_BYTES },
+        audio.byteLength,
+      );
     }
 
     try {
@@ -163,7 +175,7 @@ export async function transcribeRequest(
       // else is a 502, the bridge reporting that its upstream did not deliver.
       const status = kind === "timeout" ? 504 : 502;
       const message = err instanceof SttError ? err.message : "transcription is unavailable";
-      return fail(status, kind, message, audio.byteLength);
+      return fail(status, kind, "stt.provider_failed", { reason: message, kind }, audio.byteLength);
     }
   } finally {
     release();
@@ -177,15 +189,21 @@ function contentLength(raw: string | null): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
+/**
+ * One refusal: the status it earns, the word the audit line records, and the catalogued code whose
+ * sentence goes on the wire. The English is not written here — `apiError` renders it from
+ * `bridge/error-codes.ts`, so a route and its catalogue entry cannot say different things.
+ */
 function fail(
   status: number,
   outcome: SttAttempt["outcome"],
-  error: string,
+  code: ErrorCode,
+  detail?: ApiErrorDetail,
   bytes?: number,
 ): SttAttemptResult {
   const attempt: SttAttempt = { status, outcome };
   if (bytes !== undefined) attempt.bytes = bytes;
-  return { response: jsonResponse({ ok: false, error }, status), attempt };
+  return { response: jsonResponse({ ok: false, ...apiError(code, detail) }, status), attempt };
 }
 
 function jsonResponse(body: SttTranscribeResponse, status: number): Response {

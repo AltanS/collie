@@ -5,6 +5,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
+import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
@@ -115,6 +116,22 @@ const SECURITY_HEADERS = {
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history))?$/;
+
+/**
+ * A pairing claim's refusal, as an error code.
+ *
+ * Pairing has always answered with a machine-readable word rather than a sentence, so this is a
+ * rename and nothing more — each catalogue entry's English IS the word this map's key spells. It is
+ * a total `Record`, so a new {@link ClaimFailure} fails `tsc` here rather than reaching a phone as
+ * an unnamed refusal.
+ */
+const PAIRING_ERROR_CODES = {
+  "no-pending": "pairing.no_pending",
+  expired: "pairing.expired",
+  exhausted: "pairing.exhausted",
+  "bad-code": "pairing.bad_code",
+  "duplicate-label": "pairing.duplicate_label",
+} satisfies Record<ClaimFailure, ErrorCode>;
 
 /**
  * The host selector every request takes when this collie has no trust store — i.e. the only one a
@@ -484,7 +501,8 @@ export function startServer(opts: {
    * means, and §5 says a peer resolves it with today's exact semantics.
    */
   const localRuntime = (session: string | undefined, acceptEncoding: string | null): SessionRuntime | Response =>
-    registry.get(session) ?? jsonError(`unknown session: ${session ?? ""}`, 404, acceptEncoding);
+    registry.get(session) ??
+    jsonError(apiError("session.unknown", { session: session ?? "" }), 404, acceptEncoding);
 
   /**
    * Everything session-scoped: the pane family, tab create/rename/close, workspace create.
@@ -612,7 +630,11 @@ export function startServer(opts: {
         device: () => device,
         audit: audit.scoped({ via: "pack", from }),
       });
-      return routed ?? jsonError("not found", 404, null);
+      // Deliberately UNCODED. This is the pack link's own 404, answered to a LEAD and never to a
+      // browser, and `/pack/v1/*` is a separately-versioned surface (PACK_PROTOCOL.md, ADR 0025) —
+      // it keeps today's body in this release. Error codes are the phone's vocabulary, not the
+      // pack's.
+      return routed ?? jsonError({ error: "not found" }, 404, null);
     },
   });
   // Per-session background notifications live in each session's runtime (built by the factory in
@@ -661,7 +683,11 @@ export function startServer(opts: {
       // never builds a path. An unknown name is a 404. Global routes below ignore the param entirely.
       const sessionName = url.searchParams.get("session") ?? undefined;
       const unknownSession = () =>
-        jsonError(`unknown session: ${sessionName ?? ""}`, 404, req.headers.get("accept-encoding"));
+        jsonError(
+          apiError("session.unknown", { session: sessionName ?? "" }),
+          404,
+          req.headers.get("accept-encoding"),
+        );
 
       // The host dimension of the `(host, session, paneId)` address (§4), read exactly where the
       // session name is and by the same rule: a client-supplied value that is ONLY ever a registry
@@ -687,7 +713,7 @@ export function startServer(opts: {
           const resolved = packLead?.resolve(host, sessionName);
           if (resolved === undefined) {
             return jsonError(
-              `unknown host: ${host.kind === "member" ? host.id : host.raw}`,
+              apiError("host.unknown", { host: host.kind === "member" ? host.id : host.raw }),
               404,
               req.headers.get("accept-encoding"),
             );
@@ -933,16 +959,26 @@ export function startServer(opts: {
           // re-checks every field of it before any of it is used.
           body = (await req.json()) as JsonValue;
         } catch {
-          return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+          return jsonError(apiError("pairing.bad_request"), 400, req.headers.get("accept-encoding"));
         }
         const parsed = parsePairRequest(body);
-        if (!parsed) return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+        if (!parsed) {
+          return jsonError(apiError("pairing.bad_request"), 400, req.headers.get("accept-encoding"));
+        }
         const claimed = await pairing.claim(parsed.code, parsed.label);
         if (!claimed.ok) {
           // Every failure is one status and one machine-readable reason; the client turns the reason
           // into the sentence that says what to do next. No timing or count is leaked back — the
           // attempts remaining are the operator's business, on the operator's terminal.
-          return jsonError(claimed.reason satisfies ClaimFailure, 400, req.headers.get("accept-encoding"));
+          // The `error` string is still the bare reason word it has always been — the catalogue
+          // entry for each pairing code IS that word — so `recoverPairFailure` in the web app keeps
+          // matching it byte for byte while `code` says the same thing the way every other surface
+          // now says it.
+          return jsonError(
+            apiError(PAIRING_ERROR_CODES[claimed.reason]),
+            400,
+            req.headers.get("accept-encoding"),
+          );
         }
         audit.record({ action: "pair", device: parsed.label, detail: { label: parsed.label } });
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
@@ -973,14 +1009,16 @@ export function startServer(opts: {
         try {
           body = await req.json();
         } catch {
-          return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+          return jsonError(apiError("pairing.bad_request"), 400, req.headers.get("accept-encoding"));
         }
         // SAFETY: `body` is this handler's own `req.json()` output — a JsonValue by construction;
         // `normalizeLabel` refuses anything that is not a usable string.
         const label = normalizeLabel(asJsonRecord(body as JsonValue)?.label);
-        if (label === null) return jsonError("bad-request", 400, req.headers.get("accept-encoding"));
+        if (label === null) {
+          return jsonError(apiError("pairing.bad_request"), 400, req.headers.get("accept-encoding"));
+        }
         if (!(await pairing.revoke(label))) {
-          return jsonError("unknown device", 404, req.headers.get("accept-encoding"));
+          return jsonError(apiError("device.unknown"), 404, req.headers.get("accept-encoding"));
         }
         audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
         const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
@@ -1186,7 +1224,7 @@ export interface ReplySender {
 /** Outcome of the two-step send. `textDelivered` is only meaningful on the failure branch. */
 export type ReplyOutcome =
   | { ok: true; textDelivered: boolean }
-  | { ok: false; error: string; textDelivered: boolean };
+  | ({ ok: false; textDelivered: boolean } & ApiErrorBody);
 
 /**
  * The reply's two one-shot RPCs — type the text, then send the submit key(s) — as a pure function so
@@ -1211,16 +1249,18 @@ export async function sendReplySteps(
   let textDelivered = false;
   // One shape for both ways a step can fail — a refusal the adapter returned and an exception it
   // let escape — so the partial-delivery branch cannot drift between them.
-  const failed = (error: string): ReplyOutcome =>
+  const failed = (reason: string): ReplyOutcome =>
     textDelivered && submit
       ? {
           // Text is already in the pane — only the submit failed. Tell the operator to check/submit
           // it by hand rather than resend, and flag textDelivered so a resend-on-error UI holds off.
           ok: false,
           textDelivered: true,
-          error: "typed into the pane but not submitted — check the pane before resending",
+          ...apiError("reply.not_submitted"),
         }
-      : { ok: false, textDelivered, error };
+      : // The multiplexer's own words are the sentence, so they ride in `detail.reason` too — a
+        // translated line has no other way to quote them.
+        { ok: false, textDelivered, ...apiError("reply.send_failed", { reason }) };
   try {
     if (txt) {
       const typed = await client.typeText(paneId, txt);
@@ -1305,10 +1345,16 @@ export async function replyPane(
     detail: replyDetail,
   });
   if (outcome.ok) return json({ ok: true } satisfies ActionResponse, ae);
-  return json(
-    { ok: false, error: outcome.error, textDelivered: outcome.textDelivered } satisfies ActionResponse,
-    ae,
-  );
+  const failure: ActionResponse = {
+    ok: false,
+    error: outcome.error,
+    textDelivered: outcome.textDelivered,
+    code: outcome.code,
+  };
+  // Assigned, never conditionally spread: a refusal with nothing to interpolate carries NO `detail`
+  // key rather than an empty object the client would have to tell apart from a real one.
+  if (outcome.detail !== undefined) failure.detail = outcome.detail;
+  return json(failure, ae);
 }
 
 export async function keysPane(
@@ -1371,7 +1417,10 @@ export async function keysPane(
       detail: { keys, sent: false, promptBinding: binding.audit },
     });
   }
-  return json({ ok: false, error: sent.detail } satisfies ActionResponse, ae);
+  return json(
+    { ok: false, ...apiError("keys.send_failed", { reason: sent.detail }) } satisfies ActionResponse,
+    ae,
+  );
 }
 
 type ExpectedPrompt =
@@ -1398,8 +1447,9 @@ type PromptBindingCheck =
   | {
       ok: false;
       error: string;
+      detail?: ApiErrorDetail;
       status: 409 | 502;
-      code?: "prompt_changed";
+      code: ErrorCode;
       audit: {
         checked: true;
         passed: false;
@@ -1419,7 +1469,7 @@ function readFailed(
 ): Extract<PromptBindingCheck, { ok: false }> {
   return {
     ok: false,
-    error: `${herdr.mux} read failed: ${detail}`,
+    ...apiError("prompt.read_failed", { mux: herdr.mux, detail }),
     status: 502,
     audit: { checked: true, passed: false, expected, reason: "read_failed" },
   };
@@ -1464,9 +1514,8 @@ async function checkPromptBinding(
   if (!result.ok) {
     return {
       ok: false,
-      error: "prompt changed",
+      ...apiError("prompt_changed"),
       status: 409,
-      code: "prompt_changed",
       audit: { checked: true, passed: false, expected, reason: result.reason },
     };
   }
@@ -1484,14 +1533,10 @@ function promptBindingFailure(
   result: Extract<PromptBindingCheck, { ok: false }>,
   acceptEncoding: string | null,
 ): Response {
-  const failure: ActionResponse = { ok: false, error: result.error };
-  // Assigned, never conditionally spread: a refusal with no machine-readable code carries no key.
-  if (result.code) failure.code = result.code;
-  return json(
-    failure,
-    acceptEncoding,
-    result.status,
-  );
+  const failure: ActionResponse = { ok: false, error: result.error, code: result.code };
+  // Assigned, never conditionally spread: a refusal with nothing to interpolate carries no `detail`.
+  if (result.detail !== undefined) failure.detail = result.detail;
+  return json(failure, acceptEncoding, result.status);
 }
 
 // Close a pane ("kill the agent"). Structural op — strictly less powerful than the text/keys
@@ -1506,7 +1551,12 @@ async function closePane(
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   const closed = await herdr.closePane(paneId);
-  if (!closed.ok) return json({ ok: false, error: closed.detail } satisfies ActionResponse, ae);
+  if (!closed.ok) {
+    return json(
+      { ok: false, ...apiError("pane.close_failed", { reason: closed.detail }) } satisfies ActionResponse,
+      ae,
+    );
+  }
   audit.record({ action: "pane.close", paneId, session, device, detail: {} });
   return json({ ok: true } satisfies ActionResponse, ae);
 }
@@ -1538,7 +1588,12 @@ async function renamePane(
   const trimmed = typeof fields.label === "string" ? fields.label.trim() : "";
   const label = trimmed.length > 0 ? trimmed : null;
   const renamed = await herdr.renamePane(paneId, label);
-  if (!renamed.ok) return json({ ok: false, error: renamed.detail } satisfies ActionResponse, ae);
+  if (!renamed.ok) {
+    return json(
+      { ok: false, ...apiError("pane.rename_failed", { reason: renamed.detail }) } satisfies ActionResponse,
+      ae,
+    );
+  }
   audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
   return json({ ok: true } satisfies ActionResponse, ae);
 }
@@ -1583,7 +1638,12 @@ async function renameTab(
   const parsed = normalizeTabLabel(asJsonRecord(body)?.label);
   if (!parsed.ok) return text(parsed.error, 400);
   const renamed = await herdr.renameTab(tabId, parsed.label);
-  if (!renamed.ok) return json({ ok: false, error: renamed.detail } satisfies ActionResponse, ae);
+  if (!renamed.ok) {
+    return json(
+      { ok: false, ...apiError("tab.rename_failed", { reason: renamed.detail }) } satisfies ActionResponse,
+      ae,
+    );
+  }
   audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
   return json({ ok: true } satisfies ActionResponse, ae);
 }
@@ -1602,7 +1662,12 @@ async function closeTab(
 ): Promise<Response> {
   const ae = req.headers.get("accept-encoding");
   const closed = await herdr.closeTab(tabId);
-  if (!closed.ok) return json({ ok: false, error: closed.detail } satisfies ActionResponse, ae);
+  if (!closed.ok) {
+    return json(
+      { ok: false, ...apiError("tab.close_failed", { reason: closed.detail }) } satisfies ActionResponse,
+      ae,
+    );
+  }
   audit.record({ action: "tab.close", session, device, detail: { tabId } });
   return json({ ok: true } satisfies ActionResponse, ae);
 }
@@ -1634,9 +1699,16 @@ async function createTab(
   const tabLabel = typeof fields.label === "string" ? fields.label : undefined;
   const cwd = typeof fields.cwd === "string" ? fields.cwd : undefined;
   const ae = req.headers.get("accept-encoding");
-  if (!workspaceId) return json({ ok: false, error: "workspaceId required" } satisfies CreateResponse, ae);
+  if (!workspaceId) {
+    return json({ ok: false, ...apiError("tab.workspace_required") } satisfies CreateResponse, ae);
+  }
   const outcome = await herdr.createTab({ spaceId: workspaceId, label: tabLabel, cwd });
-  if (!outcome.ok) return json({ ok: false, error: outcome.detail } satisfies CreateResponse, ae);
+  if (!outcome.ok) {
+    return json(
+      { ok: false, ...apiError("tab.create_failed", { reason: outcome.detail }) } satisfies CreateResponse,
+      ae,
+    );
+  }
   const created = outcome.value;
   // The adapter answers with the space id when the create call doesn't carry a label back; the
   // snapshot we already hold knows the real one, and that lookup is cheaper than a round trip.
@@ -1687,7 +1759,12 @@ async function createWorkspace(
   const label = typeof fields.label === "string" ? fields.label : undefined;
   const ae = req.headers.get("accept-encoding");
   const outcome = await herdr.createSpace({ cwd, label });
-  if (!outcome.ok) return json({ ok: false, error: outcome.detail } satisfies CreateResponse, ae);
+  if (!outcome.ok) {
+    return json(
+      { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) } satisfies CreateResponse,
+      ae,
+    );
+  }
   const created = outcome.value;
   audit.record({
     action: "workspace.create",
@@ -1728,7 +1805,7 @@ async function uploadPane(
       new Response(
         JSON.stringify({
           ok: false,
-          error: "image too large (max 10 MB)",
+          ...apiError("upload.too_large", { maxBytes: MAX_UPLOAD_BYTES }),
         } satisfies UploadResponse),
         { status: 413, headers: { "content-type": "application/json; charset=utf-8" } },
       ),
@@ -1742,14 +1819,20 @@ async function uploadPane(
   }
   const file = form.get("file");
   if (!(file instanceof File)) {
-    return json({ ok: false, error: "no file" } satisfies UploadResponse, ae);
+    return json({ ok: false, ...apiError("upload.no_file") } satisfies UploadResponse, ae);
   }
   const ext = IMAGE_EXT.get(file.type);
   if (!ext) {
-    return json({ ok: false, error: `unsupported type: ${file.type || "unknown"}` } satisfies UploadResponse, ae);
+    return json(
+      { ok: false, ...apiError("upload.bad_type", { type: file.type || "unknown" }) } satisfies UploadResponse,
+      ae,
+    );
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    return json({ ok: false, error: "image too large (max 10 MB)" } satisfies UploadResponse, ae);
+    return json(
+      { ok: false, ...apiError("upload.too_large", { maxBytes: MAX_UPLOAD_BYTES }) } satisfies UploadResponse,
+      ae,
+    );
   }
   try {
     const dir = join(cfg.stateDir, "uploads");
@@ -1769,7 +1852,10 @@ async function uploadPane(
     });
     return json({ ok: true, path: fullPath } satisfies UploadResponse, ae);
   } catch (err) {
-    return json({ ok: false, error: errorText(err) } satisfies UploadResponse, ae);
+    return json(
+      { ok: false, ...apiError("upload.write_failed", { reason: errorText(err) }) } satisfies UploadResponse,
+      ae,
+    );
   }
 }
 
@@ -1965,10 +2051,18 @@ function json<TBody>(data: TBody, acceptEncoding: string | null, status = 200): 
  * A JSON error body with a non-200 status (e.g. an unknown-session 404). The body is tiny (below the
  * gzip threshold), so a plain uncompressed JSON response is the whole story — no need for the gzip
  * path. `acceptEncoding` is accepted for call-site symmetry with {@link json} but not needed here.
+ *
+ * It takes a BODY rather than a message so a caller must have gone through {@link apiError} to get
+ * one — which is what keeps a refusal's English and its code in the catalogue together. The bare
+ * `{ error }` shape stays legal for the one caller that must not carry a code: the pack link's 404.
  */
-function jsonError(message: string, status: number, _acceptEncoding: string | null): Response {
+function jsonError(
+  body: ApiErrorBody | { error: string },
+  status: number,
+  _acceptEncoding: string | null,
+): Response {
   return secure(
-    new Response(JSON.stringify({ error: message }), {
+    new Response(JSON.stringify(body), {
       status,
       headers: { "content-type": "application/json; charset=utf-8" },
     }),

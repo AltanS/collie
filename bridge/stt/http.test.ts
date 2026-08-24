@@ -279,3 +279,72 @@ describe("the /api/config capability — a label and a yes/no, nothing else", ()
     });
   });
 });
+
+describe("POST /api/stt — every refusal names a code, not just a status", () => {
+  /** The `code` off a refusal, or `undefined` when the route answered `ok:true`. */
+  async function codeOf(response: Response): Promise<string | undefined> {
+    const body = await bodyOf(response);
+    return body.ok ? undefined : body.code;
+  }
+
+  test("each refusal carries the code the phone translates against", async () => {
+    const { provider } = fakeProvider({});
+    const unconfigured = await transcribeRequest(null, audioRequest(new Uint8Array([1])), createSttAdmission());
+    expect(await codeOf(unconfigured.response)).toBe("stt.unconfigured");
+
+    const oversize = await transcribeRequest(
+      provider,
+      audioRequest(new Uint8Array([1]), "audio/webm", {
+        "content-length": String(MAX_STT_AUDIO_BYTES + 1),
+      }),
+      createSttAdmission(),
+    );
+    expect(await codeOf(oversize.response)).toBe("stt.too_large");
+
+    const badFormat = await transcribeRequest(
+      provider,
+      audioRequest(new Uint8Array([1]), "audio/aac"),
+      createSttAdmission(),
+    );
+    expect(await codeOf(badFormat.response)).toBe("stt.bad_format");
+
+    const empty = await transcribeRequest(
+      provider,
+      audioRequest(new Uint8Array(0), "audio/webm"),
+      createSttAdmission(),
+    );
+    expect(await codeOf(empty.response)).toBe("stt.empty");
+  });
+
+  test("the size cap travels as a number, so a translated sentence can name it", async () => {
+    const { provider } = fakeProvider({});
+    const { response } = await transcribeRequest(
+      provider,
+      audioRequest(new Uint8Array(MAX_STT_AUDIO_BYTES + 1), "audio/webm"),
+      createSttAdmission(),
+    );
+    const body = await bodyOf(response);
+    expect(body.ok).toBe(false);
+    // "8 MiB" is prose the phone cannot re-derive; the byte count is the fact.
+    expect(body.ok ? null : body.detail).toEqual({ maxBytes: MAX_STT_AUDIO_BYTES });
+  });
+
+  test("a provider failure keeps ITS OWN words as the sentence and adds the kind", async () => {
+    const { provider } = fakeProvider({
+      fail: () => {
+        throw new SttError("refused", "the transcription service refused the recording");
+      },
+    });
+    const { response } = await transcribeRequest(
+      provider,
+      audioRequest(new Uint8Array([1, 2]), "audio/webm"),
+      createSttAdmission(),
+    );
+    expect(await bodyOf(response)).toEqual({
+      ok: false,
+      error: "the transcription service refused the recording",
+      code: "stt.provider_failed",
+      detail: { reason: "the transcription service refused the recording", kind: "refused" },
+    });
+  });
+});
