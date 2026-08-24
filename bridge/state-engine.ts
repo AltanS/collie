@@ -1,4 +1,4 @@
-import type { MuxAdapter, MuxPane } from "./mux/types.ts";
+import type { MuxAdapter, MuxAttention, MuxPane } from "./mux/types.ts";
 import {
   type AgentStatus,
   type AgentView,
@@ -157,6 +157,16 @@ export interface EngineSnapshot {
   bridge: BridgeStatus;
 }
 
+/**
+ * How long one read keeps this collie "watched".
+ *
+ * Comfortably longer than the frontend's own cold cadence (4 s) so an operator sitting on the
+ * dashboard with a quiet herd never flickers between watched and idle, and short enough that a phone
+ * put in a pocket stops costing a fast census within a couple of polls. It is deliberately NOT the
+ * poll interval: attention is about a human being present, and the poller is only the evidence.
+ */
+export const ATTENTION_WINDOW_MS = 10_000;
+
 type TransitionListener = (agent: AgentView, from: AgentStatus, to: AgentStatus) => void;
 type RemoveListener = (paneId: string) => void;
 type UpdateListener = (snap: EngineSnapshot) => void;
@@ -183,6 +193,9 @@ export class StateEngine {
   // One follow-up poll queued when pokeNow lands mid-poll: an event may describe state the
   // in-flight poll already read past, so we must re-poll once it settles.
   private queuedPoll = false;
+  // When a phone last read this collie — see noteAttention. Epoch ms; 0 means "never", which reads
+  // as idle for any clock.
+  private lastReadAt = 0;
   // Current interval cadence; setCadence swaps it (relaxed while the event stream is healthy).
   private cadenceMs: number;
   constructor(
@@ -224,6 +237,28 @@ export class StateEngine {
   onTick(fn: TickListener): () => void {
     this.tickListeners.add(fn);
     return () => this.tickListeners.delete(fn);
+  }
+
+  /**
+   * A phone just read this collie. Stamped by the two routes that mean somebody is LOOKING —
+   * `/api/snapshot` and `/api/pane/:id` — and by nothing else.
+   *
+   * Deliberately not every request: a push subscription, a config read or a preference write are
+   * things a background page does, and treating them as attention would keep a pocketed phone's
+   * census running fast forever.
+   */
+  noteAttention(now = Date.now()): void {
+    this.lastReadAt = now;
+  }
+
+  /**
+   * Is somebody watching right now? The bridge's answer, handed to the mux watch (mux/types.ts).
+   *
+   * `idle` until the first read, which is the honest starting state: a bridge that has just come up
+   * has nobody looking at it, and starting `watched` would spend a fast census on every restart.
+   */
+  attention(now = Date.now()): MuxAttention {
+    return now - this.lastReadAt <= ATTENTION_WINDOW_MS ? "watched" : "idle";
   }
 
   current(): EngineSnapshot {

@@ -1493,16 +1493,18 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All four session-scoped routes (tab create, workspace create, tab action, the pane family)
-    // reach their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(4);
-    // Exactly four `registry.get(` calls remain, and each is a sanctioned one, named here rather
+    // All FIVE session-scoped routes (tab create, workspace create, tab action, the pane family,
+    // and "look now") reach their runtime through the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(5);
+    // Exactly five `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
-    // collie's own multiplexer (M10/06) and is not session-scoped at all; and `/api/mux/logo.svg`,
+    // collie's own multiplexer (M10/06) and is not session-scoped at all; `/api/mux/logo.svg`,
     // which serves that same local multiplexer's mark and is session-scoped no more than the config
-    // that publishes its URL. A fifth would be a route reaching past the gate.
-    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(4);
+    // that publishes its URL; and the attention stamp on `/api/snapshot`, which is a fact about
+    // THIS collie's own engine on a route that is already local-body-then-merge and has no `?h=`
+    // branch to fall through. A sixth would be a route reaching past the gate.
+    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(5);
     // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
     // are its own business and reach the lead over the pack API, never out of this registry.
     expect(src).toContain("const activeMux = registry.get();");
