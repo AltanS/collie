@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.22] - 2026-08-25
+
+### Fixed
+
+- **"Follow terminal" now follows a multi-space server** — the focused space is resolved first, then its one focused pane; every space has an active pane, so the old herd-wide read called a two-session tmux ambiguous and moved nothing (c57888c)
+- **"Show in terminal" reaches the screen across tmux sessions** — an attached terminal sitting on another session is carried over with `switch-client`, instead of an `ok` that moved nothing (c57888c)
+
 ## [1.0.0-beta.21] - 2026-08-25
 
 **The phone keeps up with the terminal.** Freshness, focus and how many spaces a multiplexer can hold are now declared by each mux adapter and rendered from the declaration — [ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md).
