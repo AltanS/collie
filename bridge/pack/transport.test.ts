@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { selfIdentity } from "./enrollment.ts";
+import { mintIdentity } from "./identity.ts";
 import { fp, leadStore, material, member, peerStore, T0 } from "./fixtures.ts";
 import type { StoredWarrant, TrustStoreData } from "./trust-store.ts";
 import { dialTls, peerListenerTls } from "./transport.ts";
@@ -157,7 +158,7 @@ describe("the peer's pinned listener", () => {
 });
 
 describe("the dialling side", () => {
-  test("it pins the member's certificate and drops the NAME check", () => {
+  test("it pins the member's certificate and neutralises the NAME check", () => {
     const store = leadStore({ peers: [member({ memberId: "laptop" })] });
     const tls = dialTls(store, store.peers[0]!);
     expect(tls).not.toBeNull();
@@ -165,6 +166,18 @@ describe("the dialling side", () => {
     expect(tls!.rejectUnauthorized).toBe(true);
     // §4: an address is a hint the operator may re-point, so a member that roams must not become
     // untrusted because its SAN no longer covers where it is dialled. Identity is the certificate.
+    // The name check is therefore made TAUTOLOGICAL — SNI is a name the pinned certificate itself
+    // carries, so it can only ever match — rather than switched off with a callback, which Bun 1.4
+    // refuses to pool a connection for (§10.4 depends on that pooling).
+    expect(tls!.serverName).toBe("localhost");
+    expect(tls!.checkServerIdentity).toBeUndefined();
+  });
+
+  test("a certificate that names nothing falls back to the callback", () => {
+    const store = leadStore({ peers: [member({ memberId: "laptop" })] });
+    const nameless = mintIdentity({ commonName: "collie-nameless" });
+    const tls = dialTls(store, { certPem: nameless.certPem });
+    expect(tls!.serverName).toBeUndefined();
     expect(tls!.checkServerIdentity).toBeInstanceOf(Function);
     expect(tls!.checkServerIdentity!()).toBeUndefined();
   });

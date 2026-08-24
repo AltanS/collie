@@ -1,3 +1,5 @@
+import { X509Certificate } from "node:crypto";
+
 import type { PackMode } from "../types.ts";
 import { fingerprintOfCert } from "./identity.ts";
 import type { TrustedMember, TrustStoreData } from "./trust-store.ts";
@@ -49,6 +51,7 @@ export interface PackTlsOptions {
   readonly requestCert?: boolean;
   readonly rejectUnauthorized?: boolean;
   readonly checkServerIdentity?: () => undefined;
+  readonly serverName?: string;
 }
 
 /** A `fetch` init that may carry TLS material. Bun honours `tls`; the type just says so out loud. */
@@ -139,10 +142,19 @@ function deputyAnchor(data: TrustStoreData, lead: TrustedMember, now: number): s
  * Two halves, both required:
  *   • **`ca: [member.certPem]`** pins the server. A peer that answers with a different certificate is
  *     refused at the handshake, so `DEPTH_ZERO_SELF_SIGNED_CERT` is what a swapped machine looks like.
- *   • **`checkServerIdentity: () => undefined`** removes the *name* check. This is the Syncthing model
- *     §8.1 asks for and §4's addressing rule made mandatory: an address is a hint the operator may
- *     re-point (`collie reconnect`), so a member that roams must not become untrusted because its SAN
- *     no longer covers the address it is dialled at. Identity is the certificate; the name is noise.
+ *   • **`serverName` taken from the PINNED certificate's own first DNS SAN** neutralises the *name*
+ *     check by making it tautological — SNI is a name that certificate already carries, so it can only
+ *     ever match. This is still the Syncthing model §8.1 asks for and §4's addressing rule made
+ *     mandatory: the name never comes from the dial ADDRESS, so a member the operator re-points
+ *     (`collie reconnect`) cannot become untrusted because its SAN no longer covers where it is
+ *     dialled at. Identity is still the certificate; the trust model is unchanged.
+ *
+ * The name check used to be switched OFF with `checkServerIdentity: () => undefined`, and that is now a
+ * fallback only. Bun ≥1.4 refuses to POOL a `fetch` whose `tls` options carry a `checkServerIdentity`
+ * callback, and pooling is exactly what §10.4 of PACK_PROTOCOL.md rides: without it every strict-budget
+ * dial handshakes cold and a DERP-relayed peer never bootstraps. A certificate that names nothing keeps
+ * the callback and simply does not pool — correct, just slower. The SNI itself is a tailnet name and it
+ * travels inside the tailnet's own encryption, so naming it on the wire is no public-wire disclosure.
  *
  * `cert`/`key` are this collie's own, so the peer's listener can pin us back — the pair is symmetric.
  * Returns `null` when the member carries no certificate, which the caller must treat as unreachable
@@ -150,11 +162,43 @@ function deputyAnchor(data: TrustStoreData, lead: TrustedMember, now: number): s
  */
 export function dialTls(data: TrustStoreData | null, member: Pick<TrustedMember, "certPem">): PackTlsOptions | null {
   if (data === null || member.certPem === "") return null;
-  return {
+  const base = {
     cert: data.self.certPem,
     key: data.self.keyPem,
     ca: [member.certPem],
     rejectUnauthorized: true,
-    checkServerIdentity: () => undefined,
-  };
+  } as const;
+  const sni = pinnedServerName(member.certPem);
+  if (sni === null) return { ...base, checkServerIdentity: () => undefined };
+  return { ...base, serverName: sni };
+}
+
+const pinnedNames = new Map<string, string | null>();
+
+/**
+ * A name the PINNED certificate already carries, for use as SNI — the name check made tautological
+ * instead of switched off (see {@link dialTls}). `null` when the certificate names nothing, which
+ * sends the caller back to the `checkServerIdentity` override.
+ */
+function pinnedServerName(certPem: string): string | null {
+  const cached = pinnedNames.get(certPem);
+  if (cached !== undefined) return cached;
+  const found = firstDnsName(certPem);
+  pinnedNames.set(certPem, found);
+  return found;
+}
+
+function firstDnsName(certPem: string): string | null {
+  let san = "";
+  try {
+    san = new X509Certificate(certPem).subjectAltName ?? "";
+  } catch {
+    return null;
+  }
+  for (const entry of san.split(", ")) {
+    if (!entry.startsWith("DNS:")) continue;
+    const value = entry.slice(4).replace(/^"|"$/g, "");
+    if (value !== "") return value;
+  }
+  return null;
 }
