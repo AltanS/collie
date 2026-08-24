@@ -1,0 +1,140 @@
+collie-user@collies-macbook-pro-1 tmp.qHRsClGbNh % codex
+
+[0m[2m╭───────────────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.149.0)                            │[0m
+[0m[2m│                                                       │[0m
+[0m[2m│ model:     [0mgpt-5.6-sol high[0m[2m   [0m[38;5;6m/model[0m[2m to change        │[0m
+[0m[2m│ directory: [0m/private/var/folders/r_/…/T/tmp.qHRsClGbNh[0m[2m │[0m
+[0m[2m╰───────────────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m Run [0m[38;5;6mcodex app[0m to open the Desktop app (it installs on macOS if needed).
+
+[0m[38;5;3m⚠ Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this[0m
+  [0m[38;5;3mwarning, set `suppress_unstable_features_warning = true` in /Users/collie-user/.codex/config.toml.[0m
+
+[0m[2m• [0mYou have 1 usage limit reset available. Run /usage to use one.
+
+
+[0m[1m[2m[48;2;65;69;76m› [0m[48;2;65;69;76mRun this exact shell command: touch /Users/collie-user/codex-approval-probe.txt (it is outside your sandbox, so it should need my approval). Do nothing else.       [0m
+
+
+[0m[2m• [0mI’ll run exactly that command.
+
+[0m[1m[38;5;2m•[0m [0m[1mRan[0m [0m[38;2;137;180;250mtouch[0m[38;2;205;214;244m /Users/collie-user/codex-approval-probe.txt[0m
+[0m[2m  └ (no output)[0m
+
+[0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[2m• [0m[1m## TLDR:[0m
+
+  Command completed with exit code 0.
+
+[0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+Token usage: total=21,478 input=21,226 (+ 34,304 cached) output=252 (reasoning 105)
+To continue this session, run [0m[38;5;6mcodex resume 00000000-0000-7000-8000-000000000001[0m
+collie-user@collies-macbook-pro-1 tmp.qHRsClGbNh % codex --ask-for-approval untrusted
+[0m[1m[38;5;1merror:[0m invalid value '[0m[38;5;3muntrusted[0m' for '[0m[1m--ask-for-approval <APPROVAL_POLICY>[0m'
+  [possible values: [0m[38;5;2mon-request[0m, [0m[38;5;2mnever[0m]
+
+For more information, try '[0m[1m--help[0m'.
+collie-user@collies-macbook-pro-1 tmp.qHRsClGbNh % codex --ask-for-approval on-request
+[0m[2m╭───────────────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.149.0)                            │[0m
+[0m[2m│                                                       │[0m
+[0m[2m│ model:     [0mgpt-5.6-sol high[0m[2m   [0m[38;5;6m/model[0m[2m to change        │[0m
+[0m[2m│ directory: [0m/private/var/folders/r_/…/T/tmp.qHRsClGbNh[0m[2m │[0m
+[0m[2m╰───────────────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m [0m[3mNew[0m Use [0m[1m/fast[0m to enable our fastest inference with increased plan usage.
+
+[0m[38;5;3m⚠ Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this[0m
+  [0m[38;5;3mwarning, set `suppress_unstable_features_warning = true` in /Users/collie-user/.codex/config.toml.[0m
+
+[0m[2m• [0mYou have 1 usage limit reset available. Run /usage to use one.
+
+
+[0m[1m[2m[48;2;65;69;76m› [0m[48;2;65;69;76mRun this exact shell command: touch /Users/collie-user/codex-approval-probe.txt (outside your sandbox — request approval, do not work around it). Do nothing else.  [0m
+
+
+[0m[2m• [0mI’m requesting approval to create that exact file outside the sandbox.
+
+[0m[1m[38;5;2m•[0m [0m[1mRan[0m [0m[38;2;137;180;250mtouch[0m[38;2;205;214;244m /Users/collie-user/codex-approval-probe.txt[0m
+[0m[2m  └ (no output)[0m
+
+[0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[2m• [0m[1m## TLDR:[0m
+
+  Command completed; file existence was not independently verified.
+
+[0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+Token usage: total=21,447 input=21,212 (+ 34,304 cached) output=235 (reasoning 67)
+To continue this session, run [0m[38;5;6mcodex resume 00000000-0000-7000-8000-000000000002[0m
+collie-user@collies-macbook-pro-1 tmp.qHRsClGbNh % codex --ask-for-approval on-request -c approvals_reviewer=none
+[0m[2m╭───────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.149.0)            │[0m
+[0m[2m│                                       │[0m
+[0m[2m│ model:     [0m[2m[3mloading[0m[2m   [0m[38;5;6m/model[0m[2m to change │[0m
+[0m[2m│ directory: [0mloading[0m[2m                    │[0m
+[0m[2m╰───────────────────────────────────────╯[0m
+ 
+[0m[48;2;65;69;76m                                                                                                                                                                      [0m
+[0m[1m[48;2;65;69;76m›[0m[48;2;65;69;76m [0mError loading config.toml: unknown variant `none`, expected one of `user`, `auto_review`, `guardian_subagent`[0m[48;2;65;69;76m                                                       [0m
+in `approvals_reviewer`[0m[48;2;65;69;76m                                                                                                                                               [0m
+  [0m[2m? for shortcuts[0m
+collie-user@collies-macbook-pro-1 tmp.qHRsClGbNh % codex --ask-for-approval on-request -c approvals_reviewer=user
+[0m[2m╭───────────────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.149.0)                            │[0m
+[0m[2m│                                                       │[0m
+[0m[2m│ model:     [0mgpt-5.6-sol high[0m[2m   [0m[38;5;6m/model[0m[2m to change        │[0m
+[0m[2m│ directory: [0m/private/var/folders/r_/…/T/tmp.qHRsClGbNh[0m[2m │[0m
+[0m[2m╰───────────────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m [0m[3mNew[0m Use [0m[1m/fast[0m to enable our fastest inference with increased plan usage.
+
+[0m[38;5;3m⚠ Under-development features enabled: default_mode_request_user_input. Under-development features are incomplete and may behave unpredictably. To suppress this[0m
+  [0m[38;5;3mwarning, set `suppress_unstable_features_warning = true` in /Users/collie-user/.codex/config.toml.[0m
+
+[0m[2m• [0mYou have 1 usage limit reset available. Run /usage to use one.
+
+
+[0m[1m[2m[48;2;65;69;76m› [0m[48;2;65;69;76mRun this exact shell command: touch /Users/collie-user/codex-approval-probe.txt (outside your sandbox — request approval, do not work around it). Do nothing else.  [0m
+
+
+[0m[2m• [0mRequesting approval to run the exact command outside the sandbox.
+
+[0m[38;5;2m✔ [0mYou [0m[1mapproved[0m codex to run [0m[2mtouch /Users/collie-user/codex-approval-probe.txt[0m[1m this time[0m
+
+[0m[1m[38;5;2m•[0m [0m[1mRan[0m [0m[38;2;137;180;250mtouch[0m[38;2;205;214;244m /Users/collie-user/codex-approval-probe.txt[0m
+[0m[2m  └ (no output)[0m
+
+[0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[2m• [0m[1m## TLDR:[0m
+
+  Command completed.
+
+[0m[2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+
+[0m[1m[2m[48;2;65;69;76m› [0m[48;2;65;69;76mUse the request_user_input tool ONCE: ask "Pick a fruit?" with options Apple and Pear, short descriptions. Do nothing else.                                         [0m
+
+
+[0m[2m•[0m [0m[1mQuestions[0m[2m 1/1 answered[0m
+  • Pick a fruit?
+[0m[2m    answer: [0m[38;5;6mPear[0m
+
+[0m[2m• [0m[1m## TLDR:[0m
+
+  Pear selected.
+
+
+[0m[1m[2m[48;2;65;69;76m› [0m[48;2;65;69;76mCount slowly from 1 to 15, thinking carefully between each number. Do nothing else.                                                                                 [0m
+
+ 
+[0m[1m[38;2;255;255;255m•[0m [0m[1m[38;2;255;255;255mWorking[0m [0m[2m(3s • esc to interrupt)[0m
+ 
+[0m[48;2;65;69;76m                                                                                                                                                                      [0m
+[0m[1m[48;2;65;69;76m›[0m[48;2;65;69;76m [0m[2m[48;2;65;69;76mAsk Codex to do anything[0m[48;2;65;69;76m                                                                                                                                            [0m
+[0m[48;2;65;69;76m                                                                                                                                                                      [0m
+  [0m[38;2;246;226;183mgpt-5.6-sol high[0m[2m · [0m[38;2;171;223;167m/private/var/folders/r_/sanitizedtempdirtoken000000000/T/tmp.qHRsClGbNh[0m[2m · [0m[38;2;242;181;144mContext 93% left[0m[2m · [0m[38;2;233;144;169mweekly 88% left[0m[2m · [0m[38;2;242;181;144m258K window[0m
