@@ -30,7 +30,7 @@ import type { AgentStatus } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
-export type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
+export type { MuxCapability, MuxCapabilityDeclaration, MuxSpaceShape } from "./capabilities.ts";
 export { declareCapabilities, MUX_CAPABILITIES, supportsCapability } from "./capabilities.ts";
 export type { MuxIdentity, MuxIdentityProblem } from "./identity.ts";
 export { checkIdentitySet, idsLostBetween, isValidMuxId } from "./identity.ts";
@@ -131,7 +131,19 @@ export interface MuxPane extends MuxIdentity {
   readonly tabLabel?: string;
   /** The pane's working directory. Empty when the multiplexer does not report one. */
   readonly cwd: string;
-  /** Whether the multiplexer's own UI has this pane focused. Read-only — Collie never sets focus. */
+  /**
+   * **The pane the operator's own terminal is showing.** Not "the pane Collie is showing", and not a
+   * pane Collie chose — it is a FACT about the multiplexer, read every snapshot.
+   *
+   * The phone never moves it as a side effect of navigation: a pane is focused because a human, or a
+   * named tap on the `setFocus` row, put it there. Every adapter answers this on the floor, because
+   * every multiplexer knows it; only *changing* it is a capability
+   * ({@link MuxAdapter.setFocus}).
+   *
+   * Focus is per-CLIENT on every multiplexer here, so "no client attached" is a real answer and the
+   * honest one is `false` on every pane. What each adapter reads it off is in MUX_CONTRACT.md
+   * § Contract-owned rules, with the probe.
+   */
   readonly focused: boolean;
   /** False once the pane's process has ended but its record survives. A send to it answers `gone`. */
   readonly alive: boolean;
@@ -400,6 +412,23 @@ export interface MuxAdapter {
 
   /** Close a pane, ending what runs in it. Needs `closePane`. */
   closePane(paneId: string): Promise<MuxAck>;
+
+  /**
+   * Show this pane in the OPERATOR's terminal — after it resolves, {@link MuxPane.focused} is this
+   * pane. Needs `setFocus`.
+   *
+   * The one place the phone may move a human's screen, and it exists only behind a named tap ("Show
+   * in terminal"). Nothing else in the bridge or the web app may call it: navigating on the phone
+   * must never drag the desktop along ([ADR 0031](../../.adr/)).
+   *
+   * The promise is the WHOLE act. A multiplexer that can bring the pane's tab forward but cannot say
+   * which pane inside it ends up focused declares this ABSENT — a half-kept promise silently shows a
+   * neighbouring pane, which is the "degrade rather than lie" failure conformance exists to catch
+   * (zellij is exactly that case; see MUX_CONTRACT.md).
+   *
+   * A pane that has gone away answers `gone`, like every other pane-addressed call.
+   */
+  setFocus(paneId: string): Promise<MuxAck>;
 
   /** New tab in a space, opening a fresh shell. Needs `createTab`. */
   createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>>;

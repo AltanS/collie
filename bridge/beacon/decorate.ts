@@ -182,6 +182,10 @@ function declarationFor(adapter: MuxAdapter, matcher: BeaconMatcher, lifted: boo
     supports: lifted ? [...inherited, ...LIFTED] : inherited,
     unsupportedKeys: adapter.capabilities.unsupportedKeys,
     notes,
+    // Carried through, because a beacon changes what Collie knows about a PANE and never how many
+    // spaces the multiplexer has. Rebuilding the declaration without it would silently promote a
+    // zellij collie to "many" the moment the hooks were installed.
+    spaces: adapter.capabilities.spaces,
   });
 }
 
@@ -282,6 +286,7 @@ export function withAgentBeacons(
     sendKeys: (paneId, keys) => adapter.sendKeys(paneId, keys),
     renamePane: (paneId, label) => adapter.renamePane(paneId, label),
     closePane: (paneId) => adapter.closePane(paneId),
+    setFocus: (paneId) => adapter.setFocus(paneId),
     createTab: (request) => adapter.createTab(request),
     renameTab: (tabId, label) => adapter.renameTab(tabId, label),
     closeTab: (tabId) => adapter.closeTab(tabId),

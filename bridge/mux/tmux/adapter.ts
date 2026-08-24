@@ -157,6 +157,7 @@ const TMUX_CAPABILITIES = declareCapabilities({
     "sendKeys",
     "renamePane",
     "closePane",
+    "setFocus",
     "createTab",
     "renameTab",
     "closeTab",
@@ -180,6 +181,8 @@ const TMUX_CAPABILITIES = declareCapabilities({
     pushPaneEvents:
       "Control mode pushes `%output` for the panes of each attached session, up to eight sessions; beyond that the same 5-second listing is the floor.",
   },
+  // One tmux server holds as many sessions as the operator makes, and each one is a Collie space.
+  spaces: "many",
 });
 
 /** One pane's derived revision, and the reads it was derived from. */
@@ -375,6 +378,28 @@ export class TmuxMux implements MuxAdapter {
   }
 
   /**
+   * Show this pane on the operator's own screen — the window first, then the pane inside it.
+   *
+   * Both halves are needed and they are ONE invocation: `select-pane` alone leaves the operator
+   * looking at another window, and two spawns would leave the screen half-moved if the second failed.
+   * `%N` and `@N` are server-wide, so neither target needs its session named. Probed 2026-08-25
+   * against the test server: `select-window -t @4 ; select-pane -t %9` moved `window_active` and
+   * `pane_active` together; a stale id answers `can't find window: @999` / `can't find pane: %999`,
+   * which {@link refusalFor} reads as the contract's `gone`.
+   *
+   * The window id is not passed in — the caller has a PANE id and nothing else — so it is read out of
+   * the same listing the snapshot uses. A pane the listing no longer carries is `gone` before
+   * anything is spawned, which is the answer the contract wants anyway.
+   */
+  async setFocus(paneId: string): Promise<MuxAck> {
+    const snapshot = await this.snapshot();
+    const pane = snapshot.panes.find((candidate) => candidate.paneId === paneId);
+    if (pane === undefined) return muxGone(`can't find pane: ${paneId}`);
+    const result = await this.attemptRun(["select-window", "-t", pane.tabId, ";", "select-pane", "-t", paneId]);
+    return result.ok ? muxAck() : result;
+  }
+
+  /**
    * A new tab in a space — a new tmux window in that session, created detached.
    *
    * `-d` is deliberate: creating a tab from the phone must not move the window the operator is
@@ -566,13 +591,21 @@ function toSnapshot(listing: TmuxListing, ownLabels: ReadonlyMap<string, string>
   const sessionById = new Map(listing.sessions.map((session) => [session.id, session]));
   const windowById = new Map(listing.windows.map((window) => [window.id, window]));
   const numberById = new Map(listing.sessions.map((session, index) => [session.id, index + 1]));
-  // tmux orders sessions by name and gives them no index of their own, so "focused" cannot be read
-  // off an attached client — this watch's own control clients are attached clients, and counting
-  // them would report every session as focused. Last activity is the one ordering tmux does keep.
-  const liveliest = listing.sessions.reduce<TmuxSession | null>(
-    (best, session) => (best === null || session.activity > best.activity ? session : best),
-    null,
-  );
+  // WHICH SESSION IS THE OPERATOR LOOKING AT. The listing's fourth section answers it directly: the
+  // session a NON-control client is attached to is a session somebody's terminal is showing, and
+  // `client_control_mode` is what keeps this adapter's own watch out of the answer (protocol.ts §
+  // TmuxClient). With two real terminals the most recently active one wins.
+  //
+  // The fallback is the old rule and it stays, because "no client attached" is ordinary — a server
+  // full of detached sessions still has to render somewhere sensible, and last activity is the one
+  // ordering tmux keeps over sessions.
+  const watched = watchedSession(listing);
+  const liveliest =
+    watched ??
+    listing.sessions.reduce<TmuxSession | null>(
+      (best, session) => (best === null || session.activity > best.activity ? session : best),
+      null,
+    );
   const activeTabBySession = new Map<string, string>();
   for (const window of listing.windows) {
     if (window.active || !activeTabBySession.has(window.sessionId)) activeTabBySession.set(window.sessionId, window.id);
@@ -608,6 +641,26 @@ function toSnapshot(listing: TmuxListing, ownLabels: ReadonlyMap<string, string>
   return { panes, spaces, tabs };
 }
 
+/**
+ * The session a real terminal is attached to, or null when only Collie's own watch is.
+ *
+ * `client_session` prints a session NAME rather than a `$N` id (probed 2026-08-25), so the match is
+ * against either — a name today, an id if tmux ever changes its mind, and no re-derivation either
+ * way. A client naming a session this listing does not carry is ignored rather than guessed at.
+ */
+function watchedSession(listing: TmuxListing): TmuxSession | null {
+  const attached = listing.clients.filter((client) => !client.control);
+  let best: { session: TmuxSession; activity: number } | null = null;
+  for (const client of attached) {
+    const session = listing.sessions.find(
+      (candidate) => candidate.id === client.sessionId || candidate.name === client.sessionId,
+    );
+    if (session === undefined) continue;
+    if (best === null || client.activity > best.activity) best = { session, activity: client.activity };
+  }
+  return best?.session ?? null;
+}
+
 type MutableMuxPane = { -readonly [K in keyof MuxPane]: MuxPane[K] };
 
 /** One tmux pane record as a {@link MuxPane}. */
@@ -627,8 +680,11 @@ function toMuxPane(
     spaceNumber: numberById.get(raw.sessionId) ?? 0,
     tabId: raw.windowId,
     cwd: raw.cwd,
-    // tmux's focus is per-client and Collie never sets it; the pane tmux would type into is the
-    // active pane of the active window.
+    // The pane a terminal attached to this session is showing: the active pane of the active window.
+    // tmux's current window is a property of the SESSION, not of a client, so every client on one
+    // session sees the same pane — which is why this needs no client lookup, while WHICH SESSION is
+    // in front does (see `watchedSession`). A detached session keeps its active pane, and reporting
+    // it is the contract's stated fallback.
     focused: raw.active && raw.windowActive,
     // `pane_dead` is 1 only where the operator set `remain-on-exit`; everywhere else the record is
     // simply gone from the listing, and the next write answers `can't find pane`.

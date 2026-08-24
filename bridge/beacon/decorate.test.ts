@@ -102,6 +102,11 @@ class StubAdapter implements MuxAdapter {
     return Promise.resolve(muxGone("gone"));
   }
 
+  setFocus(paneId: string) {
+    this.note("setFocus", paneId);
+    return Promise.resolve(muxAck());
+  }
+
   createTab(request: MuxTabRequest) {
     this.note("createTab", request);
     return Promise.resolve(muxOk({ paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }));
@@ -221,6 +226,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     sendKeys: true,
     renamePane: true,
     closePane: true,
+    setFocus: true,
     createTab: true,
     renameTab: true,
     closeTab: true,
@@ -299,6 +305,7 @@ describe("everything but capabilities and snapshot is a pass-through", () => {
     await decorated.sendKeys("%1", ["ctrl+c"]);
     await decorated.renamePane("%1", null);
     await decorated.closePane("%1");
+    await decorated.setFocus("%1");
     await decorated.createTab({ spaceId: "space" });
     await decorated.renameTab("tab", "label");
     await decorated.closeTab("tab");
@@ -312,6 +319,7 @@ describe("everything but capabilities and snapshot is a pass-through", () => {
       { method: "sendKeys", args: ["%1", ["ctrl+c"]] },
       { method: "renamePane", args: ["%1", null] },
       { method: "closePane", args: ["%1"] },
+      { method: "setFocus", args: ["%1"] },
       { method: "createTab", args: [{ spaceId: "space" }] },
       { method: "renameTab", args: ["tab", "label"] },
       { method: "closeTab", args: ["tab"] },

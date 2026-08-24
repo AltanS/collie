@@ -243,6 +243,20 @@ export class FakeHerdr implements HerdrRpc {
     await this.endPane(paneId);
   }
 
+  /**
+   * Focus one pane — and exactly one, across the whole herd.
+   *
+   * The real server moves the tab and the workspace with the pane (client.ts § focusPane), and the
+   * fixture's tabs and workspaces carry their own `focused` flags, so both are moved here too. Anything
+   * less would let an adapter pass conformance while leaving two panes claiming the operator's screen.
+   */
+  async focusPane(paneId: string): Promise<void> {
+    const target = this.pane("pane.focus", paneId);
+    for (const pane of this.panes) pane.focused = pane.pane_id === target.pane_id;
+    for (const tab of this.tabs) tab.focused = tab.tab_id === target.tab_id;
+    for (const workspace of this.workspaces) workspace.focused = workspace.workspace_id === target.workspace_id;
+  }
+
   async createTab(workspaceId: string, opts: { label?: string; cwd?: string } = {}): Promise<CreatedShell> {
     const workspace = this.workspace("tab.create", workspaceId);
     const tab = this.newTab(workspace, opts.label ?? String(workspace.tab_count + 1));
@@ -426,6 +440,9 @@ export const herdrConformanceFixture: MuxConformanceFixture = {
       restartMux: () => fake.restartMux(),
       renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
       setProgramTitle: (paneId, title) => fake.setProgramTitle(paneId, title),
+      // The operator moves focus in their own TUI. Herdr's own `pane.focus` does exactly this, so the
+      // perturbation is the same state change arriving without Collie having asked for it.
+      focusOutOfBand: (paneId) => fake.focusPane(paneId),
       changePane: (paneId) => fake.changePane(paneId),
       endPane: (paneId) => fake.endPane(paneId),
       pokeTopology: () => fake.pokeTopology(),

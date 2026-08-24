@@ -144,6 +144,11 @@ class StubAdapter implements MuxAdapter {
     return Promise.resolve(muxAck());
   }
 
+  setFocus(_paneId: string) {
+    this.calls.push("setFocus");
+    return Promise.resolve(muxAck());
+  }
+
   renamePane(_paneId: string, _label: string | null) {
     this.calls.push("renamePane");
     return Promise.resolve(muxAck());

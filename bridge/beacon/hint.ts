@@ -160,6 +160,7 @@ export function withAgentHints(adapter: MuxAdapter, deps: AgentHintDeps): MuxAda
     sendKeys: (paneId: string, keys: readonly string[]): Promise<MuxAck> => adapter.sendKeys(paneId, keys),
     renamePane: (paneId: string, label: string | null): Promise<MuxAck> => adapter.renamePane(paneId, label),
     closePane: (paneId: string): Promise<MuxAck> => adapter.closePane(paneId),
+    setFocus: (paneId: string): Promise<MuxAck> => adapter.setFocus(paneId),
     createTab: (request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> => adapter.createTab(request),
     renameTab: (tabId: string, label: string): Promise<MuxAck> => adapter.renameTab(tabId, label),
     closeTab: (tabId: string): Promise<MuxAck> => adapter.closeTab(tabId),

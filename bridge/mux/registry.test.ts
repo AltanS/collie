@@ -27,6 +27,7 @@ function stubAdapter(mux: string, target: MuxTarget): MuxAdapter {
     sendKeys: () => Promise.resolve(muxUnsupported("sendKeys", "stub")),
     renamePane: () => Promise.resolve(muxUnsupported("renamePane", "stub")),
     closePane: () => Promise.resolve(muxUnsupported("closePane", "stub")),
+    setFocus: () => Promise.resolve(muxUnsupported("setFocus", "stub")),
     createTab: () => Promise.resolve(muxUnsupported("createTab", "stub")),
     renameTab: () => Promise.resolve(muxUnsupported("renameTab", "stub")),
     closeTab: () => Promise.resolve(muxUnsupported("closeTab", "stub")),
