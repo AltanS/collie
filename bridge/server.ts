@@ -19,6 +19,7 @@ import {
   type PromptBindingResult,
 } from "./prompt-binding.ts";
 import type { Push, PushSubscription } from "./push.ts";
+import { RefreshCoalescer } from "./refresh.ts";
 import { herdTagFor, type SessionRegistry, type SessionRuntime } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import type { UpdateMonitor } from "./update.ts";
@@ -451,6 +452,29 @@ export function startServer(opts: {
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
 
+  /** One in-flight "look now" per session — see bridge/refresh.ts for why it coalesces. */
+  const refreshes = new RefreshCoalescer();
+
+  /**
+   * Take a fresh look at one session's multiplexer, then make the bridge re-read it.
+   *
+   * TWO STEPS AND BOTH ARE NEEDED. `mux.refresh()` moves the ADAPTER's own clock — the census that
+   * would otherwise discover an out-of-band change up to its declared bound later. `pokeNow()` moves
+   * the BRIDGE's: the snapshot the phone polls is the state engine's, and an adapter that is now
+   * up to date changes nothing the phone can see until the engine has polled it.
+   *
+   * Never throws. A multiplexer that did not answer leaves the herd exactly as stale as it already
+   * was, which the disconnected banner is already saying — a refresh failing is not news.
+   */
+  const lookNow = async (rt: SessionRuntime): Promise<void> => {
+    try {
+      await rt.herdr.refresh();
+    } catch (err) {
+      console.warn(`[refresh] ${rt.name}: ${errorText(err)}`);
+    }
+    rt.engine.pokeNow();
+  };
+
   /**
    * This collie's own snapshot body — the whole of what `/api/snapshot` answered before packs
    * existed, and (with `device` omitted) exactly what a peer serves its lead on `/pack/v1/snapshot`.
@@ -532,6 +556,22 @@ export function startServer(opts: {
   ): Promise<Response | null> => {
     const { pathname } = url;
 
+    // ── "Look now" ────────────────────────────────────────────────────────
+    // A READ, and gated as one. It changes nothing — `mux.refresh()` takes a listing and moves a
+    // timer (mux/types.ts) — so gating it behind a device would refuse the one thing a read-only
+    // phone most obviously may do: ask for a fresh screen. Coalesced so a burst (foreground +
+    // visibility + a pull, one operator act) costs one listing.
+    if (pathname === "/api/refresh" && req.method === "POST") {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      // A refresh is a phone asking to be shown something, which is attention by any reading.
+      rt.engine.noteAttention();
+      await refreshes.run(rt.name, () => lookNow(rt));
+      return json({ ok: true } satisfies ActionResponse, req.headers.get("accept-encoding"));
+    }
+
     // ── Structural creates: new tab / new space (each opens a fresh shell pane) ──
     if (pathname === "/api/tab" && req.method === "POST") {
       const denied = caller.gate("write");
@@ -545,7 +585,7 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return createWorkspace(rt.herdr, req, caller.audit, caller.device(), rt.name);
+      return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name);
     }
 
     // ── Tab actions: rename (set its label) / close (kill it + every pane in it) ──
@@ -558,8 +598,8 @@ export function startServer(opts: {
       const tabId = decodeURIComponent(tabMatch[1]!);
       const action = tabMatch[2];
       const device = caller.device();
-      if (action === "close") return closeTab(rt.herdr, tabId, req, caller.audit, device, rt.name);
-      return renameTab(rt.herdr, tabId, req, caller.audit, device, rt.name);
+      if (action === "close") return closeTab(rt.herdr, rt.engine, tabId, req, caller.audit, device, rt.name);
+      return renameTab(rt.herdr, rt.engine, tabId, req, caller.audit, device, rt.name);
     }
 
     // ── Per-pane read / send ─────────────────────────────────────────────
@@ -593,6 +633,11 @@ export function startServer(opts: {
       // machines' guesses, and why the `x-collie-seen` header is forwarded verbatim.
       const routed = isRead ? req.method === "GET" : req.method === "POST";
       if (routed && marksPaneSeen(req, action)) activity.noteSeen(session, paneId);
+      // A pane request means a phone is looking at this collie — the second of the two routes that
+      // stamp attention (state-engine.ts § noteAttention). It is stamped HERE rather than at the
+      // browser's dispatch so that a pane the lead FORWARDED to a peer counts on the peer, where
+      // the census that attention tightens actually runs.
+      if (routed) rt.engine.noteAttention();
       // Every action is a write; attribute it to the authorised device for the audit trail.
       // `history` is a read, so it gets no device attribution (nothing is written to attribute).
       const device = isRead ? null : caller.device();
@@ -604,9 +649,9 @@ export function startServer(opts: {
       if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit_, device, session);
       if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit_, device, session);
       if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit_, device, session);
-      if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, audit_, device, session);
-      if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, audit_, device, session);
-      if (action === "focus" && req.method === "POST") return focusPane(herdr, paneId, req, audit_, device, session);
+      if (action === "close" && req.method === "POST") return closePane(herdr, rt.engine, paneId, req, audit_, device, session);
+      if (action === "rename" && req.method === "POST") return renamePane(herdr, rt.engine, paneId, req, audit_, device, session);
+      if (action === "focus" && req.method === "POST") return focusPane(herdr, rt.engine, paneId, req, audit_, device, session);
       return text("method not allowed", 405);
     }
 
@@ -755,6 +800,11 @@ export function startServer(opts: {
         const gate = checkAccess(req, cfg);
         if (!gate.ok) return text(gate.reason, 403);
         const device = whois(req);
+        // A BROWSER poll is a phone looking; the lead's own sweep of a peer is not, which is why
+        // this stamp sits here rather than inside `localSnapshot` (that closure also serves
+        // `/pack/v1/snapshot`, and a lead sweeps on its own clock whether or not anybody is reading
+        // it — stamping there would pin every peer at `watched` for the life of the pack).
+        registry.get(sessionName)?.engine.noteAttention();
         const body = localSnapshot(sessionName, device.enforced ? device : null);
         if (!body) return unknownSession();
         // The ONE place the lead re-serialises (§9.2). With no pack this is the identity function's
@@ -1543,10 +1593,39 @@ function promptBindingFailure(
   return json(failure, acceptEncoding, result.status);
 }
 
+/**
+ * A phone just changed this herd's shape or its names — take a fresh look before answering.
+ *
+ * WHY EVERY MUTATING ROUTE ENDS HERE. The phone's next act after a tab rename is to revalidate, and
+ * what it revalidates is the STATE ENGINE's snapshot. Without this the engine would still be holding
+ * the pre-change herd, and the strip would keep the old label until the adapter's census caught up —
+ * up to the bound the adapter declares (`topologyLatency`), which on a censusing multiplexer is long
+ * enough for an operator to conclude the rename did not work and do it again.
+ *
+ * The create routes already hand back the identity they created, and that stays: it is what lets the
+ * phone navigate into a new pane at once. This is about the STRIP being right, which no create
+ * response can carry.
+ *
+ * Cheap where it is already fresh — a pushing adapter's `refresh()` resolves immediately (see the
+ * port) — so this costs a listing only on the adapters that actually needed one.
+ */
+async function settleTopology(herdr: MuxAdapter, engine: StateEngine): Promise<void> {
+  try {
+    await herdr.refresh();
+  } catch (err) {
+    // A refresh that could not happen leaves the herd exactly as stale as it already was, and the
+    // write it follows SUCCEEDED — reporting a failure here would tell the operator their rename
+    // did not land when it did.
+    console.warn(`[refresh] after a write: ${errorText(err)}`);
+  }
+  engine.pokeNow();
+}
+
 // Close a pane ("kill the agent"). Structural op — strictly less powerful than the text/keys
 // injection the bridge already allows, so it stays within the existing remote-shell threat model.
 async function closePane(
   herdr: MuxAdapter,
+  engine: StateEngine,
   paneId: string,
   req: Request,
   audit: AuditLog,
@@ -1562,6 +1641,7 @@ async function closePane(
     );
   }
   audit.record({ action: "pane.close", paneId, session, device, detail: {} });
+  await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }
 
@@ -1578,6 +1658,7 @@ async function closePane(
  */
 async function focusPane(
   herdr: MuxAdapter,
+  engine: StateEngine,
   paneId: string,
   req: Request,
   audit: AuditLog,
@@ -1593,6 +1674,10 @@ async function focusPane(
     );
   }
   audit.record({ action: "pane.focus", paneId, session, device, detail: {} });
+  // `focused` is a fact the snapshot reports, so moving it is a change the phone's next poll must
+  // carry — otherwise the pane the operator just showed on their terminal would keep reading as
+  // unfocused for as long as the adapter's declared bound (ADR 0031).
+  await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }
 
@@ -1602,6 +1687,7 @@ async function focusPane(
 // saving an empty field), which we send to Herdr as `label: null`.
 async function renamePane(
   herdr: MuxAdapter,
+  engine: StateEngine,
   paneId: string,
   req: Request,
   audit: AuditLog,
@@ -1630,6 +1716,7 @@ async function renamePane(
     );
   }
   audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
+  await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }
 
@@ -1654,6 +1741,7 @@ export function normalizeTabLabel(
 // "clear" (see normalizeTabLabel): a blank label is a 400, not a reset to the tab number.
 async function renameTab(
   herdr: MuxAdapter,
+  engine: StateEngine,
   tabId: string,
   req: Request,
   audit: AuditLog,
@@ -1680,6 +1768,7 @@ async function renameTab(
     );
   }
   audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
+  await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }
 
@@ -1689,6 +1778,7 @@ async function renameTab(
 // model. No body: the tab id is in the path.
 async function closeTab(
   herdr: MuxAdapter,
+  engine: StateEngine,
   tabId: string,
   req: Request,
   audit: AuditLog,
@@ -1704,6 +1794,7 @@ async function closeTab(
     );
   }
   audit.record({ action: "tab.close", session, device, detail: { tabId } });
+  await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }
 
@@ -1757,6 +1848,7 @@ async function createTab(
     device,
     detail: { workspaceId, label: tabLabel, cwd },
   });
+  await settleTopology(herdr, engine);
   return json({
     ok: true,
     pane: {
@@ -1774,6 +1866,7 @@ async function createTab(
 // can cd from there. Same structural-only threat model as createTab.
 async function createWorkspace(
   herdr: MuxAdapter,
+  engine: StateEngine,
   req: Request,
   audit: AuditLog,
   device: string | null,
@@ -1808,6 +1901,7 @@ async function createWorkspace(
     device,
     detail: { label, cwd },
   });
+  await settleTopology(herdr, engine);
   return json({
     ok: true,
     pane: {

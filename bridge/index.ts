@@ -544,7 +544,11 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   // herd change, and while it's healthy the interval relaxes to the safety-net cadence. Events are
   // ONLY a poke — the snapshot poll stays the source of truth — so a missed one costs one interval,
   // not correctness. The fresh snapshot after any pane lifecycle change re-scopes the watch.
-  const poker = new EventPoker(herdr);
+  // `attention` rides through the poker to the adapter's watch: an adapter that CENSUSES for topology
+  // (zellij) tightens its cadence while a phone is plainly reading this collie, and one that pushes
+  // ignores it entirely. The bridge's own poll cadence is NOT touched by this — that stays the
+  // event-health question two lines below.
+  const poker = new EventPoker(herdr, { attention: () => engine.attention() });
   poker.onPoke(() => engine.pokeNow());
   poker.onHealth((h) => engine.setCadence(h ? cfg.pollIdleMs : cfg.pollMs));
   engine.onUpdate((s) => poker.setAgentPanes(s.agents.map((a) => a.paneId)));

@@ -515,6 +515,10 @@ describe("solo zero-tax — routes", () => {
       "/api/notifications/prefs",
       "/api/notifications/snooze",
       "/api/pair",
+      // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
+      // than exempted. It is session-scoped and read-gated, and it registers no pack route of its
+      // own: a lead reaches a peer's through the peer's existing `/pack/v1/*` dispatch.
+      "/api/refresh",
       "/api/snapshot",
       // Speech-to-text (bridge/stt/) — a SOLO feature that legitimately extends this list, named
       // here rather than exempted, exactly as device pairing is. It is off until an operator

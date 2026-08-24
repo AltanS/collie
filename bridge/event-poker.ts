@@ -1,4 +1,4 @@
-import type { MuxAdapter, MuxSubscription } from "./mux/types.ts";
+import type { MuxAdapter, MuxAttention, MuxSubscription, MuxWatchOptions } from "./mux/types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Event-poked polling. A long-lived watch on the multiplexer whose ONLY job is to
@@ -29,11 +29,21 @@ interface EventPokerOpts {
   debounceMs?: number;
   /** Reconnect backoff schedule (ms); the last entry repeats indefinitely. */
   backoffMs?: number[];
+  /**
+   * Is somebody looking? Handed straight to `watch()` and never read here.
+   *
+   * This class owns the watch's LIFECYCLE and nothing else, so attention passes through it exactly
+   * as the pane set does: what an adapter does with the answer — a tighter census, or nothing at all
+   * because it pushes — is the adapter's own decision (mux/types.ts § MuxWatchOptions.attention).
+   * Omitted ⇒ no `attention` key reaches the adapter, and every adapter behaves as it did before.
+   */
+  attention?: () => MuxAttention;
 }
 
 export class EventPoker {
   private readonly debounceMs: number;
   private readonly backoff: number[];
+  private readonly attention: (() => MuxAttention) | undefined;
   private agentPanes: string[] = [];
   private started = false;
   private healthy = false;
@@ -52,6 +62,7 @@ export class EventPoker {
   ) {
     this.debounceMs = opts.debounceMs ?? 200;
     this.backoff = opts.backoffMs ?? [1000, 2000, 5000, 15000];
+    this.attention = opts.attention;
   }
 
   onPoke(cb: () => void): () => void {
@@ -99,7 +110,9 @@ export class EventPoker {
       if (this.stream !== handle) return;
       this.schedulePoke();
     };
-    const handle: MuxSubscription = this.mux.watch({
+    // ASSIGNED below, never conditionally spread: an omitted getter must leave the key ABSENT, so
+    // an adapter's `attention?.()` reads as "nobody said" rather than as a call on undefined.
+    const options: MuxWatchOptions = {
       panes: this.agentPanes,
       onUp: () => {
         if (this.stream !== handle) return;
@@ -117,7 +130,9 @@ export class EventPoker {
         this.setHealthy(false, watched, reason);
         if (this.started) this.scheduleReconnect();
       },
-    });
+    };
+    if (this.attention !== undefined) options.attention = this.attention;
+    const handle: MuxSubscription = this.mux.watch(options);
     this.stream = handle;
   }
 

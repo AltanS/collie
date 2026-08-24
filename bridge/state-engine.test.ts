@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { StateEngine, terminalTitleIsStale, type EngineSnapshot } from "./state-engine.ts";
+import {
+  ATTENTION_WINDOW_MS,
+  StateEngine,
+  terminalTitleIsStale,
+  type EngineSnapshot,
+} from "./state-engine.ts";
 import { HerdrMux } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import type { MuxAdapter, MuxPane } from "./mux/types.ts";
@@ -805,5 +810,39 @@ describe("terminalTitleIsStale", () => {
     expect(view.terminalTitle).toBe("✳ waiting for soak time");
     // Absent, exactly as every other optional field on the wire is when it has nothing to say.
     expect("terminalTitleStale" in view).toBe(false);
+  });
+});
+
+// ATTENTION — the one fact the bridge knows and the multiplexer cannot: is somebody looking?
+//
+// It is read by a censusing adapter's watch (mux/types.ts § MuxWatchOptions.attention), so getting
+// it wrong is not visible as a failure: it is visible as a phone that feels slow, or as a host
+// spending a process every 1.5 s for nobody. Both directions are pinned here.
+describe("StateEngine — attention", () => {
+  const NOW = 1_700_000_000_000;
+
+  test("a bridge nobody has read is idle — a restart must not spend a fast census on an empty room", () => {
+    const { engine } = makeEngine();
+    expect(engine.attention(NOW)).toBe("idle");
+  });
+
+  test("a read makes it watched, and it stays watched for the whole window", () => {
+    const { engine } = makeEngine();
+    engine.noteAttention(NOW);
+    expect(engine.attention(NOW)).toBe("watched");
+    expect(engine.attention(NOW + ATTENTION_WINDOW_MS)).toBe("watched");
+  });
+
+  test("one millisecond past the window it is idle again", () => {
+    const { engine } = makeEngine();
+    engine.noteAttention(NOW);
+    expect(engine.attention(NOW + ATTENTION_WINDOW_MS + 1)).toBe("idle");
+  });
+
+  test("a later read extends it — a phone polling every four seconds never flickers", () => {
+    const { engine } = makeEngine();
+    engine.noteAttention(NOW);
+    engine.noteAttention(NOW + 4000);
+    expect(engine.attention(NOW + ATTENTION_WINDOW_MS + 1)).toBe("watched");
   });
 });
