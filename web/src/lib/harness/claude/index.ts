@@ -4,7 +4,7 @@
 // wires them into the two HarnessAdapter surfaces: the block pipeline (claudeBuildBlocks) and the
 // chrome re-surfacing probes (extractStatusLines / extractInputDraft, re-exported from ./chrome).
 //
-// Every OTHER agent (codex, opencode, pi, a bare shell, or an unknown/absent agent) has an unverified
+// Every OTHER agent (opencode, pi, a bare shell, or an unknown/absent agent) has an unverified
 // TUI shape, so it has no adapter and keeps the plain raw terminal mirror — running Claude's matchers
 // on it could mis-lift a menu, strip real output as "chrome", or paint a bogus status strip.
 

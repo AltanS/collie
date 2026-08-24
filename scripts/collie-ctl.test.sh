@@ -85,7 +85,11 @@ run_ctl() {
 # can stage any ownership situation (ours, someone else's, absent) and assert what the script did.
 install_fake_tailscale() {
   TS_STATUS="${CASE_DIR}/tailscale-status.json"
+  # Every `serve` argv, one line per call — the only way to assert on flags the resulting status
+  # JSON can't distinguish (an https listener looks the same however the port was named).
+  TS_CALLS="${CASE_DIR}/tailscale.calls"
   printf '{}\n' > "$TS_STATUS"
+  : > "$TS_CALLS"
   cat > "${BIN_DIR}/tailscale" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -97,6 +101,9 @@ if [ "\${1:-}" = serve ] && [ "\${2:-}" = status ] && [ "\${3:-}" = --json ]; th
   cat "$TS_STATUS"
   exit 0
 fi
+if [ "\${1:-}" = serve ]; then
+  echo "\$*" >> "$TS_CALLS"
+fi
 if [ "\${1:-}" = serve ] && [[ " \$* " == *" --bg "* ]]; then
   target="\${!#}"
   listener=443
@@ -104,6 +111,7 @@ if [ "\${1:-}" = serve ] && [[ " \$* " == *" --bg "* ]]; then
   for arg in "\$@"; do
     case "\$arg" in
       --http=*) listener="\${arg#--http=}"; protocol=HTTP ;;
+      --https=*) listener="\${arg#--https=}"; protocol=HTTPS ;;
     esac
   done
   cat > "$TS_STATUS" <<JSON
@@ -333,6 +341,86 @@ EOF
   fi
   assert_eq "$(cat "$TS_STATUS")" "$foreign"
   [ ! -e "${CONFIG_DIR}/tailscale-managed-handler" ] || fail "foreign mount created ownership state"
+}
+
+# Several Collies share one tailnet name, so the https front door has to be able to live somewhere
+# other than :443 — published there, reported there, and torn down there.
+test_serve_port_publishes_a_chosen_https_listener() {
+  setup_case serve-port
+  install_fake_tailscale
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_PORT=8787
+COLLIE_SERVE_PORT=8443
+EOF
+
+  run_ctl serve > "${CASE_DIR}/serve-8443.out" || fail "serve failed on a non-default https port"
+  assert_eq "$(cat "${CONFIG_DIR}/tailscale-managed-handler")" \
+    'https:8443|host.example:8443|http://127.0.0.1:8787'
+  assert_contains "$(cat "$TS_CALLS")" '--https=8443'
+  assert_contains "$(cat "${CASE_DIR}/serve-8443.out")" 'tailnet :8443 -> 127.0.0.1:8787'
+  # The URL every surface hands the operator (status, qr) has to name the port a browser must dial.
+  assert_eq "$(run_ctl url)" 'https://host.example:8443'
+
+  # Teardown removes the recorded port, not a hardcoded 443 — which would leave the real mapping up.
+  : > "$TS_CALLS"
+  run_ctl unserve > "${CASE_DIR}/unserve-8443.out" || fail "unserve failed on a non-default https port"
+  assert_contains "$(cat "$TS_CALLS")" '--https=8443 --set-path=/ off'
+  [ ! -e "${CONFIG_DIR}/tailscale-managed-handler" ] || fail "unserve kept the ownership record"
+  assert_eq "$(cat "$TS_STATUS")" '{}'
+
+  # Unset is byte-identical to what every existing deployment publishes: no --https flag at all.
+  setup_case serve-port-default
+  install_fake_tailscale
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_PORT=8787
+EOF
+  run_ctl serve > "${CASE_DIR}/serve-default.out" || fail "serve failed on the default https port"
+  assert_eq "$(cat "${CONFIG_DIR}/tailscale-managed-handler")" \
+    'https:443|host.example:443|http://127.0.0.1:8787'
+  case "$(cat "$TS_CALLS")" in
+    *--https=*) fail "the default https publication passed an explicit --https flag" ;;
+  esac
+  assert_contains "$(cat "${CASE_DIR}/serve-default.out")" 'tailnet :443 -> 127.0.0.1:8787'
+  assert_eq "$(run_ctl url)" 'https://host.example'
+}
+
+# A bad port is a config error, and a config error must cost nothing: the front door that is already
+# up stays up, because the checks run before teardown.
+test_serve_port_is_validated_and_https_only() {
+  setup_case serve-port-invalid
+  install_fake_tailscale
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_PORT=8787
+COLLIE_SERVE_PORT=8443
+EOF
+  run_ctl serve > "${CASE_DIR}/published.out" || fail "serve failed while staging the fixture"
+  local published_state; published_state="$(cat "${CONFIG_DIR}/tailscale-managed-handler")"
+
+  local out
+  for bad in 70000 8x 0; do
+    cat > "${CONFIG_DIR}/.env" <<EOF
+COLLIE_PORT=8787
+COLLIE_SERVE_PORT=${bad}
+EOF
+    if out="$(run_ctl serve 2>&1)"; then
+      fail "serve accepted COLLIE_SERVE_PORT=${bad}"
+    fi
+    assert_contains "$out" 'COLLIE_SERVE_PORT'
+    assert_eq "$(cat "${CONFIG_DIR}/tailscale-managed-handler")" "$published_state"
+  done
+
+  # http mode already publishes the tailnet listener on COLLIE_PORT, so the pair is a contradiction.
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_SERVE_MODE=http
+COLLIE_PORT=8787
+COLLIE_SERVE_PORT=8443
+EOF
+  if out="$(run_ctl serve 2>&1)"; then
+    fail "serve accepted COLLIE_SERVE_PORT in http mode"
+  fi
+  assert_contains "$out" 'COLLIE_SERVE_PORT'
+  assert_contains "$out" 'COLLIE_SERVE_MODE=http'
+  assert_eq "$(cat "${CONFIG_DIR}/tailscale-managed-handler")" "$published_state"
 }
 
 # A failed front door must not abort `start` — the bridge is up on loopback and the banner still has
@@ -665,6 +753,27 @@ EOF
     fail "qr encoded a URL with no tailnet name available"
   fi
   assert_contains "$out" "tailnet front door isn't up"
+}
+
+# `url` must defer to an operator-named front door before inferring anything from Tailscale — issue
+# #122: it used to print the bare tailnet name with no port, ignoring COLLIE_PUBLIC_URL entirely.
+test_url_verb_honors_public_url() {
+  setup_case url
+  install_fake_tailscale
+
+  local out
+  out="$(COLLIE_PUBLIC_URL=https://host.example:9443 run_ctl url)" ||
+    fail "url failed with COLLIE_PUBLIC_URL set"
+  assert_eq "$out" "https://host.example:9443"
+
+  # A trailing slash is stripped, not doubled into whatever path handling follows.
+  out="$(COLLIE_PUBLIC_URL=https://host.example:9443/ run_ctl url)" ||
+    fail "url failed with a trailing slash"
+  assert_eq "$out" "https://host.example:9443"
+
+  # Unset: falls back to inferring the tailnet URL, as before.
+  out="$(run_ctl url)" || fail "url failed without COLLIE_PUBLIC_URL"
+  assert_contains "$out" "https://host.example"
 }
 
 # `bootout` doesn't promise to wait for the job to finish tearing down, and the bridge drains
@@ -1244,11 +1353,14 @@ test_tailscale_cutovers_and_collisions
 test_missing_tailscale_cli
 test_state_delete_failures
 test_adopts_preexisting_collie_mount
+test_serve_port_publishes_a_chosen_https_listener
+test_serve_port_is_validated_and_https_only
 test_serve_failure_does_not_abort_start
 test_launchd_agent_lifecycle
 test_launchd_status_line
 test_tailnet_acl_warning
 test_qr_subcommand
+test_url_verb_honors_public_url
 test_launchd_bootstrap_retries
 test_bun_resolution
 test_non_absolute_bun_never_reaches_path
