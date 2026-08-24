@@ -396,6 +396,28 @@ export function sendKeys(
   );
 }
 
+/**
+ * "Look now" — ask the bridge to take a fresh reading of its multiplexer before the next poll.
+ *
+ * A read that mutates nothing (the bridge gates it as one), so it is safe from a read-only device
+ * and safe to fire on a page becoming visible. It changes no state on THIS side: what it does is
+ * make the very next `revalidate()` see a herd the bridge has just re-read, which under a
+ * multiplexer that censuses for topology is the difference between now and up to twelve seconds ago
+ * (ADR 0031).
+ *
+ * Never rejects into a caller's face — a refresh that could not happen leaves the herd exactly as
+ * stale as it already was, and every call site's next act is a revalidation that reports the truth
+ * anyway. Swallowing it here is what lets a caller write `await refreshNow(); revalidate();` with no
+ * ceremony around the first half.
+ */
+export async function refreshNow(scope?: Scope): Promise<void> {
+  try {
+    await req<ActionResponse>(withScope("/api/refresh", scope), { method: "POST" });
+  } catch {
+    // Deliberately silent: see above. The revalidation that follows is the one that reports.
+  }
+}
+
 /** Close a pane ("kill the agent"). */
 export function closePane(paneId: string, scope?: Scope): Promise<ActionResponse> {
   return req<ActionResponse>(withScope(`/api/pane/${encodeURIComponent(paneId)}/close`, scope), {

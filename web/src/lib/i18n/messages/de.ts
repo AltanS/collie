@@ -506,6 +506,12 @@ export const de: Dictionary = {
   "time.justNow": "gerade eben",
   "time.compact.now": "jetzt",
 
+  // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
+  "sync.age": "vor {age} abgeglichen",
+  "sync.pull.hint": "Zum Aktualisieren ziehen",
+  "sync.pull.release": "Loslassen zum Aktualisieren",
+  "sync.pull.busy": "Wird aktualisiert…",
+
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "Sendet",
   "dialog.previousStepAria": "Vorheriger Schritt",

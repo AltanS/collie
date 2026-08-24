@@ -3,7 +3,7 @@
 
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
-import type { MuxCapability, MuxSpaceCapacity } from "./mux/capabilities.ts";
+import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
 // entry shape from here too, without reaching into an adapter module.
@@ -473,6 +473,16 @@ export interface MuxConfig {
    * which the header answers by rendering exactly the text it always did.
    */
   logoUrl?: string;
+  /**
+   * How soon this bridge sees a topology change nobody announced. Mirrors the adapter's declaration
+   * (bridge/mux/capabilities.ts § MuxTopologyLatency).
+   *
+   * **Absent on any bridge older than the field**, and the phone reads that absence as `push` — the
+   * fail-open direction the whole mux block already uses (web/src/lib/mux-capability.ts). The cost
+   * of guessing wrong that way is one line of reassurance not shown; guessing the other way would
+   * put "synced 4s ago" under a multiplexer that is never stale, which is noise that means nothing.
+   */
+  topologyLatency?: MuxTopologyLatency;
 }
 
 /**

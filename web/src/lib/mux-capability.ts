@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { getMuxConfig, loadOperatorCommands, subscribeOperatorConfig } from "@/lib/operator-config";
-import type { MuxCapability, MuxConfig } from "@/lib/types";
+import type { MuxCapability, MuxConfig, MuxTopologyLatency } from "@/lib/types";
 
 // THE ONE QUESTION THE UI MAY ASK ABOUT THE MULTIPLEXER: "can you do this?" — never "which one are
 // you?" (M10/06). Every control whose backing verb an adapter may lack comes through here, and the
@@ -158,6 +158,27 @@ export function useMuxLogoUrl(): string {
  */
 export function useMuxHasSpaces(): boolean {
   return useMuxConfig()?.spaces !== "one";
+}
+
+/**
+ * How soon this bridge sees a change the operator made in their own terminal.
+ *
+ * NOT a capability and not a branch on a name — a DECLARED fact, published beside them, which the
+ * UI reacts to rather than measuring for itself (ADR 0031). The one thing it decides is whether the
+ * home screen says how fresh the herd is at all: under a multiplexer that pushes there is nothing
+ * to reassure anybody about, and a running "synced 2s ago" would be a clock with no reader.
+ *
+ * `push` is the fail-open answer for absent data, for the module header's reason one step on: a
+ * bridge that has not answered has not said it is ever stale, and inventing a staleness line for it
+ * would be showing the operator an anxiety the bridge never expressed.
+ */
+export function muxTopologyLatency(cfg: MuxConfig | null): MuxTopologyLatency {
+  return cfg?.topologyLatency ?? { kind: "push" };
+}
+
+/** {@link muxTopologyLatency}, as the hook a component subscribes through. */
+export function useTopologyLatency(): MuxTopologyLatency {
+  return muxTopologyLatency(useMuxConfig());
 }
 
 /** The neutral key spellings this multiplexer refuses. Empty until the bridge has answered. */

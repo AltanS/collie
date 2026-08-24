@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRevalidator } from "react-router";
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
@@ -86,8 +87,9 @@ export function SpaceRoute() {
         rightTrail={<SettingsGear scope={data.scope} />}
       />
 
-      {/* Content region below the header: the viewport-clipped scroller. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* Content region below the header: the viewport-clipped scroller, carrying the same pull
+          gesture the dashboard does — the two are one list screen at two depths. */}
+      <PullToRefresh scope={data.scope} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <ReadOnlyBanner device={data.device} />
 
         {selectedWs && (
@@ -136,7 +138,7 @@ export function SpaceRoute() {
             running, with a stale-cache nudge). */}
         <UpdateBanner className="px-3 pt-3" />
         <BuildStamp className="px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
-      </div>
+      </PullToRefresh>
 
       {/* Status overlay, anchored to the bottom of the viewport. Stays outside the scroller. */}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">

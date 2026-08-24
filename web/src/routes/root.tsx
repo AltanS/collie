@@ -55,7 +55,9 @@ export function RootLayout() {
   // so the only value that can appear under that id is the PaneData that loader returned.
   const pane = useRouteLoaderData(PANE_ROUTE_ID) as PaneData | undefined;
 
-  usePolling(data, paneId);
+  // The scope rides along so a "look now" on foreground lands on the machine and session the page is
+  // actually showing — a refresh aimed at the lead would leave a peer's herd exactly as stale.
+  usePolling(data, paneId, data.scope);
   // Surface the busy bar when a navigation or a poll runs slow, each against its own threshold —
   // routine fast polls/navigations stay invisible. Mounted here so the whole app shares one
   // detector inside the router context.

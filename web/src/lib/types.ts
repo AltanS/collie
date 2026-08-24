@@ -498,7 +498,28 @@ export interface MuxConfig {
    * (lib/mux-capability.ts, scripts/check-mux-names.sh).
    */
   logoUrl?: string;
+  /**
+   * How soon this bridge sees a topology change nobody announced. Mirrors `MuxTopologyLatency` in
+   * bridge/mux/capabilities.ts.
+   *
+   * **Absent on any bridge older than the field, and absent reads as `push`** — the same fail-open
+   * direction the capabilities take (lib/mux-capability.ts). Read it through `useTopologyLatency()`
+   * rather than here, so that rule lives in exactly one place.
+   */
+  topologyLatency?: MuxTopologyLatency;
 }
+
+/**
+ * How soon Collie sees a change made in the operator's own terminal — declared by the bridge, never
+ * measured here (ADR 0031).
+ *
+ * `push` means the multiplexer announces it, so there is nothing to say and the UI says nothing.
+ * `bounded` means the bridge censuses and `ms` is the longest a change can sit unseen — which is
+ * what makes "synced Ns ago" honest information rather than decoration.
+ */
+export type MuxTopologyLatency =
+  | { kind: "push" }
+  | { kind: "bounded"; ms: number };
 
 export interface BridgeConfig {
   push: boolean;
