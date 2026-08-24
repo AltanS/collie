@@ -23,6 +23,9 @@ const allClaudeFixtures = readdirSync(PANES_DIR)
 const allOmpFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
   .sort();
+const allCodexFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("codex--") && f.endsWith(".txt"))
+  .sort();
 
 const PINNED = [
   "grok--ask-color-moved.txt",
@@ -76,7 +79,7 @@ const neutralFixtures = allGrokFixtures.filter((f) => !DIALOG.includes(f));
 
 describeAdapterConformance(grokAdapter, {
   ownFixtures,
-  foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures],
+  foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allCodexFixtures],
   neutralFixtures,
 });
 

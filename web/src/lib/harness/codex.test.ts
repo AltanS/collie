@@ -23,6 +23,9 @@ const allClaudeFixtures = readdirSync(PANES_DIR)
 const allOmpFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
   .sort();
+const allGrokFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
+  .sort();
 
 const PINNED = [
   "codex--approval-exec.txt",
@@ -53,7 +56,7 @@ const neutralFixtures = allCodexFixtures.filter((f) => !DIALOG.includes(f));
 
 describeAdapterConformance(codexAdapter, {
   ownFixtures,
-  foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures],
+  foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allGrokFixtures],
   neutralFixtures,
 });
 
