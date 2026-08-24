@@ -273,9 +273,11 @@ cp .env.example "$(herdr plugin config-dir herdr.collie)/.env"
 ```
 
 The bridge reads `.env` only at startup — after any edit, `scripts/collie-ctl.sh restart`. See
-[`.env.example`](./.env.example) for the full option list — commonly `COLLIE_PORT`, or
+[`.env.example`](./.env.example) for the full option list — commonly `COLLIE_PORT`,
 `COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains; read by the control script when it runs
-`tailscale serve`).
+`tailscale serve`), or `COLLIE_SERVE_PORT` (tailnet listener port for the https front door, default
+443, https mode only — one Collie per user on a shared host, see
+[DEPLOYMENT.md](./DEPLOYMENT.md#several-collies-on-one-host)).
 
 Reading history from more than one agent home? List them all in `COLLIE_TRANSCRIPT_ROOT`,
 comma-separated.
