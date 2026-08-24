@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.17] - 2026-08-24
+
+### Added
+
+- **`COLLIE_SERVE_PORT`** — publish the managed https front door on a tailnet port other than 443, so several developers sharing one host get a URL each; unset stays byte-identical to before ([#98](https://github.com/AltanS/collie/issues/98)) (8d74d02)
+
 ## [1.0.0-beta.16] - 2026-08-23
 
 **Voice input** — a microphone in the composer, off until you run `collie stt setup`. Ports the work
