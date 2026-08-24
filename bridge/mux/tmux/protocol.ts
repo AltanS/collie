@@ -91,6 +91,13 @@ export interface TmuxClient {
   readonly control: boolean;
   /** tmux's last-activity stamp for this client. Orders two real terminals; nothing more. */
   readonly activity: number;
+  /**
+   * `client_tty` — the terminal this client is, e.g. `/dev/pts/3`. tmux's own name for a client, and
+   * the ONLY way to address one: `switch-client -c <tty>`. Read because a client attached to another
+   * session keeps showing that session however the target session's own current window moves
+   * (adapter.ts § setFocus).
+   */
+  readonly tty: string;
 }
 
 /** Everything one listing call returned. */
@@ -128,7 +135,9 @@ const PANE_FORMAT = [
   "#{pane_current_command}",
   "#{pane_title}",
 ].join(SEP);
-const CLIENT_FORMAT = [CLIENT_TAG, "#{client_session}", "#{client_control_mode}", "#{client_activity}"].join(SEP);
+const CLIENT_FORMAT = [CLIENT_TAG, "#{client_session}", "#{client_control_mode}", "#{client_activity}", "#{client_tty}"].join(
+  SEP,
+);
 
 /**
  * The one invocation that answers `snapshot()`.
@@ -231,9 +240,9 @@ export function parseListing(stdout: string): TmuxListing {
       // `client_session` is the session's NAME on tmux 3.6b, not its `$N` id — probed 2026-08-25,
       // where it read `collie-tmux`. The caller resolves it against the sessions of this same
       // listing rather than assuming either shape.
-      const [, session, control, activity] = fields(line, 4);
+      const [, session, control, activity, tty] = fields(line, 5);
       if (session === undefined || session.length === 0) continue;
-      clients.push({ sessionId: session, control: flag(control), activity: num(activity) });
+      clients.push({ sessionId: session, control: flag(control), activity: num(activity), tty: tty ?? "" });
       continue;
     }
     if (!line.startsWith(PANE_TAG + SEP)) continue;

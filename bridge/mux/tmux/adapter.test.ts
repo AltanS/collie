@@ -235,6 +235,40 @@ describe("focus follows a real terminal, not this adapter's own watch", () => {
     expect((await paneOf(adapter, "%4")).focused).toBe(true);
   });
 
+  test("`setFocus` carries an attached terminal that is sitting on another session", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    // The operator's terminal is on `scratch`; the pane they tapped lives in `collie`. Selecting the
+    // window alone moves `collie`'s own current window and NOTHING on their screen.
+    fake.attachClient("scratch", { tty: "/dev/pts/7" });
+
+    const moved = await adapter.setFocus("%3");
+    expect(moved.ok).toBe(true);
+    const switched = fake.invocations().filter((invocation) => invocation.at(0) === "switch-client");
+    expect(switched).toEqual([["switch-client", "-c", "/dev/pts/7", "-t", "$1"]]);
+    expect(fake.clientSessions().get("/dev/pts/7")).toBe("collie");
+  });
+
+  test("`setFocus` switches nothing when the terminal is already on the pane's session", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    fake.attachClient("collie", { tty: "/dev/pts/7" });
+
+    const moved = await adapter.setFocus("%3");
+    expect(moved.ok).toBe(true);
+    expect(fake.invocations().some((invocation) => invocation.at(0) === "switch-client")).toBe(false);
+  });
+
+  test("`setFocus` never switches this adapter's own control client", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    fake.attachClient("scratch", { control: true, tty: "/dev/pts/9" });
+
+    const moved = await adapter.setFocus("%3");
+    expect(moved.ok).toBe(true);
+    expect(fake.invocations().some((invocation) => invocation.at(0) === "switch-client")).toBe(false);
+  });
+
   test("`setFocus` at a pane that has gone answers `gone` and spawns nothing", async () => {
     const fake = new FakeTmux();
     const adapter = new TmuxMux(fake);

@@ -82,6 +82,7 @@ import {
   parseListing,
   saysMissing,
   saysNoServer,
+  type TmuxClient,
   type TmuxListing,
   type TmuxPaneRecord,
   type TmuxSession,
@@ -256,13 +257,23 @@ export class TmuxMux implements MuxAdapter {
    * Herdr's does, and what the connected/disconnected banner already reads.
    */
   async snapshot(): Promise<MuxSnapshot> {
+    return toSnapshot(await this.listing(), this.ownLabels);
+  }
+
+  /**
+   * The one listing call, parsed — the raw tmux world behind {@link snapshot}.
+   *
+   * Split out because {@link setFocus} needs the fourth section (the clients), and the port's
+   * snapshot has no word for a client. Same spawn, same parse, one caller each.
+   */
+  private async listing(): Promise<TmuxListing> {
     const result = await this.exec.run([...LISTING_ARGS]);
     if (result.code !== 0 && result.stdout.length === 0) {
       throw new Error(`tmux list: ${result.stderr.trim() || `exited ${String(result.code)}`}`);
     }
     const listing = parseListing(result.stdout);
     this.forgetGonePanes(listing);
-    return toSnapshot(listing, this.ownLabels);
+    return listing;
   }
 
   /** Drop the remembered label of every pane tmux no longer lists. The map's only shrink path. */
@@ -397,12 +408,26 @@ export class TmuxMux implements MuxAdapter {
    * The window id is not passed in — the caller has a PANE id and nothing else — so it is read out of
    * the same listing the snapshot uses. A pane the listing no longer carries is `gone` before
    * anything is spawned, which is the answer the contract wants anyway.
+   *
+   * AND THE SESSION, WHICH IS THE HALF THAT WAS MISSING. tmux's current window is a property of the
+   * SESSION, so those two commands move the target session's own screen and NOTHING ELSE: a terminal
+   * attached to a different session keeps showing that session, and the operator who tapped "Show in
+   * terminal" sees nothing move (live evidence 2026-08-25 — a `{ok:true}` for a pane of `collie-tmux`
+   * while the attached client sat on `ss-wp`). So every NON-control client on another session is
+   * carried over with `switch-client -c <tty> -t <session>`, in the SAME invocation — the clients are
+   * already in the listing taken above, and a client is addressed by its tty and by nothing else.
+   * With no client attached nothing is switched, and that is the right answer rather than a gap: the
+   * window/pane selection stands and the next attach lands on it.
    */
   async setFocus(paneId: string): Promise<MuxAck> {
-    const snapshot = await this.snapshot();
-    const pane = snapshot.panes.find((candidate) => candidate.paneId === paneId);
+    const listing = await this.listing();
+    const pane = listing.panes.find((candidate) => candidate.id === paneId);
     if (pane === undefined) return muxGone(`can't find pane: ${paneId}`);
-    const result = await this.attemptRun(["select-window", "-t", pane.tabId, ";", "select-pane", "-t", paneId]);
+    const args = ["select-window", "-t", pane.windowId, ";", "select-pane", "-t", paneId];
+    for (const client of clientsToSwitch(listing, pane.sessionId)) {
+      args.push(";", "switch-client", "-c", client.tty, "-t", pane.sessionId);
+    }
+    const result = await this.attemptRun(args);
     return result.ok ? muxAck() : result;
   }
 
@@ -687,13 +712,37 @@ function watchedSession(listing: TmuxListing): TmuxSession | null {
   const attached = listing.clients.filter((client) => !client.control);
   let best: { session: TmuxSession; activity: number } | null = null;
   for (const client of attached) {
-    const session = listing.sessions.find(
-      (candidate) => candidate.id === client.sessionId || candidate.name === client.sessionId,
-    );
+    const session = sessionOfClient(listing, client);
     if (session === undefined) continue;
     if (best === null || client.activity > best.activity) best = { session, activity: client.activity };
   }
   return best?.session ?? null;
+}
+
+/**
+ * The session one client is showing, or undefined when it names a session this listing does not have.
+ *
+ * `client_session` prints a session NAME rather than a `$N` id (probed 2026-08-25), so the match is
+ * against either — a name today, an id if tmux ever changes its mind, and no re-derivation either way.
+ */
+function sessionOfClient(listing: TmuxListing, client: TmuxClient): TmuxSession | undefined {
+  return listing.sessions.find((candidate) => candidate.id === client.sessionId || candidate.name === client.sessionId);
+}
+
+/**
+ * The real terminals that must be CARRIED to `sessionId`, because they are looking somewhere else.
+ *
+ * A control client is excluded for the same reason it is excluded from `watchedSession` — it is
+ * nobody's screen, and switching it would only move this adapter's own watch. A client already on the
+ * session is excluded because switching it would be a spawn that changes nothing. A client with no
+ * tty cannot be addressed at all (`switch-client -c` takes a tty and nothing else), so it is left
+ * alone rather than guessed at.
+ */
+function clientsToSwitch(listing: TmuxListing, sessionId: string): TmuxClient[] {
+  return listing.clients.filter((client) => {
+    if (client.control || client.tty.length === 0) return false;
+    return sessionOfClient(listing, client)?.id !== sessionId;
+  });
 }
 
 type MutableMuxPane = { -readonly [K in keyof MuxPane]: MuxPane[K] };
