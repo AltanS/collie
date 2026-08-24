@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { StateEngine, type EngineSnapshot } from "./state-engine.ts";
+import { StateEngine, terminalTitleIsStale, type EngineSnapshot } from "./state-engine.ts";
 import { HerdrMux } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
-import type { MuxAdapter } from "./mux/types.ts";
+import type { MuxAdapter, MuxPane } from "./mux/types.ts";
 import type { AgentStatus } from "./types.ts";
 
 // HerdrClient carries private socket fields, so no fake can ever *be* one structurally — every fake
@@ -718,5 +718,92 @@ describe("StateEngine — pane capability fields", () => {
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
     await poll();
     expect(engine.current().agents[0]!.readableLines).toBeUndefined();
+  });
+});
+
+// A TITLE OUTLIVES THE PROGRAM THAT WROTE IT (MUX_CONTRACT.md § traps).
+//
+// Live-observed on tmux: pane %3 was running a bare `bash`, and its title still read
+// `✳ waiting for soak time - server performance` — the OSC title of a Claude that had exited hours
+// earlier. tmux keeps a pane's title after the program goes away, so the two raw facts the adapter
+// reports only mean something TOGETHER, which is what this rule reads. It marks; it never deletes.
+describe("terminalTitleIsStale", () => {
+  function muxPane(fields: Partial<MuxPane>): MuxPane {
+    return {
+      paneId: "%3",
+      spaceId: "$0",
+      spaceLabel: "collie",
+      spaceNumber: 1,
+      tabId: "@0",
+      cwd: "/home/dev/collie",
+      focused: false,
+      alive: true,
+      agent: "shell",
+      status: "unknown",
+      ...fields,
+    };
+  }
+
+  test("a shell under a title the shell did not write is stale", () => {
+    const left = muxPane({ foregroundCommand: "bash", terminalTitle: "✳ waiting for soak time" });
+    expect(terminalTitleIsStale(left)).toBe(true);
+  });
+
+  test.each(["bash", "zsh", "fish", "sh", "dash", "nu", "pwsh", "/usr/bin/zsh", "BASH"])(
+    "%s counts as a shell",
+    (command) => {
+      expect(terminalTitleIsStale(muxPane({ foregroundCommand: command, terminalTitle: "a task" }))).toBe(true);
+    },
+  );
+
+  test("a program still running under its own title is not stale", () => {
+    const live = muxPane({ foregroundCommand: "claude", terminalTitle: "✳ waiting for soak time" });
+    expect(terminalTitleIsStale(live)).toBe(false);
+  });
+
+  test("a shell that titles the pane after itself is describing the present", () => {
+    expect(terminalTitleIsStale(muxPane({ foregroundCommand: "bash", terminalTitle: "bash" }))).toBe(false);
+  });
+
+  test.each([
+    ["no title", { foregroundCommand: "bash" }],
+    ["an empty title", { foregroundCommand: "bash", terminalTitle: "   " }],
+    // Herdr reports no foreground command at all, so no Herdr pane is ever marked stale: there is
+    // nothing to read the emptiness as, and guessing would put a mark on a live agent's own title.
+    ["no foreground command", { terminalTitle: "✳ waiting for soak time" }],
+  ])("%s is never stale", (_label, fields) => {
+    expect(terminalTitleIsStale(muxPane(fields))).toBe(false);
+  });
+
+  /** A multiplexer that reports exactly the panes it is handed. */
+  function muxOf(panes: readonly MuxPane[]): MuxAdapter {
+    // SAFETY: a poll over a herd of bare SHELLS reaches `snapshot()` and nothing else — the
+    // session-name scrape runs only for a claude pane, and none of these is one. The members left
+    // off are unobservable here.
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes, spaces: [], tabs: [] }),
+    };
+    // SAFETY: see above — every member this poll can reach is present on `stub`.
+    return stub as MuxAdapter;
+  }
+
+  test("the mark reaches the view, and the title itself goes on the wire untouched", async () => {
+    const stale = muxPane({ foregroundCommand: "bash", terminalTitle: "✳ waiting for soak time" });
+    const engine = new StateEngine(muxOf([stale]), 1500);
+    await engine["poll"]();
+    const view = engine.current().shellPanes[0]!;
+    expect(view.terminalTitle).toBe("✳ waiting for soak time");
+    expect(view.terminalTitleStale).toBe(true);
+  });
+
+  test("a live program's title reaches the view with the flag ABSENT, not false", async () => {
+    const live = muxPane({ foregroundCommand: "claude", terminalTitle: "✳ waiting for soak time" });
+    const engine = new StateEngine(muxOf([live]), 1500);
+    await engine["poll"]();
+    const view = engine.current().shellPanes[0]!;
+    expect(view.terminalTitle).toBe("✳ waiting for soak time");
+    // Absent, exactly as every other optional field on the wire is when it has nothing to say.
+    expect("terminalTitleStale" in view).toBe(false);
   });
 });

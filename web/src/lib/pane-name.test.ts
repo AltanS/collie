@@ -150,3 +150,42 @@ describe("paneTitleInTab — inside a space view, where project and tab are alre
     expect(paneTitleInTab(pane({ kind: "shell", agent: "shell" })).primary).toBe("shell");
   });
 });
+
+// A STALE TITLE — the program that printed it has exited, and the multiplexer kept it.
+//
+// Live-observed on tmux: a pane running a bare `bash` still carried `✳ waiting for soak time - server
+// performance`, the title of a Claude that had finished hours before. The bridge marks the pair (see
+// terminalTitleIsStale); the row's job is to stop reading that title as the pane's NAME while still
+// showing it, because it is the only trace of what ran here.
+describe("a stale terminal title", () => {
+  const STALE = "✳ waiting for soak time - server performance";
+
+  it("never leads the row — it drops below the cwd", () => {
+    const t = paneParts(pane({ terminalTitle: STALE, terminalTitleStale: true }));
+    expect(t.secondary).toBe("~/dev/moonward");
+  });
+
+  it("is still shown when there is nothing else to say", () => {
+    const t = paneParts(pane({ cwd: "", terminalTitle: STALE, terminalTitleStale: true }));
+    expect(t.secondary).toBe(STALE);
+  });
+
+  it("keeps the ✳ as the agent typed it — the glyph is Claude's text, not Collie's", () => {
+    const t = paneParts(pane({ cwd: "", terminalTitle: STALE, terminalTitleStale: true }));
+    expect(t.secondary).toContain("✳");
+  });
+
+  it("is not the pane's name: the row falls back to what it would be with no title at all", () => {
+    const shell = { kind: "shell", agent: "shell" } as const;
+    expect(paneTitleInTab(pane({ ...shell, terminalTitle: STALE, terminalTitleStale: true })).primary)
+      .toBe("shell");
+    // …and a live title still is the name, which is the control this test needs.
+    expect(paneTitleInTab(pane({ ...shell, terminalTitle: STALE })).primary).toBe(STALE);
+  });
+
+  it("never outranks a name somebody chose", () => {
+    const over = { terminalTitle: STALE, terminalTitleStale: true };
+    expect(paneParts(pane({ ...over, paneLabel: "hand-named" })).secondary).toBe("hand-named");
+    expect(paneTitleInTab(pane({ ...over, paneLabel: "hand-named" })).primary).toBe("hand-named");
+  });
+});

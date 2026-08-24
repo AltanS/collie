@@ -66,6 +66,29 @@ describe("PaneStrip", () => {
     expect(screen.queryByText("ignored")).toBeNull();
   });
 
+  // A tmux pane keeps its title after the program that printed it exits, so a bare shell can carry a
+  // finished agent's sentence. The pill has one line and it is the pane's NAME, so a stale title has
+  // no business on it — the row falls back to what it would say with no title at all.
+  it("never names a pill after a stale terminal title", () => {
+    render(
+      <PaneStrip
+        panes={[
+          pane("w1:p1", "shell", "shell", {
+            terminalTitle: "\u2733 waiting for soak time",
+            terminalTitleStale: true,
+          }),
+          // The control: the same title, still being written by a live program, IS the pill's name.
+          pane("w1:p2", "shell", "shell", { terminalTitle: "vim notes.md" }),
+        ]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/waiting for soak time/)).toBeNull();
+    expect(screen.getByText("shell")).toBeInTheDocument();
+    expect(screen.getByText("vim notes.md")).toBeInTheDocument();
+  });
+
   it("fires onSelect with the pane id when a pane is tapped", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

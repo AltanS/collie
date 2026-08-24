@@ -70,6 +70,17 @@ export interface AgentView {
    */
   terminalTitle?: string;
   /**
+   * True when {@link terminalTitle} was left behind by a program that has already EXITED — a
+   * multiplexer keeps a pane's title after the program that printed it is gone, so a bare shell can
+   * sit under a finished agent's sentence for hours (see `terminalTitleIsStale` in state-engine.ts).
+   *
+   * PRESENTATION, and set only when true. The title is still sent, unedited: a stale one is rendered
+   * quietly rather than as the pane's name, because a title is evidence about the past and deleting
+   * it would lose that. It changes no status, no capability and no sort. Absent on every older
+   * bridge, which reads exactly as it did before — as "not known to be stale".
+   */
+  terminalTitleStale?: boolean;
+  /**
    * A finished English sentence about this pane, composed in the bridge and rendered as text the
    * client does not interpret. Absent on almost every pane.
    *

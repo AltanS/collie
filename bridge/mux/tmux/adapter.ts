@@ -32,11 +32,20 @@
 // ── ONE TITLE SLOT, AND WHO GETS IT ──────────────────────────────────────────────────────────────
 //
 // tmux has exactly one per-pane label — `pane_title` — where the contract has two (`paneLabel`, the
-// operator's, and `terminalTitle`, the program's). Collie spends it on the OPERATOR: `renamePane`
-// writes it and it comes back as `paneLabel`. `terminalTitle` is therefore never reported on tmux;
-// reporting the same string twice under two names would tell the UI that a program said something it
-// did not. tmux's own default for the slot is the host name, which is why {@link operatorLabel}
-// drops a title equal to it — an untouched pane has no label, and saying "bluefin" would be noise.
+// operator's, and `terminalTitle`, the program's). ANY program in the pane can write it with an OSC
+// title, and tmux KEEPS what it wrote after it exits: live-observed, a bare `bash` still advertising
+// a finished agent's task. Read as `paneLabel`, that is Collie telling the operator they named a pane
+// they never touched — with a dead agent's sentence as the name.
+//
+// So the slot is split by MEMORY, which is the contract's rule for every one-slot multiplexer
+// (MUX_CONTRACT.md § Contract-owned rules, *Pane naming*): {@link TmuxMux.ownLabels} holds the labels
+// THIS adapter set through `renamePane`, and a title equal to the pane's remembered label comes back
+// as `paneLabel`. Everything else in the slot is the program's and comes back as `terminalTitle`.
+// The memory is in-process, so a bridge restart degrades an operator's label to `terminalTitle` —
+// visible, less prominent, and never a claim about who wrote it.
+//
+// tmux's own default for the slot is the host name, which is why {@link programTitle} drops a title
+// equal to it: an untouched pane says nothing, and reporting "bluefin" would be noise.
 
 import { declareCapabilities } from "../capabilities.ts";
 import { TMUX_LOGO_SVG } from "./logo.ts";
@@ -208,6 +217,16 @@ export class TmuxMux implements MuxAdapter {
    */
   private tmuxVersion: string | null = null;
 
+  /**
+   * The label this adapter set on each pane, keyed by pane id — the split of tmux's ONE title slot
+   * (see the header, and MUX_CONTRACT.md § Contract-owned rules, *Pane naming*).
+   *
+   * Written only by {@link renamePane}, on a call tmux accepted. Cleared by a `renamePane(null)` and
+   * by {@link forgetGonePanes} when the pane leaves the listing, so a recycled memory can never
+   * outlive the pane it described. It holds at most one short string per live pane.
+   */
+  private readonly ownLabels = new Map<string, string>();
+
   constructor(private readonly exec: TmuxExec) {}
 
   /** Is a tmux server answering on the configured socket? One cheap listing. */
@@ -231,7 +250,20 @@ export class TmuxMux implements MuxAdapter {
     if (result.code !== 0 && result.stdout.length === 0) {
       throw new Error(`tmux list: ${result.stderr.trim() || `exited ${String(result.code)}`}`);
     }
-    return toSnapshot(parseListing(result.stdout));
+    const listing = parseListing(result.stdout);
+    this.forgetGonePanes(listing);
+    return toSnapshot(listing, this.ownLabels);
+  }
+
+  /** Drop the remembered label of every pane tmux no longer lists. The map's only shrink path. */
+  private forgetGonePanes(listing: TmuxListing): void {
+    if (this.ownLabels.size === 0) return;
+    const live = new Set(listing.panes.map((pane) => pane.id));
+    // Deleting through a Map's own key iterator is defined behaviour — an entry removed before it is
+    // reached is simply not visited — so no copy of the keys is taken.
+    for (const paneId of this.ownLabels.keys()) {
+      if (!live.has(paneId)) this.ownLabels.delete(paneId);
+    }
   }
 
   /**
@@ -321,10 +353,20 @@ export class TmuxMux implements MuxAdapter {
     return result.ok ? muxAck() : result;
   }
 
-  /** Set or clear the operator's label. tmux's one title slot — see the header. `null` clears it. */
+  /**
+   * Set or clear the operator's label. tmux's one title slot — see the header. `null` clears it.
+   *
+   * The label is REMEMBERED here and nowhere else, and only after tmux accepted the call: that memory
+   * is the whole of what tells an operator's label from a program's title on the next listing. It is
+   * stored trimmed, because that is how the listing will report it back.
+   */
   async renamePane(paneId: string, label: string | null): Promise<MuxAck> {
     const result = await this.attemptRun(["select-pane", "-t", paneId, "-T", label ?? ""]);
-    return result.ok ? muxAck() : result;
+    if (!result.ok) return result;
+    const kept = label === null ? "" : label.trim();
+    if (kept.length === 0) this.ownLabels.delete(paneId);
+    else this.ownLabels.set(paneId, kept);
+    return muxAck();
   }
 
   async closePane(paneId: string): Promise<MuxAck> {
@@ -520,7 +562,7 @@ function contentDigest(text: string): string {
 }
 
 /** One listing, in the port's words. */
-function toSnapshot(listing: TmuxListing): MuxSnapshot {
+function toSnapshot(listing: TmuxListing, ownLabels: ReadonlyMap<string, string>): MuxSnapshot {
   const sessionById = new Map(listing.sessions.map((session) => [session.id, session]));
   const windowById = new Map(listing.windows.map((window) => [window.id, window]));
   const numberById = new Map(listing.sessions.map((session, index) => [session.id, index + 1]));
@@ -562,7 +604,7 @@ function toSnapshot(listing: TmuxListing): MuxSnapshot {
   // are in the snapshot, and a half-listed pane would fail the whole herd's consistency check.
   const panes: MuxPane[] = listing.panes
     .filter((pane) => sessionById.has(pane.sessionId) && windowById.has(pane.windowId))
-    .map((pane) => toMuxPane(pane, sessionById, windowById, numberById));
+    .map((pane) => toMuxPane(pane, sessionById, windowById, numberById, ownLabels));
   return { panes, spaces, tabs };
 }
 
@@ -574,6 +616,7 @@ function toMuxPane(
   sessionById: ReadonlyMap<string, TmuxSession>,
   windowById: ReadonlyMap<string, TmuxWindow>,
   numberById: ReadonlyMap<string, number>,
+  ownLabels: ReadonlyMap<string, string>,
 ): MuxPane {
   const session = sessionById.get(raw.sessionId);
   const window = windowById.get(raw.windowId);
@@ -595,8 +638,17 @@ function toMuxPane(
     status: "unknown",
   };
   // Assigned, never conditionally spread, so absent stays absent (the Herdr adapter's rule).
-  const label = operatorLabel(raw);
-  if (label !== null) pane.paneLabel = label;
+  //
+  // tmux's ONE title slot, split by memory (the header). A title equal to the label this adapter set
+  // on this pane is the operator's; anything else in the slot is whatever the pane's program printed,
+  // which is `terminalTitle` — including a label an earlier bridge process set and no longer
+  // remembers. The two are never both reported: the slot holds one string.
+  const title = raw.title.trim();
+  if (title.length > 0 && title === ownLabels.get(raw.id)) pane.paneLabel = title;
+  else {
+    const printed = programTitle(raw);
+    if (printed !== null) pane.terminalTitle = printed;
+  }
   const tabLabel = meaningfulWindowName(window, session);
   if (tabLabel !== null) pane.tabLabel = tabLabel;
   // What a `recent` read can yield: the history tmux kept, plus the viewport it sits behind. This is
@@ -610,13 +662,14 @@ function toMuxPane(
 }
 
 /**
- * The operator's own label for this pane, or null when the slot still holds tmux's default.
+ * What the pane's program printed into the title slot, or null when the slot says nothing.
  *
  * tmux seeds `pane_title` with the host name (probed: `bluefin` on an untouched pane), so a title
- * equal to the host is tmux's and not the operator's. It is a heuristic and it is the honest one
- * available: the alternative is showing every pane a label nobody chose.
+ * equal to the host is tmux's own default and not anybody's statement. Everything else is reported,
+ * verbatim: the glyphs an agent puts in its own title (`✳ …`) are that agent's text, and trimming
+ * them here would be Collie editing what a program said about itself.
  */
-function operatorLabel(raw: TmuxPaneRecord): string | null {
+function programTitle(raw: TmuxPaneRecord): string | null {
   const title = raw.title.trim();
   if (title.length === 0) return null;
   if (title === raw.host || title === raw.host.split(".").at(0)) return null;

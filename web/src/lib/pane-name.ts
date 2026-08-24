@@ -28,7 +28,8 @@ export interface PaneParts {
   project: string;
   /** The tab label, or null when it says nothing (see meaningfulTabLabel, bridge-side). */
   tab: string | null;
-  /** The pane's own name if it has one, else a shortened cwd. Null when there's neither. */
+  /** The pane's own name if it has one, else a shortened cwd, else a stale terminal title. Null when
+   *  there is none of the three. Always rendered in the row's muted style. */
   secondary: string | null;
 }
 
@@ -57,11 +58,18 @@ export function paneParts(pane: AgentView): PaneParts {
   // because it is the only one of the three that tracks the work as it moves — and in the herd this
   // exists to untangle (several agents in ONE project) the cwd is identical on every row, so it
   // discriminates nothing.
-  const own = pane.paneLabel || pane.sessionName || pane.terminalTitle;
+  //
+  // Unless the title is STALE: the program that wrote it has exited, so it is not what this pane is
+  // doing — it is what something here once did. It drops BELOW the cwd rather than out of the row,
+  // because it is still the only trace of what ran, and the row's muted line is where a fact you
+  // read second belongs.
+  const stale = pane.terminalTitle !== undefined && pane.terminalTitleStale === true;
+  const own = pane.paneLabel || pane.sessionName || (stale ? "" : pane.terminalTitle);
+  const secondary = own || informativeCwd(pane.cwd, project) || (stale ? pane.terminalTitle : null);
   return {
     project,
     tab: pane.tabLabel ?? null,
-    secondary: own || informativeCwd(pane.cwd, project),
+    secondary: secondary ?? null,
   };
 }
 

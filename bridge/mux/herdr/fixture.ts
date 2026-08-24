@@ -128,6 +128,17 @@ export class FakeHerdr implements HerdrRpc {
     await Promise.resolve();
   }
 
+  /**
+   * The PROGRAM in a pane prints an OSC title. Herdr keeps it in its OWN field, so this fixture is
+   * the one that shows what a two-slot multiplexer gets for free: the operator's `label` is not
+   * touched, and the adapter needs no memory to keep the two apart.
+   */
+  async setProgramTitle(paneId: string, title: string): Promise<void> {
+    const pane = this.panes.find((candidate) => candidate.pane_id === paneId);
+    if (pane !== undefined) pane.terminal_title = title;
+    await Promise.resolve();
+  }
+
   /** The pane paints another line. What a keystroke landing would have done. */
   async changePane(paneId: string): Promise<void> {
     const pane = this.panes.find((candidate) => candidate.pane_id === paneId);
@@ -414,6 +425,7 @@ export const herdrConformanceFixture: MuxConformanceFixture = {
       reconnect: () => fake.reconnect(),
       restartMux: () => fake.restartMux(),
       renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
+      setProgramTitle: (paneId, title) => fake.setProgramTitle(paneId, title),
       changePane: (paneId) => fake.changePane(paneId),
       endPane: (paneId) => fake.endPane(paneId),
       pokeTopology: () => fake.pokeTopology(),

@@ -145,9 +145,23 @@ export interface MuxPane extends MuxIdentity {
   readonly agent: string;
   /** How that agent is doing. `"unknown"` is the honest answer without `agentDetection`. */
   readonly status: AgentStatus;
-  /** The operator's own label for this pane, when set (`renamePane`). */
+  /**
+   * The operator's own label for this pane — ONLY a name given through Collie's {@link
+   * MuxAdapter.renamePane}, and never a title the pane's program printed.
+   *
+   * A multiplexer with one title slot (tmux, zellij) cannot tell the two apart from its listing, so
+   * its adapter remembers the labels it set itself and reports everything else as {@link
+   * terminalTitle}. The rule and what it costs after a restart: MUX_CONTRACT.md § Contract-owned
+   * rules, *Pane naming*.
+   */
   readonly paneLabel?: string;
-  /** What the pane's process says it is doing — its terminal title, when it says anything useful. */
+  /**
+   * What the pane's process says it is doing — its terminal title, when it says anything useful.
+   *
+   * The DEFAULT reading of a one-slot multiplexer's title: anything the adapter did not itself put
+   * there is the program's, because that is the honest way round. It may also be left over from a
+   * program that has since exited — see {@link foregroundCommand} and the bridge's staleness rule.
+   */
   readonly terminalTitle?: string;
   /**
    * The session the agent in this pane named, when it named one — the journal's key, and the reason
@@ -165,9 +179,18 @@ export interface MuxPane extends MuxIdentity {
    * The command name the multiplexer says is in this pane's foreground right now — tmux's
    * `pane_current_command`, zellij's `terminal_command`. Absent when the multiplexer reports none.
    *
-   * It is the RAW FACT the adapter already holds, reported as a raw fact. Exactly one module in the
-   * tree reads it (`bridge/beacon/hint.ts`), where it may become a sentence for the operator and
-   * nothing else: it never reaches {@link agent}, {@link status}, the session ref or the triage sort.
+   * It is the RAW FACT the adapter already holds, reported as a raw fact. Exactly TWO modules in the
+   * tree read it, and both spend it on presentation only — it never reaches {@link agent}, {@link
+   * status}, the session ref or the triage sort:
+   *
+   *  • `bridge/beacon/hint.ts`, where it may become a sentence for the operator.
+   *  • `bridge/state-engine.ts`, where "a shell in the foreground under a non-empty {@link
+   *    terminalTitle}" marks that title STALE — the title outlived the program that printed it
+   *    (MUX_CONTRACT.md § traps). The pane's name and status are unchanged by that mark; the phone
+   *    merely renders the title quietly instead of as the pane's name.
+   *
+   * It stops there. It does not go on the wire, because a process name arriving on the phone is the
+   * identity this field is not.
    *
    * **IT IS NOT IDENTITY, AND NOTHING MAY TREAT IT AS ONE.** {@link MuxPane.agent} carries the whole
    * reason: a wrong agent name picks a wrong harness grammar AND a wrong journal adapter, so the

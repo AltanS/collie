@@ -150,6 +150,16 @@ export class FakeZellij implements ZellijExec {
     await Promise.resolve();
   }
 
+  /**
+   * The PROGRAM in a pane prints a title. The same one slot `rename-pane` writes — which is the whole
+   * hazard, and why the adapter has to remember what it set rather than read the slot.
+   */
+  async setProgramTitle(paneId: string, title: string): Promise<void> {
+    const pane = this.paneAt(paneId);
+    if (pane !== undefined) pane.title = title;
+    await Promise.resolve();
+  }
+
   /** The pane paints another line. What a keystroke landing would have done. */
   async changePane(paneId: string): Promise<void> {
     this.repaint(paneId);
@@ -471,6 +481,7 @@ export function zellijWorld(fake: FakeZellij): ZellijFixtureWorld {
       reconnect: () => fake.reconnect(),
       restartMux: () => fake.restartMux(),
       renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
+      setProgramTitle: (paneId, title) => fake.setProgramTitle(paneId, title),
       changePane: (paneId) => fake.changePane(paneId),
       endPane: (paneId) => fake.endPane(paneId),
       pokePane: (paneId) => fake.pokePane(paneId),

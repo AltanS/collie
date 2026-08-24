@@ -93,6 +93,18 @@ export interface MuxConformanceWorld {
   restartMux(): Promise<void>;
   /** Someone renames a pane in the multiplexer's own UI — not through Collie. */
   renameOutOfBand(paneId: string, label: string): Promise<void>;
+  /**
+   * The PROGRAM in a pane prints a terminal title.
+   *
+   * A different act from {@link renameOutOfBand}, and the difference is the whole point: that one is
+   * a person naming a pane, this one is software describing itself. The contract says the second may
+   * never be reported as `paneLabel` (MUX_CONTRACT.md § Contract-owned rules, *Pane naming*), which
+   * is what {@link aPrintedTitleIsNeverAnOperatorLabel} checks.
+   *
+   * Optional, because only a multiplexer that HAS a printed-title concept can be asked to model one.
+   * A fixture that supplies none simply skips that check — nothing else in the suite reads it.
+   */
+  setProgramTitle?(paneId: string, title: string): Promise<void>;
   /** This pane's rendered content becomes different. What a keystroke landing would have done. */
   changePane(paneId: string): Promise<void>;
   /** This pane's process ends and the multiplexer forgets it. Writes to it must answer `gone`. */
@@ -520,6 +532,59 @@ const declaredPaneFactsArePopulated: MuxWorldCheck = {
   },
 };
 
+/**
+ * The contract's *Pane naming* rule, checkable through the world contract because the world contract
+ * can tell the two acts apart: {@link MuxConformanceWorld.setProgramTitle} is software describing
+ * itself, {@link MuxAdapter.renamePane} is the operator naming a pane through Collie.
+ *
+ * Three assertions, and the middle one is why this is not just "never report a title as a label":
+ * the operator's own label must still SURVIVE on a multiplexer whose two names share one slot.
+ */
+const aPrintedTitleIsNeverAnOperatorLabel: MuxWorldCheck = {
+  name: "a title the pane's program printed is reported as a terminal title, never as the operator's label",
+  run(fixture) {
+    return inWorld(fixture, async (world) => {
+      const { adapter } = world;
+      const setProgramTitle = world.setProgramTitle?.bind(world);
+      if (setProgramTitle === undefined) return [];
+      const target = livePanes(await adapter.snapshot()).at(0);
+      if (target === undefined) return ["the fixture's world has no pane to title"];
+      const problems: string[] = [];
+      // No status glyph in it: an adapter may legitimately clean a title on the way through (Herdr's
+      // does), and this check is about WHICH FIELD the title lands in, not about its spelling.
+      const printed = "a sentence the program wrote about itself";
+
+      await setProgramTitle(target.paneId, printed);
+      const titled = (await adapter.snapshot()).panes.find((pane) => pane.paneId === target.paneId);
+      if (titled?.paneLabel === printed) {
+        problems.push(`a title the program printed came back as paneLabel "${printed}"`);
+      }
+      if (titled?.terminalTitle !== printed) {
+        problems.push(`a title the program printed was not reported as terminalTitle (got ${String(titled?.terminalTitle)})`);
+      }
+
+      if (!declares(adapter, "renamePane")) return problems;
+      const label = "the name the operator chose";
+      const renamed = await adapter.renamePane(target.paneId, label);
+      if (!renamed.ok) return [...problems, `renamePane is declared but answered ${describeRefusal(renamed)}`];
+      const labelled = (await adapter.snapshot()).panes.find((pane) => pane.paneId === target.paneId);
+      if (labelled?.paneLabel !== label) {
+        problems.push(`the operator's own label did not come back as paneLabel (got ${String(labelled?.paneLabel)})`);
+      }
+
+      // And the slot returns to being the program's the moment the operator's name is cleared.
+      const cleared = await adapter.renamePane(target.paneId, null);
+      if (!cleared.ok) return [...problems, `renamePane(null) answered ${describeRefusal(cleared)}`];
+      await setProgramTitle(target.paneId, printed);
+      const after = (await adapter.snapshot()).panes.find((pane) => pane.paneId === target.paneId);
+      if (after?.paneLabel !== undefined) {
+        problems.push(`a cleared label left "${after.paneLabel}" behind as paneLabel`);
+      }
+      return problems;
+    });
+  },
+};
+
 const identitySurvivesPerturbation: MuxWorldCheck = {
   name: "a pane keeps its id across a reconnect, an out-of-band rename and a mux restart",
   run(fixture) {
@@ -787,6 +852,7 @@ const watchKeepsItsPromise: MuxWorldCheck = {
 export const MUX_WORLD_CHECKS: readonly MuxWorldCheck[] = [
   declaredCapabilitiesWork,
   declaredPaneFactsArePopulated,
+  aPrintedTitleIsNeverAnOperatorLabel,
   identitySurvivesPerturbation,
   idsAreNeverRecycled,
   sendsKeepTheirOrder,
