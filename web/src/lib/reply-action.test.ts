@@ -229,6 +229,32 @@ describe("sendGuardedReply", () => {
     expect(calls).toEqual([{ text: SENT, submit: false }]);
   });
 
+  // omp paints an inline completion suggestion after the operator's text, in its own colour. It is
+  // not in the input buffer, but it IS on the row the guard reads back, so before `composerGhost`
+  // (harness/omp/markers.ts) the verification could never match and EVERY send omp suggested for
+  // stalled — while the message really was sitting in the box.
+  it("submits on an omp pane whose composer shows an inline suggestion", async () => {
+    const suggestion = "\x1b[38;2;111;115;119m to the deploy host\x1b[0m";
+    const calls = harness(
+      () =>
+        `some output\n\x1b[38;2;74;80;88m╭── statusline ───╮\x1b[0m\n` +
+        `\x1b[38;2;74;80;88m╰─ \x1b[0mship it please${suggestion}   \x1b[38;2;74;80;88m ─╯\x1b[0m`,
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "omp",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "ship it please", submit: false },
+      { text: "", submit: true },
+    ]);
+  });
+
   // The PRE-FLIGHT (.adr/0009). The verify-after guard below already kept Enter from answering a
   // dialog; this keeps the MESSAGE from being deposited in one, which is what the `/model` picker
   // exposed — no input box at all, so the text went into the picker before anything noticed.

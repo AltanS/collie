@@ -222,6 +222,28 @@ const OMP: readonly AgentCommand[] = [
   { command: "/resume", description: "Open the session picker", takesArg: false, argHint: "", common: false, dangerous: false },
 ];
 
+// ── Grok ─────────────────────────────────────────────────────────────────────
+// Sourced from Grok's published slash-command reference, not from pane captures.
+const GROK: readonly AgentCommand[] = [
+  { command: "/new", description: "Start a fresh session and clear the conversation", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/compact", description: "Compress history to reclaim context; optional focus note", takesArg: true, argHint: "[context]", common: true, dangerous: false },
+  { command: "/resume", description: "Open the session picker to reload a previous session", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/model", description: "Switch model; optional effort as a second argument", takesArg: true, argHint: "[name] [effort]", common: true, dangerous: false },
+  { command: "/copy", description: "Copy the most recent response, or the Nth, or write a file", takesArg: true, argHint: "[N|file]", common: true, dangerous: false },
+  { command: "/context", description: "Show how the context window is being used", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/rewind", description: "Roll the conversation back to an earlier turn", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/help", description: "Show help and list available commands", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/effort", description: "Set reasoning effort on the current model", takesArg: true, argHint: "[low|medium|high|xhigh]", common: false, dangerous: false },
+  { command: "/plan", description: "Enter plan mode; optionally seed a description", takesArg: true, argHint: "[description]", common: false, dangerous: false },
+  { command: "/always-approve", description: "Skip permission prompts, or turn that mode back off", takesArg: false, argHint: "", common: false, dangerous: true },
+  { command: "/auto", description: "Classifier-approve safe tools, or turn that mode back off", takesArg: false, argHint: "", common: false, dangerous: true },
+  { command: "/rename", description: "Rename the current session", takesArg: true, argHint: "[title]", common: false, dangerous: false },
+  { command: "/doctor", description: "Diagnose the terminal session and list available fixes", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/export", description: "Export the conversation to a file or the clipboard", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/delete", description: "Delete this session's history after confirm", takesArg: false, argHint: "", common: false, dangerous: true },
+  { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
+];
+
 // A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
 // what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
 // ("constructor", "toString") that ship no catalog at all.
@@ -231,6 +253,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   ["pi", PI],
   ["opencode", OPENCODE],
   ["omp", OMP],
+  ["grok", GROK],
 ]);
 
 /**

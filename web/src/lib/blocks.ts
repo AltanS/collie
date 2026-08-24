@@ -34,7 +34,12 @@ import type { MenuModel } from "./harness/menu-model";
 // dependency points at the shared modules, never at claude/. These are TYPE-ONLY re-exports (erased
 // under verbatimModuleSyntax), so they add no runtime edge into harness/ either — the value
 // dependency stays one-way (harness → blocks).
-export type { PromptModel, PromptOption, PromptFamily } from "./harness/prompt-model";
+export type {
+  PromptModel,
+  PromptOption,
+  PromptFamily,
+  PromptFeedbackPurpose,
+} from "./harness/prompt-model";
 export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./harness/wizard-model";
 export type { PreviewSelectModel, PreviewOption, PreviewNote } from "./harness/preview-model";
 export type {

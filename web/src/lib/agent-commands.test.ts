@@ -28,6 +28,16 @@ describe("commandsFor", () => {
     expect(cmds.some((c) => c.command === "/branch")).toBe(false); // in Claude's and omp's, not here
   });
 
+  it("returns the Grok catalog for 'grok'", () => {
+    const cmds = commandsFor("grok");
+    expect(cmds.length).toBeGreaterThan(0);
+    expect(cmds.some((c) => c.command === "/always-approve")).toBe(true);
+    expect(cmds.some((c) => c.command === "/tree")).toBe(false);
+    // One tap from a phone would skip every tool-permission prompt (xAI: `/always-approve`
+    // bypasses those prompts; deny rules and hooks still apply). Two-tap like /quit / /new.
+    expect(cmds.find((c) => c.command === "/always-approve")?.dangerous).toBe(true);
+  });
+
   it("returns the omp catalog for 'omp'", () => {
     const cmds = commandsFor("omp");
     expect(cmds.length).toBeGreaterThan(0);
@@ -63,6 +73,7 @@ describe("commandsFor", () => {
     expect(commandsFor("PI")).toBe(commandsFor("pi"));
     expect(commandsFor("OpenCode")).toBe(commandsFor("opencode"));
     expect(commandsFor("OMP")).toBe(commandsFor("omp"));
+    expect(commandsFor("GROK")).toBe(commandsFor("grok"));
   });
 
   it("trims surrounding whitespace", () => {
@@ -75,6 +86,7 @@ describe("commandsFor", () => {
     expect(commandsFor("opencode-dev")).toBe(commandsFor("opencode"));
     expect(commandsFor("pi-go")).toBe(commandsFor("pi"));
     expect(commandsFor("omp-dev")).toBe(commandsFor("omp"));
+    expect(commandsFor("grok-build")).toBe(commandsFor("grok"));
   });
 
   it("returns [] for unknown / absent agents", () => {
@@ -98,7 +110,7 @@ describe("commandsFor", () => {
     }
   });
 
-  it.each(["claude", "codex", "pi", "opencode", "omp"])(
+  it.each(["claude", "codex", "pi", "opencode", "omp", "grok"])(
     "exposes for '%s' a 'common' subset that is a proper, non-empty subset of all commands",
     (agent) => {
       const all = commandsFor(agent);
@@ -110,7 +122,7 @@ describe("commandsFor", () => {
     },
   );
 
-  it.each(["claude", "codex", "pi", "opencode", "omp"])(
+  it.each(["claude", "codex", "pi", "opencode", "omp", "grok"])(
     "'%s' entries are well-formed (slash-prefixed, unique, arg hints only when takesArg)",
     (agent) => {
       const all = commandsFor(agent);

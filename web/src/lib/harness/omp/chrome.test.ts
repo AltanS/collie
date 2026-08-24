@@ -50,6 +50,7 @@ function boxRows(
 const COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
   "omp--done.txt",
+  "omp--draft-ghost-suggestion.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
   "omp--fresh-idle.txt",
@@ -69,6 +70,9 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
   const PINNED: { fixture: string; top: number; bottom: number; suggestEnd: number }[] = [
     { fixture: "omp--fresh-idle.txt", top: 26, bottom: 27, suggestEnd: 28 },
     { fixture: "omp--draft-single.txt", top: 26, bottom: 27, suggestEnd: 28 },
+    // The same screen with omp's inline suggestion painted after the draft: the ghost changes what
+    // the row SAYS, never where the box is.
+    { fixture: "omp--draft-ghost-suggestion.txt", top: 26, bottom: 27, suggestEnd: 28 },
     // A draft long enough to wrap: two continuation rows ABOVE the bottom border (omp folds the
     // other way from Claude, which indents continuations BELOW its `❯` line).
     { fixture: "omp--draft-wrapped.txt", top: 26, bottom: 29, suggestEnd: 30 },
@@ -115,6 +119,10 @@ describe("the composer gate — a dialog on screen means a phone reply must NOT 
 describe("extractInputDraft", () => {
   const DRAFTS: { fixture: string; draft: string | null }[] = [
     { fixture: "omp--draft-single.txt", draft: "list the files in this repo" },
+    // The suggestion (`sitory`, painted after `repo` in omp's muted colour) is not in the input
+    // buffer, so it is not the draft: returning `list the files in this repository` here stalled
+    // every send with "Message didn't reach the input box" (markers.ts `composerGhost`).
+    { fixture: "omp--draft-ghost-suggestion.txt", draft: "list the files in this repo" },
     {
       fixture: "omp--draft-wrapped.txt",
       // Three fragments folded into one line: the two continuation rows, top-down, then the tail off
