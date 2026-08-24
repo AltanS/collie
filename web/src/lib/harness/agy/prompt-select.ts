@@ -66,6 +66,15 @@ export interface PromptRegion {
   startLine: number;
 }
 
+export function coreRegionSignature(texts: string[], from: number, footer: number): string {
+  const start = Math.max(0, from);
+  const out: string[] = [];
+  for (let i = start; i <= footer; i++) {
+    out.push(texts[i]!.replaceAll("❯", " ").trimEnd());
+  }
+  return out.join("\n");
+}
+
 export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | null {
   const texts = lines.map(lineText);
   if (isAlienBuffer(texts)) return null;
@@ -107,11 +116,13 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
 
   // 3. Scan upward for question
   let question = "";
+  let questionAt = firstOpt;
   for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < QUESTION_SCAN_LIMIT; i--, seen++) {
     const t = texts[i]!;
     if (isHorizontalRule(t)) break;
     if (t.includes("?")) {
       question = t.trim();
+      questionAt = i;
       break;
     }
   }
@@ -119,6 +130,7 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
     const prev = firstOpt > 0 ? texts[firstOpt - 1]!.trim() : "";
     if (prev && !isHorizontalRule(prev)) {
       question = prev;
+      questionAt = firstOpt - 1;
     } else {
       return null;
     }
@@ -144,7 +156,8 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   if (options.length === 0) return null;
 
   const signature = regionSignature(texts, firstOpt - SIGNATURE_LOOKBACK, footerIndex);
-  return { model: { question, options, family, signature }, startLine: firstOpt };
+  const coreSignature = coreRegionSignature(texts, questionAt, footerIndex);
+  return { model: { question, options, family, signature, coreSignature }, startLine: firstOpt };
 }
 
 export function detectPromptSelect(lines: StyledLine[]): PromptModel | null {

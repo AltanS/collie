@@ -47,7 +47,7 @@ export function classifyFooter(text: string): PromptFamily | null {
 export function isAlienBuffer(texts: string[]): boolean {
   for (const text of texts) {
     if (/Claude Code|\.claude\/|Claude Sonnet|Claude Opus|Claude Max|AskUserQuestion/i.test(text)) return true;
-    if (/╭─ Ask ─╮|oh-my-pi/i.test(text)) return true;
+    if (/╭─ Ask ─╮|oh-my-pi|codex|grok/i.test(text)) return true;
   }
   return false;
 }

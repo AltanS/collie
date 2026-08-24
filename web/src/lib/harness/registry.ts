@@ -21,7 +21,7 @@ import { ompAdapter } from "./omp";
 import { agyAdapter, antigravityAdapter } from "./agy";
 
 // Built FROM the adapter list (not a hand-written literal) so a key can't silently drift from its
-// adapter's own `agent` string — the map key IS `adapter.agent`.
+const ADAPTERS: Record<string, HarnessAdapter> = Object.fromEntries(
   [
     claudeAdapter,
     codexAdapter,
@@ -40,10 +40,7 @@ import { agyAdapter, antigravityAdapter } from "./agy";
  *  Claude's dialog grammars (and their live keystroke recipes) to any agent string with that
  *  prefix. Variant tolerance for slash catalogs belongs in `canonicalAgent`. */
 export function adapterFor(agent: string | undefined): HarnessAdapter | undefined {
-  if (agent === undefined || agent === null) return undefined;
-  const key = agent.toLowerCase().trim();
-  if (Object.hasOwn(ADAPTERS, key)) return ADAPTERS[key];
-  return undefined;
+  return agent !== undefined && Object.hasOwn(ADAPTERS, agent) ? ADAPTERS[agent] : undefined;
 }
 
 /** Whether `agent` has block grammars (an adapter). The gate agent-chat's status strip shares with
