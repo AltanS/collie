@@ -35,6 +35,10 @@ export const en = {
   "settings.haptics.title": "Haptics",
   "settings.haptics.description": "A short buzz when you press a key or a quick reply.",
 
+  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
+  "settings.followTerminal.title": "Follow terminal",
+  "settings.followTerminal.description": "Open the pane your terminal is showing. The phone never moves your terminal unless you tap “Show in terminal”.",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "Hands-free voice",
   "settings.handsFree.description":
@@ -282,6 +286,9 @@ export const en = {
   "paneActions.close.label": "Close pane",
   "paneActions.close.confirm": "Tap again to close",
   "paneActions.close.closing": "Closing…",
+  "paneActions.showInTerminal.label": "Show in terminal",
+  "paneActions.showInTerminal.done": "Shown in the terminal",
+  "paneActions.showInTerminal.failed": "Couldn't show it in the terminal",
   "paneActions.empty.fallback": "This multiplexer offers no actions for a pane.",
   "paneActions.status.renamed": "Renamed",
   "paneActions.status.labelCleared": "Label cleared",
@@ -606,6 +613,7 @@ export const en = {
   "apiError.prompt.read_failed": "The pane couldn't be read before sending — {mux} said: {detail}",
   "apiError.pane.close_failed": "The pane couldn't be closed: {reason}",
   "apiError.pane.rename_failed": "The pane couldn't be renamed: {reason}",
+  "apiError.pane.focus_failed": "The pane couldn't be shown in the terminal: {reason}",
   "apiError.tab.create_failed": "The tab couldn't be created: {reason}",
   "apiError.tab.rename_failed": "The tab couldn't be renamed: {reason}",
   "apiError.tab.close_failed": "The tab couldn't be closed: {reason}",

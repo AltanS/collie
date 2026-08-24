@@ -25,6 +25,10 @@ export const ja: Dictionary = {
   "settings.haptics.title": "バイブレーション",
   "settings.haptics.description": "キー操作やクイック返信時に短く振動します。",
 
+  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
+  "settings.followTerminal.title": "ターミナルに追従",
+  "settings.followTerminal.description": "ターミナルが表示しているペインを開きます。「ターミナルに表示」をタップしない限り、スマートフォンがターミナルを動かすことはありません。",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "ハンズフリー音声",
   "settings.handsFree.description":
@@ -270,6 +274,9 @@ export const ja: Dictionary = {
   "paneActions.close.label": "ペインを閉じる",
   "paneActions.close.confirm": "閉じるにはもう一度タップ",
   "paneActions.close.closing": "閉じています…",
+  "paneActions.showInTerminal.label": "ターミナルに表示",
+  "paneActions.showInTerminal.done": "ターミナルに表示しました",
+  "paneActions.showInTerminal.failed": "ターミナルに表示できませんでした",
   "paneActions.empty.fallback": "このマルチプレクサはペインに対する操作を提供していません。",
   "paneActions.status.renamed": "名前を変更しました",
   "paneActions.status.labelCleared": "ラベルを消去しました",
@@ -585,6 +592,7 @@ export const ja: Dictionary = {
     "送信前にペインを読み取れませんでした — {mux} の応答: {detail}",
   "apiError.pane.close_failed": "ペインを閉じられませんでした: {reason}",
   "apiError.pane.rename_failed": "ペインの名前を変更できませんでした: {reason}",
+  "apiError.pane.focus_failed": "ペインをターミナルに表示できませんでした: {reason}",
   "apiError.tab.create_failed": "タブを作成できませんでした: {reason}",
   "apiError.tab.rename_failed": "タブの名前を変更できませんでした: {reason}",
   "apiError.tab.close_failed": "タブを閉じられませんでした: {reason}",

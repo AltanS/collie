@@ -25,6 +25,10 @@ export const es: Dictionary = {
   "settings.haptics.title": "Vibración",
   "settings.haptics.description": "Un zumbido corto al pulsar una tecla o una respuesta rápida.",
 
+  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
+  "settings.followTerminal.title": "Seguir la terminal",
+  "settings.followTerminal.description": "Abre el panel que muestra tu terminal. El teléfono nunca mueve tu terminal salvo que toques «Mostrar en la terminal».",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "Voz manos libres",
   "settings.handsFree.description":
@@ -276,6 +280,9 @@ export const es: Dictionary = {
   "paneActions.close.label": "Cerrar panel",
   "paneActions.close.confirm": "Toca de nuevo para cerrar",
   "paneActions.close.closing": "Cerrando…",
+  "paneActions.showInTerminal.label": "Mostrar en la terminal",
+  "paneActions.showInTerminal.done": "Mostrado en la terminal",
+  "paneActions.showInTerminal.failed": "No se pudo mostrar en la terminal",
   "paneActions.empty.fallback": "Este multiplexor no ofrece acciones para un panel.",
   "paneActions.status.renamed": "Renombrado",
   "paneActions.status.labelCleared": "Etiqueta borrada",
@@ -594,6 +601,7 @@ export const es: Dictionary = {
     "No se pudo leer el panel antes de enviar — {mux} responde: {detail}",
   "apiError.pane.close_failed": "No se pudo cerrar el panel: {reason}",
   "apiError.pane.rename_failed": "No se pudo renombrar el panel: {reason}",
+  "apiError.pane.focus_failed": "No se pudo mostrar el panel en la terminal: {reason}",
   "apiError.tab.create_failed": "No se pudo crear la pestaña: {reason}",
   "apiError.tab.rename_failed": "No se pudo renombrar la pestaña: {reason}",
   "apiError.tab.close_failed": "No se pudo cerrar la pestaña: {reason}",

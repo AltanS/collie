@@ -145,6 +145,21 @@ export function useMuxLogoUrl(): string {
   return useMuxConfig()?.logoUrl ?? "";
 }
 
+/**
+ * Whether this multiplexer can hold more than one space.
+ *
+ * NOT a capability, and it is worth being clear why it lives in this file anyway: it is the same
+ * question in the same voice — "what is true of the multiplexer underneath?" — answered off the same
+ * one-shot config, so that no component ever learns a name to decide a layout on.
+ *
+ * The default is `true` (many), and that is the fail-OPEN direction this module already argues for:
+ * a space strip over a single space is a strip with one chip in it, while a strip hidden on a
+ * multiplexer that really has three is navigation the operator cannot reach and cannot diagnose.
+ */
+export function useMuxHasSpaces(): boolean {
+  return useMuxConfig()?.spaces !== "one";
+}
+
 /** The neutral key spellings this multiplexer refuses. Empty until the bridge has answered. */
 export function useMuxUnsupportedKeys(): readonly string[] {
   return useMuxConfig()?.unsupportedKeys ?? NO_KEYS;

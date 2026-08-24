@@ -453,6 +453,7 @@ export const MUX_CAPABILITIES = [
   "sendKeys",
   "renamePane",
   "closePane",
+  "setFocus",
   "createTab",
   "renameTab",
   "closeTab",
@@ -477,6 +478,14 @@ export interface MuxConfig {
   capabilities: Partial<Record<MuxCapability, boolean>>;
   /** Neutral key spellings this multiplexer refuses. */
   unsupportedKeys: string[];
+  /**
+   * How many spaces this multiplexer can hold — not how many exist right now.
+   *
+   * `"one"` drops the space strip and makes the tab strip the top level. ABSENT (an older bridge, a
+   * cached page) reads as `"many"`; the rule and its reasoning live in lib/mux-capability.ts beside
+   * every other "what is true of the multiplexer" answer.
+   */
+  spaces?: "one" | "many";
   /** The adapter's own words for the capabilities it lacks — the text an explanation renders. */
   notes: Partial<Record<MuxCapability, string>>;
   /**

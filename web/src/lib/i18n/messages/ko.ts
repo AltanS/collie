@@ -26,6 +26,10 @@ export const ko: Dictionary = {
   "settings.haptics.title": "진동",
   "settings.haptics.description": "키를 누르거나 빠른 답장을 보낼 때 짧은 진동을 울립니다.",
 
+  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
+  "settings.followTerminal.title": "터미널 따라가기",
+  "settings.followTerminal.description": "터미널이 보여 주는 창을 열어요. ‘터미널에 표시’를 누르지 않는 한 휴대폰이 터미널을 옮기지 않아요.",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "핸즈프리 음성",
   "settings.handsFree.description":
@@ -268,6 +272,9 @@ export const ko: Dictionary = {
   "paneActions.close.label": "창 닫기",
   "paneActions.close.confirm": "닫으려면 다시 탭하세요",
   "paneActions.close.closing": "닫는 중…",
+  "paneActions.showInTerminal.label": "터미널에 표시",
+  "paneActions.showInTerminal.done": "터미널에 표시했어요",
+  "paneActions.showInTerminal.failed": "터미널에 표시하지 못했어요",
   "paneActions.empty.fallback": "이 멀티플렉서는 창에 대한 동작을 제공하지 않아요.",
   "paneActions.status.renamed": "이름을 바꿨어요",
   "paneActions.status.labelCleared": "라벨을 지웠어요",
@@ -579,6 +586,7 @@ export const ko: Dictionary = {
   "apiError.prompt.read_failed": "보내기 전에 창을 읽지 못했어요 — {mux} 응답: {detail}",
   "apiError.pane.close_failed": "창을 닫지 못했어요: {reason}",
   "apiError.pane.rename_failed": "창 이름을 바꾸지 못했어요: {reason}",
+  "apiError.pane.focus_failed": "창을 터미널에 표시하지 못했어요: {reason}",
   "apiError.tab.create_failed": "탭을 만들지 못했어요: {reason}",
   "apiError.tab.rename_failed": "탭 이름을 바꾸지 못했어요: {reason}",
   "apiError.tab.close_failed": "탭을 닫지 못했어요: {reason}",
