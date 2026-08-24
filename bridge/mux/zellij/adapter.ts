@@ -201,7 +201,13 @@ const ZELLIJ_CAPABILITIES = declareCapabilities({
       "Nothing in zellij's command line announces a pane or tab appearing, closing or being renamed — the plugin API is where such an event lives, and that is not a command line. A bounded census, 3 s after any change and relaxing to 12 s while nothing moves, is what keeps the promise instead.",
     pushPaneEvents:
       "`zellij subscribe` follows several panes at once and pushes a frame on every repaint, so a pane the operator is watching is reported without waiting for the census.",
+    setFocus:
+      "zellij can bring a TAB to the front, but nothing on its command line reliably focuses a pane inside one: `action focus-pane-id` exits 0 and moves nothing. Showing a tab and hoping the right pane is in front would put a neighbouring pane on the operator's screen, so Collie does not offer the button rather than half-keep the promise.",
   },
+  // A Collie on zellij drives exactly ONE zellij session and that session is its one space — the
+  // same fact that declines `createSpace`, read the other way round. So the phone drops the space
+  // strip entirely and the tab strip is the top level.
+  spaces: "one",
 });
 
 /** One pane's derived revision, and the reads it was derived from. */
@@ -433,6 +439,30 @@ export class ZellijMux implements MuxAdapter {
     return this.ack(closeTabArgs(tabNumber));
   }
 
+  /**
+   * Declined, and it is the one refusal here that was probed twice before being believed.
+   *
+   * zellij 0.44.2 ships `action focus-pane-id <id>`, which is exactly the verb this capability wants
+   * — and it does nothing. Probed 2026-08-25 against the live test session, with a client attached
+   * and two panes in one tab: `focus-pane-id terminal_3` and the bare `focus-pane-id 3` both exited 0
+   * and `action list-clients` still reported the client on `terminal_0`; `focus-next-pane` moved it,
+   * so the client and the session were live. Across tabs it is the same silence — `focus-pane-id`
+   * aimed at another tab's pane left the active tab where it was.
+   *
+   * `go-to-tab <n>` DOES work (probed: 1-based over tab position), so a tab-level approximation is
+   * available and is deliberately not taken. The promise is "this pane is now on the operator's
+   * screen", and a tab whose focus sits on a neighbouring pane is not that — it is the quiet lie the
+   * conformance suite exists to catch, told to somebody who is not looking at the screen it moved.
+   */
+  setFocus(_paneId: string): Promise<MuxAck> {
+    return Promise.resolve(
+      muxUnsupported(
+        "setFocus",
+        "zellij's `focus-pane-id` exits 0 and moves nothing (probed on 0.44.2), so Collie cannot promise a pane is in front",
+      ),
+    );
+  }
+
   /** A zellij collie drives one zellij session, so there is no second space to make — see the header. */
   createSpace(_request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     return Promise.resolve(
@@ -582,8 +612,11 @@ function toMuxPane(
     tabId: tabId(raw.tabNumber),
     // zellij reports no working directory for a pane, in any of `list-panes`' field groups.
     cwd: "",
-    // zellij's focus is per-tab: a pane is the one zellij would type into only when its tab is also
-    // the active one. Collie never sets focus either way.
+    // The pane the operator's terminal is showing, and it takes BOTH flags. `is_focused` is a
+    // property of the TAB — every tab remembers its own focused pane, so several report it at once
+    // (probed: two panes in one tab both read `is_focused` after a split) — and `active` is the tab
+    // the attached client is on. A DETACHED session marks no tab active, so no pane is focused, which
+    // is the honest answer: nobody's screen is showing one (probed 2026-08-25).
     focused: raw.focused && tab?.active === true,
     alive: !raw.exited,
     // The header's decision: zellij knows of no agent, so every pane is a shell of unknown status.

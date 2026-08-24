@@ -110,6 +110,15 @@ export interface MuxConformanceWorld {
   /** This pane's process ends and the multiplexer forgets it. Writes to it must answer `gone`. */
   endPane(paneId: string): Promise<void>;
   /**
+   * The OPERATOR moves their own focus, in the multiplexer's UI — not through Collie.
+   *
+   * Every multiplexer here can simulate it, because every one of them REPORTS focus on the floor
+   * ({@link MuxPane.focused}), and a fact nothing can move is a fact nothing proves. It is the
+   * perturbation behind "the snapshot reports the terminal's focus", which is the half of the focus
+   * contract that holds even where `setFocus` is declined.
+   */
+  focusOutOfBand(paneId: string): Promise<void>;
+  /**
    * Make the multiplexer announce a topology / pane change on its event channel.
    *
    * Optional because only a multiplexer that PUSHES has one to announce on. An adapter declaring
@@ -256,6 +265,13 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       capability: "createSpace",
       writes: true,
       run: async () => refusalOf(await adapter.createSpace({ cwd: "/tmp" })),
+    },
+    {
+      capability: "setFocus",
+      // It moves the OPERATOR's screen, so it is a write in the sense that matters here: the live
+      // probe must never run it against a real multiplexer (the header's rule).
+      writes: true,
+      run: async () => refusalOf(await adapter.setFocus(targets.paneId)),
     },
     // The destructive pair is last so a world that runs the whole table top-down still has a pane and
     // a tab to aim the earlier calls at.
@@ -464,6 +480,42 @@ const gridReadAnswersTheContract: MuxReadCheck = {
   },
 };
 
+const focusIsReportedHonestly: MuxReadCheck = {
+  name: "at most one pane per space is focused, and a focused pane is alive",
+  async run(adapter) {
+    const snapshot = await adapter.snapshot();
+    const problems: string[] = [];
+    const perSpace = new Map<string, string[]>();
+    for (const pane of snapshot.panes) {
+      if (!pane.focused) continue;
+      perSpace.set(pane.spaceId, [...(perSpace.get(pane.spaceId) ?? []), pane.paneId]);
+      // "The pane the operator's terminal is showing" cannot be a pane whose process has ended and
+      // whose record only survives as a corpse.
+      if (!pane.alive) problems.push(`pane "${pane.paneId}" is reported focused and not alive`);
+    }
+    for (const [spaceId, focused] of perSpace) {
+      if (focused.length > 1) {
+        problems.push(`space "${spaceId}" reports ${String(focused.length)} focused panes (${focused.join(", ")}) — a terminal shows one`);
+      }
+    }
+    // ZERO focused panes is deliberately allowed and is not a gap: focus is per-client on every
+    // multiplexer here, so a herd nobody has attached to genuinely has none (probed on zellij, whose
+    // detached session marks no tab active).
+    return problems;
+  },
+};
+
+const spaceShapeMatchesTheWorld: MuxReadCheck = {
+  name: "a multiplexer that declares one space has exactly one",
+  async run(adapter) {
+    if (adapter.capabilities.spaces !== "one") return [];
+    const snapshot = await adapter.snapshot();
+    return snapshot.spaces.length === 1
+      ? []
+      : [`spaces is declared "one" but the snapshot carries ${String(snapshot.spaces.length)} — the phone drops the space strip on that word`];
+  },
+};
+
 /**
  * Read-only checks — every one of them safe to run against a REAL multiplexer.
  *
@@ -479,6 +531,8 @@ export const MUX_READ_ONLY_CHECKS: readonly MuxReadCheck[] = [
   undeclaredCapabilitiesRefuse,
   undeclaredPaneFactsAreAbsent,
   gridReadAnswersTheContract,
+  focusIsReportedHonestly,
+  spaceShapeMatchesTheWorld,
 ];
 
 // ── The world checks (fixture only — these write) ─────────────────────────────
@@ -746,6 +800,7 @@ const PANE_ADDRESSED = new Set<MuxCapability>([
   "sendKeys",
   "renamePane",
   "closePane",
+  "setFocus",
 ]);
 
 const revisionMovesWithContent: MuxWorldCheck = {
@@ -845,6 +900,52 @@ const watchKeepsItsPromise: MuxWorldCheck = {
   },
 };
 
+const focusFollowsTheMultiplexer: MuxWorldCheck = {
+  name: "the snapshot reports the terminal's focus, and `setFocus` moves it where it is declared",
+  run(fixture) {
+    return inWorld(fixture, async (world) => {
+      const { adapter } = world;
+      const panes = livePanes(await adapter.snapshot());
+      // TWO PANES OF ONE SPACE, deliberately. Focus is per-space on a multiplexer that has several
+      // (tmux's current window is a property of the session), so a check spanning two spaces would
+      // demand that focusing here unfocuses over there — which is not what any of them do.
+      const target = panes.find((pane) => panes.some((other) => other.spaceId === pane.spaceId && other.paneId !== pane.paneId));
+      const other = panes.find((pane) => pane.spaceId === target?.spaceId && pane.paneId !== target.paneId);
+      if (target === undefined || other === undefined) {
+        return ["the fixture's world has no space holding two live panes to move focus between"];
+      }
+      const problems: string[] = [];
+      const focusedNow = async (): Promise<string[]> =>
+        (await adapter.snapshot()).panes
+          .filter((pane) => pane.focused && pane.spaceId === target.spaceId)
+          .map((pane) => pane.paneId);
+
+      // Half one: the OPERATOR moves focus. This holds for every adapter, declared capability or not
+      // — reporting focus is on the floor, and only changing it is a capability.
+      await world.focusOutOfBand(target.paneId);
+      if (!(await focusedNow()).includes(target.paneId)) {
+        problems.push(`focus moved to "${target.paneId}" in the multiplexer and the snapshot did not report it`);
+      }
+
+      // Half two: COLLIE moves focus, and only where the adapter said it could.
+      const moved = await adapter.setFocus(other.paneId);
+      if (!declares(adapter, "setFocus")) {
+        if (moved.ok) problems.push("setFocus is declared absent but the call SUCCEEDED");
+        return problems;
+      }
+      if (!moved.ok) return [...problems, `setFocus is declared but answered ${describeRefusal(moved)}`];
+      const after = await focusedNow();
+      if (!after.includes(other.paneId)) {
+        problems.push(`setFocus("${other.paneId}") answered ok and the snapshot still focuses ${after.join(", ") || "nothing"}`);
+      }
+      if (after.includes(target.paneId)) {
+        problems.push(`setFocus moved focus to "${other.paneId}" and "${target.paneId}" is still focused too`);
+      }
+      return problems;
+    });
+  },
+};
+
 /**
  * Checks that WRITE. Fixture worlds only — never point these at a live multiplexer; they type into
  * panes, rename them, and kill them.
@@ -861,4 +962,5 @@ export const MUX_WORLD_CHECKS: readonly MuxWorldCheck[] = [
   revisionMovesWithContent,
   scrollbackReachesFurther,
   watchKeepsItsPromise,
+  focusFollowsTheMultiplexer,
 ];

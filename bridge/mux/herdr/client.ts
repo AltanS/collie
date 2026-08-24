@@ -193,6 +193,7 @@ export type HerdrRpc = Pick<
   | "sendPaneKeys"
   | "renamePane"
   | "closePane"
+  | "focusPane"
   | "createTab"
   | "renameTab"
   | "closeTab"
@@ -530,6 +531,20 @@ export class HerdrClient {
   /** Close a pane, terminating its agent ("kill"). Resolves on Herdr's `{type:"ok"}` reply. */
   closePane(paneId: string): Promise<void> {
     return this.request<void>("pane.close", { pane_id: paneId });
+  }
+
+  /**
+   * Put a pane in front of the operator, on their own screen.
+   *
+   * ONE call does the whole act: live-probed 2026-08-25 against the `collie-demo` sandbox session,
+   * `pane.focus {pane_id}` answered `pane_info` and the next `session.snapshot` reported
+   * `focused_pane_id`, `focused_tab_id` AND `focused_workspace_id` all moved with it — so the tab and
+   * the workspace need no calls of their own (`tab.focus` / `workspace.focus` exist and are not used).
+   * A pane that has gone away answers `pane_not_found`, probed read-only against the live server the
+   * same day, which the adapter's `GONE_CODES` turns into the contract's `gone`.
+   */
+  focusPane(paneId: string): Promise<void> {
+    return this.request<void>("pane.focus", { pane_id: paneId });
   }
 
   /**

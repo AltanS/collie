@@ -79,6 +79,21 @@ interface FakePane {
   viewport: string[];
 }
 
+/**
+ * One client attached to the fake server — what `list-clients` reports.
+ *
+ * `control` is the whole point of the record: this adapter's own watch attaches control clients, and
+ * the snapshot has to tell them apart from a terminal somebody is looking at (adapter.ts
+ * § watchedSession). The seeded world has NONE, which is a real tmux state — a server full of
+ * detached sessions — and the state the fallback rule exists for.
+ */
+interface FakeClient {
+  /** tmux prints the session's NAME here, not its `$N` id (probed). */
+  readonly session: string;
+  readonly control: boolean;
+  readonly activity: number;
+}
+
 /** One live control-mode client of the fake server. */
 interface FakeControlClient {
   readonly handlers: TmuxControlHandlers;
@@ -107,6 +122,8 @@ export class FakeTmux implements TmuxExec {
   private panes: FakePane[] = [];
   private readonly buffers = new Map<string, string>();
   private readonly controls = new Set<FakeControlClient>();
+  /** Attached clients. Empty by default — see {@link FakeClient}. */
+  private clients: FakeClient[] = [];
   private readonly recorded: MuxWrite[] = [];
   /** Every command group this fake was asked to run, in order. What proves a spawn did NOT happen. */
   private readonly ran: string[][] = [];
@@ -184,6 +201,33 @@ export class FakeTmux implements TmuxExec {
     this.panes = this.panes.map((pane) => ({ ...pane, history: [...pane.history], viewport: [...pane.viewport] }));
     for (const client of this.controls) this.endControl(client, "%exit");
     await Promise.resolve();
+  }
+
+  /**
+   * The OPERATOR moves their own focus — they press `prefix o` on their keyboard, not in Collie.
+   *
+   * Both levels, because that is what tmux does: the pane becomes its window's active one and the
+   * window becomes its session's current one. Nothing here goes through the adapter, which is the
+   * point — the snapshot has to REPORT focus, not remember what Collie last set.
+   */
+  async focusOutOfBand(paneId: string): Promise<void> {
+    await Promise.resolve();
+    const pane = this.panes.find((candidate) => candidate.id === paneId);
+    if (pane === undefined) return;
+    for (const candidate of this.panes) {
+      if (candidate.windowId === pane.windowId) candidate.active = candidate.id === pane.id;
+    }
+    for (const window of this.windows) {
+      if (window.sessionId === pane.sessionId) window.active = window.id === pane.windowId;
+    }
+  }
+
+  /** A terminal (or this adapter's own watch) attaches to a session. For the tests that need one. */
+  attachClient(sessionName: string, options: { control?: boolean; activity?: number } = {}): void {
+    this.clients = [
+      ...this.clients,
+      { session: sessionName, control: options.control ?? false, activity: options.activity ?? this.clients.length + 1 },
+    ];
   }
 
   /** Someone sets a pane's title in tmux itself — `select-pane -T` from the operator's own keyboard. */
@@ -298,6 +342,8 @@ export class FakeTmux implements TmuxExec {
     if (verb === "paste-buffer") return this.pasteBuffer(group);
     if (verb === "send-keys") return this.sendKeys(group);
     if (verb === "select-pane") return this.selectPane(group);
+    if (verb === "select-window") return this.selectWindow(group);
+    if (verb === "list-clients") return this.listClients(group);
     if (verb === "kill-pane") return this.killPane(group);
     if (verb === "new-window") return this.newWindow(group);
     if (verb === "rename-window") return this.renameWindow(group);
@@ -367,12 +413,55 @@ export class FakeTmux implements TmuxExec {
     return said("");
   }
 
+  /**
+   * `select-pane -t <pane> [-T <title>]` — tmux's one verb for two acts, and the flag decides which.
+   *
+   * With `-T` it writes the title slot (`renamePane`, including the `-T ""` that clears it). Without
+   * it, it FOCUSES the pane inside its window, which is the second half of `setFocus`.
+   */
   private selectPane(group: readonly string[]): TmuxRunResult {
     const paneId = flagValue(group, "-t") ?? "";
     const pane = this.panes.find((candidate) => candidate.id === paneId);
     if (pane === undefined) return missing("pane", paneId);
-    pane.title = flagValue(group, "-T") ?? "";
+    if (group.includes("-T")) {
+      pane.title = flagValue(group, "-T") ?? "";
+      return said("");
+    }
+    for (const candidate of this.panes) {
+      if (candidate.windowId === pane.windowId) candidate.active = candidate.id === pane.id;
+    }
     return said("");
+  }
+
+  /** `select-window -t <window>` — the window becomes its session's current one. */
+  private selectWindow(group: readonly string[]): TmuxRunResult {
+    const windowId = flagValue(group, "-t") ?? "";
+    const window = this.windows.find((candidate) => candidate.id === windowId);
+    if (window === undefined) return missing("window", windowId);
+    for (const candidate of this.windows) {
+      if (candidate.sessionId === window.sessionId) candidate.active = candidate.id === window.id;
+    }
+    return said("");
+  }
+
+  /** `list-clients -F <format>` — the fourth section of the listing call. */
+  private listClients(group: readonly string[]): TmuxRunResult {
+    const format = flagValue(group, "-F") ?? "";
+    return said(
+      this.clients
+        .map(
+          (client) =>
+            `${render(
+              format,
+              new Map([
+                ["client_session", client.session],
+                ["client_control_mode", client.control ? "1" : "0"],
+                ["client_activity", String(client.activity)],
+              ]),
+            )}\n`,
+        )
+        .join(""),
+    );
   }
 
   private killPane(group: readonly string[]): TmuxRunResult {
@@ -632,6 +721,7 @@ export function tmuxWorld(fake: FakeTmux): MuxConformanceWorld {
     restartMux: () => fake.restartMux(),
     renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
     setProgramTitle: (paneId, title) => fake.setProgramTitle(paneId, title),
+    focusOutOfBand: (paneId) => fake.focusOutOfBand(paneId),
     changePane: (paneId) => fake.changePane(paneId),
     endPane: (paneId) => fake.endPane(paneId),
     pokeTopology: () => fake.pokeTopology(),

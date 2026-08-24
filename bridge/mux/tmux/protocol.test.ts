@@ -141,8 +141,10 @@ describe("parseListing", () => {
 
   test("the listing asks for its fields rather than parsing a human table", () => {
     expect(LISTING_ARGS).toContain("-F");
-    // One invocation, three commands: tmux's own `;` separator, as its lexer reads it.
-    expect(LISTING_ARGS.filter((arg) => arg === ";")).toHaveLength(2);
+    // One invocation, four commands — sessions, windows, panes, clients — joined by tmux's own `;`
+    // separator, as its lexer reads it.
+    expect(LISTING_ARGS.filter((arg) => arg === ";")).toHaveLength(3);
+    expect(LISTING_ARGS).toContain("list-clients");
   });
 });
 

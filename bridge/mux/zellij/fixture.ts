@@ -160,6 +160,23 @@ export class FakeZellij implements ZellijExec {
     await Promise.resolve();
   }
 
+  /**
+   * The OPERATOR moves their own focus, in zellij itself.
+   *
+   * Two levels, because zellij reports two: the pane becomes its TAB's focused one (each tab keeps
+   * its own), and that tab becomes the active one — which is what an attached client's view is. The
+   * pair is exactly what the adapter ANDs together to answer `MuxPane.focused`.
+   */
+  async focusOutOfBand(paneId: string): Promise<void> {
+    await Promise.resolve();
+    const target = this.paneAt(paneId);
+    if (target === undefined) return;
+    for (const pane of this.panes) {
+      if (pane.tabNumber === target.tabNumber) pane.focused = pane.paneId === target.paneId;
+    }
+    for (const tab of this.tabs) tab.active = tab.tabNumber === target.tabNumber;
+  }
+
   /** The pane paints another line. What a keystroke landing would have done. */
   async changePane(paneId: string): Promise<void> {
     this.repaint(paneId);
@@ -482,6 +499,7 @@ export function zellijWorld(fake: FakeZellij): ZellijFixtureWorld {
       restartMux: () => fake.restartMux(),
       renameOutOfBand: (paneId, label) => fake.renameOutOfBand(paneId, label),
       setProgramTitle: (paneId, title) => fake.setProgramTitle(paneId, title),
+      focusOutOfBand: (paneId) => fake.focusOutOfBand(paneId),
       changePane: (paneId) => fake.changePane(paneId),
       endPane: (paneId) => fake.endPane(paneId),
       pokePane: (paneId) => fake.pokePane(paneId),

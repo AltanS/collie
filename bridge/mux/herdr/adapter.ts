@@ -84,6 +84,7 @@ const HERDR_CAPABILITIES = declareCapabilities({
     "sendKeys",
     "renamePane",
     "closePane",
+    "setFocus",
     "createTab",
     "renameTab",
     "closeTab",
@@ -96,6 +97,8 @@ const HERDR_CAPABILITIES = declareCapabilities({
     gridScrollback:
       "Herdr reports a pane's scrollback depth, so how far back a read can reach is known rather than guessed (MuxPane.readableLines) — its own `truncated` flag is always false and must not be gated on.",
   },
+  // Herdr's workspaces are Collie's spaces, and there are as many as the operator created.
+  spaces: "many",
 });
 
 /** `MuxTarget.options` key carrying which local dialer to use. Opaque to the registry, by rule. */
@@ -253,6 +256,11 @@ export class HerdrMux implements MuxAdapter {
 
   async closePane(paneId: string): Promise<MuxAck> {
     return this.attempt(() => this.client.closePane(paneId));
+  }
+
+  /** Show this pane on the operator's own screen. One RPC moves pane, tab and workspace (client.ts). */
+  async setFocus(paneId: string): Promise<MuxAck> {
+    return this.attempt(() => this.client.focusPane(paneId));
   }
 
   /**

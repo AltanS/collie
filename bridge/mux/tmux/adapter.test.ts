@@ -196,3 +196,54 @@ describe("a transport that dies during the call", () => {
     expect(typed.reason).toBe("unreachable");
   });
 });
+
+// WHICH SESSION THE OPERATOR IS LOOKING AT — a question only tmux poses this way, because only tmux
+// lets this adapter attach clients of its own. Conformance asks whether focus is reported and whether
+// `setFocus` moves it; it has no vocabulary for "and Collie's own control client is not a person",
+// which is the mistake the old activity-only heuristic was written around rather than fixed.
+describe("focus follows a real terminal, not this adapter's own watch", () => {
+  test("a session with a non-control client attached is the focused space", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    // The seeded world's SECOND session is the last-active one, so the activity fallback would pick
+    // it — which is what makes attaching a terminal to the first one a real assertion.
+    fake.attachClient("collie", { activity: 10 });
+
+    const spaces = (await adapter.snapshot()).spaces;
+    expect(spaces.find((space) => space.focused)?.label).toBe("collie");
+  });
+
+  test("a control client is nobody's screen — the fallback answers instead", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    fake.attachClient("collie", { control: true, activity: 99 });
+
+    const spaces = (await adapter.snapshot()).spaces;
+    expect(spaces.find((space) => space.focused)?.label).toBe("scratch");
+  });
+
+  test("`setFocus` moves the window and the pane in ONE invocation", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+
+    const moved = await adapter.setFocus("%4");
+    expect(moved.ok).toBe(true);
+    // `;`-joined, so the fake splits it into two commands and BOTH ran — a screen left half-moved,
+    // showing the right window and the wrong pane, is what the single invocation avoids.
+    expect(fake.invocations().some((invocation) => invocation.at(0) === "select-window")).toBe(true);
+    expect(fake.invocations().some((invocation) => invocation.at(0) === "select-pane")).toBe(true);
+    expect((await paneOf(adapter, "%4")).focused).toBe(true);
+  });
+
+  test("`setFocus` at a pane that has gone answers `gone` and spawns nothing", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    await fake.endPane("%3");
+
+    const moved = await adapter.setFocus("%3");
+    expect(moved.ok).toBe(false);
+    if (moved.ok) throw new Error("unreachable");
+    expect(moved.reason).toBe("gone");
+    expect(fake.invocations().some((invocation) => invocation.at(0) === "select-window")).toBe(false);
+  });
+});
