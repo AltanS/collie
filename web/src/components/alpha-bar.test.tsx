@@ -1,8 +1,19 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import type { ReactElement } from "react";
 
+import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { AlphaBar } from "./alpha-bar";
 import { AppHeader } from "./app-header";
+
+// AppHeader reads the root snapshot (for the freshness line) as well as navigating, so it needs a
+// DATA router. No loader: the header then sees `undefined` data, which is all these cases need.
+function renderInHeaderShell(ui: ReactElement) {
+  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: ui }], {
+    initialEntries: ["/"],
+  });
+  return render(<RouterProvider router={router} />);
+}
 
 describe("AlphaBar — the prerelease marker", () => {
   it("shouts the train and the exact version on a prerelease build", () => {
@@ -49,12 +60,10 @@ describe("AlphaBar inside the one AppHeader", () => {
   // prerelease — so the header under test carries the strip, and these assert it sits there without
   // disturbing the row.
   it("rides above the header row and leaves the row's own content intact", () => {
-    render(
-      <MemoryRouter>
-        <AppHeader bridge="connected" error={false} wordmark>
-          <span>webapp › main</span>
-        </AppHeader>
-      </MemoryRouter>,
+    renderInHeaderShell(
+      <AppHeader bridge="connected" error={false} wordmark>
+        <span>webapp › main</span>
+      </AppHeader>,
     );
     expect(screen.getByText(/TEST/)).toBeInTheDocument();
     expect(screen.getByText("Collie")).toBeInTheDocument();
@@ -62,10 +71,8 @@ describe("AlphaBar inside the one AppHeader", () => {
   });
 
   it("still marks the build while the find bar has taken over the row", () => {
-    render(
-      <MemoryRouter>
-        <AppHeader bridge="connected" error={false} override={<div>FINDBAR</div>} />
-      </MemoryRouter>,
+    renderInHeaderShell(
+      <AppHeader bridge="connected" error={false} override={<div>FINDBAR</div>} />,
     );
     expect(screen.getByText("FINDBAR")).toBeInTheDocument();
     expect(screen.getByText(/TEST/)).toBeInTheDocument();

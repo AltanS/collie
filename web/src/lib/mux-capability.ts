@@ -165,8 +165,8 @@ export function useMuxHasSpaces(): boolean {
  *
  * NOT a capability and not a branch on a name — a DECLARED fact, published beside them, which the
  * UI reacts to rather than measuring for itself (ADR 0031). The one thing it decides is whether the
- * home screen says how fresh the herd is at all: under a multiplexer that pushes there is nothing
- * to reassure anybody about, and a running "synced 2s ago" would be a clock with no reader.
+ * header says how fresh the herd is at all: under a multiplexer that pushes there is nothing to
+ * reassure anybody about, and a running "synced 2s ago" would be a clock with no reader.
  *
  * `push` is the fail-open answer for absent data, for the module header's reason one step on: a
  * bridge that has not answered has not said it is ever stale, and inventing a staleness line for it
