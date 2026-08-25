@@ -38,16 +38,18 @@ want a mic that doesn't depend on the keyboard, Collie has its own
   [Pair a device](#pair-a-device--the-write-credential)
 - [Requirements](#requirements)
 - [Install](#install)
-- [First run — what you'll see](#first-run--what-youll-see)
+- [First run — what you'll see](#first-run--what-youll-see) ·
+  [Using the app on tmux or zellij](#using-the-app-on-tmux-or-zellij)
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
   [Multi-session](#multi-session)
 - [Dark mode / light mode](#dark-mode--light-mode) · [Language](#language)
-- [Commands](#commands) · [Put `collie` on your PATH](#put-collie-on-your-path) ·
-  [Herdr actions](#herdr-actions)
+- [Commands](#commands) · [Pack commands](#pack-commands) ·
+  [Put `collie` on your PATH](#put-collie-on-your-path) · [Herdr actions](#herdr-actions)
 - [Manage & update](#manage--update) · [Migrating from 0.x](#migrating-from-0x)
 - [Deployment variants](#deployment-variants) · [B–E in `DEPLOYMENT.md`](./DEPLOYMENT.md)
 - [Windows (experimental)](#windows-experimental)
-- [Voice input](#voice-input-optional) · [Web Push](#web-push-optional)
+- [Voice input](#voice-input-optional) · [Agent beacons](#agent-beacons-optional-linux) ·
+  [Web Push](#web-push-optional)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
 - [Developing this plugin](#developing-this-plugin)
@@ -174,8 +176,14 @@ On the **host** (the tailnet node your agents run on). Need Herdr 0.7.0+ — che
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
 | [**Herdr**](https://herdr.dev) ≥ 0.7.0 | The herd Collie mirrors; its CLI registers the plugin. |
+| **A multiplexer** — Herdr (default), [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | What Collie mirrors, one per install, picked with `COLLIE_MUX`. What each one can answer: [`MUX_CONTRACT.md`](./MUX_CONTRACT.md). |
 | [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
+
+**No minimum tmux or zellij version is enforced** — the adapters were probed on tmux 3.6b and zellij
+0.44.2, and neither declares a floor. One tmux caveat is checked at runtime: on a server whose
+`window-size` is `manual`, tmux below 3.7 crashes when a window is opened, so Collie refuses to open
+one and tells you to run `tmux set -g window-size latest`.
 
 Soft dependencies: **Node.js** (the `collie` CLI uses it to extract your MagicDNS name from
 `tailscale status --json`; without it the banner falls back to the loopback URL) and a **service
@@ -303,6 +311,26 @@ reachable.) `[push] disabled` is expected too: notifications are opt-in, and
 On the phone: your agents are listed, and the footer build stamp (`v0.9.0 · debcff9 · …`) matches
 `bin/collie version`. If the page loads but stays empty, that's the same-origin gate — see
 [Troubleshooting](#troubleshooting).
+
+## Using the app on tmux or zellij
+
+Three things on the phone change with the multiplexer underneath, because the multiplexers themselves
+differ. The full matrix, cell by cell, is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
+
+- **Pull to refresh.** On the dashboard and on a space, drag down and let go: Collie asks the
+  multiplexer to look *now* rather than waiting for its next round. The pane view has no pull —
+  its scroller is the terminal mirror, where pulling reaches older output instead.
+- **"synced Ns ago"** sits under the dashboard header, and it is the age of what you are looking at.
+  It appears **only where the bridge promises a bounded freshness** — today that is **zellij**, which
+  has no way to announce a new tab and so is re-counted on a schedule (worst case 12 s). Under Herdr
+  and tmux there is no chip, because those announce their changes and there is nothing to wait for.
+- **"Show in terminal"** is a row in a pane's actions. Tap it and the terminal you are attached to on
+  the host jumps to that pane. It is **absent under zellij** — zellij's focus command accepts the
+  request and moves nothing, so Collie declines it rather than offering a button that lies.
+
+**The phone never moves your terminal on its own.** Only that one named tap does. Browsing the herd,
+opening a pane, backing out — none of it touches the cursor of whoever is typing on the host
+([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)).
 
 ## Configure
 
@@ -471,6 +499,37 @@ banner** — the human-readable output is the action's *captured stdout*, read w
 > script — a Herdr <0.8.0 install invokes the action set cached at install time, so that path is
 > frozen ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)). Every verb is
 > implemented once, in the binary (`cli/`).
+
+**Ink or plain text.** `start`, `status`, `doctor`, `pack add` and `pack status` draw a terminal view
+when stdout is a TTY; `--plain` (and any pipe, file, journal or CI runner) prints the plain lines
+instead — the same lines those verbs printed before the view existed.
+
+### Pack commands
+
+A **pack** is several machines' Collies linked together, one of them the **lead**, so the phone sees
+every herd through one URL. All of it is CLI-only — no Herdr actions — and the wire between the
+machines is [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md).
+
+| Command | What it does |
+| --- | --- |
+| `collie pack invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
+| `collie pack add <ssh-host>` | Install and enroll a peer over **your own SSH** (on the lead) |
+| `collie pack update <member>… \| --all` | Level peers to this lead's build over SSH ([above](#updating-the-rest-of-the-pack)) |
+| `collie pack status` | Mode, members, reachability, secret pickup — and why a link is refused |
+| `collie pack rotate` | Reissue the pack secret and hand it to every reachable peer |
+| `collie pack remove <member>` | Unpin and forget a member (on the lead) |
+| `collie pack set-address <member> <host:port>` | Correct where this lead dials a member |
+| `collie pack deputy <member>` | Name the ONE peer that may take over, and arm it; `--revoke` names nobody |
+| `collie pack approve-promote <member>` | Consent, on the lead, for one member to take over — 10 minutes, single-use; `--cancel` clears it |
+| `collie join <lead-address> <token>` | Join a pack (**on the joining machine**); a token is `-` for stdin or `@file` |
+| `collie leave` | Leave the pack — drops the pack secret and every pin on this machine |
+| `collie promote` | Make THIS machine the lead (on the peer taking over; `--force` if the lead is gone) |
+| `collie reconnect` | A member moved: re-point at its new address without re-enrolling anything |
+
+`deputy`, `approve-promote` and `promote` are the failover set. Setting them up while everything is
+healthy, and the runbook for the day the lead is gone, are
+[`DEPLOYMENT.md` → the standby door](./DEPLOYMENT.md#the-standby-door--a-packs-failover-path) and
+[the bad day](./DEPLOYMENT.md#the-bad-day--the-runbook).
 
 ### Put `collie` on your PATH
 
@@ -938,6 +997,33 @@ you already trust stays the only thing that touches it.
 The reasoning for all of the above — why this was declined twice, what changed, and why the seam
 looks like this — is [ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md).
 
+## Agent beacons (optional, Linux)
+
+A **beacon** is the agent telling Collie what only the agent knows: a hook in Claude Code's own
+settings runs `collie beacon emit`, which writes one small file naming the harness, the session and
+the pane it is running in. Herdr reports all of that itself — beacons are for **tmux and zellij**,
+where a pane is otherwise just a shell.
+
+```console
+$ bin/collie hooks install claude
+$ bin/collie hooks status
+would install: /home/you/collie/bin/collie beacon emit  (this checkout)
+/home/you/.claude/settings.json: installed (v1)
+```
+
+`status` reads and writes nothing; `hooks uninstall claude` removes only the entries Collie marked as
+its own. It edits your *global* Claude settings, never a project's. Linux only — the liveness check
+reads `/proc`, and on any other host a beacon is simply never written.
+
+What you get: the dashboard names the agent in each pane instead of `bash`, so **"needs you" can sort
+by who is actually blocked** — and a status is something notifications can fire on at all. Pane
+history works too, because the beacon carries the session key the journal needs.
+
+What you do **not** get: any control. A beacon sets what Collie *shows* and what it *looks up*, and
+nothing else — it can never cause a send, a key, a rename or a close, and it relaxes no gate. The
+threat model, and why some obviously useful fields do not exist, are
+[ADR 0024](./.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md).
+
 ## Web Push (optional)
 
 Off unless you opt in. Three steps, and nothing to install — the sender (`web-push`) is already an
@@ -1152,6 +1238,7 @@ Herdr's plugin system itself is upstream's to document:
 
 - Deployment variants B–E — [`DEPLOYMENT.md`](./DEPLOYMENT.md)
 - Design & rationale — [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+- What each multiplexer can answer — [`MUX_CONTRACT.md`](./MUX_CONTRACT.md)
 - The lead↔peer pack link — [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) (topology diagram: [§2](./PACK_PROTOCOL.md#2-shape-of-the-thing))
 - Recovering a pack whose lead died, from a phone — [`DEPLOYMENT.md` → the standby door](./DEPLOYMENT.md#the-standby-door--a-packs-failover-path)
 - Verified Herdr socket API — [`HERDR_API.md`](./HERDR_API.md)
