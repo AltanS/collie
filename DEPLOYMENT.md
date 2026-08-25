@@ -412,6 +412,16 @@ Three things to get right:
    reboots, and each developer's own `collie start`/`restart` then leaves it alone. If a developer
    sees `access denied` from `tailscale serve`, that is this, not a Collie problem.
 
+**`COLLIE_SERVE_PORT` is not `COLLIE_INSTANCE`, and they answer different questions.**
+`COLLIE_SERVE_PORT` gives *one* Collie a front-door port of its own — same install, same state dir,
+same service unit, only the tailnet listener moves off :443. `COLLIE_INSTANCE` makes a **second,
+fully separate Collie** on the host: its own config dir, its own service unit (`collie-<name>`), its
+own pidfile and log, and a state dir you give it — sharing nothing with the first. Each developer
+above wants the first, because
+they already have their own Unix user; one operator running v1 beside their live 0.x wants the second
+([README → Side by side](./README.md#side-by-side-if-the-herd-is-real)). A named instance still needs
+a `COLLIE_SERVE_PORT` of its own if it is to have a front door on the same machine name.
+
 Ports are free-form here: `tailscale serve --https=<port>` takes any port. Only `funnel` — which
 Collie never runs — is restricted to 443/8443/10000. An unusable `COLLIE_SERVE_PORT` makes
 `collie serve` refuse before it touches anything, rather than quietly falling back to :443.
