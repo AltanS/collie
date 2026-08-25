@@ -13,7 +13,6 @@ import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
-import { FollowTerminalControl } from "@/components/follow-terminal-control";
 import { LanguageControl } from "@/components/language-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
@@ -106,11 +105,6 @@ export function SettingsRoute() {
             haptics rather than with the herd settings below. Renders nothing where no provider is
             configured or the browser cannot record. */}
         <HandsFreeControl />
-
-        {/* Also "how this phone treats you", and the last of them: it decides whether the pane view
-            follows the operator's own screen. Shown on every multiplexer — following reads a focus
-            the snapshot already carries. */}
-        <FollowTerminalControl />
 
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">

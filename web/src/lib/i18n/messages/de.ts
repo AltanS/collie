@@ -26,9 +26,6 @@ export const de: Dictionary = {
   "settings.haptics.title": "Vibration",
   "settings.haptics.description": "Ein kurzer Impuls bei Tastendruck oder Schnellantwort.",
 
-  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
-  "settings.followTerminal.title": "Terminal folgen",
-  "settings.followTerminal.description": "Öffne das Pane, das dein Terminal gerade zeigt. Das Handy bewegt dein Terminal nie von selbst — nur wenn du „Im Terminal anzeigen“ antippst.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Freisprechen",

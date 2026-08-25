@@ -26,9 +26,6 @@ export const zh: Dictionary = {
   "settings.haptics.title": "触感反馈",
   "settings.haptics.description": "按键或快速回复时轻微震动。",
 
-  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
-  "settings.followTerminal.title": "跟随终端",
-  "settings.followTerminal.description": "打开终端当前显示的窗格。除非你点按“在终端中显示”，手机不会移动你的终端。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "免提语音",

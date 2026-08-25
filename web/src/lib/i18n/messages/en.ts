@@ -35,9 +35,6 @@ export const en = {
   "settings.haptics.title": "Haptics",
   "settings.haptics.description": "A short buzz when you press a key or a quick reply.",
 
-  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
-  "settings.followTerminal.title": "Follow terminal",
-  "settings.followTerminal.description": "Open the pane your terminal is showing. The phone never moves your terminal unless you tap “Show in terminal”.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Hands-free voice",

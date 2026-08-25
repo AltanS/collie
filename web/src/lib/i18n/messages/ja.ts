@@ -25,9 +25,6 @@ export const ja: Dictionary = {
   "settings.haptics.title": "バイブレーション",
   "settings.haptics.description": "キー操作やクイック返信時に短く振動します。",
 
-  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
-  "settings.followTerminal.title": "ターミナルに追従",
-  "settings.followTerminal.description": "ターミナルが表示しているペインを開きます。「ターミナルに表示」をタップしない限り、スマートフォンがターミナルを動かすことはありません。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "ハンズフリー音声",

@@ -25,9 +25,6 @@ export const es: Dictionary = {
   "settings.haptics.title": "Vibración",
   "settings.haptics.description": "Un zumbido corto al pulsar una tecla o una respuesta rápida.",
 
-  // --- settings.followTerminal (the phone follows the terminal's own focus) ---
-  "settings.followTerminal.title": "Seguir la terminal",
-  "settings.followTerminal.description": "Abre el panel que muestra tu terminal. El teléfono nunca mueve tu terminal salvo que toques «Mostrar en la terminal».",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Voz manos libres",

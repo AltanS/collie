@@ -191,8 +191,8 @@ lint guard or the pack-wire guard.
   lift it, and don't add the reply guard's `composerReady` pre-flight to it; the reasoning for both
   sits in `web/src/components/send-mode-menu.tsx`'s header.
 - **The phone moves the operator's terminal only on the "Show in terminal" tap** (`setFocus`, one
-  row in the pane sheet). `MuxPane.focused` is a fact the snapshot reports, "Follow terminal" reads it
-  the other way and is off by default, and neither direction may become a side effect of navigation
+  row in the pane sheet). `MuxPane.focused` is a fact the snapshot reports, and the terminal never
+  moves the phone in the other direction — that may not become a side effect of navigation
   ([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)).
 - **The operator's rows in `commands.toml` replace the shipped command catalog on the panes they
   address, never merge into it** ([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md));
