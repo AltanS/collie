@@ -1,21 +1,38 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { MemoryRouter, useLocation } from "react-router";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import type { ReactElement } from "react";
 
 import { server } from "@/test/setup";
 import { __resetOperatorCommands } from "@/lib/operator-config";
+import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { AppHeader, SettingsGear } from "./app-header";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, isLostLatched } from "@/lib/connection-health";
 import { PackProvider } from "./pack-provider";
-import type { ServerSummary } from "@/lib/types";
+import type { MuxTopologyLatency, ServerSummary } from "@/lib/types";
 
 // AppHeader mounts CollieHome (a button) and, via SettingsGear, useNavigate — so it needs a router.
+// It ALSO reads the root snapshot's `ts` for the freshness line, which is a DATA router hook, so the
+// shell is a `createMemoryRouter` with the real root route id. No loader by default: a route without
+// one initialises synchronously (so every case below keeps its synchronous assertions) and hands the
+// header `undefined` data, which is exactly the state a header mounts in before the first snapshot.
 function renderHeader(ui: ReactElement) {
-  return render(ui, { wrapper: MemoryRouter });
+  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: ui }], {
+    initialEntries: ["/"],
+  });
+  return render(<RouterProvider router={router} />);
+}
+
+/** The same shell, with a root snapshot stamped `ts` — the freshness line's only source of a number. */
+function renderHeaderWithSnapshot(ui: ReactElement, ts: number) {
+  const router = createMemoryRouter(
+    [{ id: ROOT_ROUTE_ID, path: "/", loader: () => ({ ts }), element: ui }],
+    { initialEntries: ["/"] },
+  );
+  return render(<RouterProvider router={router} />);
 }
 
 function LocationProbe() {
@@ -63,16 +80,25 @@ describe("AppHeader — the one shared header shell", () => {
   });
 
   it("navigates to a session-scoped /settings via the shared gear", async () => {
-    render(
-      <MemoryRouter initialEntries={["/?s=collie-demo"]}>
-        <AppHeader
-          bridge="connected"
-          error={false}
-          rightTrail={<SettingsGear scope={{ session: "collie-demo" }} />}
-        />
-        <LocationProbe />
-      </MemoryRouter>,
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <AppHeader
+              bridge="connected"
+              error={false}
+              rightTrail={<SettingsGear scope={{ session: "collie-demo" }} />}
+            />
+          ),
+        },
+        // The gear's destination, so the navigation resolves to a route that reports where it landed.
+        { path: "/settings", element: <LocationProbe /> },
+      ],
+      { initialEntries: ["/?s=collie-demo"] },
     );
+    render(<RouterProvider router={router} />);
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByTestId("loc").textContent).toBe("/settings?s=collie-demo");
   });
@@ -231,7 +257,7 @@ describe("AppHeader — the multiplexer line", () => {
     expect(container.querySelector('img[src*="logo"]')).toBeNull();
   });
 
-  it("keeps the line out of the pane header, where the breadcrumb owns the width", async () => {
+  it("keeps the mux line out of the pane header, where the breadcrumb owns the width", async () => {
     server.use(
       http.get("/api/config", () =>
         HttpResponse.json({
@@ -248,5 +274,96 @@ describe("AppHeader — the multiplexer line", () => {
     );
     await waitFor(() => expect(screen.getByText("webapp › main")).toBeInTheDocument());
     expect(screen.queryByText("on reference")).toBeNull();
+  });
+});
+
+// THE CHROME IS ONE HEIGHT. The freshness line used to be a row the DASHBOARD rendered under the
+// header while a space rendered its own, different-height row there — so every home ⇄ space
+// navigation jumped the page. It lives in the header now, and these cases pin the two properties
+// that make that stick: it is INSIDE the header element (no route can put it anywhere else), and the
+// header's height-bearing structure is byte-identical whether it prints or not.
+describe("AppHeader — the freshness line is chrome, and never changes the chrome's height", () => {
+  beforeEach(() => {
+    __resetConnectionHealth();
+    __resetOperatorCommands();
+  });
+  afterEach(() => __resetOperatorCommands());
+
+  function declaresLatency(latency: MuxTopologyLatency): void {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: {
+            name: "reference",
+            capabilities: {},
+            unsupportedKeys: [],
+            notes: {},
+            topologyLatency: latency,
+          },
+        }),
+      ),
+    );
+  }
+
+  /** The header's height-bearing structure: the bar's own classes and its row's, plus the row count. */
+  function headerGeometry(container: HTMLElement): string {
+    const header = container.querySelector("header")!;
+    const rows = [...header.children].map((el) => el.className);
+    return `${header.className}||${rows.join("|")}`;
+  }
+
+  it("prints the age INSIDE the header under a bounded declaration", async () => {
+    declaresLatency({ kind: "bounded", ms: 12_000 });
+    const { container } = renderHeaderWithSnapshot(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+      Date.now() - 4000,
+    );
+    const age = await screen.findByText(/synced 4s ago/i);
+    // Not "somewhere on the page" — in the bar itself, which is the whole point of the move.
+    expect(age.closest("header")).toBe(container.querySelector("header"));
+  });
+
+  it("keeps the same header geometry whether the line prints or renders nothing", async () => {
+    declaresLatency({ kind: "bounded", ms: 12_000 });
+    const bounded = renderHeaderWithSnapshot(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+      Date.now() - 4000,
+    );
+    await screen.findByText(/synced/i);
+    const withStamp = headerGeometry(bounded.container);
+    bounded.unmount();
+
+    __resetOperatorCommands();
+    declaresLatency({ kind: "push" });
+    const pushing = renderHeaderWithSnapshot(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+      Date.now() - 4000,
+    );
+    await screen.findByText("Collie");
+    await waitFor(() => expect(screen.queryByText(/synced/i)).toBeNull());
+    // Same bar, same single row, same classes — the line rides inside that row or not at all, so
+    // nothing about the geometry can differ between a bounded multiplexer and a pushing one.
+    expect(headerGeometry(pushing.container)).toBe(withStamp);
+  });
+
+  it("carries the line on every route, because the header does — a pane header shows it too", async () => {
+    declaresLatency({ kind: "bounded", ms: 12_000 });
+    const { container } = renderHeaderWithSnapshot(
+      <AppHeader bridge="connected" error={false} onHome={() => {}}>
+        <span>webapp › main</span>
+      </AppHeader>,
+      Date.now() - 9000,
+    );
+    const age = await screen.findByText(/synced 9s ago/i);
+    expect(age.closest("header")).toBe(container.querySelector("header"));
+  });
+
+  it("says nothing at all with no snapshot yet — the header is the one it has always been", async () => {
+    declaresLatency({ kind: "bounded", ms: 12_000 });
+    renderHeader(<AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />);
+    await screen.findByText("Collie");
+    await waitFor(() => expect(screen.queryByText(/synced/i)).toBeNull());
   });
 });

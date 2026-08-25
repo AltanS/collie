@@ -20,6 +20,12 @@ import { useTopologyLatency } from "@/lib/mux-capability";
 // The NUMBER is the snapshot's own `ts`, so it measures what the operator actually has: the age of
 // the data on screen. Not the age of the last census, and not a timer this component started —
 // either of those would keep counting reassuringly while the poll behind them was failing.
+//
+// IT IS CHROME, SO IT LIVES IN THE CHROME. AppHeader mounts it — no route does. It was once a row a
+// route rendered under the header, which made the bar taller on the dashboard than in a space and
+// jumped the layout on every navigation between them. Rendered inside the header row it cannot
+// change that row's height in any state: the row is sized by the 40px Collie mark every header
+// carries, and this is one 16px line beside it.
 
 /** How often the line re-reads the clock. One second: it counts seconds, so it must move in them. */
 const TICK_MS = 1000;

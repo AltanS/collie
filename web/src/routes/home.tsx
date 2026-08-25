@@ -6,7 +6,6 @@ import { SessionSwitcher } from "@/components/session-switcher";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
-import { SyncStamp } from "@/components/sync-stamp";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
@@ -73,10 +72,6 @@ export function HomeRoute() {
         }
         rightTrail={<SettingsGear scope={data.scope} />}
       />
-
-      {/* How fresh the herd on screen is — rendered only under a multiplexer whose freshness is
-          BOUNDED, and nothing at all under one that pushes. See SyncStamp. */}
-      <SyncStamp ts={data.ts} className="px-4 pt-1" />
 
       {/* Content region below the header: a viewport-clipped internal scroller, with the pull
           gesture on it — one thumb asking the bridge to look at its multiplexer now. */}
