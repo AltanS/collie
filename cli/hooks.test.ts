@@ -105,7 +105,7 @@ describe("the merge", () => {
     expect(hooks.Notification[0].matcher).toBe("idle_prompt");
     // A registration with no matcher writes no `matcher` key at all — not `null`, not `""`.
     expect(Object.keys(hooks.UserPromptSubmit[0])).toEqual(["hooks"]);
-    expect(hooks.Stop[0].hooks).toEqual([{ type: "command", command: COMMAND }]);
+    expect(hooks.Stop[0].hooks).toEqual([{ type: "command", command: COMMAND, timeout: 10 }]);
   });
 
   test("never clobbers an unmarked entry, and never reorders one", () => {
@@ -212,6 +212,33 @@ describe("install", () => {
     }
     // Reconciled, not re-installed: the marker version never moved, and a second run changes nothing.
     expect(d.files.entries.get(SETTINGS)!.text).toContain(HOOK_MARKER);
+    d.files.ops.length = 0;
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(d.files.ops).toEqual([]);
+    expect(d.io.stdout.join("\n")).toContain("no bytes changed");
+  });
+
+  test("heals an installed v1 entry that predates `timeout` — the command did not change, only the sibling field", () => {
+    // Every event carries a v1 entry with no `timeout`, exactly what an older build wrote, plus one
+    // operator row that must survive untouched.
+    const previous = serializeSettings({
+      hooks: Object.fromEntries(
+        BEACON_HOOKS.map((r) => [r.event, [THEIRS, { matcher: r.matcher, hooks: [{ type: "command", command: COMMAND }] }]]),
+      ),
+    });
+    const d = deps({ files: { [SETTINGS]: previous } });
+
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    const hooks = JSON.parse(d.files.entries.get(SETTINGS)!.text).hooks;
+    for (const r of BEACON_HOOKS) {
+      expect(hooks[r.event][0]).toEqual(THEIRS);
+      expect(hooks[r.event][1].hooks[0]).toEqual({ type: "command", command: COMMAND, timeout: 10 });
+      expect(hooks[r.event]).toHaveLength(2);
+    }
+    // Still v1 — the command string is unchanged, so no marker bump was needed to heal this.
+    expect(d.files.entries.get(SETTINGS)!.text).toContain(HOOK_MARKER);
+
+    // A second run changes no bytes.
     d.files.ops.length = 0;
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
     expect(d.files.ops).toEqual([]);

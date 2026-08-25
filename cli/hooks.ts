@@ -38,7 +38,10 @@ import { collieBinary } from "./unit.ts";
 // when a registration joins {@link BEACON_HOOKS} (as `SessionStart` did), the next `hooks install`
 // adds that one event to a file that already carries the others, leaves every entry beside it where
 // it was, and is a no-op on the run after. That is why growing the set needs no marker bump: the
-// version says what the COMMAND looks like, and the command did not change.
+// version says what the COMMAND looks like, and the command did not change. The same rule healed an
+// entry installed before `timeout: 10` existed: `ourGroup` always rebuilds the whole entry object, so
+// an old one missing the field gets it back the next time bytes are compared — no marker bump, because
+// the command string is still exactly what it was.
 
 /** The harnesses that have an emitter. One today; the arg is required so the second needs no new verb. */
 export const HOOK_HARNESSES = ["claude"] as const;
@@ -205,11 +208,22 @@ export type HookDocument =
   /** The file is not one we may edit, and `reason` is the whole sentence the operator reads. */
   | { readonly kind: "refuse"; readonly reason: string };
 
-/** One registration group, as we write it. `matcher` is dropped by `JSON.stringify` when absent. */
+/**
+ * One registration group, as we write it. `matcher` is dropped by `JSON.stringify` when absent.
+ *
+ * `timeout: 10` (seconds) rides beside `command` on every entry, same as the Herdr row above it.
+ * Without it Claude Code's own default — 60 s — applies, and a hung `beacon emit` would stall the
+ * agent for a full minute; the emitter is one small file write and must finish in well under 10 s
+ * (`cli/beacon.ts`'s own budget note: `SessionEnd` gets 1.5 s from Claude Code itself). This is a
+ * sibling field on the same command, not a change to the command string, so it needs no marker bump
+ * — `installDocument` rebuilds the group from scratch on every run, so an entry installed before this
+ * field existed gains it the next time `hooks install` runs, purely from the byte comparison already
+ * in place.
+ */
 function ourGroup(registration: HookRegistration, command: string): JsonObject {
   return {
     matcher: registration.matcher,
-    hooks: [{ type: "command", command }],
+    hooks: [{ type: "command", command, timeout: 10 }],
   };
 }
 
