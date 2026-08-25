@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.23] - 2026-08-25
+
+### Fixed
+
+- **No second scrollbar beside the dashboard list** — the list and settings scrollers are now the containing block for their `sr-only` labels, which used to escape the clip and stretch the whole page (09974b8)
+
 ## [1.0.0-beta.22] - 2026-08-25
 
 ### Fixed
