@@ -34,6 +34,11 @@ import { collieBinary } from "./unit.ts";
 //     file before the first modification, so a bad merge is one `mv` from undone.
 //
 // Installing twice changes no bytes: the second run serialises the same document and writes nothing.
+// "Already installed" is decided by COMPARING THE BYTES, never by finding a marker and stopping — so
+// when a registration joins {@link BEACON_HOOKS} (as `SessionStart` did), the next `hooks install`
+// adds that one event to a file that already carries the others, leaves every entry beside it where
+// it was, and is a no-op on the run after. That is why growing the set needs no marker bump: the
+// version says what the COMMAND looks like, and the command did not change.
 
 /** The harnesses that have an emitter. One today; the arg is required so the second needs no new verb. */
 export const HOOK_HARNESSES = ["claude"] as const;
@@ -224,7 +229,7 @@ function mergeGroups(groups: readonly JsonValue[], ours: JsonObject): JsonValue[
   return [...kept.slice(0, at), ours, ...kept.slice(at)];
 }
 
-/** The settings document with our four registrations present, or a refusal. */
+/** The settings document with every {@link BEACON_HOOKS} registration present, or a refusal. */
 export function installDocument(current: JsonValue | null, command: string): HookDocument {
   const root = current === null ? {} : asObject(current);
   if (root === null) return { kind: "refuse", reason: "its top level is not a JSON object" };
@@ -342,7 +347,7 @@ function readHarness(deps: HooksDeps, args: readonly string[], verb: string): st
   return null;
 }
 
-/** `collie hooks install claude` — merge the four registrations into every target. */
+/** `collie hooks install claude` — merge every registration into every target, adding what is missing. */
 export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): number {
   if (readHarness(deps, args, "install") === null) return EXIT.USAGE;
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
@@ -454,7 +459,11 @@ function describeTarget(deps: HooksDeps, target: HookTarget): string {
   }
   if (present === 0) return "not installed";
   const at = `v${[...versions].join("/")}`;
-  if (present < BEACON_HOOKS.length) return `partly installed (${present}/${BEACON_HOOKS.length}, ${at})`;
+  // A file installed by an older build carries the events THAT build knew, which is what this reads
+  // like once the set grows. So the line names the remedy: install adds the missing ones in place.
+  if (present < BEACON_HOOKS.length) {
+    return `partly installed (${at}, ${present}/${BEACON_HOOKS.length} events) — re-run install to add the rest`;
+  }
   return versions.has(String(HOOK_MARKER_VERSION)) && versions.size === 1
     ? `installed (${at})`
     : `installed at ${at} — re-run install to heal it to v${HOOK_MARKER_VERSION}`;

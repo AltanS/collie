@@ -15,7 +15,7 @@ import type { Files } from "./sys.ts";
 
 // `collie beacon emit` — the agent's own hook, telling Collie what only the agent knows.
 //
-// Claude Code runs this on four of its own events (`cli/hooks.ts` registers them) with the event
+// Claude Code runs this on five of its own events (`cli/hooks.ts` registers them) with the event
 // payload as JSON on stdin. It writes ONE file: the beacon for the pane it is running in
 // (`bridge/beacon/`). Nothing it writes is ever obeyed — a beacon is a hint, never a control channel
 // (.adr/0024).
@@ -38,6 +38,9 @@ import type { Files } from "./sys.ts";
 //                     hook_event_name
 //   SessionEnd        session_id, transcript_path, cwd, prompt_id, hook_event_name,
 //                     reason (observed: "other")
+//
+// `SessionStart` carries the same common fields — `session_id` among them (code.claude.com/docs/en/hooks.md,
+// read 2026-08-25) — plus `source`, which says how the session started.
 //
 // `Stop` (adds `stop_hook_active`, `last_assistant_message`) and `Notification` (adds
 // `notification_type`, `message`) were not reached by the headless probe — a `-p` run completes
@@ -125,11 +128,17 @@ export function readEnvMarkers(env: Environment): BeaconMarker[] {
  *   `UserPromptSubmit` → working · `Stop` → idle · `SessionEnd` → idle ·
  *   `Notification`/`idle_prompt` → waiting
  *
- * `SessionStart` is deliberately not registered — it is the row someone will come here to add. It fires
- * before the operator has done anything, so it would mint a beacon for a session with no turn in it,
- * and a pane holding an agent that has never been asked anything would sort as an idle agent rather
- * than as the empty shell it is. The first `UserPromptSubmit` is the first moment there is anything
- * to say.
+ * `SessionStart` → idle is the ONE row that is ours and not paseo's, and it was earned live: four
+ * Claudes sat in four zellij panes with an empty beacons directory, because none of them had been
+ * asked anything yet, so Collie reported every one of them as a shell — "No agents running" over a
+ * screen full of agents. A launched agent IS an agent; the first prompt is not what makes it one.
+ * The row says `idle` because that is what a session with no turn in it is doing, and `idle` is the
+ * word `Stop` already uses for it.
+ *
+ * NOTHING BRANCHES ON `source`. `SessionStart` fires on startup, on `--resume`, on `/clear`, on a
+ * compaction and on a fork; all five mean "an agent sits here, idle", and none of them changes the
+ * pane key — the beacon is keyed by the pane, so a later event simply overwrites the same file. It is
+ * registered with no matcher for that reason: every source is the same sentence.
  *
  * THE MATCHER IS THE WAITING SIGNAL, NEVER A MESSAGE STRING. `Notification` fires for several
  * notification types; the registration in `cli/hooks.ts` carries `matcher: "idle_prompt"`, so the
@@ -145,6 +154,9 @@ export interface HookRegistration {
 }
 
 export const BEACON_HOOKS: readonly HookRegistration[] = [
+  // First, because it is the first moment there is an agent to name — and `session_id` is in the
+  // payload from that moment, so the journal's session ref is set before the first turn exists.
+  { event: "SessionStart", status: "idle" },
   { event: "UserPromptSubmit", status: "working" },
   { event: "Stop", status: "idle" },
   // `SessionEnd` carries a `reason`, and `reason: "clear"` IS NOT THE AGENT LEAVING — Codeman's
