@@ -88,8 +88,9 @@ describe("the environment gate", () => {
 });
 
 describe("the status map", () => {
-  test("is exactly paseo's four rows, and `SessionStart` is not one of them", () => {
+  test("is paseo's four rows, plus `SessionStart` → idle so a launched agent is not a shell", () => {
     expect(BEACON_HOOKS.map((r) => [r.event, r.matcher, r.status])).toEqual([
+      ["SessionStart", undefined, "idle"],
       ["UserPromptSubmit", undefined, "working"],
       ["Stop", undefined, "idle"],
       ["SessionEnd", undefined, "idle"],
@@ -103,6 +104,20 @@ describe("the status map", () => {
       expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
       const [text] = [...beacons(d.files).values()];
       expect(parseBeacon(text ?? "")?.status).toBe(registration.status);
+    }
+  });
+
+  test("`SessionStart` writes an idle beacon before the first prompt, whatever its `source`", async () => {
+    for (const source of ["startup", "resume", "clear", "compact", "fork"]) {
+      const d = deps({ stdin: payload({ hook_event_name: "SessionStart", source }) });
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      const written = beacons(d.files);
+      expect(written.size).toBe(1);
+      const [text] = [...written.values()];
+      const record = parseBeacon(text ?? "");
+      expect(record?.status).toBe("idle");
+      // The session ref is set from the first moment — that is what the journal looks history up by.
+      expect(record?.session).toEqual({ kind: "id", value: SESSION });
     }
   });
 
@@ -197,7 +212,7 @@ describe("it never fails, and it never speaks", () => {
   });
 
   test("an unregistered event writes nothing", async () => {
-    for (const event of ["SessionStart", "PreToolUse", "StopFailure", ""]) {
+    for (const event of ["SessionResume", "PreToolUse", "StopFailure", ""]) {
       expect((await silent({ stdin: payload({ hook_event_name: event }) })).size).toBe(0);
     }
   });

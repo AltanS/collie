@@ -1015,6 +1015,9 @@ would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 its own. It edits your *global* Claude settings, never a project's. Linux only — the liveness check
 reads `/proc`, and on any other host a beacon is simply never written.
 
+A Claude is visible from the moment it starts — the hook fires on `SessionStart`, so a pane you have
+opened but not yet typed into shows an idle agent rather than a shell.
+
 What you get: the dashboard names the agent in each pane instead of `bash`, so **"needs you" can sort
 by who is actually blocked** — and a status is something notifications can fire on at all. Pane
 history works too, because the beacon carries the session key the journal needs.
