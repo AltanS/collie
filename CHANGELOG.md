@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.24] - 2026-08-25
+
+### Removed
+
+- **"Follow terminal" setting removed** — unnecessary; the phone never follows the terminal, only "Show in terminal" moves it (eef261b)
+
 ## [1.0.0-beta.23] - 2026-08-25
 
 ### Fixed
