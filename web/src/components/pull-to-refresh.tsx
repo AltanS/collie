@@ -6,6 +6,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { refreshNow } from "@/lib/api";
 import { t } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import type { Scope } from "@/lib/scope";
 
 import type { ReactNode } from "react";
@@ -43,7 +44,12 @@ export function PullToRefresh({
   const { distance, phase, handlers } = usePullToRefresh(refresh);
 
   return (
-    <div className={className} {...handlers}>
+    // `relative` is load-bearing, not decoration: it makes this scroller the containing block for
+    // its absolutely-positioned descendants. Tailwind's `sr-only` is `position: absolute`, so every
+    // status label in the list would otherwise resolve against the initial containing block, escape
+    // this scroller's clip, and stretch the DOCUMENT's scrollable area to the last row — a second,
+    // whole-page scrollbar beside this one. Same reason the row status dots sit in a `relative` box.
+    <div className={cn("relative", className)} {...handlers}>
       {/* The indicator is an IN-FLOW row that grows from zero, not an overlay: it pushes the list
           down exactly as the finger pulls, so the gesture moves the thing it is about. At rest it
           has no height and no content, so a screen nobody pulled is byte-for-byte what it was. */}

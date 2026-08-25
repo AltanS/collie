@@ -86,7 +86,10 @@ export function SettingsRoute() {
         <h1 className="text-lg font-semibold tracking-tight">{t("settings.title")}</h1>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
+      {/* `relative` for the same reason PullToRefresh carries it: an `sr-only` (position: absolute)
+          deep in this page would otherwise escape the scroller and grow the document's own
+          scrollbar. */}
+      <main className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         {/* First: it's the setting people come here to change, and below the notification stack it
             sat off-screen on a phone, a scroll into a 1240px page. */}
         <ThemeControl />
