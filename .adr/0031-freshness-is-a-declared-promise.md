@@ -122,3 +122,8 @@ operator is typing.
 - Nothing about the pack wire changes. `/api/refresh` is not on `apiPathFor`'s allowlist, so a lead
   reaches a peer's freshness through the pane and snapshot routes it already calls
   ([ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md)).
+
+## Amendment
+
+2026-08-25: the Follow terminal toggle was removed as unnecessary; the rule that the phone never
+moves the terminal except via "Show in terminal" stands.

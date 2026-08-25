@@ -27,7 +27,6 @@ import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostLabel } from "@/components/pack-provider";
 import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
-import { holdFollowTerminal } from "@/lib/follow-terminal";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
@@ -369,16 +368,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     },
     focusInput: focusInputEnd,
   });
-  // A composer with words in it, or with "Type into terminal" armed, HOLDS "Follow terminal" off
-  // (lib/follow-terminal.ts). Both are the operator mid-sentence: the first would lose a draft to a
-  // pane switch, and the second is armed at THIS pane — a jump would leave the mode disarming behind
-  // them while they type. Held by name and released by the cleanup, so an unmounting composer cannot
-  // strand the hold on a pane it no longer shows.
-  const drafting = input.trim().length > 0 || direct.active;
-  useEffect(() => {
-    holdFollowTerminal("composer", drafting);
-    return () => holdFollowTerminal("composer", false);
-  }, [drafting]);
 
   // ── VOICE (ADR 0029) ──────────────────────────────────────────────────────────────────────────
   //
