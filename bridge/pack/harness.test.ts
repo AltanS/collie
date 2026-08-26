@@ -52,6 +52,7 @@ import {
   type TrustStoreData,
 } from "./trust-store.ts";
 import { collieVersionBare } from "../version.ts";
+import type { PackStatusResponse } from "../types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE TWO-INSTANCE INTEGRATION HARNESS (spec M4/08).
@@ -424,6 +425,14 @@ describe("solo zero-tax, measured rather than inferred", () => {
     expect(soloCadence).toBeGreaterThan(0);
   }, 60_000);
 
+  test("`/api/pack` is registered on a solo instance and answers 404 — there is no pack", async () => {
+    // The Pack overview is a FRONT-DOOR route, so unlike `/pack/v1/*` it exists here: what a solo
+    // instance owes is a refusal, not an absence, and it is the same refusal a peer gives (ADR 0013).
+    const res = await fetch(`${lead.origin()}/api/pack`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain('"code":"pack.not_lead"');
+  });
+
   test("a solo snapshot carries no pack fields", async () => {
     const body = await (await fetch(`${lead.origin()}/api/snapshot`)).text();
     expect(body).not.toMatch(/"servers"|"host":|"pack"/);
@@ -559,6 +568,50 @@ describe("the lead speaks for the pack", () => {
     // Every session is host-qualified once a pack exists (§9.2) — including the lead's own.
     expect((snap.sessions ?? []).every((s) => s.host !== undefined && s.host !== "")).toBe(true);
   }, 60_000);
+
+  test("`GET /api/pack` reports the pack from memory, and dials nobody to do it", async () => {
+    const leadId = lead.store()!.self.memberId;
+    const peerId = peer.store()!.self.memberId;
+    await waitFor(
+      async () => (await snapshotOf(lead.origin())).servers?.length === 2,
+      10_000,
+      "the lead never merged the peer in",
+    );
+    const res = await fetch(`${lead.origin()}/api/pack`);
+    expect(res.status).toBe(200);
+    // SAFETY: the handler emits `PackStatusResponse` (server.ts, `/api/pack`) — the same discipline
+    // `snapshotOf` above applies to the snapshot body.
+    const body = (await res.json()) as PackStatusResponse;
+
+    expect(body.pack.id).toBe(lead.store()!.pack!.packId);
+    expect(body.pack.name).toBe(lead.store()!.pack!.name);
+    // The lead FIRST, then the peer — the order `servers[]` has, from the same `self` value (§9.2).
+    expect(body.members.map((m) => m.id)).toEqual([leadId, peerId]);
+    expect(body.members[0]!.isLead).toBe(true);
+    expect(body.members[0]!.version).toBe(collieVersionBare(join(import.meta.dir, "..", "..")));
+    // A lead is not in its own roster, so it has neither of the two roster-only fields.
+    expect(Object.keys(body.members[0]!)).not.toContain("address");
+    expect(Object.keys(body.members[0]!)).not.toContain("enrolledAt");
+    // The peer's row is the ROSTER's address, verbatim — never one re-derived from a live socket.
+    expect(body.members[1]).toMatchObject({
+      isLead: false,
+      address: lead.store()!.peers[0]!.address,
+      secretBehind: false,
+    });
+
+    // Nothing secret rides this wire, asserted over the bytes rather than field by field.
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain(lead.store()!.pack!.secret);
+    expect(raw).not.toContain("BEGIN CERTIFICATE");
+    expect(raw).not.toContain(lead.store()!.self.fingerprint);
+  }, 60_000);
+
+  test("the read gate covers `/api/pack`, exactly as it covers `/api/config`", async () => {
+    // A cross-origin read is refused before the body is composed — the same `guard(…, "read")` every
+    // other non-terminal endpoint takes, so a rebound DNS name cannot read the roster either.
+    const res = await fetch(`${lead.origin()}/api/pack`, { headers: { origin: "http://evil.invalid" } });
+    expect(res.status).toBe(403);
+  });
 
   test("a proxied pane read is byte-identical and keeps its ETag and its 304", async () => {
     const peerId = peer.store()!.self.memberId;

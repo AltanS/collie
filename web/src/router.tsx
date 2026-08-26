@@ -6,9 +6,11 @@ import { SpaceRoute } from "@/routes/space";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { SettingsRoute } from "@/routes/settings";
+import { PackRoute } from "@/routes/pack";
 import {
   devicesLoader,
   historyLoader,
+  packLoader,
   rootLoader,
   paneLoader,
   PANE_ROUTE_ID,
@@ -46,6 +48,10 @@ export const router = createBrowserRouter([
       // Settings carries the paired-device registry, so it gets its own loader — a revoke or a pair
       // is then the app's standard mutation shape (api call → revalidate), with no second data path.
       { path: "settings", loader: devicesLoader, element: <SettingsRoute /> },
+      // The pack census, likewise on its own loader — and deliberately ON the poll loop: the payload
+      // is one small object per machine, and the whole point of the page is that a member going
+      // quiet shows up here without the operator reloading. (History opts out; this one wants in.)
+      { path: "pack", loader: packLoader, element: <PackRoute /> },
       // Named, so RootLayout can ask for THIS route's data by id (react-router hands back undefined
       // whenever it isn't the active route) — see the "last seen" note there.
       { id: PANE_ROUTE_ID, path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },

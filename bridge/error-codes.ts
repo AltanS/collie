@@ -116,6 +116,14 @@ export const ERROR_CODES = {
   // ── Addressing: the `(host, session)` a request named does not exist ───────────────
   "session.unknown": "unknown session: {session}",
   "host.unknown": "unknown host: {host}",
+
+  // ── The pack overview: GET /api/pack ───────────────────────────────────────────────
+  /**
+   * This collie is not a lead with a pack, so it has no pack to report. Both refusals are this one
+   * code on purpose: a solo instance and a peer differ in what they ARE, not in what the phone can
+   * do about it — a peer is not a front door (ADR 0013), so neither has an overview to show.
+   */
+  "pack.not_lead": "this collie is not the lead of a pack",
 } as const;
 
 /** Every code the bridge can send. The client mirror restates this union verbatim. */

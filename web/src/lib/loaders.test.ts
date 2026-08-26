@@ -2,7 +2,12 @@ import { http, HttpResponse } from "msw";
 
 import { paneScopeKey, scopeKey } from "@/lib/scope";
 import { server } from "@/test/setup";
-import { fixtureAgents, fixtureSnapshot, paneTextWithDraft } from "@/test/handlers";
+import {
+  fixtureAgents,
+  fixturePackStatus,
+  fixtureSnapshot,
+  paneTextWithDraft,
+} from "@/test/handlers";
 
 // loaders.ts keeps a module-level "last good" cache, so each test re-imports the module fresh
 // (via vi.resetModules) to start from an empty cache and stay independent of run order.
@@ -844,5 +849,27 @@ describe("cold boot with no network", () => {
       await rootLoader();
       expect(sessionStorage.getItem(SNAPSHOT_KEY)).not.toBeNull();
     });
+  });
+});
+
+describe("packLoader", () => {
+  it("returns the census a lead serves", async () => {
+    server.use(http.get("/api/pack", () => HttpResponse.json(fixturePackStatus)));
+    const { packLoader } = await import("./loaders");
+    const data = await packLoader();
+    expect(data.error).toBe(false);
+    expect(data.status?.members.map((m) => m.id)).toEqual(["bluefin", "workshop", "attic"]);
+  });
+
+  // The default handler already refuses with 404, which is what a solo collie and a peer both do.
+  it("reads a 404 as 'there is no pack here', not as a failure", async () => {
+    const { packLoader } = await import("./loaders");
+    expect(await packLoader()).toEqual({ status: null, error: false });
+  });
+
+  it("keeps a real refusal apart from that answer", async () => {
+    server.use(http.get("/api/pack", () => new HttpResponse(null, { status: 500 })));
+    const { packLoader } = await import("./loaders");
+    expect(await packLoader()).toEqual({ status: null, error: true });
   });
 });

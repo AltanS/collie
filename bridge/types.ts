@@ -271,6 +271,76 @@ export interface ServerSummary {
 }
 
 /**
+ * GET /api/pack — what the RUNNING lead already knows about its own pack, for the phone's Pack
+ * overview page. The read-only browser spelling of `collie pack status` (cli/pack.ts).
+ *
+ * **It is a report, never a probe.** Every field below is answered from state this process already
+ * holds: the trust store it read at startup (`TrustStore.current()`, no disk touched per request)
+ * and the {@link PeerState} the lead's existing sweep maintains (bridge/pack/registry.ts). Nothing
+ * in this shape can make the lead dial a member — which is what lets a phone poll it beside the
+ * snapshot without adding a second call rate to every peer (PACK_PROTOCOL.md §10.1, §11).
+ *
+ * **Only a lead answers it.** A solo instance and a peer 404 (`pack.not_lead`): a peer is not a
+ * front door (ADR 0013), and a solo instance has no pack to describe.
+ *
+ * Nothing here is a secret. Fingerprints, certificates, the pack secret and pairing credentials are
+ * absent by construction, exactly as {@link ServerSummary} keeps them off the snapshot.
+ */
+export interface PackStatusResponse {
+  /** The pack itself, as the trust store records it (`PackIdentity`). */
+  pack: { id: string; name: string; secretGeneration: number; rotatedAt: number };
+  /** This lead. `version` per bridge/version.ts, the same string `hello` answers with. */
+  self: { id: string; name: string; version: string };
+  /**
+   * The named deputy (ADR 0027), or null when none is named.
+   *
+   * The DESIGNATION is the source, never the warrant: after a takeover the new lead keeps a warrant
+   * naming itself, so reading the deputy off it reports a lead as its own deputy (cli/
+   * pack-status-deputy.ts says so at length). `warrantGeneration` is the generation of the warrant
+   * this lead currently holds, and it is **nullable rather than omitted**: a designation with no
+   * warrant behind it is a state the operator has to see, not a key to go missing.
+   */
+  deputy: { id: string; warrantGeneration: number | null } | null;
+  /** The lead's own entry FIRST, then peers by member id — the exact order of `servers[]` (§9.2). */
+  members: PackMemberStatus[];
+  /** The LEAD's clock, like every other timestamp the lead publishes (§10.2). */
+  ts: number;
+}
+
+/**
+ * One member's row on the Pack overview page.
+ *
+ * Mostly {@link PeerState} re-spelled for the browser, plus the three roster facts the registry does
+ * not carry (`address`, `enrolledAt`, `secretBehind`). Optional keys are OMITTED when absent and
+ * never sent as null (PACK_PROTOCOL.md §11) — the lead's own entry therefore carries no `address`
+ * and no `enrolledAt`, because a lead is not in its own roster.
+ */
+export interface PackMemberStatus {
+  /** Member id — the same value `?h=` takes and `servers[].id` reports. */
+  id: string;
+  name: string;
+  isLead: boolean;
+  /** The enrolled address as stored — never re-derived, never probed. Omitted for the lead itself. */
+  address?: string;
+  /** Omitted for the lead, for the reason `address` is. */
+  enrolledAt?: number;
+  /** {@link PeerState.health} verbatim (§10.2, §18.10). The lead's own entry is always `reachable`. */
+  health: "reachable" | "unreachable" | "incompatible" | "conflicted";
+  /** {@link PeerState.reason}, verbatim and unparaphrased, when there is one. */
+  reason?: string;
+  /** The lead's receipt time of the last successful call; `0` = never (§10.2). */
+  lastSeenAt: number;
+  /** What this member last reported over `hello` (§7.1), when it has reported one. */
+  version?: string;
+  /** This member has not picked up the current pack secret (§8.4). False for the lead. */
+  secretBehind: boolean;
+  /** Enrolled but never once reachable — the shape a half-finished join takes (§8.2). */
+  provisional: boolean;
+  /** Who a `conflicted` member says it follows instead (§18.10). Present only in that state. */
+  conflict?: { leadMemberId: string; warrantGeneration: number | null };
+}
+
+/**
  * GET /api/snapshot `update` — whether the running plugin is behind (see bridge/update.ts). Both a
  * newer upstream RELEASE (`releaseAvailable` + `latest`) and a rebuilt-but-not-restarted bridge
  * PROCESS (`bridgeStale`) surface here; the client shows one banner, `bridgeStale` taking precedence.

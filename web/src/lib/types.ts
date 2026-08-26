@@ -254,6 +254,80 @@ export interface ServerSummary {
 }
 
 /**
+ * `GET /api/pack` — the lead's own answer to "how is my whole pack doing?" (PACK_PROTOCOL.md §9.2,
+ * §10.2). Read-level, and read-ONLY: nothing on this response is an affordance to change the pack.
+ * Join / leave / promote / rotate stay CLI verbs (M5 non-goal), so the page it feeds has no button
+ * that mutates anything.
+ *
+ * **Only a LEAD serves it.** A solo collie and a peer both answer 404 with the app's ordinary JSON
+ * error shape, which `packLoader` (lib/loaders.ts) turns into `null` rather than a thrown error —
+ * "there is no pack here" is an answer, not a failure.
+ *
+ * Deliberately NOT folded into `SnapshotResponse.servers`: that roster is what every host-aware
+ * surface polls on the hot path, and it carries exactly the fields those surfaces need. The census
+ * below (secret generation, warrant generations, enrolment times, per-member versions) is one
+ * page's worth of detail, and putting it on the snapshot would make every phone pay for it on every
+ * poll. Where the two overlap — `health`, `lastSeenAt` — the meanings are the same ones
+ * `ServerSummary` documents, measured on the same clock.
+ */
+export interface PackStatusResponse {
+  pack: {
+    id: string;
+    /** Operator-chosen pack name. */
+    name: string;
+    /** Which rotation of the shared secret is current; a member below it has not caught up yet. */
+    secretGeneration: number;
+    /** Epoch ms on the LEAD's clock, like every other timestamp here — date it against `ts`. */
+    rotatedAt: number;
+  };
+  /** The collie answering — i.e. the lead itself. `version` is what a member is compared against. */
+  self: { id: string; name: string; version: string };
+  /**
+   * The member named ahead of time to take over if the lead goes silent (ADR 0027), or `null` when
+   * none is named. `warrantGeneration` is null when the deputy holds no warrant yet.
+   */
+  deputy: { id: string; warrantGeneration: number | null } | null;
+  /** Lead first, then peers by id — the same order the roster uses, so the two pages agree. */
+  members: PackMemberStatus[];
+  /**
+   * The LEAD's clock when it assembled this body. Every timestamp above and below is stamped on
+   * that same clock, so it is the only sound thing to age them against — never `Date.now()`
+   * (lib/host-health.ts's header has the argument in full).
+   */
+  ts: number;
+}
+
+/** One machine's row in the census. */
+export interface PackMemberStatus {
+  /** Member id — the `?h=` value, so a row can navigate straight to that machine's home. */
+  id: string;
+  name: string;
+  isLead: boolean;
+  /** How the operator reached it; absent for the lead's own entry. Rendered verbatim, in mono. */
+  address?: string;
+  /** Epoch ms on the lead's clock when this member joined; absent for the lead's own entry. */
+  enrolledAt?: number;
+  /**
+   * Four states, and the last two are the loud ones: `incompatible` is a version that must be
+   * fixed, `conflicted` is two collies both believing they lead this pack. Neither is a transient
+   * the next poll clears, so the page names them rather than folding them into "unreachable".
+   */
+  health: "reachable" | "unreachable" | "incompatible" | "conflicted";
+  /** The lead's reason, verbatim — never paraphrased, because the fix follows from the words. */
+  reason?: string;
+  /** Epoch ms, stamped by the LEAD on receipt (§10.2). `0` = never answered. */
+  lastSeenAt: number;
+  /** The Collie version this member reports; absent until it has answered once. */
+  version?: string;
+  /** Enrolled under an older secret generation and has not picked up the current one. */
+  secretBehind: boolean;
+  /** Enrolled, never reached — so nothing about it has ever been confirmed. */
+  provisional: boolean;
+  /** Set only when `health` is `conflicted`: who this member thinks leads, and under what warrant. */
+  conflict?: { leadMemberId: string; warrantGeneration: number | null };
+}
+
+/**
  * Version / upgrade status for the running Collie (mirrors UpdateInfo in bridge/types.ts). Optional
  * on the snapshot — an older bridge omits it entirely, which the client treats as "no info" (the
  * update banner renders nothing). `latest` is null when the newest upstream release isn't known.

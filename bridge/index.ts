@@ -9,7 +9,7 @@ import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { loadConfig, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
-import type { PackMode } from "./types.ts";
+import type { PackMode, PackStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import {
   instanceSuffixOf,
@@ -44,6 +44,7 @@ import { deputyAnchorOf, dialTls, peerListenerTls } from "./pack/transport.ts";
 import { commitPackChange } from "./pack/enrollment.ts";
 import { PackLead } from "./pack/lead.ts";
 import { leadLabel } from "./pack/merge.ts";
+import { packStatusBody } from "./pack/status-wire.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packHelloBudget, packTimeoutBudget, packTimeoutClampWarning, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
@@ -881,6 +882,18 @@ if (warnsOnWildcardBind(pack.mode, cfg.host)) {
   if (clamped !== null) console.warn(clamped);
 }
 
+/**
+ * This collie's own id and operator-facing MACHINE label (§9.2), resolved in ONE place.
+ *
+ * `servers[0]` (the merged snapshot) and `members[0]` (the pack overview) name the same machine, so
+ * they take the same value rather than two computations that agree today. Never the PACK's name,
+ * which is not a roster member and would collide visually with every peer's per-machine label — see
+ * `leadLabel`'s doc for the hostname/fallback rule.
+ */
+function packSelfOf(data: TrustStoreData) {
+  return { id: data.self.memberId, name: leadLabel(hostname(), data.self.memberId) };
+}
+
 const packLead = (() => {
   if (pack.mode !== "lead") return undefined;
   const data = trustStore.current();
@@ -904,10 +917,7 @@ const packLead = (() => {
     // The per-pane forward (§5, §9.1). `proxy`, not `raw`: the peer's own status codes — its 304
     // above all — are the answer, and flattening them would cost the conditional-GET win end to end.
     proxy: (link, route, params, init) => client.proxy(link, route, params, init),
-    // servers[].name is an operator-facing MACHINE label (§9.2), same as every peer's `join` label —
-    // never the pack's name, which is not a roster member and would collide visually with the peers'
-    // per-machine labels. See leadLabel's doc for the hostname/fallback rule.
-    self: { id: data.self.memberId, name: leadLabel(hostname(), data.self.memberId) },
+    self: packSelfOf(data),
     // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
     // pushed through the same coordinator machinery a local session uses (M4/06).
     onPeerSnapshot: (memberId, body) => peerNotifier?.observe(memberId, body),
@@ -999,6 +1009,34 @@ const packLead = (() => {
       })(),
   });
 })();
+
+/**
+ * `GET /api/pack`'s body, asked for per request and answered from memory (bridge/pack/status-wire.ts).
+ *
+ * `undefined` unless this process leads a pack, which is the route's 404 for a solo instance and for
+ * a peer alike (ADR 0013: a peer is not a front door). The closure still re-reads
+ * `trustStore.current()` on every call — a cached value, no disk — because a rotation, a
+ * `pack remove` or a `pack deputy` in another process lands there while this one runs, and a body
+ * composed from a snapshot taken at boot would report a roster the operator has already changed.
+ *
+ * Nothing here can dial: `contributions()` is the sweep's own ledger, read, never refreshed.
+ */
+const packStatus =
+  packLead === undefined
+    ? undefined
+    : (): PackStatusResponse | null => {
+        const data = trustStore.current();
+        if (data === null) return null;
+        return packStatusBody({
+          store: data,
+          self: packSelfOf(data),
+          // The same string `hello` answers with (§7.1) — resolved once at boot, like the pack
+          // router's, so the two surfaces cannot name this build two different versions.
+          version: packVersion,
+          peers: packLead.contributions(),
+          now: Date.now(),
+        });
+      };
 
 // THE SWEEP RIDES THE EXISTING POLL — there is no second timer (§10.1, §11). The primary session's
 // engine is the lead's clock: it is created eagerly, never disposed, and already ticks at
@@ -1212,6 +1250,7 @@ const server = startServer({
   pairing,
   stt,
   packLead,
+  packStatus,
   peerNotifier,
   // Registered on the EXISTENCE of a trust store, not on the mode: a lead answering its very first
   // `collie join` still has zero peers and is therefore still `solo` by mode. An instance that never
