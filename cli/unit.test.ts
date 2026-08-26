@@ -9,6 +9,7 @@ import {
   bridgeEnvironment,
   collieBinary,
   launchAgentPlist,
+  bakedTailscaleHosts,
   type ServiceSpec,
   systemdUnit,
   unitDirectives,
@@ -28,7 +29,31 @@ const SPEC: ServiceSpec = {
   configDir: "/home/pat/.config/collie",
   socket: "/home/pat/.config/herdr/herdr.sock",
   port: 8787,
+  tailscaleHosts: "",
 };
+
+describe("the discovered Host allowlist", () => {
+  test("an empty value writes NO line — an empty one in the unit is a lockout, not a default", () => {
+    expect(systemdUnit(SPEC)).not.toContain("COLLIE_TAILSCALE_HOSTS");
+    expect(launchAgentPlist(SPEC)).not.toContain("COLLIE_TAILSCALE_HOSTS");
+  });
+
+  test("a discovered value is baked into both supervisors", () => {
+    const spec = { ...SPEC, tailscaleHosts: "desk.ts.net,100.64.0.1" };
+    expect(systemdUnit(spec)).toContain("Environment=COLLIE_TAILSCALE_HOSTS=desk.ts.net,100.64.0.1");
+    expect(launchAgentPlist(spec)).toContain(
+      "<key>COLLIE_TAILSCALE_HOSTS</key>\n        <string>desk.ts.net,100.64.0.1</string>",
+    );
+  });
+
+  test("bakedTailscaleHosts reads back what either supervisor wrote, and nothing else", () => {
+    const spec = { ...SPEC, tailscaleHosts: "desk.ts.net" };
+    expect(bakedTailscaleHosts(systemdUnit(spec))).toBe("desk.ts.net");
+    expect(bakedTailscaleHosts(launchAgentPlist(spec))).toBe("desk.ts.net");
+    expect(bakedTailscaleHosts(systemdUnit(SPEC))).toBe("");
+    expect(bakedTailscaleHosts(null)).toBe("");
+  });
+});
 
 describe("the systemd unit", () => {
   const unit = systemdUnit(SPEC);

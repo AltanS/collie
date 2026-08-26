@@ -25,6 +25,51 @@ export function selfDnsName(statusJson: string): string | null {
 }
 
 /**
+ * Every name this node answers to on the tailnet: its MagicDNS name plus its own Tailscale IPs, in
+ * that order. IPv6 addresses come back bracketed, because that is the form a `Host` header carries.
+ *
+ * This is what fills `COLLIE_TAILSCALE_HOSTS`, and it exists because the bridge's Host allowlist
+ * fails closed: without it, every normal tailnet install would have to set `COLLIE_PUBLIC_HOSTS` by
+ * hand before it answered a single request. Discovery is not a relaxation of the gate — it is the
+ * gate being told the truth nobody should have to type.
+ *
+ * Pure over the JSON so the shapes (no `Self`, no `DNSName`, an empty IP list, garbage) are pinned
+ * without a tailnet. Anything it cannot read is simply not a host, and the list comes back shorter.
+ */
+export function selfHosts(statusJson: string): string[] {
+  const out: string[] = [];
+  const name = selfDnsName(statusJson);
+  if (name !== null) out.push(name);
+  try {
+    // SAFETY: the shape `tailscale status --json` documents, and nothing here trusts it further
+    // than the `catch` below — every path off `TailscaleIPs` is an array iteration and a string
+    // method, so a record that disagrees (missing key, numbers, an object) throws inside this `try`
+    // and reads as "this node named no addresses". The MagicDNS name is already in `out` by then, so
+    // a malformed IP list costs the addresses and never the name.
+    const data = JSON.parse(statusJson) as { Self?: { TailscaleIPs?: string[] } };
+    // `Array.isArray` and not merely `?? []`: a STRING is iterable, so a record that names one
+    // address instead of a list would otherwise contribute one host per character.
+    const ips = data.Self?.TailscaleIPs;
+    for (const raw of Array.isArray(ips) ? ips : []) {
+      const ip = raw.trim();
+      if (ip === "") continue;
+      // A `Host` header spells an IPv6 address bracketed, and this list is compared against one.
+      out.push(ip.includes(":") ? `[${ip}]` : ip);
+    }
+  } catch {
+    // Unreadable JSON says nothing about this node, exactly as it does for the name above.
+  }
+  return out;
+}
+
+/** {@link selfHosts} over a live `tailscale status --json`. A missing or down CLI reads as no hosts. */
+export function tailnetHosts(exec: Exec): string[] {
+  const r = exec.capture("tailscale", ["status", "--json"]);
+  if (!r.found || r.code !== 0) return [];
+  return selfHosts(r.stdout);
+}
+
+/**
  * The operator's own answer to "what do I type on my phone", or null when they haven't given one.
  * `COLLIE_PUBLIC_URL` is the only truth about the front door whenever Collie didn't publish it —
  * a reverse proxy (Variants C/E), or a `tailscale serve` the operator runs by hand. Collie's own

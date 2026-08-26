@@ -7,12 +7,13 @@ import { EXIT, type Io } from "./io.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
-import { bridgeUrl, configuredPublicUrl } from "./tailnet.ts";
+import { bridgeUrl, configuredPublicUrl, tailnetHosts } from "./tailnet.ts";
 import {
   AGENT_FILE_MODE,
   agentFilePath,
   agentLabel,
   bridgeCommand,
+  bakedTailscaleHosts,
   bridgeEnvironment,
   collieBinary,
   launchAgentPlist,
@@ -164,9 +165,49 @@ function requireBinary(deps: LifecycleDeps): boolean {
   return false;
 }
 
+/**
+ * The Host allowlist this machine answers on, for the unit and for the bridge's own environment.
+ *
+ * The bridge's Host gate fails closed, so an EMPTY allowlist is a lockout rather than a default —
+ * which is what makes each branch here load-bearing:
+ *
+ *  - **The operator's own `COLLIE_TAILSCALE_HOSTS` wins and is never probed over.** They named it;
+ *    a discovery that disagreed would silently overrule a deliberate value.
+ *  - **`COLLIE_SKIP_SERVE=1` discovers nothing.** Variants C/E put the operator's own ingress in
+ *    front, so the host they serve on is theirs to declare (`COLLIE_PUBLIC_HOSTS`); baking a
+ *    MagicDNS name nothing answers on would be a guess dressed as configuration.
+ *  - **A failed probe keeps what the unit already carried**, loudly. `tailscale status` fails for
+ *    reasons that have nothing to do with this install, and that must not cost a working front door.
+ *  - **With nothing to keep, it says the gate will refuse everything** and names the two settings
+ *    that fix it. Silence here would read as a Collie that simply stopped working.
+ */
+export function resolveTailscaleHosts(deps: LifecycleDeps): string {
+  const declared = deps.ctx.env.COLLIE_TAILSCALE_HOSTS?.trim();
+  if (declared !== undefined && declared !== "") return declared;
+  if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") return "";
+  const found = tailnetHosts(deps.exec);
+  if (found.length > 0) return found.join(",");
+  const kept = bakedTailscaleHosts(
+    deps.files.read(unitFilePath(deps.ctx.home, deps.ctx.instance)) ??
+      deps.files.read(agentFilePath(deps.ctx.home, deps.ctx.instance)),
+  );
+  deps.io.err(
+    "error: 'tailscale status' named no host for this node — the allowlist was not discovered.",
+  );
+  if (kept !== "") {
+    deps.io.err(`       keeping the one already in the unit: ${kept}`);
+    return kept;
+  }
+  deps.io.err("       no allowlist is set, so the Host gate will refuse every request. Set");
+  deps.io.err(
+    "       COLLIE_TAILSCALE_HOSTS (or COLLIE_PUBLIC_HOSTS) in .env, or fix Tailscale and retry.",
+  );
+  return "";
+}
+
 export function writeUnit(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
-  const spec = serviceSpec(deps.ctx);
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
   deps.files.mkdirp(deps.ctx.configDir);
   deps.files.write(unitFilePath(deps.ctx.home, deps.ctx.instance), systemdUnit(spec));
   deps.exec.capture("systemctl", ["--user", "daemon-reload"]);
@@ -175,7 +216,7 @@ export function writeUnit(deps: LifecycleDeps): boolean {
 
 export function writeAgent(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
-  const spec = serviceSpec(deps.ctx);
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
   deps.files.mkdirp(deps.ctx.configDir);
   deps.files.write(
     agentFilePath(deps.ctx.home, deps.ctx.instance),
@@ -195,7 +236,7 @@ export function writeAgent(deps: LifecycleDeps): boolean {
  */
 export function startUnsupervised(deps: LifecycleDeps): number {
   if (!requireBinary(deps)) return EXIT.FAIL;
-  const spec = serviceSpec(deps.ctx);
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
   deps.files.mkdirp(deps.ctx.configDir);
   const pid = deps.exec.spawnDetached(bridgeCommand(spec), {
     cwd: deps.ctx.root,
@@ -418,7 +459,10 @@ export function cmdLogs(deps: LifecycleDeps, args: readonly string[]): number {
  * `COLLIE_VAPID_PRIVATE` in the mode-600 file reaches the bridge.
  */
 export async function cmdExecBridge(deps: LifecycleDeps): Promise<number> {
-  const env = { ...stringEnv(deps.ctx.env), ...bridgeEnvironment(serviceSpec(deps.ctx)) };
+  // Discovered here as well as at write time: an unsupervised or hand-written unit carries no baked
+  // allowlist, and a MagicDNS name can change under a unit that was written months ago.
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
+  const env = { ...stringEnv(deps.ctx.env), ...bridgeEnvironment(spec) };
   for (const [k, v] of Object.entries(env)) process.env[k] = v;
   await import("../bridge/index.ts");
   return EXIT.OK;

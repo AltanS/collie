@@ -296,6 +296,18 @@ conforming reverse proxy per DEPLOYMENT.md Variant C (`COLLIE_SKIP_SERVE=1`) · 
 optional identity/device gates · strict CSP. A socket call can type into a real terminal — treat a
 collie as remote shell access.
 
+**The loopback gates fail closed, and the pack link is exempt by construction, never by relaxation.**
+Host validation is on by default (`COLLIE_ALLOW_ANY_HOST=1` opts out), `COLLIE_TRUSTED_USER` rejects
+an ABSENT `Tailscale-User-Login` as well as a wrong one (`COLLIE_TRUSTED_USER_OPTIONAL=1`), a
+non-loopback bind refuses to start (`COLLIE_ALLOW_NON_LOOPBACK_BIND=1`), and a non-loopback TCP peer
+is refused. **A collie in a pack is exempt from the bind refusal and `/pack/v1/*` from the peer
+check** — a member is dialled across a machine boundary and that surface carries pinned mutual TLS
+plus the pack secret ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)). The
+exemption is granted by POSITION — the peer check sits after the federated dispatch in
+`bridge/server.ts` — so no pack path is ever spelled there. The standby door is its own listener on
+its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it through the front door's
+`fetch` to share them.
+
 **The bridge makes no outbound call and spawns no long-running child for content — unless the
 operator ran `collie stt setup`.** Speech-to-text (`bridge/stt/`, CLI `cli/stt.ts`) is a registered
 provider seam, absent until that verb writes `stt.json`: it then holds a provider credential at 0600,

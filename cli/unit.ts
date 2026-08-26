@@ -46,6 +46,15 @@ export interface ServiceSpec {
   configDir: string;
   socket: string;
   port: number;
+  /**
+   * The discovered Host allowlist, comma-joined, or `""` when there is none.
+   *
+   * It is baked into the unit rather than left to `.env` because the bridge's Host gate fails closed
+   * and this is the value nobody should have to type — `cli/lifecycle.ts` discovers it. `""` means
+   * **write no line at all**: an empty `COLLIE_TAILSCALE_HOSTS=` in the unit would REPLACE a working
+   * allowlist with a lockout the next time a probe happened to fail.
+   */
+  tailscaleHosts: string;
 }
 
 /** Where the compiled binary lives relative to its checkout — the one place that layout is written down. */
@@ -53,7 +62,7 @@ export function collieBinary(root: string): string {
   return join(root, "bin", "collie");
 }
 
-export function serviceSpec(ctx: CliContext): ServiceSpec {
+export function serviceSpec(ctx: CliContext, tailscaleHosts = ""): ServiceSpec {
   return {
     root: ctx.root,
     instance: ctx.instance,
@@ -61,6 +70,7 @@ export function serviceSpec(ctx: CliContext): ServiceSpec {
     configDir: ctx.configDir,
     socket: ctx.socket,
     port: ctx.port,
+    tailscaleHosts,
   };
 }
 
@@ -109,7 +119,28 @@ export function bridgeEnvironment(spec: ServiceSpec): EnvVars {
   // existence. It is passed so the supervised process resolves the same context the CLI did —
   // notably `collie logs` and the pidfile, which are named after the instance.
   if (spec.instance !== null) env.COLLIE_INSTANCE = spec.instance;
+  // Assigned, never unconditionally: see {@link ServiceSpec.tailscaleHosts} — an empty value written
+  // here is a lockout, not a default, so nothing is written at all.
+  if (spec.tailscaleHosts !== "") env.COLLIE_TAILSCALE_HOSTS = spec.tailscaleHosts;
   return env;
+}
+
+/**
+ * The allowlist a previously written unit or plist baked in, or `""`.
+ *
+ * It is read back so a FAILED discovery can keep what already worked. `tailscale status` fails for
+ * reasons that have nothing to do with this install — the daemon is down, the node is logged out —
+ * and under a fail-closed Host gate that must not cost the operator their front door.
+ *
+ * One function for both files because the caller does not know which supervisor wrote the last one,
+ * and reading the wrong shape simply finds nothing.
+ */
+export function bakedTailscaleHosts(text: string | null): string {
+  if (text === null) return "";
+  const unit = [...text.matchAll(/^Environment=COLLIE_TAILSCALE_HOSTS=(.*)$/gm)].at(-1);
+  if (unit !== undefined) return unit[1]!.trim();
+  const plist = /<key>COLLIE_TAILSCALE_HOSTS<\/key>\s*<string>([^<]*)<\/string>/.exec(text);
+  return plist === null ? "" : plist[1]!.trim();
 }
 
 export function systemdUnit(spec: ServiceSpec): string {

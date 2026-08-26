@@ -194,9 +194,17 @@ describe("planUpdate", () => {
     expect(plan("1.0.0", "cccccccc", true)).toEqual({ kind: "no-higher-major", major: 1 });
   });
 
-  test("an unreadable version falls back rather than stranding the install", () => {
-    expect(plan(null, "zzz")).toEqual({ kind: "unknown-version" });
-    expect(plan("unknown", "zzz")).toEqual({ kind: "unknown-version" });
+  test("an unreadable version falls back to the newest RELEASE, never to origin HEAD", () => {
+    const newest = { tag: "v1.0.0", version: "1.0.0", major: 1, commit: "cccccccc" };
+    expect(plan(null, "zzz")).toEqual({ kind: "unknown-version", newest });
+    expect(plan("unknown", "zzz")).toEqual({ kind: "unknown-version", newest });
+  });
+
+  test("an unreadable version with no releases on the remote has nothing to pin to", () => {
+    expect(planUpdate({ tags: [], installed: null, head: "zzz", crossMajor: false })).toEqual({
+      kind: "unknown-version",
+      newest: null,
+    });
   });
 });
 
@@ -358,16 +366,35 @@ describe("updateCheckout", () => {
     expect(h.io.stdout.join("\n")).toContain("no release of major 1 yet");
   });
 
-  test("an unreadable manifest falls back to origin HEAD rather than refusing to update", () => {
+  test("an unreadable manifest pins to the newest release tag, never to origin HEAD", () => {
     const h = harness({
-      answers: [...MANAGED, ...SHALLOW, [`${GIT} log -1`, { stdout: "abc1234 tip\n" }]],
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "zzz\n" }],
+        ...SHALLOW,
+        [`${GIT} log -1`, { stdout: "abc1234 tip\n" }],
+      ],
     });
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([
-      `${GIT} fetch --depth 1 origin HEAD`,
+      `${GIT} fetch --depth 1 origin refs/tags/v1.0.0`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
     ]);
-    expect(h.io.stdout.join("\n")).toContain("no readable version");
+    expect(h.io.stdout.join("\n")).toContain("pinning to newest release tag v1.0.0");
+  });
+
+  test("an unreadable manifest with no releases upstream refuses rather than guess", () => {
+    const h = harness({
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: "" }],
+        [`${GIT} rev-parse HEAD`, { stdout: "zzz\n" }],
+      ],
+    });
+    expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
+    expect(gitRuns(h.exec)).toEqual([]);
+    expect(h.io.stderr.join("\n")).toContain("no release tags on origin");
   });
 
   test("--depth 1 ONLY when the repo is already shallow", () => {

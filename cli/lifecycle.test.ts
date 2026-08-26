@@ -31,6 +31,7 @@ import {
   serviceDescription,
   statusBanner,
   stopPidfileProcess,
+  resolveTailscaleHosts,
   supervisionTier,
   writeUnit,
 } from "./lifecycle.ts";
@@ -87,6 +88,67 @@ function harness(over: HarnessOptions = {}): Harness {
 
 /** The scripted answer that makes `systemctl --user show-environment` fail — no user systemd. */
 const NO_SYSTEMD: Scripted["answers"] = [["systemctl --user show-environment", { code: 1 }]];
+
+// The bridge's Host gate fails closed, so this value is the difference between a Collie that answers
+// on the tailnet and one that refuses every request. The shim discovered it; the binary does now.
+describe("the Host allowlist discovery", () => {
+  const TAILSCALE = (json: string): Scripted["answers"] => [
+    ["tailscale status --json", { stdout: json }],
+  ];
+  const SELF = JSON.stringify({
+    Self: { DNSName: "desk.tail1234.ts.net.", TailscaleIPs: ["100.64.0.1"] },
+  });
+
+  test("discovers the node's name and IPs, and bakes them into the unit", () => {
+    const h = harness({ answers: TAILSCALE(SELF) });
+    expect(writeUnit(h.deps)).toBe(true);
+    expect(h.files.read(`${HOME}/.config/systemd/user/collie.service`)).toContain(
+      "Environment=COLLIE_TAILSCALE_HOSTS=desk.tail1234.ts.net,100.64.0.1",
+    );
+  });
+
+  test("the operator's own value wins and is never probed over", () => {
+    const h = harness({
+      env: { COLLIE_TAILSCALE_HOSTS: "collie.example.com" },
+      answers: TAILSCALE(SELF),
+    });
+    expect(resolveTailscaleHosts(h.deps)).toBe("collie.example.com");
+    expect(h.exec.calls).not.toContain("tailscale status --json");
+  });
+
+  test("COLLIE_SKIP_SERVE=1 discovers nothing — the operator's ingress names its own hosts", () => {
+    const h = harness({ env: { COLLIE_SKIP_SERVE: "1" }, answers: TAILSCALE(SELF) });
+    expect(resolveTailscaleHosts(h.deps)).toBe("");
+    expect(h.exec.calls).not.toContain("tailscale status --json");
+  });
+
+  test("a failed probe KEEPS what the unit already carried, and says so", () => {
+    const h = harness({
+      answers: [["tailscale status --json", { code: 1 }]],
+      files: {
+        [`${HOME}/.config/systemd/user/collie.service`]:
+          "Environment=COLLIE_TAILSCALE_HOSTS=desk.tail1234.ts.net\n",
+      },
+    });
+    expect(resolveTailscaleHosts(h.deps)).toBe("desk.tail1234.ts.net");
+    expect(h.io.stderr.join("\n")).toContain("keeping the one already in the unit");
+  });
+
+  test("a failed probe with nothing to keep says the gate will refuse everything", () => {
+    const h = harness({ answers: [["tailscale status --json", { code: 1 }]] });
+    expect(resolveTailscaleHosts(h.deps)).toBe("");
+    expect(h.io.stderr.join("\n")).toContain("the Host gate will refuse every request");
+    expect(h.io.stderr.join("\n")).toContain("COLLIE_TAILSCALE_HOSTS");
+  });
+
+  test("a failed probe never writes an EMPTY allowlist into the unit", () => {
+    const h = harness({ answers: [["tailscale status --json", { code: 1 }]] });
+    expect(writeUnit(h.deps)).toBe(true);
+    expect(h.files.read(`${HOME}/.config/systemd/user/collie.service`)).not.toContain(
+      "COLLIE_TAILSCALE_HOSTS",
+    );
+  });
+});
 
 describe("supervision tiers", () => {
   test("systemd requires the user instance to answer, not just the binary to exist", () => {
