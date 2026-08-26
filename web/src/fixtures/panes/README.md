@@ -304,20 +304,22 @@ omp's `agent_status` stays `idle` while a picker is up; only the `ask` tool flip
   are the most stable discriminator ("Enter to select/confirm", "Esc to cancel").
 
 
-## agy corpus (captured 2026-08-18, Antigravity CLI 1.1.13 / 1.1.14)
+## agy corpus (captured 2026-08-26, Antigravity CLI 1.1.17, sandbox panes)
 
-The third adapter's corpus (`web/src/lib/harness/agy/`). AGY renders a framed input box bounded by horizontal rules (`─`), with status / hint lines below the bottom border (`? for shortcuts`, `esc to cancel`, model/mode metadata). Its dialogs use standard footers (`Enter to select · ↑/↓ to navigate`, `Tab to amend · Esc to cancel`, `Enter to confirm · Esc to cancel`, `ctrl+g to edit`).
+Byte-faithful `format:ansi` captures from running sandbox `agy` panes via `scripts/capture-fixture.sh <paneId> <name> 300`. Fastfetch system scrollback was trimmed, and all session identities were sanitized with length-preserving substitutions so row padding and column alignments stay byte-identical: account email (`developer.user@corp.test`) and session plan brain UUIDs (`00000000-0000-7000-8000-000000000000`).
+
+AGY renders a framed input box bounded by horizontal rules (`─`), with status / hint lines below the bottom border (`? for shortcuts`, `esc to cancel`, model/effort metadata). Its dialogs use standard footers (`Enter to select · ↑/↓ to navigate`, `Tab to amend · Esc to cancel`, `Enter to confirm · Esc to cancel`, `ctrl+g to edit`).
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `agy--fresh-idle.txt` | Fresh session: Antigravity header logo and session info, idle input box between horizontal rules, statusline below (`? for shortcuts`) | `idle` |
-| `agy--working.txt` | Mid-turn: tool calls, `⣟ Generating...` spinner with tip line, input box with `esc to cancel` status line | `working` |
+| `agy--working.txt` | Mid-turn: tool calls, `⣾ Loading...` spinner with tip line, input box with `esc to cancel` status line | `working` |
 | `agy--done.txt` | Completed turn: tool output, assistant summary, idle input box | `idle` |
-| `agy--select-menu.txt` | AskUserQuestion single-select dialog: question, numbered options 1..3 with description sub-lines, free-text row "4. Type something.", "Enter to select · ↑/↓ to navigate · Esc to cancel" footer | `blocked` |
-| `agy--permission-bash.txt` | Bash execution permission dialog: command, "Allow bash command: `npm test`?", options 1. Yes / 2. No / 3. Always allow, "Tab to amend · Esc to cancel" footer | `blocked` |
-| `agy--permission-edit.txt` | File edit permission dialog: diff/file info, "Allow file modification to `src/app.css`?", options 1. Yes / 2. No, "Tab to amend · Esc to cancel" footer | `blocked` |
-| `agy--trust-prompt.txt` | Workspace folder trust prompt: "Do you trust this workspace directory and wish to proceed?", options 1. Yes / 2. No, "Enter to confirm · Esc to cancel" footer | `blocked` |
-| `agy--plan-approval.txt` | Plan approval dialog: plan steps, "Would you like to proceed with the execution plan?", options 1. Yes / 2. No, "ctrl+g to edit in editor · ~/.antigravity/plans/plan-2026.md" footer | `blocked` |
+| `agy--select-menu.txt` | AskUserQuestion single-select dialog: question, numbered options 1..3 with description sub-lines, free-text row "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip" footer | `blocked` |
+| `agy--permission-bash.txt` | Bash execution permission dialog: command, "Requesting permission for: ls -la /tmp", options 1..4 (Yes / allow in conversation / persist / No), "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command" footer | `blocked` |
+| `agy--permission-edit.txt` | File edit / multi-line write permission dialog: multi-line heredoc preview, options 1..4, "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command · ctrl+r Review" footer | `blocked` |
+| `agy--trust-prompt.txt` | Workspace folder trust prompt: "Do you trust the contents of this project?", options "Yes, I trust this folder" / "No, exit", "↑/↓ Navigate · enter Confirm" footer | `blocked` |
+| `agy--plan-approval.txt` | Plan approval dialog: plan question, options 1..3 (Execute plan / Request changes / Cancel) + "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip · ctrl+r Review" footer | `blocked` |
 
 
 - **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is

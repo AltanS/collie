@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -114,6 +114,63 @@ describe("agyAdapter unit & footer safety", () => {
     const raw = ["Ready for instructions.", "❯ "].join("\n");
     const lines = splitLines(parseAnsi(raw));
     expect(agyAdapter.composerReady!(lines)).toBe(true);
+  });
+
+  it("correctly locates the input box and extracts statusline on agy--fresh-idle.txt", () => {
+    const raw = readFileSync(join(PANES_DIR, "agy--fresh-idle.txt"), "utf8");
+    const lines = splitLines(parseAnsi(raw));
+
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+
+    const status = agyAdapter.extractStatusLines!(lines);
+    expect(status.length).toBeGreaterThan(0);
+    const statusText = status.map((l) => l.segments.map((s) => s.text).join("")).join(" ");
+    expect(statusText).toContain("? for shortcuts");
+    expect(statusText).toContain("Gemini 3.7 Flash");
+
+    const blocks = agyAdapter.buildBlocks(lines);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.kind).toBe("raw");
+    const mirrorText = blocks[0]!.lines.map((l) => l.segments.map((s) => s.text).join("")).join("\n");
+    expect(mirrorText).not.toContain("? for shortcuts");
+    expect(mirrorText).not.toContain("──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n>");
+  });
+
+  it("extracts no spurious draft and extracts statusline on agy--done.txt", () => {
+    const raw = readFileSync(join(PANES_DIR, "agy--done.txt"), "utf8");
+    const lines = splitLines(parseAnsi(raw));
+
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+
+    const status = agyAdapter.extractStatusLines!(lines);
+    expect(status.length).toBeGreaterThan(0);
+    const statusText = status.map((l) => l.segments.map((s) => s.text).join("")).join(" ");
+    expect(statusText).toContain("? for shortcuts");
+  });
+
+  it("extracts working statusline on agy--working.txt", () => {
+    const raw = readFileSync(join(PANES_DIR, "agy--working.txt"), "utf8");
+    const lines = splitLines(parseAnsi(raw));
+
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+    const status = agyAdapter.extractStatusLines!(lines);
+    expect(status.length).toBeGreaterThan(0);
+    const statusText = status.map((l) => l.segments.map((s) => s.text).join("")).join(" ");
+    expect(statusText).toContain("Gemini 3.7 Flash");
+  });
+
+  it("extracts typed user draft inside an input box", () => {
+    const raw = [
+      "────────────────────────────────────────────────────────────",
+      "> write a python fibonacci function",
+      "────────────────────────────────────────────────────────────",
+      "? for shortcuts                                 Gemini 3.7",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(raw));
+
+    expect(agyAdapter.extractInputDraft!(lines)).toBe("write a python fibonacci function");
   });
 });
 

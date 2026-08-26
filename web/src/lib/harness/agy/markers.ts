@@ -37,16 +37,20 @@ export type { PromptFamily };
 
 export function classifyFooter(text: string): PromptFamily | null {
   const t = text.toLowerCase();
-  if (/\benter to select\b/.test(t)) return "select";
-  if (/\benter to confirm\b/.test(t)) return "trust";
-  if (/ctrl\+g to edit\b/.test(t) || /\.antigravity\/plans\//.test(t) || /\.agy\/plans\//.test(t)) return "plan";
-  if (/\btab to amend\b/.test(t)) return "permission";
+  if (/\b(?:enter\s+confirm|enter\s+to\s+confirm)\b/.test(t)) return "trust";
+  if (/\b(?:tab\s+amend|tab\s+to\s+amend)\b/.test(t)) return "permission";
+  if (/\bctrl\+r\s+review\b/.test(t) && !/\btab\s+amend\b/.test(t)) return "plan";
+  if (/ctrl\+g\s+to\s+edit\b/.test(t) || /\.antigravity\/plans\//.test(t) || /\.agy\/plans\//.test(t)) return "plan";
+  if (/\b(?:enter\s+select|enter\s+to\s+select)\b/.test(t)) return "select";
   return null;
 }
 
 export function isAlienBuffer(texts: string[]): boolean {
   for (const text of texts) {
-    if (/Claude Code|\.claude\/|Claude Sonnet|Claude Opus|Claude Max|AskUserQuestion/i.test(text)) return true;
+    if (/Claude Code|\.claude\/|Claude Sonnet|Claude Opus|Claude Max|AskUserQuestion/i.test(text)) {
+      const full = texts.join(" ");
+      if (!/Antigravity CLI|\.antigravity|agy/i.test(full)) return true;
+    }
     if (/╭─ Ask ─╮|oh-my-pi|codex|grok/i.test(text)) return true;
   }
   return false;
