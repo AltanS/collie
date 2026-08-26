@@ -56,6 +56,7 @@ function renderHome(data: HomeData) {
         ),
       },
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
+      { path: "/pack", element: <div data-testid="pack" /> },
     ],
     { initialEntries: [data.scope.host ? `/?h=${data.scope.host}` : "/"] },
   );
@@ -185,5 +186,38 @@ describe("a machine going quiet does not hide what is on it", () => {
     // Tier 1's copy, none of which belongs to a peer outage.
     expect(screen.queryByText(/not connected/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/reconnecting/i)).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The dashboard footer's pack line — the third way into /pack. Same hide rule as every other piece
+// of host chrome, and the solo half of the pair is the one that matters: the footer must look
+// exactly as it did before the pack existed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("the pack line in the dashboard footer", () => {
+  it("is absent on a solo install — the footer keeps its shipped shape", async () => {
+    renderHome(solo());
+    await settled();
+    expect(screen.queryByLabelText(/open the pack overview/i)).not.toBeInTheDocument();
+  });
+
+  it("names the roster from the snapshot alone — no second fetch to caption a footer", async () => {
+    renderHome(packed());
+    const link = await screen.findByLabelText(/open the pack overview/i);
+    expect(link).toHaveTextContent(/3 machines/i);
+    expect(link).toHaveTextContent(/2 reachable/i);
+  });
+
+  it("navigates to the census, carrying the scope's host so back lands where you were", async () => {
+    const router = renderHome(homeData({ agents: fixturePackAgents, servers: fixtureServers }, { host: "workshop" }));
+    await userEvent.click(await screen.findByLabelText(/open the pack overview/i));
+    await waitFor(() => expect(url(router)).toBe("/pack?h=workshop"));
+  });
+
+  it("omits `?h=` when the scope is the lead — a bare path, exactly like every other helper", async () => {
+    const router = renderHome(packed());
+    await userEvent.click(await screen.findByLabelText(/open the pack overview/i));
+    await waitFor(() => expect(url(router)).toBe("/pack"));
   });
 });

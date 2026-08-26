@@ -1,15 +1,28 @@
 // Herdr's mark, as bytes this adapter owns. The rules and the reasoning are stated once, in
 // bridge/mux/tmux/logo.ts — read that header first; this file only records what is different.
 //
-// ── Provenance: DRAWN. Herdr publishes no logo ──────────────────────────────────────────────────
+// ── Provenance: REPRODUCED from Herdr's own repository ─────────────────────────────────────────
 //
-// So this is a minimal glyph rather than a reproduction: a flock — three shapes of different sizes,
-// gathered — on a teal tile. A FLOCK and deliberately not a dog: the Collie mark itself sits two
-// centimetres to the left in the very same header (components/collie-home.tsx), and two dogs in one
-// row would read as one thing said twice.
+// Herdr does publish a mark: `assets/logo.svg` in its own repo (github.com/ogulcancelik/herdr,
+// Cargo.toml `license = "AGPL-3.0-or-later"`) — a 512×512 ram, drawn as one path. The path data
+// below is copied byte-for-byte from that file's `<g>`, transform included; nothing about the
+// silhouette is redrawn. It identifies the multiplexer this collie drives, same as tmux's and
+// zellij's marks identify theirs.
 //
-// Two-tone, because an `<img>` cannot inherit `currentColor` — the file is fetched, not inlined, so
-// nothing in it can track the theme. Both tones are therefore picked to clear `bg-muted` in BOTH
-// themes at once: the teal sits between the light value (`oklch(0.94)`) and the dark one
-// (`oklch(0.269)`), and the cream is brighter than either.
-export const HERDR_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><path fill="#1F6F6B" d="M24 8h112c8.8 0 16 7.2 16 16v112c0 8.8-7.2 16-16 16H24c-8.8 0-16-7.2-16-16V24c0-8.8 7.2-16 16-16z"/><g fill="#F2E9D8"><circle cx="60" cy="102" r="26"/><circle cx="104" cy="72" r="19"/><circle cx="118" cy="114" r="13"/></g></svg>`;
+// Not a dog, so no clash with the Collie mark sitting two centimetres to its left in the same
+// header (components/collie-home.tsx) — the ram makes that comparison moot on its own.
+//
+// ── The one deviation from the original, and why it is not optional ────────────────────────────
+//
+// The source draws a light tile (`#d9dad8`) with a dark ram (`#303438`) on it. The two colours
+// are kept — nothing invented — but INVERTED: dark tile, light ram. `#d9dad8` on `#ebebeb`
+// (`bg-muted`'s light value, `oklch(0.94)`) sits at ~1.2:1 contrast, next to invisible, the same
+// trap tmux's original body colour fell into. Swapped the other way, `#d9dad8` clears `bg-muted`
+// at both ends — ~1.2:1 against the light value is now the TILE against the page (which the ram
+// sits on top of, not beside), while the ram itself reads at ~9:1 against the dark tile and ~11:1
+// against `bg-muted`'s dark value (`oklch(0.269)`) directly. In the dark theme the tile nearly
+// matches `bg-muted` and all but disappears — same as zellij's field colour against the same
+// value (that file's header) — which is fine because the ram, not the tile edge, carries the
+// silhouette in both themes. This also matches Herdr's own usage: their
+// `assets/agent-icons/herdr-mask.svg` draws the same mark light-on-colour.
+export const HERDR_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet"><rect width="512" height="512" fill="#303438"/><g fill="#d9dad8" transform="translate(0 512) scale(.1 -.1)"><path d="M2794 3710 c-129 -33 -299 -135 -359 -214 -21 -28 -26 -42 -21 -63 9 -38 154 -178 199 -192 32 -11 41 -9 104 23 171 86 354 70 475 -43 150 -138 150 -379 0 -511 -107 -95 -278 -94 -386 2 l-46 40 -11 -29 c-16 -40 -14 -122 4 -164 60 -144 264 -222 452 -174 360 92 559 494 430 868 -36 103 -81 173 -175 267 -71 72 -100 93 -180 132 -52 26 -127 54 -167 62 -96 21 -230 20 -319 -4z M2183 3695 c-116 -32 -221 -108 -273 -199 -17 -28 -30 -54 -30 -58 0 -4 20 1 45 12 66 28 220 68 294 76 64 7 65 7 137 83 40 41 71 77 69 79 -2 2 -21 8 -42 13 -55 12 -140 10 -200 -6z M2212 3388 c-159 -22 -390 -122 -559 -241 -299 -210 -585 -600 -609 -828 -12 -118 40 -251 125 -318 96 -76 178 -98 426 -116 110 -8 224 -21 254 -29 125 -34 230 -115 272 -211 11 -24 24 -81 30 -127 20 -170 65 -271 166 -374 34 -35 63 -65 63 -67 0 -1 -10 -27 -22 -57 -29 -76 -37 -259 -14 -350 42 -170 158 -318 311 -397 44 -23 98 -46 120 -52 22 -6 45 -14 51 -18 5 -5 15 -48 22 -96 6 -48 14 -92 17 -97 4 -6 415 -10 1131 -10 l1124 0 0 1584 0 1585 -55 -19 c-84 -29 -143 -68 -232 -154 l-83 -78 -54 49 c-111 102 -233 151 -391 160 -113 6 -199 -10 -298 -54 l-60 -27 -26 34 c-37 51 -120 134 -127 128 -3 -4 0 -34 7 -67 17 -89 7 -268 -21 -356 -103 -328 -377 -545 -688 -545 -161 0 -273 41 -373 137 -37 35 -66 75 -85 116 -79 173 -8 407 124 407 44 0 68 -14 117 -66 74 -78 167 -82 238 -9 60 62 72 147 33 231 -42 90 -120 130 -238 122 -50 -4 -85 -14 -131 -37 -89 -45 -122 -52 -176 -40 -92 20 -262 163 -302 253 -11 25 -21 45 -22 45 -1 -1 -30 -6 -65 -11z m-256 -505 c115 -88 129 -102 132 -131 2 -18 -2 -40 -9 -49 -7 -8 -69 -55 -138 -105 -103 -73 -130 -88 -151 -83 -35 8 -51 34 -48 74 3 31 12 42 83 92 44 31 80 61 82 66 1 4 -30 31 -69 58 -39 28 -77 56 -85 63 -18 19 -16 72 4 94 32 35 63 23 199 -79z m528 -88 c23 -24 28 -52 14 -82 l-13 -28 -141 -3 c-130 -2 -142 -1 -158 17 -23 26 -24 66 -1 91 16 18 32 20 151 20 105 0 136 -3 148 -15z"/></g></svg>`;

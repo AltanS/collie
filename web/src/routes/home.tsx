@@ -11,6 +11,7 @@ import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
+import { PackFooterLink } from "@/components/pack-footer-link";
 import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
@@ -105,8 +106,10 @@ export function HomeRoute() {
           />
         </main>
 
-        {/* An available update / needed restart, then the build stamp (which bundle you're
-            running, with a stale-cache nudge). */}
+        {/* The footer is the dashboard's meta zone, in widening order: the pack you're part of, an
+            available update / needed restart, then the build stamp (which bundle you're running,
+            with a stale-cache nudge). The pack line self-hides on a solo install. */}
+        <PackFooterLink scope={data.scope} className="px-3 pt-3" />
         <UpdateBanner className="px-3 pt-3" />
         <BuildStamp className="px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
       </PullToRefresh>
