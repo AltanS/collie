@@ -9,6 +9,7 @@ import { ConnectionInfo } from "@/components/connection-info";
 import { Card } from "@/components/ui/card";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { PairedDevices } from "@/components/paired-devices";
+import { PackSettingsCard } from "@/components/pack-settings-card";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
@@ -162,6 +163,11 @@ export function SettingsRoute() {
             to do, and why". Pairing is the gate you can change from here; ConnectionInfo below only
             reports the header-based one. */}
         <PairedDevices data={devices} />
+
+        {/* The pack census, immediately above the connection diagnostics: both answer "what is this
+            thing talking to, and is it well". Renders NOTHING on a solo install — the card owns that
+            gate itself (usePack().multi), so this page needs no pack-shaped conditional. */}
+        <PackSettingsCard />
 
         <ConnectionInfo bridge={root?.bridge} device={root?.device} build={serverBuild} />
 

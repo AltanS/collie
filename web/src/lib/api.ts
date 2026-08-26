@@ -16,6 +16,7 @@ import type {
   DevicesResponse,
   NotifyPrefs,
   PaneHistoryResponse,
+  PackStatusResponse,
   PaneReadResponse,
   PairFailure,
   SnapshotResponse,
@@ -601,6 +602,19 @@ export async function pairDevice(code: string, label: string): Promise<PairResul
 /** The paired-device registry. Read-level, so an unpaired device may ask (and learn it is unpaired). */
 export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
   return req<DevicesResponse>("/api/devices", { signal });
+}
+
+/**
+ * The pack census (`GET /api/pack`). Read-level, like the snapshot — looking at who is in the pack
+ * needs no token; changing it is a CLI verb and has no endpoint here at all.
+ *
+ * Carries NO scope: the question is "what does this collie lead", and only a lead can answer it. A
+ * solo collie and a peer both refuse with 404, which the loader reads as "no pack" rather than as a
+ * failure — so this throws for that case exactly as it does for any other refusal, and the branch
+ * lives at the one call site that knows what a 404 means here (lib/loaders.ts `packLoader`).
+ */
+export function fetchPack(signal?: AbortSignal): Promise<PackStatusResponse> {
+  return req<PackStatusResponse>("/api/pack", { signal });
 }
 
 /**

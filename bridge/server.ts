@@ -57,6 +57,7 @@ import type {
   MuxConfig,
   OperatorKeyRow,
   OperatorQuickReplyRow,
+  PackStatusResponse,
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
@@ -409,6 +410,20 @@ export function startServer(opts: {
    */
   packLead?: PackLead;
   /**
+   * The Pack overview body (`GET /api/pack`), or `null` when this collie is not a lead with a pack.
+   *
+   * A CLOSURE, and it is composed in index.ts rather than here, for the reason `packRouter` is one:
+   * this file may name no pack state. What it holds instead is a question it can ask on the request
+   * path — the answer is assembled by `bridge/pack/status-wire.ts` from the trust store this process
+   * already read and the per-peer beliefs the sweep already maintains, so asking it dials nobody and
+   * opens no file (PACK_PROTOCOL.md §10.1, §11).
+   *
+   * `undefined` on every solo instance and on every peer, `null` from the closure whenever the mode
+   * says the same thing at request time — both are the route's 404, and a lead that has just lost its
+   * last member stops answering without this file learning why.
+   */
+  packStatus?: () => PackStatusResponse | null;
+  /**
    * The lead's per-peer notification coordinators, supplied under the same condition as
    * {@link startServer} `packLead`. The two notification-policy routes below fan across it exactly as
    * they fan across `registry.all()` — snooze and prefs are one pack-wide setting the lead owns
@@ -457,6 +472,7 @@ export function startServer(opts: {
   /** Who the requester is, across both device gates — see {@link requestDevice}. */
   const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairing);
   const packLead = opts.packLead;
+  const packStatus = opts.packStatus;
   const peerNotifier = opts.peerNotifier;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
@@ -1075,6 +1091,21 @@ export function startServer(opts: {
         audit.record({ action: "pair", device: parsed.label, detail: { label: parsed.label } });
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
         return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/pack" && req.method === "GET") {
+        // Read-level, exactly like `/api/devices` and `/api/config`: this is a report about machines
+        // the operator already owns, and it drives nothing. Every field is a fact this process was
+        // already holding — the route reads no disk, dials no member, and cannot start a call.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        // 404 for a solo instance AND for a peer, from one closure. A peer is not a front door
+        // (ADR 0013), and a solo instance has no pack to describe — the phone's move is the same in
+        // both cases, so the refusal is too. Not a 403: nothing was withheld, there is nothing here.
+        const body = packStatus?.() ?? null;
+        if (body === null) {
+          return jsonError(apiError("pack.not_lead"), 404, req.headers.get("accept-encoding"));
+        }
+        return json(body, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/devices" && req.method === "GET") {
         if (!pairing) return text("pairing unavailable", 503);

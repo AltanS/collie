@@ -81,6 +81,9 @@ export const API_ERROR_CODES = [
   // Addressing — the `(host, session)` a request named does not exist
   "session.unknown",
   "host.unknown",
+
+  // The pack overview — this collie is not a lead with a pack (solo, or a peer)
+  "pack.not_lead",
 ] as const;
 
 /** Every code the bridge can send. Derived from the list, so there is exactly one place to edit. */

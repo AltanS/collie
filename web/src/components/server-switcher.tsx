@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
-import { Check, Crown, Server } from "lucide-react";
+import { Check, Crown, Network, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/components/ui/sheet";
-import { homePath } from "@/lib/nav";
+import { homePath, packPath } from "@/lib/nav";
 import { hostHealth } from "@/lib/host-health";
 import { usePack } from "@/components/pack-provider";
 import { countsFor, hostCounts } from "@/lib/hosts";
@@ -190,6 +190,23 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
               );
             })}
           </ul>
+
+          {/* The way OUT of the switcher and into the whole picture. The sheet answers "which
+              machine do I want", one row at a time; the census answers "is my pack well" — secret
+              generation, deputy, version skew, a second lead — which is more than a row can hold and
+              less than a sheet should try. Still not administration: it goes to a page that reports
+              and nothing more. */}
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              navigate(packPath(scope));
+            }}
+            className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-border/60 px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 active:bg-muted"
+          >
+            <Network className="size-4 shrink-0" />
+            {t("pack.entry.title")}
+          </button>
         </BottomSheet>,
         document.body,
       )}

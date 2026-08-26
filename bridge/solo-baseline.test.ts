@@ -514,6 +514,12 @@ describe("solo zero-tax — routes", () => {
       "/api/devices/revoke",
       "/api/notifications/prefs",
       "/api/notifications/snooze",
+      // The Pack overview (bridge/pack/status-wire.ts) — a FRONT-DOOR route, and it legitimately
+      // extends this list rather than being exempted, exactly as pairing and STT do. It is not a
+      // pack route: `/pack/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
+      // browser answering its own operator. A solo instance registers it and 404s
+      // (`pack.not_lead`) — the same shape `/api/stt` has when no provider is configured.
+      "/api/pack",
       "/api/pair",
       // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
       // than exempted. It is session-scoped and read-gated, and it registers no pack route of its
@@ -533,8 +539,13 @@ describe("solo zero-tax — routes", () => {
     ]);
   });
 
+  // §11's actual promise, and it is about the PREFIX: `/pack/v1/*` is not routed here on any
+  // instance, solo or otherwise — it is declared in `bridge/pack/router.ts` and reached through the
+  // `packRouter` closure, which is what lets this file prove by grep that server.ts names no pack
+  // path. A front-door route whose NAME contains "pack" (`/api/pack`) is a different thing entirely
+  // and is pinned by the list above; matching on the substring would have conflated the two.
   test("no /pack prefix is routed at all", () => {
-    expect(declaredRoutes().filter((r) => r.includes("pack"))).toEqual([]);
+    expect(declaredRoutes().filter((r) => r.startsWith("/pack"))).toEqual([]);
     expect(readFileSync(join(import.meta.dir, "server.ts"), "utf8")).not.toMatch(/"\/pack/);
   });
 });

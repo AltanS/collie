@@ -13,7 +13,14 @@
 // no flag, no race — and because a navigation aborts any in-flight revalidation, the nav is instant
 // even while a poll's doomed fetch is still hanging.
 
-import { fetchDevices, fetchHistory, fetchPane, fetchSnapshot, isApiErrorStatus } from "@/lib/api";
+import {
+  fetchDevices,
+  fetchHistory,
+  fetchPack,
+  fetchPane,
+  fetchSnapshot,
+  isApiErrorStatus,
+} from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { isLostLatched } from "@/lib/connection-health";
@@ -31,6 +38,7 @@ import type {
   AgentView,
   BridgeStatus,
   DeviceAuth,
+  PackStatusResponse,
   PairedDeviceWire,
   PaneHistoryResponse,
   PaneReadResponse,
@@ -471,6 +479,37 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
     // A failed read says nothing about pairing, so the latch is left exactly as it was.
     return { enforced: false, current: null, devices: [], error: true };
+  }
+}
+
+// ── The pack census (the /pack overview) ─────────────────────────────────────
+//
+// The pack route's own loader, shaped exactly like `devicesLoader`: it rides the poll loop while the
+// page is open (so a member going quiet shows up here without a reload), and a failure DEGRADES —
+// it never throws, because a page that answers "how is my pack doing?" with an error boundary has
+// answered the question badly.
+//
+// The 404 is not a failure and must not be rendered as one. Only a lead serves `/api/pack`; a solo
+// collie and a peer refuse, and that refusal is the truthful answer "there is no pack here". So it
+// is folded to `status: null, error: false`, and the route says so in one honest card. Every OTHER
+// refusal — a real outage, a 500 — keeps `status: null` but sets `error`, because "I could not ask"
+// and "there is nothing to ask about" are different sentences and the operator's next move differs.
+
+export interface PackData {
+  /** The census, or `null` when this collie leads no pack (404) or the fetch failed. */
+  status: PackStatusResponse | null;
+  /** True only for a fetch that FAILED — a 404 is an answer, not an error. */
+  error: boolean;
+}
+
+export async function packLoader({ request }: { request?: Request } = {}): Promise<PackData> {
+  try {
+    return { status: await fetchPack(request?.signal), error: false };
+  } catch (e) {
+    if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
+    // Solo or peer: there is no pack to report, and that is a complete answer.
+    if (isApiErrorStatus(e, 404)) return { status: null, error: false };
+    return { status: null, error: true };
   }
 }
 

@@ -35,3 +35,11 @@ export function homePath(scope?: Scope): string {
 export function settingsPath(scope?: Scope): string {
   return `/settings${scopeSearch(scope)}`;
 }
+
+/**
+ * The pack overview — the read-only census of every machine in the pack. Carries the scope like the
+ * others so "back" returns you to the machine you were looking at, not to the lead.
+ */
+export function packPath(scope?: Scope): string {
+  return `/pack${scopeSearch(scope)}`;
+}

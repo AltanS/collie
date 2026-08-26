@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 
 import type {
   AgentView,
+  PackStatusResponse,
   ServerSummary,
   SessionSummary,
   SnapshotResponse,
@@ -171,6 +172,60 @@ export const fixturePackSnapshot: SnapshotResponse = {
   servers: fixtureServers,
 };
 
+/**
+ * The `/api/pack` census the LEAD serves, matching `fixtureServers` machine for machine — the two
+ * describe the same pack, so a test can mount the roster and the page together without them
+ * disagreeing. `attic` carries the loud pair: an incompatible protocol AND a second lead claiming
+ * the pack, which is what the page has to shout about.
+ *
+ * `ts` is the LEAD's clock and every timestamp here is stamped on it. It is deliberately AHEAD of
+ * the roster's `lastSeenAt` values by a realistic margin so the ages render as ages rather than
+ * as "now" — the page must never date anything against `Date.now()`.
+ */
+export const fixturePackStatus: PackStatusResponse = {
+  pack: { id: "pk1", name: "home", secretGeneration: 3, rotatedAt: 100_000 },
+  self: { id: "bluefin", name: "bluefin", version: "0.30.0" },
+  deputy: { id: "workshop", warrantGeneration: 2 },
+  members: [
+    {
+      id: "bluefin",
+      name: "bluefin",
+      isLead: true,
+      health: "reachable",
+      lastSeenAt: 1_000,
+      version: "0.30.0",
+      secretBehind: false,
+      provisional: false,
+    },
+    {
+      id: "workshop",
+      name: "workshop",
+      isLead: false,
+      address: "workshop.tail1234.ts.net:8787",
+      enrolledAt: 50_000,
+      health: "reachable",
+      lastSeenAt: 990,
+      version: "0.29.0",
+      secretBehind: false,
+      provisional: false,
+    },
+    {
+      id: "attic",
+      name: "attic",
+      isLead: false,
+      address: "attic.tail1234.ts.net:8787",
+      enrolledAt: 60_000,
+      health: "conflicted",
+      reason: "pack protocol 2 (this collie speaks 1)",
+      lastSeenAt: 500,
+      secretBehind: true,
+      provisional: true,
+      conflict: { leadMemberId: "cellar", warrantGeneration: 7 },
+    },
+  ],
+  ts: 400_000,
+};
+
 /** A minimal two-turn transcript: a human ask and the agent's tool-call-plus-answer reply. */
 export const fixtureTranscript: TranscriptEntry[] = [
   {
@@ -264,6 +319,15 @@ export const handlers = [
         cwd: "/home/you",
       },
     }),
+  ),
+  // The DEFAULT world is solo, so the census refuses exactly as a non-lead bridge does: 404 with the
+  // app's ordinary JSON error shape. Every pre-existing test therefore keeps asserting the one-host
+  // world, and a test that wants a pack overrides this with `fixturePackStatus`.
+  http.get("/api/pack", () =>
+    HttpResponse.json(
+      { error: "this collie is not the lead of a pack", code: "pack.not_lead" },
+      { status: 404 },
+    ),
   ),
   http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
   http.post<never, { snoozedUntil: number | null }>("/api/notifications/snooze", async ({ request }) => {
