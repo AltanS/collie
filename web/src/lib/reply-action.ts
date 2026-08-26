@@ -21,6 +21,7 @@ import { fetchPane, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { adapterFor, type HarnessAdapter } from "./harness";
+import { CODEX_CHUNK_SETTLE_MS, codexInputChunks } from "./harness/codex/paste";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
 import { detectNoEchoPrompt } from "./no-echo";
 
@@ -48,6 +49,7 @@ export type ReplyOutcome =
 
 /** Minimum visible characters that must match before we believe the input box holds OUR text. */
 export const MIN_MATCH_CHARS = 8;
+const CODEX_POLL_ATTEMPTS = 16;
 
 const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
 
@@ -222,7 +224,7 @@ export interface GuardedReplyArgs {
    * the guard re-confirms before typing.
    *
    * The argument carries the evidence FORWARD, not just the permission. `promptRegion` is the prompt
-   * row the adapter saw on the pane the pre-flight just read, and a caller that sends destructive
+   * tail the adapter saw on the pane the pre-flight just read, and a caller that sends destructive
    * keys must pass it to `api.sendKeys` as `expected_prompt`: an ordering guarantee alone cannot
    * bound the gap between the read and the keys, because that gap is a network round-trip and the
    * only limit on it is GET_TIMEOUT_MS. Binding hands the last word to the bridge, which re-reads
@@ -235,7 +237,7 @@ export interface GuardedReplyArgs {
 /** What the pre-flight's live read saw, handed to the caller's pre-type work. */
 export interface ComposerSeen {
   /**
-   * The composer's own prompt row, verbatim on screen, for binding a destructive write to it
+   * The composer's own prompt/draft tail, verbatim on screen, for binding a destructive write to it
    * (`api.sendKeys(..., expectedPrompt)`). `null` when the adapter has no `composerPrompt` — then the
    * write goes out unbound, which is the pre-existing behaviour and the reason the hook is optional.
    */
@@ -275,26 +277,46 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   const aborted = await runPreType?.();
   if (aborted) return aborted;
 
-  let typed;
-  try {
-    typed = await sendReply(args.paneId, args.text, false, args.session);
-  } catch (e) {
-    return { status: "error", error: message(e) };
-  }
-  if (!typed.ok) return { status: "error", error: typed.error };
-
   const sleep = args.sleep ?? defaultSleep;
+  const chunks = adapter.agent === "codex" ? codexInputChunks(args.text) : [args.text];
+  let textDelivered = false;
+  for (let index = 0; index < chunks.length; index++) {
+    let typed;
+    try {
+      typed = await sendReply(args.paneId, chunks[index]!, false, args.session);
+    } catch (e) {
+      return {
+        status: "error",
+        error: message(e),
+        ...(textDelivered ? { textDelivered: true } : {}),
+      };
+    }
+    if (!typed.ok) {
+      const partial = textDelivered || typed.textDelivered === true;
+      return {
+        status: "error",
+        error: typed.error,
+        ...(partial ? { textDelivered: true } : {}),
+      };
+    }
+    textDelivered = true;
+    if (index + 1 < chunks.length) await sleep(CODEX_CHUNK_SETTLE_MS);
+  }
+
   // The last screen a verification read actually saw, kept only so the stall below can be named. The
   // pre-flight catches almost every password prompt before a byte is typed, but not all of them: a
   // harness with no `composerReady`, and a `force` the operator armed against a mis-detected screen,
   // both arrive here having typed the secret into a prompt that will never echo it.
   let lastSeen: string | null = null;
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
+  let stableCodexPrompt: string | undefined;
+  const pollAttempts = adapter.agent === "codex" ? CODEX_POLL_ATTEMPTS : POLL_ATTEMPTS;
+  for (let attempt = 0; attempt < pollAttempts; attempt++) {
     // Read BEFORE the first sleep: pane.read is an on-demand live read, not a cached poll, so the
     // text is often already on screen by the time the type call returns. That saves a whole
     // POLL_DELAY_MS off the common path — the old blind flow always paid a fixed 350ms here.
     if (attempt > 0) await sleep(POLL_DELAY_MS);
     let draft: string | null = null;
+    let promptRegion: string | undefined;
     try {
       const fresh = await fetchPane(args.paneId, args.requestedLines, args.session);
       const lines = splitLines(parseAnsi(fresh.text));
@@ -308,18 +330,33 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
       const composerVisible = adapter.composerReady?.(lines) ?? false;
       lastSeen = composerVisible ? null : detectNoEchoPrompt(lines);
       draft = adapter.extractInputDraft(lines);
+      promptRegion = adapter.composerPrompt?.(lines) ?? undefined;
     } catch {
+      stableCodexPrompt = undefined;
       continue; // transient read failure — the bounded loop is the timeout
     }
-    if (draftCarriesSend(args.text, draft)) return submitOnly(args);
+    const submitPrompt = adapter.agent === "codex" ? promptRegion : undefined;
     // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
     // paint a token of its own instead (Claude collapses anything past its paste threshold into
-    // `[Pasted text #N +M lines]`), so the box never holds our words and the match above structurally
-    // cannot succeed — the send stalls forever while every retry re-collapses. The adapter is the only
-    // thing that knows its harness's token and whether this one is consistent with THIS send
-    // (.adr/0010). It can only widen the evidence, never narrow it, so a harness without the
-    // capability is untouched.
-    if (draft !== null && adapter.draftCarriesSend?.(args.text, draft)) return submitOnly(args);
+    // `[Pasted text #N +M lines]`), so the box never holds our words and the generic match
+    // structurally cannot succeed. Only that harness knows whether its token fits THIS send
+    // (.adr/0010); the capability can widen evidence, never narrow it.
+    const verified =
+      draftCarriesSend(args.text, draft) ||
+      (draft !== null && adapter.draftCarriesSend?.(args.text, draft) === true);
+    if (verified) {
+      if (adapter.agent !== "codex") return submitOnly(args, submitPrompt);
+      // Codex can expose a matching windowed slice before its wrapped composer has finished
+      // repainting. Binding Enter to that first transient layout races the bridge's immediate read
+      // and returns prompt_changed even though the full draft arrived. Require two consecutive,
+      // byte-identical prompt/draft regions. The second read is read-only; text is never retyped.
+      if (submitPrompt !== undefined && submitPrompt === stableCodexPrompt) {
+        return submitOnly(args, submitPrompt);
+      }
+      stableCodexPrompt = submitPrompt;
+      continue;
+    }
+    stableCodexPrompt = undefined;
   }
 
   // The text never showed up on the input line. The likeliest cause is a dialog holding focus and
@@ -472,9 +509,12 @@ async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
  * bridge's configured submit keys (COLLIE_SUBMIT_KEYS). So the submit-key contract stays
  * server-owned and this whole guard needs no bridge change.
  */
-async function submitOnly(args: GuardedReplyArgs): Promise<ReplyOutcome> {
+async function submitOnly(
+  args: GuardedReplyArgs,
+  expectedPrompt?: string,
+): Promise<ReplyOutcome> {
   try {
-    const res = await sendReply(args.paneId, "", true, args.session);
+    const res = await sendReply(args.paneId, "", true, args.session, expectedPrompt);
     if (res.ok) return { status: "sent" };
     // The text is verifiably sitting in the input box and only the submit key failed — same shape as
     // the bridge's own partial-failure case. Tell the caller not to resend.

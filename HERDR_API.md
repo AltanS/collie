@@ -84,6 +84,10 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
     first and wrong hypothesis.
   - A `\n` inside `text` is delivered as a real newline keypress, not as pasted content. What the TUI
     does with it (submit vs. insert) is the harness's choice, not something the paste framing hides.
+  - A 2026-08-26 Herdr 0.8.0 Codex probe sent 1,123 synthetic ASCII bytes in one RPC and the
+    composer retained exactly the first 1,024. Two ordered sub-1,024-byte RPCs retained all 1,123.
+    The Codex guarded path therefore transports one logical input as Unicode-safe chunks; it still
+    verifies the complete logical message before sending Enter and never retries a partial write.
 - **An ack means "herdr took the bytes", never "the TUI acted on them".** Both `send_text` and
   `send_keys` return before the target program has read, let alone rendered, anything. So a
   successful RPC pair is not evidence a reply was delivered — a focused TUI dialog can swallow the

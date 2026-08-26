@@ -13,16 +13,39 @@ const BOX_RULE = "─".repeat(40); // clears the 20-glyph border threshold in ha
 const paneWithDraft = (draft: string) => `some output\n${BOX_RULE}\n❯ ${draft}\n${BOX_RULE}`;
 // A focused permission dialog: no input box at the tail at all, so extractInputDraft sees nothing.
 const paneWithDialog = "Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel";
+const CODEX_PALETTE_BG = "\x1b[48;2;61;64;64m";
+const CODEX_PALETTE_RESET = "\x1b[0m";
+
+function codexSlashPalette(command: "/status" | "/fast"): string {
+  const options =
+    command === "/status"
+      ? [
+          ["/status", "show current session configuration and token usage"],
+          ["/statusline", "configure which items appear in the status line"],
+        ]
+      : [["/fast", "1.5x speed, increased usage"]];
+  return [
+    "some output",
+    `${CODEX_PALETTE_BG}${" ".repeat(80)}${CODEX_PALETTE_RESET}`,
+    `${CODEX_PALETTE_BG}\x1b[1m›${CODEX_PALETTE_RESET}${CODEX_PALETTE_BG} ${command}${" ".repeat(60)}${CODEX_PALETTE_RESET}`,
+    `${CODEX_PALETTE_BG}${" ".repeat(80)}${CODEX_PALETTE_RESET}`,
+    ...options.map(([name, description], index) =>
+      index === 0
+        ? `  \x1b[1m\x1b[38;5;6m${name}  ${description}${CODEX_PALETTE_RESET}`
+        : `  /\x1b[1m${name.slice(1, command.length)}${CODEX_PALETTE_RESET}${name.slice(command.length)}  \x1b[2m${description}${CODEX_PALETTE_RESET}`,
+    ),
+  ].join("\n");
+}
 
 /** Record every reply POST, and let the fake pane's screen be swapped per test. */
 function harness(screen: () => string) {
-  const calls: Array<{ text: string; submit: boolean }> = [];
+  const calls: Array<{ text: string; submit: boolean; expected_prompt?: string }> = [];
   server.use(
     http.get(/\/api\/pane\/[^/]+$/, () =>
       HttpResponse.json({ paneId: "w1:p1", text: screen(), truncated: false, revision: 1 }),
     ),
     http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-      const body = (await request.json()) as { text: string; submit: boolean };
+      const body = (await request.json()) as (typeof calls)[number];
       calls.push(body);
       return HttpResponse.json({ ok: true });
     }),
@@ -200,6 +223,270 @@ describe("sendGuardedReply", () => {
       { text: "ship it please", submit: false },
       { text: "", submit: true },
     ]);
+  });
+
+  it("types, verifies, and submits once with a bounded customized Codex status row", async () => {
+    let calls: Array<{ text: string; submit: boolean }> = [];
+    const codexPane = (draft: string) =>
+      [
+        "some output",
+        "",
+        `› ${draft}`,
+        "",
+        "  model-example balanced · demo-project · feature/demo · weekly 80% left · Workspace Write · demo-session",
+      ].join("\n");
+    calls = harness(() =>
+      codexPane(calls.some((call) => !call.submit) ? "ship it please" : "Ask Codex to do anything"),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "codex",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "ship it please", submit: false },
+      { text: "", submit: true, expected_prompt: "› ship it please" },
+    ]);
+  });
+
+  it("withholds submit when a dialog replaces a customized Codex composer after typing", async () => {
+    let calls: Array<{ text: string; submit: boolean }> = [];
+    const composer = [
+      "some output",
+      "",
+      "› Ask Codex to do anything",
+      "",
+      "  model-example · demo-project · weekly 80% left · Workspace Write",
+    ].join("\n");
+    const dialog = [
+      "  Would you like to run the following command?",
+      "  $ synthetic-command",
+      "› 1. Yes, proceed (y)",
+      "  2. No, and tell Codex what to do differently (esc)",
+      "  Press enter to confirm or esc to cancel",
+    ].join("\n");
+    calls = harness(() => (calls.length === 0 ? composer : dialog));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "please do not approve anything",
+      agent: "codex",
+      ...instant,
+    });
+
+    expect(out.status).toBe("stalled");
+    expect(calls).toEqual([{ text: "please do not approve anything", submit: false }]);
+  });
+
+  it("verifies and submits once with Codex's strict styled two-field status row", async () => {
+    let calls: Array<{ text: string; submit: boolean }> = [];
+    const pane = (draft: string) =>
+      [
+        "some output",
+        "",
+        `› ${draft}`,
+        "",
+        "  \x1b[38;5;6mmodel-example\x1b[0m\x1b[2m · \x1b[0m\x1b[38;5;3mdemo-project\x1b[0m",
+      ].join("\n");
+    calls = harness(() =>
+      pane(calls.some((call) => !call.submit) ? "ship it please" : "Ask Codex to do anything"),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "codex",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "ship it please", submit: false },
+      { text: "", submit: true, expected_prompt: "› ship it please" },
+    ]);
+  });
+
+  it("chunks a long Codex input, verifies the complete draft, and binds submit", async () => {
+    const sent = "x".repeat(1001);
+    const firstRow = "x".repeat(500);
+    const secondRow = "x".repeat(501);
+    const calls: Array<{ text: string; submit: boolean; expected_prompt?: string }> = [];
+    const pane = [
+      "some output",
+      "",
+      `› ${firstRow}`,
+      `  ${secondRow}`,
+      "",
+      "  model-example · demo-project · Context 99% left",
+    ].join("\n");
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ paneId: "w1:p1", text: pane, truncated: false, revision: 1 }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        calls.push((await request.json()) as (typeof calls)[number]);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const out = await sendGuardedReply({ paneId: "w1:p1", text: sent, agent: "codex", ...instant });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "x".repeat(900), submit: false },
+      { text: "x".repeat(101), submit: false },
+      {
+        text: "",
+        submit: true,
+        expected_prompt: `› ${firstRow}\n  ${secondRow}`,
+      },
+    ]);
+  });
+
+  it("reports a later Codex chunk failure as partial delivery and never verifies or submits", async () => {
+    const sent = "x".repeat(1001);
+    const calls: Array<{ text: string; submit: boolean }> = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          text: "› Ask Codex to do anything\n\n  model · project · Context 99% left",
+          truncated: false,
+          revision: 1,
+        }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        calls.push((await request.json()) as (typeof calls)[number]);
+        return calls.length === 1
+          ? HttpResponse.json({ ok: true })
+          : HttpResponse.json({ ok: false, error: "second chunk rejected" });
+      }),
+    );
+
+    const out = await sendGuardedReply({ paneId: "w1:p1", text: sent, agent: "codex", ...instant });
+
+    expect(out).toEqual({
+      status: "error",
+      error: "second chunk rejected",
+      textDelivered: true,
+    });
+    expect(calls).toEqual([
+      { text: "x".repeat(900), submit: false },
+      { text: "x".repeat(101), submit: false },
+    ]);
+  });
+
+  it("waits for two identical Codex prompt tails before binding Enter", async () => {
+    const calls: Array<{ text: string; submit: boolean; expected_prompt?: string }> = [];
+    let reads = 0;
+    const status = "  model-example · demo-project · Context 99% left";
+    const screens = [
+      ["› Ask Codex to do anything", "", status].join("\n"),
+      ["› ship it please", "", status].join("\n"),
+      ["› ship it", "  please", "", status].join("\n"),
+      ["› ship it", "  please", "", status].join("\n"),
+    ];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        const text = screens[Math.min(reads, screens.length - 1)]!;
+        reads += 1;
+        return HttpResponse.json({ paneId: "w1:p1", text, truncated: false, revision: reads });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        calls.push((await request.json()) as (typeof calls)[number]);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "codex",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(reads).toBe(4);
+    expect(calls).toEqual([
+      { text: "ship it please", submit: false },
+      { text: "", submit: true, expected_prompt: "› ship it\n  please" },
+    ]);
+  });
+
+  it.each(["/status", "/fast"] as const)(
+    "submits exact Codex slash command %s only after its stable palette verifies it",
+    async (command) => {
+      const calls: Array<{ text: string; submit: boolean; expected_prompt?: string }> = [];
+      const idle = [
+        "› Ask Codex to do anything",
+        "",
+        "  model-example · demo-project · Context 99% left",
+      ].join("\n");
+      server.use(
+        http.get(/\/api\/pane\/[^/]+$/, () =>
+          HttpResponse.json({
+            paneId: "w1:p1",
+            text: calls.length === 0 ? idle : codexSlashPalette(command),
+            truncated: false,
+            revision: calls.length,
+          }),
+        ),
+        http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+          calls.push((await request.json()) as (typeof calls)[number]);
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: command,
+        agent: "codex",
+        ...instant,
+      });
+
+      const descriptions =
+        command === "/status"
+          ? [
+              "  /status  show current session configuration and token usage",
+              "  /statusline  configure which items appear in the status line",
+            ]
+          : ["  /fast  1.5x speed, increased usage"];
+      expect(out).toEqual({ status: "sent" });
+      expect(calls).toEqual([
+        { text: command, submit: false },
+        {
+          text: "",
+          submit: true,
+          expected_prompt: [`› ${command}`, "", ...descriptions].join("\n"),
+        },
+      ]);
+    },
+  );
+
+  it("gives Codex a longer read-only verification window without retyping", async () => {
+    let sleeps = 0;
+    const calls = harness(
+      () =>
+        ["› Ask Codex to do anything", "", "  model-example · demo-project · Context 99% left"].join(
+          "\n",
+        ),
+    );
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "message that never appears",
+      agent: "codex",
+      sleep: async () => {
+        sleeps += 1;
+      },
+    });
+
+    expect(out.status).toBe("stalled");
+    expect(sleeps).toBe(15);
+    expect(calls).toEqual([{ text: "message that never appears", submit: false }]);
   });
 
   // omp paints an inline completion suggestion after the operator's text, in its own colour. It is

@@ -250,6 +250,15 @@ const STATUS_TEXT = [
   "  ← for agents",
 ].join("\n");
 
+const CODEX_SLASH_TEXT = [
+  "Codex output",
+  "\x1b[48;2;61;64;64m                                                            \x1b[0m",
+  "\x1b[48;2;61;64;64m\x1b[1m›\x1b[0m\x1b[48;2;61;64;64m /status                                             \x1b[0m",
+  "\x1b[48;2;61;64;64m                                                            \x1b[0m",
+  "  \x1b[1m\x1b[38;5;6m/status  show current session configuration and token usage\x1b[0m",
+  "  /\x1b[1mstatus\x1b[0mline  \x1b[2mconfigure which items appear in the status line\x1b[0m",
+].join("\n");
+
 // A minimal multi-question wizard tail (stepper header + current question) — enough for the REAL
 // wizard detector to lift it into the native WizardBlock inside AgentChat's mirror.
 const WIZARD_TEXT = [
@@ -419,6 +428,13 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
     expect(strip.textContent).toBe("Local Llama (xhigh) · plan");
     expect(screen.queryByText(/Shift\+Tab:mode/)).toBeNull();
     expect(screen.queryByText("╭")).toBeNull();
+  });
+
+  it("keeps an exact Codex slash palette raw while treating its command as recoverable input", () => {
+    const codexAgent = { ...opencodeAgent, agent: "codex", paneId: "w8:p4" };
+    renderChat({ text: CODEX_SLASH_TEXT, agent: codexAgent });
+    expect(screen.getByText(/show current session configuration/).closest("pre")).not.toBeNull();
+    expect(screen.getByText(/configure which items appear/).closest("pre")).not.toBeNull();
   });
 });
 

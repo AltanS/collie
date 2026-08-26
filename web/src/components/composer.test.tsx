@@ -1445,6 +1445,59 @@ describe("Composer — terminal-draft preview", () => {
     await waitFor(() => expect(box).toHaveValue("")); // cleared after send
   });
 
+  it("Codex working draft Take over clears the queue composer before retyping and queues once", async () => {
+    const user = userEvent.setup();
+    const draft = "finish the current review";
+    const queuePane = (value: string) =>
+      [
+        "• Working (3s • esc to interrupt)",
+        "",
+        `› ${value}`,
+        "",
+        "  tab to queue message                                       100% context left",
+      ].join("\n");
+    let livePane = queuePane(draft);
+    const wire: Array<
+      { kind: "keys"; keys: string[] } | { kind: "reply"; text: string; submit: boolean }
+    > = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ paneId: "w1:p1", text: livePane, truncated: false, revision: 1 }),
+      ),
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        const body = (await request.json()) as { keys: string[] };
+        wire.push({ kind: "keys", keys: body.keys });
+        livePane = queuePane("Ask Codex to do anything");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { text: string; submit: boolean };
+        wire.push({ kind: "reply", text: body.text, submit: body.submit });
+        livePane = body.submit ? queuePane("Ask Codex to do anything") : queuePane(body.text);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderDraftHarness({ agent: "codex", terminalDraft: draft });
+    await screen.findByText(/draft in terminal/i);
+
+    await user.click(screen.getByRole("button", { name: /take over/i }));
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(box).toHaveValue(draft);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(box).toHaveValue(""));
+    expect(wire).toHaveLength(3);
+    expect(wire[0]).toMatchObject({ kind: "keys" });
+    if (wire[0]?.kind === "keys") {
+      expect(wire[0].keys[0]).toBe("ctrl+k");
+      expect(wire[0].keys.slice(1).every((key) => key === "Backspace")).toBe(true);
+    }
+    expect(wire.slice(1)).toEqual([
+      { kind: "reply", text: draft, submit: false },
+      { kind: "reply", text: "", submit: true },
+    ]);
+  }, 15_000);
+
   it("read-only device: shows the preview and allows Take over (local copy), writing nothing to the terminal", async () => {
     const user = userEvent.setup();
     const keyCalls: string[] = [];

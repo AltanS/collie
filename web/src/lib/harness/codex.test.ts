@@ -33,10 +33,12 @@ const PINNED = [
   "codex--ask-notes-focused.txt",
   "codex--ask-wizard-q1.txt",
   "codex--ask-wizard-q2.txt",
+  "codex--custom-status-draft.txt",
   "codex--draft-wrapped.txt",
   "codex--draft.txt",
   "codex--fresh-idle.txt",
   "codex--trust-prompt.txt",
+  "codex--working-draft-queue-hint.txt",
   "codex--working.txt",
 ];
 
@@ -71,7 +73,7 @@ function fixtureLines(name: string) {
 }
 
 describe("composerReady — the gate the reply path pre-flights on", () => {
-  it.each(["codex--fresh-idle.txt", "codex--draft.txt", "codex--draft-wrapped.txt", "codex--working.txt"])(
+  it.each(["codex--fresh-idle.txt", "codex--draft.txt", "codex--draft-wrapped.txt", "codex--working.txt", "codex--working-draft-queue-hint.txt", "codex--custom-status-draft.txt"])(
     "%s: the composer is on screen ⇒ true",
     (name) => {
       expect(codexAdapter.composerReady!(fixtureLines(name))).toBe(true);
@@ -95,7 +97,89 @@ describe("chrome", () => {
 
   it("extracts a one-line draft, and null for the placeholder", () => {
     expect(codexAdapter.extractInputDraft(fixtureLines("codex--draft.txt"))).toBe("hi there");
+    expect(codexAdapter.extractInputDraft(fixtureLines("codex--custom-status-draft.txt"))).toBe(
+      "ship it please",
+    );
+    expect(codexAdapter.extractInputDraft(fixtureLines("codex--working-draft-queue-hint.txt"))).toBe(
+      "finish the current review",
+    );
     expect(codexAdapter.extractInputDraft(fixtureLines("codex--fresh-idle.txt"))).toBeNull();
+  });
+
+  it("recovers a working draft above the official queue-message footer", () => {
+    const lines = fixtureLines("codex--working-draft-queue-hint.txt");
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe("finish the current review");
+    const status = codexAdapter.extractStatusLines(lines);
+    expect(status).toHaveLength(1);
+    expect(lineText(status[0]!).trim()).toMatch(/^tab to queue message/);
+  });
+
+  it("accepts live and official bounded queue-footer heights, but not an unbounded gap", () => {
+    const screen = (blankRows: number) =>
+      splitLines(
+        parseAnsi(
+          [
+            "› finish the current review",
+            ...Array.from({ length: blankRows }, () => ""),
+            "  tab to queue message                                       100% context left",
+          ].join("\n"),
+        ),
+      );
+
+    for (const blankRows of [0, 1, 6, 12]) {
+      expect(codexAdapter.composerReady!(screen(blankRows)), `${blankRows} blank rows`).toBe(true);
+      expect(codexAdapter.extractInputDraft(screen(blankRows))).toBe("finish the current review");
+    }
+    expect(codexAdapter.composerReady!(screen(13))).toBe(false);
+    expect(codexAdapter.extractInputDraft(screen(13))).toBeNull();
+  });
+
+  it("does not confuse Codex ask/question footers with the working queue footer", () => {
+    for (const name of ["codex--ask-fruit.txt", "codex--ask-wizard-q1.txt", "codex--ask-wizard-q2.txt", "codex--ask-notes-focused.txt"]) {
+      const lines = fixtureLines(name);
+      expect(locateComposer(lines), name).toBeNull();
+      expect(codexAdapter.composerReady!(lines), name).toBe(false);
+    }
+  });
+
+  it("recognises a bounded customized status row without assigning meaning to its fields", () => {
+    const lines = fixtureLines("codex--custom-status-draft.txt");
+    const box = locateComposer(lines);
+    expect(box).not.toBeNull();
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    const status = codexAdapter.extractStatusLines(lines);
+    expect(status).toHaveLength(1);
+    expect(lineText(status[0]!)).not.toContain("Context");
+    expect(lineText(status[0]!)).toContain(" · ");
+  });
+
+  it("recognises the strict styled two-field renderer without accepting its plain-text lookalike", () => {
+    const styled = [
+      "› ship it please",
+      "",
+      "  \x1b[38;5;6mmodel-example\x1b[0m\x1b[2m · \x1b[0m\x1b[38;5;3mdemo-project\x1b[0m",
+    ].join("\n");
+    const plain = ["› ship it please", "", "  model-example · demo-project"].join("\n");
+    const wrongSeparatorStyle = [
+      "› ship it please",
+      "",
+      "  \x1b[38;5;6mmodel-example\x1b[0m · \x1b[38;5;3mdemo-project\x1b[0m",
+    ].join("\n");
+    const wrongFieldStyle = [
+      "› ship it please",
+      "",
+      "  model-example\x1b[2m · \x1b[0m\x1b[38;5;3mdemo-project\x1b[0m",
+    ].join("\n");
+
+    const styledLines = splitLines(parseAnsi(styled));
+    expect(locateComposer(styledLines)).not.toBeNull();
+    expect(codexAdapter.composerReady!(styledLines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(styledLines)).toBe("ship it please");
+    expect(locateComposer(splitLines(parseAnsi(plain)))).toBeNull();
+    expect(locateComposer(splitLines(parseAnsi(wrongSeparatorStyle)))).toBeNull();
+    expect(locateComposer(splitLines(parseAnsi(wrongFieldStyle)))).toBeNull();
   });
 
   it("joins a wrapped draft back into the typed sentence", () => {
@@ -128,6 +212,34 @@ describe("chrome", () => {
     // The real row shape (two fields before the token) still locates.
     const real = ["› draft text", "", "  model x · /some/dir · Context 50% left"].join("\n");
     expect(locateComposer(splitLines(parseAnsi(real)))).not.toBeNull();
+  });
+
+  it("rejects ambiguous or unbounded customized status rows", () => {
+    const locate = (status: string) =>
+      locateComposer(splitLines(parseAnsi(["› draft text", "", status].join("\n"))));
+
+    expect(locate("model · project · branch")).toBeNull(); // no two-space status indent
+    expect(locate("   model · project · branch")).toBeNull(); // continuation/deeper indent
+    expect(locate("  model · project")).toBeNull(); // too few fields
+    expect(locate("  model ·  · branch")).toBeNull(); // empty field
+    expect(locate("  model · project · branch\tname")).toBeNull(); // terminal control
+    expect(locate(`  model · ${"x".repeat(161)} · branch`)).toBeNull(); // one field too long
+    expect(locate(`  ${Array.from({ length: 13 }, (_, i) => `field-${i}`).join(" · ")}`)).toBeNull();
+    expect(locate(`  ${Array.from({ length: 4 }, () => "x".repeat(130)).join(" · ")}`)).toBeNull();
+  });
+
+  it("keeps disabled, missing, torn, and transcript-only status evidence fail-closed", () => {
+    const screens = [
+      ["› draft text"],
+      ["› draft text", "", "  model · project"],
+      ["› earlier transcript echo", "• Working (3s • esc to interrupt)"],
+      ["  model · project · branch", "", "› draft text"],
+    ];
+    for (const screen of screens) {
+      const lines = splitLines(parseAnsi(screen.join("\n")));
+      expect(locateComposer(lines), screen.join(" | ")).toBeNull();
+      expect(codexAdapter.composerReady!(lines), screen.join(" | ")).toBe(false);
+    }
   });
 
   it("a draft that wraps past 8 rows is still a composer", () => {
@@ -164,8 +276,106 @@ describe("codexBuildBlocks", () => {
     }
   });
 
+  it("hides an empty input box and its status row", () => {
+    const lines = fixtureLines("codex--fresh-idle.txt");
+    const placeholder = lines
+      .flatMap((line) => line.segments)
+      .find((segment) => segment.text.includes("Ask Codex to do anything"));
+    expect(placeholder?.dim).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBeNull();
+
+    const blocks = codexAdapter.buildBlocks(lines);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.kind).toBe("raw");
+    if (blocks[0]?.kind !== "raw") return;
+    const visible = blocks[0].lines.map(lineText).join("\n");
+    expect(visible).not.toContain("› Ask Codex to do anything");
+    expect(visible).not.toContain("Context");
+    expect(
+      blocks[0].lines.at(-1)!.segments.every(
+        (segment) => segment.style.backgroundColor === undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("hides the whole empty three-row composer while Codex is working", () => {
+    const blocks = codexAdapter.buildBlocks(fixtureLines("codex--working.txt"));
+    expect(blocks[0]?.kind).toBe("raw");
+    if (blocks[0]?.kind !== "raw") return;
+    const visible = blocks[0].lines.map(lineText).join("\n");
+    expect(visible).toContain("Working");
+    expect(visible).not.toContain("› Ask Codex to do anything");
+    expect(visible).not.toContain("Context");
+    expect(
+      blocks[0].lines.at(-1)!.segments.every(
+        (segment) => segment.style.backgroundColor === undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps the same words when they are an ordinary non-dim draft", () => {
+    const lines = splitLines(
+      parseAnsi(
+        [
+          "some output",
+          "",
+          "› Ask Codex to do anything",
+          "",
+          "  model-example · demo-project · Context 99% left",
+        ].join("\n"),
+      ),
+    );
+    expect(codexAdapter.extractInputDraft(lines)).toBe("Ask Codex to do anything");
+    const blocks = codexAdapter.buildBlocks(lines);
+    expect(blocks[0]?.kind).toBe("raw");
+    if (blocks[0]?.kind === "raw") {
+      expect(blocks[0].lines.map(lineText).join("\n")).toContain("› Ask Codex to do anything");
+    }
+  });
+
+  it.each([
+    ["codex--draft.txt", "hi there", "Context"],
+    ["codex--custom-status-draft.txt", "ship it please", "weekly 80% left"],
+    ["codex--working-draft-queue-hint.txt", "finish the current review", "tab to queue message"],
+  ])("%s: keeps a non-empty input box visible but removes the status/footer row", (name, draft, status) => {
+    const blocks = codexAdapter.buildBlocks(fixtureLines(name));
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.kind).toBe("raw");
+    if (blocks[0]?.kind !== "raw") return;
+    const visible = blocks[0].lines.map(lineText).join("\n");
+    expect(visible).toContain(`› ${draft}`);
+    expect(visible).not.toContain(status);
+    expect(lineText(blocks[0].lines.at(-1)!).trim()).toBe("");
+  });
+
+  it("preserves the background-painted row above a non-empty native composer", () => {
+    const lines = fixtureLines("codex--draft.txt");
+    const box = locateComposer(lines)!;
+    const blocks = codexAdapter.buildBlocks(lines);
+    expect(blocks[0]?.kind).toBe("raw");
+    if (blocks[0]?.kind !== "raw") return;
+    expect(blocks[0].lines[box.promptRow - 1]).toBe(lines[box.promptRow - 1]);
+    expect(
+      blocks[0].lines[box.promptRow - 1]!.segments.some(
+        (segment) => segment.style.backgroundColor !== undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps every native blank composer row and removes exactly the queue footer", () => {
+    const lines = fixtureLines("codex--working-draft-queue-hint.txt");
+    const blocks = codexAdapter.buildBlocks(lines);
+    expect(blocks[0]?.kind).toBe("raw");
+    if (blocks[0]?.kind !== "raw") return;
+    const prompt = blocks[0].lines.findIndex((line) => lineText(line).startsWith("› "));
+    expect(prompt).toBeGreaterThanOrEqual(0);
+    expect(blocks[0].lines.slice(prompt + 1).filter((line) => lineText(line) === "")).toHaveLength(6);
+    expect(blocks[0].lines.map(lineText).join("\n")).not.toContain("tab to queue message");
+  });
+
   it("lifts the trust prompt with digit keys — both probed on the captured widget", () => {
-    const prompt = codexAdapter.buildBlocks(fixtureLines("codex--trust-prompt.txt")).find(
+    const blocks = codexAdapter.buildBlocks(fixtureLines("codex--trust-prompt.txt"));
+    const prompt = blocks.find(
       (b) => b.kind === "prompt-select",
     );
     expect(prompt?.kind).toBe("prompt-select");
@@ -173,6 +383,10 @@ describe("codexBuildBlocks", () => {
     expect(prompt.prompt.family).toBe("trust");
     expect(prompt.prompt.options.map((o) => o.label)).toEqual(["Yes, continue", "No, quit"]);
     expect(prompt.prompt.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    expect(blocks[0]?.kind).toBe("raw");
+    if (blocks[0]?.kind === "raw") {
+      expect(blocks[0].lines.map(lineText).join("\n")).toContain("Do you trust the contents");
+    }
   });
 
   it("lifts the exec approval from its one-shot Yes / reject pair only", () => {

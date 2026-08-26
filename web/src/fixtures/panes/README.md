@@ -35,8 +35,10 @@ and the observed commands were approved with no dialog painted.
 | `codex--trust-prompt.txt` | First screen in an untrusted directory: trust paragraph, `› 1. Yes, continue / 2. No, quit`, `Press enter to continue`. Digit 2 live-probed: quit immediately | `blocked` |
 | `codex--fresh-idle.txt` | Welcome banner box, tips, empty `› Ask Codex to do anything` composer, status row | `idle` |
 | `codex--draft.txt` | One-line draft on the `› ` row | `idle` |
+| `codex--custom-status-draft.txt` | **Synthetic structure fixture** for an operator-configured status row that omits `Context`: generic model/project/branch/rate/permission/session fields below a one-line draft. It contains no copied live Pane text, identity, path, UUID, quota, project, branch, message, or device value | `idle` |
 | `codex--draft-wrapped.txt` | Long draft word-wrapped onto a two-space-indented continuation row | `idle` |
 | `codex--working.txt` | `• Working (3s • esc to interrupt)` above a still-visible composer (Codex queues mid-turn) | `working` |
+| `codex--working-draft-queue-hint.txt` | **Synthetic structure fixture** derived from the official Codex TUI queue-footer snapshots and structurally checked against a disposable local Codex 0.149.1 Pane: a half-written `›` draft, bounded blank composer height, and trailing `tab to queue message … context left` chrome. The real probe used one blank row and the official snapshot uses six; tests cover 0–12. No live Pane content or identity is copied | `working` |
 | `codex--approval-exec.txt` | Exec approval: header, Environment/Reason, `$ command`, options `1. Yes, proceed (y)` / `2. …don't ask again… (p)` / `3. No… (esc)`, enter/esc footer. Digits 1 and 3 live-probed (1 ran the command, 3 rejected it — file verified absent); `y` probed too | `blocked` |
 | `codex--ask-fruit.txt` | `request_user_input` card: `Question 1/1` header, options with descriptions plus the auto-added `None of the above`, notes footer. Digit live-probed: answers AND submits | `blocked` |
 | `codex--ask-wizard-q1.txt` | Two-question set, `Question 1/2`; footer adds `←/→ to navigate questions`. Digit probed: answers and advances | `blocked` |
