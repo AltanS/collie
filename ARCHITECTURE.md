@@ -212,10 +212,10 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   same-host peer (raised in [#33](https://github.com/AltanS/collie/issues/33)).
   Under `tailscale serve`, the `Tailscale-User-Login` header is the person gate — trusted **only**
   when the request source is loopback (i.e. it came from tailscaled). `COLLIE_TRUSTED_USER` rejects a
-  *mismatching* login and **passes an absent one**: it narrows which tailnet user is trusted, it does
-  not mandate the header. That is safe under `tailscale serve`, which injects it on every request, and
-  not safe behind anything that might stop injecting it — the header exists **only** under
-  `tailscale serve` ingress. Under a reverse-proxy front door
+  *mismatching* login **and an absent one**: `serve` injects no header for a tagged node, so
+  tolerating the absence let any tagged node write. `COLLIE_TRUSTED_USER_OPTIONAL=1` restores the old
+  pass, for host-local development. The header exists **only** under `tailscale serve` ingress, so
+  under `COLLIE_SKIP_SERVE` only a mismatch is rejected. Under a reverse-proxy front door
   ([DEPLOYMENT.md → Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
   there is none, and the equivalent write gate is **per-device auth** (`COLLIE_DEVICE_HEADER`) with
   the proxy contract (DEPLOYMENT.md Variant B/C requirements) as the load-bearing piece. That gate **fails
@@ -223,6 +223,15 @@ default). These four are genuine RCE vectors and are **load-bearing — do not r
   read-only, so reaching the port is no longer sufficient to write. Device ids are names your proxy
   asserts, not secrets — treat them as guessable and keep the front door and its ACL as the real
   containment.
+- **The `Host` header is validated, on by default, and fails closed.** A request whose `Host` is not
+  the tailnet name, a loopback name, `COLLIE_PUBLIC_HOSTS` or a configured origin is refused, so a
+  DNS-rebound `Host: evil.example` cannot reach the API. `collie-ctl.sh` discovers the node's MagicDNS
+  name and Tailscale IPs into `COLLIE_TAILSCALE_HOSTS`, so a normal tailnet install configures
+  nothing; behind your own front door `COLLIE_PUBLIC_HOSTS` is **required**.
+  `COLLIE_ALLOW_ANY_HOST=1` is the opt-out, and re-opens rebinding.
+- **The bridge refuses a non-loopback bind.** A `COLLIE_HOST` outside loopback does not start unless
+  `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`, and a non-loopback TCP peer is rejected — every gate above
+  trusts headers that are only untamperable while the sole client is the local front door.
 - **`pane.read` output renders safely** — it's attacker-influenceable (filenames, agent output,
   fetched web content). Never `innerHTML`; it renders as React text nodes under a **strict CSP**
   (`default-src 'self'`), so an escaping miss can't run injected script that calls back into the
