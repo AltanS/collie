@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.28] - 2026-08-26
+
+### Changed
+
+- Pack overview is now a formation — lead at the apex, deputy below, peers fanned in a V; tap a machine for its detail sheet (666ed59)
+
 ## [1.0.0-beta.27] - 2026-08-26
 
 ### Added
