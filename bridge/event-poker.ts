@@ -171,5 +171,17 @@ export class EventPoker {
     if (healthy) console.log(`[events] stream up (${watched} panes watched)`);
     else console.log(`[events] stream down: ${reason ?? "unknown"} — fast polling until it recovers`);
     for (const cb of this.healthListeners) cb(healthy);
+    // Subscribe, THEN reconcile. A watch that has just come up was dark a moment ago, and whatever
+    // happened while it was dark produced no event by definition — there was nobody to produce one
+    // to. The engine has no other way to learn about it: this same ack is what relaxes it to the
+    // idle safety-net cadence, and `setCadence` re-arms from now, forfeiting the tick that was
+    // already pending. So a first poll that raced the multiplexer's own startup and came back empty
+    // stands uncorrected for a WHOLE idle interval — measured at 13.7 s on a cold zellij start, for
+    // a herd that was there the entire time.
+    //
+    // One debounced poke closes that gap. The healthy-flip guard at the top of this method is the
+    // gate that keeps it honest: a routine resubscribe over a live stream acks while already
+    // healthy and returns before it ever reaches here, so this fires on the TRANSITION only.
+    if (healthy) this.schedulePoke();
   }
 }

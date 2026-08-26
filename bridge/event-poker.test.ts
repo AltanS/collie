@@ -109,6 +109,35 @@ describe("EventPoker — health", () => {
   });
 });
 
+describe("EventPoker — reconcile on coming up", () => {
+  test("the transition to healthy pokes once — the watch missed everything before it existed", async () => {
+    const { client, poker, pokes } = makePoker({ debounceMs: 10 });
+    poker.start();
+    expect(pokes.length).toBe(0); // subscribing is not yet knowing
+    client.last.onUp();
+    await sleep(25);
+    // Nothing "happened" — no event was delivered. The poke rides the transition itself, because a
+    // stream that was dark cannot have reported what changed while it was dark.
+    expect(pokes.length).toBe(1);
+    poker.stop();
+  });
+
+  test("a resubscribe while already healthy does not poke by itself", async () => {
+    const { client, poker, pokes } = makePoker({ debounceMs: 10 });
+    poker.start();
+    client.last.onUp();
+    await sleep(25);
+    expect(pokes.length).toBe(1);
+    // The herd changed, so the watch is re-scoped over a LIVE stream. That ack is not a recovery
+    // from darkness, and must not be paid for with a second reconcile.
+    poker.setAgentPanes(["w1:p1"]);
+    client.last.onUp();
+    await sleep(25);
+    expect(pokes.length).toBe(1);
+    poker.stop();
+  });
+});
+
 describe("EventPoker — debounced poke", () => {
   test("coalesces a burst of events into a single trailing poke", async () => {
     const { client, poker, pokes } = makePoker({ debounceMs: 10 });
