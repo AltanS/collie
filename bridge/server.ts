@@ -727,10 +727,6 @@ export function startServer(opts: {
     tls: listenerTls,
 
     async fetch(req) {
-      if (!cfg.allowNonLoopbackBind && !isLoopbackPeer(server.requestIP(req)?.address)) {
-        return text("non-loopback peer rejected", 403);
-      }
-
       const url = new URL(req.url);
       const { pathname } = url;
 
@@ -742,6 +738,21 @@ export function startServer(opts: {
       if (packHandler) {
         const packed = await packHandler(req, url);
         if (packed) return secure(packed);
+      }
+
+      // The peer-address check, and it sits HERE — after the federated surface, before the front
+      // door — so that the exemption is granted by the surface that has its own admission rather
+      // than by a path literal this file must never carry (solo-baseline.test.ts).
+      //
+      // Everything below trusts headers a client writes (`Tailscale-User-Login`,
+      // COLLIE_DEVICE_HEADER, Origin/Host), which are only untamperable while the sole client is the
+      // local front door. A pack request is not that, and does not need to be: it was already
+      // admitted by pinned mutual TLS plus the pack secret and answered above (PACK_PROTOCOL.md §6,
+      // ADR 0013). A pack path the handler DECLINED falls through to here and is refused like any
+      // other remote caller. `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` turns the check off wholesale, which
+      // is what that flag has always meant.
+      if (!cfg.allowNonLoopbackBind && !isLoopbackPeer(server.requestIP(req)?.address)) {
+        return text("non-loopback peer rejected", 403);
       }
 
       // A DEPOSED collie serves one page and fails its health check (§18.12). It sits AFTER the

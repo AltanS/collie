@@ -12,7 +12,7 @@ import {
 } from "./hooks.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
-import { resolveBridgeHost } from "../bridge/config.ts";
+import { envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
 import {
   buildMuxRegistry,
@@ -334,6 +334,22 @@ function bindCheck(deps: DoctorDeps, mode: string): Finding {
       `COLLIE_HOST=${host} on a PEER — only this machine can reach the pack listener, so the lead's` +
         " probe never lands and the member stays provisional",
       `set COLLIE_HOST=${suggestion} in ${join(deps.ctx.configDir, ".env")}, then \`collie restart\``,
+    );
+  }
+  // The other direction, and it stops the process rather than degrading it: outside a pack, a bind
+  // that is not loopback is REFUSED at boot (bridge/index.ts), because every browser write gate is a
+  // header a client can set. Asking bridge/config.ts rather than re-deciding here keeps one rule.
+  if (
+    mode === "solo" &&
+    nonLoopbackBindRefusal({
+      host,
+      allowNonLoopbackBind: envBool("COLLIE_ALLOW_NON_LOOPBACK_BIND", false, deps.ctx.env),
+    }) !== null
+  ) {
+    return bad(
+      "bind",
+      `COLLIE_HOST=${shown} is not loopback and this collie is in no pack — the bridge refuses to start`,
+      `set COLLIE_HOST=127.0.0.1 in ${join(deps.ctx.configDir, ".env")} and put your ingress in front, or set COLLIE_ALLOW_NON_LOOPBACK_BIND=1 if you meant it`,
     );
   }
   return ok("bind", `${shown} (mode ${mode})`);

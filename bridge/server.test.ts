@@ -1156,6 +1156,23 @@ describe("isLoopbackPeer", () => {
     expect(isLoopbackPeer("192.168.1.1")).toBe(false);
     expect(isLoopbackPeer("8.8.8.8")).toBe(false);
   });
+
+  // The check's POSITION is the carve-out, and position is not something a pure function can carry.
+  // `bun test` cannot stand up `Bun.serve` (CLAUDE.md), so the ordering is pinned by reading the one
+  // source that registers it — the same idiom solo-baseline.test.ts uses for the route table.
+  //
+  // Why it matters: a pack peer binds off loopback by construction and its lead dials it from
+  // another machine (PACK_PROTOCOL.md §3, ADR 0013). Were this check first, every `/pack/v1/*` call
+  // would be refused before the surface that actually admits it — pinned mutual TLS plus the pack
+  // secret — ever ran, and the pack link would be dead on a peer.
+  test("the peer check runs AFTER the federated surface, so /pack/v1/* is never refused by it", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const dispatch = src.indexOf("const packed = await packHandler(req, url);");
+    const peerCheck = src.indexOf("isLoopbackPeer(server.requestIP(req)?.address)");
+    expect(dispatch).toBeGreaterThan(-1);
+    expect(peerCheck).toBeGreaterThan(-1);
+    expect(peerCheck).toBeGreaterThan(dispatch);
+  });
 });
 
 // A tab's label is a non-null, non-empty string (herdr rejects null and stores "" literally — no
