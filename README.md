@@ -242,14 +242,13 @@ $ scripts/collie-ctl.sh logs        # journal timestamps trimmed here
 [push] disabled (no VAPID keys configured)
 [bridge] listening on http://127.0.0.1:8787  (poll 1500ms)
 [bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).
-[bridge] WARNING: COLLIE_PUBLIC_HOSTS is empty — Host-header validation is OFF (DNS rebinding not blocked). Set it to your MagicDNS name, especially under COLLIE_SERVE_MODE=http.
 ```
 
-**Both WARNINGs are expected on a fresh install** — that's the bridge telling you it's running
-open-by-default on your tailnet. [Configure](#configure) closes both. (The loopback URL in the log
-is also correct: the bridge itself only ever binds `127.0.0.1` — `tailscale serve` is what makes it
-reachable.) `[push] disabled` is expected too: notifications are opt-in, and
-[Web Push](#web-push-optional) is three commands.
+**That WARNING is expected on a fresh install** — identity is still open. Host-header validation is
+on by default (`collie-ctl.sh` injects the tailnet name). [Configure](#configure) sets the identity.
+(The loopback URL in the log is also correct: the bridge itself only ever binds `127.0.0.1` —
+`tailscale serve` is what makes it reachable.) `[push] disabled` is expected too: notifications are
+opt-in, and [Web Push](#web-push-optional) is three commands.
 
 On the phone: your agents are listed, and the footer build stamp (`v0.9.0 · debcff9 · …`) matches
 `scripts/collie-ctl.sh version`. If the page loads but stays empty, that's the same-origin gate —
@@ -258,12 +257,11 @@ see [Troubleshooting](#troubleshooting).
 ## Configure
 
 Out of the box Collie runs **open single-user**: anyone on your tailnet who can reach the URL has
-full control — that's exactly what the two startup WARNINGs are about. Close both in one sitting:
+full control — that's the TRUSTED_USER warning. Close it:
 
 ```bash
 # in your .env
 COLLIE_TRUSTED_USER=you@example.com           # your tailnet login — the bridge rejects anyone else
-COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net    # exact host(s) you serve on — blocks DNS rebinding
 ```
 
 Config is a `.env` in the plugin's config dir — find it with

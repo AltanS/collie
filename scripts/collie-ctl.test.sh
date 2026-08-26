@@ -1035,6 +1035,7 @@ stage_managed_at() {
 test_update_advances_a_herdr_managed_checkout() {
   setup_case update-managed
   stage_origin
+  origin_release 0.29.0
   local root="${CASE_DIR}/managed"
   mkdir -p "$root"
   # Verbatim what herdr's plugin_install does (src/cli/plugin.rs, git_checkout).
@@ -1042,13 +1043,13 @@ test_update_advances_a_herdr_managed_checkout() {
   git_q -C "$root" remote add origin "$ORIGIN_DIR"
   git_q -C "$root" fetch -q --depth 1 origin HEAD
   git_q -C "$root" checkout -q --detach FETCH_HEAD
-  advance_origin
+  origin_release 0.30.0
   echo "rewritten-by-bun-install" > "${root}/bun.lock"
 
   local out; out="$(run_update_checkout "$root")" || fail "update_checkout failed: $out"
   assert_contains "$out" "Herdr-managed checkout"
   assert_eq "$(git -C "$root" rev-parse HEAD)" "$(git -C "$ORIGIN_DIR" rev-parse HEAD)"
-  assert_eq "$(cat "${root}/VERSION")" "v2"
+  assert_eq "$(cat "${root}/VERSION")" "0.30.0"
   assert_eq "$(cat "${root}/bun.lock")" "lock-v1"   # --force discarded the build's rewrite
   assert_eq "$(git -C "$root" rev-parse --is-shallow-repository)" "true"
   git -C "$root" symbolic-ref -q HEAD >/dev/null 2>&1 &&
