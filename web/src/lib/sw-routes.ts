@@ -36,6 +36,11 @@ export const PROXY_AUTH_PATH = "/auth/";
 export const NAVIGATION_NETWORK_ONLY = [
   /^\/api\//,
   /^\/auth(?:[/?]|$)/,
+  // Authentik forward-auth exposes a fixed same-origin outpost namespace. An expired API session can
+  // promote into `/outpost.goauthentik.io/start`, and the callback stays under the same prefix. The
+  // path is non-relocatable in Authentik's standard integration, so an installed PWA must never
+  // replace any part of that flow with Collie's cached app shell.
+  /^\/outpost\.goauthentik\.io(?:[/?]|$)/,
   // Cloudflare Access serves its login and callback under `/cdn-cgi/access/` and the path is NOT
   // relocatable, so pointing the operator at `/auth/` cannot help them — the flow would break on a
   // callback the precache swallowed. `/cdn-cgi/` is Cloudflare-reserved; Collie will never route it.
