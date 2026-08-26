@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchConfig } from "@/lib/api";
-import type { OperatorCommand, OperatorKeyRow } from "@/lib/types";
+import type { OperatorCommand, OperatorKeyRow, OperatorQuickReplyRow } from "@/lib/types";
 
 // The operator's own rows — their `commands.toml` palette AND their `keys.toml` tray presets — read
 // from ONE /api/config call and held in module state. Both files ride the same request because both
@@ -25,6 +25,7 @@ import type { OperatorCommand, OperatorKeyRow } from "@/lib/types";
 
 let current: readonly OperatorCommand[] = [];
 let currentKeys: readonly OperatorKeyRow[] = [];
+let currentReplies: readonly OperatorQuickReplyRow[] = [];
 let inflight: Promise<void> | null = null;
 let loaded = false;
 const listeners = new Set<() => void>();
@@ -41,6 +42,7 @@ export function loadOperatorCommands(): Promise<void> {
     .then((cfg) => {
       current = cfg.operatorCommands ?? [];
       currentKeys = cfg.operatorKeys ?? [];
+      currentReplies = cfg.operatorQuickReplies ?? [];
       loaded = true;
       emit();
     })
@@ -59,6 +61,10 @@ export function getOperatorCommands(): readonly OperatorCommand[] {
 
 export function getOperatorKeys(): readonly OperatorKeyRow[] {
   return currentKeys;
+}
+
+export function getOperatorQuickReplies(): readonly OperatorQuickReplyRow[] {
+  return currentReplies;
 }
 
 export function subscribeOperatorConfig(cb: () => void): () => void {
@@ -85,10 +91,23 @@ export function useOperatorKeys(): readonly OperatorKeyRow[] {
   return useSyncExternalStore(subscribeOperatorConfig, getOperatorKeys, getOperatorKeys);
 }
 
+/** Reactive read of the Quick-dock groups. Same one-shot fetch, same contract. */
+export function useOperatorQuickReplies(): readonly OperatorQuickReplyRow[] {
+  useEffect(() => {
+    void loadOperatorCommands();
+  }, []);
+  return useSyncExternalStore(
+    subscribeOperatorConfig,
+    getOperatorQuickReplies,
+    getOperatorQuickReplies,
+  );
+}
+
 /** Test helper — reset module state between cases. */
 export function __resetOperatorCommands(): void {
   current = [];
   currentKeys = [];
+  currentReplies = [];
   inflight = null;
   loaded = false;
   listeners.clear();

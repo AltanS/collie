@@ -42,7 +42,7 @@ public access, Collie isn't built for it. Read the
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
-  [Multi-session](#multi-session)
+  [Your own quick replies](#your-own-quick-replies) · [Multi-session](#multi-session)
 - [Dark mode / light mode](#dark-mode--light-mode)
 - [Commands](#commands)
 - [Manage & update](#manage--update)
@@ -336,6 +336,28 @@ is fixed and not configurable. Chords are herdr's spelling: `ctrl+c` (never `C-c
 `ctrl+F7`; `PageUp`/`Home`/`End`/`Delete` are not accepted. No restart — edits are live. Verify:
 open a pane, tap **Keys → Presets**, your buttons are there. Rejected row?
 `journalctl --user -u collie -n 20` names it and why.
+
+### Your own quick replies
+
+The Quick dock's one-tap phrases are yours to replace, in `quick-replies.toml` next to the other two:
+
+```bash
+cp quick-replies.toml.example "$(herdr plugin config-dir herdr.collie)/quick-replies.toml"
+```
+
+```toml
+[[replies]]
+scope = "claude"             # optional; omit for every pane
+title = "confirm"
+items = ["yes", "no"]        # sent verbatim, one per button
+```
+
+A pane your rows match shows only your groups, in place of the shipped ones
+([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md)). The shipped phrases are
+English (`yes`, `commit and push`); this is the way to work in another language, or to give a
+harness that wants `approve` the word it wants. `scope = "shell"` reaches a plain shell pane, which
+otherwise gets only `y`/`n`. No restart — edits are live. Verify: open a pane, tap **Quick**, your
+groups are there. Rejected row? `journalctl --user -u collie -n 20` names it and why.
 
 ### Multi-session
 

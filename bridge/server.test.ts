@@ -56,6 +56,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
     keysFile: "/nope/keys.toml",
+    quickRepliesFile: "/nope/quick-replies.toml",
     trustedUser: "",
     auditContent: "preview",
     deviceHeader: "",
