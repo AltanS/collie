@@ -307,6 +307,37 @@ export function isLoopbackBindHost(host: string): boolean {
 }
 
 /**
+ * Why this bind must be refused, or `null` when it may stand. One sentence the operator can act on;
+ * the caller decides what to do with it.
+ *
+ * **The decision is not config's to take alone, which is why this is a predicate and not a throw.**
+ * Loopback is the trust basis for every browser-side write gate — the `Tailscale-User-Login` header,
+ * `COLLIE_DEVICE_HEADER` and the same-origin check are all client-settable, so on a wide bind they
+ * mean nothing. That is why a solo instance and a lead refuse to start. But a pack **peer** binds off
+ * loopback BY CONSTRUCTION: its lead dials it across a machine boundary, and the surface it exposes
+ * there is gated by pinned mutual TLS plus the pack secret rather than by any of those headers
+ * (PACK_PROTOCOL.md §3, [ADR 0013](../.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
+ * The mode that decides is not known until the trust store has been read, which happens after this
+ * function runs — so `bridge/index.ts` calls it once the mode is in hand.
+ *
+ * Pure and exported so both the refusal and its exemption are unit-tested without a listener.
+ */
+export function nonLoopbackBindRefusal(
+  cfg: Pick<Config, "host" | "allowNonLoopbackBind">,
+): string | null {
+  if (cfg.allowNonLoopbackBind || isLoopbackBindHost(cfg.host)) return null;
+  const shown = cfg.host.trim() === "" ? "(empty — every interface)" : cfg.host;
+  return (
+    `COLLIE_HOST=${shown} is not a loopback address. Collie binds loopback only: the ` +
+    `Tailscale-User-Login header, COLLIE_DEVICE_HEADER and the same-origin gate are all ` +
+    `client-settable and mean nothing on a wide bind, so binding here would hand write access ` +
+    `to anything that can reach the port. Use 127.0.0.1 (the default) and put your ingress in ` +
+    `front of it. If you truly mean to bind wide and have another control in front, set ` +
+    `COLLIE_ALLOW_NON_LOOPBACK_BIND=1.`
+  );
+}
+
+/**
  * herdr's default socket location: `~/.config/herdr/herdr.sock` on Unix, `%APPDATA%\herdr\herdr.sock`
  * on Windows (the Windows beta keeps its config root under AppData\Roaming). Pure so both branches
  * are unit-testable on any platform.
@@ -365,16 +396,6 @@ export function loadConfig(): Config {
 
   const host = resolveBridgeHost();
   const allowNonLoopbackBind = envBool("COLLIE_ALLOW_NON_LOOPBACK_BIND", false);
-  if (!isLoopbackBindHost(host) && !allowNonLoopbackBind) {
-    throw new Error(
-      `COLLIE_HOST=${host} is not a loopback address. Collie binds loopback only: the ` +
-        `Tailscale-User-Login header, COLLIE_DEVICE_HEADER and the same-origin gate are all ` +
-        `client-settable and mean nothing on a wide bind, so binding here would hand write access ` +
-        `to anything that can reach the port. Use 127.0.0.1 (the default) and put your ingress in ` +
-        `front of it. If you truly mean to bind wide and have another control in front, set ` +
-        `COLLIE_ALLOW_NON_LOOPBACK_BIND=1.`,
-    );
-  }
 
   // The operator's config dir — where their `.env` lives, and now their `commands.toml` beside it.
   // Resolved exactly the way scripts/collie-ctl.sh resolves it MINUS the `herdr` shell-out: the

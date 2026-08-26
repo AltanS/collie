@@ -8,7 +8,7 @@ import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
-import { loadConfig, resolveConfigDir, type Config } from "./config.ts";
+import { loadConfig, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import type { PackMode } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import {
@@ -121,8 +121,9 @@ const UPDATE_FIRST_DELAY_MS = 90_000;
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
-// loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
-// reason alone — a stack trace here buries the one line the operator needs.
+// loadConfig throws on config it cannot parse at all. Print the reason alone — a stack trace here
+// buries the one line the operator needs. (The bind refusal is NOT here; it needs the pack mode,
+// which is not known until the trust store below has been read.)
 let cfg: Config;
 try {
   cfg = loadConfig();
@@ -343,6 +344,33 @@ const enrollment = enrollmentOf(trustStore.current());
 const pack = resolvePackRuntime(enrollment);
 if (pack.conflict) console.warn(`[pack] ${pack.conflict}`);
 if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
+
+// The bind refusal, taken HERE rather than in loadConfig because the mode is what decides it.
+//
+// A solo instance and a lead are browser front doors: every write gate they own is a header a client
+// can set, so a wide bind hands write access to anything that can reach the port and the bridge
+// refuses to start. A collie IN A PACK is exempt, and by construction rather than by indulgence — its
+// lead dials it across a machine boundary, and `/pack/v1/*` is admitted by pinned mutual TLS plus the
+// pack secret, neither of which the bind bounds (PACK_PROTOCOL.md §3, ADR 0013). A peer already gets
+// the wildcard warning below; a LEAD is exempt too, because the machine that took over from a deputy
+// keeps the peer's wide COLLIE_HOST and would otherwise refuse to boot into the crown it just won
+// (ADR 0027/0028) — the worst possible moment to discover a config gate.
+{
+  const refusal = nonLoopbackBindRefusal(cfg);
+  if (refusal !== null) {
+    if (pack.mode === "solo") {
+      console.error(`[bridge] FATAL: ${refusal}`);
+      process.exit(1);
+    }
+    console.warn(
+      `[pack] this ${pack.mode} binds ${cfg.host.trim() === "" ? "every interface" : cfg.host}, not ` +
+        "loopback. Allowed because a pack member is dialled across a machine boundary and " +
+        "/pack/v1/* carries its own two factors — but the browser gates (Tailscale-User-Login, " +
+        "COLLIE_DEVICE_HEADER, same-origin) are client-settable here and bound nothing. Whatever " +
+        "fronts this port is the only control on /api/*.",
+    );
+  }
+}
 
 // A peer publishes nothing (§3, ADR 0013) — including a mapping it published back when it was a
 // lead. BEFORE any listener binds: tailscaled holds the serve port until this returns, and the peer
@@ -1122,6 +1150,14 @@ const standbyDoor = standbyStore === null ? null : createStandbyDoor({
  * **`COLLIE_STANDBY_PORT` absent ⇒ nothing is bound**, and a deputy without it is a plain peer that
  * can still be taken over from a keyboard by §14's promotion. Collie BINDS this; it publishes
  * nothing — no `tailscale serve`, never `funnel`, no ownership record (ADR 0001 untouched).
+ *
+ * **This is its OWN listener on its OWN address (`COLLIE_STANDBY_HOST`), and that is why neither
+ * loopback gate reaches it.** The bind refusal above reads `COLLIE_HOST`, and the peer-address check
+ * lives in `server.ts`'s `fetch`; this door binds elsewhere and answers here. It is meant to be
+ * dialled from off-box — a failover proxy is the whole point (ADR 0028) — and what admits its one
+ * action is the operator's own pairing credential, not the address it arrived from. Don't route it
+ * through the front door's `fetch` to "share" those gates: that would refuse the very caller it exists
+ * for.
  *
  * **A LEAD with the key set binds it too, and answers only the health check.** That is not an
  * oversight in the other direction: a failover proxy's fallback backend points at THIS port

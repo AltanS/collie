@@ -284,7 +284,11 @@ describe("collie doctor — the contract", () => {
   });
 
   test("warnings alone exit 0; one error is enough to exit 1", async () => {
-    const warned = harness(null, [], { env: { COLLIE_HOST: "0.0.0.0" } });
+    // The hatch rides along because a wildcard bind on a SOLO collie is an ERROR without it (the
+    // bridge refuses to start) — and this test needs a run whose worst finding is a warning.
+    const warned = harness(null, [], {
+      env: { COLLIE_HOST: "0.0.0.0", COLLIE_ALLOW_NON_LOOPBACK_BIND: "1" },
+    });
     const warnRun = await findings(warned);
     expect(warnRun.byCheck.get("bind-wildcard")?.status).toBe("warn");
     expect(warnRun.raw.some((f) => f.status === "error")).toBe(false);
@@ -447,9 +451,27 @@ describe("collie doctor — the local checks", () => {
   });
 
   test("bind-wildcard: a wildcard warns, and a warning never fails the run", async () => {
-    const { code, byCheck } = await findings(harness(null, [], { env: { COLLIE_HOST: "" } }));
+    // With the hatch set, so the only thing this run has to say about the bind is the warning.
+    const { code, byCheck } = await findings(
+      harness(null, [], { env: { COLLIE_HOST: "", COLLIE_ALLOW_NON_LOOPBACK_BIND: "1" } }),
+    );
     expect(byCheck.get("bind-wildcard")?.status).toBe("warn");
     expect(code).toBe(EXIT.OK);
+  });
+
+  // The gate main brought (#129) and the pack carve-out that keeps it honest: a wide bind stops a
+  // SOLO collie from starting at all, so doctor says the same thing the bridge would — while a peer
+  // binds wide by construction and hears only the wildcard warning (ADR 0013).
+  test("bind: a wide bind is an ERROR on solo, cleared by the hatch, and never one on a peer", async () => {
+    const solo = await findings(harness(null, [], { env: { COLLIE_HOST: "10.0.0.4" } }));
+    expect(solo.byCheck.get("bind")?.status).toBe("error");
+    expect(solo.byCheck.get("bind")?.remedy).toContain("COLLIE_ALLOW_NON_LOOPBACK_BIND=1");
+    expect(solo.code).toBe(EXIT.FAIL);
+
+    const hatched = await findings(
+      harness(null, [], { env: { COLLIE_HOST: "10.0.0.4", COLLIE_ALLOW_NON_LOOPBACK_BIND: "1" } }),
+    );
+    expect(hatched.byCheck.get("bind")?.status).toBe("ok");
   });
 
   test("acl: an EMPTY inbound filter is an error; a non-empty one passes as `can't disprove`", async () => {

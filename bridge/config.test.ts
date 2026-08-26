@@ -7,6 +7,7 @@ import {
   envBool,
   isLoopbackBindHost,
   loadConfig,
+  nonLoopbackBindRefusal,
   resolveBridgeHost,
 } from "./config.ts";
 
@@ -298,11 +299,13 @@ describe("loadConfig", () => {
     expect(cfg.trustedUser).toBe("me@example.com");
   });
 
-  test("refuses a non-loopback bind unless the escape hatch is set", () => {
+  test("carries a non-loopback bind and its escape hatch without deciding either", () => {
     process.env.COLLIE_HOST = "0.0.0.0";
-    expect(() => loadConfig()).toThrow(/not a loopback address/);
-    process.env.COLLIE_ALLOW_NON_LOOPBACK_BIND = "1";
+    // loadConfig REPORTS the bind; it does not refuse it. The refusal needs the pack mode, which is
+    // resolved after this runs (bridge/index.ts) — see nonLoopbackBindRefusal below.
     expect(loadConfig().host).toBe("0.0.0.0");
+    expect(loadConfig().allowNonLoopbackBind).toBe(false);
+    process.env.COLLIE_ALLOW_NON_LOOPBACK_BIND = "1";
     expect(loadConfig().allowNonLoopbackBind).toBe(true);
   });
 
@@ -327,6 +330,29 @@ describe("loadConfig", () => {
   test("an unrecognised dial mode falls back to auto rather than dialling nothing", () => {
     process.env.COLLIE_HERDR_DIAL = "carrier-pigeon";
     expect(loadConfig().dialMode).toBe("auto");
+  });
+});
+
+describe("nonLoopbackBindRefusal", () => {
+  test("a loopback bind is never refused, whatever the hatch says", () => {
+    expect(nonLoopbackBindRefusal({ host: "127.0.0.1", allowNonLoopbackBind: false })).toBeNull();
+    expect(nonLoopbackBindRefusal({ host: "::1", allowNonLoopbackBind: false })).toBeNull();
+  });
+
+  test("a wide bind is refused, and names the one variable that permits it", () => {
+    const why = nonLoopbackBindRefusal({ host: "0.0.0.0", allowNonLoopbackBind: false });
+    expect(why).toMatch(/not a loopback address/);
+    expect(why).toContain("COLLIE_ALLOW_NON_LOOPBACK_BIND=1");
+  });
+
+  test("an empty COLLIE_HOST is a wide bind, and says so in words", () => {
+    expect(nonLoopbackBindRefusal({ host: "", allowNonLoopbackBind: false })).toContain(
+      "every interface",
+    );
+  });
+
+  test("the escape hatch clears it", () => {
+    expect(nonLoopbackBindRefusal({ host: "10.0.0.4", allowNonLoopbackBind: true })).toBeNull();
   });
 });
 
