@@ -450,6 +450,8 @@ export const ja: Dictionary = {
   "pack.nav.back": "戻る",
   "pack.entry.title": "Pack の概要",
   "pack.entry.description": "Pack 内の各マシンの状態。",
+  "pack.footer.label": "Pack · {machines} · {reachable}",
+  "pack.footer.aria": "Pack の概要を開く",
   "pack.summary.counts": "{machines} · {reachable}",
   "pack.summary.machines.one": "{count} 台",
   "pack.summary.machines.other": "{count} 台",

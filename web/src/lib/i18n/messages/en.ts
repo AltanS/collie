@@ -463,6 +463,8 @@ export const en = {
   "pack.nav.back": "Back",
   "pack.entry.title": "Pack overview",
   "pack.entry.description": "How every machine in the pack is doing.",
+  "pack.footer.label": "Pack · {machines} · {reachable}",
+  "pack.footer.aria": "Open the pack overview",
   "pack.summary.counts": "{machines} · {reachable}",
   "pack.summary.machines.one": "{count} machine",
   "pack.summary.machines.other": "{count} machines",

@@ -457,6 +457,8 @@ export const es: Dictionary = {
   "pack.nav.back": "Atrás",
   "pack.entry.title": "Resumen del pack",
   "pack.entry.description": "Cómo está cada máquina del pack.",
+  "pack.footer.label": "Pack · {machines} · {reachable}",
+  "pack.footer.aria": "Abrir el resumen del pack",
   "pack.summary.counts": "{machines} · {reachable}",
   "pack.summary.machines.one": "{count} máquina",
   "pack.summary.machines.other": "{count} máquinas",

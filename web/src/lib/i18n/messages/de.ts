@@ -457,6 +457,8 @@ export const de: Dictionary = {
   "pack.nav.back": "Zurück",
   "pack.entry.title": "Pack-Übersicht",
   "pack.entry.description": "Wie es jedem Rechner im Pack geht.",
+  "pack.footer.label": "Pack · {machines} · {reachable}",
+  "pack.footer.aria": "Pack-Übersicht öffnen",
   "pack.summary.counts": "{machines} · {reachable}",
   "pack.summary.machines.one": "{count} Rechner",
   "pack.summary.machines.other": "{count} Rechner",

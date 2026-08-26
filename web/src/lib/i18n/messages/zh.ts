@@ -438,6 +438,8 @@ export const zh: Dictionary = {
   "pack.nav.back": "返回",
   "pack.entry.title": "Pack 概览",
   "pack.entry.description": "Pack 中每台机器的状态。",
+  "pack.footer.label": "Pack · {machines} · {reachable}",
+  "pack.footer.aria": "打开 Pack 概览",
   "pack.summary.counts": "{machines} · {reachable}",
   "pack.summary.machines.one": "{count} 台机器",
   "pack.summary.machines.other": "{count} 台机器",

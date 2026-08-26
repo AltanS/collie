@@ -448,6 +448,8 @@ export const ko: Dictionary = {
   "pack.nav.back": "뒤로",
   "pack.entry.title": "Pack 개요",
   "pack.entry.description": "Pack 안의 각 머신 상태예요.",
+  "pack.footer.label": "Pack · {machines} · {reachable}",
+  "pack.footer.aria": "Pack 개요 열기",
   "pack.summary.counts": "{machines} · {reachable}",
   "pack.summary.machines.one": "머신 {count}대",
   "pack.summary.machines.other": "머신 {count}대",
