@@ -1311,6 +1311,10 @@ case "$DOCTOR_JSON" in "["*) ;; *) fail "doctor --json did not print an array: $
 assert_contains "$DOCTOR_JSON" '"check": "web-dist"'
 assert_contains "$DOCTOR_JSON" '"status": "error"'
 assert_contains "$DOCTOR_JSON" '"check": "restart-pending"'
+# No COLLIE_MUX in this `env -i`, so the mux is herdr — which states its name and defers the socket
+# to `herdr-socket` rather than probing it twice. Nothing was spawned to find that out.
+assert_contains "$DOCTOR_JSON" '"check": "mux"'
+assert_contains "$DOCTOR_JSON" 'herdr — see herdr-socket'
 [ -z "$(ls -A "$DOCTOR_STATE")" ] || fail "\`collie doctor\` wrote into the state dir"
 
 # The human form is one line per check, and every non-✓ line carries its remedy arrow.

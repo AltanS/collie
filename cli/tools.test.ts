@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { fallbackDirs, findIn, searchDirs } from "./tools.ts";
+import { fallbackDirs, findIn, findTool, searchDirs } from "./tools.ts";
 
 // The whole reason this module exists: Herdr spawns plugin actions with no login shell, so PATH may
 // be minimal or absent (the pre-shim collie-ctl.sh). PATH is a hint here, never the mechanism.
@@ -36,6 +36,19 @@ describe("searchDirs", () => {
   test("a dir named twice is searched once", () => {
     const dirs = searchDirs("/usr/bin:/usr/bin", HOME);
     expect(dirs.filter((d) => d === "/usr/bin")).toHaveLength(1);
+  });
+});
+
+describe("findTool", () => {
+  // An absolute name is CHECKED WHERE IT IS, never searched for: `join(dir, "/usr/bin/tmux")` asks
+  // after `/usr/bin/usr/bin/tmux` in every directory and answers "not installed" about a binary that
+  // is right there. `collie doctor` runs the mux adapters' own resolved binary through this.
+  test("an absolute name that exists resolves to itself, with no PATH at all", () => {
+    expect(findTool(process.execPath, {}, HOME)).toBe(process.execPath);
+  });
+
+  test("an absolute name that does not exist is null, and no directory is searched for it", () => {
+    expect(findTool("/nowhere/at/all/tmux", { PATH: "/usr/bin" }, HOME)).toBeNull();
   });
 });
 

@@ -69,11 +69,21 @@ export function isExecutableFile(p: string): boolean {
   }
 }
 
-/** Resolve `name` to an absolute path, or null. Callers report a legible "X not found". */
+/**
+ * Resolve `name` to an absolute path, or null. Callers report a legible "X not found".
+ *
+ * An ALREADY-ABSOLUTE `name` is not searched for — it is checked where it is. Without that,
+ * `join(dir, "/usr/bin/tmux")` asks after `/usr/bin/usr/bin/tmux` in every directory and the caller
+ * is told the binary does not exist. It matters because the mux adapters resolve their binary
+ * themselves, from an operator setting (`COLLIE_TMUX_BIN`) or a fixed candidate list
+ * (`bridge/mux/<name>/exec.ts`), and `collie doctor` runs that same resolved path through the
+ * `Exec` seam, which resolves every tool through here.
+ */
 export function findTool(
   name: string,
   env: Record<string, string | undefined>,
   home: string,
 ): string | null {
+  if (isAbsolute(name)) return isExecutableFile(name) ? name : null;
   return findIn(name, searchDirs(env.PATH, home), isExecutableFile);
 }

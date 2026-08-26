@@ -122,7 +122,12 @@ const FATAL_WINDOW_SIZE = "manual";
  * version half is appended only until it is known — a running server cannot change its own binary.
  */
 const WINDOW_SIZE_ARGS: readonly string[] = ["show-options", "-gv", "window-size"];
-const VERSION_ARGS: readonly string[] = ["display-message", "-p", "-F", "#{version}"];
+/**
+ * The version half, on its own, because `collie doctor` asks the same question of the same server
+ * (`cli/doctor.ts` § the `mux` finding). Exported rather than spelled twice: a diagnostic that
+ * derived the version differently from the adapter could report a server the adapter never saw.
+ */
+export const TMUX_VERSION_ARGS: readonly string[] = ["display-message", "-p", "-F", "#{version}"];
 
 /**
  * How many request shapes one pane's revision tracker remembers.
@@ -546,7 +551,8 @@ export class TmuxMux implements MuxAdapter {
    * ever fires on a positive reading.
    */
   private async refuseFatalSpawn(): Promise<MuxRefusalOutcome | null> {
-    const args = this.tmuxVersion === null ? [...WINDOW_SIZE_ARGS, ";", ...VERSION_ARGS] : [...WINDOW_SIZE_ARGS];
+    const args =
+      this.tmuxVersion === null ? [...WINDOW_SIZE_ARGS, ";", ...TMUX_VERSION_ARGS] : [...WINDOW_SIZE_ARGS];
     const probe = await this.attemptRun(args);
     if (!probe.ok) return null;
     const lines = probe.value.stdout.split("\n");

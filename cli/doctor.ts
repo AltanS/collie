@@ -13,6 +13,20 @@ import {
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
 import { resolveBridgeHost } from "../bridge/config.ts";
+import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
+import {
+  buildMuxRegistry,
+  DEFAULT_MUX,
+  factoryFor,
+  muxEndpointVar,
+  muxNames,
+  type MuxTarget,
+} from "../bridge/mux/registry.ts";
+import { TMUX_BINARY_OPTION, TMUX_MUX, TMUX_VERSION_ARGS } from "../bridge/mux/tmux/adapter.ts";
+import { resolveTmuxBinary, TMUX_BINARY_CANDIDATES, tmuxServerArgs } from "../bridge/mux/tmux/exec.ts";
+import { ZELLIJ_BINARY_OPTION, ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
+import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zellij/exec.ts";
+import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
 import { bindIsWildcard } from "../bridge/pack/config.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
 import type { HelloResult, PackFetch, PeerOutcome } from "../bridge/pack/peer-client.ts";
@@ -134,6 +148,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // The emitter's two findings ride together: the second one's wording depends on whether an install
   // was found, and reading the settings files twice would be two answers to one question.
   const hookEntries = installedEntries(deps);
+  // The third thing that rides with them: whether the configured multiplexer names its own agents.
+  // An unknown mux name reads as `true` here — `mux` is already an error about exactly that, and a
+  // second red line derived from the same typo teaches an operator to skim.
+  const declaration = muxDeclaration(muxSettings(deps));
   const local: Finding[] = [
     webDist(deps),
     pathLink(deps),
@@ -142,7 +160,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     bindWildcard(deps),
     acl(deps),
     frontDoor(deps, mode),
-    beaconHooks(deps, hookEntries),
+    mux(deps),
+    beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
     restartPending(),
     clock(inPack, probes),
@@ -550,6 +569,208 @@ function clock(inPack: boolean, probes: Map<string, PeerOutcome<HelloResult>>): 
   return ok("clock", `${detail} — well inside §8.6's ±5m window`);
 }
 
+// ── Which multiplexer this collie drives, and whether it is answering ────────
+//
+// THE PROBE IS A READ AND STAYS ONE. `tmux list-sessions` and `zellij list-sessions` are the two
+// cheapest questions each multiplexer answers, and neither of them starts a server, attaches a
+// client or creates a session — `doctor` never brings a multiplexer up, because a server this verb
+// started is evidence it manufactured.
+//
+// EVERY NAME COMES FROM THE REGISTRY. The valid mux names, the endpoint variable and the per-adapter
+// binary resolution are all imported from `bridge/mux/` rather than restated here, so a fourth
+// multiplexer cannot leave this file quietly reporting a stale set. What is written out per mux —
+// the argv of the liveness probe — is exactly what cannot be shared: each one has its own CLI.
+
+/** The mux settings, read from the CLI's merged env exactly as `bridge/config.ts` reads them. */
+interface MuxSettings {
+  readonly name: string;
+  readonly endpoint: string;
+  readonly tmuxBin: string;
+  readonly zellijBin: string;
+}
+
+/**
+ * `COLLIE_MUX` and the endpoint it addresses, resolved as the BRIDGE resolves them.
+ *
+ * Herdr's endpoint IS the Herdr socket path (`bridge/config.ts`), so it comes from the context that
+ * already resolved `HERDR_SOCKET_PATH` — the same value `herdr-socket` probes, which is why the
+ * `mux` line defers to that check instead of stating a path twice.
+ */
+function muxSettings(deps: DoctorDeps): MuxSettings {
+  const env = deps.ctx.env;
+  const name = (env.COLLIE_MUX ?? "").trim() || DEFAULT_MUX;
+  return {
+    name,
+    endpoint: name === DEFAULT_MUX ? deps.ctx.socket : (env[muxEndpointVar(name)] ?? "").trim(),
+    tmuxBin: (env.COLLIE_TMUX_BIN ?? "").trim(),
+    zellijBin: (env.COLLIE_ZELLIJ_BIN ?? "").trim(),
+  };
+}
+
+/** The target the bridge would build for these settings (`bridge/index.ts`), minus nothing. */
+function muxTarget(settings: MuxSettings): MuxTarget {
+  return {
+    endpoint: settings.endpoint,
+    // Zero means "the adapter's own default" (`createMux`'s factories read `timeoutMs || DEFAULT`),
+    // and nothing here ever calls the adapter, so no budget of this verb's is being declared.
+    timeoutMs: 0,
+    options: { [TMUX_BINARY_OPTION]: settings.tmuxBin, [ZELLIJ_BINARY_OPTION]: settings.zellijBin },
+  };
+}
+
+/**
+ * What the configured adapter DECLARES, or `null` when the name is not one this build drives.
+ *
+ * Built through the registry's own factory, so the declaration is the adapter's rather than a second
+ * table here that would drift the day a multiplexer's capabilities changed. Constructing an adapter
+ * is not a call to a multiplexer — every factory in the tree builds stateless configuration (a
+ * socket path, a binary path, a session name) and dials nothing until a method is invoked, which
+ * nothing here does.
+ */
+function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null {
+  const factory = factoryFor(buildMuxRegistry(), settings.name);
+  return factory === undefined ? null : factory.create(muxTarget(settings)).capabilities;
+}
+
+/**
+ * `mux` — which multiplexer this collie drives, where it would look for it, and whether anything
+ * answered there.
+ *
+ * An unreachable multiplexer is an `error` and not a warning: it is not a degraded Collie, it is a
+ * Collie with no panes at all, and the symptom an operator sees first is an empty home screen or the
+ * disconnected banner — neither of which names the socket, the session or the binary.
+ */
+function mux(deps: DoctorDeps): Finding {
+  const settings = muxSettings(deps);
+  const registry = buildMuxRegistry();
+  if (factoryFor(registry, settings.name) === undefined) {
+    return bad(
+      "mux",
+      `COLLIE_MUX="${settings.name}" is not a multiplexer this build drives, so the bridge refuses to start`,
+      `set COLLIE_MUX to one of ${muxNames(registry).join(", ")} in ${join(deps.ctx.configDir, ".env")},` +
+        " then `collie restart`",
+    );
+  }
+  if (settings.name === DEFAULT_MUX) return ok("mux", `${DEFAULT_MUX} — see herdr-socket`);
+  if (settings.name === TMUX_MUX) return tmuxMux(deps, settings);
+  if (settings.name === ZELLIJ_MUX) return zellijMux(deps, settings);
+  // Registered, and this verb has no probe for it. `skipped` rather than a pass, for the reason
+  // `acl` gives: a check that could not run must never render as one that did.
+  return skipped(
+    "mux",
+    `${settings.name} — registered, but \`collie doctor\` has no liveness probe for it`,
+    `ask that multiplexer whether it is running, by hand; \`collie doctor\` reports ${TMUX_MUX} and ${ZELLIJ_MUX}`,
+  );
+}
+
+/** How tmux itself would name the server the endpoint addresses (`tmuxServerArgs`'s fork). */
+function tmuxServerLabel(endpoint: string): string {
+  const args = tmuxServerArgs(endpoint);
+  if (args.length === 0) return "tmux's own default server";
+  return args[0] === "-S" ? `socket ${args[1] ?? ""}` : `socket name ${args[1] ?? ""}`;
+}
+
+/** The first non-empty line of a tool's complaint — a doctor line is one line. */
+function firstLine(text: string): string {
+  return text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "it said nothing";
+}
+
+/**
+ * tmux, in ONE invocation: the version and the session list, `;`-joined the way the adapter joins
+ * its own listing (`bridge/mux/tmux/protocol.ts` § LISTING_ARGS). Neither command starts a server.
+ */
+function tmuxMux(deps: DoctorDeps, settings: MuxSettings): Finding {
+  const where = tmuxServerLabel(settings.endpoint);
+  const dotenv = join(deps.ctx.configDir, ".env");
+  const binary = resolveTmuxBinary(settings.tmuxBin, (p) => deps.files.exists(p));
+  if (binary === null) {
+    const why =
+      settings.tmuxBin === ""
+        ? `nothing executable at ${TMUX_BINARY_CANDIDATES.join(", ")}`
+        : `COLLIE_TMUX_BIN="${settings.tmuxBin}" is not an absolute path to a file that is there`;
+    return bad(
+      "mux",
+      `tmux — ${where}, and there is no tmux binary to run: ${why} (a Herdr plugin action gets no` +
+        " login shell, so PATH is never consulted)",
+      `install tmux, or set COLLIE_TMUX_BIN to its absolute path in ${dotenv}, then \`collie restart\``,
+    );
+  }
+  const serverArgs = tmuxServerArgs(settings.endpoint);
+  const asked = deps.exec.capture(binary, [
+    ...serverArgs,
+    ...TMUX_VERSION_ARGS,
+    ";",
+    "list-sessions",
+    "-F",
+    "#{session_name}",
+  ]);
+  if (!asked.found || asked.code !== 0) {
+    const detail = asked.found ? firstLine(asked.stderr || asked.stdout) : `${binary} could not be run`;
+    return bad(
+      "mux",
+      `tmux — ${binary} is there, but no server answered on ${where}: ${detail}`,
+      `start one (\`tmux ${[...serverArgs, "new", "-d"].join(" ")}\`), or point ` +
+        `${muxEndpointVar(TMUX_MUX)} at the server you already run, in ${dotenv}, then \`collie restart\``,
+    );
+  }
+  // The version is the first line the joined invocation printed; every line after it is a session.
+  const lines = asked.stdout.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+  const version = lines[0] ?? "?";
+  const sessions = lines.length === 0 ? 0 : lines.length - 1;
+  return ok("mux", `tmux ${version} · ${where} · ${String(sessions)} session${sessions === 1 ? "" : "s"}`);
+}
+
+/**
+ * zellij: one `list-sessions`, read by the SAME two pure functions the adapter's session binding
+ * reads it with (`parseSessionList` + `chooseSession`), so `doctor` and the bridge cannot disagree
+ * about which session this collie drives — or about why there is none.
+ */
+function zellijMux(deps: DoctorDeps, settings: MuxSettings): Finding {
+  const dotenv = join(deps.ctx.configDir, ".env");
+  const candidates = zellijBinaryCandidates(deps.ctx.home);
+  const binary = resolveZellijBinary(settings.zellijBin, (p) => deps.files.exists(p), candidates);
+  if (binary === null) {
+    const why =
+      settings.zellijBin === ""
+        ? `nothing executable at ${candidates.join(", ")}`
+        : `COLLIE_ZELLIJ_BIN="${settings.zellijBin}" is not an absolute path to a file that is there`;
+    return bad(
+      "mux",
+      `zellij — there is no zellij binary to run: ${why} (a Herdr plugin action gets no login shell,` +
+        " so PATH is never consulted)",
+      `install zellij, or set COLLIE_ZELLIJ_BIN to its absolute path in ${dotenv}, then \`collie restart\``,
+    );
+  }
+  const asked = deps.exec.capture(binary, [...ZELLIJ_LIST_SESSIONS_ARGS]);
+  if (!asked.found) {
+    return bad(
+      "mux",
+      `zellij — ${binary} could not be run`,
+      `set COLLIE_ZELLIJ_BIN to a zellij that runs, in ${dotenv}, then \`collie restart\``,
+    );
+  }
+  // A box with no sessions exits non-zero and says so on stderr; the chooser turns that, the
+  // ambiguity and the exited session into one sentence — the same one the adapter would print.
+  const sessions = parseSessionList(asked.code === 0 ? asked.stdout : "");
+  const choice = chooseSession(sessions, settings.endpoint);
+  const running = sessions.filter((session) => session.running).length;
+  if (!choice.ok) {
+    const named = settings.endpoint.trim();
+    return bad(
+      "mux",
+      `zellij — ${binary} answered, and ${choice.detail}`,
+      named === ""
+        ? `start one (\`zellij -s <name>\`) and name it in ${muxEndpointVar(ZELLIJ_MUX)} in ${dotenv}, then \`collie restart\``
+        : `start it (\`zellij -s ${named}\`) or attach once to resurrect it — Collie never creates or` +
+          ` resurrects a session; then \`collie restart\``,
+    );
+  }
+  return ok(
+    "mux",
+    `zellij · session ${choice.session} · ${String(running)} running of ${String(sessions.length)} listed`,
+  );
+}
+
 // ── The agent's own hooks, and the beacons they write (M11/05) ───────────────
 //
 // BOTH ARE READS, and both read the SAME CODE the verbs do: `claudeSettingsTargets` finds the files,
@@ -558,9 +779,18 @@ function clock(inPack: boolean, probes: Map<string, PeerOutcome<HelloResult>>): 
 // would be a second definition of "installed", and the drift would show up as a capability declared
 // over beacons nobody writes.
 //
-// A MISSING INSTALL IS A `warn` AND NEVER AN `error`. A Herdr operator will never install one — their
-// multiplexer names the agent from its own wire — so an `error` would exit this verb non-zero on a
-// perfectly healthy machine, and an operator who learns to ignore one red line ignores the next.
+// WHAT A MISSING INSTALL COSTS DEPENDS ON THE MULTIPLEXER, so this check ASKS THE ADAPTER rather
+// than assuming. `agentDetection` is a declared mux capability (`bridge/mux/capabilities.ts`), and it
+// is the whole question:
+//
+//  • Declared (Herdr) — the multiplexer names the agent and its status from its own wire, so nobody
+//    will ever install the emitter and a red line here would exit this verb non-zero on a perfectly
+//    healthy machine. An operator who learns to ignore one red line ignores the next. `ok`.
+//  • Absent (tmux, zellij) — the emitter is the ONLY thing that can give that adapter sight
+//    (`beaconMatcher`, M11/03). Without it every pane reads as a shell: no agent list, no "needs
+//    you", no notification. That is not a degraded Collie, it is the feature missing. `error`.
+//
+// The name is never read here. A fourth multiplexer inherits the right tier from its own declaration.
 
 /** What one settings file carries: the commands we own, and where they were found. */
 interface InstalledEntry {
@@ -596,17 +826,31 @@ function installedEntries(deps: DoctorDeps): InstalledEntry[] {
  * The third question is the one this check is really for. A hook pinned to a checkout that has since
  * moved is still valid JSON, still carries our marker, and simply never runs: every pane goes on
  * reading as a shell and nothing anywhere says why.
+ *
+ * `muxReportsAgents` is the configured adapter's own `agentDetection` declaration, and it sets the
+ * tier of a missing install — see the section header.
  */
-function beaconHooks(deps: DoctorDeps, entries: readonly InstalledEntry[]): Finding {
+function beaconHooks(
+  deps: DoctorDeps,
+  entries: readonly InstalledEntry[],
+  muxReportsAgents: boolean,
+): Finding {
   const check = "beacon-hooks-claude";
   const would = resolveHookCommand(deps.ctx, deps.link);
+  const name = muxSettings(deps).name;
+  const install =
+    `\`collie hooks install claude\` (writes ${String(BEACON_HOOKS.length)} marked entries into` +
+    " ~/.claude/settings.json; running Claudes must be relaunched)";
   if (entries.length === 0) {
-    return warn(
-      check,
-      "no settings file here carries the beacon emitter, so an agent cannot name itself and every" +
-        ` pane reads as a shell (an install would pin \`${would.binary}\`)`,
-      "`collie hooks install claude` — or nothing at all, if this collie drives a multiplexer that reports agents itself",
-    );
+    return muxReportsAgents
+      ? ok(check, `not needed — ${name} reports agents itself; hooks installed: no`)
+      : bad(
+          check,
+          `no settings file here carries the beacon emitter, and ${name} cannot name an agent on its` +
+            ' own — so every pane reads as a shell, "needs you" never lights and no notification can' +
+            ` fire (an install would pin \`${would.binary}\`)`,
+          install,
+        );
   }
 
   // The path first: an entry that points at nothing never runs, so its version is beside the point.
@@ -649,10 +893,14 @@ function beaconHooks(deps: DoctorDeps, entries: readonly InstalledEntry[]): Find
       "`collie hooks install claude` to complete it",
     );
   }
+  // Installed under a multiplexer that names its own agents is still `ok` — it is not a mistake, and
+  // Collie prefers the adapter's answer to a beacon anyway (`beaconMatcher`'s "absent is the Herdr
+  // case") — but it is worth saying so, because it is the one install nothing here depends on.
+  const spare = muxReportsAgents ? `, which ${name} does not need — it reports agents itself` : "";
   return ok(
     check,
     `v${String(HOOK_MARKER_VERSION)} in ${String(perFile.size)} settings file${perFile.size === 1 ? "" : "s"},` +
-      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\``,
+      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}`,
   );
 }
 
