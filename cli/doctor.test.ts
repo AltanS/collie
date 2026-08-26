@@ -93,6 +93,8 @@ interface Harness {
   io: ReturnType<typeof capture>;
   files: ReturnType<typeof fakeFiles>;
   requests: string[];
+  /** Every `<tool> <args…>` this run spawned — how the mux probe's ONE invocation is pinned. */
+  calls: string[];
 }
 
 /**
@@ -144,6 +146,7 @@ function harness(
   };
   const out = capture();
   const files = fakeFiles(over.files ?? healthyFiles());
+  const exec = fakeExec({ answers: over.answers ?? HEALTHY_ANSWERS, absent: over.absent });
   const requests: string[] = [];
   let n = 0;
   return {
@@ -152,7 +155,7 @@ function harness(
       // budget is set far above anything this process could stall for.
       ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000", ...over.env }, { socket: SOCKET }),
       io: out,
-      exec: fakeExec({ answers: over.answers ?? HEALTHY_ANSWERS, absent: over.absent }),
+      exec,
       files,
       link: fakeLinkFs(over.link),
       store: new TrustStore(STATE, io),
@@ -171,6 +174,7 @@ function harness(
     io: out,
     files,
     requests,
+    calls: exec.calls,
   };
 }
 
@@ -243,6 +247,7 @@ describe("collie doctor — the contract", () => {
       "bind-wildcard",
       "acl",
       "front-door",
+      "mux",
       "beacon-hooks-claude",
       "beacons",
       "restart-pending",
@@ -737,15 +742,158 @@ function beacon(pid: number, alive: boolean): FakeBeacon {
   };
 }
 
+// ── What a missing install costs depends on the MULTIPLEXER ──────────────────
+// Herdr names the agent from its own wire (`agentDetection`), so nobody will ever install the
+// emitter there and a red line would be noise. tmux and zellij declare that capability absent, so
+// the emitter is the only thing that can give them sight: without it every pane is a shell. The
+// tier is read from the adapter's declaration, never from the name — these tests pin both halves.
+
+/** Where the tmux adapter's own candidate list looks first, and what a healthy host has there. */
+const TMUX_BIN = "/usr/bin/tmux";
+/** Where zellij's own installer puts it — the first candidate `zellijBinaryCandidates` probes. */
+const ZELLIJ_BIN = `${HOME}/.local/bin/zellij`;
+const TMUX_SOCKET = "/run/collie-tmux.sock";
+/** The env of a collie driving tmux on a named socket path (`-S`, per `tmuxServerArgs`). */
+const ON_TMUX = { COLLIE_MUX: "tmux", COLLIE_MUX_ENDPOINT_TMUX: TMUX_SOCKET };
+/** The env of a collie driving one named zellij session. */
+const ON_ZELLIJ = { COLLIE_MUX: "zellij", COLLIE_MUX_ENDPOINT_ZELLIJ: "work" };
+
+/** tmux's single joined invocation: the version on the first line, one session per line after it. */
+const tmuxAnswers = (stdout: string, code = 0): Scripted["answers"] => [
+  [`${TMUX_BIN} -S ${TMUX_SOCKET} display-message`, { stdout, code, stderr: code === 0 ? "" : stdout }],
+  ...HEALTHY_ANSWERS!,
+];
+const zellijAnswers = (stdout: string, code = 0): Scripted["answers"] => [
+  [`${ZELLIJ_BIN} list-sessions`, { stdout, code }],
+  ...HEALTHY_ANSWERS!,
+];
+
+// ── mux ──────────────────────────────────────────────────────────────────────
+// READ-ONLY like everything else here: the probe is the cheapest listing each multiplexer answers,
+// and there is no argv in this check that could start a server, attach a client or create a session.
+
+describe("mux", () => {
+  test("herdr states the name and defers — the socket is `herdr-socket`'s question, asked once", async () => {
+    const { byCheck, code } = await findings(harness(null));
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.detail).toBe("herdr — see herdr-socket");
+    expect(finding.remedy).toBeNull();
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("tmux: a server that answers reports its version, its socket and its session count", async () => {
+    const h = harness(null, [], {
+      env: ON_TMUX,
+      files: { ...healthyFiles(), [TMUX_BIN]: "" },
+      answers: tmuxAnswers("3.6b\nwork\nscratch\n"),
+    });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.detail).toBe(`tmux 3.6b · socket ${TMUX_SOCKET} · 2 sessions`);
+    // One invocation, not two: the version and the listing are `;`-joined as the adapter joins its own.
+    expect(h.calls.filter((c) => c.startsWith(TMUX_BIN))).toEqual([
+      `${TMUX_BIN} -S ${TMUX_SOCKET} display-message -p -F #{version} ; list-sessions -F #{session_name}`,
+    ]);
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("tmux: no binary is an error naming COLLIE_TMUX_BIN, and PATH is never the answer", async () => {
+    const h = harness(null, [], { env: ON_TMUX, answers: HEALTHY_ANSWERS });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("error");
+    expect(finding.detail).toContain("no tmux binary to run");
+    expect(finding.remedy).toContain("COLLIE_TMUX_BIN");
+    expect(code).toBe(EXIT.FAIL);
+  });
+
+  test("tmux: a binary but no server is an error, and the remedy never starts one for you", async () => {
+    const h = harness(null, [], {
+      env: ON_TMUX,
+      files: { ...healthyFiles(), [TMUX_BIN]: "" },
+      answers: tmuxAnswers("no server running on /run/collie-tmux.sock", 1),
+    });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("error");
+    expect(finding.detail).toContain("no server answered");
+    expect(finding.remedy).toContain("tmux -S /run/collie-tmux.sock new -d");
+    expect(finding.remedy).toContain("COLLIE_MUX_ENDPOINT_TMUX");
+    expect(code).toBe(EXIT.FAIL);
+  });
+
+  test("zellij: the named session running is ok; an absent one is an error naming it", async () => {
+    const files = { ...healthyFiles(), [ZELLIJ_BIN]: "" };
+    const live = await findings(
+      harness(null, [], { env: ON_ZELLIJ, files, answers: zellijAnswers("work\nscratch (EXITED - attach to resurrect)\n") }),
+    );
+    expect(live.byCheck.get("mux")?.status).toBe("ok");
+    expect(live.byCheck.get("mux")?.detail).toBe("zellij · session work · 1 running of 2 listed");
+    expect(live.code).toBe(EXIT.OK);
+
+    const gone = await findings(harness(null, [], { env: ON_ZELLIJ, files, answers: zellijAnswers("scratch\n") }));
+    const finding = gone.byCheck.get("mux")!;
+    expect(finding.status).toBe("error");
+    expect(finding.detail).toContain('no running zellij session called "work"');
+    expect(finding.remedy).toContain("zellij -s work");
+    expect(gone.code).toBe(EXIT.FAIL);
+  });
+
+  test("an unknown mux name is an error naming the ones this build drives", async () => {
+    const h = harness(null, [], { env: { COLLIE_MUX: "screen" } });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("error");
+    expect(finding.detail).toContain('COLLIE_MUX="screen"');
+    for (const name of ["herdr", "tmux", "zellij"]) expect(finding.remedy).toContain(name);
+    expect(code).toBe(EXIT.FAIL);
+    // And it does NOT stack a second red line on the same typo: the hooks check reads the unknown
+    // adapter optimistically, because `mux` above is already the finding about it.
+    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("ok");
+  });
+});
+
 describe("beacon-hooks-claude", () => {
-  test("no install is a WARN naming the verb — never an error, and the run still exits 0", async () => {
+  test("under a mux that reports agents itself, no install is OK — never a red line to learn to skip", async () => {
     const h = harness(null, [], { files: without(healthyFiles(), SETTINGS) });
     const { byCheck, code } = await findings(h);
     const finding = byCheck.get("beacon-hooks-claude")!;
-    expect(finding.status).toBe("warn");
+    expect(finding.status).toBe("ok");
+    expect(finding.remedy).toBeNull();
+    expect(finding.detail).toContain("herdr reports agents itself");
+    expect(finding.detail).toContain("hooks installed: no");
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("under a mux that does NOT, no install is an ERROR naming the install verb", async () => {
+    const h = harness(null, [], {
+      env: ON_TMUX,
+      files: { ...without(healthyFiles(), SETTINGS), [TMUX_BIN]: "" },
+      answers: tmuxAnswers("3.4\nwork\n"),
+    });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("beacon-hooks-claude")!;
+    expect(finding.status).toBe("error");
     expect(finding.remedy).toContain("collie hooks install claude");
-    // The detail says what an install would pin to, which is the other half of the answer.
+    // What it costs, in the operator's own symptoms — and what an install would pin to.
+    expect(finding.detail).toContain("reads as a shell");
+    expect(finding.detail).toContain("notification");
     expect(finding.detail).toContain(OWN_BINARY);
+    expect(code).toBe(EXIT.FAIL);
+  });
+
+  test("an install under a blind mux is the ordinary ✓", async () => {
+    const h = harness(null, [], {
+      env: ON_ZELLIJ,
+      files: { ...healthyFiles(), [ZELLIJ_BIN]: "" },
+      answers: zellijAnswers("work\n"),
+    });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("beacon-hooks-claude")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.detail).not.toContain("does not need");
     expect(code).toBe(EXIT.OK);
   });
 
@@ -755,6 +903,8 @@ describe("beacon-hooks-claude", () => {
     expect(finding.status).toBe("ok");
     expect(finding.remedy).toBeNull();
     expect(finding.detail).toContain(OWN_BINARY);
+    // Installed anyway under Herdr is still ✓, and says out loud that nothing here needs it.
+    expect(finding.detail).toContain("does not need");
   });
 
   test("a stale marker version is a warn whose remedy is the self-heal", async () => {
@@ -781,17 +931,23 @@ describe("beacon-hooks-claude", () => {
     expect(code).toBe(EXIT.OK);
   });
 
+  // The two "that is not an install" readings, asserted under a BLIND mux so the verdict is the
+  // loud one — under Herdr they are `ok` for the reason above, which would prove nothing here.
+  const blind = (settings: string) => ({
+    env: ON_TMUX,
+    files: { ...healthyFiles(), [SETTINGS]: settings, [TMUX_BIN]: "" },
+    answers: tmuxAnswers("3.4\nwork\n"),
+  });
+
   test("a settings file that is not JSON is left alone and reads as no install", async () => {
-    const files = { ...healthyFiles(), [SETTINGS]: "{ this is not json" };
-    const { byCheck } = await findings(harness(null, [], { files }));
-    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("warn");
+    const { byCheck } = await findings(harness(null, [], blind("{ this is not json")));
+    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("error");
   });
 
   test("somebody else's hooks are not ours — an unmarked entry installs nothing", async () => {
     const foreign = JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "notify-send hi" }] }] } });
-    const files = { ...healthyFiles(), [SETTINGS]: foreign };
-    const { byCheck } = await findings(harness(null, [], { files }));
-    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("warn");
+    const { byCheck } = await findings(harness(null, [], blind(foreign)));
+    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("error");
     expect(byCheck.get("beacon-hooks-claude")?.detail).toContain("no settings file");
   });
 });
