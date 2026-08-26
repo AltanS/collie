@@ -4,6 +4,7 @@ import {
   buildMuxRegistry,
   createMux,
   DEFAULT_MUX,
+  describeMux,
   factoryFor,
   muxNames,
   type MuxAdapterFactory,
@@ -99,5 +100,37 @@ describe("createMux", () => {
   test("a typo refuses at startup, naming the multiplexers this build drives", () => {
     expect(() => createMux(registry, "tmix", target)).toThrow(/tmix/);
     expect(() => createMux(registry, "tmix", target)).toThrow(/herdr, tmux/);
+  });
+});
+
+describe("describeMux", () => {
+  const registry = buildMuxRegistry();
+
+  // The startup line an operator reads back with `collie logs` (README → "Did it work?").
+  test("each shipped adapter words its own endpoint", () => {
+    expect(describeMux(registry, "herdr", "/home/you/.config/herdr/herdr.sock")).toBe(
+      "herdr · socket /home/you/.config/herdr/herdr.sock",
+    );
+    expect(describeMux(registry, "tmux", "/run/user/1000/collie-tmux.sock")).toBe(
+      "tmux · socket /run/user/1000/collie-tmux.sock",
+    );
+    expect(describeMux(registry, "tmux", "work")).toBe("tmux · socket name work");
+    expect(describeMux(registry, "tmux", "")).toBe("tmux · tmux's own default server");
+    expect(describeMux(registry, "zellij", "collie-zellij")).toBe("zellij · session collie-zellij");
+    expect(describeMux(registry, "zellij", "")).toBe("zellij · the single running session");
+  });
+
+  test("no configured name reads as the default, exactly as createMux resolves it", () => {
+    expect(describeMux(registry, undefined, "/tmp/herdr.sock")).toBe("herdr · socket /tmp/herdr.sock");
+    expect(describeMux(registry, "", "/tmp/herdr.sock")).toBe("herdr · socket /tmp/herdr.sock");
+  });
+
+  // Describing is not connecting: a name this build cannot drive is still printed, and `createMux`
+  // is left to be the one site that refuses it.
+  test("an adapter with no words of its own, and an unknown name, still describe", () => {
+    const stubs = buildMuxRegistry([stubFactory("plain")]);
+    expect(describeMux(stubs, "plain", "/tmp/probe.sock")).toBe("plain · /tmp/probe.sock");
+    expect(describeMux(stubs, "plain", "")).toBe("plain · its default");
+    expect(describeMux(stubs, "tmix", "somewhere")).toBe("tmix · somewhere");
   });
 });

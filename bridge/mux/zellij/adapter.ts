@@ -736,6 +736,10 @@ export const zellijMuxFactory: MuxAdapterFactory = {
   beaconMatcher(target: MuxTarget) {
     return zellijBeaconMatcher(ZELLIJ_MUX, bindingFor(target));
   },
+  describeTarget(endpoint: string) {
+    const named = endpoint.trim();
+    return named === "" ? "the single running session" : `session ${named}`;
+  },
 };
 
 /**

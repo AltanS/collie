@@ -108,6 +108,19 @@ export function tmuxServerArgs(endpoint: string): string[] {
   return target.includes("/") ? ["-S", target] : ["-L", target];
 }
 
+/**
+ * How tmux itself would name the server an endpoint addresses — the {@link tmuxServerArgs} fork in
+ * words, for a log line or a `collie doctor` finding.
+ *
+ * Beside the fork rather than at either caller, so the startup line and the doctor finding cannot
+ * come to disagree about what an endpoint means.
+ */
+export function tmuxServerLabel(endpoint: string): string {
+  const args = tmuxServerArgs(endpoint);
+  if (args.length === 0) return "tmux's own default server";
+  return args[0] === "-S" ? `socket ${args[1] ?? ""}` : `socket name ${args[1] ?? ""}`;
+}
+
 /** The message a run reports when there is no tmux binary to run at all. */
 export const NO_TMUX_BINARY = "no tmux binary found — set COLLIE_TMUX_BIN to its absolute path";
 
