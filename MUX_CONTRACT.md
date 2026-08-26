@@ -125,6 +125,12 @@ Multi-session discovery (`COLLIE_MULTI_SESSION`) walks Herdr's config root for H
 Herdr's own shape and is inert under any other multiplexer: a tmux collie fronts the one tmux server
 its endpoint names.
 
+**A collie pointed at another multiplexer never dials Herdr's socket.** `createMux` builds exactly the
+adapter `COLLIE_MUX` names and no other, and the Herdr adapter is the only thing that dials the path
+`HERDR_SOCKET_PATH` resolves to (`bridge/index.ts`). So Herdr need not be installed or running for a
+tmux or zellij collie — the README's
+[walkthrough](./README.md#using-the-app-on-tmux-or-zellij) starts one without it.
+
 ### What a space and a tab ARE, per multiplexer
 
 The contract's nouns are space → tab → pane. Each adapter says which of its own levels those are, and

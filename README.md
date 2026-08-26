@@ -39,7 +39,7 @@ want a mic that doesn't depend on the keyboard, Collie has its own
 - [Requirements](#requirements)
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see) ·
-  [Using the app on tmux or zellij](#using-the-app-on-tmux-or-zellij)
+  [Using the app on tmux or zellij](#using-the-app-on-tmux-or-zellij) (experimental)
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
   [Multi-session](#multi-session)
 - [Dark mode / light mode](#dark-mode--light-mode) · [Language](#language)
@@ -176,7 +176,7 @@ On the **host** (the tailnet node your agents run on). Need Herdr 0.7.0+ — che
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
 | [**Herdr**](https://herdr.dev) ≥ 0.7.0 | The herd Collie mirrors; its CLI registers the plugin. |
-| **A multiplexer** — Herdr (default), [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | What Collie mirrors, one per install, picked with `COLLIE_MUX`. What each one can answer: [`MUX_CONTRACT.md`](./MUX_CONTRACT.md). |
+| **A multiplexer** — Herdr (default), [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | What Collie mirrors, one per install, picked with `COLLIE_MUX`. **tmux and zellij are experimental in 1.0** — set them up from [Using the app on tmux or zellij](#using-the-app-on-tmux-or-zellij). What each one can answer: [`MUX_CONTRACT.md`](./MUX_CONTRACT.md). |
 | [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
 
@@ -314,8 +314,132 @@ On the phone: your agents are listed, and the footer build stamp (`v0.9.0 · deb
 
 ## Using the app on tmux or zellij
 
-Three things on the phone change with the multiplexer underneath, because the multiplexers themselves
-differ. The full matrix, cell by cell, is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
+> **Experimental in 1.0.** tmux and zellij were probed on **tmux 3.6b** and **zellij 0.44.2**, by one
+> operator, on one host. Herdr stays the default and the fully supported path. **We want testers:**
+> open an issue on [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …` or
+> `zellij: …` and say which multiplexer and version, which OS, and what you saw — what worked as much
+> as what did not.
+
+Collie drives **one** multiplexer per install, named by `COLLIE_MUX`. The two walkthroughs below get
+you from a `.env` to a dashboard listing your own windows. The reference for every key is
+[`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](./MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer);
+this section is the path through it, not a copy of it.
+
+**Herdr is not required in this mode.** With `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij` the bridge
+builds only the adapter you named and never dials Herdr's socket, and multi-session discovery — which
+walks Herdr's own config root — turns itself off (`bridge/index.ts`). Herdr does not have to be
+installed or running. Without it, drive Collie from the checkout with `scripts/collie-ctl.sh start`,
+and the `.env` lives in `~/.config/collie/` instead of the plugin config dir.
+
+### Pointing Collie at tmux
+
+```bash
+# in your .env — see Configure for where that file lives
+COLLIE_MUX=tmux
+COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # a socket PATH (tmux -S), because it has a /
+# COLLIE_MUX_ENDPOINT_TMUX=work                           # a socket NAME (tmux -L work), no /
+# COLLIE_MUX_ENDPOINT_TMUX=                               # empty: tmux's own default server
+# COLLIE_TMUX_BIN=/usr/bin/tmux                           # only if tmux sits somewhere unusual
+```
+
+`COLLIE_TMUX_BIN` is empty for almost everyone: Collie probes a short list of fixed paths and
+deliberately never reads `PATH`, which a service and a Herdr action do not share with your shell.
+One caveat lives here too: on tmux below 3.7 with `window-size` set to `manual`, opening a window
+crashes the server, so Collie refuses to open one — see
+[Requirements](#requirements) for the one-line fix.
+
+Restart after any `.env` edit — `bin/collie restart` — then start an agent in a window Collie can see:
+
+```bash
+tmux -S /run/user/1000/collie-tmux.sock new-window -n claude
+# in that window
+claude
+```
+
+### Pointing Collie at zellij
+
+```bash
+# in your .env
+COLLIE_MUX=zellij
+COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij                  # a session NAME, not a path
+# COLLIE_MUX_ENDPOINT_ZELLIJ=                             # empty: the single running session
+# COLLIE_ZELLIJ_BIN=/home/you/.local/bin/zellij           # only if zellij sits somewhere unusual
+```
+
+Empty means *the* running session. With no session, or with two, Collie refuses to start rather than
+guess, and names what it found. A session you named that has since exited is refused by name — never
+silently swapped for a neighbour. One environment variable is easy to lose: zellij finds its sessions
+through `XDG_RUNTIME_DIR`, and a Collie that reports every session as exited is looking at a unit file
+without it ([contract](./MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer)).
+
+Restart with `bin/collie restart`, then start an agent in a tab Collie can see:
+
+```bash
+zellij --session collie-zellij action new-tab --name claude
+# in that tab
+claude
+```
+
+### Did it work?
+
+```bash
+bin/collie doctor      # the `mux` check names the multiplexer, its endpoint, and whether it answered
+bin/collie logs        # a multiplexer it cannot reach is one warning line naming what it tried
+```
+
+Then open the phone: the dashboard lists your **tmux windows** or **zellij tabs**, and the pane you
+launched Claude in names the agent rather than `bash`. If every pane still reads as a shell, the
+beacon hooks are missing — next section.
+
+### Collie writes hooks into Claude's own settings
+
+On tmux and zellij a pane is just a shell, so the agent has to say what it is. That is a
+[beacon](#agent-beacons-optional-linux), and it needs Collie's hooks in Claude Code's settings:
+
+```console
+$ bin/collie hooks install claude
+$ bin/collie hooks status
+would install: /home/you/collie/bin/collie beacon emit  (this checkout)
+/home/you/.claude/settings.json: installed (v1)
+```
+
+Say it plainly, because it edits a file you own:
+
+- The target is your **global** `~/.claude/settings.json` (and any `CLAUDE_CONFIG_DIR` profile).
+  A project's `.claude/settings.json` is never written.
+- It adds **five** entries, each marked `# collie-beacon v1`, each with a 10 s timeout. Every hook
+  beside them is left exactly where it was, and `hooks uninstall claude` removes only the marked ones.
+- **An already-running Claude does not reload its hooks.** Relaunch the agents you want seen.
+- **Linux only** — the liveness check reads `/proc`; elsewhere a beacon is simply never written.
+- If you set `COLLIE_STATE_DIR`, export it in the shell your agents run in too: `collie beacon emit`
+  resolves the state dir from **its own** environment, so a beacon otherwise lands where the bridge
+  is not reading.
+
+`collie doctor` reports this as the `beacon-hooks-claude` check and names the install command as the
+remedy — including when a hook still points at a checkout that has moved. What a beacon may and may
+not do is [Agent beacons](#agent-beacons-optional-linux); this is only the setup step.
+
+### What changes compared with Herdr
+
+The reader's summary. **The truth is the cell in [`MUX_CONTRACT.md`](./MUX_CONTRACT.md)** — each row
+links to it.
+
+| | Herdr | tmux | zellij |
+| --- | --- | --- | --- |
+| [a **space** is](./MUX_CONTRACT.md#what-a-space-and-a-tab-are-per-multiplexer) | a workspace | a session | the session — exactly one, so the phone drops the space strip |
+| [a **tab** is](./MUX_CONTRACT.md#what-a-space-and-a-tab-are-per-multiplexer) | a tab | a window | a tab |
+| [a **pane** is](./MUX_CONTRACT.md#what-a-space-and-a-tab-are-per-multiplexer) | a pane | a pane | a terminal pane |
+| [who says a pane holds an agent](./MUX_CONTRACT.md#capabilities) | Herdr does, itself | a [beacon](#agent-beacons-optional-linux), or nothing | a [beacon](#agent-beacons-optional-linux), or nothing |
+| [how soon an unannounced change is seen](./MUX_CONTRACT.md#the-declared-facts--not-capabilities-either) | pushed | pushed | counted on a schedule, 12 s ceiling |
+| ["Show in terminal"](./MUX_CONTRACT.md#capabilities) | yes | yes | **no** — zellij accepts the request and moves nothing |
+| [open / rename / close a tab](./MUX_CONTRACT.md#capabilities) | yes | yes (opening is refused on the tmux crash case above) | yes |
+| [open a space](./MUX_CONTRACT.md#capabilities) | yes | yes | **no** — a session it made would be invisible to it |
+| [pane history](./MUX_CONTRACT.md#capabilities) | from Herdr's own pane record | from the beacon's session key | from the beacon's session key |
+
+Without a beacon, tmux and zellij report every pane as a plain shell, and pane history is **declared
+absent** rather than served empty.
+
+### Three things that feel different on the phone
 
 - **Pull to refresh.** On the dashboard and on a space, drag down and let go: Collie asks the
   multiplexer to look *now* rather than waiting for its next round. The pane view has no pull —
@@ -331,6 +455,18 @@ differ. The full matrix, cell by cell, is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md)
 **The phone never moves your terminal on its own.** Only that one named tap does. Browsing the herd,
 opening a pane, backing out — none of it touches the cursor of whoever is typing on the host
 ([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)).
+
+### tmux tips — getting your windows back after a reboot
+
+Collie persists nothing about your multiplexer. A tmux server that dies takes every window with it,
+and Collie then has nothing left to list. tmux's own plugins fix that, and they are entirely optional:
+[tpm](https://github.com/tmux-plugins/tpm) installs plugins,
+[tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) saves and restores the session tree,
+and [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) does the saving for you.
+
+What comes back is the **windows**, their layout and their working directories. **The agents inside do
+not come back running** — start Claude Code again by hand. Picking its old conversation back up is
+Claude's own feature (`claude --resume` / `claude --continue`), not the plugin's.
 
 ## Configure
 
@@ -1002,7 +1138,9 @@ looks like this — is [ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-
 A **beacon** is the agent telling Collie what only the agent knows: a hook in Claude Code's own
 settings runs `collie beacon emit`, which writes one small file naming the harness, the session and
 the pane it is running in. Herdr reports all of that itself — beacons are for **tmux and zellij**,
-where a pane is otherwise just a shell.
+where a pane is otherwise just a shell. Installing them is a step of
+[Using the app on tmux or zellij](#collie-writes-hooks-into-claudes-own-settings); this section is
+what they are.
 
 ```console
 $ bin/collie hooks install claude
