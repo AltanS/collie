@@ -72,7 +72,14 @@ import {
   type MuxTabRequest,
   type MuxWatchOptions,
 } from "../types.ts";
-import { resolveTmuxBinary, SpawnTmuxExec, tmuxServerArgs, type TmuxExec, type TmuxRunResult } from "./exec.ts";
+import {
+  resolveTmuxBinary,
+  SpawnTmuxExec,
+  tmuxServerArgs,
+  tmuxServerLabel,
+  type TmuxExec,
+  type TmuxRunResult,
+} from "./exec.ts";
 import { toTmuxKey, TMUX_UNSENDABLE_KEYS } from "./keys.ts";
 import { tmuxBeaconMatcher } from "./markers.ts";
 import {
@@ -859,6 +866,7 @@ export const tmuxMuxFactory: MuxAdapterFactory = {
   beaconMatcher(target: MuxTarget) {
     return tmuxBeaconMatcher(TMUX_MUX, execFor(target));
   },
+  describeTarget: tmuxServerLabel,
 };
 
 /** The transport for one target. Stateless configuration, so the matcher may build its own. */

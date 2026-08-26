@@ -21,7 +21,14 @@ import {
 } from "./front-door.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
-import { buildMuxRegistry, createMux, DEFAULT_MUX, factoryFor, type MuxTarget } from "./mux/registry.ts";
+import {
+  buildMuxRegistry,
+  createMux,
+  DEFAULT_MUX,
+  describeMux,
+  factoryFor,
+  type MuxTarget,
+} from "./mux/registry.ts";
 import { TMUX_BINARY_OPTION } from "./mux/tmux/adapter.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import { ZELLIJ_BINARY_OPTION } from "./mux/zellij/adapter.ts";
@@ -491,6 +498,11 @@ updateTimer.unref();
 // The multiplexers this build can drive. Built once — the map is derived from each factory's own
 // name, so a key can never drift from the adapter it resolves to.
 const muxRegistry = buildMuxRegistry();
+
+// Say what this collie drives, once, before anything dials it. A reachable multiplexer used to be
+// silent — the log named one only when it could not be reached — so `collie logs` could not answer
+// the first question a tmux or zellij operator asks (README → "Did it work?").
+console.log(`[bridge] mux: ${describeMux(muxRegistry, cfg.mux, cfg.muxEndpoint)}`);
 
 // Are the agent's own hooks installed (M11/02)? Probed through `cli/hooks.ts`'s definition of
 // "installed", cached for a few seconds, and shared by every session: it is a property of this HOST,

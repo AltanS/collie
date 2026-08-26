@@ -23,7 +23,12 @@ import {
   type MuxTarget,
 } from "../bridge/mux/registry.ts";
 import { TMUX_BINARY_OPTION, TMUX_MUX, TMUX_VERSION_ARGS } from "../bridge/mux/tmux/adapter.ts";
-import { resolveTmuxBinary, TMUX_BINARY_CANDIDATES, tmuxServerArgs } from "../bridge/mux/tmux/exec.ts";
+import {
+  resolveTmuxBinary,
+  TMUX_BINARY_CANDIDATES,
+  tmuxServerArgs,
+  tmuxServerLabel,
+} from "../bridge/mux/tmux/exec.ts";
 import { ZELLIJ_BINARY_OPTION, ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
 import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zellij/exec.ts";
 import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
@@ -661,13 +666,6 @@ function mux(deps: DoctorDeps): Finding {
     `${settings.name} — registered, but \`collie doctor\` has no liveness probe for it`,
     `ask that multiplexer whether it is running, by hand; \`collie doctor\` reports ${TMUX_MUX} and ${ZELLIJ_MUX}`,
   );
-}
-
-/** How tmux itself would name the server the endpoint addresses (`tmuxServerArgs`'s fork). */
-function tmuxServerLabel(endpoint: string): string {
-  const args = tmuxServerArgs(endpoint);
-  if (args.length === 0) return "tmux's own default server";
-  return args[0] === "-S" ? `socket ${args[1] ?? ""}` : `socket name ${args[1] ?? ""}`;
 }
 
 /** The first non-empty line of a tool's complaint — a doctor line is one line. */

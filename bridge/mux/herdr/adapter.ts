@@ -469,4 +469,7 @@ export const herdrMuxFactory: MuxAdapterFactory = {
       new HerdrClient(target.endpoint, target.timeoutMs || DEFAULT_TIMEOUT_MS, dialModeOf(target.options)),
     );
   },
+  describeTarget(endpoint: string) {
+    return `socket ${endpoint}`;
+  },
 };

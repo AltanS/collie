@@ -70,6 +70,14 @@ export interface MuxAdapterFactory {
    * bound to — is resolved by the same deterministic rule the adapter uses.
    */
   beaconMatcher?(target: MuxTarget): BeaconMatcher;
+  /**
+   * How this adapter names the multiplexer an endpoint addresses, in ITS own words — a tmux server,
+   * a zellij session, a Herdr socket. One short phrase, for {@link describeMux}.
+   *
+   * It takes the endpoint alone rather than a target, because a description is not a connection:
+   * nothing here may spawn, dial or probe. Absent means the endpoint speaks for itself.
+   */
+  describeTarget?(endpoint: string): string;
 }
 
 /**
@@ -126,6 +134,25 @@ export function factoryFor(
 /** The multiplexers this build can drive, sorted — for the config surface, the CLI and tests. */
 export function muxNames(registry: Record<string, MuxAdapterFactory>): string[] {
   return Object.keys(registry).toSorted();
+}
+
+/**
+ * Which multiplexer this collie drives and where it looks for it, as one phrase.
+ *
+ * The bridge prints it once at startup, so `collie logs` answers "what is it driving?" without a
+ * second probe — the log used to name a multiplexer only when it could not reach one. Pure: each
+ * adapter's own {@link MuxAdapterFactory.describeTarget} words its endpoint, and an unregistered
+ * name is described rather than refused, because `createMux` is the site that refuses it.
+ */
+export function describeMux(
+  registry: Record<string, MuxAdapterFactory>,
+  mux: string | undefined,
+  endpoint: string,
+): string {
+  const name = mux === undefined || mux === "" ? DEFAULT_MUX : mux;
+  const factory = factoryFor(registry, name);
+  const where = factory?.describeTarget?.(endpoint) ?? (endpoint.trim() || "its default");
+  return `${name} · ${where}`;
 }
 
 /**
