@@ -52,8 +52,11 @@ load_env() {
     case "$mode" in
       600|400|0600|0400) ;;
       *)
-        echo "warn: ${env_file} is mode ${mode} (expected 600); it may be readable by other users." >&2
-        chmod 600 "$env_file" 2>/dev/null || true
+        if chmod 600 "$env_file" 2>/dev/null; then
+          echo "warn: ${env_file} was mode ${mode} (expected 600); tightened it to 600." >&2
+        else
+          echo "warn: ${env_file} is mode ${mode} (expected 600) and could not be tightened; it may be readable by other users." >&2
+        fi
         ;;
     esac
   fi
@@ -90,6 +93,15 @@ load_env() {
     esac
     val="${val#"${val%%[![:space:]]*}"}"
     val="${val%"${val##*[![:space:]]}"}"
+    # `KEY=value # note` is `value`. Only with the space: a `#` glued to the value is a literal one
+    # (a colour, a URL fragment), and a fully-quoted value keeps every character it quotes.
+    case "$val" in
+      '"'*'"' | "'"*"'") ;;
+      *' #'*)
+        val="${val%%' #'*}"
+        val="${val%"${val##*[![:space:]]}"}"
+        ;;
+    esac
     case "$val" in
       '"'*'"' | "'"*"'")
         if [ ${#val} -ge 2 ]; then
@@ -265,9 +277,30 @@ self_hosts() {
     "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const s=JSON.parse(d).Self;const o=[];if(s.DNSName)o.push(s.DNSName.replace(/\.\$/,''));for(const ip of s.TailscaleIPs||[])o.push(ip.includes(':')?'['+ip+']':ip);process.stdout.write(o.join(','))}catch{}})" || true
 }
 
+# The allowlist a previous write_unit() baked in — so a failed discovery can keep what already
+# worked instead of overwriting it with silence.
+unit_tailscale_hosts() {
+  [ -f "$UNIT_FILE" ] || return 0
+  sed -n 's/^Environment=COLLIE_TAILSCALE_HOSTS=//p' "$UNIT_FILE" | tail -1
+}
+
+# The Host gate fails closed, so an EMPTY allowlist is a lockout, not a default. `tailscale status`
+# can fail for reasons that have nothing to do with this install (daemon down, node logged out), and
+# that must not cost the operator their front door: say so loudly, keep whatever the unit already
+# carries, and write no line at all when there is nothing to keep.
 discover_tailscale_hosts() {
   if [ "${COLLIE_SKIP_SERVE:-}" != "1" ] && [ -z "${COLLIE_TAILSCALE_HOSTS:-}" ]; then
     COLLIE_TAILSCALE_HOSTS="$(self_hosts || true)"
+    if [ -z "$COLLIE_TAILSCALE_HOSTS" ]; then
+      COLLIE_TAILSCALE_HOSTS="$(unit_tailscale_hosts || true)"
+      echo "error: 'tailscale status' named no host for this node — the allowlist was not discovered." >&2
+      if [ -n "$COLLIE_TAILSCALE_HOSTS" ]; then
+        echo "       keeping the one already in the unit: ${COLLIE_TAILSCALE_HOSTS}" >&2
+      else
+        echo "       no allowlist is set, so the Host gate will refuse every request. Set" >&2
+        echo "       COLLIE_TAILSCALE_HOSTS (or COLLIE_PUBLIC_HOSTS) in .env, or fix Tailscale and retry." >&2
+      fi
+    fi
   fi
   export COLLIE_TAILSCALE_HOSTS="${COLLIE_TAILSCALE_HOSTS:-}"
 }
@@ -452,7 +485,13 @@ PrivateTmp=yes
 Environment=HERDR_SOCKET_PATH=${SOCKET}
 Environment=COLLIE_PORT=${PORT}
 Environment=HERDR_PLUGIN_CONFIG_DIR=${CONFIG_DIR}
-Environment=COLLIE_TAILSCALE_HOSTS=${COLLIE_TAILSCALE_HOSTS}
+EOF
+  # Written only when discovery produced one: baking an empty value here would REPLACE a working
+  # allowlist with a lockout on the next restart.
+  if [ -n "${COLLIE_TAILSCALE_HOSTS:-}" ]; then
+    echo "Environment=COLLIE_TAILSCALE_HOSTS=${COLLIE_TAILSCALE_HOSTS}" >> "$UNIT_FILE"
+  fi
+  cat >> "$UNIT_FILE" <<EOF
 EnvironmentFile=-${CONFIG_DIR}/.env
 
 [Install]

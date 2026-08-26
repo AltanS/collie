@@ -1382,6 +1382,72 @@ EOF
   assert_contains "$(cat "${CASE_DIR}/harness.out")" 'ALSO_PWNED=`touch'
 }
 
+# `KEY=value # note` is one value and one comment, not a value with a comment glued to it. A `#`
+# with no space before it stays literal — a colour or a URL fragment is not a comment.
+test_env_strips_an_unquoted_trailing_comment() {
+  setup_case env-comment
+  cat > "${CONFIG_DIR}/.env" <<'EOF'
+COLLIE_PUBLIC_URL=https://host.example # the front door
+COLLIE_DEVICE_HEADER=X-Tailnet-Device#1
+COLLIE_TRUSTED_USER="you@example.com" # quoted, then commented
+EOF
+  local harness="${CASE_DIR}/harness.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+echo "URL=\$COLLIE_PUBLIC_URL"
+echo "HEADER=\$COLLIE_DEVICE_HEADER"
+echo "USER=\$COLLIE_TRUSTED_USER"
+EOF
+  local out; out="$(bash "$harness" 2>&1)" || fail "parsing .env failed: $out"
+  assert_contains "$out" "URL=https://host.example"
+  case "$out" in *"URL=https://host.example "*|*"# the front door"*) fail "trailing comment reached the value" ;; esac
+  assert_contains "$out" "HEADER=X-Tailnet-Device#1"
+  assert_contains "$out" "USER=you@example.com"
+}
+
+# The Host gate fails closed, so a failed `tailscale status` must not narrow the allowlist to
+# nothing: the unit keeps the hosts it already had, and the operator is told out loud.
+test_failed_discovery_keeps_the_units_host_allowlist() {
+  setup_case ts-discovery-fails
+  cat > "${BIN_DIR}/tailscale" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "${BIN_DIR}/tailscale"
+  local unit="${HOME_DIR}/.config/systemd/user/collie.service"
+  mkdir -p "$(dirname "$unit")"
+  printf '[Service]\nEnvironment=COLLIE_TAILSCALE_HOSTS=host.example,100.64.0.1\n' > "$unit"
+
+  local harness="${CASE_DIR}/harness.sh"
+  cat > "$harness" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME="$HOME_DIR"
+export HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR"
+export PATH="$BIN_DIR:$BASE_PATH"
+source "$CTL"
+discover_tailscale_hosts
+echo "HOSTS=\$COLLIE_TAILSCALE_HOSTS"
+EOF
+  local out; out="$(bash "$harness" 2>&1)" || fail "discovery aborted: $out"
+  assert_contains "$out" "named no host for this node"
+  assert_contains "$out" "HOSTS=host.example,100.64.0.1"
+
+  # With nothing to keep, the unit gets no allowlist line at all — never an empty one.
+  rm -f "$unit"
+  out="$(bash "$harness" 2>&1)" || fail "discovery aborted: $out"
+  assert_contains "$out" "refuse every request"
+  assert_contains "$out" "HOSTS="
+  case "$out" in *"HOSTS=host"*) fail "a removed unit still supplied hosts" ;; esac
+}
+
+test_env_strips_an_unquoted_trailing_comment
+test_failed_discovery_keeps_the_units_host_allowlist
 test_env_is_parsed_not_executed
 test_suite_ignores_an_inherited_git_dir
 test_push_keys_writes_the_resolved_env

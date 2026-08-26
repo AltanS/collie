@@ -46,7 +46,9 @@ function matchesAt(head: Uint8Array, at: number, bytes: number[]): boolean {
 export function imageExtFromBytes(head: Uint8Array): string | null {
   for (const ext of ["png", "jpg", "gif", "webp"]) {
     const rows = SIGNATURES.filter((s) => s.ext === ext);
-    if (rows.every((r) => matchesAt(head, r.at, r.bytes))) return ext;
+    // `every` on an empty list is true, which would type EVERY file as the first ext whose rows
+    // someone deleted. No signature, no match.
+    if (rows.length > 0 && rows.every((r) => matchesAt(head, r.at, r.bytes))) return ext;
   }
   return null;
 }

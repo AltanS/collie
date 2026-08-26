@@ -221,6 +221,26 @@ describe("checkAccess — Host-header validation (COLLIE_PUBLIC_HOSTS)", () => {
     ).toEqual({ ok: true });
   });
 
+  // The gate the product actually ships: allowAnyHost off, and the whole way through guard() at
+  // write level — a Host check that passes checkAccess but is not wired into the write path would
+  // pass every test above and still let a rebound name type into a terminal.
+  test("the shipped fail-closed default rejects an unlisted Host and admits an allowed one", () => {
+    const c = cfg({ allowAnyHost: false, tailscaleHosts: ["collie.example.ts.net"] });
+    const denied = guard(
+      req({ origin: "https://evil.example.com", host: "evil.example.com" }),
+      c,
+      "write",
+    );
+    expect(denied?.status).toBe(403);
+    expect(
+      guard(
+        req({ origin: "https://collie.example.ts.net", host: "collie.example.ts.net" }),
+        c,
+        "write",
+      ),
+    ).toBeNull();
+  });
+
   test("a discovered Tailscale host is allowed without COLLIE_PUBLIC_HOSTS", () => {
     const c2 = cfg({
       allowAnyHost: false,
