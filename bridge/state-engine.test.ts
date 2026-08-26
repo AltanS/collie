@@ -549,13 +549,20 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
     expect(herdr.calls).toBe(0);
   });
 
-  test("setCadence re-arms the interval only when started and changed", () => {
-    const { engine } = makeEngine();
+  test("setCadence re-arms the interval only when started and changed", async () => {
+    const { herdr, engine, poll } = makeEngine();
     const cadence = () => engine["cadenceMs"];
     const timer = () => engine["timer"];
 
     engine.setCadence(9000); // not started → no-op
     expect(cadence()).toBe(1500);
+
+    // Connect first: a relax ordered before the engine has ever connected is PARKED, not applied
+    // (pinned by its own test below), so re-arming has to be asked of a connected engine. This poll
+    // runs BEFORE start(), whose own first poll would otherwise still be in flight and make this
+    // one a no-op against the in-flight guard.
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    await poll();
 
     engine.start();
     expect(cadence()).toBe(1500);
@@ -565,6 +572,32 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
     engine.setCadence(12_000); // changed → re-arm
     expect(cadence()).toBe(12_000);
     expect(timer()).not.toBe(before);
+    engine.stop();
+  });
+
+  // Relaxing is earned by a connected poll, never granted on the event watch's ack. The ack proves
+  // a census answered; it does not prove `snapshot()` succeeded. Relaxing on it alone left a cold
+  // start's missed first poll standing for a whole idle interval — 13.1 s, measured on zellij.
+  test("a relax ordered before the first connected poll is parked until one lands", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const cadence = () => engine["cadenceMs"];
+    engine["started"] = true;
+    engine.setCadence(12_000); // never connected → parked; the fast cadence keeps retrying
+    expect(cadence()).toBe(1500);
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    await poll();
+    expect(cadence()).toBe(12_000); // the first connected poll earns it
+    engine.stop();
+  });
+
+  test("a tighten while a relax is parked discards the parked relax", async () => {
+    const { engine, poll } = makeEngine();
+    const cadence = () => engine["cadenceMs"];
+    engine["started"] = true;
+    engine.setCadence(12_000); // parked
+    engine.setCadence(1500); // the watch flapped down → fast wins, and the parked relax dies
+    await poll();
+    expect(cadence()).toBe(1500); // connecting must NOT resurrect it
     engine.stop();
   });
 });

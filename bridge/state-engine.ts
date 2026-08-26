@@ -202,6 +202,9 @@ export class StateEngine {
   private pollFailureLogged = false;
   // Current interval cadence; setCadence swaps it (relaxed while the event stream is healthy).
   private cadenceMs: number;
+  // A relax ordered before the engine has ever CONNECTED - parked, and applied by the first
+  // successful poll. See setCadence for why relaxing is earned rather than granted on an ack.
+  private pendingCadenceMs: number | null = null;
   constructor(
     private readonly mux: MuxAdapter,
     private readonly pollMs: number,
@@ -279,6 +282,7 @@ export class StateEngine {
     if (this.started) return;
     this.started = true;
     this.cadenceMs = this.pollMs;
+    this.pendingCadenceMs = null;
     void this.poll();
     this.timer = setInterval(() => void this.poll(), this.cadenceMs);
   }
@@ -305,7 +309,27 @@ export class StateEngine {
 
   /** Re-arm the interval at a new cadence (relaxed while events are healthy). No-op if unchanged or stopped. */
   setCadence(ms: number): void {
-    if (!this.started || ms === this.cadenceMs) return;
+    if (!this.started) return;
+    // Relaxing is EARNED by a connected poll, never granted on the watch's ack alone. That ack
+    // proves the multiplexer answered a CENSUS - not that a snapshot succeeded, and `snapshot()`
+    // also runs list-tabs, which on a cold start can lose a race the census won. Relaxing on the
+    // ack alone leaves that miss standing for a whole idle interval; measured at 13.1 s on zellij.
+    //
+    // So a relax ordered while never-yet-connected is PARKED: the fast cadence keeps retrying, and
+    // the first connected poll applies it. A tighten always applies at once, and kills the parked
+    // relax - a watch that flapped down must not have its earlier relax resurrected by a later
+    // connect.
+    if (ms > this.pollMs && this.bridge !== "connected") {
+      this.pendingCadenceMs = ms;
+      return;
+    }
+    this.pendingCadenceMs = null;
+    this.applyCadence(ms);
+  }
+
+  /** Swap the interval to `ms` if it differs. The one place the poll timer is re-armed. */
+  private applyCadence(ms: number): void {
+    if (ms === this.cadenceMs) return;
     this.cadenceMs = ms;
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => void this.poll(), ms);
@@ -383,6 +407,12 @@ export class StateEngine {
       this.tabs = tabViews;
       this.bridge = "connected";
       this.pollFailureLogged = false;
+      // The relax the watch ordered while we had never yet connected - earned now.
+      if (this.pendingCadenceMs !== null) {
+        const relaxed = this.pendingCadenceMs;
+        this.pendingCadenceMs = null;
+        this.applyCadence(relaxed);
+      }
 
       // After all transition/removal bookkeeping so listeners see a consistent, current snapshot.
       const snap = this.current();
