@@ -1,34 +1,40 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, Crown, Network, Server } from "lucide-react";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, Crown, Network, Shield } from "lucide-react";
 import { useLoaderData, useNavigate } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { BottomSheet } from "@/components/ui/sheet";
 import { usePack } from "@/components/pack-provider";
+import { healthTone, healthWord, PackFormation } from "@/components/pack-formation";
 import { useLocale } from "@/hooks/use-locale";
 import { timeAgoShort } from "@/lib/format";
-import { hostHealth, type HostHealth } from "@/lib/host-health";
-import { countsFor, hostCounts, type HostCounts } from "@/lib/hosts";
-import { t, tn } from "@/lib/i18n";
+import { hostCounts } from "@/lib/hosts";
+import { t } from "@/lib/i18n";
 import { type PackData } from "@/lib/loaders";
 import { homePath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
-import type {
-  AgentView,
-  PackMemberStatus,
-  PackStatusResponse,
-  ServerSummary,
-} from "@/lib/types";
+import type { AgentView, PackMemberStatus, PackStatusResponse } from "@/lib/types";
 
-// The pack census: one row per machine, and the answer to "how is my whole pack doing?".
+// The pack census: the whole pack drawn as a FORMATION, and the answer to "how is my pack doing?".
 //
-// ── IT IS A REPORT, NOT A CONSOLE ────────────────────────────────────────────
+// ── THE BODY IS A SHAPE, AND TAPPING A MACHINE OPENS ITS PAPERWORK ───────────
+// The lead stands at the apex, the deputy directly beneath it on a thick connector, and every other
+// member is fanned in a V on thin ones (components/pack-formation.tsx owns the drawing and the pure
+// geometry). A node carries only what survives being glanced at — a health ring, a name, and a
+// "needs you" count — and everything a list used to print instead lives one tap away in a bottom
+// sheet: the lead's own word for that member and its reason verbatim, a conflict, version skew, the
+// address, the enrolment, and on the lead itself the secret generation and who deputises for it.
+//
+// ── IT IS STILL A REPORT, NOT A CONSOLE ──────────────────────────────────────
 // There is no button here that changes anything, and that is the milestone's rule rather than an
 // unfinished edge: join / leave / promote / rotate are CLI verbs (M5 non-goal), so the page names
-// what is wrong and stops. It is the ServerSwitcher's posture at page scale — the switcher lists
-// members and lets you go to one; this lists the same members with the detail a switcher row has no
-// room for (secret generation, warrant, enrolment, version skew) and lets you go to one.
+// what is wrong and stops. The one thing it does is what the ServerSwitcher does — take you to a
+// machine — and it is a deliberate second tap inside the sheet, never the node itself. Tapping a
+// node on a picture must be free to mean "tell me about this one".
 //
 // ── WHY IT HAS ITS OWN LOADER RATHER THAN RIDING THE SNAPSHOT ────────────────
 // `/api/pack` is a page's worth of detail, and the snapshot is the hot path every phone polls for
@@ -48,16 +54,20 @@ export function PackRoute() {
   const root = useOptionalRootData();
   // TIER-2 health, derived once at the data root against the lead's clock — the same map the
   // ServerSwitcher's rows read, so the two surfaces cannot disagree about a member. See
-  // `memberHealth` for what happens when this page is mounted without a provider.
+  // `memberHealth` in pack-formation.tsx for a mount without a provider.
   const { health } = usePack();
   // SAFETY: `packLoader` returns `PackData` for this route; `undefined` is what React Router hands
   // back for a harness that mounts the route without its loader, which the `??` below covers. A
   // data-mode `useLoaderData()` is typed `unknown` and cannot be narrowed any other way.
   const data = (useLoaderData() as PackData | undefined) ?? EMPTY_PACK;
-  // Read into a const so the null check below narrows inside the `.map` callback too — a property
-  // access re-widens at every closure boundary.
+  // Read into a const so the null check below narrows inside the callbacks too — a property access
+  // re-widens at every closure boundary.
   const status = data.status;
   const counts = hostCounts(root?.agents ?? NO_AGENTS);
+  // The open sheet holds the member ID, not the member: the loader revalidates underneath an open
+  // sheet on every poll, and a held object would go on rendering the census as it was when tapped.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const selected = status?.members.find((m) => m.id === openId) ?? null;
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -83,26 +93,42 @@ export function PackRoute() {
         {status === null ? (
           <EmptyCard error={data.error} />
         ) : (
-          <>
-            <SummaryCard status={status} />
-            {status.members.map((m) => (
-              <MemberCard
-                key={m.id}
-                member={m}
+          <PackFormation
+            status={status}
+            health={health}
+            counts={counts}
+            onSelect={(m) => setOpenId(m.id)}
+          />
+        )}
+      </main>
+
+      {/* Portalled to the body, exactly as the ServerSwitcher's sheet is: the sheet is `fixed`, and
+          this route's scrolling `<main>` is a containing block that would otherwise clip it. */}
+      {status !== null &&
+        createPortal(
+          <BottomSheet
+            open={selected !== null}
+            onClose={() => setOpenId(null)}
+            title={selected === null ? undefined : selected.name || selected.id}
+          >
+            {selected !== null && (
+              <MemberSheet
+                member={selected}
                 status={status}
-                health={memberHealth(health, m)}
-                counts={countsFor(counts, m.id)}
-                onOpen={() =>
+                onGo={() => {
+                  setOpenId(null);
                   // The ServerSwitcher's rule, restated because it is the one this milestone exists
                   // to enforce: a host switch goes HOME on that machine and NEVER carries a pane or
                   // session id across. `w1:p1` on the peer is a different terminal entirely.
-                  navigate(homePath({ host: m.isLead ? undefined : m.id, session: undefined }))
-                }
+                  navigate(
+                    homePath({ host: selected.isLead ? undefined : selected.id, session: undefined }),
+                  );
+                }}
               />
-            ))}
-          </>
+            )}
+          </BottomSheet>,
+          document.body,
         )}
-      </main>
     </div>
   );
 }
@@ -114,160 +140,45 @@ const EMPTY_PACK: PackData = { status: null, error: false };
 const NO_AGENTS: AgentView[] = [];
 
 /**
- * The tier-2 health for a member row.
+ * One machine's paperwork — everything the formation's node had no room for.
  *
- * The snapshot-derived map is the answer wherever there is one, so this page and the switcher can
- * never disagree. The fallback is for a mount with no `PackProvider` — this route's own unit tests,
- * and a first paint where the snapshot has not landed — and it is derived from THIS payload rather
- * than invented: `hostHealth` with `at: 0` skips the §10.2 tolerance and presents the lead's plain
- * boolean, which is precisely what ServerSwitcher's identical fallback does.
+ * The lead's own sheet carries two extra facts because they are PACK-wide rather than per-member and
+ * the lead is the machine that owns them: which rotation of the shared secret is current, and who is
+ * named to take over if this lead goes quiet (ADR 0027).
  */
-function memberHealth(map: ReadonlyMap<string, HostHealth>, m: PackMemberStatus): HostHealth {
-  return map.get(m.id) ?? hostHealth(asServerSummary(m), { at: 0, pollMs: 0 });
-}
-
-/** The census row read as a roster entry — the two shapes overlap exactly where health lives. */
-function asServerSummary(m: PackMemberStatus): ServerSummary {
-  return {
-    id: m.id,
-    name: m.name,
-    isLead: m.isLead,
-    // Only `reachable` is a green light. `conflicted` in particular is NOT: two collies believing
-    // they lead the same pack is the one state where a write could land somewhere unintended.
-    reachable: m.health === "reachable",
-    protocol: m.health === "incompatible" ? "incompatible" : m.lastSeenAt > 0 ? "ok" : "unknown",
-    protocolDetail: m.reason,
-    lastSeenAt: m.lastSeenAt,
-  };
-}
-
-function SummaryCard({ status }: { status: PackStatusResponse }) {
-  const reachable = status.members.filter((m) => m.health === "reachable").length;
-  const lead = status.members.find((m) => m.isLead);
-  const deputy =
-    status.deputy === null
-      ? null
-      : {
-          name: status.members.find((m) => m.id === status.deputy?.id)?.name ?? status.deputy.id,
-          warrantGeneration: status.deputy.warrantGeneration,
-        };
-
-  return (
-    <Card className="gap-0 py-0">
-      <div className="flex items-center gap-3 p-4 pb-3">
-        <Network className="size-5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0">
-          <div className="truncate font-medium">{status.pack.name || status.pack.id}</div>
-          <p className="text-sm text-muted-foreground">
-            {t("pack.summary.counts", {
-              machines: tn("pack.summary.machines", status.members.length),
-              reachable: t("pack.summary.reachable", { count: reachable }),
-            })}
-          </p>
-        </div>
-      </div>
-      <dl className="divide-y divide-border/60 border-t border-border/60">
-        <Row label={t("pack.summary.lead")}>
-          {lead?.name ?? status.self.name}
-          <span className="ml-1.5 text-muted-foreground">{status.self.version}</span>
-        </Row>
-        <Row label={t("pack.summary.deputy")}>
-          {/* Named ahead of time or not named at all (ADR 0027) — and "no deputy named" is a fact
-              worth printing, because it is the difference between a pack that survives the lead
-              going quiet and one that does not. */}
-          {deputy === null ? (
-            <span className="text-muted-foreground">{t("pack.summary.noDeputy")}</span>
-          ) : (
-            <>
-              {deputy.name}
-              {deputy.warrantGeneration !== null && (
-                <span className="ml-1.5 text-muted-foreground">
-                  {t("pack.summary.warrant", { generation: deputy.warrantGeneration })}
-                </span>
-              )}
-            </>
-          )}
-        </Row>
-        <Row label={t("pack.summary.secret")}>
-          {t("pack.summary.secretValue", {
-            generation: status.pack.secretGeneration,
-            // Aged against the LEAD's clock, like everything else here — see the header.
-            time: timeAgoShort(status.pack.rotatedAt, status.ts),
-          })}
-        </Row>
-      </dl>
-    </Card>
-  );
-}
-
-function MemberCard({
+function MemberSheet({
   member,
   status,
-  health,
-  counts,
-  onOpen,
+  onGo,
 }: {
   member: PackMemberStatus;
   status: PackStatusResponse;
-  health: HostHealth;
-  counts: HostCounts;
-  onOpen: () => void;
+  onGo: () => void;
 }) {
   // Compared against the LEAD's version, not against the newest one known: a pack levels to whatever
   // the lead runs (`pack update` pushes the lead's own commit — ADR 0016), so "differs from lead" is
   // the sentence that names the fix. Silent while a member has never answered and reports none.
   const versionDiffers = member.version !== undefined && member.version !== status.self.version;
+  const isDeputy = status.deputy !== null && status.deputy.id === member.id;
+  const deputyName =
+    status.deputy === null
+      ? null
+      : status.members.find((m) => m.id === status.deputy?.id)?.name ?? status.deputy.id;
 
   return (
-    <Card className="gap-0 py-0">
-      {/* The whole card is the tap target — a row that navigates should not make you hunt for a
-          chevron on a phone. It is also the ONLY interactive thing on this page. */}
-      <button type="button" onClick={onOpen} className="w-full p-4 text-left active:bg-muted/60">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Server className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate text-sm font-medium">{member.name || member.id}</span>
-          {member.isLead && (
-            <span className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              <Crown className="size-2.5" aria-hidden />
-              {t("connection.host.lead")}
-            </span>
-          )}
-          {/* The switcher's chip, verbatim in its wording rules: the WORD "unreachable" belongs to
-              `writable` — the lead's plain boolean — and never to `state`, which is a statement
-              about the age of a receipt. A stale receipt beside a member answering every request is
-              an old receipt, not a down machine (host-stale-banner.tsx has the table). */}
-          {health.incompatible ? (
-            <span className="text-[11px] font-medium text-status-blocked">
-              {t("connection.host.incompatible")}
-            </span>
+    <div className="space-y-3">
+      {(member.isLead || isDeputy) && (
+        <span className="flex w-fit items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+          {member.isLead ? (
+            <Crown className="size-2.5" aria-hidden />
           ) : (
-            health.state !== "live" && (
-              <span className="text-[11px] text-muted-foreground">
-                {health.writable
-                  ? health.lastSeenLabel
-                  : t("connection.host.unreachableSuffix", { label: health.lastSeenLabel })}
-              </span>
-            )
+            <Shield className="size-2.5" aria-hidden />
           )}
-        </div>
+          {member.isLead ? t("connection.host.lead") : t("pack.role.deputy")}
+        </span>
+      )}
 
-        {(counts.blocked > 0 || counts.working > 0) && (
-          <div className="mt-1.5 flex items-center gap-1.5">
-            {counts.blocked > 0 && (
-              <span className="rounded-full border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
-                {tn("status.count.needsYou", counts.blocked)}
-              </span>
-            )}
-            {counts.working > 0 && (
-              <span className="rounded-full border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
-                {tn("status.count.working", counts.working)}
-              </span>
-            )}
-          </div>
-        )}
-      </button>
-
-      <dl className="divide-y divide-border/60 border-t border-border/60">
+      <dl className="divide-y divide-border/60 rounded-lg border border-border/60">
         <Row label={t("pack.member.health")}>
           {/* The lead's own word for this member, and its reason VERBATIM under it — never
               paraphrased, because the operator's next move is to read it and go fix a version, a
@@ -276,7 +187,7 @@ function MemberCard({
         </Row>
         {member.reason !== undefined && member.reason !== "" && (
           <Row label={t("pack.member.reason")}>
-            <span className="break-words font-mono text-[11px] leading-tight">{member.reason}</span>
+            <span className="font-mono text-[11px] leading-tight break-words">{member.reason}</span>
           </Row>
         )}
         {member.conflict !== undefined && (
@@ -284,7 +195,7 @@ function MemberCard({
             {/* The loudest state on the page: another collie also believes it leads this pack. Both
                 halves are printed, because the warrant generation is how the operator decides which
                 one is the stale believer. */}
-            <span className="break-words font-mono text-[11px] leading-tight text-status-blocked">
+            <span className="font-mono text-[11px] leading-tight break-words text-status-blocked">
               {member.conflict.warrantGeneration === null
                 ? t("pack.member.conflictNoWarrant", { lead: member.conflict.leadMemberId })
                 : t("pack.member.conflictValue", {
@@ -304,7 +215,7 @@ function MemberCard({
         )}
         {member.address !== undefined && (
           <Row label={t("pack.member.address")}>
-            <span className="break-all font-mono text-[11px]">{member.address}</span>
+            <span className="font-mono text-[11px] break-all">{member.address}</span>
           </Row>
         )}
         {member.enrolledAt !== undefined && (
@@ -312,17 +223,49 @@ function MemberCard({
             {timeAgoShort(member.enrolledAt, status.ts)}
           </Row>
         )}
+        {member.isLead && (
+          <>
+            <Row label={t("pack.summary.deputy")}>
+              {/* Named ahead of time or not named at all (ADR 0027) — and "no deputy named" is a
+                  fact worth printing, because it is the difference between a pack that survives the
+                  lead going quiet and one that does not. */}
+              {status.deputy === null || deputyName === null ? (
+                <span className="text-muted-foreground">{t("pack.summary.noDeputy")}</span>
+              ) : (
+                <>
+                  {deputyName}
+                  {status.deputy.warrantGeneration !== null && (
+                    <span className="ml-1.5 text-muted-foreground">
+                      {t("pack.summary.warrant", { generation: status.deputy.warrantGeneration })}
+                    </span>
+                  )}
+                </>
+              )}
+            </Row>
+            <Row label={t("pack.summary.secret")}>
+              {t("pack.summary.secretValue", {
+                generation: status.pack.secretGeneration,
+                // Aged against the LEAD's clock, like everything else here — see the header.
+                time: timeAgoShort(status.pack.rotatedAt, status.ts),
+              })}
+            </Row>
+          </>
+        )}
       </dl>
 
       {/* Two warnings, as sentences rather than badges: each one describes something the operator has
           to go and do, and a coloured dot would have to be decoded first. */}
       {(member.secretBehind || member.provisional) && (
-        <div className="border-t border-border/60 px-4 py-2.5 text-xs text-status-blocked">
+        <div className="text-xs text-status-blocked">
           {member.secretBehind && <p>{t("pack.member.secretBehind")}</p>}
           {member.provisional && <p>{t("pack.member.provisional")}</p>}
         </div>
       )}
-    </Card>
+
+      <Button className="w-full" onClick={onGo}>
+        {t("pack.sheet.goTo")}
+      </Button>
+    </div>
   );
 }
 
@@ -346,36 +289,9 @@ function EmptyCard({ error }: { error: boolean }) {
 /** ConnectionInfo's row, in this page's own file: a definition list of short read-only facts. */
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 px-4 py-2.5 text-sm">
+    <div className="flex items-baseline justify-between gap-4 px-3 py-2.5 text-sm">
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
       <dd className="min-w-0 text-right">{children}</dd>
     </div>
   );
 }
-
-function healthWord(health: PackMemberStatus["health"]): string {
-  switch (health) {
-    case "reachable":
-      return t("pack.health.reachable");
-    case "unreachable":
-      return t("pack.health.unreachable");
-    case "incompatible":
-      return t("pack.health.incompatible");
-    case "conflicted":
-      return t("pack.health.conflicted");
-  }
-}
-
-/** Only the two loud states are coloured — a page where everything shouts says nothing. */
-function healthTone(health: PackMemberStatus["health"]): string {
-  switch (health) {
-    case "reachable":
-      return "text-status-working";
-    case "unreachable":
-      return "text-muted-foreground";
-    case "incompatible":
-    case "conflicted":
-      return "text-status-blocked";
-  }
-}
-
