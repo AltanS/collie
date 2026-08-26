@@ -344,6 +344,9 @@ COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # a socket PATH (tmux 
 
 `COLLIE_TMUX_BIN` is empty for almost everyone: Collie probes a short list of fixed paths and
 deliberately never reads `PATH`, which a service and a Herdr action do not share with your shell.
+**Keep a socket path short** — a Unix socket path longer than about 100 characters cannot be
+connected to at all, and tmux says `error connecting to … (File name too long)`. `/run/user/<uid>/`
+or `/tmp` is the place for it; a deep checkout is not.
 One caveat lives here too: on tmux below 3.7 with `window-size` set to `manual`, opening a window
 crashes the server, so Collie refuses to open one — see
 [Requirements](#requirements) for the one-line fix.
@@ -372,6 +375,12 @@ silently swapped for a neighbour. One environment variable is easy to lose: zell
 through `XDG_RUNTIME_DIR`, and a Collie that reports every session as exited is looking at a unit file
 without it ([contract](./MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer)).
 
+**A zellij session outlives the terminal that started it.** Start one anywhere — `zellij -s
+collie-zellij` — then detach with `Ctrl o` `d`: the session keeps running on the host, and that
+running session is what Collie drives. On a host you never sit at, `zellij attach --create-background
+collie-zellij` starts the same session with no terminal at all (probed on zellij 0.44.2). Collie
+itself never creates a session and never resurrects one.
+
 Restart with `bin/collie restart`, then start an agent in a tab Collie can see:
 
 ```bash
@@ -384,8 +393,14 @@ claude
 
 ```bash
 bin/collie doctor      # the `mux` check names the multiplexer, its endpoint, and whether it answered
-bin/collie logs        # a multiplexer it cannot reach is one warning line naming what it tried
+bin/collie logs        # `[bridge] mux: tmux · socket /run/user/1000/collie-tmux.sock`, printed at
+                       # startup; a multiplexer it cannot reach is one warning line more
+curl -s http://127.0.0.1:8787/api/snapshot | head -c 400   # the herd, as the phone is given it
 ```
+
+That `curl` needs no device header: both write gates leave reads alone, so a read answers even with
+`COLLIE_DEVICE_HEADER` set ([Configure](#configure)). A write from the shell is the case that needs
+the header you configured.
 
 Then open the phone: the dashboard lists your **tmux windows** or **zellij tabs**, and the pane you
 launched Claude in names the agent rather than `bash`. If every pane still reads as a shell, the
@@ -411,6 +426,10 @@ Say it plainly, because it edits a file you own:
   beside them is left exactly where it was, and `hooks uninstall claude` removes only the marked ones.
 - **An already-running Claude does not reload its hooks.** Relaunch the agents you want seen.
 - **Linux only** — the liveness check reads `/proc`; elsewhere a beacon is simply never written.
+- **A beacon belongs to one multiplexer.** It names the pane it was written for by that
+  multiplexer, its session and its pane, so after you change `COLLIE_MUX` the beacons written under
+  the old one match nothing. Nothing deletes them and nothing breaks — `collie doctor` simply keeps
+  counting them under `beacons`.
 - If you set `COLLIE_STATE_DIR`, export it in the shell your agents run in too: `collie beacon emit`
   resolves the state dir from **its own** environment, so a beacon otherwise lands where the bridge
   is not reading.
