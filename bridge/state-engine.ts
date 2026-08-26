@@ -196,6 +196,10 @@ export class StateEngine {
   // When a phone last read this collie — see noteAttention. Epoch ms; 0 means "never", which reads
   // as idle for any clock.
   private lastReadAt = 0;
+  // One warn per disconnected episode, INCLUDING the episode that starts at boot. The old
+  // connected-gated warn was silent there, so a first poll losing the multiplexer's startup race
+  // left no trace at all — the one thing an operator needs to see when a cold herd reads empty.
+  private pollFailureLogged = false;
   // Current interval cadence; setCadence swaps it (relaxed while the event stream is healthy).
   private cadenceMs: number;
   constructor(
@@ -378,12 +382,14 @@ export class StateEngine {
       this.workspaces = workspaceViews;
       this.tabs = tabViews;
       this.bridge = "connected";
+      this.pollFailureLogged = false;
 
       // After all transition/removal bookkeeping so listeners see a consistent, current snapshot.
       const snap = this.current();
       for (const fn of this.updateListeners) fn(snap);
     } catch (err) {
-      if (this.bridge === "connected") {
+      if (!this.pollFailureLogged) {
+        this.pollFailureLogged = true;
         console.warn(`[state] poll failed, marking disconnected: ${err instanceof Error ? err.message : String(err)}`);
       }
       this.bridge = "disconnected";
