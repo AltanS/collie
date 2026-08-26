@@ -30,9 +30,9 @@ describe("AgentIcon", () => {
   });
 
   it("falls back to an initials tile for unknown agents", () => {
-    render(<AgentIcon agent="someunknown" />);
-    const el = screen.getByRole("img", { name: "someunknown icon" });
-    expect(el).toHaveTextContent("SO");
+    render(<AgentIcon agent="gemini" />);
+    const el = screen.getByRole("img", { name: "gemini icon" });
+    expect(el).toHaveTextContent("GE");
     expect(el.querySelector("svg")).toBeNull(); // fallback is text, not a brand mark
   });
 

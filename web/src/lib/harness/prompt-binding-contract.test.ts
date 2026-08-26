@@ -80,7 +80,7 @@ describe("client/bridge binding contract", () => {
   it("pins every fixture that any detector recognises", () => {
     const pinned = new Set(REGIONS.map((r) => r.fixture));
     const unpinned = readdirSync(PANES_DIR)
-      .filter((n) => n.startsWith("claude--") && n.endsWith(".txt"))
+      .filter((n) => n.endsWith(".txt"))
       .filter((n) => !pinned.has(n) && detectRegion(fixtureLines(n)) !== null);
     expect(unpinned).toEqual([]);
   });

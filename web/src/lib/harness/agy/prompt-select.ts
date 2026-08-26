@@ -32,12 +32,21 @@ interface OptionRow {
   label: string;
 }
 
-export function parseOptionRow(text: string): { n: number; label: string } | null {
-  const m = OPTION_ROW.exec(text.trim());
-  if (!m) return null;
-  const numStr = m[1] ?? m[2] ?? m[3];
-  if (!numStr) return null;
-  return { n: Number(numStr), label: m[4]!.trim() };
+export function parseOptionRow(text: string, isTrust?: boolean): { n: number; label: string } | null {
+  const trimmed = text.trim();
+  const m = OPTION_ROW.exec(trimmed);
+  if (m) {
+    const numStr = m[1] ?? m[2] ?? m[3];
+    if (numStr) return { n: Number(numStr), label: m[4]!.trim() };
+  }
+  if (isTrust) {
+    const tm = /^(?:[❯›>•*○●]\s*)?((?:Yes|No)[^.]*)$/i.exec(trimmed);
+    if (tm) {
+      const isYes = /^yes/i.test(tm[1]!);
+      return { n: isYes ? 1 : 2, label: tm[1]!.trim() };
+    }
+  }
+  return null;
 }
 
 export function trailingMenuRows<T extends { n: number }>(rows: T[]): T[] {
@@ -79,12 +88,19 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   const texts = lines.map(lineText);
   if (isAlienBuffer(texts)) return null;
 
-  // 1. Footer must be the last non-blank line and classify as a valid dialog footer.
+  // 1. Scan up from the end through any bottom status line (e.g. "esc to cancel ... Gemini ...") for the dialog footer.
   let fi = texts.length - 1;
   while (fi >= 0 && isBlank(texts[fi]!)) fi--;
   if (fi < 0) return null;
 
-  const family = classifyFooter(texts[fi]!);
+  let family = classifyFooter(texts[fi]!);
+  if (!family && fi > 0) {
+    const candidate = classifyFooter(texts[fi - 1]!);
+    if (candidate) {
+      family = candidate;
+      fi = fi - 1;
+    }
+  }
   if (!family) return null;
 
   const footerIndex = fi;
@@ -93,7 +109,7 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
   const rows: OptionRow[] = [];
   for (let i = from; i < fi; i++) {
-    const parsed = parseOptionRow(texts[i]!);
+    const parsed = parseOptionRow(texts[i]!, family === "trust");
     if (parsed) rows.push({ index: i, n: parsed.n, label: parsed.label });
   }
 
@@ -107,11 +123,9 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
 
   if (footerIndex - lastOpt > MAX_FOOTER_GAP) return null;
 
-  if (family === "select") {
-    const top = Math.max(0, firstOpt - QUESTION_SCAN_LIMIT);
-    for (let i = top; i < footerIndex; i++) {
-      if (isMultiStepHeader(texts[i]!)) return null;
-    }
+  const top = Math.max(0, firstOpt - QUESTION_SCAN_LIMIT);
+  for (let i = top; i < footerIndex; i++) {
+    if (isMultiStepHeader(texts[i]!)) return null;
   }
 
   // 3. Scan upward for question
@@ -119,22 +133,32 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   let questionAt = firstOpt;
   for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < QUESTION_SCAN_LIMIT; i--, seen++) {
     const t = texts[i]!;
-    if (isHorizontalRule(t)) break;
-    if (t.includes("?")) {
+    if (isHorizontalRule(t)) {
+      if (question) break;
+      continue;
+    }
+    if (
+      t.includes("?") ||
+      /^Do you\b/i.test(t.trim()) ||
+      /^Question\s+\d/i.test(t.trim()) ||
+      /^Requesting permission\b/i.test(t.trim())
+    ) {
       question = t.trim();
       questionAt = i;
       break;
     }
   }
   if (!question) {
-    const prev = firstOpt > 0 ? texts[firstOpt - 1]!.trim() : "";
-    if (prev && !isHorizontalRule(prev)) {
-      question = prev;
-      questionAt = firstOpt - 1;
-    } else {
-      return null;
+    for (let i = firstOpt - 1; i >= Math.max(0, firstOpt - 3); i--) {
+      const prev = texts[i]!.trim();
+      if (prev && !isHorizontalRule(prev)) {
+        question = prev;
+        questionAt = i;
+        break;
+      }
     }
   }
+  if (!question) return null;
 
   const options: PromptOption[] = [];
   for (let r = 0; r < menu.length; r++) {
@@ -144,13 +168,16 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
-      if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t)) continue;
+      if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t, family === "trust")) continue;
       desc.push(t.trim());
     }
     options.push({
       label: row.label,
       description: desc.length ? desc.join(" ") : undefined,
-      keys: family === "select" ? [String(row.n), "Enter"] : [String(row.n)],
+      keys:
+        family === "select" || family === "plan"
+          ? [String(row.n), "Enter"]
+          : [String(row.n)],
     });
   }
   if (options.length === 0) return null;
