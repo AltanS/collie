@@ -13,6 +13,7 @@ import {
   guard,
   historyParams,
   isHostAllowed,
+  isLoopbackPeer,
   isReservedAuthPath,
   keysPane,
   normalizeTabLabel,
@@ -80,12 +81,19 @@ function cfg(overrides: Partial<Config> = {}): Config {
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
     keysFile: "/nope/keys.toml",
+    quickRepliesFile: "/nope/quick-replies.toml",
     trustedUser: "",
+    trustedUserOptional: false,
     auditContent: "preview",
     deviceHeader: "",
     deviceAllowlist: [],
     allowedOrigins: [],
     publicHosts: [],
+    tailscaleHosts: [],
+    // Test default is permissive Host so CSRF/identity cases are not also host-rejected.
+    // Product default is allowAnyHost: false (fail-closed).
+    allowAnyHost: true,
+    allowNonLoopbackBind: false,
     vapidPublic: "",
     vapidPrivate: "",
     vapidSubject: "mailto:admin@example.com",
@@ -165,14 +173,27 @@ describe("checkAccess — Tailscale identity gate", () => {
     ).toEqual({ ok: false, reason: "identity not trusted" });
   });
 
-  test("with a trusted user set, a missing header still passes (documented loopback tolerance)", () => {
+  test("with a trusted user set, a missing header is rejected", () => {
     const c = cfg({ trustedUser: "me@example.com" });
+    expect(checkAccess(req({ host: "h" }), c)).toEqual({
+      ok: false,
+      reason: "identity required",
+    });
+  });
+
+  test("missing header is accepted when skipServe (no injector)", () => {
+    const c = cfg({ trustedUser: "me@example.com", skipServe: true });
+    expect(checkAccess(req({ host: "h" }), c)).toEqual({ ok: true });
+  });
+
+  test("missing header is accepted when trustedUserOptional", () => {
+    const c = cfg({ trustedUser: "me@example.com", trustedUserOptional: true });
     expect(checkAccess(req({ host: "h" }), c)).toEqual({ ok: true });
   });
 });
 
 describe("checkAccess — Host-header validation (COLLIE_PUBLIC_HOSTS)", () => {
-  const c = cfg({ publicHosts: ["collie.example.ts.net"] });
+  const c = cfg({ allowAnyHost: false, publicHosts: ["collie.example.ts.net"] });
 
   test("DNS-rebinding: Origin==Host==evil host is rejected once publicHosts is set", () => {
     expect(
@@ -208,11 +229,52 @@ describe("checkAccess — Host-header validation (COLLIE_PUBLIC_HOSTS)", () => {
     ).toEqual({ ok: true });
   });
 
-  test("empty publicHosts keeps legacy behaviour (Host==Origin==evil still passes reads)", () => {
-    // Without opting in, an evil host that also sets a matching Origin passes the bare same-origin
-    // check — the documented legacy hole COLLIE_PUBLIC_HOSTS closes. Proves the default is unchanged.
+  test("empty publicHosts is fail-closed: Host==Origin==evil is rejected", () => {
+    const defaultCfg = cfg({ allowAnyHost: false });
     expect(
-      checkAccess(req({ origin: "https://evil.example.com", host: "evil.example.com" }), cfg()),
+      checkAccess(req({ origin: "https://evil.example.com", host: "evil.example.com" }), defaultCfg),
+    ).toEqual({ ok: false, reason: "host not allowed" });
+  });
+
+  test("allowAnyHost opt-out restores permissive Host validation", () => {
+    expect(
+      checkAccess(
+        req({ origin: "https://evil.example.com", host: "evil.example.com" }),
+        cfg({ allowAnyHost: true }),
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  // The gate the product actually ships: allowAnyHost off, and the whole way through guard() at
+  // write level — a Host check that passes checkAccess but is not wired into the write path would
+  // pass every test above and still let a rebound name type into a terminal.
+  test("the shipped fail-closed default rejects an unlisted Host and admits an allowed one", () => {
+    const shipped = cfg({ allowAnyHost: false, tailscaleHosts: ["collie.example.ts.net"] });
+    const denied = guard(
+      req({ origin: "https://evil.example.com", host: "evil.example.com" }),
+      shipped,
+      "write",
+    );
+    expect(denied?.status).toBe(403);
+    expect(
+      guard(
+        req({ origin: "https://collie.example.ts.net", host: "collie.example.ts.net" }),
+        shipped,
+        "write",
+      ),
+    ).toBeNull();
+  });
+
+  test("a discovered Tailscale host is allowed without COLLIE_PUBLIC_HOSTS", () => {
+    const c2 = cfg({
+      allowAnyHost: false,
+      tailscaleHosts: ["collie.example.ts.net"],
+    });
+    expect(
+      checkAccess(
+        req({ origin: "https://collie.example.ts.net", host: "collie.example.ts.net" }),
+        c2,
+      ),
     ).toEqual({ ok: true });
   });
 });
@@ -1054,16 +1116,45 @@ describe("startupWarnings — security-posture nags", () => {
     expect(has(ws, "COLLIE_TRUSTED_USER")).toBe(false);
   });
 
-  test("empty publicHosts: the Host-validation warning fires and no longer names COLLIE_SERVE_MODE", () => {
-    const ws = startupWarnings(cfg({ publicHosts: [] }));
-    expect(has(ws, "COLLIE_PUBLIC_HOSTS is empty")).toBe(true);
-    // The reworded clause must not reference the script-only COLLIE_SERVE_MODE var.
+  test("empty publicHosts and no discovered hosts: warns that only loopback Host is allowed", () => {
+    const ws = startupWarnings(
+      cfg({ allowAnyHost: false, publicHosts: [], tailscaleHosts: [], allowedOrigins: [] }),
+    );
+    expect(has(ws, "no non-loopback Host is allowed")).toBe(true);
     expect(has(ws, "COLLIE_SERVE_MODE")).toBe(false);
   });
 
-  test("populated publicHosts: no Host-validation warning", () => {
-    const ws = startupWarnings(cfg({ publicHosts: ["collie.example.ts.net"] }));
-    expect(has(ws, "COLLIE_PUBLIC_HOSTS")).toBe(false);
+  test("populated publicHosts: no empty-allowlist Host warning", () => {
+    const ws = startupWarnings(cfg({ allowAnyHost: false, publicHosts: ["collie.example.ts.net"] }));
+    expect(has(ws, "no non-loopback Host is allowed")).toBe(false);
+  });
+
+  test("allowAnyHost: warns that Host validation is OFF", () => {
+    const ws = startupWarnings(cfg({ allowAnyHost: true }));
+    expect(has(ws, "COLLIE_ALLOW_ANY_HOST=1")).toBe(true);
+  });
+
+  test("trustedUserOptional: warns the identity gate accepts an absent header", () => {
+    const ws = startupWarnings(cfg({ trustedUser: "me@example.com", trustedUserOptional: true }));
+    expect(has(ws, "COLLIE_TRUSTED_USER_OPTIONAL=1")).toBe(true);
+  });
+
+  test("wide bind via the escape hatch: warns the gates are client-settable", () => {
+    const ws = startupWarnings(cfg({ host: "0.0.0.0", allowNonLoopbackBind: true }));
+    expect(has(ws, "COLLIE_ALLOW_NON_LOOPBACK_BIND")).toBe(true);
+  });
+});
+
+describe("isLoopbackPeer", () => {
+  test("loopback IPv4, IPv6, and v4-mapped forms pass; LAN and public fail", () => {
+    expect(isLoopbackPeer("127.0.0.1")).toBe(true);
+    expect(isLoopbackPeer("127.5.5.5")).toBe(true);
+    expect(isLoopbackPeer("::1")).toBe(true);
+    expect(isLoopbackPeer("::ffff:127.0.0.1")).toBe(true);
+    expect(isLoopbackPeer(null)).toBe(true);
+    expect(isLoopbackPeer("10.0.0.1")).toBe(false);
+    expect(isLoopbackPeer("192.168.1.1")).toBe(false);
+    expect(isLoopbackPeer("8.8.8.8")).toBe(false);
   });
 });
 

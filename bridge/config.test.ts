@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSocketPath, envBool, loadConfig, resolveBridgeHost } from "./config.ts";
+import {
+  defaultSocketPath,
+  envBool,
+  isLoopbackBindHost,
+  loadConfig,
+  resolveBridgeHost,
+} from "./config.ts";
 
 // loadConfig is the deployment contract — env vars in, a resolved Config out. Pure (just reads
 // process.env + homedir), so we drive it by mutating the environment and restoring it after.
@@ -28,6 +34,10 @@ const KEYS = [
   "GROK_HOME",
   "COLLIE_SUBMIT_KEYS",
   "COLLIE_TRUSTED_USER",
+  "COLLIE_TRUSTED_USER_OPTIONAL",
+  "COLLIE_ALLOW_NON_LOOPBACK_BIND",
+  "COLLIE_ALLOW_ANY_HOST",
+  "COLLIE_TAILSCALE_HOSTS",
   "COLLIE_DEVICE_HEADER",
   "COLLIE_DEVICE_ALLOWLIST",
   "COLLIE_ALLOWED_ORIGINS",
@@ -80,9 +90,12 @@ describe("loadConfig", () => {
     expect(cfg.journalRoots.grok).toEqual([join(homedir(), ".grok", "sessions")]);
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
+    expect(cfg.trustedUserOptional).toBe(false);
     expect(cfg.allowedOrigins).toEqual([]);
     expect(cfg.notifyDelayMs).toBe(30_000);
-    // Host-header validation is opt-in (empty = off, legacy behaviour).
+    expect(cfg.allowAnyHost).toBe(false);
+    expect(cfg.allowNonLoopbackBind).toBe(false);
+    expect(cfg.tailscaleHosts).toEqual([]);
     expect(cfg.publicHosts).toEqual([]);
     // Per-device auth is off by default (empty header = feature disabled).
     expect(cfg.deviceHeader).toBe("");
@@ -279,12 +292,28 @@ describe("loadConfig", () => {
     expect(loadConfig().submitKeys).toEqual(["Enter"]);
   });
 
-  test("honours an explicit trusted user and host override", () => {
+  test("honours an explicit trusted user", () => {
     process.env.COLLIE_TRUSTED_USER = "me@example.com";
-    process.env.COLLIE_HOST = "0.0.0.0";
     const cfg = loadConfig();
     expect(cfg.trustedUser).toBe("me@example.com");
-    expect(cfg.host).toBe("0.0.0.0");
+  });
+
+  test("refuses a non-loopback bind unless the escape hatch is set", () => {
+    process.env.COLLIE_HOST = "0.0.0.0";
+    expect(() => loadConfig()).toThrow(/not a loopback address/);
+    process.env.COLLIE_ALLOW_NON_LOOPBACK_BIND = "1";
+    expect(loadConfig().host).toBe("0.0.0.0");
+    expect(loadConfig().allowNonLoopbackBind).toBe(true);
+  });
+
+  test("parses discovered Tailscale hosts and the two fail-closed opt-outs", () => {
+    process.env.COLLIE_TAILSCALE_HOSTS = "host.tailnet.ts.net,100.64.0.1";
+    process.env.COLLIE_ALLOW_ANY_HOST = "1";
+    process.env.COLLIE_TRUSTED_USER_OPTIONAL = "1";
+    const cfg = loadConfig();
+    expect(cfg.tailscaleHosts).toEqual(["host.tailnet.ts.net", "100.64.0.1"]);
+    expect(cfg.allowAnyHost).toBe(true);
+    expect(cfg.trustedUserOptional).toBe(true);
   });
 
   test("dial mode defaults to auto and accepts a forced dialer", () => {
@@ -303,6 +332,20 @@ describe("loadConfig", () => {
 
 // Pure — both platform branches are testable from any host (expectations use join() so the
 // host's separator never leaks into the assertion).
+describe("isLoopbackBindHost", () => {
+  test("accepts loopback spellings and rejects wildcards and LAN", () => {
+    expect(isLoopbackBindHost("127.0.0.1")).toBe(true);
+    expect(isLoopbackBindHost("localhost")).toBe(true);
+    expect(isLoopbackBindHost("::1")).toBe(true);
+    expect(isLoopbackBindHost("[::1]")).toBe(true);
+    expect(isLoopbackBindHost("127.1.2.3")).toBe(true);
+    expect(isLoopbackBindHost("0.0.0.0")).toBe(false);
+    expect(isLoopbackBindHost("::")).toBe(false);
+    expect(isLoopbackBindHost("10.0.0.1")).toBe(false);
+    expect(isLoopbackBindHost("example.com")).toBe(false);
+  });
+});
+
 describe("defaultSocketPath", () => {
   test("unix default lives under ~/.config/herdr", () => {
     expect(defaultSocketPath("linux", {}, "/home/u")).toBe(join("/home/u", ".config", "herdr", "herdr.sock"));

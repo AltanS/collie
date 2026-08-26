@@ -8,7 +8,7 @@ import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
-import { loadConfig, resolveConfigDir } from "./config.ts";
+import { loadConfig, resolveConfigDir, type Config } from "./config.ts";
 import type { PackMode } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import {
@@ -121,7 +121,15 @@ const UPDATE_FIRST_DELAY_MS = 90_000;
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
-const cfg = loadConfig();
+// loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
+// reason alone — a stack trace here buries the one line the operator needs.
+let cfg: Config;
+try {
+  cfg = loadConfig();
+} catch (err) {
+  console.error(`[bridge] FATAL: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
 
 // The pack mode, resolved BEFORE anything is wired, because a peer wires fewer things than a lead
 // (PACK_PROTOCOL.md §3) and a mode discovered halfway through startup would already have opened

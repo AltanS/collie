@@ -462,6 +462,38 @@ Merges `main` 0.31.0 + 0.31.1 into v1 (entries below). v1-specific on top of the
 - **`PACK_PROTOCOL.md` §11's files-written row omitted `update-state.json`** — the baseline found it;
   the row now lists the real set
 
+## [0.35.0] - 2026-08-26
+
+**BREAKING — read before updating.**
+
+- `COLLIE_PUBLIC_HOSTS` is now **required** on every reverse-proxy or tunnel install (Variant C/E) — Host validation fails closed.
+- With `COLLIE_TRUSTED_USER` set, a request carrying no `Tailscale-User-Login` is now rejected; tagged nodes used to pass.
+- A non-loopback `COLLIE_HOST` refuses to start.
+- Opt-outs, one per gate: `COLLIE_ALLOW_ANY_HOST=1`, `COLLIE_TRUSTED_USER_OPTIONAL=1`, `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`.
+
+### Added
+
+- **`quick-replies.toml`: your own Quick-dock groups** (title + items + optional `scope`), live-reloaded, replacing the shipped phrases on the panes they address per ADR 0018, shell panes reachable via `scope = "shell"` (eb1e92f) — thanks @fucx (#131)
+
+### Changed
+
+- Host-header validation is on by default and fails closed; `collie-ctl.sh` injects the tailnet name and IPs, `COLLIE_ALLOW_ANY_HOST=1` opts out (5f01bf7) — thanks @bartholomewtj (#129)
+- `COLLIE_TRUSTED_USER` rejects a missing `Tailscale-User-Login` as well as a mismatch; `COLLIE_TRUSTED_USER_OPTIONAL=1` restores the old pass (5f01bf7)
+- A non-loopback `COLLIE_HOST` refuses to start unless `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`; non-loopback TCP peers are rejected (5f01bf7)
+
+### Fixed
+
+- Uploads are typed by magic bytes, not the client-supplied Content-Type — `__proto__` and `constructor` used to pass the MIME lookup (5f01bf7)
+- `collie-ctl.sh` parses `.env` as key=value instead of sourcing it — a `.env` with `$(…)` or backticks ran as the operator on every verb; an unquoted trailing `# comment` is now stripped (5f01bf7, 9195e00)
+- An unversioned managed checkout pins `update` to the newest release tag, never origin HEAD (5f01bf7, 4440c05)
+- A failed `tailscale status` no longer writes an empty host allowlist into the unit — the unit keeps the hosts it had, and says so (9195e00)
+
+## [0.34.0] - 2026-08-24
+
+### Added
+
+- `COLLIE_SERVE_PORT`: publish the https front door on a chosen tailnet port — several Collies per host (#98) (c02e3ea)
+
 ## [0.33.0] - 2026-08-24
 
 ### Added

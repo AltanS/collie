@@ -201,6 +201,10 @@ lint guard or the pack-wire guard.
   Ctrl presets on the panes they address (ADR 0018 again), and only those presets: the tray's
   keyboard is fixed. Both files share one reader (`bridge/operator-file.ts`) and one scope ladder
   (`web/src/lib/operator-scope.ts`); teach both, never one.
+- **`quick-replies.toml` is the third on that contract** — the operator's groups replace the Quick
+  dock's shipped phrases on the panes they address (ADR 0018 once more), shell panes included when
+  a row is scoped to them. Same reader, same scope ladder: the three files differ in grammar and
+  never in posture, so teach all three or none.
 - **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by

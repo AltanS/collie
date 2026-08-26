@@ -102,7 +102,8 @@ describe("validateSubject", () => {
   });
 
   // The allowlist exists because this value has two consumers that read punctuation differently:
-  // bash sources the .env (so `;` `&` backtick `$` are code) and systemd's EnvironmentFile= does not.
+  // The subject allowlist is defence in depth: collie-ctl.sh now parses .env rather than sourcing it,
+  // matching systemd's EnvironmentFile=. Metacharacters still must not land in the file.
   // Every case below is one the old blocklist let through — `https://x/;id` in particular would have
   // run `id` on every collie-ctl.sh invocation, and handed the bridge a different subject than bash.
   test("rejects anything bash would read as more than a value", () => {
