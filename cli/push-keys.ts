@@ -122,9 +122,9 @@ export function mergeEnv(text: string, vars: Record<string, string>): string {
  * whoever runs the sender, and a wrong one comes back as a 403 from Apple at 3am rather than here.
  *
  * The character set is an ALLOWLIST, and that is not decoration. This value is written into a file
- * with two consumers that disagree about syntax: `collie-ctl.sh` sources it (`set -a; . .env`) so
- * bash reads `;`, `&`, `|`, `(`, backtick and `$` as code and a newline as a new statement, while
- * systemd's `EnvironmentFile=` reads all of them as ordinary characters. A blocklist that misses one
+ * with two consumers that used to disagree about syntax: `collie-ctl.sh` now parses key=value
+ * (no shell execution), matching systemd's `EnvironmentFile=`. The allowlist stays so a subject
+ * still cannot smuggle metacharacters into any other consumer. A blocklist that misses one
  * metacharacter therefore does two bad things at once: it lets the shell run something, and it hands
  * the bridge a DIFFERENT subject than the shell got. Nothing here crosses a privilege boundary — the
  * operator running this already has a shell — but a config file that means two things is a bug

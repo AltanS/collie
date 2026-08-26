@@ -12,6 +12,8 @@ four shapes here are for everything else. Pick one.
 - [Several Collies on one host](#several-collies-on-one-host) — a URL per developer on a shared box
 - [The standby door — a pack's failover path](#the-standby-door--a-packs-failover-path) (packs only)
 
+Not a variant, but it crosses all of them: [Several Collies on one host](#several-collies-on-one-host).
+
 The security rules in [README → Security](./README.md#%EF%B8%8F-security--read-before-you-run-it)
 are not relaxed by any of them. None of these is a prerequisite for authorising individual devices —
 [pairing](./README.md#pair-a-device--the-write-credential) does that with no proxy at all, and
@@ -31,7 +33,10 @@ COLLIE_HOST=127.0.0.1                       # keep loopback (default)
 COLLIE_DEVICE_HEADER=X-Device-Id            # the header your proxy injects
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop  # ids allowed to drive agents; others → read-only
 # COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # only if the proxy does NOT forward the public Host
+# COLLIE_PUBLIC_HOSTS=collie.example.com    # REQUIRED unless the proxy forwards a Host Collie already knows
+# COLLIE_ALLOW_ANY_HOST=1                   # opt out of Host validation entirely (re-opens DNS rebinding)
 # COLLIE_TRUSTED_USER still composes on top if your ingress also injects Tailscale-User-Login
+# COLLIE_TRUSTED_USER_OPTIONAL=1            # accept a request carrying no Tailscale-User-Login at all
 ```
 
 Your fronting proxy **must**:
@@ -140,7 +145,9 @@ Required env (`.env`):
 
 ```bash
 COLLIE_SKIP_SERVE=1                                 # proxy is ingress; never run tailscale serve
-COLLIE_PUBLIC_HOSTS=collie.example.com              # Host allowlist — blocks DNS rebinding
+COLLIE_PUBLIC_HOSTS=collie.example.com              # REQUIRED — Host validation fails closed, and
+                                                    # collie-ctl.sh discovers no tailnet name here
+# COLLIE_ALLOW_ANY_HOST=1                           # opt out of Host validation (re-opens DNS rebinding)
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
 COLLIE_DEVICE_HEADER=X-Device-Id                    # the header your proxy injects…
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to drive; others → read-only
@@ -289,7 +296,10 @@ COLLIE_SERVE_MODE=http                                # proxy terminates TLS; th
 COLLIE_HOST=127.0.0.1                                 # keep loopback (default)
 COLLIE_DEVICE_HEADER=X-Tailnet-Device                 # header your forward-auth injects — REQUIRED here
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop            # ids allowed to drive; others + header-less → read-only
-COLLIE_PUBLIC_HOSTS=host:8787,host.your-tailnet.ts.net:8787   # the Host the proxy forwards
+COLLIE_PUBLIC_HOSTS=host:8787,host.your-tailnet.ts.net:8787   # REQUIRED — the Host the proxy forwards.
+                                                      # COLLIE_TAILSCALE_HOSTS carries the bare tailnet
+                                                      # name collie-ctl.sh found; a rewritten Host is
+                                                      # yours to list. COLLIE_ALLOW_ANY_HOST=1 opts out.
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com     # the public origin the browser actually uses
 ```
 
@@ -347,7 +357,8 @@ other tunnel you own the ingress and Collie stays out of the way:
 
 ```bash
 COLLIE_SKIP_SERVE=1                                 # never run tailscale serve
-COLLIE_PUBLIC_HOSTS=collie.example.com              # exact public host — blocks DNS rebinding
+COLLIE_PUBLIC_HOSTS=collie.example.com              # REQUIRED — exact public host; Host validation
+                                                    # fails closed and finds no tailnet name here
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
 ```
 

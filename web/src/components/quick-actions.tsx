@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ECHO_DONE_MS, useActionEcho } from "@/hooks/use-action-echo";
 import type { EchoPhase } from "@/hooks/use-action-echo";
+import { useOperatorQuickReplies } from "@/lib/operator-config";
 import { quickRepliesFor } from "@/lib/quick-replies";
 import { t as translate } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -99,7 +100,8 @@ export function QuickActionsContent({
   disabled,
 }: QuickActionsContentProps) {
   useLocale();
-  const groups = quickRepliesFor(agent, isShell);
+  const operatorGroups = useOperatorQuickReplies();
+  const groups = quickRepliesFor(agent, isShell, operatorGroups);
   const echo = useActionEcho();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

@@ -275,7 +275,8 @@ app. Closing this needs the server-side blocking-message capture described above
   behind an mtime check (`bridge/operator-commands.ts`), so editing the file is live like a web
   rebuild. On a pane they address they **replace** the shipped catalog rather than merging into it —
   [ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md). Their **Keys-tray presets**
-  ride the same request on the same terms, from `keys.toml` (`bridge/operator-keys.ts`); the two
+  ride the same request on the same terms, from `keys.toml` (`bridge/operator-keys.ts`), and their
+  **Quick-dock groups** from `quick-replies.toml` (`bridge/operator-quick-replies.ts`); the three
   files share one reader (`bridge/operator-file.ts`) and one scope ladder
   (`web/src/lib/operator-scope.ts`).
 
@@ -318,10 +319,10 @@ door (tailnet-only by default; one per **pack** — §2.1). These four are genui
   [ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md).
   Under `tailscale serve`, the `Tailscale-User-Login` header is the person gate — trusted **only**
   when the request source is loopback (i.e. it came from tailscaled). `COLLIE_TRUSTED_USER` rejects a
-  *mismatching* login and **passes an absent one**: it narrows which tailnet user is trusted, it does
-  not mandate the header. That is safe under `tailscale serve`, which injects it on every request, and
-  not safe behind anything that might stop injecting it — the header exists **only** under
-  `tailscale serve` ingress. Under a reverse-proxy front door
+  *mismatching* login **and an absent one**: `serve` injects no header for a tagged node, so
+  tolerating the absence let any tagged node write. `COLLIE_TRUSTED_USER_OPTIONAL=1` restores the old
+  pass, for host-local development. The header exists **only** under `tailscale serve` ingress, so
+  under `COLLIE_SKIP_SERVE` only a mismatch is rejected. Under a reverse-proxy front door
   ([DEPLOYMENT.md → Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
   there is none, and the equivalent write gate is **per-device auth** (`COLLIE_DEVICE_HEADER`) with
   the proxy contract (DEPLOYMENT.md Variant B/C requirements) as the load-bearing piece. That gate **fails
@@ -338,6 +339,18 @@ door (tailnet-only by default; one per **pack** — §2.1). These four are genui
   neither weakens or replaces the other — and neither touches `/pack/v1/*`, whose two factors are its
   own. Where the header gate answers *is this device on the operator's list*, pairing answers *does
   this device hold a credential I issued*: a claim no proxy, DNS name or tailnet identity can forge.
+- **The `Host` header is validated, on by default, and fails closed.** A request whose `Host` is not
+  the tailnet name, a loopback name, `COLLIE_PUBLIC_HOSTS` or a configured origin is refused, so a
+  DNS-rebound `Host: evil.example` cannot reach the API. `collie serve` discovers the node's MagicDNS
+  name and Tailscale IPs into `COLLIE_TAILSCALE_HOSTS`, so a normal tailnet install configures
+  nothing; behind your own front door `COLLIE_PUBLIC_HOSTS` is **required**.
+  `COLLIE_ALLOW_ANY_HOST=1` is the opt-out, and re-opens rebinding. `/pack/v1/*` is exempt: a lead
+  addresses a peer by its own hostname, and that surface carries its own two factors (ADR 0013).
+- **The bridge refuses a non-loopback bind.** A `COLLIE_HOST` outside loopback does not start unless
+  `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`, and a non-loopback TCP peer is rejected — every gate above
+  trusts headers that are only untamperable while the sole client is the local front door. A **pack
+  peer** is the one machine that must listen wide, so a pack-configured instance carries the same
+  permission implicitly (`bridge/pack/config.ts`) and `/pack/v1/*` is exempt from the peer check.
 - **Pane-grid output renders safely** — it's attacker-influenceable (filenames, agent output,
   fetched web content). Never `innerHTML`; it renders as React text nodes under a **strict CSP**
   (`default-src 'self'`), so an escaping miss can't run injected script that calls back into the

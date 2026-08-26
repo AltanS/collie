@@ -123,6 +123,7 @@
         "**/bridge/activity.ts",
         "**/bridge/operator-commands.ts",
         "**/bridge/operator-keys.ts",
+        "**/bridge/operator-quick-replies.ts",
         "**/bridge/operator-file.ts",
         "**/bridge/audit.ts",
         "**/bridge/snooze.ts",
