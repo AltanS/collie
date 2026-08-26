@@ -212,6 +212,18 @@ run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" "$BIN" versi
   || fail "version failed with a hostile .env"
 if [ -f "${TMP_ROOT}/PWNED" ]; then fail ".env was executed, not parsed"; fi
 
+# ── The .env is held to owner-only ───────────────────────────────────────────
+# It holds COLLIE_VAPID_PRIVATE and the settings that decide who may type into this operator's
+# terminals. A readable one is a leak nothing else in Collie can notice, so the read path tightens
+# it and says so — and never refuses to run over it.
+chmod 644 "${CONFIG_DIR}/.env"
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" "$BIN" version   || fail "version failed over a mode-644 .env"
+assert_contains "$STDERR" "was mode 644 (expected 600); tightened it to 600"
+assert_eq "$(stat -c '%a' "${CONFIG_DIR}/.env" 2>/dev/null || stat -f '%Lp' "${CONFIG_DIR}/.env")" "600"
+# Said once: a file already at 600 is not a finding.
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" "$BIN" version   || fail "version failed over a mode-600 .env"
+case "$STDERR" in *"expected 600"*) fail "a private .env was still reported" ;; esac
+
 # ── Lifecycle ────────────────────────────────────────────────────────────────
 # Carried over from scripts/collie-ctl.test.sh:312-578 — `start`/`status`/`restart`/`stop` on all
 # three supervision tiers, the launchd bootstrap retry, and the front door that must not abort
@@ -302,6 +314,9 @@ assert_contains "$UNIT" "ExecStart=${ROOT}/bin/collie _exec-bridge"
 assert_contains "$UNIT" "Environment=COLLIE_PLUGIN_ROOT=${ROOT}"
 assert_contains "$UNIT" "EnvironmentFile=-${L_CONFIG}/.env"
 assert_contains "$UNIT" "StartLimitIntervalSec=0"
+# The Host gate fails closed, so the allowlist this node answers on is DISCOVERED and baked in —
+# otherwise a normal tailnet install would refuse every request until the operator typed it.
+assert_contains "$UNIT" "Environment=COLLIE_TAILSCALE_HOSTS=host.example"
 case "$UNIT" in *bun*) fail "the generated unit still names an interpreter" ;; esac
 # The banner: `start` and `status` render it from one function, so they can never disagree.
 assert_contains "$STDOUT" "bridge started (systemd --user: collie)"
@@ -1177,6 +1192,23 @@ assert_contains "$STDOUT" "git pull --ff-only"
 assert_eq "$(cat "${MAINT}/VERSION")" "v9-maint"
 assert_eq "$(git -C "$MAINT" symbolic-ref --short HEAD)" "maint"
 assert_eq "$(git -C "$MAINT" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse maint)"
+
+# An UNVERSIONED managed checkout — a manifest we cannot read a major out of. It must never strand
+# the install, and it must never follow `origin HEAD`: a moved default branch is unreleased work
+# nobody consented to. Pin to the newest release tag, and SAY which one.
+git_q -C "$ORIGIN" commit -q --allow-empty -m "untagged tip"   # HEAD is now past every tag
+UNVERSIONED="${U_DIR}/unversioned"
+mkdir -p "$UNVERSIONED"
+git_q -C "$UNVERSIONED" init -q
+git_q -C "$UNVERSIONED" remote add origin "$ORIGIN"
+git_q -C "$UNVERSIONED" fetch -q --depth 1 origin "refs/tags/v9.9.9"
+git_q -C "$UNVERSIONED" checkout -q --detach FETCH_HEAD
+printf 'id = "herdr.collie"\nversion = "not-a-version"\n' > "${UNVERSIONED}/herdr-plugin.toml"
+upd "$UNVERSIONED" "$BIN" update || fail "update stranded an unversioned checkout: ${STDERR}"
+assert_contains "$STDOUT" "no readable version — pinning to newest release tag v10.0.0"
+assert_eq "$(git -C "$UNVERSIONED" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse "v10.0.0^{commit}")"
+[ "$(git -C "$UNVERSIONED" rev-parse HEAD)" != "$(git -C "$ORIGIN" rev-parse main)" ] ||
+  fail "the unversioned fallback followed origin HEAD instead of the newest release tag"
 
 # A branch with NO upstream: nothing to gate, and nothing to pull either — git's own "no tracking
 # information" is the whole answer, and a pull that cannot happen cannot cross a major.

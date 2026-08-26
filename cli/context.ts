@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -76,6 +76,42 @@ export interface EnvVars {
 // a `bun()` function defined in there would shadow the real binary and poison every later lookup
 // (the hazard the pre-shim collie-ctl.sh worked around). Parsing removes the hazard outright — a
 // `.env` can now only set variables.
+
+/**
+ * The two filesystem facts the permission guard needs. A seam, so its truth table is unit-tested
+ * without a real file whose mode the test's own umask would decide.
+ */
+export interface EnvFilePerms {
+  /** The file's permission bits (`mode & 0o777`), or `null` when it cannot be stated. */
+  mode(path: string): number | null;
+  /** Tighten it to `0600`. `false` when the chmod failed — a file owned by someone else. */
+  tighten(path: string): boolean;
+}
+
+/** The modes a `.env` may already carry without anyone touching it: owner-only, read or read/write. */
+const PRIVATE_ENV_MODES = new Set([0o600, 0o400]);
+
+/**
+ * Hold `.env` to owner-only, tightening it in place when it is not — and say so either way.
+ *
+ * This file holds `COLLIE_VAPID_PRIVATE` (a Web Push signing key) and, on a shared host, the
+ * settings that decide who may type into this operator's terminals. A group- or world-readable one
+ * is a credential leak that nothing else in Collie can detect: `EnvironmentFile=` and this CLI both
+ * read it happily at any mode. So the read path is where it is checked.
+ *
+ * **Warn, never refuse.** A `.env` this process cannot chmod belongs to another user, and a Collie
+ * that would not start because of it is a Collie the operator cannot use to fix it.
+ *
+ * Returns the line for stderr, or `null` when there was nothing to say.
+ */
+export function tightenEnvFile(path: string, perms: EnvFilePerms): string | null {
+  const mode = perms.mode(path);
+  if (mode === null || PRIVATE_ENV_MODES.has(mode)) return null;
+  const shown = mode.toString(8).padStart(3, "0");
+  return perms.tighten(path)
+    ? `warn: ${path} was mode ${shown} (expected 600); tightened it to 600.`
+    : `warn: ${path} is mode ${shown} (expected 600) and could not be tightened; it may be readable by other users.`;
+}
 
 /**
  * Parse `KEY=value` lines the way `set -a; . file` would for the assignment-only subset: `export`
@@ -181,6 +217,25 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
 // and two implementations that agree today are not the guarantee the spec asks for. Every existing
 // caller keeps importing it from here.
 export { collieVersion, collieVersionBare, collieVersionFrom } from "../bridge/version.ts";
+
+/** {@link EnvFilePerms} against the real filesystem. */
+const diskEnvPerms: EnvFilePerms = {
+  mode(path) {
+    try {
+      return statSync(path).mode & 0o777;
+    } catch {
+      return null;
+    }
+  },
+  tighten(path) {
+    try {
+      chmodSync(path, 0o600);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
 
 /** File contents, or `null` when missing/unreadable. */
 function readIfPresent(p: string): string | null {
@@ -339,8 +394,13 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
 
   // `.env` overrides the ambient environment, exactly as `set -a; . .env` did.
   const env: Environment = { ...process.env };
-  const dotenv = readIfPresent(join(configDir, ".env"));
-  if (dotenv !== null) Object.assign(env, parseEnvFile(dotenv));
+  const envPath = join(configDir, ".env");
+  const dotenv = readIfPresent(envPath);
+  if (dotenv !== null) {
+    const tightened = tightenEnvFile(envPath, diskEnvPerms);
+    if (tightened !== null) warn(tightened);
+    Object.assign(env, parseEnvFile(dotenv));
+  }
 
   // Resolved from the MERGED env, so a `.env` may name the instance — the second instance's config
   // dir is its own, and putting `COLLIE_INSTANCE`/`COLLIE_PORT` there is how it stays set for every

@@ -305,7 +305,7 @@ $ bin/collie logs        # journal timestamps trimmed here
 ```
 
 **That WARNING is expected on a fresh install** — identity is still open. Host-header validation is
-already on (`collie serve` writes the tailnet name into the unit). [Configure](#configure) sets the
+already on (`collie start` wrote this node's tailnet name into the unit). [Configure](#configure) sets the
 identity. (The loopback URL in the log is also correct: Collie itself only ever binds `127.0.0.1` —
 `tailscale serve` is what makes it reachable.) `[push] disabled` is expected too: notifications are
 opt-in, and [Web Push](#web-push-optional) is three commands.
@@ -498,7 +498,7 @@ full control — that's the TRUSTED_USER warning. Close it:
 # in your .env
 COLLIE_TRUSTED_USER=you@example.com           # your tailnet login — Collie rejects anyone else
 COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net    # only behind your OWN proxy; on a tailnet `collie
-                                              # serve` discovers this for you
+                                              # start` discovers this for you
 ```
 
 Config is a `.env` in the plugin's config dir — find it with

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { bridgeUrlFrom, configuredPublicUrl, selfDnsName } from "./tailnet.ts";
+import { bridgeUrlFrom, configuredPublicUrl, selfDnsName, selfHosts } from "./tailnet.ts";
 
 // The shell piped `tailscale status --json` through a one-liner interpreter to get at one field —
 // the runtime dependency the compiled binary exists to remove. Same answers, in process.
@@ -19,6 +19,31 @@ describe("selfDnsName", () => {
     expect(selfDnsName('{"Self":{}}')).toBeNull();
     expect(selfDnsName('{"Self":{"DNSName":""}}')).toBeNull();
     expect(selfDnsName('{"Self":{"DNSName":42}}')).toBeNull();
+  });
+});
+
+describe("selfHosts", () => {
+  const STATUS = JSON.stringify({
+    Self: { DNSName: "desk.tail1234.ts.net.", TailscaleIPs: ["100.64.0.1", "fd7a::1"] },
+  });
+
+  test("names the MagicDNS name first, then every Tailscale IP, v6 bracketed", () => {
+    expect(selfHosts(STATUS)).toEqual(["desk.tail1234.ts.net", "100.64.0.1", "[fd7a::1]"]);
+  });
+
+  test("a node with no addresses still contributes its name", () => {
+    expect(selfHosts(JSON.stringify({ Self: { DNSName: "desk.ts.net." } }))).toEqual(["desk.ts.net"]);
+  });
+
+  test("nothing readable is no hosts, never a bad one", () => {
+    expect(selfHosts("")).toEqual([]);
+    expect(selfHosts("{}")).toEqual([]);
+    expect(selfHosts(JSON.stringify({ Self: { TailscaleIPs: "100.64.0.1" } }))).toEqual([]);
+  });
+
+  test("a malformed address list costs the addresses and never the name", () => {
+    const mixed = JSON.stringify({ Self: { DNSName: "desk.ts.net.", TailscaleIPs: [42] } });
+    expect(selfHosts(mixed)).toEqual(["desk.ts.net"]);
   });
 });
 

@@ -341,8 +341,8 @@ door (tailnet-only by default; one per **pack** — §2.1). These four are genui
   this device hold a credential I issued*: a claim no proxy, DNS name or tailnet identity can forge.
 - **The `Host` header is validated, on by default, and fails closed.** A request whose `Host` is not
   the tailnet name, a loopback name, `COLLIE_PUBLIC_HOSTS` or a configured origin is refused, so a
-  DNS-rebound `Host: evil.example` cannot reach the API. `collie serve` discovers the node's MagicDNS
-  name and Tailscale IPs into `COLLIE_TAILSCALE_HOSTS`, so a normal tailnet install configures
+  DNS-rebound `Host: evil.example` cannot reach the API. `collie start` discovers the node's MagicDNS
+  name and Tailscale IPs into `COLLIE_TAILSCALE_HOSTS` and bakes them into the service unit, so a normal tailnet install configures
   nothing; behind your own front door `COLLIE_PUBLIC_HOSTS` is **required**.
   `COLLIE_ALLOW_ANY_HOST=1` is the opt-out, and re-opens rebinding. `/pack/v1/*` is exempt: a lead
   addresses a peer by its own hostname, and that surface carries its own two factors (ADR 0013).

@@ -110,9 +110,15 @@ export type UpdatePlan =
   | { kind: "current"; at: ReleaseTag; higher: ReleaseTag | null }
   | { kind: "no-release"; major: number; higher: ReleaseTag | null }
   | { kind: "no-higher-major"; major: number }
-  /** The manifest named no version we can read a major out of — the caller falls back to origin HEAD
-   *  rather than strand an install on a parse failure. */
-  | { kind: "unknown-version" };
+  /**
+   * The manifest named no version we can read a major out of — so there is no major to gate on.
+   *
+   * `newest` is the highest release tag on the remote, and the caller pins to it. It used to follow
+   * `origin HEAD`, which is not a release: a moved default branch would land an operator on
+   * unreleased work they never asked for. `null` means the remote publishes no releases at all,
+   * which is the one case where there is nothing safe to take.
+   */
+  | { kind: "unknown-version"; newest: ReleaseTag | null };
 
 export function planUpdate(a: {
   tags: readonly ReleaseTag[];
@@ -124,7 +130,9 @@ export function planUpdate(a: {
   crossMajor: boolean;
 }): UpdatePlan {
   const major = a.installed === null ? null : majorOf(a.installed);
-  if (major === null || a.installed === null) return { kind: "unknown-version" };
+  if (major === null || a.installed === null) {
+    return { kind: "unknown-version", newest: highestRelease(a.tags) };
+  }
   const higher = nextMajorRelease(a.tags, major);
   if (a.crossMajor) {
     return higher === null
@@ -287,10 +295,17 @@ function updateManaged(
   const plan = planUpdate({ tags: parseRemoteTags(ls.stdout), installed, head, crossMajor });
 
   if (plan.kind === "unknown-version") {
-    // No readable version on disk: fall back to the pre-0.32 behaviour rather than refuse to update
-    // at all. A checkout that cannot name its major cannot be gated on one either.
-    deps.io.out("updating Collie (Herdr-managed checkout: no readable version — following origin HEAD)…");
-    return detachOnto(deps, git, "HEAD");
+    // No readable version on disk: still take a RELEASE, never `origin HEAD`. A checkout that cannot
+    // name its major cannot be gated on one — but "ungated" must not mean "whatever the default
+    // branch points at today", which is unreleased work nobody consented to.
+    if (plan.newest === null) {
+      deps.io.err("error: no release tags on origin — cannot pin an unversioned checkout.");
+      return EXIT.FAIL;
+    }
+    deps.io.out(
+      `updating Collie (Herdr-managed checkout: no readable version — pinning to newest release tag ${plan.newest.tag})…`,
+    );
+    return detachOnto(deps, git, `refs/tags/${plan.newest.tag}`);
   }
   if (plan.kind === "no-higher-major") {
     deps.io.out(`no release above major ${plan.major} exists yet — nothing to cross to.`);

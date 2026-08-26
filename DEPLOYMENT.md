@@ -146,7 +146,7 @@ Required env (`.env`):
 ```bash
 COLLIE_SKIP_SERVE=1                                 # proxy is ingress; never run tailscale serve
 COLLIE_PUBLIC_HOSTS=collie.example.com              # REQUIRED — Host validation fails closed, and
-                                                    # collie-ctl.sh discovers no tailnet name here
+                                                    # `collie start` discovers no tailnet name here
 # COLLIE_ALLOW_ANY_HOST=1                           # opt out of Host validation (re-opens DNS rebinding)
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
 COLLIE_DEVICE_HEADER=X-Device-Id                    # the header your proxy injects…
@@ -298,7 +298,7 @@ COLLIE_DEVICE_HEADER=X-Tailnet-Device                 # header your forward-auth
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop            # ids allowed to drive; others + header-less → read-only
 COLLIE_PUBLIC_HOSTS=host:8787,host.your-tailnet.ts.net:8787   # REQUIRED — the Host the proxy forwards.
                                                       # COLLIE_TAILSCALE_HOSTS carries the bare tailnet
-                                                      # name collie-ctl.sh found; a rewritten Host is
+                                                      # name `collie start` found; a rewritten Host is
                                                       # yours to list. COLLIE_ALLOW_ANY_HOST=1 opts out.
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com     # the public origin the browser actually uses
 ```

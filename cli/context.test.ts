@@ -20,6 +20,7 @@ import {
   resolveHome,
   instanceSuffix,
   resolveInstance,
+  tightenEnvFile,
   type Environment,
 } from "./context.ts";
 
@@ -165,6 +166,43 @@ describe("config dir for a named instance", () => {
     expect(resolve({ env: { COLLIE_INSTANCE: "  " }, herdr: "/from-herdr" }).dir).toBe(
       "/from-herdr",
     );
+  });
+});
+
+// `.env` holds COLLIE_VAPID_PRIVATE and the settings that decide who may type into this operator's
+// terminals. Nothing else in Collie can notice a readable one: both readers take it at any mode.
+describe("tightenEnvFile", () => {
+  const perms = (mode: number | null, ok = true) => {
+    const tightened: string[] = [];
+    return {
+      io: { mode: () => mode, tighten: (p: string) => (tightened.push(p), ok) },
+      tightened,
+    };
+  };
+
+  test("an owner-only file is left alone and says nothing", () => {
+    for (const mode of [0o600, 0o400]) {
+      const p = perms(mode);
+      expect(tightenEnvFile("/x/.env", p.io)).toBeNull();
+      expect(p.tightened).toEqual([]);
+    }
+  });
+
+  test("a readable file is tightened in place, and the line says what it was", () => {
+    const p = perms(0o644);
+    expect(tightenEnvFile("/x/.env", p.io)).toBe(
+      "warn: /x/.env was mode 644 (expected 600); tightened it to 600.",
+    );
+    expect(p.tightened).toEqual(["/x/.env"]);
+  });
+
+  test("a file this process cannot chmod WARNS — it never refuses to start", () => {
+    const p = perms(0o664, false);
+    expect(tightenEnvFile("/x/.env", p.io)).toContain("could not be tightened");
+  });
+
+  test("a file that cannot be stated is not a finding", () => {
+    expect(tightenEnvFile("/x/.env", perms(null).io)).toBeNull();
   });
 });
 
