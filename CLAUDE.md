@@ -139,6 +139,10 @@ the unit name; the Herdr action runs from anywhere.
   Ctrl presets on the panes they address (ADR 0018 again), and only those presets: the tray's
   keyboard is fixed. Both files share one reader (`bridge/operator-file.ts`) and one scope ladder
   (`web/src/lib/operator-scope.ts`); teach both, never one.
+- **`quick-replies.toml` is the third on that contract** — the operator's groups replace the Quick
+  dock's shipped phrases on the panes they address (ADR 0018 once more), shell panes included when
+  a row is scoped to them. Same reader, same scope ladder: the three files differ in grammar and
+  never in posture, so teach all three or none.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).

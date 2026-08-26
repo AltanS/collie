@@ -149,6 +149,11 @@ export interface Config {
    */
   keysFile: string;
   /**
+   * Where the operator's Quick-dock groups live — `quick-replies.toml`, the third sibling in the
+   * same dir, read the same way (bridge/operator-quick-replies.ts) and likewise never read here.
+   */
+  quickRepliesFile: string;
+  /**
    * Tailscale identity gate. If set, any request carrying a `Tailscale-User-Login` header
    * (injected by `tailscale serve`) must match this login — a mismatching tailnet user is
    * rejected. A request with no such header still passes (direct-loopback callers don't get one),
@@ -282,6 +287,7 @@ export function loadConfig(): Config {
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     commandsFile: join(configDir, "commands.toml"),
     keysFile: join(configDir, "keys.toml"),
+    quickRepliesFile: join(configDir, "quick-replies.toml"),
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview"),
     deviceHeader: (process.env.COLLIE_DEVICE_HEADER ?? "").trim(),

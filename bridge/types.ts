@@ -332,6 +332,24 @@ export interface OperatorKeyRow {
   danger: boolean;
 }
 
+/**
+ * One operator-declared Quick-dock group (a `[[replies]]` row in their `quick-replies.toml`). A
+ * pane any of these rows address shows them INSTEAD of the shipped groups; a pane none of them
+ * address keeps the shipped ones (ADR 0018, the same rule `commands.toml` and `keys.toml` follow).
+ *
+ * The shipped phrases are English, which is a content choice rather than a technical one — an
+ * operator working in another language, or one whose harness wants "approve" over "yes", has no
+ * route to that today.
+ */
+export interface OperatorQuickReplyRow {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  /** The group's heading, and its identity within one scope. */
+  title: string;
+  /** The literal strings sent — each is typed into the pane and submitted verbatim. */
+  items: string[];
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;
@@ -342,6 +360,8 @@ export interface BridgeConfig {
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent/empty when there is no `keys.toml`. */
   operatorKeys?: OperatorKeyRow[];
+  /** The operator's own Quick-dock groups. Absent/empty when there is no `quick-replies.toml`. */
+  operatorQuickReplies?: OperatorQuickReplyRow[];
 }
 
 /** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */

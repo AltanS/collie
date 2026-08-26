@@ -304,6 +304,21 @@ export interface OperatorKeyRow {
   danger?: boolean;
 }
 
+/**
+ * One operator-declared Quick-dock group (a `[[replies]]` table in their `quick-replies.toml`).
+ * Mirrors OperatorQuickReplyRow in bridge/types.ts. Resolved against the shipped groups by
+ * `quickRepliesFor()`, which hands a pane these rows instead of the shipped ones when any of them
+ * address it.
+ */
+export interface OperatorQuickReplyRow {
+  /** Herdr agent name this applies to, lowercased. Omitted = every agent. */
+  agent?: string;
+  /** The group's heading, and its identity within one scope. */
+  title: string;
+  /** The literal strings sent — each is typed into the pane and submitted verbatim. */
+  items: string[];
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
@@ -313,6 +328,8 @@ export interface BridgeConfig {
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent when there is no `keys.toml`. */
   operatorKeys?: OperatorKeyRow[];
+  /** The operator's own Quick-dock groups. Absent when there is no `quick-replies.toml`. */
+  operatorQuickReplies?: OperatorQuickReplyRow[];
 }
 
 /**
