@@ -9,6 +9,7 @@ import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
+import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -153,6 +154,8 @@ export function startServer(opts: {
   const operatorCommands = createOperatorCommands(cfg.commandsFile);
   // Its sibling, on the same contract: one reader, one mtime cache, keys.toml off the hot path.
   const operatorKeys = createOperatorKeys(cfg.keysFile);
+  // The third on that contract: the Quick dock's groups, quick-replies.toml off the hot path.
+  const operatorQuickReplies = createOperatorQuickReplies(cfg.quickRepliesFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -306,6 +309,7 @@ export function startServer(opts: {
         // with no restart. The path is cfg's, never the request's.
         const mine = await operatorCommands();
         const myKeys = await operatorKeys();
+        const myReplies = await operatorQuickReplies();
         return json({
           push: push.enabled,
           vapidPublicKey: push.publicKey,
@@ -315,6 +319,8 @@ export function startServer(opts: {
           ...(mine.length > 0 ? { operatorCommands: mine } : {}),
           // Same omit-when-empty rule: an operator with no keys.toml ships the payload they had.
           ...(myKeys.length > 0 ? { operatorKeys: myKeys } : {}),
+          // And once more for quick-replies.toml.
+          ...(myReplies.length > 0 ? { operatorQuickReplies: myReplies } : {}),
         } satisfies BridgeConfig, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {

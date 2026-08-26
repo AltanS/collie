@@ -1,0 +1,48 @@
+# Your own groups for Collie's Quick dock. Copy to your plugin config dir, next to `.env`:
+#   cp quick-replies.toml.example "$(herdr plugin config-dir herdr.collie)/quick-replies.toml"
+#
+# This file configures the one-tap replies behind the composer's Quick button. Each row is one
+# labelled group; each item is typed into the pane and submitted verbatim.
+#
+# On a pane your rows address, YOUR rows are the whole dock — the shipped groups are replaced, not
+# merged into (ADR 0018). A pane none of them address keeps them untouched, and this file with every
+# row commented out (as shipped) leaves every pane exactly as shipped.
+#
+# Edits are picked up live — no restart. Reload the page to see them.
+#
+# Fields: `title` (required, the group's heading and its identity), `items` (required, one or more
+# strings sent verbatim), `scope` (a herdr agent name — omit it and the row addresses every pane).
+#
+# `scope` takes an agent family: claude, codex, pi, opencode, omp, grok — or `shell` for a plain
+# shell pane, which by default gets only y/n.
+
+# The shipped dock, restated — start here and edit the phrases.
+# [[replies]]
+# title = "confirm"
+# items = ["yes", "no"]
+#
+# [[replies]]
+# title = "common"
+# items = ["continue", "commit and push", "retry", "skip"]
+
+# Working in another language? Replace the phrases; the harness reads them as prose either way.
+# [[replies]]
+# title = "bestätigen"
+# items = ["ja", "nein"]
+#
+# [[replies]]
+# title = "häufig"
+# items = ["weiter", "committe und pushe", "nochmal", "überspringen"]
+
+# A shell has no notion of continuing a turn, so it ships with just y/n. Scope a row to it when your
+# replacement should reach it too.
+# [[replies]]
+# scope = "shell"
+# title = "bestätigen"
+# items = ["j", "n"]
+
+# One harness that wants different words than the rest.
+# [[replies]]
+# scope = "codex"
+# title = "confirm"
+# items = ["approve", "reject"]
