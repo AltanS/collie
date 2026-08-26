@@ -85,7 +85,8 @@ export function QuickActionsContent({
   isShell,
   disabled,
 }: QuickActionsContentProps) {
-  const groups = quickRepliesFor(agent, isShell, useOperatorQuickReplies());
+  const operatorGroups = useOperatorQuickReplies();
+  const groups = quickRepliesFor(agent, isShell, operatorGroups);
   const echo = useActionEcho();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

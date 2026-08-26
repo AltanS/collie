@@ -3,11 +3,12 @@ import { useEffect, useSyncExternalStore } from "react";
 import { fetchConfig } from "@/lib/api";
 import type { OperatorCommand, OperatorKeyRow, OperatorQuickReplyRow } from "@/lib/types";
 
-// The operator's own rows — their `commands.toml` palette AND their `keys.toml` tray presets — read
-// from ONE /api/config call and held in module state. Both files ride the same request because both
-// are the same kind of thing: startup-resolved operator config the client reads once. Modelled on the lib/server-build.ts store idiom: plain module state + subscribe +
-// a useSyncExternalStore hook, so the composer participates without prop-drilling through the route
-// tree.
+// The operator's own rows — their `commands.toml` palette, their `keys.toml` tray presets AND their
+// `quick-replies.toml` dock groups — read from ONE /api/config call and held in module state. All
+// three files ride the same request because all three are the same kind of thing:
+// startup-resolved operator config the client reads once. Modelled on the lib/server-build.ts store
+// idiom: plain module state + subscribe + a useSyncExternalStore hook, so the composer participates
+// without prop-drilling through the route tree.
 //
 // THE CONTRACT: one SUCCESSFUL read is cached for the life of the page; a failed attempt is not
 // cached, so a later mount tries again. Never polled, and deliberately not folded into the 1.5s

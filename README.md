@@ -42,6 +42,7 @@ public access, Collie isn't built for it. Read the
 - [Install](#install)
 - [First run — what you'll see](#first-run--what-youll-see)
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
+  [Your own key presets](#your-own-key-presets) ·
   [Your own quick replies](#your-own-quick-replies) · [Multi-session](#multi-session)
 - [Dark mode / light mode](#dark-mode--light-mode)
 - [Commands](#commands)
