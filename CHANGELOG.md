@@ -6,6 +6,14 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.26] - 2026-08-26
+
+### Fixed
+
+- **A cold zellij start no longer reads as an empty herd for 13 seconds** — a watch that just came up now reconciles, because a stream that was dark cannot report what changed while it was dark (41d9317)
+- **Relaxing the poll cadence is earned by a connected poll, not granted by the event watch's ack** — the ack proves a census answered, never that a snapshot succeeded (498d23f)
+- **A poll that fails before the bridge ever connected now says so** — the warn was gated on being connected, so the first poll's failure, the one that matters most, was the one that logged nothing (c56c87a)
+
 ## [1.0.0-beta.25] - 2026-08-26
 
 **Merges Collie 0.35.0 into the v1 line.** Its two fail-closed gates apply here too — read 0.35.0's
