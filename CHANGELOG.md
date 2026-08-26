@@ -6,6 +6,38 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.25] - 2026-08-26
+
+**Merges Collie 0.35.0 into the v1 line.** Its two fail-closed gates apply here too — read 0.35.0's
+BREAKING note below. One v1-only exemption: a collie **in a pack** may bind off loopback, and
+`/pack/v1/*` is not subject to the peer-address check ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
+
+### Added
+
+- **`quick-replies.toml`: your own Quick-dock groups** — the third operator file, same reader and
+  same scope ladder as `commands.toml` and `keys.toml` (0.35.0, #131 — thanks @fucx)
+- **`doctor` reports the multiplexer as a finding of its own** — a missing beacon emitter costs what the adapter says it costs (ee3d288)
+- **`doctor` reports a wide bind on a solo collie as an error** — the bridge now refuses to start on one, so the check says the same thing (7c98cfd)
+
+### Changed
+
+- **Host validation, identity and bind now fail closed** — `COLLIE_ALLOW_ANY_HOST=1`,
+  `COLLIE_TRUSTED_USER_OPTIONAL=1` and `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` are the three opt-outs
+  (0.35.0, #129 — thanks @bartholomewtj)
+- **`collie start` discovers this node's tailnet hosts into the unit** — a normal tailnet install
+  configures nothing; the operator's own `COLLIE_TAILSCALE_HOSTS` wins, and a failed probe keeps the
+  allowlist the unit already had rather than locking the phone out (7c98cfd)
+- **`.env` is held to owner-only** — tightened in place on read, warned about either way, never a refusal to start (7c98cfd)
+- **An unversioned managed checkout pins `update` to the newest release tag**, never to `origin HEAD` (7c98cfd)
+- **Uploads are typed by magic bytes**, not the client's Content-Type (0.35.0)
+- **The startup log names the multiplexer it drives**, not only the one it cannot reach (4abfc82)
+
+### Fixed
+
+- **A Claude is a Claude from SessionStart** — the pane no longer reads as a shell until its first prompt (766e34c)
+- **Every beacon hook entry carries `timeout 10`** — a hung emit never stalls the agent for Claude's default minute (f1e3a21)
+- **The sync stamp lives in the header** — the chrome no longer changes height between the dashboard and a space (ea7e543)
+
 ## [1.0.0-beta.24] - 2026-08-25
 
 ### Removed
