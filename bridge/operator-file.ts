@@ -1,9 +1,9 @@
 import { stat } from "node:fs/promises";
 
 // The disk half shared by every operator-authored TOML file that sits next to their `.env`
-// (`commands.toml`, `keys.toml`). One reader shape for all of them, so a second such file cannot
-// quietly grow a second caching contract — the grammar is what differs between them, never the
-// posture.
+// (`commands.toml`, `keys.toml`, `quick-replies.toml`). One reader shape for all of them, so a
+// further such file cannot quietly grow a second caching contract — the grammar is what differs
+// between them, never the posture.
 
 /** Kept behind an interface so the caching contract is testable without fs. */
 export interface OperatorFileIo {
