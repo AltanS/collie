@@ -116,6 +116,13 @@ SOCKET="${HERDR_SOCKET_PATH:-${HOME}/.config/herdr/herdr.sock}"
 # How tailscale serve exposes the bridge: "https" (default, needs a cert from the control
 # server) or "http" (plain HTTP over the tailnet — use this on Headscale / .internal domains).
 SERVE_MODE="${COLLIE_SERVE_MODE:-https}"
+# Which tailnet port the https front door listens on. 443 is the only port a browser reaches without
+# being told, so it stays the default; a non-default one exists for several Collies on one tailnet
+# node (one Unix user each), which cannot all own :443. It is an https-mode setting only — in http
+# mode the tailnet listener is COLLIE_PORT by construction, so cmd_serve refuses the combination
+# rather than pick a winner. `tailscale serve` accepts any port here; only `funnel`, which Collie
+# never publishes, is restricted to 443/8443/10000.
+SERVE_PORT="${COLLIE_SERVE_PORT:-443}"
 # Records the ONE `tailscale serve` root mount Collie published, so teardown can prove the mapping
 # it is about to remove is still the one it created. Format: `<mode>:<port>|<HostPort>|<proxy>`.
 TAILSCALE_HANDLER_FILE="${CONFIG_DIR}/tailscale-managed-handler"
@@ -267,11 +274,14 @@ discover_tailscale_hosts() {
 
 bridge_url() {
   # An explicit COLLIE_PUBLIC_URL is the operator naming a front door Collie didn't publish —
-  # a reverse proxy, or a `tailscale serve` on a port that isn't 443. Nothing here can infer it.
+  # a reverse proxy, or a tunnel Collie knows nothing about. Nothing here can infer it.
   if [ -n "${COLLIE_PUBLIC_URL:-}" ]; then echo "${COLLIE_PUBLIC_URL%/}"; return; fi
   local name; name="$(self_dnsname)"
   if [ -z "$name" ]; then echo "http://127.0.0.1:${PORT} (Tailscale name unavailable)"; return; fi
-  if [ "$SERVE_MODE" = "http" ]; then echo "http://${name}:${PORT}"; else echo "https://${name}"; fi
+  if [ "$SERVE_MODE" = "http" ]; then echo "http://${name}:${PORT}"; return; fi
+  # SERVE_PORT is meaningful in https mode only, so the mode test gates it here rather than at the
+  # assignment — in http mode a stray value must never reach a URL.
+  if [ "$SERVE_PORT" = "443" ]; then echo "https://${name}"; else echo "https://${name}:${SERVE_PORT}"; fi
 }
 
 # The version Collie is actually serving — read from the built bundle's stamp
@@ -955,13 +965,13 @@ tailscale_root_fingerprint() {
   status_json="$(tailscale serve status --json 2>/dev/null)" || return 1
   result="$(
     printf '%s' "$status_json" |
-      COLLIE_SERVE_HOST_PORT="$host_port" COLLIE_SERVE_PORT="$port" "$BUN" -e '
+      COLLIE_TS_HOST_PORT="$host_port" COLLIE_TS_PORT="$port" "$BUN" -e '
         let data = "";
         process.stdin.on("data", chunk => data += chunk).on("end", () => {
           try {
             const config = JSON.parse(data || "{}");
-            const hostPort = process.env.COLLIE_SERVE_HOST_PORT;
-            const port = process.env.COLLIE_SERVE_PORT;
+            const hostPort = process.env.COLLIE_TS_HOST_PORT;
+            const port = process.env.COLLIE_TS_PORT;
             const handlers = config?.Web?.[hostPort]?.Handlers ?? {};
             if (!Object.prototype.hasOwnProperty.call(handlers, "/")) {
               process.stdout.write("absent");
@@ -1000,9 +1010,14 @@ stop_tailscale_serve() {
           ''|*[!0-9]*) managed_mode="" ;;
         esac
         ;;
-      https:443)
+      https:*)
+        # Any port, not just 443: a record written before COLLIE_SERVE_PORT existed says `https:443`
+        # and still parses here, so an upgrade tears down what it published.
         managed_mode="https"
-        managed_port="443"
+        managed_port="${managed_handler#https:}"
+        case "$managed_port" in
+          ''|*[!0-9]*) managed_mode="" ;;
+        esac
         ;;
     esac
     if [ -z "$managed_mode" ] || [ -z "$managed_host_port" ] || [ -z "$managed_proxy" ] || [ -n "$extra" ]; then
@@ -1053,7 +1068,7 @@ stop_tailscale_serve() {
       return 1
     }
   else
-    remove_tailscale_handler "HTTPS :443 root mount" --https=443 --set-path=/ || {
+    remove_tailscale_handler "HTTPS :${managed_port} root mount" --https="$managed_port" --set-path=/ || {
       echo "error: managed ingress cleanup incomplete; retained ${TAILSCALE_HANDLER_FILE} for retry" >&2
       return 1
     }
@@ -1087,15 +1102,15 @@ ensure_tailscale_root_available() {
   fi
   if ! result="$(
     printf '%s' "$status_json" |
-      COLLIE_SERVE_PORT="$port" COLLIE_SERVE_PROTOCOL="$protocol" \
-      COLLIE_SERVE_EXPECTED_PROXY="$expected_proxy" "$BUN" -e '
+      COLLIE_TS_PORT="$port" COLLIE_TS_PROTOCOL="$protocol" \
+      COLLIE_TS_EXPECTED_PROXY="$expected_proxy" "$BUN" -e '
         let data = "";
         process.stdin.on("data", chunk => data += chunk).on("end", () => {
           try {
             const config = JSON.parse(data || "{}");
-            const port = process.env.COLLIE_SERVE_PORT;
-            const protocol = process.env.COLLIE_SERVE_PROTOCOL;
-            const expectedProxy = process.env.COLLIE_SERVE_EXPECTED_PROXY;
+            const port = process.env.COLLIE_TS_PORT;
+            const protocol = process.env.COLLIE_TS_PROTOCOL;
+            const expectedProxy = process.env.COLLIE_TS_EXPECTED_PROXY;
             // Proxy targets of every root handler bound to our port, in one serve config level.
             const rootTargets = serveConfig =>
               Object.entries(serveConfig?.Web ?? {})
@@ -1158,6 +1173,19 @@ cmd_serve() {
     echo "tailscale serve skipped (COLLIE_SKIP_SERVE=1) — bridge is on 127.0.0.1:${PORT} only"
     return
   fi
+  # Both checks run before teardown: a mistyped port is a config error, and a config error must not
+  # cost the operator the front door that is currently up.
+  if [ -n "${COLLIE_SERVE_PORT:-}" ] && [ "$SERVE_MODE" = "http" ]; then
+    echo "error: COLLIE_SERVE_PORT applies to the https front door only; with COLLIE_SERVE_MODE=http the tailnet listener is COLLIE_PORT (${PORT})" >&2
+    return 1
+  fi
+  case "${COLLIE_SERVE_PORT:-443}" in
+    ''|*[!0-9]*) echo "error: COLLIE_SERVE_PORT must be a port number in 1..65535, got '${COLLIE_SERVE_PORT:-}'" >&2; return 1 ;;
+    *) [ "${COLLIE_SERVE_PORT:-443}" -ge 1 ] && [ "${COLLIE_SERVE_PORT:-443}" -le 65535 ] || {
+         echo "error: COLLIE_SERVE_PORT must be a port number in 1..65535, got '${COLLIE_SERVE_PORT:-}'" >&2
+         return 1
+       } ;;
+  esac
   stop_tailscale_serve || return 1
   command -v tailscale >/dev/null || {
     echo "error: tailscale not found; cannot publish the tailnet front door" >&2
@@ -1182,10 +1210,20 @@ cmd_serve() {
       return 1
     fi
   else
-    ensure_tailscale_root_available 443 https "$expected_proxy" || return 1
-    printf '%s|%s|%s\n' "https:443" "${tailscale_host}:443" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
-    if tailscale serve --bg --set-path=/ "$PORT" >"$out" 2>&1; then
-      echo "tailscale serve (https) → tailnet :443 -> 127.0.0.1:${PORT}"
+    ensure_tailscale_root_available "$SERVE_PORT" https "$expected_proxy" || return 1
+    printf '%s|%s|%s\n' "https:${SERVE_PORT}" "${tailscale_host}:${SERVE_PORT}" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
+    # `--https=443` is what tailscale assumes anyway; passing it only off the default keeps the
+    # default invocation byte-identical to the one every existing deployment already publishes.
+    # Both branches are spelled out because an empty array expansion is an error under `set -u` on
+    # the bash 3.2 macOS still ships.
+    local -a serve_argv
+    if [ "$SERVE_PORT" = "443" ]; then
+      serve_argv=(serve --bg --set-path=/ "$PORT")
+    else
+      serve_argv=(serve --bg --https="$SERVE_PORT" --set-path=/ "$PORT")
+    fi
+    if tailscale "${serve_argv[@]}" >"$out" 2>&1; then
+      echo "tailscale serve (https) → tailnet :${SERVE_PORT} -> 127.0.0.1:${PORT}"
     else
       rm -f "$TAILSCALE_HANDLER_FILE"
       echo "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http:"
