@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.27] - 2026-08-26
+
+### Added
+
+- Pack overview page at `/pack` — one read-only card per machine: health, version, secret pickup, deputy; entry points in the machine switcher and Settings, hidden on a solo install (4cc38a2)
+- `GET /api/pack` — the lead's in-memory pack census for that page; 404 on solo and peer (4cc38a2)
+
 ## [1.0.0-beta.26] - 2026-08-26
 
 ### Fixed
