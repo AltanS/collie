@@ -1095,6 +1095,10 @@ A **microphone button in the composer**, and a **hands-free switch** in Settings
 speak, and the transcript lands in the message box for you to read and send. With hands-free on it is
 sent for you — down the same guarded reply path a typed message takes, never around it.
 
+The microphone **is** the round button at the end of the row, for as long as the box is empty; the
+first character you type turns it back into Send. You dictate a message or you type one, so there is
+one primary action rather than two competing for the width of the field.
+
 **It does not exist until you run `collie stt setup`.** No button is drawn, no audio leaves the
 phone, no credential is held, no child process runs. Absent, not disabled. Two providers:
 
@@ -1119,24 +1123,43 @@ The API base, INCLUDING its version prefix — the provider appends /audio/trans
   local  http://127.0.0.1:8080/v1     (whisper.cpp / parakeet.cpp — nothing leaves the host)
   cloud  https://api.openai.com/v1    (room audio leaves this machine)
 base URL: http://127.0.0.1:8080/v1
-The model the endpoint understands. Empty takes Collie's default, gpt-4o-transcribe.
-model [gpt-4o-transcribe]: whisper-1
+The model the endpoint understands. Empty takes Collie's default, gpt-transcribe.
+model [gpt-transcribe]: whisper-1
 API key [none]:
+The language you speak, as a two-letter ISO-639-1 code — en, de, tr, ja.
+LEAVE IT EMPTY to let the model detect it, which is what you want if you mix languages in one
+sentence. Name one only if short clips keep coming back in a language you did not speak: a few
+seconds of accented audio is too little for the model to detect from, and it guesses.
+spoken language [auto-detect]: en
 ✓ speech-to-text configured — /home/you/.local/state/collie/stt.json (owner-only)
   Live immediately — no restart needed. The bridge re-reads this file per request.
   Check it end to end with `collie stt test`.
 ```
 
-Every question above has a flag (`--provider` · `--url` · `--model` · `--key`), so a provisioning
-run needs no terminal. Leaving the key empty is a supported mode — a keyless endpoint is dialled
-with no `Authorization` header at all, rather than an empty one.
+Every question above has a flag (`--provider` · `--url` · `--model` · `--key` · `--lang`), so a
+provisioning run needs no terminal. Leaving the key empty is a supported mode — a keyless endpoint is
+dialled with no `Authorization` header at all, rather than an empty one.
+
+**The spoken language is worth setting only for one failure.** Left blank — the default — the model
+detects the language itself, which is what someone who mixes two languages in a sentence needs. Set
+it if *short* clips keep coming back in a language you did not speak: a few seconds of accented audio
+is too little to detect from, and the model guesses. A two-letter code, or a regional tag Collie
+narrows for you (`en-GB` → `en`). It rides on the `openai-compatible` provider only; the `codex`
+endpoint takes no language, and `collie stt status` says so rather than letting you believe otherwise.
+
+**A long recording gets a long deadline.** The browser's budget for one clip is a function of that
+clip's size, not a flat number — it assumes a sustained 256 kb/s uplink and adds the bridge's own
+provider deadline on top, so the 8 MiB maximum is allowed a little under six minutes. A clip Collie
+was willing to record is a clip it is willing to wait for. While the upload is in flight Collie stops
+polling and stops escalating the connection banner: your own audio saturating a phone's uplink is not
+an outage, and it must not be reported as one.
 
 **Did it work?** `stt test` sends a fifth of a second of generated silence through the real
 provider:
 
 ```console
 $ bin/collie stt test
-provider: openai-compatible (http://127.0.0.1:8080/v1, model whisper-1)
+provider: openai-compatible (http://127.0.0.1:8080/v1, model whisper-1, language en)
 sending:  0.2 s of generated silence (audio/wav)
 ✓ round trip in 214 ms
   transcript: (empty) — expected from silence, and the empty answer still proves the pipeline.
@@ -1161,6 +1184,20 @@ bin/collie stt setup --provider openai-compatible --url http://127.0.0.1:8080/v1
 ```
 
 That is the whole integration — Collie has no opinion about which engine answers.
+
+**Mistral's Voxtral needs no support of its own**, and neither does anything else that speaks this
+contract — that is the point of the seam. vLLM serves the open-weights Voxtral models on
+`/v1/audio/transcriptions`, so a local one is the same `--url` as any other engine. The hosted models
+are the same request at Mistral's own base:
+
+```bash
+bin/collie stt setup --provider openai-compatible \
+  --url https://api.mistral.ai/v1 --model voxtral-mini-latest --key <key> --lang en
+```
+
+Voxtral Mini Transcribe covers 13 languages and takes the same ISO-639-1 `language` field Collie
+already sends. Prove it with `collie stt test` before you trust it — "OpenAI-compatible" is a claim
+each endpoint makes for itself, and that verb exists to check it.
 
 ### The codex provider — what you are accepting
 
@@ -1413,6 +1450,25 @@ Clone it and `herdr plugin link` it ([Install](#install) above), then edit in pl
   your first commit.
 - **Why a supervised service and not a plugin pane** — [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3.
   That decision is why the manifest uses `[[actions]]` and `[[build]]` and nothing else.
+
+### The states playground
+
+A dev-only page that renders the real app components in every state — boot, idle, dashboard, pack,
+settings and so on — without a live agent behind them. Useful for eyeballing a banner, the mark, the
+boot splash, or the idle lock across every state at once, instead of driving the real app into each
+one by hand.
+
+```
+cd web && COLLIE_DEV_HOSTS=bluefin,localhost bun run playground
+```
+
+Open `http://<host>:5199/playground.html`. On 5199 the root redirects to the playground and `/api`
+is dead, so nothing on that port can reach a real Collie instance. It never ships: Vite's build only ever walks the root
+`index.html`, so `playground.html` and everything under `src/playground/` stay out of `dist` and out
+of the PWA precache. `src/playground/playground-entry.test.ts` pins that.
+
+To add a new state, add a `<Section>` in `src/playground/app.tsx` and its fixtures in
+`src/playground/fixtures.ts`.
 
 Herdr's plugin system itself is upstream's to document:
 [authoring](https://herdr.dev/docs/plugins/) ·
