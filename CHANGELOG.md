@@ -6,6 +6,27 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.31] - 2026-08-28
+
+### Added
+
+- New Collie mark: it drifts at rest (48s/turn) and spins fast while loading, both driven by the
+  same keyframes so a state change only changes speed; `prefers-reduced-motion` stops it entirely
+  (6756abb)
+- The six favicons and home-screen tiles redrawn to match the new mark (6756abb)
+- Dev-only states playground at `web/playground.html`, rendering every UI state against real
+  components; it never ships (6756abb)
+
+### Changed
+
+- Language setting is now a native select; the six-row footer band and its long description are
+  gone, keeping the rest of Settings on screen on a phone (6756abb)
+
+### Removed
+
+- The header's "synced Ns ago" stamp — the connection banner and the mark now carry stale-link
+  state (6756abb)
+
 ## [1.0.0-beta.30] - 2026-08-28
 
 ### Added
