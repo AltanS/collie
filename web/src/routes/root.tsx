@@ -8,7 +8,7 @@ import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { PackProvider } from "@/components/pack-provider";
-import { DogGallop } from "@/components/dog-gallop";
+import { CollieMark } from "@/components/collie-mark";
 import { describeThrownError } from "@/lib/api-error-message";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
@@ -101,29 +101,39 @@ export function RootLayout() {
 // Shown once, on the very first load, while the snapshot loader resolves (SPA hydration). This is the
 // router's HydrateFallback, so it stays mounted until the FIRST loader run settles — and over a dead
 // tailnet that initial fetch can hang well past its timeout (or forever on a WebView without
-// AbortSignal.timeout). Left as-is, a PWA reopened while the host is unreachable would gallop the dog
+// AbortSignal.timeout). Left as-is, a PWA reopened while the host is unreachable would bloom the mark
 // on "Connecting to the herd…" indefinitely, with no way to retry. So once we've been stuck here for
 // CONNECTION_LOST_MS (the same wall-clock threshold as the in-app prompt — `connecting` is trivially
 // true the whole time we're mounted), the splash escalates to an honest, actionable "Not connected"
-// state: the dog rests, the copy says we can't reach Collie, and a Retry re-runs the loaders from
-// scratch (a full reload clears most transient failures). Below the threshold it's unchanged.
+// state: the mark stills, the copy says we can't reach Collie, and a Retry
+// re-runs the loaders from scratch (a full reload clears most transient failures). Below the
+// threshold it's unchanged.
 export function BootSplash() {
   useLocale();
   const stuck = useConnectionLost(true);
   if (!stuck) {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
-        <DogGallop running size="4rem" label={t("error.boot.loadingAria")} />
+        {/* The bloom: the same mark as the rest state below, but turning and at full chroma. It is
+            a COLOUR as well as motion, which is the half a reduced-motion reader still gets —
+            `prefers-reduced-motion` stops the orbit and cannot stop the accents. `paper` is this
+            screen's ground, `bg-background`, the knockout that puts a near-side bead in front of
+            the head. The "Connecting to the herd…" copy below carries the accessible meaning, so
+            the mark is decorative. */}
+        <CollieMark size={64} weight="header" loading paper="var(--background)" />
         <span className="text-sm">{t("error.boot.connecting")}</span>
       </div>
     );
   }
   return (
     <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 p-6 text-center">
-      {/* Rest = the static app icon, muted (grayscale + dimmed) to read asleep — NOT a gallop
-          rest-frame, whose full-stretch mid-stride pose looks frozen mid-run. The "Not connected"
-          copy below carries the accessible meaning, so the icon is decorative. */}
-      <img src="/favicon.svg" alt="" className="size-16 opacity-40 grayscale" />
+      {/* Rest = the Collie mark still, muted (grayscale + dimmed) to read asleep
+          — never the gallop's own rest frame, whose full-stretch mid-stride pose looks frozen
+          mid-run. No `loading`: we have stopped trying, and a blooming mark would say otherwise.
+          `paper` is this screen's ground, `bg-background`, which is the knockout colour that puts a
+          near-side bead in front of the head. The "Not connected" copy below carries the accessible
+          meaning, so the mark is decorative. */}
+      <CollieMark size={64} weight="header" paper="var(--background)" className="opacity-40 grayscale" />
       <p className="font-medium text-foreground">{t("error.boot.title")}</p>
       <p className="max-w-xs text-sm text-muted-foreground">{t("error.boot.body")}</p>
       <button

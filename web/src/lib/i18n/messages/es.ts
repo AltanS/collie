@@ -4,11 +4,7 @@ import type { Dictionary } from "./en";
 
 export const es: Dictionary = {
   "settings.language.title": "Idioma",
-  "settings.language.description":
-    "Elige el idioma en el que habla Collie. El espejo de la terminal nunca se traduce: muestra lo que el agente imprimió.",
-  "settings.language.active": "Collie se muestra en {language}.",
-  "settings.language.available.one": "{count} idioma disponible.",
-  "settings.language.available.other": "{count} idiomas disponibles.",
+  "settings.language.description": "El espejo de la terminal nunca se traduce.",
 
   // --- settings (page chrome) ---
   "settings.title": "Ajustes",
@@ -495,7 +491,6 @@ export const es: Dictionary = {
     "El bridge no respondió. Collie lo intentará en el siguiente sondeo.",
 
   // --- error (boot splash, route-level error recovery) ---
-  "error.boot.loadingAria": "Cargando",
   "error.boot.connecting": "Conectando con la manada…",
   "error.boot.title": "Sin conexión",
   "error.boot.body": "No se puede alcanzar Collie — revisa la conexión con el host e inténtalo de nuevo.",
@@ -506,7 +501,6 @@ export const es: Dictionary = {
 
   // --- idle (the idle-pause cover) ---
   "idle.dialogAria": "Collie en pausa",
-  "idle.catchingUp.label": "Poniéndose al día",
   "idle.catchingUp.title": "Poniéndose al día",
   "idle.catchingUp.body": "Cargando el estado actual de la manada.",
   "idle.paused.title": "En pausa",
@@ -546,7 +540,6 @@ export const es: Dictionary = {
   "time.compact.now": "ahora",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.age": "sincronizado hace {age}",
   "sync.pull.hint": "Desliza para actualizar",
   "sync.pull.release": "Suelta para actualizar",
   "sync.pull.busy": "Actualizando…",

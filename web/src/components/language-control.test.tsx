@@ -17,11 +17,11 @@ beforeEach(() => {
 });
 
 describe("LanguageControl", () => {
-  it("renders every locale's native name, with English checked by default", () => {
+  it("renders every locale's native name, with English selected by default", () => {
     render(<LanguageControl />);
 
-    const group = screen.getByRole("radiogroup", { name: "Language" });
-    const options = within(group).getAllByRole("radio");
+    const select = screen.getByRole("combobox", { name: "Language" });
+    const options = within(select).getAllByRole("option");
     expect(options.map((o) => o.textContent)).toEqual([
       "English",
       "Deutsch",
@@ -30,17 +30,17 @@ describe("LanguageControl", () => {
       "日本語",
       "中文",
     ]);
-    expect(screen.getByRole("radio", { name: "English" })).toHaveAttribute("aria-checked", "true");
+    expect(select).toHaveValue("en");
   });
 
-  it("selects a language, persists it, and checks it going forward", async () => {
+  it("selects a language, persists it, and keeps it selected going forward", async () => {
     const user = userEvent.setup();
     render(<LanguageControl />);
 
-    await user.click(screen.getByRole("radio", { name: "Deutsch" }));
+    const select = screen.getByRole("combobox", { name: "Language" });
+    await user.selectOptions(select, "de");
 
-    expect(screen.getByRole("radio", { name: "Deutsch" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: "English" })).toHaveAttribute("aria-checked", "false");
+    expect(select).toHaveValue("de");
     expect(localStorage.getItem(STORAGE_KEY)).toBe("de");
   });
 
@@ -49,7 +49,7 @@ describe("LanguageControl", () => {
     expect(screen.getByText("Language")).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("radio", { name: "Deutsch" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Language" }), "de");
     await whenLocaleReady("de");
 
     expect(await screen.findByText("Sprache")).toBeInTheDocument();

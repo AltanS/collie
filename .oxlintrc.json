@@ -31,7 +31,12 @@
     ".tracker/**",
     ".adr/**",
     ".claude/**",
-    "assets/**"
+    "assets/**",
+    // Generated in collie-brand, installed byte-identical, and guarded by collie-mark-hash.test.ts —
+    // a lint fix here cannot be applied in place. The flagged `typeof`s narrow the Web Animations
+    // API's own unions (`CSSNumberish | null` currentTime, `number | string | undefined` delay/duration),
+    // which is what that API returns, not a representation smell.
+    "web/src/components/collie-mark.tsx"
   ],
   "jsPlugins": [
     {

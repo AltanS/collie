@@ -1,0 +1,77 @@
+/* Presentation-only rules for the states playground. Nothing here is imported by the app: the file
+   is reachable from `src/playground/main.tsx` alone, which only `playground.html` loads. */
+
+/* A stage holds a component that paints a whole screen. `<Stage dvh>` adds this class, and the rule
+   pulls the component's own `h-[100dvh]` root down to the stage's box so the boot splash can sit in
+   a card instead of eating the scroll. It re-sizes the component; it does not change it. */
+.pg-stage-dvh > * {
+  height: 100% !important;
+}
+
+/* The "reduce motion" toggle. An APPROXIMATION, and labelled as one in the UI: the real signal is
+   `prefers-reduced-motion`, which only the OS (or the browser's rendering-emulation panel) can set,
+   and <CollieMark/> answers it inside its own inline stylesheet where no class can reach. Stopping
+   every animation here shows the still half of each state; the colour half of the mark's "loading"
+   is what a genuine reduced-motion reader still gets, and that is unaffected either way. */
+.pg-reduce-motion *,
+.pg-reduce-motion *::before,
+.pg-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* ── The content grid ────────────────────────────────────────────────────────────────────────────
+   The playground is read on a desktop now, so a section lays its cards out as a responsive grid
+   rather than as one phone-width column. `minmax(360px, 1fr)` is chosen off the widest card that is
+   still a WIDGET (a banner, a switcher row, a mark sampler): narrower and a banner wraps in a way it
+   never would on a phone; wider and two of them stop fitting side by side on a 1440px screen.
+
+   These live in CSS, not in Tailwind classes on the elements, for one reason: the "phone width"
+   toggle has to re-write them from an ANCESTOR (`.pg-narrow` on the page root). A utility class on
+   the grid itself cannot be overridden by a parent, so the toggle would have to conditionally swap
+   class strings on every section and every card — the same rule, expressed nine times. */
+.pg-grid {
+  display: grid;
+  gap: 1.25rem 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  align-items: start;
+}
+
+/* Route-level mounts (the dashboard list, a pane view, the pack census, settings) are SCREENS, not
+   widgets: they get two columns so the 390px phone frame inside them has room to breathe with its
+   caption beside it rather than under it. */
+.pg-span-2 {
+  grid-column: span 2;
+}
+
+/* One column below the two-column breakpoint — `span 2` on a single-column grid overflows it. */
+@media (max-width: 860px) {
+  .pg-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pg-span-2 {
+    grid-column: auto;
+  }
+}
+
+/* ── The "phone width" toggle ────────────────────────────────────────────────────────────────────
+   Collapses the whole page back to the single narrow column it used to be, so the page can be
+   checked on a real phone (or in a narrow window) without resizing anything. Every card becomes one
+   column wide and nothing spans. */
+.pg-narrow .pg-grid {
+  grid-template-columns: minmax(0, 420px);
+}
+.pg-narrow .pg-span-2 {
+  grid-column: auto;
+}
+
+/* A phone frame owns its own scrollbar. Hide the visual bar inside it: the frame is standing in for
+   a phone, and a desktop scrollbar drawn down the inside edge is 15px of chrome no phone has. The
+   surface still scrolls — this hides the bar, it does not disable the overflow. */
+.pg-phone-scroll {
+  scrollbar-width: none;
+}
+.pg-phone-scroll::-webkit-scrollbar {
+  display: none;
+}

@@ -174,6 +174,10 @@ lint guard or the pack-wire guard.
 
 ## Frontend data layer (React Router, not TanStack)
 
+- **Check UI states in the playground** (`web/src/playground/`, `cd web && bun run playground`,
+  README → "The states playground") before changing a banner, the mark, the boot splash, the idle
+  lock, or the pack page — it renders every state at once. Never import playground code from app
+  code.
 - Data flows through **React Router** (`createBrowserRouter`, data mode): route **loaders**
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls

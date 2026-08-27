@@ -1,19 +1,18 @@
 import { cn } from "@/lib/utils";
-import { DogGallop } from "@/components/dog-gallop";
+import { CollieMark } from "@/components/collie-mark";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
 interface CollieHomeProps {
   /** Return to the dashboard. */
   onHome?: () => void;
-  /** The connection has been not-live for a sustained beat (useConnectionTrouble, ≥4s) — run the
-   *  gallop sprite. Below that (healthy, or a single slow poll) the static app icon shows: the 4s
-   *  delay is the flicker fix, so a normal polling hiccup never kicks the dog into a run. */
+  /** The connection has been not-live for a sustained beat (useConnectionTrouble, ≥4s) — bloom the
+   *  mark. Below that (healthy, or a single slow poll) it stays still: the 4s delay is the flicker
+   *  fix, so a normal polling hiccup never sets the orbit turning. */
   trouble: boolean;
-  /** The outage has passed the escalation threshold (useConnectionLost, ≥15s). The mark stops galloping
-   *  and rests on the static app icon, muted — a galloping mark that never stops reads as "still trying"
-   *  when we've in fact given up; the muted icon says "not connected" at a glance, matching the boot
-   *  splash. (Never a gallop rest-frame — that full-stretch pose looks frozen mid-run.) */
+  /** The outage has passed the escalation threshold (useConnectionLost, ≥15s). The bloom stops and
+   *  the mark goes still again, muted — a mark that blooms forever reads as "still trying" when
+   *  we've in fact given up; muted says "not connected" at a glance, matching the boot splash. */
   lost?: boolean;
   /** Show the "Collie" wordmark beside the mark (dashboard header). Omit inside a pane to save space. */
   wordmark?: boolean;
@@ -21,23 +20,29 @@ interface CollieHomeProps {
 }
 
 // The single, shared Collie mark: brand + home button + connection loader in one, so the top-left of
-// every screen means the same thing. At rest it's the familiar static app icon (favicon.svg); once the
-// connection has been not-live for a sustained beat (`trouble`) it springs into the galloping sprite —
-// until the outage escalates (`lost`), when it drops the gallop and rests on the SAME static icon,
-// muted, then settles back to the full-color icon once live. The rest state is always the static icon,
-// never a paused sprite: a gallop strip's rest frame is a full-stretch mid-stride pose that reads as
-// frozen mid-run. Tapping it returns to the dashboard. The dashboard shows the "Collie" wordmark too;
-// inside a pane the mark stands alone (the breadcrumb carries the context). Both headers render THIS
-// component — the consistency is structural, not a convention two files have to keep agreeing on.
+// every screen means the same thing. ONE element in all three states — <CollieMark/>, which is a
+// still drawing while live, starts turning (the "bloom") once the connection has been not-live for a
+// sustained beat (`trouble`), and goes still again, muted, once the outage escalates (`lost`). That
+// is why this no longer swaps a sprite for a still image: the old sprite had no rest frame (frame 0
+// is a full-stretch mid-stride pose that reads as frozen mid-run), so rest had to be a different
+// picture. This mark rests by not animating at all, so nothing is ever swapped and nothing can
+// resize as the connection settles.
+// The mark is now the app's ONLY animal: the boot splash and the idle cover bloom this same mark, so
+// "Collie is fetching" looks the same wherever it appears. <DogGallop/> is untouched but no longer
+// mounted anywhere in the app (see components/dog-gallop.tsx).
+//
+// Tapping it returns to the dashboard. The dashboard shows the "Collie" wordmark too; inside a pane
+// the mark stands alone (the breadcrumb carries the context). Both headers render THIS component —
+// the consistency is structural, not a convention two files have to keep agreeing on.
 export function CollieHome({ onHome, trouble, lost = false, wordmark = false, className }: CollieHomeProps) {
   useLocale();
-  const gallop = trouble && !lost;
+  const bloom = trouble && !lost;
   return (
     <button
       type="button"
       onClick={onHome}
-      // The gallop conveys connection state visually; fold it into the button's accessible name too,
-      // so screen-reader and reduced-motion users get it (inside a pane there's no other cue).
+      // The bloom conveys connection state visually; fold it into the button's accessible name too,
+      // so screen-reader users get it (inside a pane there's no other cue).
       aria-label={
         !trouble
           ? t("nav.home.aria.default")
@@ -50,23 +55,25 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
         className,
       )}
     >
-      {/* A whitesmoke ring frames the mark so it reads as a deliberate badge against the dark header
-          (the collie art is transparent, so it otherwise floats). The ring wraps every state so the
-          frame doesn't pop in/out as the connection settles out of the gallop. */}
-      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-zinc-500/40 ring-1 ring-[whitesmoke]/60">
-        {gallop ? (
-          <DogGallop running size="2rem" />
-        ) : lost ? (
-          // Escalated: the reconnect has run past the threshold — the dog rests on the static app icon,
-          // muted (grayscale + dimmed) to read asleep/inactive, in the same box (no gallop). NOT a
-          // paused sprite: a gallop rest-frame is a full-stretch mid-stride pose that looks frozen
-          // mid-run — the "stuck mid-run" bug. Mirrors the boot splash's not-connected state.
-          <img src="/favicon.svg" alt="" className="size-8 opacity-40 grayscale" />
-        ) : (
-          // Live rest state = the original app icon (bigger, detailed collie) at full color, same box
-          // as the sprite so the mark doesn't resize when it settles. Larger than the agent logo.
-          <img src="/favicon.svg" alt="" className="size-8" />
-        )}
+      {/* No ring, no disc: the badge existed because the old sprite was a transparent cut-out that
+          floated on the bar. This mark carries its own ring — the orbit IS the frame — and a
+          40px circle with `overflow-hidden` would clip the beads that pass widest. The box keeps
+          its size-10 geometry, because the header row is sized by it (see AppHeader).
+
+          `paper` is the header's own ground, `bg-muted`. It is the colour of the knockout that
+          makes a near-side bead read as being IN FRONT of the head; anything else shows up as a
+          halo around those beads, so this value tracks the ground and is not a taste choice.
+
+          Muted while lost — grayscale + dimmed, to read asleep/inactive — and the orbit stops
+          turning again. Mirrors the boot splash's not-connected state. */}
+      <span className="grid size-10 shrink-0 place-items-center">
+        <CollieMark
+          size={40}
+          weight="header"
+          loading={bloom}
+          paper="var(--muted)"
+          className={cn("transition-opacity", lost && "opacity-40 grayscale")}
+        />
       </span>
       {wordmark && <span className="text-lg font-semibold tracking-tight">Collie</span>}
     </button>

@@ -3,10 +3,11 @@ import { act, render, screen } from "@testing-library/react";
 import { BootSplash, shownLastSeenAt } from "./root";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
+import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
 import type { HomeData, PaneData } from "@/lib/loaders";
 
 // BootSplash is the router's HydrateFallback: it stays mounted until the FIRST loader run settles, so
-// over a dead tailnet (a hanging initial fetch) it can otherwise gallop the dog forever with no way
+// over a dead tailnet (a hanging initial fetch) it can otherwise bloom the mark forever with no way
 // out. It must escalate to an actionable "Not connected" state once stuck past CONNECTION_LOST_MS.
 // Fake timers drive the wall-clock hook (Vitest advances Date.now with them).
 describe("BootSplash — escalates a stuck cold start", () => {
@@ -16,12 +17,16 @@ describe("BootSplash — escalates a stuck cold start", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("shows the galloping-dog splash before the threshold", () => {
-    render(<BootSplash />);
+  it("blooms the mark on the connecting splash before the threshold", () => {
+    const { container } = render(<BootSplash />);
     expect(screen.getByText("Connecting to the herd…")).toBeInTheDocument();
+    // The bloom is a colour as well as turning — a reduced-motion reader gets the accents only.
+    expect(markIsLive(container)).toBe(true);
+    expect(markPaper(container)).toBe("var(--background)");
     // still the plain splash a beat before the threshold
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - 1));
     expect(screen.getByText("Connecting to the herd…")).toBeInTheDocument();
+    expect(markIsLive(container)).toBe(true);
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
   });
 
@@ -32,13 +37,14 @@ describe("BootSplash — escalates a stuck cold start", () => {
     expect(screen.getByText("Not connected")).toBeInTheDocument();
     expect(screen.getByText(/Can.t reach Collie/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
-    // The galloping mascot is gone — the loading sprite is unmounted and the rest state is the muted
-    // static app icon (never a frozen gallop frame, which reads as stuck mid-run).
-    expect(screen.queryByLabelText("Loading")).not.toBeInTheDocument();
+    // Same mark throughout — it is never swapped for a second drawing, it only stops blooming: the
+    // rest state is that mark still, muted. No bloom, because we have stopped trying, and a
+    // blooming mark would say otherwise. No gallop sprite on this screen either (the app mounts one
+    // animal).
     expect(container.querySelector(".dog-gallop")).toBeNull();
-    const icon = container.querySelector("img");
-    expect(icon).toHaveAttribute("src", "/favicon.svg");
-    expect(icon?.className).toMatch(/grayscale/);
+    const mark = collieMark(container);
+    expect(markIsLive(container)).toBe(false);
+    expect(mark?.getAttribute("class")).toMatch(/grayscale/);
   });
 });
 

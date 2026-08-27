@@ -5,11 +5,7 @@ import type { Dictionary } from "./en";
 
 export const zh: Dictionary = {
   "settings.language.title": "语言",
-  "settings.language.description":
-    "选择 Collie 使用的语言。终端镜像不会被翻译，它显示的是智能体输出的内容。",
-  "settings.language.active": "Collie 正在以{language}显示。",
-  "settings.language.available.one": "有 {count} 种语言可用。",
-  "settings.language.available.other": "有 {count} 种语言可用。",
+  "settings.language.description": "终端镜像不会被翻译。",
 
   // --- settings (page chrome) ---
   "settings.title": "设置",
@@ -475,7 +471,6 @@ export const zh: Dictionary = {
   "pack.error.description": "Bridge 没有响应。Collie 会在下次轮询时重试。",
 
   // --- error (boot splash, route-level error recovery) ---
-  "error.boot.loadingAria": "加载中",
   "error.boot.connecting": "正在连接牧群…",
   "error.boot.title": "未连接",
   "error.boot.body": "无法连接到 Collie — 请检查与主机的连接后重试。",
@@ -486,7 +481,6 @@ export const zh: Dictionary = {
 
   // --- idle (the idle-pause cover) ---
   "idle.dialogAria": "Collie 已暂停",
-  "idle.catchingUp.label": "正在更新",
   "idle.catchingUp.title": "正在更新",
   "idle.catchingUp.body": "正在加载牧群的当前状态。",
   "idle.paused.title": "已暂停",
@@ -525,7 +519,6 @@ export const zh: Dictionary = {
   "time.compact.now": "现在",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.age": "已在 {age} 前同步",
   "sync.pull.hint": "下拉刷新",
   "sync.pull.release": "松开即可刷新",
   "sync.pull.busy": "正在刷新…",
