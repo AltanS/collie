@@ -10,8 +10,6 @@ import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-
 import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { AlphaBar } from "@/components/alpha-bar";
-import { SyncStamp } from "@/components/sync-stamp";
-import { useOptionalRootData } from "@/lib/route-data";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 
@@ -79,16 +77,6 @@ export function AppHeader({
   // The mark that goes with that name, served by the bridge from the ADAPTER's own bytes. Empty
   // whenever no logo was published, and empty renders nothing — see useMuxLogoUrl.
   const muxLogo = useMuxLogoUrl();
-  // HOW FRESH THE SCREEN IS — read here, printed here, on every route. The stamp used to be a route's
-  // own row under the header, which made the chrome a different height on the dashboard than in a
-  // space and jumped the page on every navigation. It is chrome, so it belongs in the chrome: one
-  // place, one geometry, and no route can forget it or place it differently.
-  //
-  // It reads the ROOT snapshot's `ts` — the same object every route already renders from — rather
-  // than a prop, so the number is the age of the data on screen no matter which screen that is.
-  // Optional because the header also mounts while that data is still resolving; SyncStamp renders
-  // nothing without a stamp, and nothing at all unless the bridge declared bounded freshness.
-  const ts = useOptionalRootData()?.ts;
   return (
     // A column, not a row: the sticky bar owns the safe-area inset and stacks the (usually absent)
     // prerelease strip above the header row proper, which keeps its original padding. On a stable
@@ -136,13 +124,6 @@ export function AppHeader({
             {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
                 pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight. */}
             <div className="flex min-w-0 flex-1 items-center">{children}</div>
-            {/* The freshness line, leading the right cluster and NEVER its own row. It cannot change
-                this bar's height on any route or in either state: the row is sized by the 40px Collie
-                mark (plus py-2) that every non-override header renders, and this is a 16px text-xs
-                line inside an items-center row. So the chrome is the same height on `/`, `/space/:id`
-                and `/pane/:id`, and the same height whether the multiplexer's freshness is bounded
-                (it prints) or pushed (it renders nothing at all). */}
-            <SyncStamp ts={ts} className="shrink-0 pr-1" />
             {/* gap-1, not gap-3: the icon buttons now carry their own 12px of padding to reach 44px,
                 so a 12px gap on top of that reads as a gulf. 4px keeps the apparent spacing between
                 icons close to what it was. */}

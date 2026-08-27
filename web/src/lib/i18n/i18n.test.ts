@@ -35,8 +35,8 @@ describe("isLocale", () => {
 
 describe("interpolation", () => {
   it("fills a named slot", () => {
-    expect(t("settings.language.active", { language: "Deutsch" })).toBe(
-      "Collie is showing Deutsch.",
+    expect(t("settings.devices.pairedAs", { device: "Pixel" })).toBe(
+      "This device is paired as Pixel.",
     );
   });
 
@@ -48,38 +48,40 @@ describe("interpolation", () => {
   // half interprets `$&`, `$'` and `$1`. A pane name, a host name or an agent's own text can carry
   // any of those, and the operator would see their own value rewritten into gibberish.
   it("substitutes a value containing $ and braces verbatim", () => {
-    const nasty = "$& {language} $' $1 $$";
-    expect(t("settings.language.active", { language: nasty })).toBe(`Collie is showing ${nasty}.`);
+    const nasty = "$& {device} $' $1 $$";
+    expect(t("settings.devices.pairedAs", { device: nasty })).toBe(
+      `This device is paired as ${nasty}.`,
+    );
   });
 
   it("accepts a number and leaves an unknown slot alone", () => {
-    expect(tn("settings.language.available", 3)).toBe("3 languages available.");
+    expect(tn("space.overview.paneCount", 3)).toBe("3 panes");
   });
 });
 
 describe("plurals", () => {
   it("picks one/other for English", () => {
-    expect(tn("settings.language.available", 1)).toBe("1 language available.");
-    expect(tn("settings.language.available", 2)).toBe("2 languages available.");
-    expect(tn("settings.language.available", 0)).toBe("0 languages available.");
+    expect(tn("space.overview.paneCount", 1)).toBe("1 pane");
+    expect(tn("space.overview.paneCount", 2)).toBe("2 panes");
+    expect(tn("space.overview.paneCount", 0)).toBe("0 panes");
   });
 
   it("picks one/other for German once its bundle has landed", async () => {
     setLocale("de");
     await whenLocaleReady("de");
-    expect(tn("settings.language.available", 1)).toBe("1 Sprache verfügbar.");
-    expect(tn("settings.language.available", 2)).toBe("2 Sprachen verfügbar.");
+    expect(tn("space.overview.paneCount", 1)).toBe("1 Pane");
+    expect(tn("space.overview.paneCount", 2)).toBe("2 Panes");
   });
 
   it("uses one category for Japanese, where 1 is not special", async () => {
     setLocale("ja");
     await whenLocaleReady("ja");
-    expect(tn("settings.language.available", 1)).toBe("1 言語を利用できます。");
-    expect(tn("settings.language.available", 2)).toBe("2 言語を利用できます。");
+    expect(tn("space.overview.paneCount", 1)).toBe("ペイン1件");
+    expect(tn("space.overview.paneCount", 2)).toBe("ペイン2件");
   });
 
   it("lets the explicit count win over a stray vars.count", () => {
-    expect(tn("settings.language.available", 2, { count: 99 })).toBe("2 languages available.");
+    expect(tn("space.overview.paneCount", 2, { count: 99 })).toBe("2 panes");
   });
 });
 
@@ -90,7 +92,7 @@ describe("the loading gap", () => {
     expect(t("settings.language.title")).toBe("Language");
     // English strings must come with English grammar while the gap is open, or a de-selected user
     // briefly reads "1 languages available."
-    expect(tn("settings.language.available", 1)).toBe("1 language available.");
+    expect(tn("space.overview.paneCount", 1)).toBe("1 pane");
 
     await whenLocaleReady("de");
     expect(t("settings.language.title")).toBe("Sprache");

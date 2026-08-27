@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CollieHome } from "./collie-home";
+import { collieMark, markAccent, markIsLive } from "@/test/collie-mark";
 
 describe("CollieHome", () => {
   it("returns home when tapped", async () => {
@@ -11,32 +12,34 @@ describe("CollieHome", () => {
     expect(onHome).toHaveBeenCalledOnce();
   });
 
-  it("shows the static app icon at rest and the galloping sprite once troubled", () => {
+  it("keeps ONE mark in every state and blooms it — turning AND in colour — once troubled", () => {
+    // The mark is never swapped for a second picture, so nothing can resize or pop as the connection
+    // settles. Rest = still, muted chroma; sustained trouble = the orbit turning at full chroma,
+    // same element. The colour half matters here specifically: `prefers-reduced-motion` stops the
+    // orbit, and colour is what still says "reconnecting" to that reader.
     const { container, rerender } = render(<CollieHome trouble={false} />);
-    // Rest = the original app icon, no gallop sprite mounted.
-    expect(container.querySelector(".dog-gallop")).toBeNull();
-    expect(container.querySelector("img")).toHaveAttribute("src", "/favicon.svg");
+    expect(container.querySelectorAll("svg")).toHaveLength(1);
+    expect(markIsLive(container)).toBe(false);
+    const resting = markAccent(container);
     rerender(<CollieHome trouble />);
-    // Sustained trouble = the animated sprite replaces the static icon.
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
+    expect(container.querySelectorAll("svg")).toHaveLength(1);
+    expect(markIsLive(container)).toBe(true);
+    expect(markAccent(container)).not.toBe(resting);
   });
 
-  it("rests on the muted static icon (never a frozen sprite) once the outage escalates to lost", () => {
-    // Galloping = "still trying"; once the reconnect gives up (lost) the sprite is gone entirely. It is
-    // replaced by the STATIC app icon, muted — not a paused gallop frame, whose full-stretch mid-stride
-    // pose looked "stuck mid-run" (the exact complaint).
+  it("drops the bloom and stills the mark, muted, once the outage escalates to lost", () => {
+    // Blooming = "still trying"; once the reconnect gives up (lost) the orbit stops turning and the
+    // mark is muted. Still the same element — no swap, no frozen sprite frame.
     const { container } = render(<CollieHome trouble lost />);
-    expect(container.querySelector(".dog-gallop")).toBeNull();
-    const icon = container.querySelector("img");
-    expect(icon).toHaveAttribute("src", "/favicon.svg");
-    expect(icon?.className).toMatch(/grayscale/);
+    expect(markIsLive(container)).toBe(false);
+    expect(collieMark(container)?.getAttribute("class")).toMatch(/grayscale/);
     expect(screen.getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
   });
 
-  it("gallops while troubled but NOT yet lost", () => {
+  it("blooms while troubled but NOT yet lost", () => {
     const { container } = render(<CollieHome trouble lost={false} />);
-    expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
+    expect(markIsLive(container)).toBe(true);
+    expect(collieMark(container)?.getAttribute("class") ?? "").not.toMatch(/grayscale/);
     expect(screen.getByRole("button", { name: "Collie home — reconnecting" })).toBeInTheDocument();
   });
 

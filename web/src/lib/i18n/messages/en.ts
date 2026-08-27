@@ -14,11 +14,7 @@
 
 export const en = {
   "settings.language.title": "Language",
-  "settings.language.description":
-    "Choose the language Collie speaks. The terminal mirror is never translated — it shows what the agent printed.",
-  "settings.language.active": "Collie is showing {language}.",
-  "settings.language.available.one": "{count} language available.",
-  "settings.language.available.other": "{count} languages available.",
+  "settings.language.description": "The terminal mirror is never translated.",
 
   // --- settings (page chrome) ---
   "settings.title": "Settings",
@@ -500,7 +496,6 @@ export const en = {
   "pack.error.description": "The bridge did not answer. Collie tries again on the next poll.",
 
   // --- error (boot splash, route-level error recovery) ---
-  "error.boot.loadingAria": "Loading",
   "error.boot.connecting": "Connecting to the herd…",
   "error.boot.title": "Not connected",
   "error.boot.body": "Can’t reach Collie — check your connection to the host, then try again.",
@@ -511,7 +506,6 @@ export const en = {
 
   // --- idle (the idle-pause cover) ---
   "idle.dialogAria": "Collie paused",
-  "idle.catchingUp.label": "Catching up",
   "idle.catchingUp.title": "Catching up",
   "idle.catchingUp.body": "Fetching the herd's current state.",
   "idle.paused.title": "Paused",
@@ -551,7 +545,6 @@ export const en = {
   "time.compact.now": "now",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.age": "synced {age} ago",
   "sync.pull.hint": "Pull to refresh",
   "sync.pull.release": "Release to refresh",
   "sync.pull.busy": "Refreshing…",

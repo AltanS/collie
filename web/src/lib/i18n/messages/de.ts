@@ -5,11 +5,7 @@ import type { Dictionary } from "./en";
 
 export const de: Dictionary = {
   "settings.language.title": "Sprache",
-  "settings.language.description":
-    "Die Sprache wählen, die Collie spricht. Der Terminal-Spiegel wird nie übersetzt — er zeigt, was der Agent ausgegeben hat.",
-  "settings.language.active": "Collie zeigt {language} an.",
-  "settings.language.available.one": "{count} Sprache verfügbar.",
-  "settings.language.available.other": "{count} Sprachen verfügbar.",
+  "settings.language.description": "Der Terminal-Spiegel wird nie übersetzt.",
 
   // --- settings (page chrome) ---
   "settings.title": "Einstellungen",
@@ -495,7 +491,6 @@ export const de: Dictionary = {
     "Die Bridge hat nicht geantwortet. Collie versucht es beim nächsten Abruf erneut.",
 
   // --- error (boot splash, route-level error recovery) ---
-  "error.boot.loadingAria": "Lädt",
   "error.boot.connecting": "Verbindet mit der Herde…",
   "error.boot.title": "Nicht verbunden",
   "error.boot.body": "Collie nicht erreichbar — Verbindung zum Host prüfen, dann erneut versuchen.",
@@ -506,7 +501,6 @@ export const de: Dictionary = {
 
   // --- idle (the idle-pause cover) ---
   "idle.dialogAria": "Collie pausiert",
-  "idle.catchingUp.label": "Holt auf",
   "idle.catchingUp.title": "Holt auf",
   "idle.catchingUp.body": "Lädt den aktuellen Stand der Herde.",
   "idle.paused.title": "Pausiert",
@@ -546,7 +540,6 @@ export const de: Dictionary = {
   "time.compact.now": "jetzt",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.age": "vor {age} abgeglichen",
   "sync.pull.hint": "Zum Aktualisieren ziehen",
   "sync.pull.release": "Loslassen zum Aktualisieren",
   "sync.pull.busy": "Wird aktualisiert…",

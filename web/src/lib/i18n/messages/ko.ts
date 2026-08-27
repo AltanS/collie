@@ -5,11 +5,7 @@ import type { Dictionary } from "./en";
 
 export const ko: Dictionary = {
   "settings.language.title": "언어",
-  "settings.language.description":
-    "Collie가 사용할 언어를 고르세요. 터미널 화면은 번역하지 않아요 — 에이전트가 출력한 그대로 보여줘요.",
-  "settings.language.active": "Collie를 {language}(으)로 표시하고 있어요.",
-  "settings.language.available.one": "{count}개 언어를 사용할 수 있어요.",
-  "settings.language.available.other": "{count}개 언어를 사용할 수 있어요.",
+  "settings.language.description": "터미널 화면은 번역하지 않아요.",
 
   // --- settings (page chrome) ---
   "settings.title": "설정",
@@ -485,7 +481,6 @@ export const ko: Dictionary = {
   "pack.error.description": "브리지가 응답하지 않았어요. 다음 폴링에서 다시 시도해요.",
 
   // --- error (boot splash, route-level error recovery) ---
-  "error.boot.loadingAria": "불러오는 중",
   "error.boot.connecting": "무리에 연결하는 중…",
   "error.boot.title": "연결 끊김",
   "error.boot.body": "Collie에 연결할 수 없어요 — 호스트 연결을 확인한 뒤 다시 시도하세요.",
@@ -496,7 +491,6 @@ export const ko: Dictionary = {
 
   // --- idle (the idle-pause cover) ---
   "idle.dialogAria": "Collie 일시정지됨",
-  "idle.catchingUp.label": "따라잡는 중",
   "idle.catchingUp.title": "따라잡는 중",
   "idle.catchingUp.body": "무리의 현재 상태를 불러오는 중이에요.",
   "idle.paused.title": "일시정지됨",
@@ -535,7 +529,6 @@ export const ko: Dictionary = {
   "time.compact.now": "방금",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.age": "{age} 전에 동기화됨",
   "sync.pull.hint": "당겨서 새로 고침",
   "sync.pull.release": "놓으면 새로 고침",
   "sync.pull.busy": "새로 고치는 중…",

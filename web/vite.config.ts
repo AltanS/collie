@@ -33,6 +33,33 @@ if (wildcardDevHost) {
 }
 const allowedHosts = wildcardDevHost ? true : devHosts.length > 0 ? devHosts : undefined;
 
+// `bun run playground` (COLLIE_PLAYGROUND=1) reuses this same Vite dev server on its own port
+// (5199), but it must never resolve a real Collie instance: no root app, no bridge. This plugin
+// only exists under that flag — normal `bun run dev` keeps the proxy above untouched — and it does
+// two things: bounce `/` and `/index.html` to `/playground.html`, and answer every `/api/*` request
+// itself (404, before the proxy above ever sees it) so nothing reaches a bridge.
+const playgroundOnlyPlugin: Plugin | null =
+  process.env.COLLIE_PLAYGROUND === "1"
+    ? {
+        name: "collie-playground-only",
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url === "/" || req.url === "/index.html") {
+              res.writeHead(302, { Location: "/playground.html" });
+              res.end();
+              return;
+            }
+            if (req.url?.startsWith("/api/")) {
+              res.writeHead(404, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "playground has no bridge" }));
+              return;
+            }
+            next();
+          });
+        },
+      }
+    : null;
+
 // Build stamp. A unique id is baked into the bundle (shown in the UI footer via __BUILD_INFO__) AND
 // emitted to dist/build-info.json, which the bridge reads for the `X-Collie-Build` header and
 // `/api/config`. Comparing the two tells you instantly whether a browser is running a stale,
@@ -144,9 +171,24 @@ export default defineConfig({
         theme_color: "#0a0a0a",
         icons: [
           // The 192/512 are safe-zone-padded, so they serve as both the regular ("any") install
-          // icon and the Android adaptive ("maskable") icon. (favicon.svg is intentionally NOT a
-          // manifest icon: it's a low-res raster-in-svg for the browser tab only — declaring it
-          // sizes:"any" would let an installer pick it and render the install icon blurry.)
+          // icon and the Android adaptive ("maskable") icon, and they paint their own paper —
+          // an app icon that lets the home screen through is a bug. (favicon.svg is intentionally
+          // NOT a manifest icon: it is a different drawing — the head alone, on no background,
+          // legible at 16px — so declaring it sizes:"any" would let an installer pick the wrong
+          // artwork for the install icon.)
+          //
+          // THE TILES ARE THE DARK POLARITY BECAUSE THE MANIFEST IS DARK. Android paints the
+          // install splash as this icon centred on `background_color`, and a manifest colour is a
+          // single value — it cannot follow the OS the way index.html's paired `theme-color` metas
+          // and index.css's `light-dark()` do. `background_color` and `theme_color` were already
+          // both #0a0a0a, so the light tile that shipped first put a near-white square on black:
+          // the one combination that is wrong under EVERY theme. Making the tile dark makes all
+          // three manifest values agree, and it is the choice that costs least — flipping
+          // `background_color` to the light paper instead would leave `theme_color` dark, i.e. a
+          // light splash under dark system bars, and it would still be one fixed polarity.
+          // The tile's own paper is #0f1113 against a #0a0a0a splash: a hair lighter, invisible in
+          // practice, and `background_color` is left alone so the installed chrome keeps one value.
+          // If these are ever re-copied, take the `collie-tile-dark-*` files, not the light ones.
           { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
           { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
         ],
@@ -163,6 +205,7 @@ export default defineConfig({
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
       devOptions: { enabled: false },
     }),
+    playgroundOnlyPlugin,
   ],
   resolve: {
     alias: { "@": resolve(import.meta.dirname, "src") },

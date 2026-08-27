@@ -19,10 +19,13 @@ interface DogGallopProps {
 // (`running`); `prefers-reduced-motion` pins it to frame 0 (see index.css). `--dog-size` drives both
 // the box and the sprite scale, so one length keeps them in lockstep at any placement.
 //
-// NOTE: the `running={false}` rest frame is frame 0 of the gallop strip — a full-stretch mid-stride
-// pose that reads as "frozen mid-run", not "at rest". So callers must NOT use this as a rest state:
-// the app's rest state is the STATIC app icon (favicon.svg), and this component is only ever mounted
-// with `running`. The `running` default stays false only to preserve the reduced-motion contract.
+// NOTE: NOTHING IN THE APP MOUNTS THIS ANY MORE. Every loading state — the header, the boot splash,
+// the idle cover — is <CollieMark/> (components/collie-mark.tsx) at its bloom, so the app shows one
+// animal in one drawing. The sprite is kept because it is still the mascot elsewhere; it is not a
+// second activity indicator to reach for. If you do mount it, mount it with `running`: the
+// `running={false}` rest frame is frame 0 of the gallop strip — a full-stretch mid-stride pose that
+// reads as "frozen mid-run", not "at rest" — so this is never a rest state. The `running` default
+// stays false only to preserve the reduced-motion contract.
 export function DogGallop({ running = false, size = "1.5rem", label, className }: DogGallopProps) {
   return (
     <span

@@ -4,11 +4,7 @@ import type { Dictionary } from "./en";
 
 export const ja: Dictionary = {
   "settings.language.title": "言語",
-  "settings.language.description":
-    "Collie が使う言語を選びます。ターミナルの表示は翻訳されません。エージェントが出力したままを表示します。",
-  "settings.language.active": "Collie を{language}で表示しています。",
-  "settings.language.available.one": "{count} 言語を利用できます。",
-  "settings.language.available.other": "{count} 言語を利用できます。",
+  "settings.language.description": "ターミナルの表示は翻訳されません。",
 
   // --- settings (page chrome) ---
   "settings.title": "設定",
@@ -487,7 +483,6 @@ export const ja: Dictionary = {
   "pack.error.description": "ブリッジが応答しませんでした。次のポーリングで再試行します。",
 
   // --- error (boot splash, route-level error recovery) ---
-  "error.boot.loadingAria": "読み込み中",
   "error.boot.connecting": "群れに接続中…",
   "error.boot.title": "未接続",
   "error.boot.body": "Collieに接続できません — ホストへの接続を確認してから、もう一度お試しください。",
@@ -498,7 +493,6 @@ export const ja: Dictionary = {
 
   // --- idle (the idle-pause cover) ---
   "idle.dialogAria": "Collie一時停止中",
-  "idle.catchingUp.label": "最新情報を取得中",
   "idle.catchingUp.title": "最新情報を取得中",
   "idle.catchingUp.body": "群れの現在の状態を読み込んでいます。",
   "idle.paused.title": "一時停止中",
@@ -537,7 +531,6 @@ export const ja: Dictionary = {
   "time.compact.now": "今",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.age": "{age}前に同期しました",
   "sync.pull.hint": "引いて更新",
   "sync.pull.release": "離すと更新します",
   "sync.pull.busy": "更新しています…",
