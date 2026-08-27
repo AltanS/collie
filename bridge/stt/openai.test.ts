@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { OpenAiSttSettings } from "./config.ts";
+import { DEFAULT_STT_MODEL, type OpenAiSttSettings } from "./config.ts";
 import { MAX_PROVIDER_RESPONSE_BYTES, createOpenAiSttProvider, type FetchFn } from "./openai.ts";
 import { SttError, type SttAudio, type SttResult } from "./provider.ts";
 
@@ -11,7 +11,7 @@ import { SttError, type SttAudio, type SttResult } from "./provider.ts";
 const SETTINGS: OpenAiSttSettings = {
   provider: "openai-compatible",
   baseUrl: "http://127.0.0.1:9000/v1",
-  model: "gpt-4o-transcribe",
+  model: DEFAULT_STT_MODEL,
 };
 
 const AUDIO: SttAudio = {
@@ -41,6 +41,26 @@ async function kindOf(run: () => Promise<SttResult>): Promise<string> {
   return "did-not-throw";
 }
 
+describe("openai-compatible provider — the spoken language", () => {
+  test("no configured language puts NO language part on the wire — the model detects it", async () => {
+    const { fetchFn, calls } = spyFetch(() => Response.json({ text: "hallo" }));
+    const provider = createOpenAiSttProvider(SETTINGS, { fetch: fetchFn });
+
+    await provider.transcribe(AUDIO);
+    // SAFETY: the provider builds a FormData unconditionally; the happy-path case above pins that.
+    expect((calls[0]!.init.body as FormData).has("language")).toBe(false);
+  });
+
+  test("a configured language rides along as `language`, beside the model", async () => {
+    const { fetchFn, calls } = spyFetch(() => Response.json({ text: "hallo" }));
+    const provider = createOpenAiSttProvider({ ...SETTINGS, language: "de" }, { fetch: fetchFn });
+
+    await provider.transcribe(AUDIO);
+    // SAFETY: as above.
+    expect((calls[0]!.init.body as FormData).get("language")).toBe("de");
+  });
+});
+
 describe("openai-compatible provider — the happy path", () => {
   test("posts multipart audio to <baseUrl>/audio/transcriptions and returns the text", async () => {
     const { fetchFn, calls } = spyFetch(() => Response.json({ text: "hello herd" }));
@@ -55,7 +75,7 @@ describe("openai-compatible provider — the happy path", () => {
     expect(form).toBeInstanceOf(FormData);
     // SAFETY: asserted to be a FormData on the line above — the provider builds one unconditionally.
     const fields = form as FormData;
-    expect(fields.get("model")).toBe("gpt-4o-transcribe");
+    expect(fields.get("model")).toBe(DEFAULT_STT_MODEL);
     expect(fields.get("response_format")).toBe("json");
     const file = fields.get("file");
     expect(file).toBeInstanceOf(File);

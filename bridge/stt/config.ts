@@ -26,8 +26,19 @@ import { jsonRecord, jsonStringField } from "./json.ts";
 /** The file under the state dir holding the speech-to-text settings. */
 export const STT_FILENAME = "stt.json";
 
-/** Collie's default model once an OpenAI-compatible endpoint is configured. */
-export const DEFAULT_STT_MODEL = "gpt-4o-transcribe";
+/**
+ * Collie's default model once an OpenAI-compatible endpoint is configured.
+ *
+ * It is a DEFAULT, not a pin: `collie stt setup` writes the model into `stt.json` only when the
+ * operator named one, so an install that took the default follows this constant when it moves. That
+ * is deliberate — it is how a bridge update carries a better model to somebody who never expressed
+ * a preference — and it is why the value here has to stay one an arbitrary OpenAI-compatible
+ * endpoint might not know. It is only ever reached by an endpoint the operator chose.
+ *
+ * `gpt-4o-transcribe` held this name until 2026-08-28. Its successor is cheaper, scores better, and
+ * takes the same request, so there was nothing to weigh.
+ */
+export const DEFAULT_STT_MODEL = "gpt-transcribe";
 
 /** The provider names this bridge can build. */
 export const STT_PROVIDERS = ["openai-compatible", "codex"] as const;
@@ -65,6 +76,15 @@ export interface OpenAiSttSettings {
    * sends no `Authorization` header rather than an empty one.
    */
   apiKey?: string;
+  /**
+   * The language the operator speaks, as ISO-639-1 (`en`, `de`, `tr`), or ABSENT for auto-detect.
+   *
+   * Absent is the default and stays the default: a transcription model detects the language itself,
+   * and somebody who mixes two languages in one sentence needs it to keep doing that. It is worth
+   * setting only for the failure this field exists for — a SHORT clip in an accented voice, where
+   * there is too little audio to detect from and the model answers in the wrong language entirely.
+   */
+  language?: string;
 }
 
 /**
@@ -94,6 +114,7 @@ export const STT_ENV_KEYS = {
   url: "COLLIE_STT_URL",
   model: "COLLIE_STT_MODEL",
   key: "COLLIE_STT_KEY",
+  language: "COLLIE_STT_LANG",
   codexBin: "COLLIE_CODEX_BIN",
   wireIdentity: "COLLIE_STT_WIRE_IDENTITY",
 } as const;
@@ -109,6 +130,7 @@ interface RawSettings {
   baseUrl?: string;
   model?: string;
   apiKey?: string;
+  language?: string;
   codexBin?: string;
   wireIdentity?: string;
 }
@@ -134,6 +156,7 @@ export function coerceSttFile(raw: JsonValue | undefined): RawSettings {
     baseUrl: optionalString(o.baseUrl),
     model: optionalString(o.model),
     apiKey: optionalString(o.apiKey),
+    language: optionalString(o.language),
     codexBin: optionalString(o.codexBin),
     wireIdentity: optionalString(o.wireIdentity),
   };
@@ -146,6 +169,7 @@ export function sttEnvSettings(env: Record<string, string | undefined>): RawSett
     baseUrl: optionalString(env[STT_ENV_KEYS.url]),
     model: optionalString(env[STT_ENV_KEYS.model]),
     apiKey: optionalString(env[STT_ENV_KEYS.key]),
+    language: optionalString(env[STT_ENV_KEYS.language]),
     codexBin: optionalString(env[STT_ENV_KEYS.codexBin]),
     wireIdentity: optionalString(env[STT_ENV_KEYS.wireIdentity]),
   };
@@ -170,6 +194,20 @@ function canonicalBase(raw: string): string | null {
 }
 
 /**
+ * A spoken language as the transcription APIs want it — ISO-639-1, two letters, lower case — or null
+ * when the operator typed something that is not one.
+ *
+ * A regional tag is accepted and NARROWED (`en-GB` → `en`, `pt_BR` → `pt`): a phone's own locale is
+ * the obvious thing for an operator to copy in, and the endpoint takes the base language only. What
+ * is refused is a language NAME (`english`) or a three-letter code — sending either would be a
+ * silently ignored field, which is worse than being told at `collie stt setup`.
+ */
+export function canonicalLanguage(raw: string): string | null {
+  const base = /^([A-Za-z]{2})(?:[-_][A-Za-z0-9]{2,8})?$/.exec(raw.trim())?.[1];
+  return base === undefined ? null : base.toLowerCase();
+}
+
+/**
  * The settings this bridge will actually run with, or null when speech-to-text is off.
  *
  * Off is the default and is never an error: an operator who configured nothing gets `null` in
@@ -187,6 +225,7 @@ export function resolveSttSettings(
   const baseUrl = env.baseUrl ?? file.baseUrl;
   const model = env.model ?? file.model;
   const apiKey = env.apiKey ?? file.apiKey;
+  const language = env.language ?? file.language;
   const codexBin = env.codexBin ?? file.codexBin;
   const wireIdentity = env.wireIdentity ?? file.wireIdentity;
 
@@ -196,6 +235,7 @@ export function resolveSttSettings(
     baseUrl === undefined &&
     model === undefined &&
     apiKey === undefined &&
+    language === undefined &&
     codexBin === undefined &&
     wireIdentity === undefined
   ) {
@@ -233,6 +273,21 @@ export function resolveSttSettings(
   // Assigned, never spread in as `undefined`: "no credential" is a mode, and it must be the ABSENCE
   // of the field rather than a present-and-empty one the provider could send as a bearer token.
   if (apiKey !== undefined) settings.apiKey = apiKey;
+  // Refused rather than dropped, for the same reason a bad base URL is: the operator set this field
+  // to stop the model guessing, and a value the endpoint would ignore leaves them with the exact
+  // wrong-language transcripts they configured it to end — discovered only after they have spoken.
+  if (language !== undefined) {
+    const code = canonicalLanguage(language);
+    if (code === null) {
+      warn(
+        `speech-to-text is off: "${language}" is not an ISO-639-1 language code ` +
+          `(${STT_ENV_KEYS.language} / "language") — use two letters, e.g. en, de, tr, or leave it ` +
+          "unset for auto-detect",
+      );
+      return null;
+    }
+    settings.language = code;
+  }
   return settings;
 }
 

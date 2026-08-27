@@ -65,6 +65,10 @@ export function createOpenAiSttProvider(
       form.append("file", new File([input.audio], input.filename, { type: input.mimeType }));
       form.append("model", settings.model);
       form.append("response_format", "json");
+      // Sent only when the operator named one. An ABSENT field is auto-detect, which is the right
+      // default for somebody who mixes two languages in a sentence; a present one is the fix for the
+      // opposite complaint — a short clip in an accented voice coming back in a language nobody spoke.
+      if (settings.language !== undefined) form.append("language", settings.language);
 
       const controller = new AbortController();
       let timedOut = false;
