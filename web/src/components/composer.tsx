@@ -387,6 +387,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onTranscript: acceptTranscript,
     onError: (message) => setStatus(message, "error"),
   });
+  // Whether the round button at the end of the row is the microphone rather than Send. True only on
+  // an EMPTY box, which is the one state where Send can do nothing anyway; the first character typed
+  // hands the button straight back. `direct.active` keeps it, because there the same button is the
+  // "stop typing into the terminal" control and that must not be displaceable.
+  const micIsPrimary = stt !== null && !direct.active && input.trim() === "";
 
   /**
    * What happens to a finished transcript.
@@ -1156,56 +1161,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // matters: a textarea is inline-level by default, so the wrapper inherits a few px of
               // baseline gap beneath it and the absolutely-positioned button hangs past the field's
               // bottom edge.
-              // pr-20 with the microphone beside it (two 36px buttons + the gaps), pr-11 without —
-              // reserving the wider strip unconditionally would eat a thumb's worth of the field on
-              // every collie that ships no microphone.
-              stt !== null ? "block pr-20" : "block pr-11",
+              "block pr-11",
               direct.active &&
                 "border-primary focus-visible:border-primary focus-visible:ring-primary/30",
             )}
             disabled={locked}
             rows={1}
           />
-            {/* The microphone sits INSIDE the field beside the attach control, not beside Send.
-                Both are "add something to this message" — the message is still composed, reviewed and
-                sent by the operator — whereas Send is the act itself, and a split primary action is
-                exactly the mistake the Type toggle was moved out of (see the Controls row above).
-                Same size and chrome as its neighbour, one slot to the left. Rendered only when a
-                provider exists AND this browser can record; a provider that cannot serve right now
-                renders DISABLED, wearing the bridge's own reason. */}
-            {stt !== null && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "absolute bottom-1 right-10 size-9 rounded-full",
-                  recorder.busy ? "text-destructive" : "text-muted-foreground",
-                )}
-                disabled={!stt.available || locked || direct.active || sending || recorder.phase === "transcribing"}
-                aria-pressed={recorder.busy}
-                // The bridge's own words when it cannot serve — the operator's next move is on the
-                // host, so the button says what is wrong rather than just refusing.
-                aria-label={
-                  !stt.available
-                    ? (stt.reason ?? translate("composer.mic.unavailable"))
-                    : recorder.phase === "recording"
-                      ? translate("composer.mic.stopAria")
-                      : translate("composer.mic.recordAria")
-                }
-                title={stt.available ? undefined : stt.reason}
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => (recorder.phase === "recording" ? recorder.stopAndSend() : recorder.start())}
-              >
-                {recorder.phase === "transcribing" ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : recorder.phase === "recording" ? (
-                  <Square className="size-4 fill-current" />
-                ) : (
-                  <Mic className="size-4" />
-                )}
-              </Button>
-            )}
             <Button
               type="button"
               variant="ghost"
@@ -1248,6 +1210,42 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-label={translate("composer.send.reallySend")}
             >
               {translate("composer.send.reallySend")}
+            </Button>
+          ) : micIsPrimary ? (
+            // THE MICROPHONE IS THE PRIMARY ACTION WHILE THE BOX IS EMPTY, and becomes Send the
+            // moment there is anything to send. It used to be a second, permanent control tucked
+            // inside the field beside the attach button — deliberately, to avoid a split primary
+            // action. The v1 beta said that reads the workflow wrong: you either dictate a message
+            // or you type one, and nobody dictates into the middle of a draft. So the field paid
+            // 36px of its width, on every render, for a control that is only ever wanted on an empty
+            // box. An empty box has no Send either (`send` refuses a blank value), so this branch
+            // takes over a button that could do nothing anyway — it replaces no capability.
+            <Button
+              size="icon"
+              variant={recorder.busy ? "destructive" : "default"}
+              className="size-11 shrink-0 rounded-full"
+              disabled={!stt.available || locked || sending || recorder.phase === "transcribing"}
+              aria-pressed={recorder.busy}
+              // The bridge's own words when it cannot serve — the operator's next move is on the
+              // host, so the button says what is wrong rather than just refusing.
+              aria-label={
+                !stt.available
+                  ? (stt.reason ?? translate("composer.mic.unavailable"))
+                  : recorder.phase === "recording"
+                    ? translate("composer.mic.stopAria")
+                    : translate("composer.mic.recordAria")
+              }
+              title={stt.available ? undefined : stt.reason}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => (recorder.phase === "recording" ? recorder.stopAndSend() : recorder.start())}
+            >
+              {recorder.phase === "transcribing" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : recorder.phase === "recording" ? (
+                <Square className="size-4 fill-current" />
+              ) : (
+                <Mic className="size-4" />
+              )}
             </Button>
           ) : (
             <Button

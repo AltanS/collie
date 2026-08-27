@@ -190,6 +190,65 @@ describe("Composer — the record button is drawn only when there is a microphon
   });
 });
 
+// The primary button is the microphone while the box is empty and Send once there is anything to
+// send. It used to be a permanent second control inside the field; the v1 beta reported that as
+// width spent on a control only ever wanted on an empty box.
+describe("Composer — the microphone IS the primary button, until you type", () => {
+  it("is the only round button on an empty box, and the field keeps its full width", async () => {
+    let reads = 0;
+    server.use(configHandler(CONFIG_WITH_STT, () => (reads += 1)));
+    renderComposer();
+    await waitFor(() => expect(reads).toBe(1));
+
+    expect(await screen.findByRole("button", { name: /record a voice message/i })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /^send$/i })).toBeNull();
+    // Same padding as a collie with no microphone at all — the field pays nothing for the feature.
+    expect(screen.getByPlaceholderText(/type a reply/i).className).toContain("pr-11");
+  });
+
+  it("becomes Send on the first character, and the microphone on the last one deleted", async () => {
+    const user = userEvent.setup();
+    server.use(configHandler(CONFIG_WITH_STT));
+    renderComposer();
+    const box = await screen.findByPlaceholderText(/type a reply/i);
+    await screen.findByRole("button", { name: /record a voice message/i });
+
+    await user.type(box, "x");
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /record a voice message/i })).toBeNull(),
+    );
+    expect(screen.getByRole("button", { name: /send/i })).toBeInTheDocument();
+
+    await user.clear(box);
+    expect(await screen.findByRole("button", { name: /record a voice message/i })).toBeEnabled();
+  });
+
+  it("whitespace alone is not text — a box holding only spaces still offers the microphone", async () => {
+    const user = userEvent.setup();
+    server.use(configHandler(CONFIG_WITH_STT));
+    renderComposer();
+    const box = await screen.findByPlaceholderText(/type a reply/i);
+    await screen.findByRole("button", { name: /record a voice message/i });
+
+    await user.type(box, "   ");
+    // `send` refuses a blank value, so Send here could do nothing anyway.
+    expect(await screen.findByRole("button", { name: /record a voice message/i })).toBeEnabled();
+  });
+
+  it("stays the microphone for the whole clip, so one button starts and stops it", async () => {
+    const user = userEvent.setup();
+    server.use(configHandler(CONFIG_WITH_STT), sttHandler("done"));
+    renderComposer();
+    const recorder = await startRecording(user);
+    expect(await screen.findByRole("button", { name: /stop recording/i })).toBeInTheDocument();
+
+    act(() => recorder.finish());
+    // The transcript arrives, the box is no longer empty, and the button hands itself back to Send.
+    await waitFor(() => expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("done"));
+    expect(screen.getByRole("button", { name: /send/i })).toBeInTheDocument();
+  });
+});
+
 describe("Composer — a finished clip", () => {
   it("lands in the draft at the caret", async () => {
     const user = userEvent.setup();
@@ -199,15 +258,17 @@ describe("Composer — a finished clip", () => {
       sttHandler("there", (contentType) => (posted = contentType)),
     );
     renderComposer();
+    // The microphone is the primary button only while the box is EMPTY, so recording starts first
+    // and the typing happens DURING the clip — which is the one way a transcript can still meet a
+    // non-empty draft, and the reason the caret insert below is not dead code.
+    const recorder = await startRecording(user);
+    expect(await screen.findByText(/recording/i)).toBeInTheDocument();
     const box = screen.getByPlaceholderText(/type a reply/i);
     await user.type(box, "hello world");
     // Caret between the two words — dictating a clause into the middle of a sentence is the point.
     act(() => {
       if (box instanceof HTMLTextAreaElement) box.setSelectionRange(5, 5);
     });
-
-    const recorder = await startRecording(user);
-    expect(await screen.findByText(/recording/i)).toBeInTheDocument();
     act(() => recorder.finish());
 
     await waitFor(() => expect(box).toHaveValue("hello there world"));
@@ -271,10 +332,10 @@ describe("Composer — hands-free", () => {
       replyHandler(() => (replies += 1)),
     );
     renderComposer();
+    // Typed DURING the clip — see the caret case above for why that is the only way here.
+    const recorder = await startRecording(user);
     const box = screen.getByPlaceholderText(/type a reply/i);
     await user.type(box, "typed by hand");
-
-    const recorder = await startRecording(user);
     act(() => recorder.finish());
 
     // Merging dictated words onto typed ones and sending the result would send a sentence nobody
