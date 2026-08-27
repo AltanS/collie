@@ -103,6 +103,98 @@ describe("stt settings — the file", () => {
   });
 });
 
+describe("stt settings — the spoken language", () => {
+  test("no language at all is auto-detect: the field is ABSENT, not empty", () => {
+    const { warn, lines } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ baseUrl: "http://127.0.0.1:9000/v1" }),
+      sttEnvSettings(NO_ENV),
+      warn,
+    );
+
+    expect(settings).not.toBeNull();
+    expect("language" in settings!).toBe(false);
+    expect(lines).toEqual([]);
+  });
+
+  test("a two-letter code is kept, lower-cased", () => {
+    const { warn } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ baseUrl: "http://127.0.0.1:9000/v1", language: "EN" }),
+      sttEnvSettings(NO_ENV),
+      warn,
+    );
+
+    expect(openAi(settings).language).toBe("en");
+  });
+
+  test("a regional tag is narrowed to its base language, which is all the endpoint takes", () => {
+    const { warn } = collectWarnings();
+    for (const [written, sent] of [
+      ["en-GB", "en"],
+      ["pt_BR", "pt"],
+      ["de-DE", "de"],
+    ]) {
+      const settings = resolveSttSettings(
+        coerceSttFile({ baseUrl: "http://127.0.0.1:9000/v1", language: written }),
+        sttEnvSettings(NO_ENV),
+        warn,
+      );
+      expect(openAi(settings).language).toBe(sent!);
+    }
+  });
+
+  test("the environment overrides the file's language", () => {
+    const { warn } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ baseUrl: "http://127.0.0.1:9000/v1", language: "de" }),
+      sttEnvSettings({ COLLIE_STT_LANG: "tr" }),
+      warn,
+    );
+
+    expect(openAi(settings).language).toBe("tr");
+  });
+
+  test("a language alone configures the feature — it is not a field only a URL can unlock", () => {
+    const { warn, lines } = collectWarnings();
+    expect(
+      resolveSttSettings(coerceSttFile({ language: "en" }), sttEnvSettings(NO_ENV), warn),
+    ).toBeNull();
+    // Refused for the MISSING ENDPOINT, not ignored — the language was seen.
+    expect(lines.join(" ")).toContain("no endpoint configured");
+  });
+
+  test("a language that is not a code refuses, rather than being sent and ignored", () => {
+    for (const bad of ["english", "eng", "e", "en-", "12"]) {
+      const { warn, lines } = collectWarnings();
+      expect(
+        resolveSttSettings(
+          coerceSttFile({ baseUrl: "http://127.0.0.1:9000/v1", language: bad }),
+          sttEnvSettings(NO_ENV),
+          warn,
+        ),
+      ).toBeNull();
+      expect(lines.join(" ")).toContain("ISO-639-1");
+    }
+  });
+
+  test("the codex provider resolves with a language in the file, and never carries one", () => {
+    const { warn, lines } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ provider: "codex", language: "en" }),
+      sttEnvSettings(NO_ENV),
+      warn,
+    );
+
+    expect(settings).toEqual({
+      provider: "codex",
+      codexBin: DEFAULT_CODEX_BIN,
+      wireIdentity: "honest",
+    });
+    expect(lines).toEqual([]);
+  });
+});
+
 describe("stt settings — invalid shapes refuse loudly and stay off", () => {
   test("a non-http endpoint is refused, so a settings typo cannot become a local read", () => {
     const { warn, lines } = collectWarnings();

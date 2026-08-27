@@ -108,7 +108,8 @@ function liveEnvKeys(ctx: CliContext): string[] {
 
 const SETUP_USAGE = [
   "usage: collie stt setup [--provider openai-compatible|codex]",
-  "                        [--url <base>] [--model <name>] [--key <api-key>]   (openai-compatible)",
+  "                        [--url <base>] [--model <name>] [--key <api-key>]",
+  "                        [--lang <iso-639-1>]                                (openai-compatible)",
   "                        [--codex-bin <path>] [--accept-risk]                (codex)",
 ];
 
@@ -146,7 +147,13 @@ export async function cmdSttSetup(deps: SttDeps, args: readonly string[]): Promi
   // Storing the canonical form keeps the file and `stt status` agreeing with the request that will
   // actually be sent. Nothing else is copied back — a defaulted model must stay ABSENT in the file,
   // or this install would be pinned to today's default forever.
-  if (resolved.provider === "openai-compatible") document.baseUrl = resolved.baseUrl;
+  if (resolved.provider === "openai-compatible") {
+    document.baseUrl = resolved.baseUrl;
+    // The second rewritten field, for the same reason: the resolve lower-cases a language and
+    // narrows a regional tag (`en-GB` → `en`), and a file saying one thing while the wire carries
+    // another is exactly what `stt status` exists to prevent.
+    if (resolved.language !== undefined) document.language = resolved.language;
+  }
 
   // Written through a temporary name in the same directory and renamed into place: a `setup` that
   // died mid-write must leave the previous configuration intact, never a half-file the bridge would
@@ -249,8 +256,24 @@ async function setupOpenAi(
   });
   if (key === null) return null;
 
+  const language = await ask(deps, flags.lang, {
+    lead: [
+      "The language you speak, as a two-letter ISO-639-1 code — en, de, tr, ja.",
+      "LEAVE IT EMPTY to let the model detect it, which is what you want if you mix languages in one",
+      "sentence. Name one only if short clips keep coming back in a language you did not speak: a few",
+      "seconds of accented audio is too little for the model to detect from, and it guesses.",
+    ],
+    question: "spoken language [auto-detect]: ",
+    missing: "the spoken language — `collie stt setup --lang <iso-639-1>` (omit it for auto-detect)",
+    optional: true,
+  });
+  if (language === null) return null;
+
   const document: RawSettings = { provider: "openai-compatible", baseUrl: url };
   if (model !== "") document.model = model;
+  // Same rule as the key: absent means auto-detect, so an empty answer must leave the field OUT
+  // rather than write `""` — a present-and-empty value is a language the resolve would refuse.
+  if (language !== "") document.language = language;
   // Assigned, never present-and-empty: "no credential" must be the ABSENCE of the field, or the
   // provider would send `Bearer ` at an endpoint that asked for nothing.
   if (key !== "") document.apiKey = key;
@@ -471,7 +494,8 @@ function describeProvider(settings: SttSettings): string {
   if (settings.provider === "codex") {
     return `codex (${settings.codexBin}, identity ${settings.wireIdentity})`;
   }
-  return `openai-compatible (${settings.baseUrl}, model ${settings.model})`;
+  const language = settings.language === undefined ? "auto-detect" : settings.language;
+  return `openai-compatible (${settings.baseUrl}, model ${settings.model}, language ${language})`;
 }
 
 // ── status ───────────────────────────────────────────────────────────────────
@@ -519,10 +543,21 @@ export function cmdSttStatus(deps: SttDeps): number {
     row("binary", settings.codexBin, source("codexBin", "default"));
     row("endpoint", CODEX_TRANSCRIBE_URL, "fixed");
     row("identity", identityLabel(settings.wireIdentity), source("wireIdentity", "default"));
+    // Named only when it is set, and named as IGNORED. The codex endpoint takes one part, `file`,
+    // and no language; an operator who switched providers with the field still in place would
+    // otherwise be left believing it applies.
+    if (file.language !== undefined || env.language !== undefined) {
+      row("language", "ignored — this endpoint takes no language", source("language"));
+    }
   } else {
     row("endpoint", settings.baseUrl, source("baseUrl"));
     row("model", settings.model, source("model", "default"));
     row("api key", keyLabel(settings.apiKey), settings.apiKey === undefined ? "none" : source("apiKey"));
+    row(
+      "language",
+      settings.language ?? "auto-detect — the model decides",
+      settings.language === undefined ? "default" : source("language"),
+    );
   }
   deps.io.out(`  config    ${path}${deps.files.exists(path) ? "" : " (absent)"}`);
   return EXIT.OK;
