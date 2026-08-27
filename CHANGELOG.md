@@ -6,6 +6,22 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.30] - 2026-08-28
+
+### Added
+
+- `collie stt setup` takes an optional spoken language (`--lang`, `COLLIE_STT_LANG`) — blank stays auto-detect, which is what a mixed-language speaker needs (ef8bc1b)
+
+### Changed
+
+- The microphone IS the primary button while the message box is empty, and becomes Send at the first character; the field regains the width the in-field mic cost it (99e1498)
+- Default transcription model is now `gpt-transcribe` — OpenAI's successor to `gpt-4o-transcribe` on the same request, cheaper and more accurate (ef8bc1b)
+
+### Fixed
+
+- A voice upload no longer raises the "Reconnecting…" bar: while one is in flight nothing escalates and nothing polls (ab090a1)
+- The transcription deadline is derived from the clip size instead of a flat 60s, so a long recording survives a slow mobile uplink (ab090a1)
+
 ## [1.0.0-beta.29] - 2026-08-26
 
 ### Added
