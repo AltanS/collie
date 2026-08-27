@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.32] - 2026-08-28
+
+### Fixed
+
+- The resting mark's slow drift (48s/turn) now actually advances instead of snapping back to the
+  start of its turn every ~1.5s (56ee198)
+
 ## [1.0.0-beta.31] - 2026-08-28
 
 ### Added
