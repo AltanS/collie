@@ -15,6 +15,7 @@ import {
   sendKeys,
   sendReply,
   uploadImage,
+  sttTimeoutFor,
   withTimeout,
   XHR_HEADER,
   XHR_HEADER_VALUE,
@@ -207,6 +208,33 @@ describe("api client — request timeouts", () => {
         signal!.addEventListener("abort", () => reject(signal!.reason));
       }),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+});
+
+// A transcription deadline is a function of the clip, not a constant. The beta shipped a flat 60s,
+// which failed a five-minute recording on a mobile uplink while being far more slack than a
+// five-second one ever needs.
+describe("api client — the transcription deadline scales with the clip", () => {
+  it("a longer clip earns a longer deadline, always", () => {
+    const small = sttTimeoutFor(64 * 1024);
+    const large = sttTimeoutFor(8 * 1024 * 1024);
+    expect(large).toBeGreaterThan(small);
+  });
+
+  it("an 8 MiB clip — the largest Collie will record — is allowed a little under six minutes", () => {
+    const budget = sttTimeoutFor(8 * 1024 * 1024);
+    expect(budget).toBeGreaterThan(5 * 60_000);
+    expect(budget).toBeLessThan(6 * 60_000);
+  });
+
+  it("a short clip still keeps the whole fixed allowance the provider and the round trip need", () => {
+    // 80s of provider deadline + overhead, before a single byte of audio is counted.
+    expect(sttTimeoutFor(0)).toBe(80_000);
+    expect(sttTimeoutFor(20 * 1024)).toBeGreaterThan(80_000);
+  });
+
+  it("a nonsense size cannot produce a deadline shorter than the fixed allowance", () => {
+    expect(sttTimeoutFor(-1)).toBe(80_000);
   });
 });
 

@@ -3,7 +3,7 @@
 
 import { parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
-import { markLive } from "./connection-health";
+import { beginLongUpload, endLongUpload, markLive } from "./connection-health";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -99,6 +99,37 @@ const GET_TIMEOUT_MS = 10_000;
 const MUTATION_TIMEOUT_MS = 20_000;
 //   - Uploads carry a whole file over the phone's uplink — the most generous budget.
 const UPLOAD_TIMEOUT_MS = 60_000;
+
+// ── THE TRANSCRIPTION DEADLINE IS A FUNCTION OF THE CLIP, NOT A CONSTANT ────────────────────────
+//
+// A flat budget is dishonest for a body whose size is known and varies by two orders of magnitude.
+// A five-second reply is a few kilobytes; a five-minute one is megabytes, and on a phone's uplink
+// those are not the same request. The flat 60 s that shipped in the beta failed the long clip on a
+// mobile connection — reported by a beta tester — while being far more slack than the short one
+// needs.
+//
+// The floor this assumes is a SUSTAINED, PROGRESSING 256 kb/s uplink. It is not a promise of
+// completion: a slower path, or a tunnel that stops mid-body, still fails, and it should — the
+// operator is standing there waiting and would rather be told than watch a spinner. What it does
+// buy is that a clip Collie was willing to RECORD is a clip Collie is willing to WAIT for.
+const STT_UPLINK_BITS_PER_SECOND = 256_000;
+// The bridge's own provider deadline (bridge/stt/openai.ts STT_TIMEOUT_MS), which starts only once
+// the whole body has arrived — so it is added to the upload allowance rather than overlapping it.
+const STT_PROVIDER_BUDGET_MS = 60_000;
+// Request set-up, the bridge's own parse, and the response coming back down. Small and flat: none
+// of it scales with the audio.
+const STT_OVERHEAD_MS = 20_000;
+
+/**
+ * The whole-request deadline for one clip of `bytes`, in milliseconds.
+ *
+ * Exported for the unit test, and for anyone who wants to know what the ceiling actually is: at the
+ * 8 MiB maximum (MAX_STT_AUDIO_BYTES) it is a little under six minutes.
+ */
+export function sttTimeoutFor(bytes: number): number {
+  const upload = Math.ceil((Math.max(0, bytes) * 8 * 1000) / STT_UPLINK_BITS_PER_SECOND);
+  return upload + STT_PROVIDER_BUDGET_MS + STT_OVERHEAD_MS;
+}
 
 /**
  * Compose the caller's abort signal (a loader's `request.signal`, used to supersede a stale poll)
@@ -691,6 +722,10 @@ export type SttResult =
  * only a transport failure (offline, timeout) still throws.
  */
 export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<SttResult> {
+  // Announced to the connection-health store for the whole call, and released in the `finally`
+  // below on every path — success, refusal, abort. While it is in flight the app stops polling and
+  // stops escalating: the link is not failing, it is carrying this (see lib/connection-health).
+  beginLongUpload();
   return trackBusy(
     (async () => {
       const res = await fetch("/api/stt", {
@@ -703,7 +738,7 @@ export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<SttR
           [XHR_HEADER]: XHR_HEADER_VALUE,
           ...authHeader(),
         },
-        signal: withTimeout(signal, UPLOAD_TIMEOUT_MS),
+        signal: withTimeout(signal, sttTimeoutFor(audio.size)),
       });
       const detail = await errorDetail(res);
       notePairing("POST", res.status, res.ok ? undefined : detail);
@@ -723,6 +758,6 @@ export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<SttR
         code: fields?.code,
         detail: fields?.detail,
       };
-    })(),
+    })().finally(endLongUpload),
   );
 }
