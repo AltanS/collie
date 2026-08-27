@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useRevalidator } from "react-router";
 
 import { refreshNow } from "@/lib/api";
+import { isLongUpload } from "@/lib/connection-health";
 import { beginCatchUp, endCatchUp, isLocked, useLocked } from "@/lib/idle";
 import type { HomeData } from "@/lib/loaders";
 import type { Scope } from "@/lib/scope";
@@ -120,6 +121,11 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null, s
       // the `navigator.onLine` trap below, this flag can't lie: it's set by our own lock, and
       // resuming re-runs every loader, so a pause can't strand the UI on stale data.
       if (isLocked()) return;
+      // A long upload the operator started (a voice clip) is on the wire. A phone's uplink is the
+      // narrow half of a mobile link, so a poll fired now does not arrive sooner — it queues behind
+      // the audio and makes the audio slower. Skipped, not cancelled: the upload ends in seconds,
+      // releasing it stamps a wake, and the very next tick reads a fresh snapshot.
+      if (isLongUpload()) return;
       // Deliberately NO navigator.onLine gate here. On some phones the flag lies — it stuck FALSE
       // after an airplane-mode toggle even though the network was back — and gating the tick on it
       // wedged polling permanently: the app froze on "not connected" with a resting/bad-state dog and

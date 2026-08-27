@@ -6,7 +6,14 @@ import {
   useConnectionLost,
   useConnectionTrouble,
 } from "./use-connection-lost";
-import { __resetConnectionHealth, isLostLatched, markLive, markWake } from "@/lib/connection-health";
+import {
+  __resetConnectionHealth,
+  beginLongUpload,
+  endLongUpload,
+  isLostLatched,
+  markLive,
+  markWake,
+} from "@/lib/connection-health";
 
 // Wall-clock derived, so fake timers (which also advance Date.now in Vitest) drive both the countdown
 // and the elapsed-time comparison the hook reads. Escalation now anchors on the SHARED
@@ -156,6 +163,58 @@ describe("useConnectionLost", () => {
 
 // The 4s ambient TROUBLE threshold — the amber bar + the galloping dog. Same shared anchor as the 15s
 // lost escalation, just shorter and NON-latching, so a single slow poll never flashes a bar.
+// A voice clip going up a phone's uplink makes every poll behind it look stalled. That is the app's
+// own traffic, not an outage, so neither threshold may escalate while one is in flight — the beta
+// report this suppression exists for was an amber "Reconnecting…" bar during a perfectly good upload.
+describe("a long upload the operator started", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetConnectionHealth();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("suppresses BOTH thresholds for as long as the upload is in flight", () => {
+    const { result } = renderHook(() => ({
+      lost: useConnectionLost(true),
+      trouble: useConnectionTrouble(true),
+    }));
+    act(() => beginLongUpload());
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS * 4));
+
+    expect(result.current.trouble).toBe(false);
+    expect(result.current.lost).toBe(false);
+    // And nothing latched, so the release below cannot come back already-red.
+    expect(isLostLatched()).toBe(false);
+  });
+
+  it("releasing grants a fresh window rather than escalating on the anchor it went stale on", () => {
+    const { result } = renderHook(() => useConnectionTrouble(true));
+    act(() => beginLongUpload());
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS * 4));
+    act(() => endLongUpload());
+
+    expect(result.current).toBe(false);
+    act(() => vi.advanceTimersByTime(TROUBLE_MS - 1));
+    expect(result.current).toBe(false);
+    // The link really is not answering — a fresh window later, it says so.
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(true);
+  });
+
+  it("counts, so one pane finishing does not un-suppress another still uploading", () => {
+    const { result } = renderHook(() => useConnectionTrouble(true));
+    act(() => beginLongUpload());
+    act(() => beginLongUpload());
+    act(() => endLongUpload());
+    act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS * 2));
+    expect(result.current).toBe(false);
+
+    act(() => endLongUpload());
+    act(() => vi.advanceTimersByTime(TROUBLE_MS));
+    expect(result.current).toBe(true);
+  });
+});
+
 describe("useConnectionTrouble", () => {
   beforeEach(() => {
     vi.useFakeTimers();

@@ -56,6 +56,9 @@ let lastWakeAt = Date.now();
 // effectiveAnchor() drops the wake grace, so backgrounding + returning MID-OUTAGE can no longer
 // downgrade red → amber. Module-scoped so every consumer agrees on one escalated/not answer.
 let lostLatched = false;
+// How many long uploads the operator started are in flight right now. A counter, not a boolean: two
+// panes can each be transcribing a clip, and the second one finishing must not un-suspend the first.
+let longUploads = 0;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -97,6 +100,50 @@ export function latchLost(): void {
   if (lostLatched) return;
   lostLatched = true;
   emit();
+}
+
+/**
+ * A LONG UPLOAD THE OPERATOR STARTED — begin.
+ *
+ * One thing only: for as long as one is in flight, slowness is not evidence of an outage. A voice
+ * clip is megabytes going UP a phone's uplink, which is the narrow half of a mobile link; the
+ * snapshot poll then queues behind it and looks stalled, and Collie used to answer that by fading in
+ * the amber "Reconnecting…" bar over a connection that was working perfectly and was busy carrying
+ * the operator's own recording. Reported from the v1 beta.
+ *
+ * Two consumers, and they are the whole of it: `use-connection-lost` stops escalating while this is
+ * set, and `use-polling` stops ticking, which leaves the uplink to the upload rather than racing it.
+ * It is NOT a connection state of its own — nothing renders from it, and the transcription's own
+ * failure message is what speaks if the upload really does fail.
+ */
+export function beginLongUpload(): void {
+  longUploads += 1;
+  emit();
+}
+
+/**
+ * A long upload finished, failed or was discarded — the counter must fall on every one of those
+ * paths, which is why the only caller wraps it in a `finally`.
+ *
+ * Releasing stamps a WAKE, for the reason returning to the foreground does: the anchor went stale
+ * while we were deliberately not polling, so measuring escalation from it would flash the bar the
+ * instant the transcript landed. The wake grants one fresh window, and the next poll — which
+ * `use-polling` resumes immediately — either proves the link live or escalates honestly.
+ */
+export function endLongUpload(): void {
+  longUploads = Math.max(0, longUploads - 1);
+  if (longUploads === 0) markWake();
+  else emit();
+}
+
+/** Whether any long upload is in flight. A live read, for the poll tick that runs off an interval. */
+export function isLongUpload(): boolean {
+  return longUploads > 0;
+}
+
+/** Reactive read of {@link isLongUpload}, on the same store subscription as the anchor. */
+export function useLongUpload(): boolean {
+  return useSyncExternalStore(subscribeHealth, isLongUpload, isLongUpload);
 }
 
 /** Whether the sticky-escalation latch is currently set (exported for tests / diagnostics). */
@@ -150,4 +197,5 @@ export function __resetConnectionHealth(now = Date.now()): void {
   lastLiveAt = now;
   lastWakeAt = now;
   lostLatched = false;
+  longUploads = 0;
 }
