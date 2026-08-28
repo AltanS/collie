@@ -8,13 +8,11 @@ import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
 import { TabStrip } from "@/components/tab-strip";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
-import { WorktreeButton, WorktreeSheet } from "@/components/worktree-sheet";
 import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
-import { useMuxCapability } from "@/lib/mux-capability";
 import { homePath, panePath, spacePath } from "@/lib/nav";
 import { leadHost, paneScope } from "@/lib/hosts";
 import type { AgentView } from "@/lib/types";
@@ -34,11 +32,6 @@ export function SpaceRoute() {
   const revalidator = useRevalidator();
   const { newTab, newSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  const [worktreesOpen, setWorktreesOpen] = useState(false);
-  // Two conditions, both cheap and both required. The capability is the multiplexer's answer; the
-  // space's `repoRoot` is whether THIS space has a repo at all, and it rides on the snapshot the
-  // route already has — so a space outside a repo shows nothing and costs no extra call.
-  const canListWorktrees = useMuxCapability("listWorktrees");
   // Either write gate refusing locks the tab strip's rename/close the same way (see ReadOnlyBanner).
   const { refused: notPaired } = usePairing();
 
@@ -127,11 +120,6 @@ export function SpaceRoute() {
                 revalidator.revalidate();
               }}
             />
-            {canListWorktrees && selectedWs.repoRoot !== undefined && (
-              <div className="flex px-3 pt-1">
-                <WorktreeButton onClick={() => setWorktreesOpen(true)} />
-              </div>
-            )}
             <main className="flex-1">
               <SpaceView
                 workspace={selectedWs}
@@ -158,17 +146,6 @@ export function SpaceRoute() {
       </div>
 
       <NewSpaceSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} onCreate={newSpace} />
-      {selectedWs && (
-        <WorktreeSheet
-          open={worktreesOpen}
-          onClose={() => setWorktreesOpen(false)}
-          workspaceId={selectedWs.workspaceId}
-          scope={data.scope}
-          // The phone goes to the new pane; the desktop's own screen is never moved (ADR 0032).
-          onOpened={(pane) => navigate(panePath(pane.paneId, data.scope))}
-          onRemoved={() => revalidator.revalidate()}
-        />
-      )}
     </div>
   );
 }

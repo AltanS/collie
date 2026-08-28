@@ -705,4 +705,10 @@ export const de: Dictionary = {
   "space.new.tab.plain": "Space",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repository",
+  "worktree.removed": "Worktree entfernt",
+  "worktree.removedForced": "Worktree entfernt — nicht committete Änderungen verworfen",
+  "space.actions.notAWorktree": "Dieser Space ist kein Worktree, also gibt es nichts zu entfernen. Collie schließt niemals einen Space.",
+  "space.actions.noRemoveCapability": "Dieser Multiplexer kann keinen Worktree entfernen.",
+  "space.actions.readOnly": "Dieses Gerät ist schreibgeschützt.",
+  "worktree.orOpenExisting": "Oder einen vorhandenen öffnen",
 };

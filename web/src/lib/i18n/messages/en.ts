@@ -710,6 +710,12 @@ export const en = {
   "space.new.tab.plain": "Space",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repository",
+  "worktree.removed": "Worktree removed",
+  "worktree.removedForced": "Worktree removed — uncommitted work discarded",
+  "space.actions.notAWorktree": "This space isn't a worktree, so there's nothing to remove. Collie never closes a space.",
+  "space.actions.noRemoveCapability": "This multiplexer can't remove a worktree.",
+  "space.actions.readOnly": "This device is read-only.",
+  "worktree.orOpenExisting": "Or open one that already exists",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

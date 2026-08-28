@@ -670,4 +670,10 @@ export const zh: Dictionary = {
   "space.new.tab.plain": "空间",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "仓库",
+  "worktree.removed": "worktree 已删除",
+  "worktree.removedForced": "worktree 已删除 —— 未提交的改动已丢弃",
+  "space.actions.notAWorktree": "这个空间不是 worktree，没有可删除的东西。Collie 不会关闭空间。",
+  "space.actions.noRemoveCapability": "当前的复用器不支持删除 worktree。",
+  "space.actions.readOnly": "此设备为只读。",
+  "worktree.orOpenExisting": "或打开已有的",
 };
