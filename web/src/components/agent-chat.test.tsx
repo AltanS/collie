@@ -1,5 +1,5 @@
 import { useState, type ComponentProps } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
@@ -98,8 +98,10 @@ describe("AgentChat — header title block", () => {
     expect(screen.getByText("webapp")).toBeInTheDocument(); // space leads
     expect(screen.getByText("~/webapp")).toBeInTheDocument(); // directory on the subline
     // The agent is conveyed by its icon (aria-label only), so its name isn't repeated as text.
-    expect(screen.queryByText(/claude/i)).toBeNull();
-    expect(screen.getByRole("button", { name: /open webapp overview/i })).toBeInTheDocument();
+    // Scoped to the title block itself: the mirror below it may legitimately NAME the agent — the
+    // no-session note (#137) does — and that is not the redundancy this asserts against.
+    const title = screen.getByRole("button", { name: /open webapp overview/i });
+    expect(within(title).queryByText(/claude/i)).toBeNull();
   });
 
   it("opens the space overview (all tabs + panes) when the title block is tapped", async () => {
@@ -582,6 +584,39 @@ describe("AgentChat — top-of-mirror history affordance", () => {
     renderChat({ agent, agents: [agent], requestedLines: 600 });
     expect(showHistory()).toBeInTheDocument();
     expect(loadOlder()).not.toBeInTheDocument();
+  });
+});
+
+// EXPLAIN, don't hide, one level below the multiplexer note (#137). `hasSession` folds two facts
+// into one flag, so its absence is silent about which half failed: an agent that CAN keep a session
+// log and reported none is the operator's to fix (the `herdr integration install` hook), while an
+// agent with no journal adapter has nothing to say. The line is prose, never a control — there is
+// still no transcript to open.
+describe("AgentChat — no session reported", () => {
+  const noSessionNote = () => screen.queryByText(/has not reported a session to Herdr/i);
+
+  it("explains the silence on an agent that could have a transcript but reported none", () => {
+    const agent = { ...fixtureAgents[0]!, agent: "claude" }; // journal adapter, no hasSession
+    renderChat({ agent, agents: [agent] });
+    const note = noSessionNote();
+    expect(note).toBeInTheDocument();
+    expect(note).toHaveTextContent(/^claude /);
+    // Prose, not an affordance: nothing here is tappable, and the history button stays absent.
+    expect(note?.closest("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /show entire history/i })).not.toBeInTheDocument();
+  });
+
+  it("says nothing once the pane has reported a session", () => {
+    const agent = { ...fixtureAgents[0]!, agent: "claude", hasSession: true };
+    renderChat({ agent, agents: [agent] });
+    expect(noSessionNote()).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /show entire history/i })).toBeInTheDocument();
+  });
+
+  it("says nothing for an agent with no journal adapter — there is no transcript to promise", () => {
+    const agent = { ...fixtureAgents[0]!, agent: "omp" }; // block grammars, no journal
+    renderChat({ agent, agents: [agent] });
+    expect(noSessionNote()).not.toBeInTheDocument();
   });
 });
 

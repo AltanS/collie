@@ -220,6 +220,8 @@ export const ja: Dictionary = {
   "chat.scrollback.showHistory": "全履歴を表示",
   "chat.scrollback.loadOlder": "過去分を読み込む",
   "chat.scrollback.loading": "読み込み中…",
+  "chat.scrollback.noSessionReported":
+    "{agent} は Herdr にセッションを報告していません。この Herdr 連携をインストールまたは更新してから、このペインでエージェントを起動し直してください。",
   "chat.output.empty": "（最近の出力なし）",
   "chat.switcher.aria": "ペインを切り替え",
   "chat.switcher.title": "ペインを切り替え",

@@ -38,6 +38,8 @@ import type { HelloResult, PackFetch, PeerOutcome } from "../bridge/pack/peer-cl
 import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/staleness.ts";
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
+import { bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
+import { historyFindings } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs } from "./link.ts";
 import type { Ui } from "./render.ts";
@@ -69,19 +71,10 @@ import { collieBinary } from "./unit.ts";
 // peer", a deny-all ACL as "server down", clock skew as a 401, a rebuilt-not-restarted bridge as "my
 // change didn't take").
 
-export type DoctorStatus = "ok" | "warn" | "error" | "skipped";
-
-/**
- * One check's answer. `check` is a **stable identifier** — it is what a script branches on, so it
- * does not move when the prose does — and `remedy` is null **exactly** when `status` is `ok`, which
- * includes `skipped`: a check that could not run still says what would let it.
- */
-export interface Finding {
-  readonly check: string;
-  readonly status: DoctorStatus;
-  readonly detail: string;
-  readonly remedy: string | null;
-}
+// The finding type and its four constructors live in `cli/finding.ts`, so a check can be written in
+// its own module without importing this verb. Re-exported here because `Finding` is `doctor`'s own
+// public shape and every caller and test already imports it from this file.
+export type { DoctorStatus, Finding };
 
 /**
  * Where `doctor` reaches the world. Same shape as `packDeps` minus everything that could change
@@ -96,7 +89,11 @@ export interface DoctorDeps {
   readonly link: LinkReader;
   /** Read-only use: `load()` and nothing else. */
   readonly store: TrustStore;
-  /** The injected transport — the `hello` probe and one `snapshot` READ per member, and no other call. */
+  /**
+   * The injected transport — the `hello` probe and one `snapshot` READ per member, plus one GET of
+   * THIS bridge's own `/api/snapshot` (the history section, issue #137). Every one of them is a
+   * read, which is what keeps this verb's contract; there is no mutating route on the other end.
+   */
   readonly fetch: PackFetch;
   /**
    * The agent-beacon sweep's two seams — a directory listing and a pid probe, both READS
@@ -111,16 +108,6 @@ export interface DoctorDeps {
    */
   readonly ui?: Ui | null;
 }
-
-const ok = (check: string, detail: string): Finding => ({ check, status: "ok", detail, remedy: null });
-const warn = (check: string, detail: string, remedy: string): Finding => ({ check, status: "warn", detail, remedy });
-const bad = (check: string, detail: string, remedy: string): Finding => ({ check, status: "error", detail, remedy });
-const skipped = (check: string, detail: string, remedy: string): Finding => ({
-  check,
-  status: "skipped",
-  detail,
-  remedy,
-});
 
 // ── §8.6's window, and the shoulder before it ────────────────────────────────
 // Past ±5 minutes every signed membership request is refused as the uniform 401 of §8.1 — an error
@@ -168,6 +155,15 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     mux(deps),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
+    // Why a pane's History link is not there (issue #137) — its own module, because the chain it
+    // walks (Herdr's build, its per-agent hook, the interpreter that hook needs, what the bridge
+    // reports per pane, where a journal would be read from) is a section rather than a check.
+    ...(await historyFindings({
+      ctx: deps.ctx,
+      exec: deps.exec,
+      files: deps.files,
+      snapshot: () => ownSnapshot(deps),
+    })),
     restartPending(),
     clock(inPack, probes),
   ];
@@ -236,9 +232,9 @@ async function render(
 /** One check, one line. The status leads, the identifier is the second word, the remedy closes it. */
 function line(f: Finding): string {
   const head = f.status === "ok" ? "✓" : `${f.status}:`;
-  // 21 = longest check id ("beacon-hooks-claude", 19 chars) + 2, so every id gets
+  // 22 = longest check id ("integration-opencode", 20 chars) + 2, so every id gets
   // at least one space before the detail. Grow this if a longer check id lands.
-  const body = `  ${head.padEnd(9)}${f.check.padEnd(21)}${f.detail}`;
+  const body = `  ${head.padEnd(9)}${f.check.padEnd(22)}${f.detail}`;
   return f.remedy === null ? body : `${body} → ${f.remedy}`;
 }
 
@@ -521,6 +517,35 @@ function liveServeStatus(deps: DoctorDeps): ReturnType<typeof parseServeStatus> 
     return null;
   }
 }
+
+/**
+ * This bridge's own `/api/snapshot`, as text — `null` when nothing answered there.
+ *
+ * The address is the one the bridge BOUND (`resolveBridgeHost`, as `status` probes it), not a
+ * hard-wired loopback: a peer sets `COLLIE_HOST` to its tailnet address and never answers on
+ * 127.0.0.1, and dialling loopback there would report "the bridge is down" against a bridge that is
+ * up. A wildcard bind answers everywhere, so loopback is the right dial for it.
+ *
+ * A READ, and the only route this verb asks its own bridge for. The budget is short on purpose:
+ * `doctor` is run when something is already wrong, and a hung diagnostic is a worse answer than
+ * "it did not answer".
+ */
+async function ownSnapshot(deps: DoctorDeps): Promise<string | null> {
+  const host = resolvedBind(deps);
+  const dialled = bindIsWildcard(host) ? "127.0.0.1" : host;
+  const bracketed = dialled.includes(":") && !dialled.startsWith("[") ? `[${dialled}]` : dialled;
+  try {
+    const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/snapshot`, {
+      signal: AbortSignal.timeout(SNAPSHOT_BUDGET_MS),
+    });
+    return answer.ok ? await answer.text() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */
+const SNAPSHOT_BUDGET_MS = 3000;
 
 /**
  * Rebuilt but not restarted — the repo's documented #1 "my change didn't take" trap — and `doctor`

@@ -218,6 +218,8 @@ export const ko: Dictionary = {
   "chat.scrollback.showHistory": "전체 기록 보기",
   "chat.scrollback.loadOlder": "이전 내용 불러오기",
   "chat.scrollback.loading": "불러오는 중…",
+  "chat.scrollback.noSessionReported":
+    "{agent}가 Herdr에 세션을 보고하지 않았어요. 이 에이전트의 Herdr 연동을 설치하거나 업데이트한 다음, 이 창에서 에이전트를 다시 시작하세요.",
   "chat.output.empty": "(최근 출력 없음)",
   "chat.switcher.aria": "창 전환",
   "chat.switcher.title": "창 전환",

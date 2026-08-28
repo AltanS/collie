@@ -225,6 +225,8 @@ export const es: Dictionary = {
   "chat.scrollback.showHistory": "Ver historial completo",
   "chat.scrollback.loadOlder": "Cargar más antiguos",
   "chat.scrollback.loading": "Cargando…",
+  "chat.scrollback.noSessionReported":
+    "{agent} no ha informado ninguna sesión a Herdr. Instala o actualiza la integración de Herdr para él y reinicia el agente en este panel.",
   "chat.output.empty": "(sin salida reciente)",
   "chat.switcher.aria": "Cambiar de panel",
   "chat.switcher.title": "Cambiar de panel",

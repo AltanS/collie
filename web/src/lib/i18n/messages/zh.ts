@@ -208,6 +208,8 @@ export const zh: Dictionary = {
   "chat.scrollback.showHistory": "查看完整记录",
   "chat.scrollback.loadOlder": "加载更早内容",
   "chat.scrollback.loading": "加载中…",
+  "chat.scrollback.noSessionReported":
+    "{agent} 没有向 Herdr 报告会话。请为它安装或更新 Herdr 集成，然后在此窗格中重新启动该智能体。",
   "chat.output.empty": "（暂无最新输出）",
   "chat.switcher.aria": "切换窗格",
   "chat.switcher.title": "切换窗格",

@@ -62,7 +62,18 @@ const netmapAnswers = (json: string): NonNullable<Scripted["answers"]> => [
   ["tailscale debug netmap", { stdout: json }],
 ];
 
+/** `herdr integration status` on a host where every journalled agent's hook is current (issue #137). */
+const INTEGRATION_OK = [
+  "claude: installed (/home/pat/.claude/hooks/herdr-agent-state.sh)",
+  "codex: installed (/home/pat/.codex/herdr-agent-state.sh)",
+  "pi: installed (/home/pat/.pi/agent/extensions/herdr-agent-state.ts)",
+  "opencode: installed (/home/pat/.config/opencode/plugins/herdr-agent-state.js)",
+  "grok: installed (/home/pat/.grok/hooks/herdr-agent-state.sh)",
+].join("\n");
+
 const HEALTHY_ANSWERS: Scripted["answers"] = [
+  ["herdr --version", { stdout: "herdr 0.8.2\n" }],
+  ["herdr integration status", { stdout: INTEGRATION_OK }],
   ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
   ["tailscale serve status --json", { stdout: SERVE_OK }],
   ...netmapAnswers(NETMAP_OPEN),
@@ -85,6 +96,10 @@ function healthyFiles(): SeededFiles {
     [`${ROOT}/web/dist/build-info.json`]: JSON.stringify({ version: "1.0.0-alpha.12" }),
     [SOCKET]: "",
     [HANDLER]: `https:443|${HOSTPORT}|${PROXY}\n`,
+    // One journal root with something in it. In the BASELINE for the same reason the emitter is:
+    // `journal-roots` warns when no root is there at all, and the contract test above asserts a
+    // healthy install warns about nothing (issue #137).
+    [`${HOME}/.claude/projects/-home-pat-repo/9f3c.jsonl`]: "{}",
   };
 }
 
@@ -250,6 +265,15 @@ describe("collie doctor — the contract", () => {
       "mux",
       "beacon-hooks-claude",
       "beacons",
+      "herdr-version",
+      "integration-claude",
+      "integration-codex",
+      "integration-grok",
+      "integration-opencode",
+      "integration-pi",
+      "hook-python3",
+      "agent-sessions",
+      "journal-roots",
       "restart-pending",
       "clock",
     ]);
@@ -279,7 +303,7 @@ describe("collie doctor — the contract", () => {
       if (line.startsWith("  ✓") || !line.startsWith("  ")) continue;
       // Every warn/error/skipped line carries its remedy, and every remedy names something runnable.
       expect(line).toContain("→");
-      expect(/`collie |`herdr |`tailscale |`timedatectl |COLLIE_/.test(line)).toBe(true);
+      expect(/`collie |`herdr |`tailscale |`timedatectl |`python3|`ls |COLLIE_/.test(line)).toBe(true);
     }
   });
 
@@ -686,6 +710,8 @@ describe("collie doctor — the pack checks", () => {
     expect(h.requests).toEqual([
       "https://laptop.example:8787/pack/v1/hello",
       "https://laptop.example:8787/pack/v1/snapshot",
+      // The history section's one GET of THIS bridge's own snapshot (issue #137), on the same seam.
+      "http://127.0.0.1:8787/api/snapshot",
     ]);
   });
 

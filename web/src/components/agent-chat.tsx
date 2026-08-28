@@ -44,6 +44,7 @@ import type { MenuBlockAction } from "@/components/menu-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { shortCwd } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
+import { hasJournalAdapter } from "@/lib/journal-agents";
 import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
@@ -294,6 +295,21 @@ export function AgentChat({
   // loud. Hiding it is what leaves someone wondering whether Collie is broken.
   const sessionLog = useMuxCapability("agentSessionRef");
   const historyAvailable = Boolean(agent?.hasSession) && sessionLog.capable;
+  // A FOURTH state, and the per-pane sibling of the third (#137). `hasSession` folds two facts into
+  // one flag bridge-side — "this pane named a session" AND "this agent has a journal adapter" — so
+  // its absence alone cannot say which half failed, and the two want opposite words. On an agent
+  // with no journal adapter there is nothing to explain and nothing renders. On one that HAS a
+  // journal adapter, an absent session means the agent never reported a session ref to Herdr, which
+  // is what the `herdr integration install <agent>` hook does at agent session start — missing or
+  // outdated, it hides both history affordances with no explanation anywhere.
+  //
+  // It EXPLAINS, it never offers: this decides no button and does not touch `historyAvailable` (a
+  // pane with no session still has no transcript to open, and a tap that fetched nothing would be
+  // the worse answer). `sessionLog.capable` is required as well, because when the MULTIPLEXER keeps
+  // no agent session log the note above already says so in the adapter's own words — and telling
+  // the operator to reinstall a hook that could never help would contradict it.
+  const noSessionReported =
+    sessionLog.capable && hasJournalAdapter(agent?.agent) && !agent?.hasSession;
   // Scrollback has its own capability, and it is a genuinely different one: a multiplexer can keep
   // screen history while knowing nothing about agents. Hidden rather than explained when absent —
   // "there is nothing older to load" is not a fact anyone comes looking for.
@@ -877,6 +893,16 @@ export function AgentChat({
                 {!sessionLog.capable && sessionLog.note !== "" && (
                   <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
                     {sessionLog.note}
+                  </p>
+                )}
+                {/* The same rule one level down, per PANE rather than per multiplexer (#137): this
+                    agent CAN keep a session log, and this pane reported none. A muted line and not
+                    a control — there is nothing here to open, and a button that fetched nothing
+                    would be the worse answer. The remedy is the operator's own, on the machine the
+                    agent runs on, so the sentence names it and stops. */}
+                {noSessionReported && (
+                  <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
+                    {t("chat.scrollback.noSessionReported", { agent: agent?.agent ?? "" })}
                   </p>
                 )}
                 <AnsiOutput
