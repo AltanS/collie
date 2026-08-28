@@ -132,6 +132,13 @@ export interface WorkspaceView {
   activeTabId: string;
   tabCount: number;
   paneCount: number;
+  /**
+   * The Git repo this space sits in, when the multiplexer reports one.
+   *
+   * Absent means "no repo, or this multiplexer keeps no such mapping" — and absence is what hides
+   * the worktree rows, so no extra call is needed to decide whether to show them.
+   */
+  repoRoot?: string;
 }
 
 /** A tab within a workspace (holds one or more panes). */
@@ -532,6 +539,10 @@ export const MUX_CAPABILITIES = [
   "renameTab",
   "closeTab",
   "createSpace",
+  "listWorktrees",
+  "createWorktree",
+  "openWorktree",
+  "removeWorktree",
   "pushTopologyEvents",
   "pushPaneEvents",
 ] as const;
@@ -684,3 +695,29 @@ export const STATUS_RANK = {
 export function statusLabel(status: AgentStatus): string {
   return t(`status.label.${status}`);
 }
+
+/** One Git worktree of the repo a space sits in. Mirrors `WorktreeView` in bridge/types.ts. */
+export interface WorktreeView {
+  path: string;
+  branch: string | null;
+  /** The space showing it, or `null` when nothing does — which is what hides its Remove row. */
+  openWorkspaceId: string | null;
+  /** `false` for the repo's own checkout: listed for context, never removable. */
+  linked: boolean;
+  prunable: boolean;
+}
+
+/** GET /api/workspace/:id/worktrees */
+export type WorktreeListResponse =
+  | { ok: true; worktrees: WorktreeView[] }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+
+/** POST /api/workspace/:id/worktree[/open] — `alreadyOpen` is an answer, never a failure. */
+export type WorktreeOpenResponse =
+  | { ok: true; pane: CreatedPane; alreadyOpen: boolean }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+
+/** POST /api/workspace/:id/worktree/remove — `forced` reports what happened, not what was asked. */
+export type WorktreeRemoveResponse =
+  | { ok: true; path: string; forced: boolean }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
