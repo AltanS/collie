@@ -171,6 +171,9 @@ export const ja: Dictionary = {
   "settings.display.tapToType.label": "タップで入力開始",
   "settings.display.tapToType.hint":
     "有効時はターミナル領域のタップでキーボードが開きます。無効時はテキスト選択が優先され、キーボードは入力欄タップ時のみ開きます。",
+  "settings.display.fullReply.label": "最新の返答を全文表示",
+  "settings.display.fullReply.hint":
+    "エージェントのターミナルはスクロールバックを保持しないため、長い返答は冒頭が失われます。有効時はエージェント自身のログから全文を表示し、該当する行を置き換えます。",
   "settings.display.rawTerminal.label": "未加工ターミナル",
   "settings.display.rawTerminal.hint":
     "プロンプトボタンやステータス表示を除いた素の出力を表示します。ダイアログの表示崩れを手動で制御する際に使用します。",
@@ -272,6 +275,9 @@ export const ja: Dictionary = {
   "chat.scrollback.loading": "読み込み中…",
   "chat.scrollback.noSessionReported":
     "{agent} のセッションが Herdr に報告されていません。Herdr 連携をインストールまたは更新し、このペインでエージェントを再起動してください。",
+  "chat.fullReply.title": "返答の全文",
+  "chat.fullReply.fromTranscript": "ログより",
+  "chat.fullReply.showingTerminal": "ターミナルを表示中",
   "chat.output.empty": "(直近の出力なし)",
   "chat.switcher.aria": "ペインを切り替え",
   "chat.switcher.title": "ペインを切り替え",

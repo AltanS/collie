@@ -2176,3 +2176,134 @@ describe("AgentChat: Launch section in the switcher", () => {
     expect(screen.queryByText("Launch")).toBeNull();
   });
 });
+
+// Putting a clipped reply back. An agent pane's terminal keeps no scrollback, so a reply longer than
+// the pane is tall reaches the mirror with its opening already gone; the agent's own journal still has
+// it. What has to hold here is BOTH halves: the full message appears when the mirror is showing its
+// tail, and nothing appears when the journal's newest turn is not the message on screen (a streaming
+// reply, a stale read) — presenting an older reply as the current one is the failure that matters.
+describe("AgentChat — full latest reply", () => {
+  const REPLY = [
+    "Short answer: approve-only. The author knows when they want it to land; your job was the",
+    "approval. Enabling auto-merge makes you the actor for the merge itself, which is a materially",
+    "bigger claim than saying this looks fine to me.",
+  ].join(" ");
+
+  /** Serve one assistant turn as the pane's journal, and count the reads so a negative assertion can
+   *  wait for the fetch to have landed rather than racing it. */
+  function withJournalReply(text: string): () => number {
+    let hits = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () => {
+        hits += 1;
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          entries: [
+            {
+              uuid: "reply-1",
+              ts: "2026-08-28T09:14:00.000Z",
+              role: "assistant",
+              parts: [{ kind: "text", text }],
+            },
+          ],
+          hasMore: false,
+          total: 1,
+          fileTruncated: false,
+        });
+      }),
+    );
+    return () => hits;
+  }
+
+  const card = () => screen.queryByRole("button", { name: /full reply/i });
+  const sessionAgent = () => ({ ...fixtureAgents[0]!, hasSession: true, readableLines: 51 });
+  /** Just the terminal mirror's text — the card renders the same words, so a screen-wide query can't
+   *  tell which surface a match came from. */
+  const mirror = () => document.querySelector("pre")?.textContent ?? "";
+
+  // A screen holding the END of the reply, then what the agent did next.
+  const AFTER = "abc1234 fix";
+  const SCREEN = `${REPLY.slice(120)}\n\nBash(git log --oneline)\n  ${AFTER}`;
+
+  it("shows the whole message, and takes the rows it covers out of the mirror", async () => {
+    withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: SCREEN });
+    await waitFor(() => expect(card()).toBeInTheDocument());
+
+    // The opening the terminal lost is on screen now, from the transcript…
+    expect(screen.getByText(/Short answer: approve-only/)).toBeInTheDocument();
+    // …the rows that held its tail are gone, so the words appear exactly once…
+    expect(mirror()).not.toContain("bigger claim");
+    // …and the terminal below the reply is untouched.
+    expect(mirror()).toContain(AFTER);
+  });
+
+  it("gives the terminal rows back when you collapse it", async () => {
+    const user = userEvent.setup();
+    withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: SCREEN });
+    await waitFor(() => expect(card()).toBeInTheDocument());
+
+    await user.click(card()!);
+    expect(screen.queryByText(/Short answer: approve-only/)).not.toBeInTheDocument();
+    expect(mirror()).toContain("bigger claim"); // the raw rows are back
+    expect(card()).toBeInTheDocument(); // and the header stays, so it can be reopened
+  });
+
+  // Find searches the mirror and highlights only there, so a hidden row would be a match you can see
+  // but cannot find. Opening find restores the whole mirror and stands the card down.
+  it("hands the whole mirror back while the find bar is open", async () => {
+    const user = userEvent.setup();
+    withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: SCREEN });
+    await waitFor(() => expect(card()).toBeInTheDocument());
+
+    await openFind(user);
+    expect(card()).not.toBeInTheDocument();
+    expect(mirror()).toContain("bigger claim");
+  });
+
+  it("shows nothing when the journal's newest reply is not what the mirror is showing", async () => {
+    const hits = withJournalReply(REPLY);
+    renderChat({
+      agent: sessionAgent(),
+      agents: [sessionAgent()],
+      text: "an entirely different screen",
+    });
+    await waitFor(() => expect(hits()).toBe(1));
+    await waitFor(() => expect(card()).not.toBeInTheDocument());
+  });
+
+  it("shows nothing when the mirror already holds the whole reply", async () => {
+    const hits = withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: REPLY });
+    await waitFor(() => expect(hits()).toBe(1));
+    await waitFor(() => expect(card()).not.toBeInTheDocument());
+    expect(screen.getAllByText(/Short answer/).length).toBe(1); // the mirror's copy, and only it
+  });
+
+  // The pref is the whole opt-out: off, the pane is exactly what it was before this existed — and it
+  // costs no journal read either, which is the reason it is a pref rather than always-on.
+  it("reads no journal at all once the operator turns it off", async () => {
+    localStorage.setItem(
+      "collie:display-prefs:v4",
+      JSON.stringify({ wrap: true, fontSize: 12, expandClippedReply: false }),
+    );
+    const hits = withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: REPLY.slice(120) });
+    await waitFor(() => expect(screen.getByText(/bigger claim/)).toBeInTheDocument());
+    expect(hits()).toBe(0);
+    expect(card()).not.toBeInTheDocument();
+    localStorage.clear();
+  });
+
+  it("reads no journal at all on a pane that has none", async () => {
+    const hits = withJournalReply(REPLY);
+    const shell = { ...fixtureAgents[0]!, kind: "shell" as const, readableLines: 51 };
+    renderChat({ agent: shell, agents: [shell], text: REPLY.slice(120) });
+    await waitFor(() => expect(screen.getByText(/bigger claim/)).toBeInTheDocument());
+    expect(hits()).toBe(0);
+    expect(card()).not.toBeInTheDocument();
+  });
+});

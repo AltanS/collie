@@ -173,6 +173,9 @@ export const es: Dictionary = {
   "settings.display.tapToType.label": "Tocar para escribir",
   "settings.display.tapToType.hint":
     "Si esta activo, pulsar en cualquier parte abre el teclado. Si no, funciona como documento de texto y solo el editor abre el teclado.",
+  "settings.display.fullReply.label": "Respuesta completa",
+  "settings.display.fullReply.hint":
+    "La terminal de un agente no guarda historial, así que una respuesta larga pierde su inicio. Si esta activo, se muestra completa desde el registro del agente, en lugar de las lineas que cubre.",
   "settings.display.rawTerminal.label": "Terminal sin formato",
   "settings.display.rawTerminal.hint":
     "Muestra la sesion directa sin botones de interfaz ni barras. Util si un dialogo falla y requiere control manual mediante Teclas.",
@@ -275,6 +278,9 @@ export const es: Dictionary = {
   "chat.scrollback.loading": "Cargando…",
   "chat.scrollback.noSessionReported":
     "{agent} no ha registrado ninguna sesión en Herdr. Instala o actualiza la integración de Herdr correspondiente y reinicia el agente en este panel.",
+  "chat.fullReply.title": "Respuesta completa",
+  "chat.fullReply.fromTranscript": "desde el registro",
+  "chat.fullReply.showingTerminal": "mostrando la terminal",
   "chat.output.empty": "(sin salida reciente)",
   "chat.switcher.aria": "Cambiar panel",
   "chat.switcher.title": "Cambiar panel",

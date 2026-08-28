@@ -161,6 +161,9 @@ export const zh: Dictionary = {
   "settings.display.tapToType.label": "点击唤起键盘",
   "settings.display.tapToType.hint":
     "开启后点击镜像任意位置均弹出键盘。关闭后镜像以文档模式交互，仅点击输入框时调出键盘。",
+  "settings.display.fullReply.label": "完整显示最新回复",
+  "settings.display.fullReply.hint":
+    "智能体终端不保留回滚缓冲，长回复的开头会丢失。开启后将从智能体自身日志中取出完整回复，替换它所覆盖的那几行。",
   "settings.display.rawTerminal.label": "原始终端",
   "settings.display.rawTerminal.hint":
     "仅显示纯终端镜像，隐藏提示按钮与状态栏。适用于对话框渲染异常时通过按键手动操作。",
@@ -259,6 +262,9 @@ export const zh: Dictionary = {
   "chat.scrollback.loading": "正在加载…",
   "chat.scrollback.noSessionReported":
     "{agent} 尚未向 Herdr 上报会话。请安装或更新对应的 Herdr 集成，并在当前窗格重启该 Agent。",
+  "chat.fullReply.title": "完整回复",
+  "chat.fullReply.fromTranscript": "来自日志",
+  "chat.fullReply.showingTerminal": "正在显示终端",
   "chat.output.empty": "（暂无近期输出）",
   "chat.switcher.aria": "切换窗格",
   "chat.switcher.title": "切换窗格",

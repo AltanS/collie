@@ -300,6 +300,19 @@ graph TD
   and renders a window that grows upward, which is what lets find-in-history and jump-to-user-turn
   work across turns you haven't scrolled to. Rationale and the measured numbers are commented at the
   top of `web/src/routes/history.tsx`.
+  - **The same source also repairs the pane view in place.** A reply longer than the pane is tall
+    reaches the mirror with its opening already scrolled off, and leaving for the history route to
+    read it is a heavy answer to a small question. So the pane view reads the newest turn from the
+    journal and, when `web/src/lib/latest-reply.ts` says that turn IS the one on screen and its start
+    is missing, renders it in full **in place of** the rows it covers — `locateReply` returns where
+    those rows end and `AnsiOutput`'s `hideLeadingLines` takes them off the top, so the message is
+    never printed twice and the mirror below it (tool calls, a dialog, the cursor) is untouched.
+    Both probes fold the two texts to letters and digits only, which is what makes Markdown source
+    comparable to a hard-wrapped, SGR-coloured render; the tail probe is an identity check, and its
+    failure (a streaming reply, a stale read) means *show nothing*. The hiding is render-only and runs
+    after every grammar, so no detector, guard or draft probe can see it; find restores the whole
+    mirror, since find can only highlight there. One journal read per finished message, off the poll
+    path (`web/src/hooks/use-latest-reply.ts`), and switchable off in ⚙ View.
 - **The browser polls too.** `useRevalidator` → `/api/snapshot` on an adaptive interval. There is no
   WebSocket fan-out to the browser and no push of state; pulling is what makes the two recovery loops
   below trivial.

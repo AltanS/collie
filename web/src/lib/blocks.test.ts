@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi, type AnsiSegment } from "./ansi";
-import { lineText, splitLines, type StyledLine } from "./blocks";
+import { dropLeadingLines, lineText, splitLines, type StyledLine } from "./blocks";
 import { buildBlocks } from "./harness";
 import { isBoxBorder, isHorizontalRule } from "./harness/claude/markers";
 
@@ -431,5 +431,29 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
     expect(blocks[0]!.lines).toBe(lines);
+  });
+});
+
+// The render-only subtraction behind the "Full reply" card: the message is being drawn from the
+// journal, so the terminal rows it covers come off the top of the mirror rather than printing twice.
+describe("dropLeadingLines", () => {
+  const raw = (...texts: string[]) => ({ kind: "raw" as const, lines: texts.map((t) => ({ segments: [seg(t)] })) });
+  const texts = (blocks: ReturnType<typeof raw>[]) => blocks.map((b) => b.lines.map(lineText));
+
+  it("drops rows off the top of the leading block", () => {
+    expect(texts(dropLeadingLines([raw("a", "b", "c", "d")], 2))).toEqual([["c", "d"]]);
+  });
+
+  it("keeps counting across blocks once one is used up", () => {
+    expect(texts(dropLeadingLines([raw("a", "b"), raw("c", "d")], 3))).toEqual([["d"]]);
+  });
+
+  it("leaves nothing behind when the count covers everything — the <pre> then renders not at all", () => {
+    expect(dropLeadingLines([raw("a", "b")], 5)).toEqual([]);
+  });
+
+  it("is the identity for a count of zero, reference and all", () => {
+    const blocks = [raw("a", "b")];
+    expect(dropLeadingLines(blocks, 0)).toBe(blocks);
   });
 });

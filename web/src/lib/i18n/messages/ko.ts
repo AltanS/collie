@@ -170,6 +170,9 @@ export const ko: Dictionary = {
   "settings.display.tapToType.label": "탭하여 입력",
   "settings.display.tapToType.hint":
     "활성화하면 미러 영역 어디를 눌러도 키보드가 열립니다. 끄면 일반 문서처럼 동작하며 입력기를 눌러야 키보드가 표시됩니다.",
+  "settings.display.fullReply.label": "최신 답변 전체 보기",
+  "settings.display.fullReply.hint":
+    "에이전트 터미널은 스크롤백을 남기지 않아 긴 답변은 앞부분이 사라집니다. 켜면 에이전트 로그에서 전체 답변을 가져와 해당 줄을 대신 표시합니다.",
   "settings.display.rawTerminal.label": "원시 터미널",
   "settings.display.rawTerminal.hint":
     "프롬프트 버튼, UI 장식, 상태 바 없이 순수 화면만 표시합니다. 대화상자가 깨져서 직접 키를 입력해야 할 때 유용합니다.",
@@ -270,6 +273,9 @@ export const ko: Dictionary = {
   "chat.scrollback.loading": "불러오는 중…",
   "chat.scrollback.noSessionReported":
     "{agent}가 Herdr에 세션을 보고하지 않았습니다. 에이전트용 Herdr 연동 패키지를 설치하거나 업데이트한 후 이 창에서 에이전트를 재시작하십시오.",
+  "chat.fullReply.title": "답변 전체",
+  "chat.fullReply.fromTranscript": "로그에서",
+  "chat.fullReply.showingTerminal": "터미널 표시 중",
   "chat.output.empty": "(최근 출력 없음)",
   "chat.switcher.aria": "창 전환",
   "chat.switcher.title": "창 전환",
