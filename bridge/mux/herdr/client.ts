@@ -15,6 +15,15 @@ import { decodeReplyLine, decodeStreamLine, type EventData } from "../../wire.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Raw wire shape of a workspace from `workspace.list`. */
+/** The repo a workspace sits in, as Herdr reports it on the workspace record itself. */
+export interface WireWorkspaceWorktree {
+  repo_root: string;
+  repo_name?: string;
+  repo_key?: string;
+  checkout_path?: string;
+  is_linked_worktree?: boolean;
+}
+
 export interface WireWorkspace {
   workspace_id: string;
   number: number;
@@ -24,6 +33,8 @@ export interface WireWorkspace {
   tab_count: number;
   active_tab_id: string;
   agent_status: AgentStatus;
+  /** Present when the workspace sits in a Git work tree — probed 2026-08-28 on herdr 0.8.2. */
+  worktree?: WireWorkspaceWorktree | null;
 }
 
 /**

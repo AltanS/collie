@@ -54,6 +54,19 @@ export const API_ERROR_CODES = [
   "tab.workspace_required",
   "workspace.create_failed",
 
+  // Worktrees — /api/workspace/:id/worktree[s|/open|/remove] (ADR 0032)
+  "worktree.list_failed",
+  "worktree.create_failed",
+  "worktree.created_not_opened",
+  "worktree.open_failed",
+  "worktree.remove_failed",
+  "worktree.dirty",
+  "worktree.busy",
+  "worktree.ambiguous_branch",
+  "worktree.branch_required",
+  "worktree.not_a_repo",
+  "worktree.not_open",
+
   // Image upload — POST /api/pane/:id/upload
   "upload.too_large",
   "upload.no_file",

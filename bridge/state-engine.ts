@@ -360,15 +360,22 @@ export class StateEngine {
         .toSorted((a, b) => a.workspaceNumber - b.workspaceNumber || a.paneId.localeCompare(b.paneId));
 
       const workspaceViews: WorkspaceView[] = spaces
-        .map((s) => ({
-          workspaceId: s.spaceId,
-          number: s.number,
-          label: s.label,
-          focused: s.focused,
-          activeTabId: s.activeTabId,
-          tabCount: s.tabCount,
-          paneCount: s.paneCount,
-        }))
+        .map((s) => {
+          const view: WorkspaceView = {
+            workspaceId: s.spaceId,
+            number: s.number,
+            label: s.label,
+            focused: s.focused,
+            activeTabId: s.activeTabId,
+            tabCount: s.tabCount,
+            paneCount: s.paneCount,
+          };
+          // Assigned only when there is one, so a space outside a repo carries no key at all: adding
+          // `repoRoot` to every space would move every snapshot ETag once for nothing (the argument
+          // bridge/types.ts makes about `pack`, applied here).
+          if (s.repoRoot !== undefined) view.repoRoot = s.repoRoot;
+          return view;
+        })
         .toSorted((a, b) => a.number - b.number);
 
       const tabViews: TabView[] = tabs.map((t) => ({

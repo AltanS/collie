@@ -150,6 +150,13 @@ export interface WorkspaceView {
   activeTabId: string;
   tabCount: number;
   paneCount: number;
+  /**
+   * The Git repo this space sits in, when the multiplexer reports one (MuxSpace.repoRoot).
+   *
+   * Absent means "no repo here, or this multiplexer does not keep the mapping" — the phone reads
+   * absence as "no worktree rows", which is the fail-closed direction and needs no extra call.
+   */
+  repoRoot?: string;
 }
 
 /** A tab within a workspace (a layout/view holding one or more panes). From `tab.list`. */
@@ -440,6 +447,50 @@ export interface CreatedPane {
  */
 export type CreateResponse =
   | { ok: true; pane: CreatedPane }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+
+/** One Git worktree of the repo a space sits in (ADR 0032). */
+export interface WorktreeView {
+  /** Absolute checkout path — the identity, and what `open` is asked with. */
+  path: string;
+  /** The branch checked out there; `null` for a detached head. */
+  branch: string | null;
+  /**
+   * The space showing it, or `null` when it exists on disk and nothing does.
+   *
+   * `null` is what hides the Remove row: removal is addressed by space, so a checkout nothing shows
+   * cannot be removed from the phone at all.
+   */
+  openWorkspaceId: string | null;
+  /** `false` for the repo's own checkout, which is listed for context and is never removable. */
+  linked: boolean;
+  /** The multiplexer believes the checkout is gone and its administrative files could be pruned. */
+  prunable: boolean;
+}
+
+/** GET /api/workspace/:id/worktrees — the worktrees of the repo that space sits in. */
+export type WorktreeListResponse =
+  | { ok: true; worktrees: WorktreeView[] }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+
+/**
+ * POST /api/workspace/:id/worktree[/open] — the space now showing the checkout.
+ *
+ * `alreadyOpen` says the space was already there, which is an ANSWER and not a failure: the phone
+ * navigates to `pane` either way.
+ */
+export type WorktreeOpenResponse =
+  | { ok: true; pane: CreatedPane; alreadyOpen: boolean }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+
+/**
+ * POST /api/workspace/:id/worktree/remove — the checkout is gone and its space closed with it.
+ *
+ * `forced` reports what actually happened, never what was asked, so the phone can say "discarded
+ * uncommitted work" only when it really did.
+ */
+export type WorktreeRemoveResponse =
+  | { ok: true; path: string; forced: boolean }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**
