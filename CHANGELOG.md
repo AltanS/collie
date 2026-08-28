@@ -6,6 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.33] - 2026-08-28
+
+### Added
+
+- `collie doctor` now says WHY a pane's "Show entire history" link is missing: the Herdr build, the
+  `herdr integration status` of every agent this build can journal, `python3`, each pane's reported
+  session, and the resolved transcript roots — one remedy per ✗ (#137, b60e22b)
+- The pane view now names the same cause in place: an agent that could have a transcript and
+  reported no session gets a muted line asking for the Herdr integration and a restart (#137,
+  b60e22b)
+
 ## [1.0.0-beta.32] - 2026-08-28
 
 ### Fixed
