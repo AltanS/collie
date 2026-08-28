@@ -6,6 +6,7 @@ import { useLoaderData, useNavigate } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ListGroup } from "@/components/ui/list-group";
 import { BottomSheet } from "@/components/ui/sheet";
 import { usePack } from "@/components/pack-provider";
 import { healthTone, healthWord, PackFormation } from "@/components/pack-formation";
@@ -187,7 +188,7 @@ function MemberSheet({
         </span>
       )}
 
-      <dl className="divide-y divide-rule rounded-lg border border-border/60">
+      <ListGroup as="dl">
         <Row label={t("pack.member.health")}>
           {/* The lead's own word for this member, and its reason VERBATIM under it — never
               paraphrased, because the operator's next move is to read it and go fix a version, a
@@ -260,7 +261,7 @@ function MemberSheet({
             </Row>
           </>
         )}
-      </dl>
+      </ListGroup>
 
       {/* Two warnings, as sentences rather than badges: each one describes something the operator has
           to go and do, and a coloured dot would have to be decoded first. */}

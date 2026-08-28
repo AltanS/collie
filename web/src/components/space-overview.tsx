@@ -4,6 +4,7 @@ import { FolderPlus, LayoutGrid, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
+import { ListGroup } from "@/components/ui/list-group";
 import { StatusDot } from "@/components/status-badge";
 import { filterSpaces, sortSpacesByRecency, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
 import { spaceKey } from "@/lib/hosts";
@@ -66,7 +67,7 @@ export function SpaceOverview({
   const visible = filterSpaces(sortSpacesByRecency(workspaces, panes, lastSeen, host), query);
 
   return (
-    <section className="flex flex-col gap-2 px-3 py-4">
+    <section className="flex flex-col gap-2 px-4 py-4">
       <SectionHeader
         label={t("space.overview.title")}
         // While filtering, the count reports what you can SEE — a header reading (45) above four
@@ -108,19 +109,22 @@ export function SpaceOverview({
       />
 
       {open && (
-        <div id="spaces-body" className="flex flex-col divide-y divide-rule">
+        <ListGroup id="spaces-body">
           {/* The other half of the hidden "+" above: the adapter's own reason, where the operator
               who went looking for it is already reading. Renders nothing on a multiplexer that can
               create a space, and nothing on one that declined without saying why. */}
           {!newSpace.capable && newSpace.note !== "" && (
-            <p className="px-1 py-2 text-xs leading-snug text-muted-foreground">{newSpace.note}</p>
+            <p className="px-3.5 py-2 text-xs leading-snug text-muted-foreground">{newSpace.note}</p>
           )}
           {/* Deliberately NOT autofocused: on a phone that would throw the keyboard over the list
               you just asked to see. */}
           {/* Sticky: at 45 spaces the list is five screens, and a filter that scrolls away turns
               "wrong part of the list" into scroll-up, type, scroll-down. */}
+          {/* A ROW of the group, not a card inside it — a bordered box inside a bordered group is
+              a box in a box. Opaque background, not transparent, so the rows scroll UNDER it while
+              it is stuck. */}
           {workspaces.length > 1 && (
-            <label className="sticky top-0 z-10 flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-sm">
+            <label className="sticky top-0 z-10 flex items-center gap-2 bg-background px-3.5 py-2">
               <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <input
                 type="search"
@@ -135,11 +139,11 @@ export function SpaceOverview({
           )}
 
           {workspaces.length === 0 ? (
-            <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+            <p className="px-3.5 py-6 text-center text-sm text-muted-foreground">
               {t("space.overview.empty.none")}
             </p>
           ) : visible.length === 0 ? (
-            <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+            <p className="px-3.5 py-6 text-center text-sm text-muted-foreground">
               {t("space.overview.empty.noMatch", { query })}
             </p>
           ) : (
@@ -175,7 +179,9 @@ export function SpaceOverview({
                       // not, so the text can't step sideways and the row can't grow. A full border
                       // would also land its bottom edge 1px above the list's own divide-y hairline
                       // and read as a 2px double line under one row.
-                      "flex flex-row items-center gap-3 px-2.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]",
+                      // 14px, matching every other row in the app: inside a 1px-bordered group
+                      // that lands the content on the same x as a card row's content.
+                      "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]",
                       blocked &&
                         "bg-status-blocked/5 shadow-[inset_2px_0_0_0_var(--color-status-blocked)]",
                     )}
@@ -209,7 +215,7 @@ export function SpaceOverview({
               );
             })
           )}
-        </div>
+        </ListGroup>
       )}
     </section>
   );

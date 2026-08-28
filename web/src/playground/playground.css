@@ -75,3 +75,51 @@
 .pg-phone-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* ── The two UI typefaces the app does NOT ship ──────────────────────────────────────────────────
+   Declared here rather than in index.css for one reason: index.css names exactly the webfonts the
+   service worker caches (lib/sw-routes.ts FONT_URLS, pinned by fonts.test.ts), so a candidate that
+   no shipped build asks for must not appear there. The shipped face (Space Grotesk) is in index.css
+   and needs no second declaration — this file is loaded after it.
+
+   Each face gets the same two metric-matched stand-ins the shipped one has, so the switcher in
+   typeface-card.tsx compares like with like: what you see at first paint here is what the app would
+   do at first paint if this candidate won. The percentages are recomputed by
+   scripts/build-ui-font.sh; do not hand-edit them.
+
+   When the operator picks a winner, the two losers leave together: this block, their .woff2 and
+   their LICENSE-*.txt in public/fonts/, and their entries in typeface-card.tsx. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/ui-ibm-plex-sans-3.201-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 101.21%;
+  ascent-override: 101.27%;
+  descent-override: 27.17%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/ui-geist-1.800-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 103.03%;
+  ascent-override: 97.54%;
+  descent-override: 28.63%;
+  line-gap-override: 0%;
+}

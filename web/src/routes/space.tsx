@@ -90,7 +90,9 @@ export function SpaceRoute() {
       {/* Content region below the header: the viewport-clipped scroller, carrying the same pull
           gesture the dashboard does — the two are one list screen at two depths. */}
       <PullToRefresh scope={data.scope} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <ReadOnlyBanner device={data.device} />
+        {/* Below the header, so it is content, not viewport chrome: an inset box on this route's
+            gutter, like the dashboard's. See read-only-banner.tsx. */}
+        <ReadOnlyBanner device={data.device} className="mx-4 mt-3" />
 
         {selectedWs && (
           <>
@@ -136,12 +138,12 @@ export function SpaceRoute() {
 
         {/* An available update / needed restart, then the build stamp (which bundle you're
             running, with a stale-cache nudge). */}
-        <UpdateBanner className="px-3 pt-3" />
-        <BuildStamp className="px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
+        <UpdateBanner className="px-4 pt-3" />
+        <BuildStamp className="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
       </PullToRefresh>
 
       {/* Status overlay, anchored to the bottom of the viewport. Stays outside the scroller. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-4 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
         <StatusArea />
       </div>
 

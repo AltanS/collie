@@ -29,6 +29,7 @@ import { SpaceStrip } from "@/components/space-strip";
 import { TabStrip } from "@/components/tab-strip";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { UpdateBanner } from "@/components/update-banner";
+import { ListGroup } from "@/components/ui/list-group";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { loadOperatorCommands } from "@/lib/operator-config";
 import { clearNotPaired, markNotPaired } from "@/lib/pairing";
@@ -82,13 +83,14 @@ import {
   type ClockMode,
   type SectionDef,
 } from "./harness";
+import { TypefaceCard } from "./typeface-card";
 
 const SECTIONS = [
   {
     id: "brand",
     title: "Brand",
     intent:
-      "The three marks the app wears: the Collie mark in every weight and state, the multiplexer's own logo as the header prints it, and the installed-app icons at the sizes a launcher actually asks for.",
+      "The app's own voice: the UI typeface under a live switcher, then the three marks it wears — the Collie mark in every weight and state, the multiplexer's own logo as the header prints it, and the installed-app icons at the sizes a launcher actually asks for.",
   },
   {
     id: "boot",
@@ -196,6 +198,7 @@ export function PlaygroundApp() {
 function BrandSection() {
   return (
     <Section def={SECTIONS[0]}>
+      <TypefaceCard />
       <Card
         label="the mark — header weight"
         reach="every screen. 40px in the header bar, 64px on the boot splash and the idle cover."
@@ -462,7 +465,7 @@ function DashboardSection() {
         note="Three snapshots, three routers — the three cannot be true at once on one bridge."
       >
         <Stage>
-          <div className="flex flex-col divide-y divide-rule">
+          <ListGroup>
             <RootRouter data={{ ...homeSolo, update: updateRestart }}>
               <div className="p-3">
                 <UpdateBanner />
@@ -478,7 +481,7 @@ function DashboardSection() {
                 <UpdateBanner />
               </div>
             </RootRouter>
-          </div>
+          </ListGroup>
         </Stage>
       </Card>
 

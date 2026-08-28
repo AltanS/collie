@@ -131,6 +131,13 @@ export const ja: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — 新しいメジャーバージョン",
   "settings.updateBanner.copyAria": "コマンドをコピー: {command}",
 
+  // --- settings.fonts ---
+  "settings.fonts.title": "ターミナルのフォント",
+  "settings.fonts.description": "この端末のターミナル表示のみに適用されます。",
+  "settings.fonts.family": "書体",
+  "settings.fonts.size": "サイズ",
+  "settings.fonts.system": "システム標準",
+
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "折り返し",
   "settings.display.wrap.hint": "オフにすると TUI 表を列そのままで表示します — 代わりに横スクロールします。",

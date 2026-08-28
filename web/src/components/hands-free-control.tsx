@@ -46,7 +46,7 @@ export function HandsFreeControl() {
         </div>
       </div>
       {!stt.available && stt.reason !== undefined && (
-        <p className="border-t border-rule px-4 py-2.5 text-xs text-muted-foreground">
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {stt.reason}
         </p>
       )}

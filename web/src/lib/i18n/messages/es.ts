@@ -134,6 +134,13 @@ export const es: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — una nueva versión mayor",
   "settings.updateBanner.copyAria": "Copiar comando: {command}",
 
+  // --- settings.fonts ---
+  "settings.fonts.title": "Fuente de la terminal",
+  "settings.fonts.description": "Solo el espejo de la terminal, en este dispositivo.",
+  "settings.fonts.family": "Familia",
+  "settings.fonts.size": "Tamaño",
+  "settings.fonts.system": "Predeterminada del sistema",
+
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "Ajuste de línea",
   "settings.display.wrap.hint":

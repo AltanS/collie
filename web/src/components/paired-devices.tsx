@@ -64,7 +64,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
       </div>
 
       {data.current && (
-        <p className="border-t border-rule px-4 py-2.5 text-sm">
+        <p className="border-t border-border px-4 py-2.5 text-sm">
           {pairedAsBefore}
           <span className="font-mono text-[13px] text-status-done">{data.current}</span>
           {pairedAsAfter}
@@ -72,13 +72,13 @@ export function PairedDevices({ data }: { data: DevicesData }) {
       )}
 
       {data.error && (
-        <p className="border-t border-rule px-4 py-2.5 text-xs text-muted-foreground">
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t("settings.devices.loadError")}
         </p>
       )}
 
       {data.devices.length > 0 && (
-        <ul className="divide-y divide-rule border-t border-rule">
+        <ul className="divide-y divide-border border-t border-border">
           {data.devices.map((d) => (
             <DeviceRow
               key={d.label}
@@ -220,7 +220,7 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
   const [hintBefore, hintAfter] = splitAroundValue(hintMessage, command);
 
   return (
-    <div className="flex flex-col gap-3 border-t border-rule p-4">
+    <div className="flex flex-col gap-3 border-t border-border p-4">
       <div>
         <div className="font-medium">{t("settings.devices.pair.title")}</div>
         <p className="text-sm text-muted-foreground">

@@ -96,11 +96,13 @@ export function AgentCard({
     >
       <Shell
         className={cn(
-          // The 15px inset matches the card's 14px padding + 1px border, so the avatar column runs
-          // straight down the page instead of stepping 5px sideways at each section boundary. The
-          // rail below is a box-shadow, which takes no room, so this number still holds.
+          // 14px, the same as the card's own padding. A flat row now sits inside a 1px-bordered
+          // ListGroup, so its content lands on the same x as a card row's content BY CONSTRUCTION
+          // (14 + 1 on both sides) — the hand-computed 15px this replaced was faking exactly that
+          // alignment against a group that had no border to supply the 1px. The rail below is a
+          // box-shadow, which takes no room, so the number still holds.
           flat
-            ? "flex flex-row items-center gap-3 px-[0.9375rem] py-2.5 shadow-[inset_2px_0_0_0_transparent]"
+            ? "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
           // The blocked tint survives both treatments — it's the one cue that reads at a glance.
           // The EDGE cannot: one class string, two containers. A card sits in a gap list and already
@@ -145,12 +147,7 @@ export function AgentCard({
 
         <div className="min-w-0 flex-1">
           {inTab ? (
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className="min-w-0 flex-1 truncate font-medium">{tabTitle.primary}</span>
-              {/* Which machine this row lives on. Self-hiding: nothing renders unless the snapshot
-                  lists more than one (components/host-chip.tsx), so a solo row is untouched. */}
-              <HostChip host={agent.host} />
-            </div>
+            <div className="truncate font-medium">{tabTitle.primary}</div>
           ) : (
             <div className="flex min-w-0 items-baseline gap-1">
               {/* With a tab present the project yields width first (capped, truncatable) and the
@@ -174,27 +171,30 @@ export function AgentCard({
                   <span className="min-w-0 flex-1 truncate font-medium">{parts.tab}</span>
                 </>
               )}
-              {/* The age rides the title row: alone on a line of its own it claimed the same
-                  vertical presence as the title, for a footnote. */}
-              {/* The host rides the title row, AFTER the discriminating tab name and before the
-                  age — it must survive the truncation that eats the project name first. */}
-              <HostChip host={agent.host} />
-              {stamp !== undefined && <Age at={stamp} />}
             </div>
           )}
 
           {/* Only rendered when there's something to say — most rows are one line now. */}
           {secondary && (
-            <div className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground">
-              <span className="min-w-0 flex-1 truncate font-mono">{secondary}</span>
-              {inTab && stamp !== undefined && <Age at={stamp} />}
-            </div>
+            <div className="truncate font-mono text-xs text-muted-foreground">{secondary}</div>
           )}
 
           {/* The bridge's own sentence about this pane, when it sent one — text, never a branch
               (components/pane-hint.tsx). It changes nothing about the row: a hinted pane is still a
               shell, still sorts where an unknown status sorts, and still opens the same view. */}
           <PaneHint hint={agent.hint} />
+        </div>
+
+        {/* The trailing meta is a COLUMN, not a tail on the title. Inside the title line the chip
+            was 4px from a truncated word and competed with the discriminator for the same width;
+            here the title takes its natural width, the secondary line runs the full width beneath
+            it, and the chip is centred against the whole row by the shell's own `items-center`.
+            Costs no height — the row pitch is unchanged. HostChip self-hides: nothing renders
+            unless the snapshot lists more than one machine (components/host-chip.tsx), so on a solo
+            install this column collapses to the age alone, or to nothing. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <HostChip host={agent.host} />
+          {stamp !== undefined && <Age at={stamp} />}
         </div>
 
         {isShell ? (

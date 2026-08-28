@@ -5,7 +5,7 @@ import { ArrowUpToLine, Loader2, ScrollText, Search, TerminalSquare } from "luci
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
-import { useDisplayPrefs } from "@/hooks/use-display-prefs";
+import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
@@ -127,6 +127,11 @@ export function AgentChat({
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus } = useDisplayPrefs();
+  // The chosen terminal font (Settings → Terminal font), applied by re-pointing `--font-mono` on
+  // the two mirror surfaces below and NOWHERE else — see mirrorFont() for how, and why it is not a
+  // custom property. Scoped to terminal CONTENT on purpose: app chrome that happens to be monospace
+  // (the pane index badge, the cwd line) keeps the app's own face. Same boundary MIRROR_SPACE draws.
+  const mirrorFace = mirrorFont(prefs.fontFamily);
   // Raw-terminal escape hatch: when on, every Claude grammar is bypassed and the plain mirror shows,
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
   const grammarsOn = !prefs.rawTerminal;
@@ -767,13 +772,13 @@ export function AgentChat({
         <StatusArea className="mx-3 mt-1.5 shrink-0" />
 
         {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
-        <ReadOnlyBanner device={device} />
+        <ReadOnlyBanner device={device} className="mx-3 mt-1.5" />
 
         {/* The pane's MACHINE is not answering the lead — the mirror below is last-good and the
             composer is locked. Its tier-1 twin (the app-wide ConnectionBanner) lives up in
             RootLayout; this one is scoped to the pane because the phone's link is fine. Renders
             nothing on a solo install, or while the host is live. */}
-        <HostStaleBanner health={hostHealth} />
+        <HostStaleBanner health={hostHealth} className="mx-3 mt-1.5" />
 
         {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
             pane, or create one with +. No "All" here (you're always in a specific tab). */}
@@ -830,7 +835,8 @@ export function AgentChat({
             selection. It is a touch convenience layered over an already-reachable action. */}
         <div
           role="presentation"
-          className="min-h-0 min-w-0 flex-1 border-t border-rule"
+          className={cn("min-h-0 min-w-0 flex-1 border-t border-rule", mirrorFace.className)}
+          style={mirrorFace.style}
           onClick={focusFromMirror}
         >
           <ChatMessageList
@@ -974,7 +980,9 @@ export function AgentChat({
                 // where the TUI drew it.
                 MIRROR_SPACE,
                 MIRROR_INVERT,
+                mirrorFace.className,
               )}
+              style={mirrorFace.style}
             >
               {statusLines.map((row, i) => (
                 // Index key: these rows are a positional snapshot of the pane tail, re-derived on

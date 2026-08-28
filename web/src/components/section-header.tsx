@@ -84,7 +84,9 @@ export function SectionHeader({
   const type = "text-xs font-semibold uppercase tracking-wide";
 
   return (
-    <div className={cn("flex items-center gap-2 px-1", className)}>
+    // No horizontal inset of its own: R2 — a section label begins on the page gutter, on the same
+    // x as the group it labels. It used to sit 4px further in than its own dividers.
+    <div className={cn("flex items-center gap-2", className)}>
       <Heading className="flex min-w-0 flex-1">
         {foldable ? (
           <button

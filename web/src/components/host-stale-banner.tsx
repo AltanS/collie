@@ -87,7 +87,9 @@ export function HostStaleBanner({
   return (
     <output
       className={cn(
-        "flex items-start gap-2 border-b border-status-info/40 bg-status-info/15 px-4 py-2 text-xs font-medium text-status-info",
+        // A content notice, not viewport chrome: an inset box on the page column (the caller
+        // supplies the gutter), not a full-bleed `border-b` strip. See read-only-banner.tsx.
+        "flex items-start gap-2 rounded-sm border border-status-info/40 bg-status-info/15 px-4 py-2 text-xs font-medium text-status-info",
         className,
       )}
     >

@@ -73,16 +73,29 @@ export const NAVIGATION_NETWORK_ONLY = [
 ] as const;
 
 /**
- * The bundled Nerd Font faces (index.css). The SW caches these on first use rather than precaching
- * them — `unicode-range` keeps them lazy and ~1.1 MB is not something to charge an install for — and
- * sweeps anything else out of that cache on activate, which is why the live set has to be a value
- * both sides can read. The version is part of the filename: `public/` assets are unhashed, so a
- * regenerated subset must be a new URL or the permanent cache would serve the old one forever.
+ * Every webfont the app ships (index.css). The SW caches these on first use rather than precaching
+ * them, and sweeps anything else out of that cache on activate, which is why the live set has to be
+ * a value both sides can read. The version is part of every filename: `public/` assets are unhashed,
+ * so a regenerated subset must be a new URL or the permanent cache would serve the old one forever.
  * `fonts.test.ts` pins this list against the stylesheet and the files on disk.
+ *
+ * Two kinds of entry, cached the same way for different reasons:
+ *
+ *  - The Nerd Font symbol faces are LAZY. `unicode-range` means a herd whose agents print no Nerd
+ *    Font glyph never fetches them, and ~1.1 MB is not something to charge an install for.
+ *  - The UI typeface is on the critical path — it dresses every label — so it is fetched on the
+ *    first load and served from this cache on every load after, online or not. It is out of the
+ *    precache anyway because that install has to fetch it during the same first paint regardless,
+ *    and putting it in `globPatterns` would only make the install pay for it twice. 27 KB.
+ *
+ * Runtime caching is cache-first (src/sw.ts), so an update that renames the file re-fetches once
+ * and the sweep drops the superseded entry. Offline after any prior visit is covered by the cache;
+ * offline on a device that has never loaded the app is not a font problem.
  */
 export const FONT_URLS = [
   "/fonts/nerd-symbols-3.5.0-pua.woff2",
   "/fonts/nerd-symbols-3.5.0-spua.woff2",
+  "/fonts/ui-space-grotesk-2.000-latin.woff2",
 ] as const;
 
 /**

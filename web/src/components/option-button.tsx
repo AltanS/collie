@@ -85,7 +85,7 @@ export function OptionGroupCaption({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 pl-0.5">
       {accentTick}
-      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="font-content text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {children}
       </span>
     </div>
@@ -98,7 +98,7 @@ export function QuestionHeading({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-1.5 pl-0.5">
       <span className="mt-[3px] flex">{accentTick}</span>
-      <div className="text-sm font-medium text-foreground">{children}</div>
+      <div className="font-content text-sm font-medium text-foreground">{children}</div>
     </div>
   );
 }
@@ -128,9 +128,13 @@ export function OptionButton({
     <button type="button" disabled={disabled} onClick={onClick} className={optionSurface(tone)}>
       {keyLabel != null ? <KeyBadge tone={tone}>{keyLabel}</KeyBadge> : null}
       <span className="min-w-0 flex-1">
-        <span className="block break-words text-sm font-medium leading-snug text-foreground">{label}</span>
+        <span className="font-content block break-words text-sm font-medium leading-snug text-foreground">
+          {label}
+        </span>
         {description ? (
-          <span className="block break-words text-xs leading-snug text-muted-foreground">{description}</span>
+          <span className="font-content block break-words text-xs leading-snug text-muted-foreground">
+            {description}
+          </span>
         ) : null}
       </span>
       {trailing}

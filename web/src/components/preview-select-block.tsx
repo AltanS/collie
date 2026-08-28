@@ -169,7 +169,9 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
       {terminalEditing ? (
         <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
           {t("dialog.preview.editingBanner")}
-          {preview.note.text ? <span className="text-muted-foreground"> ({preview.note.text})</span> : null}
+          {preview.note.text ? (
+            <span className="font-content text-muted-foreground"> ({preview.note.text})</span>
+          ) : null}
         </div>
       ) : editorOpen ? (
         <div className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
@@ -214,7 +216,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
       ) : preview.note.state === "attached" ? (
         <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
           <StickyNote className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label={t("dialog.preview.noteAria")} />
-          <span className="min-w-0 flex-1 text-xs text-foreground/90">{preview.note.text}</span>
+          <span className="font-content min-w-0 flex-1 text-xs text-foreground/90">{preview.note.text}</span>
           <button
             type="button"
             aria-label={t("dialog.preview.editNoteAria")}

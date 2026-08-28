@@ -130,6 +130,13 @@ export const ko: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — 새 메이저 버전",
   "settings.updateBanner.copyAria": "명령어 복사: {command}",
 
+  // --- settings.fonts ---
+  "settings.fonts.title": "터미널 글꼴",
+  "settings.fonts.description": "이 기기의 터미널 화면에만 적용돼요.",
+  "settings.fonts.family": "글꼴",
+  "settings.fonts.size": "크기",
+  "settings.fonts.system": "시스템 기본",
+
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "줄바꿈",
   "settings.display.wrap.hint": "끄면 TUI 표를 열 그대로 보여줘요 — 대신 옆으로 스크롤해요.",

@@ -142,7 +142,7 @@ function QuestionStep({
             onClick={() => onPress(id, option.keys)}
             className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
           >
-            <span className="min-w-0 flex-1">
+            <span className="font-content min-w-0 flex-1">
               {option.label}
               <span className="text-muted-foreground"> {t("dialog.endsQuestionsSuffix")}</span>
             </span>
@@ -175,8 +175,8 @@ function ReviewStep({
         <dl className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
           {wizard.answers.map((qa, i) => (
             <div key={i}>
-              <dt className="text-xs text-muted-foreground">{qa.question}</dt>
-              <dd className="text-sm font-medium text-foreground">{qa.answer}</dd>
+              <dt className="font-content text-xs text-muted-foreground">{qa.question}</dt>
+              <dd className="font-content text-sm font-medium text-foreground">{qa.answer}</dd>
             </div>
           ))}
         </dl>

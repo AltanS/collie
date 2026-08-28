@@ -1,9 +1,9 @@
 import { ArrowDown, ArrowUp, Check, Inbox, WifiOff } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { clockTime } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
+import { ListGroup } from "@/components/ui/list-group";
 import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
 import { AgentCard } from "./agent-card";
@@ -76,7 +76,7 @@ export function AgentList({
     // `bridge` is no help on its own: a cached snapshot still says "connected".
     if (error) {
       return (
-        <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+        <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
           <WifiOff className="size-7" />
           <span className="text-sm">
             {lastSeenAt === undefined
@@ -87,7 +87,7 @@ export function AgentList({
       );
     }
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
+      <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
         <Inbox className="size-7" />
         <span className="text-sm">
           {bridge === "connected" ? t("home.empty.noAgents") : t("home.empty.waiting")}
@@ -99,7 +99,7 @@ export function AgentList({
             dashboard reads as one coherent screen instead of an empty one. Renders nothing on a
             multiplexer that reports agents, i.e. nothing on Herdr. */}
         {bridge === "connected" && !agentDetection.capable && agentDetection.note !== "" && (
-          <p className="max-w-xs px-6 text-center text-xs leading-snug">
+          <p className="max-w-xs text-center text-xs leading-snug">
             {agentDetection.note} {t("home.empty.panesHint")}
           </p>
         )}
@@ -115,11 +115,11 @@ export function AgentList({
   const allClear = all.find((s) => s.key === "needs")!.agents.length === 0;
 
   return (
-    <div className="flex flex-col gap-5 px-3 py-4">
+    <div className="flex flex-col gap-5 px-4 py-4">
       {/* The product of the twenty-times-a-day glance. Rendered with presence, not as a caption:
           you should be able to resolve it one-handed at arm's length without focusing. */}
       {allClear && (
-        <p className="flex items-center gap-2 px-1 py-1 text-sm font-medium">
+        <p className="flex items-center gap-2 py-1 text-sm font-medium">
           <Check className="size-5 shrink-0 text-status-done" aria-hidden />
           {t("home.allClear")}
         </p>
@@ -130,6 +130,18 @@ export function AgentList({
         const open = foldable ? recentOpen : true;
         const bodyId = `agent-section-${s.key}`;
         const age = AGE_BY_SECTION.get(s.key);
+        // statusStyle="dot": the section heading already says the status, so a pill on every row
+        // restates it and costs the width the title needs.
+        const rows = s.agents.map((a) => (
+          <AgentCard
+            key={a.paneId}
+            agent={a}
+            onClick={() => onOpen(a)}
+            statusStyle="dot"
+            density={ATTENTION.has(s.key) ? "card" : "row"}
+            {...(age ? { age } : {})}
+          />
+        ));
 
         return (
           <section key={s.key} className="flex flex-col gap-2">
@@ -145,31 +157,22 @@ export function AgentList({
                 ) : undefined
               }
             />
-            {open && (
-              <div
-                id={bodyId}
-                className={cn(
-                  "flex flex-col",
-                  // Cards mean "a human is required here", so only the attention sections get them.
-                  // The rest are flat rows divided by a hairline — which also gives the page a
-                  // second boundary cue, so section gaps aren't doing that job alone.
-                  ATTENTION.has(s.key) ? "gap-2" : "divide-y divide-rule",
-                )}
-              >
-                {/* statusStyle="dot": the section heading already says the status, so a pill on
-                    every row restates it and costs the width the title needs. */}
-                {s.agents.map((a) => (
-                  <AgentCard
-                    key={a.paneId}
-                    agent={a}
-                    onClick={() => onOpen(a)}
-                    statusStyle="dot"
-                    density={ATTENTION.has(s.key) ? "card" : "row"}
-                    {...(age ? { age } : {})}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Cards mean "a human is required here", so only the attention sections get them —
+                and an attention section is a GAP LIST: every row is already a bordered object, so
+                it gets NO group frame. Wrapping it would be a box inside a box. Do not "fix" this
+                to a ListGroup later.
+
+                Every other section is flat rows in ONE bordered group. The frame gives the run of
+                hairlines a first edge and a last edge for 2px, which is the whole of what the
+                mockups changed — the row itself is untouched. */}
+            {open &&
+              (ATTENTION.has(s.key) ? (
+                <div id={bodyId} className="flex flex-col gap-2">
+                  {rows}
+                </div>
+              ) : (
+                <ListGroup id={bodyId}>{rows}</ListGroup>
+              ))}
           </section>
         );
       })}

@@ -198,7 +198,7 @@ export function MarkdownText({
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   return (
     <QueryContext.Provider value={query}>
-      <div className={`space-y-2 text-sm break-words ${className ?? ""}`}>
+      <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
         {blocks.map((block, i) => (
           <Block key={i} block={block} />
         ))}

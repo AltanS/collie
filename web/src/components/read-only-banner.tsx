@@ -57,7 +57,11 @@ function Strip({
   return (
     <output
       className={cn(
-        "flex items-center gap-2 border-b border-status-working/40 bg-status-working/15 px-4 py-2 text-xs font-medium text-status-working",
+        // A full BORDER and the house radius, not a `border-b`: this sits below the app header in
+        // the scrolling content, so it is a box on the page column like everything else there,
+        // and the caller supplies the gutter. Viewport chrome ABOVE the header (alpha-bar,
+        // connection-banner, update-available-banner) stays full-bleed with its `border-b`.
+        "flex items-center gap-2 rounded-sm border border-status-working/40 bg-status-working/15 px-4 py-2 text-xs font-medium text-status-working",
         className,
       )}
     >

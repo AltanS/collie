@@ -135,6 +135,13 @@ export const de: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — eine neue Hauptversion",
   "settings.updateBanner.copyAria": "Befehl kopieren: {command}",
 
+  // --- settings.fonts ---
+  "settings.fonts.title": "Terminal-Schrift",
+  "settings.fonts.description": "Nur der Terminal-Spiegel, auf diesem Gerät.",
+  "settings.fonts.family": "Schriftart",
+  "settings.fonts.size": "Größe",
+  "settings.fonts.system": "Systemstandard",
+
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "Zeilenumbruch",
   "settings.display.wrap.hint":

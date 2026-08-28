@@ -77,7 +77,10 @@ export function HomeRoute() {
       {/* Content region below the header: a viewport-clipped internal scroller, with the pull
           gesture on it — one thumb asking the bridge to look at its multiplexer now. */}
       <PullToRefresh scope={data.scope} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <ReadOnlyBanner device={data.device} />
+        {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
+            page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
+            list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
+        <ReadOnlyBanner device={data.device} className="mx-4 mt-3" />
 
         <main className="flex-1">
           {/* One list, every section, in triage order. It used to be split in two so "Needs you"
@@ -109,14 +112,14 @@ export function HomeRoute() {
         {/* The footer is the dashboard's meta zone, in widening order: the pack you're part of, an
             available update / needed restart, then the build stamp (which bundle you're running,
             with a stale-cache nudge). The pack line self-hides on a solo install. */}
-        <PackFooterLink scope={data.scope} className="px-3 pt-3" />
-        <UpdateBanner className="px-3 pt-3" />
-        <BuildStamp className="px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
+        <PackFooterLink scope={data.scope} className="px-4 pt-3" />
+        <UpdateBanner className="px-4 pt-3" />
+        <BuildStamp className="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
       </PullToRefresh>
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
           floating so it never shifts the list. Stays outside the scroller so it never scrolls away. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-4 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
         <StatusArea />
       </div>
 

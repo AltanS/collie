@@ -71,10 +71,13 @@ interface LabelledStripProps {
 //  2. **`aria-labelledby` pairs the two.** Inline, the label was a stray word in front of an
 //     unnamed run of buttons — the row had no accessible name at all. The id is generated here so
 //     the pairing cannot be forgotten at a fourth strip later.
-//  3. **`-mx-3 px-3` makes the scroller edge-to-edge.** The padding moves from the outer element
+//  3. **`-mx-4 px-4` makes the scroller edge-to-edge.** The padding moves from the outer element
 //     onto the scroller and is then cancelled by a negative margin, so the last pill can scroll
-//     clean off the screen instead of stopping 12px short, while the first pill still starts
-//     aligned under the label.
+//     clean off the screen instead of stopping 16px short, while the first pill still starts
+//     aligned under the label. The two halves are ONE number and must move together: the route's
+//     gutter. It is 16px (`px-4`) everywhere under R2 — one left edge per route — so a pill's left
+//     edge lands on the same x as the content column beside it. Change one half alone and the row
+//     either stops short of the screen edge or starts its first pill off the gutter.
 //  4. **The row's VERTICAL padding lives on the scroller too, for the same kind of reason.** The
 //     scroller clips on both axes (see STRIP_TAP_TARGET), so padding parked on the <nav> is padding
 //     the pills' tap areas cannot reach. Moved inside, the same pixels become the 44px floor. The
@@ -92,7 +95,7 @@ export function LabelledStrip({ label, className, scrollerClassName, children }:
       // pt-1.5 rather than pt-2 buys back 2px of the label's line, so the row grows by less than the
       // label costs. There is no `pb-*`: the row's bottom air is the scroller's `py-1.5`, which is
       // the same pixels one element further in, where the tap areas can use them.
-      className={cn("shrink-0 px-3 pt-1.5", className)}
+      className={cn("shrink-0 px-4 pt-1.5", className)}
     >
       {/* mb-0 overrides the placement's own mb-1 for the same reason: that 4px gap is now the top
           half of the scroller's `py-1.5`, inside the clip boundary instead of outside it. */}
@@ -101,7 +104,7 @@ export function LabelledStrip({ label, className, scrollerClassName, children }:
       </SectionLabel>
       <div
         className={cn(
-          "-mx-3 flex items-center gap-2 overflow-x-auto px-3 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "-mx-4 flex items-center gap-2 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           scrollerClassName,
         )}
       >

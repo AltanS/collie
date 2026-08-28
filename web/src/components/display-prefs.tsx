@@ -63,7 +63,7 @@ export function DisplayPrefsContent({
 }: DisplayPrefsContentProps) {
   useLocale();
   return (
-    <div className="divide-y divide-rule border-t border-rule bg-muted/30 px-3 py-1">
+    <div className="divide-y divide-border border-t border-rule bg-muted/30 px-3 py-1">
       <Row
         label={t("settings.display.wrap.label")}
         hint={t("settings.display.wrap.hint")}

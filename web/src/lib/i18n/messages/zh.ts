@@ -122,6 +122,13 @@ export const zh: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — 新的主版本",
   "settings.updateBanner.copyAria": "复制命令：{command}",
 
+  // --- settings.fonts ---
+  "settings.fonts.title": "终端字体",
+  "settings.fonts.description": "仅影响本设备的终端镜像。",
+  "settings.fonts.family": "字体",
+  "settings.fonts.size": "字号",
+  "settings.fonts.system": "系统默认",
+
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "自动换行",
   "settings.display.wrap.hint": "关闭后按原始列宽显示 TUI 表格 — 改为左右平移查看。",

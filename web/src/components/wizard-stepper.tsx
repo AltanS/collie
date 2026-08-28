@@ -93,7 +93,7 @@ export function WizardStepper({
             {step.answered ? (
               <Check className="size-3 shrink-0 text-primary" aria-label={t("dialog.answeredAria")} />
             ) : null}
-            <span className="truncate">{step.label}</span>
+            <span className="font-content truncate">{step.label}</span>
           </li>
         ))}
         {/* The trailing Submit pill is the dialog's last stop, and on the wizard's review step it is

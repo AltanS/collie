@@ -55,6 +55,23 @@ describe("LabelledStrip", () => {
     expect(scroller).toHaveClass("gap-2");
   });
 
+  it("cancels the scroller's gutter with the same number the strip pads by", () => {
+    // The `-mx-N px-N` pair is ONE number — the route's gutter, 16px under R2 — and the two halves
+    // only work together: pad without the negative margin and the row stops short of the screen
+    // edge; negate without the padding and the first pill starts off the gutter. Changing one and
+    // forgetting the other is silent, so it is pinned here rather than left to the eye.
+    render(
+      <LabelledStrip label="Spaces">
+        <button type="button">All</button>
+      </LabelledStrip>,
+    );
+    const strip = screen.getByRole("navigation", { name: "Spaces" });
+    const scroller = strip.querySelector(".overflow-x-auto");
+    expect(strip).toHaveClass("px-4");
+    expect(scroller).toHaveClass("px-4");
+    expect(scroller).toHaveClass("-mx-4");
+  });
+
   it("always draws the label, so no caller can make the row two different heights", () => {
     // There is no way to suppress it. A strip that drew its name in one state and not in another
     // would change height across that state, and a page that jumps on a navigation is the same

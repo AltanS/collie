@@ -69,8 +69,11 @@
      makes it visible is that it is the one saturated thing in a neutral row. Don't "fix" that number
      by darkening it into a mid blue. Text on the tint is what has to clear a contrast bar, and does:
      7.3:1 light, 9.2:1 dark. */
-  --control-on: light-dark(oklch(0.90 0.06 235), oklch(0.32 0.05 240));
-  --control-on-foreground: light-dark(oklch(0.38 0.12 245), oklch(0.89 0.06 235));
+  --control-on: light-dark(oklch(0.9 0.06 235), oklch(0.32 0.05 240));
+  --control-on-foreground: light-dark(
+    oklch(0.38 0.12 245),
+    oklch(0.89 0.06 235)
+  );
   --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
   --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
   /* The INERT fill — a well, a disabled track, a quiet chip on a card. Value unchanged (rgb 235
@@ -96,7 +99,10 @@
      ~0.94, active 0.92 — and 0.94 would have collided the last two. */
   --accent: light-dark(oklch(0.92 0 0), oklch(0.269 0 0));
   --accent-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
-  --destructive: light-dark(oklch(0.577 0.245 27.325), oklch(0.704 0.191 22.216));
+  --destructive: light-dark(
+    oklch(0.577 0.245 27.325),
+    oklch(0.704 0.191 22.216)
+  );
   --destructive-foreground: light-dark(oklch(0.985 0 0), oklch(0.985 0 0));
   --border: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 12%));
   --input: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 15%));
@@ -275,9 +281,23 @@
   --color-status-unknown: var(--status-unknown);
   --color-status-info: var(--status-info);
 
-  --font-mono: "Nerd Font Symbols", "JetBrains Mono", "Cascadia Mono", "Cascadia Code",
-    "Roboto Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
+  --font-mono:
+    "Nerd Font Symbols", "JetBrains Mono", "Cascadia Mono", "Cascadia Code",
+    "Roboto Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* The UI typeface — CHROME ONLY. See the @font-face block below for what that means and why the
+     stand-in family in the middle of the stack is not optional. */
+  --font-sans:
+    "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* The CONTENT stack: exactly what the app rendered in before the UI typeface arrived. Anything an
+     agent or a machine authored wears this, so the custom face never dresses someone else's words
+     (see the boundary note below). It is a plain system stack on purpose — it ships no bytes. */
+  --font-content:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
 }
 
 /* Nerd Font symbols, bundled — the only webfont Collie ships.
@@ -321,6 +341,83 @@
   unicode-range: U+F0000-F1AFF;
 }
 
+/* The UI typeface — Space Grotesk, bundled. The app's own voice, and NOTHING ELSE'S.
+ *
+ * WHAT IT DRESSES. Chrome: headers, section labels, buttons, settings rows, banners, counts, the
+ * wordmark. It is the MAKER'S choice and there is no setting for it — the Fonts section in Settings
+ * configures the TERMINAL family (--font-mono), which this block does not touch.
+ *
+ * WHAT IT MUST NEVER DRESS. Anything an agent or a machine authored: the pane mirror, the
+ * transcript, agent prose and markdown, code, command text, file paths, ANSI. Two mechanisms hold
+ * that line, and both must stay:
+ *   1. `font-mono` — every verbatim terminal surface already carries it, so it resolves through
+ *      --font-mono and never sees this face. The colour half of the same boundary is
+ *      components/mirror-space.ts:33-34 (MIRROR_SPACE / MIRROR_INVERT); read its header first.
+ *   2. `font-content` (--font-content above) — for agent-authored text that is NOT verbatim
+ *      terminal output and therefore is not monospaced: rendered markdown, and the labels the
+ *      interactive blocks lift out of a dialog. mirror-space.ts says those blocks are "siblings of
+ *      the mirror, not children" and keep app theming — true for colour, and exactly why they need
+ *      this second mechanism for family. A new surface that prints an agent's words takes one of
+ *      the two. If you cannot tell whether a surface is chrome or content, it is content.
+ *
+ * WHY THIS FACE. The mark is a line-art collie head in an ellipse with monotone beads: one stroke,
+ * constant curvature, mitred corners (collie-brand/src/bead.ts). Space Grotesk is the candidate
+ * drawn from the same idea — geometric skeleton, monotone stroke, cut terminals — so the wordmark
+ * at 18px reads as one drawing with the mark beside it. Its cost is the small end: x-height is
+ * 486/1000, the lowest of the three faces measured, so 11px uppercase labels and the 13px tier are
+ * where it has to be judged. The other two candidates (IBM Plex Sans 3.201, Geist 1.800) are on
+ * disk in public/fonts/ and wired into the playground's "UI typeface" card behind a live switcher;
+ * changing the winner is the --font-sans line above plus the URL below, nothing else.
+ *
+ * WEIGHT. 27 KB, subset to Latin + Latin-Ext-A + the punctuation this app actually prints (·, —, …,
+ * ‹›, arrows, ×, ✓) and instanced to wght 400–700. Compare 641 KB / 504 KB for the two Nerd Font
+ * faces — those are lazy behind `unicode-range`; this one is on the critical path, which is why it
+ * had to be this small. `tnum` is kept in the subset: every count in the app is `tabular-nums`.
+ * Rebuild with scripts/build-ui-font.sh; the version is in the filename because public/ assets are
+ * unhashed and the SW caches them forever by URL (lib/sw-routes.ts FONT_URLS).
+ *
+ * NO LAYOUT SHIFT — the part that is not negotiable. `font-display: swap` paints immediately in a
+ * fallback, so the only question is whether the swap MOVES anything. It does not, because the two
+ * families below are the local system face re-declared with Space Grotesk's own metrics:
+ * `size-adjust` matches the average advance width over the app's real charset, and the
+ * ascent/descent overrides restore the line box after that scaling. A glyph changes shape at swap;
+ * no box changes size. index.html preloads the file as well, so on a warm tailnet the swap usually
+ * never happens at all. Measured in Chrome by forcing the swap with an observer running: see the
+ * stand-in's own comment below for what it is matching and why one table covers every platform.
+ *
+ * Space Grotesk is SIL OFL 1.1 — public/fonts/LICENSE-space-grotesk.txt. The two other candidates
+ * ship their licences beside it. */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* The metric-matched stand-in. No `src: url()` — this IS the local system face, resized, so it
+   costs nothing and is available at the first byte of CSS. `size-adjust` is the ratio of Space
+   Grotesk's total advance width over a line of the app's own copy to the same line in the local
+   face; the ascent/descent overrides then restore the line box after that scaling. Together they
+   mean the swap changes glyph SHAPES and nothing else: same line breaks, same line boxes, same
+   block heights. Recomputed by scripts/build-ui-font.sh — do not hand-edit.
+
+   The `local()` list is deliberately one metric family: Arial and its clones (Helvetica, Liberation
+   Sans, Arimo) plus Roboto, which measures within 0.3% of Arial on that same line, so one override
+   table serves both the desktop and the Android case. Noto Sans is NOT in the list — it is ~5%
+   wider and would defeat the whole mechanism. If none of them resolve the family is skipped and the
+   stack falls through to the plain system entries, which is the behaviour this app had before the
+   face existed. */
+@font-face {
+  font-family: "Space Grotesk Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 107.53%;
+  ascent-override: 91.51%;
+  descent-override: 27.16%;
+  line-gap-override: 0%;
+}
+
 @layer base {
   * {
     /* Full-strength ring, not /50: halved, the focus indicator measures 1.77:1 in light and 1.87:1
@@ -335,6 +432,9 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Spelled here rather than left to Tailwind's `--default-font-family`, so the app's face is a
+       fact you can read in this file instead of a preflight default you have to know about. */
+    font-family: var(--font-sans);
     overscroll-behavior-y: none;
   }
 }

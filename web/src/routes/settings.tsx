@@ -15,6 +15,7 @@ import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
 import { LanguageControl } from "@/components/language-control";
+import { FontSettingsControl } from "@/components/font-settings";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
@@ -105,6 +106,11 @@ export function SettingsRoute() {
             ahead of device behaviour, which is more of a per-device tweak than a standing choice. */}
         <LanguageControl />
 
+        {/* Fonts sits with appearance, immediately under Language: all three are "how this phone
+            presents itself". It configures the TERMINAL font only — the app's own typeface is the
+            maker's choice and has no setting (round-4 F-D1). */}
+        <FontSettingsControl />
+
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}
         <HapticsControl />
@@ -140,12 +146,12 @@ export function SettingsRoute() {
           </div>
 
           {state && blocked && (
-            <p className="border-t border-rule px-4 py-2.5 text-xs text-muted-foreground">
+            <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
               {availabilityNote(state.availability)}
             </p>
           )}
           {error && (
-            <p className="border-t border-rule px-4 py-2.5 text-xs text-status-blocked">
+            <p className="border-t border-border px-4 py-2.5 text-xs text-status-blocked">
               {error}
             </p>
           )}

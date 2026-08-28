@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- No theme class here: `color-scheme: light dark` in index.css follows the OS, and
      public/theme-init.js stamps `light`/`dark` before first paint only when the user has pinned
-     one. The cascade decides, not the markup. --><html lang="en">
+     one. The cascade decides, not the markup. -->
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta
@@ -13,13 +14,37 @@
     <script src="/theme-init.js"></script>
     <!-- Browser chrome follows the OS for System users. useTheme rewrites these at runtime for
          someone who has pinned the opposite of their OS. -->
-    <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta
+      name="theme-color"
+      content="#f5f5f5"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#0a0a0a"
+      media="(prefers-color-scheme: dark)"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="apple-mobile-web-app-title" content="Collie" />
     <title>Collie</title>
+    <!-- The UI typeface, fetched in parallel with the CSS that asks for it rather than after it.
+         index.css already guarantees no layout shift with a metric-matched fallback, so this is not
+         load-bearing — it just means the swap usually never happens at all. `crossorigin` is
+         MANDATORY on a font preload even same-origin (fonts are fetched in CORS mode); without it
+         the browser fetches the file twice. Keep the URL in step with FONT_URLS in
+         src/lib/sw-routes.ts and the @font-face in src/index.css — fonts.test.ts pins all three. -->
+    <link
+      rel="preload"
+      href="/fonts/ui-space-grotesk-2.000-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <!-- The web manifest <link> is injected by vite-plugin-pwa at build time. -->
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -44,6 +69,28 @@
       :root.dark {
         color-scheme: dark;
       }
+      /* The UI typeface, declared a second time. index.css has not loaded here either, and the
+         splash's caption is the same string at the same size as routes/root.tsx's BootSplash — so
+         if the splash painted in the system face and React's copy painted in Space Grotesk, the
+         hand-off would change the family and the line under the operator's eyes. Same face, same
+         stand-in, same overrides; keep them in step with index.css. The file itself is preloaded
+         above, so this costs no extra request. */
+      @font-face {
+        font-family: "Space Grotesk";
+        src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
+        font-weight: 400 700;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Space Grotesk Fallback";
+        src:
+          local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+          local("Liberation Sans"), local("Arimo"), local("Roboto");
+        size-adjust: 107.53%;
+        ascent-override: 91.51%;
+        descent-override: 27.16%;
+        line-gap-override: 0%;
+      }
       .boot-splash {
         position: fixed;
         inset: 0;
@@ -58,7 +105,13 @@
            hand-off to React, and the caption sat at 3.45:1. Keep in step with index.css. */
         background: light-dark(#f5f5f5, #0a0a0a);
         color: light-dark(#5d5d5d, #a1a1a1);
-        font: 500 0.875rem/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+        font:
+          500 0.875rem/1.4 "Space Grotesk",
+          "Space Grotesk Fallback",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
       }
       .boot-splash__dog {
         --dog-size: 4rem;
@@ -66,7 +119,8 @@
         width: var(--dog-size);
         height: var(--dog-size);
         background: url("/dog-gallop.png") no-repeat 0 0;
-        background-size: calc(var(--dog-frames) * var(--dog-size)) var(--dog-size);
+        background-size: calc(var(--dog-frames) * var(--dog-size))
+          var(--dog-size);
         animation: boot-dog-gallop 0.6s steps(6) infinite;
       }
       @keyframes boot-dog-gallop {

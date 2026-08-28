@@ -142,6 +142,13 @@ export const en = {
   "settings.updateBanner.majorAvailable": "Collie {version} — a new major",
   "settings.updateBanner.copyAria": "Copy command: {command}",
 
+  // --- settings.fonts (the terminal mirror's face and size; NOT the app's own typeface) ---
+  "settings.fonts.title": "Terminal font",
+  "settings.fonts.description": "The terminal mirror only, on this device.",
+  "settings.fonts.family": "Family",
+  "settings.fonts.size": "Size",
+  "settings.fonts.system": "System default",
+
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "Wrap lines",
   "settings.display.wrap.hint":

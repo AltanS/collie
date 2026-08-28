@@ -28,8 +28,8 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
   const groups = selectedTab ? allGroups.filter((g) => g.tabId === selectedTab) : allGroups;
 
   return (
-    <div className="flex flex-col gap-5 px-3 py-4">
-      <div className="px-1">
+    <div className="flex flex-col gap-5 px-4 py-4">
+      <div>
         <h2 className="truncate text-sm font-semibold">{workspace.label}</h2>
         <p className="text-xs text-muted-foreground">
           {tn("space.view.tabCount", workspace.tabCount)} ·{" "}
@@ -40,12 +40,12 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
       {groups.map((g) => (
         <section key={g.tabId} className="flex flex-col gap-2">
           {selectedTab === null && (
-            <h3 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {g.label}
             </h3>
           )}
           {g.panes.length === 0 ? (
-            <p className="px-1 text-xs text-muted-foreground">{t("space.view.emptyTab")}</p>
+            <p className="text-xs text-muted-foreground">{t("space.view.emptyTab")}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {/* scope="tab": this list already sits under its space heading and per-tab section,
@@ -64,7 +64,7 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
       ))}
 
       {groups.length === 0 && (
-        <p className="px-1 py-8 text-center text-sm text-muted-foreground">
+        <p className="py-8 text-center text-sm text-muted-foreground">
           {selectedTab ? t("space.view.noPanesInTab") : t("space.view.noPanesInSpace")}
         </p>
       )}

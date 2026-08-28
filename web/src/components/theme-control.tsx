@@ -46,7 +46,7 @@ export function ThemeControl() {
       <div
         role="radiogroup"
         aria-label={t("settings.theme.title")}
-        className="flex gap-1 border-t border-rule p-2"
+        className="flex gap-1 border-t border-border p-2"
       >
         {OPTIONS.map((option) => {
           const selected = option.value === theme;

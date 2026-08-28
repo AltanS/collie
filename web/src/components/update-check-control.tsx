@@ -75,7 +75,7 @@ export function UpdateCheckControl() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-rule p-3">
+      <div className="flex items-center gap-3 border-t border-border p-3">
         <Button variant="outline" size="sm" disabled={busy} onClick={check}>
           {busy ? (
             <>
