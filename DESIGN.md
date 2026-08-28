@@ -32,38 +32,38 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. |
 | `ui/card.tsx` | A filled panel on `--card` with its own edge. The Settings surface. |
 | `ui/chip.tsx` | The pill in a strip: label, optional leading status dot, 44px hit box. Space and tab strips. |
+| `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/list-group.tsx` | A run of flat rows drawn as ONE bordered region. Gives a `divide-y` list a first and last edge. |
 | `ui/labelled-strip.tsx` | The structure of a named, horizontally scrolling pill row: non-scrolling label, `aria-labelledby`, edge-to-edge scroller. Also exports `STRIP_TAP_TARGET`. |
+| `ui/notice.tsx` | The app's ONE notice look: five tones × two placements (`strip`, `box`), each on its own height floor, and the single table the tint recipe may appear in. Owns shape, tone and live-region semantics; owns no words and no visibility. |
 | `ui/section-label.tsx` | The small uppercase word that names a section. Type only — it renders a `<span>` and owns no structure. |
 | `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer; there is no popover, no dialog, no tooltip. |
+| `ui/strip-host.tsx` | The top band above the header. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. Domain-blind: a bigger number wins, and it does not know what a connection is. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
+| `ui/toast-viewport.tsx` | Where a transient event floats: `dock="bottom"` fixed to the viewport, `dock="top"` absolute inside a route's content region. Owns position and nothing else. |
 | `ui/chat/chat-input.tsx` | The composer's text box shell. |
 | `ui/chat/chat-message-list.tsx` | The transcript's scrolling list. |
 
 If the thing you need is not in that table, say so in the diff and put it in that folder.
 
-### The known violation: the alert family
+### The alert family: the primitive landed, the conversion did not finish
 
-There is **no alert primitive**, and the app has six hand-rolled ones instead:
+There was **no alert primitive**, and the app grew six hand-rolled ones instead — three heights,
+three gutters, two radii, and two different ideas about whether a notice has an edge at all.
+`read-only-banner` and `host-stale-banner` were the *same class string* with a different status
+token. Each was built without checking whether the previous one existed, and together they are why
+the top of the app moved when its state changed.
 
-| Component | Box, as built |
-| --- | --- |
-| `connection-banner.tsx:92,240` | full-bleed, `border-b`, `px-4 py-1 text-xs`, safe-area top |
-| `update-available-banner.tsx:28` | full-bleed, `border-b`, `px-4 py-1.5 text-xs`, safe-area top |
-| `alpha-bar.tsx:50-51` | full-bleed, `border-b`, **`px-3` `py-0.5` `text-[11px]`** |
-| `read-only-banner.tsx:64` | inset, `rounded-sm border`, `px-4 py-2 text-xs` |
-| `host-stale-banner.tsx:92` | inset, `rounded-sm border`, `px-4 py-2 text-xs` |
-| `no-echo-notice.tsx:43` | inset, **no border at all**, `rounded-md bg-muted/40 px-2.5 py-1.5` |
+The primitive now exists: `ui/notice.tsx`, plus `ui/collapse.tsx`, `ui/strip-host.tsx` and
+`ui/toast-viewport.tsx` around it. §11 is the system they make. **One component is converted** —
+`read-only-banner.tsx`, the pilot. Six are not, and §10 gap 1 lists each with what it still
+hand-rolls; until they land, this app runs two alert systems at once.
 
-Three heights, three gutters, two radii, and two different ideas about whether a notice has
-an edge at all. `read-only-banner` and `host-stale-banner` are the *same class string* with a
-different status token. Each was built without checking whether the previous one existed, and
-together they are why the top of the app moves when its state changes.
-
-**So: no seventh one.** The next alert is `ui/alert.tsx`, and the six above collapse into it.
-It has exactly two placements (§4): viewport chrome above the header is full-bleed with a
-`border-b`; a notice below the header, in the content column, is an inset box on the page
-gutter with a full border and the house radius.
+**So: no seventh one.** A new notice is a `Notice`. If it appears or disappears, it does so through
+`Collapse`. If it competes for the band above the header, it registers a `StripSlot`. The two
+placements (§4) are now the `variant` prop and there is no third: `strip` is viewport chrome above
+the header, full-bleed with a `border-b`; `box` is content in the column, inset on the page gutter
+with a full border and the house radius.
 
 ---
 
@@ -121,7 +121,8 @@ through `CompactStripLabels` rather than per-strip.
 
 This principle is also why the alert work in §1 is happening: six notices with six heights
 appearing and disappearing at the top of the viewport is the same fault, one order of
-magnitude larger.
+magnitude larger. §11 states the one exception the app allows, and names the single component
+that is allowed to be it.
 
 ---
 
@@ -329,13 +330,38 @@ off both) and asserts the header row is `min-h-15` and carries no `h-<n>`.
 
 Reach for this whenever a rule lives in two places. Cheaper than an ADR, and it does not rot.
 
+### A test queries its own render's container, never `screen`
+
+`ui/strip-host.tsx:108-109` mounts two permanent, empty `sr-only` live regions — one
+`role="status"`, one `role="alert"` — so a live region exists before its content changes. The
+cost is that `screen.getByRole("status")` is **ambiguous in any tree that holds a host**: it
+matches the empty region as readily as the notice you meant, and the failure reads as a missing
+element rather than a duplicate one. So destructure `container` from your own `render()` and
+scope by `data-slot`. Two workers lost time to this before it was written down.
+
 ---
 
 ## 10. Honest gaps — rules the codebase does not yet follow
 
 Stated so nobody reads this document as a description of a clean tree.
 
-1. **No alert primitive.** Six components, listed in §1. The largest open gap.
+1. **The alert family is half-converted.** `ui/notice.tsx`, `ui/collapse.tsx`,
+   `ui/strip-host.tsx` and `ui/toast-viewport.tsx` exist (§1, §11), and `read-only-banner.tsx` is
+   the one component built from them. Six surfaces still hand-roll their own box, so the app runs
+   two alert systems at once. Each line below was re-read against the source, not inherited:
+
+   | Still hand-rolled | What it owns that the primitive owns |
+   | --- | --- |
+   | `connection-banner.tsx:92` (auth), `:240` (connection) | full-bleed `border-b px-4 py-1 text-xs`, its own safe-area inset, its own tint table (`:311-313`), its own collapse machinery — and `role="alert"` beside `aria-live="polite"` at `:89-90` and `:236-237`, the contradiction §11 exists to make inexpressible |
+   | `update-available-banner.tsx:28` | full-bleed `border-b`, `px-4 py-1.5`, the tint recipe written inline, its own safe-area inset, no height floor |
+   | `host-stale-banner.tsx:92` | inset `rounded-sm border … px-4 py-2 text-xs` — the pre-conversion read-only string, verbatim. Mounts and unmounts with no `Collapse`, so it pops. |
+   | `no-echo-notice.tsx:43` | `rounded-md bg-muted/40 px-2.5 py-1.5` and **no border at all**; `terminal-draft-preview.tsx:32` is the same string a second time (gap 3 below) |
+   | `routes/settings.tsx:158,163` | two `<p>` rows on `border-t border-border px-4 py-2.5`, popping into the card unanimated |
+   | `alpha-bar.tsx:50-51` | full-bleed `border-b border-status-info/40 bg-status-info/15 px-3 py-0.5 text-[11px]`. Deliberately last, and possibly never: it is a static build fact that never appears or disappears, so it cannot shift anything, and it is the family's visual precedent rather than a violation of it. |
+
+   Also unconverted, by design order rather than oversight: `status-area.tsx` still carries its own
+   fixed wrappers per route instead of `ui/toast-viewport.tsx`, and nothing mounts a `StripHost`
+   yet — the band is indivisible and lands in one change.
 2. **`space-overview.tsx:136`** — an `outline-none` on the filter `<input>` with no
    replacement focus mark on it or its `<label>`. Trap 2 in its plain form: keyboard focus
    on that field is invisible.
@@ -348,3 +374,87 @@ Stated so nobody reads this document as a description of a clean tree.
    `menu-block.tsx` and `status-area.tsx:45` still draw edges at `border-border/60` or `/70`,
    which §4 measured at 1.09:1 in light. These are inside the agent-dialog blocks, which are
    the least-visited part of the restyle.
+
+---
+
+## 11. Announcements — four categories, two layout models
+
+Every surface that tells the operator something is not normal is one of four things. Ten of them
+existed because nobody had named the categories: severity was mistaken for category, so each new
+severity grew a new component. **Severity is a tone, not a category** — `ui/notice.tsx` carries
+five of them and any category may wear any one.
+
+| Category | Outlives the next interaction? | Scope | Where it lives |
+| --- | --- | --- | --- |
+| **System strip** | yes | the app / this session | the band above the header, full-bleed |
+| **Scope notice** | yes | this route or view | an inset box in the content column |
+| **Event** | no | wherever it fires | the floating layer — never holds space |
+| **Contextual notice** | while its control is relevant | one control | that control's own chrome |
+
+### Which surface do I use
+
+Two questions, answered in order. Read only the row you land on.
+
+| Outlives the operator's next interaction? | Scope | Use |
+| --- | --- | --- |
+| **no** | any | **Event.** `lib/status.ts` → `<ToastViewport dock>`. `dock="bottom"` on screens with no composer; `dock="top"` on the pane. Never in the flex column. |
+| **yes** | the whole app or session | **System strip.** `<StripSlot priority={…}>` inside the one `StripHost`, wrapping `<Notice variant="strip">`. |
+| **yes** | this route or view | **Scope notice.** `<Collapse open={…}><Notice variant="box">`, the caller supplying only the gutter. |
+| **yes** | one control | **Contextual notice.** `<Notice variant="box">` anchored in the control's chrome, not the viewport — it pushes the *input*, which is correct: the operator is acting there. |
+
+### Why not "always on top"
+
+The ask was that notices float over content always. That is right for events and wrong for
+standing conditions, and **both failure modes are lived experience in this repo**. The pane screen
+once floated the status line over the mirror; it covered the terminal tail — the newest output, the
+reason the screen is open — so it was moved in-flow (`agent-chat.tsx:779-783`), and that in-flow fix
+is what shrinks the mirror today. The two failures belong to two categories. A 2.5s toast over the
+tail is bad precisely because it fires while you are watching the tail; a minutes-long "you are
+read-only" box, floated, is bad the other way — it either occludes for minutes or fades and leaves
+the composer inexplicably dead, which is a lie by omission. Hence the ruling: **a notice that will
+outlive the operator's next interaction holds space; anything shorter floats.** A standing condition
+costs space because it costs capability, and those pixels buy a fact the operator must not lose.
+
+### Where the priority table lives
+
+`web/src/lib/strip-priority.ts` — `AUTH 40 > OUTAGE 30 > DEGRADED 20 > UPDATE 10`, in steps of ten
+so a future level slots into a gap without renumbering anything. It is on the **feature** side
+because `ui/strip-host.tsx` is domain-blind: it knows only that a bigger number wins, never what a
+connection or an update *is*. The band shows one strip at a time: two cost ~66px of a 390×844
+phone and double the number of times the page moves, and every pair has a strict answer anyway. The
+losing fact is not lost — the update offer keeps its footer line and its settings control.
+
+### Two hard rules
+
+1. **No state may move content except through `Collapse`.** §2 forbids a state that re-lays-out;
+   a notice arriving is that fault one order of magnitude larger. `ui/collapse.tsx` is the single
+   sanctioned exception — `grid-template-rows: 0fr↔1fr` plus opacity over 240ms — because the
+   height change is then continuous and eased, so neighbouring content (the mirror included)
+   animates instead of teleporting. It holds its last child through the exit, so a box closes on
+   the sentence that explained it. No bare conditional mount, no `hidden`, no unanimated pop.
+2. **A dismissible standing condition needs a permanent second surface.** Dismissal must not be
+   able to leave the operator misinformed. The update strip may be dismissed because the same fact
+   also sits in the footer and in Settings. The connection and auth strips may not: the remedy
+   button is the only honest exit. Scope notices may not: they explain dead controls, and a refusal
+   with no visible reason is the shape of issue #103.
+
+### One role, or one `aria-live`, never both
+
+`ui/notice.tsx` takes `announce`: `"alert"` emits `role="alert"` and nothing else, `"status"` emits
+`role="status"` and nothing else, `"none"` emits neither. There is deliberately no way to ask for
+both. This is a **correction, not a preference** — `connection-banner.tsx:89-90` and `:236-237`
+carry `role="alert"` beside `aria-live="polite"` today, which asks for assertive and polite at once
+and lets the answer depend on which screen reader is reading. A role already carries its own
+implicit liveness; a second declaration beside it asks one question twice. `strip-host.tsx:108-109`
+keeps one empty polite region and one assertive region mounted permanently, because a live region
+has to exist *before* its content changes to be announced reliably.
+
+### The two floors
+
+`min-h-[33px]` for a strip, `min-h-[42px]` for a box, stated once in `ui/notice.tsx` and not
+lowerable by a caller. Both are derived, not picked: the 24px action slot plus the shape's own
+padding plus its border, which `border-box` counts inside a min-height. `min-h` and never `h`, for
+the reason §6 gives at `app-header.tsx:110`. They are **floors** — a two-line host-stale message
+legitimately grows its box — and what they buy is that two one-line notices are the same height
+whether or not one carries a button, so swapping one strip for another inside the open band
+repaints it and never moves it.

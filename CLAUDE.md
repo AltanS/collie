@@ -185,6 +185,9 @@ lint guard or the pack-wire guard.
   `web/src/components/ui/` for an existing primitive, and promote one the moment a second
   place needs the same visual idea. It also holds the no-shift rule, the radius and line
   tokens, the mono-vs-sans split, and the Tailwind v4 traps that each cost a day.
+- **Before adding any recurring visual pattern, check `web/src/components/ui/` for the
+  primitive; if none exists, the primitive comes first, in its own commit.** A pattern built at
+  a call site first is one that never gets promoted — the alert family cost six components that way.
 - **Check UI states in the playground** (`web/src/playground/`, `cd web && bun run playground`,
   README → "The states playground") before changing a banner, the mark, the boot splash, the idle
   lock, or the pack page — it renders every state at once. Never import playground code from app
