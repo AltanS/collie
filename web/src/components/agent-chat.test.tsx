@@ -20,7 +20,7 @@ import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents } from "@/test/handlers";
+import { fixtureAgents, fixtureTabs } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
 import type { ServerSummary } from "@/lib/types";
 import { AgentChat } from "./agent-chat";
@@ -49,8 +49,8 @@ function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
     ...overrides,
   };
   const router = createMemoryRouter([{ path: "/", element: <AgentChat {...props} /> }]);
-  render(<RouterProvider router={router} />);
-  return props;
+  const { container } = render(<RouterProvider router={router} />);
+  return { props, container };
 }
 
 describe("AgentChat — reply flow", () => {
@@ -142,7 +142,7 @@ describe("AgentChat — read-only device", () => {
     // The banner names the read-only state (and the device id), and the composer is locked.
     expect(screen.getByText(/read-only/i)).toBeInTheDocument();
     expect(screen.getByText(/spare-phone/)).toBeInTheDocument();
-    const box = screen.getByPlaceholderText(/read-only — device not authorised/i);
+    const box = screen.getByPlaceholderText(/read-only — not authorised/i);
     expect(box).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     // The terminal mirror still renders — reading is always allowed.
@@ -721,5 +721,60 @@ describe("AgentChat — a pane on a host the lead can't reach", () => {
     renderPackChat("bluefin");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/type a reply/i)).not.toBeDisabled();
+  });
+});
+
+// The folder tab opens onto the PAGE, and the mirror draws its own top edge clear of it.
+//
+// A coupling test in the DESIGN.md §9 sense: the rule spans two files and an edit to either one
+// looks complete on its own. `tab-strip.tsx` owns the baseline the active tab hangs off (a
+// `border-b` in --rule that the tab's 1px cover strip paints over for its own width); this file
+// owns the surface underneath. The terminal ground is byte-identical to `--background` in BOTH
+// themes on purpose (index.css:44-48), so with the mirror flush against that baseline the tab had
+// no floor and read as bleeding into the terminal — and a rule added flush from below would have
+// been a second hairline on the same line, in the one pixel the tab covers.
+//
+// The three values below are one set. The gap is what makes the mirror's rule a second boundary
+// rather than a doubled one; `pt-0` is what pays for it (ChatMessageList's own base is `py-4`, so
+// merely dropping the override lets 16px back in, not 0). Verified to fail in both directions:
+// remove the margin and the doubling assertion trips; restore the scroller's top padding and the
+// last one does.
+describe("AgentChat — the mirror's top edge", () => {
+  // `div[role="presentation"]`, not `[role="presentation"]`: the Collie mark's SVG carries the same
+  // role, and an SVG's `className` is an SVGAnimatedString rather than a string — the assertion then
+  // fails on the wrong element with a type error instead of a diff.
+  function mirrorAndTabs(container: HTMLElement) {
+    const mirror = [...container.querySelectorAll<HTMLElement>('div[role="presentation"]')].find(
+      (el) => el.querySelector(".overflow-y-auto"),
+    );
+    const nav = screen.getByRole("navigation", { name: /tabs/i });
+    return { mirror, nav };
+  }
+
+  it("draws the mirror's own rule, set clear of the tab strip's baseline", () => {
+    const { container } = renderChat({ tabs: fixtureTabs });
+    const { mirror, nav } = mirrorAndTabs(container);
+
+    // The tab strip still owns the baseline, from above, and only that.
+    expect(nav?.className).toMatch(/\bborder-b\b/);
+    expect(nav?.className).not.toMatch(/\bborder-t\b/);
+
+    // The mirror announces itself with the structural line, not the component line.
+    expect(mirror?.className).toMatch(/\bborder-t\b/);
+    expect(mirror?.className).toMatch(/\bborder-rule\b/);
+
+    // …and it is set down off the baseline, so the two rules are two boundaries and never one.
+    expect(mirror?.className).toMatch(/\bmt-\d/);
+  });
+
+  it("keeps the scroller's top padding at zero, which is what bought the rule", () => {
+    const { container } = renderChat({ tabs: fixtureTabs });
+    const { mirror } = mirrorAndTabs(container);
+    const scroller = mirror?.querySelector<HTMLElement>(".overflow-y-auto");
+
+    // `pt-0` stated, not merely absent: the base `py-4` is still on the element and Tailwind's own
+    // sheet order is what lets the later `pt-0` beat it, so dropping the class restores 16px.
+    expect(scroller?.className).toMatch(/\bpt-0\b/);
+    expect(scroller?.className).toMatch(/\bpb-3\b/);
   });
 });

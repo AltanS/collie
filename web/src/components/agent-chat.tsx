@@ -833,13 +833,40 @@ export function AgentChat({
               (unless you're selecting text to copy, which the tap must not collapse). */}
           {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
               quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
-          {/* No border-t. This stack now draws each division ONCE, from ABOVE: the header, the tab
-              bar and (when present) the pane strip each close their own band with a border-b in
-              --rule. The tab bar has to own its baseline — it is a folder tab, and the active tab
-              covers that line for its own width so tab and content read as one piece; a second rule
-              drawn from below here is a pixel the tab cannot reach, and it shows through under the
-              open tab. Whichever band ends last still leaves a boundary above the mirror, down to the
-              header's own border-b when no strip renders. */}
+          {/* THE MIRROR'S OWN TOP EDGE, and the 8px of PAGE the folder tab opens onto — `mt-2
+              border-t border-rule`, one set, do not separate them.
+
+              The tab above is deliberately open at its bottom edge: that is what makes it a tab and
+              not a pill, and a tab opening downward promises continuity with the surface beneath it.
+              Beneath it here is the terminal mirror, which is a FOREIGN surface — a fixed ANSI
+              palette the light theme inverts wholesale (components/mirror-space.ts). Worse, the two
+              grounds are byte-identical on purpose: `--background` is oklch(0.145) = #0a0a0a in dark,
+              which is MIRROR_SPACE's own fill, and oklch(0.97) = rgb(245) in light, which is exactly
+              what that fill inverts to (index.css:44-48 says so, and closing the mirror's seam
+              against the page is why the value was chosen). So the active tab's `bg-background` fill
+              and the terminal ground were literally the same colour, under both themes: the tab had
+              no floor and read as bleeding into the terminal.
+
+              The fix is not a second rule at the tab's baseline. That was tried and is wrong twice
+              over: the baseline already carries one, and the active tab covers it for its own width
+              with a 1px cover strip, so a rule drawn flush from below is a pixel the tab cannot
+              reach and shows through under the open tab. The fix is to give the tab something of its
+              own to sit on. `mt-2` is 8px of PAGE below the baseline — the tab now opens onto the
+              page, which is what a folder tab's open edge promises — and `border-t` is then the
+              mirror's own top edge, 8px clear of the baseline, so the two lines read as two
+              boundaries and never as one doubled hairline.
+
+              It costs nothing. `ChatMessageList` below dropped the matching 12px of scroller
+              `pt` in the same edit: the padding was invisible (page colour on page colour when at
+              the top of the buffer, and gone entirely the moment the mirror follows the tail, which
+              is nearly always), so 12px of nothing became 9px of an actual boundary — the stack
+              above the first terminal glyph got 3px SHORTER. A terminal draws to its own edges;
+              flush against its top rule is the honest rendering, and the bottom keeps its `pb-3`
+              because the tail wants clearance from the composer.
+
+              This is unconditional, and that is deliberate: when PaneStrip renders it closes its own
+              band with a border-b and the mirror still announces its top edge the same way 8px
+              below. One geometry, no state in which the seam is drawn differently (DESIGN.md §2). */}
           {/* `role="presentation"` because that is what this element is: a layout wrapper with no
               semantics of its own. Its click handler adds nothing a keyboard user needs — focusing the
               composer is what a keyboard user already has (the textarea is the next tabbable thing),
@@ -847,7 +874,7 @@ export function AgentChat({
               selection. It is a touch convenience layered over an already-reachable action. */}
           <div
             role="presentation"
-            className={cn("min-h-0 min-w-0 flex-1", mirrorFace.className)}
+            className={cn("mt-2 min-h-0 min-w-0 flex-1 border-t border-rule", mirrorFace.className)}
             style={mirrorFace.style}
             onClick={focusFromMirror}
           >
@@ -856,7 +883,13 @@ export function AgentChat({
               dep={display}
               onAtBottomChange={setFollowing}
               hasNew={hasNew}
-              className="px-2 py-3"
+              // `pt-0`, stated and not merely omitted — ChatMessageList's own base is `px-3 py-4`,
+              // so dropping the `pt` from this override would let 16px BACK in, not 0. The 12px this
+              // row used to carry paid for the mirror's new top rule above; it was never visible
+              // anyway (page colour on page colour at the top of the buffer, and scrolled away the
+              // moment the mirror follows the tail). `pb-3` stays: the tail wants clearance from the
+              // composer.
+              className="px-2 pt-0 pb-3"
             >
               {display ? (
                 <>

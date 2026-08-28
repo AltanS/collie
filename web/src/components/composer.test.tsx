@@ -2140,3 +2140,23 @@ describe("Composer — draft persistence", () => {
     expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("");
   });
 });
+
+// A placeholder is a LABEL, and it may not decide how tall this control is.
+//
+// `ui/chat/chat-input.tsx` carries `field-sizing-content`, so an EMPTY textarea takes its height
+// from the placeholder — measured in Chrome at a 390px viewport, 46px with a one-line placeholder
+// and 70px with a wrapping one. That put the composer at a different height in different LOCALES
+// (9 of the 36 composer placeholder strings in the six dictionaries overrun the 252px this field
+// leaves), which is DESIGN.md §2 with a translated string as the state. The two classes below are
+// what stop it, and they are a pair: `whitespace-nowrap` keeps it to one line, `overflow-hidden`
+// clips that line at the CONTENT box so it cannot paint out through `pr-11` and under the attach
+// button. Pinned here because both look like tidy-away decoration at the call site.
+describe("Composer — the placeholder cannot resize the field", () => {
+  it("keeps the placeholder to one clipped line, whatever the locale gave it", () => {
+    renderComposer({ readOnly: true });
+    const box = screen.getByPlaceholderText(/read-only/i);
+
+    expect(box.className).toMatch(/placeholder:whitespace-nowrap/);
+    expect(box.className).toMatch(/placeholder:overflow-hidden/);
+  });
+});
