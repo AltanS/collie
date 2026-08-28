@@ -75,8 +75,6 @@ import {
   type MuxWorktreeCreateRequest,
   type MuxWorktreeOpenRequest,
   type MuxWorktreeOpened,
-  type MuxWorktreeRemoveRequest,
-  type MuxWorktreeRemoved,
   type MuxWorktreeScope,
   type MuxWatchOptions,
 } from "../types.ts";
@@ -511,9 +509,6 @@ export class TmuxMux implements MuxAdapter {
     return Promise.resolve(muxUnsupported("openWorktree", "tmux keeps no record tying a Git checkout to the session showing it, so a worktree opened here could not be found, listed or removed again"));
   }
 
-  removeWorktree(_request: MuxWorktreeRemoveRequest): Promise<MuxOutcome<MuxWorktreeRemoved>> {
-    return Promise.resolve(muxUnsupported("removeWorktree", "tmux keeps no record tying a Git checkout to the session showing it, so a worktree opened here could not be found, listed or removed again"));
-  }
 
   /** The contract's watch over control mode plus a bounded listing. All of it lives in watch.ts. */
   watch(options: MuxWatchOptions): MuxSubscription {

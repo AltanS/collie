@@ -80,8 +80,6 @@ export class FakeHerdr implements HerdrRpc {
   private readonly recorded: MuxWrite[] = [];
   /** Worktrees per repo root — the bookkeeping herdr keeps and a plain `git worktree add` does not. */
   private readonly worktreesByRepo = new Map<string, WireWorktree[]>();
-  /** Checkouts with uncommitted work, so removal refuses them without `force`. */
-  private readonly dirtyWorktrees = new Set<string>();
   /** Never decreases, and never reused — so a fresh pane can never land on a dead pane's id. */
   private minted = 0;
   /** False while the adapter's connection is down: every RPC rejects, as a closed socket does. */
@@ -379,43 +377,6 @@ export class FakeHerdr implements HerdrRpc {
     return { shell, alreadyOpen: false };
   }
 
-  async removeWorktree(opts: {
-    workspaceId: string;
-    force: boolean;
-  }): Promise<{ path: string; forced: boolean }> {
-    this.assertConnected("worktree.remove");
-    for (const [cwd, repo] of this.worktreesByRepo) {
-      const index = repo.findIndex((w) => w.open_workspace_id === opts.workspaceId);
-      if (index === -1) continue;
-      const entry = repo[index];
-      if (entry === undefined) continue;
-      if (this.dirtyWorktrees.has(entry.path) && !opts.force) {
-        throw new Error(
-          `herdr worktree.remove: dirty_worktree_requires_force: '${entry.path}' contains modified or untracked files, use --force to delete it`,
-        );
-      }
-      repo.splice(index, 1);
-      this.worktreesByRepo.set(cwd, repo);
-      this.dirtyWorktrees.delete(entry.path);
-      for (const tab of this.tabs.filter((t) => t.workspace_id === opts.workspaceId)) {
-        for (const pane of this.panes.filter((candidate) => candidate.tab_id === tab.tab_id)) {
-          this.screens.delete(pane.pane_id);
-        }
-      }
-      this.panes = this.panes.filter((pane) => pane.workspace_id !== opts.workspaceId);
-      this.tabs = this.tabs.filter((tab) => tab.workspace_id !== opts.workspaceId);
-      this.workspaces = this.workspaces.filter(
-        (workspace) => workspace.workspace_id !== opts.workspaceId,
-      );
-      return { path: entry.path, forced: opts.force };
-    }
-    throw new Error(`herdr worktree.remove: workspace_not_found: workspace ${opts.workspaceId} not found`);
-  }
-
-  /** Mark a checkout dirty, so `removeWorktree` refuses it without `force` — the probed behaviour. */
-  markWorktreeDirty(path: string): void {
-    this.dirtyWorktrees.add(path);
-  }
 
   subscribeEvents(opts: SubscribeOptions): EventStream {
     const subscriber: Subscriber = { opts, down: false };

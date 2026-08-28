@@ -87,8 +87,6 @@ import {
   type MuxWorktreeCreateRequest,
   type MuxWorktreeOpenRequest,
   type MuxWorktreeOpened,
-  type MuxWorktreeRemoveRequest,
-  type MuxWorktreeRemoved,
   type MuxWorktreeScope,
   type MuxWatchOptions,
 } from "../types.ts";
@@ -507,9 +505,6 @@ export class ZellijMux implements MuxAdapter {
     return Promise.resolve(muxUnsupported("openWorktree", "a Collie on zellij drives exactly one session, so a worktree has no second space to be opened as"));
   }
 
-  removeWorktree(_request: MuxWorktreeRemoveRequest): Promise<MuxOutcome<MuxWorktreeRemoved>> {
-    return Promise.resolve(muxUnsupported("removeWorktree", "a Collie on zellij drives exactly one session, so a worktree has no second space to be opened as"));
-  }
 
   /** The contract's watch over the pane stream plus a bounded census. All of it lives in watch.ts. */
   watch(options: MuxWatchOptions): MuxSubscription {

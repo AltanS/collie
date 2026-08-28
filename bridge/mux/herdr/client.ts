@@ -229,7 +229,6 @@ export type HerdrRpc = Pick<
   | "listWorktrees"
   | "createWorktree"
   | "openWorktree"
-  | "removeWorktree"
   | "subscribeEvents"
 >;
 
@@ -599,24 +598,6 @@ export class HerdrClient {
     };
   }
 
-  /**
-   * Remove the worktree a workspace is showing, closing the workspace with it.
-   *
-   * Addressed by WORKSPACE — herdr has no path-addressed removal, so a checkout nothing shows
-   * cannot be removed through the socket at all. `force:false` refuses a dirty checkout with
-   * `dirty_worktree_requires_force` (probed 2026-08-28); `forced` in the reply reports what
-   * actually happened.
-   */
-  async removeWorktree(opts: {
-    workspaceId: string;
-    force: boolean;
-  }): Promise<{ path: string; forced: boolean }> {
-    const r = await this.request<{ path: string; forced?: boolean }>("worktree.remove", {
-      workspace_id: opts.workspaceId,
-      force: opts.force,
-    });
-    return { path: r.path, forced: r.forced === true };
-  }
 
   async readPane(
     paneId: string,

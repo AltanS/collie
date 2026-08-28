@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { useState } from "react";
 import { FolderPlus, LayoutGrid, Search } from "lucide-react";
 
@@ -14,7 +13,6 @@ import {
   spaceTriageMap,
 } from "@/lib/spaces";
 import { spaceKey } from "@/lib/hosts";
-import { useLongPress } from "@/hooks/use-long-press";
 import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
 import { statusLabel } from "@/lib/types";
@@ -29,8 +27,6 @@ interface SpaceOverviewProps {
   shellPanes?: AgentView[];
   onOpen: (workspaceId: string) => void;
   onNewSpace: () => void;
-  /** Long-press a space row. Absent ⇒ no long-press at all (the actions are the caller's to own). */
-  onSpaceActions?: (workspaceId: string) => void;
   /**
    * The machine these workspaces belong to — the lead, since the merged snapshot deliberately does
    * not union peer workspaces. Undefined on a solo install. Without it, a peer's `w1` would pour its
@@ -55,7 +51,6 @@ export function SpaceOverview({
   shellPanes = NO_PANES,
   onOpen,
   onNewSpace,
-  onSpaceActions,
   host,
   open,
   onOpenChange,
@@ -167,10 +162,10 @@ export function SpaceOverview({
               const blocked = bucket === "needs";
               const seen = lastSeen.get(key) ?? 0;
               return (
-                <SpaceRowButton
+                <button
                   key={w.workspaceId}
-                  onOpen={() => onOpen(w.workspaceId)}
-                  onActions={onSpaceActions ? () => onSpaceActions(w.workspaceId) : undefined}
+                  type="button"
+                  onClick={() => onOpen(w.workspaceId)}
                   className={cn(
                     // Square, like the herd rows: this is a divide-y list, and a rounded fill under
                     // a straight hairline reads as a fault. The blocked row below has a real border,
@@ -217,7 +212,7 @@ export function SpaceOverview({
                       </span>
                     )}
                   </div>
-                </SpaceRowButton>
+                </button>
               );
             })
           )}
@@ -227,37 +222,3 @@ export function SpaceOverview({
   );
 }
 
-/**
- * One space row — its own component so the long-press hook is called once per row, at the top level
- * of a component, rather than inside the list's `.map` (which would be a conditional hook call).
- *
- * `onActions` absent means no long-press is armed at all, which is how a read-only phone and a
- * caller that owns no sheet both end up with a plain, tappable row.
- */
-function SpaceRowButton({
-  onOpen,
-  onActions,
-  className,
-  children,
-}: {
-  onOpen: () => void;
-  onActions?: () => void;
-  className?: string;
-  children: ReactNode;
-}) {
-  const longPress = useLongPress(onActions);
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      {...longPress}
-      // Same guards the tab strip sets: iOS raises the selection callout and Android a contextmenu
-      // during a hold, and either one kills the press before it can fire.
-      onContextMenu={(e) => e.preventDefault()}
-      style={{ WebkitTouchCallout: "none" }}
-      className={className}
-    >
-      {children}
-    </button>
-  );
-}

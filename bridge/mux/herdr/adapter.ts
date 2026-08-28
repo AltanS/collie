@@ -52,8 +52,6 @@ import {
   type MuxWorktreeCreateRequest,
   type MuxWorktreeOpenRequest,
   type MuxWorktreeOpened,
-  type MuxWorktreeRemoveRequest,
-  type MuxWorktreeRemoved,
   type MuxWorktreeScope,
 } from "../types.ts";
 import {
@@ -100,7 +98,6 @@ const HERDR_CAPABILITIES = declareCapabilities({
     "listWorktrees",
     "createWorktree",
     "openWorktree",
-    "removeWorktree",
     "pushTopologyEvents",
     "pushPaneEvents",
   ],
@@ -415,19 +412,6 @@ export class HerdrMux implements MuxAdapter {
     }
   }
 
-  async removeWorktree(
-    request: MuxWorktreeRemoveRequest,
-  ): Promise<MuxOutcome<MuxWorktreeRemoved>> {
-    try {
-      const removed = await this.client.removeWorktree({
-        workspaceId: request.spaceId,
-        force: request.force,
-      });
-      return muxOk({ path: removed.path, forced: removed.forced });
-    } catch (err) {
-      return worktreeRefusal(err);
-    }
-  }
 
   /**
    * The contract's watch over Herdr's one `events.subscribe` stream.

@@ -333,21 +333,6 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       },
     },
     {
-      capability: "removeWorktree",
-      writes: true,
-      run: async () => {
-        if (!declares(adapter, "removeWorktree")) {
-          return refusalOf(await adapter.removeWorktree({ spaceId: targets.spaceId, force: false }));
-        }
-        const made = await adapter.createWorktree({
-          repoRoot: CONFORMANCE_REPO,
-          branch: nextProbeBranch(),
-        });
-        if (!made.ok) return made;
-        return refusalOf(await adapter.removeWorktree({ spaceId: made.value.spaceId, force: false }));
-      },
-    },
-    {
       capability: "setFocus",
       // It moves the OPERATOR's screen, so it is a write in the sense that matters here: the live
       // probe must never run it against a real multiplexer (the header's rule).

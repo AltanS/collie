@@ -301,7 +301,6 @@ export function withAgentBeacons(
     listWorktrees: (scope) => adapter.listWorktrees(scope),
     createWorktree: (request) => adapter.createWorktree(request),
     openWorktree: (request) => adapter.openWorktree(request),
-    removeWorktree: (request) => adapter.removeWorktree(request),
     // Untouched, and the header says why a beacon change fires nothing here.
     watch: (options) => adapter.watch(options),
   };

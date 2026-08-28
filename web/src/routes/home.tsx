@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useRevalidator } from "react-router";
+import { useNavigate } from "react-router";
 
 import { AppHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
@@ -9,7 +9,6 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet, type WorktreeRepo } from "@/components/new-space-sheet";
-import { SpaceActionsSheet } from "@/components/space-actions-sheet";
 import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { PackFooterLink } from "@/components/pack-footer-link";
@@ -21,7 +20,6 @@ import { useMuxCapability } from "@/lib/mux-capability";
 import { createWorktree, openWorktree } from "@/lib/api";
 import { describeApiError } from "@/lib/api-error-message";
 import { setStatus } from "@/lib/status";
-import { isReadOnly } from "@/lib/types";
 import { leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
@@ -38,7 +36,6 @@ export function HomeRoute() {
   // though the tap otherwise shows no visual change until its loader finally settles or times out.
   const stalled = useLoadingStalled();
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
   const { newSpace } = useSpaceActions();
 
   // Which repos a worktree could be branched from: one entry per repo, taken from the space that
@@ -52,10 +49,6 @@ export function HomeRoute() {
         .map((w) => ({ workspaceId: w.workspaceId, repoRoot: w.repoRoot!, label: w.label }))
     : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  // Long-pressed space, by id — resolved against the live snapshot at render so a space that goes
-  // away while the sheet is open cannot be acted on from a stale copy of itself.
-  const [actionsSpaceId, setActionsSpaceId] = useState<string | null>(null);
-  const actionsSpace = data.workspaces.find((w) => w.workspaceId === actionsSpaceId) ?? null;
   const { prefs, setSpacesOpen, setRecentOpen, setRecentDir } = useDashPrefs();
   // No stored choice yet? The space count decides — a two-space install shouldn't be handed a
   // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
@@ -123,7 +116,6 @@ export function HomeRoute() {
             host={navHost}
             onOpen={drillInto}
             onNewSpace={() => setNewSpaceOpen(true)}
-            onSpaceActions={setActionsSpaceId}
             open={spacesOpen}
             onOpenChange={setSpacesOpen}
           />
@@ -143,14 +135,6 @@ export function HomeRoute() {
         <StatusArea />
       </div>
 
-      <SpaceActionsSheet
-        open={actionsSpace !== null}
-        onClose={() => setActionsSpaceId(null)}
-        space={actionsSpace}
-        scope={data.scope}
-        readOnly={isReadOnly(data.device)}
-        onRemoved={() => revalidator.revalidate()}
-      />
       <NewSpaceSheet
         open={newSpaceOpen}
         onClose={() => setNewSpaceOpen(false)}
