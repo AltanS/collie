@@ -44,6 +44,12 @@ export type { NotifyPrefs, UpdateInfo };
  * single unconditional header with no proxy-specific branching, in keeping with a bridge that gates
  * on vendor-neutral headers and manages nobody else's front door (ADR 0001).
  *
+ * Some forward-auth deployments still turn that 401 back into a 3xx at the reverse-proxy layer.
+ * Every API fetch therefore uses `redirect: "manual"`; a returned redirect is normalised to a local
+ * 401 below so the same refusal banner appears instead of a CORS/transport failure. Collie never
+ * follows or discovers the proxy's login flow itself — the banner's ordinary `/auth/` link remains
+ * the operator-owned recovery path.
+ *
  * Costs nothing against the bridge itself: it is same-origin by design, so no preflight in practice,
  * and the bridge ignores headers it does not read.
  */
@@ -174,6 +180,25 @@ async function errorDetail(res: Response): Promise<string> {
   }
 }
 
+// `redirect: "manual"` is intentionally local to the API client rather than a global fetch patch.
+// Browsers expose a manual redirect as `opaqueredirect` (status 0); test/runtime implementations may
+// expose the actual 3xx. Collie's own API has no redirect contract, and 304 is a normal pane ETag hit,
+// so only these redirect statuses are authentication-front-door territory.
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+function normaliseProxyRedirect(res: Response): Response {
+  if (res.type !== "opaqueredirect" && !REDIRECT_STATUSES.has(res.status)) return res;
+  return new Response("fronting identity proxy requires sign-in", {
+    status: 401,
+    statusText: "Unauthorized",
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}
+
+async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return normaliseProxyRedirect(await fetch(input, { ...init, redirect: "manual" }));
+}
+
 /**
  * The recover handler for the two endpoints that accept `expected_prompt`: reply and keys. A
  * rejected binding is their normal answer, not a transport failure. The bridge refuses the write
@@ -228,7 +253,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init?.method?.toUpperCase() ?? "GET";
   const timeoutMs = method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS;
-  const res = await fetch(path, {
+  const res = await apiFetch(path, {
     ...init,
     signal: withTimeout(init?.signal, timeoutMs),
     headers: {
@@ -331,7 +356,7 @@ export async function fetchPane(
   });
   if (cached) headers.set("if-none-match", cached.etag);
 
-  const res = await fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  const res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
   captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
 
   if (res.status === 304 && cached) {
@@ -670,7 +695,7 @@ export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<
     (async () => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(withScope(`/api/pane/${encodeURIComponent(paneId)}/upload`, scope), {
+      const res = await apiFetch(withScope(`/api/pane/${encodeURIComponent(paneId)}/upload`, scope), {
         method: "POST",
         body: fd,
         // No content-type: the browser sets the multipart boundary. The XHR marker still applies —
@@ -728,7 +753,7 @@ export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<SttR
   beginLongUpload();
   return trackBusy(
     (async () => {
-      const res = await fetch("/api/stt", {
+      const res = await apiFetch("/api/stt", {
         method: "POST",
         body: audio,
         headers: {

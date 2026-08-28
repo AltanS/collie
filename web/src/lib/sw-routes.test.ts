@@ -34,6 +34,13 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/api/snapshot?s=demo")).toBe(true);
   });
 
+  it("passes Authentik's fixed outpost start and callback namespace to the network", () => {
+    expect(isNetworkOnlyNavigation("/outpost.goauthentik.io/start?rd=%2F")).toBe(true);
+    expect(isNetworkOnlyNavigation("/outpost.goauthentik.io/callback?code=abc")).toBe(true);
+    expect(isNetworkOnlyNavigation("/outpost.goauthentik.io")).toBe(true);
+    expect(isNetworkOnlyNavigation("/outpost.goauthentik.io-ish/start")).toBe(false);
+  });
+
   // Cloudflare Access can't move off /cdn-cgi/access/, so the reservation has to come to it.
   it("passes Cloudflare Access's non-relocatable prefix to the network", () => {
     expect(isNetworkOnlyNavigation("/cdn-cgi/access/login")).toBe(true);
@@ -108,6 +115,7 @@ describe("service-worker navigation passthrough", () => {
     expect(NAVIGATION_NETWORK_ONLY.map(String)).toEqual([
       String(/^\/api\//),
       String(/^\/auth(?:[/?]|$)/),
+      String(/^\/outpost\.goauthentik\.io(?:[/?]|$)/),
       String(/^\/cdn-cgi\//),
       String(/^\/pack\/v1(?:[/?]|$)/),
       String(/^\/standby(?:[/?]|$)/),

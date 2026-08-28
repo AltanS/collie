@@ -196,6 +196,15 @@ so a signed-out phone has a tappable way back in; a `?rd=`/`?next=` return-to pa
 if your flow lives somewhere you can't move, redirect `/auth/` to it. When Collie answers there
 itself, nothing claimed the path — that placeholder is your signal that the proxy rule is missing.
 
+**Forward-auth proxies that turn refusals into redirects are supported, but Collie does not follow
+the login flow for you.** API requests are made with redirects disabled; if the front door still
+answers a lapsed session with a 3xx, Collie treats that response as a 401 so the existing **Sign in**
+link appears instead of a misleading connection error. `/auth/` must therefore remain a real,
+operator-owned sign-in entry. For Authentik, redirect that entry into its standard
+`/outpost.goauthentik.io/start` flow (with the appropriate `rd` return URL); the fixed
+`/outpost.goauthentik.io/` start/callback namespace is also passed straight to the network by the
+service worker so an installed PWA cannot replace the auth flow with its cached app shell.
+
 > **Devices locked out before 0.18.0 can't pick this up.** They can't fetch the new service worker,
 > so the `/auth/` link never appears — clear that site's data once (browser settings → the site →
 > clear data) and load it fresh. New installs and devices that updated while signed in are fine.

@@ -24,6 +24,7 @@ import {
 import { detectApprovalRegion } from "./approval";
 import { detectAskRegion } from "./ask";
 import { detectTrustRegion } from "./trust";
+import { codexDraftCarriesSend } from "./paste";
 
 export function codexBuildBlocks(lines: StyledLine[]): Block[] {
   const trust = detectTrustRegion(lines);
@@ -69,4 +70,5 @@ export const codexAdapter: HarnessAdapter = {
   extractInputDraft,
   composerReady,
   composerPrompt,
+  draftCarriesSend: codexDraftCarriesSend,
 };

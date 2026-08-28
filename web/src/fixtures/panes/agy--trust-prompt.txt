@@ -1,0 +1,13 @@
+[0m[1m[38;5;3mAccessing workspace:[0m
+
+[0m[1m/tmp/collie-agy-sandbox[0m
+
+Do you trust the contents of this project?
+
+[0m[38;2;66;133;244mAntigravity CLI[0m requires permission to read, edit, and execute files here.
+
+[0m[38;5;12m> Yes, I trust this folder[0m
+  [0m[38;5;8mNo, exit[0m
+
+  [0m[1m[38;5;12m↑/↓[0m[38;5;8m Navigate · [0m[1m[38;5;12menter[0m[38;5;8m Confirm[0m
+                                                                                                                                                                                                                [0m[2mGemini 3.7 Flash · low[0m
