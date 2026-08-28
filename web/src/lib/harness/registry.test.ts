@@ -13,8 +13,10 @@ describe("hasBlockGrammar", () => {
   it("is true for every registered adapter", () => {
     expect(hasBlockGrammar("claude")).toBe(true);
     expect(hasBlockGrammar("codex")).toBe(true);
-    expect(hasBlockGrammar("omp")).toBe(true);
     expect(hasBlockGrammar("grok")).toBe(true);
+    expect(hasBlockGrammar("omp")).toBe(true);
+    expect(hasBlockGrammar("agy")).toBe(true);
+    expect(hasBlockGrammar("antigravity")).toBe(true);
   });
 
   it("is false for every unregistered agent (no adapter ⇒ raw mirror)", () => {

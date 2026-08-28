@@ -222,6 +222,28 @@ const OMP: readonly AgentCommand[] = [
   { command: "/resume", description: "Open the session picker", takesArg: false, argHint: "", common: false, dangerous: false },
 ];
 
+// ── Antigravity (agy) ────────────────────────────────────────────────────────
+const AGY: readonly AgentCommand[] = [
+  { command: "/plan", description: "Switch into plan mode to outline steps before execution", takesArg: true, argHint: "[goal]", common: true, dangerous: false },
+  { command: "/grill-me", description: "Interactive interview to resolve ambiguity and align on design", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/learn", description: "Persist lessons, corrections, and project workflows", takesArg: true, argHint: "[lesson]", common: true, dangerous: false },
+  { command: "/compact", description: "Summarize conversation history to free up context", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/clear", description: "Clear conversation history and start fresh", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/model", description: "Switch active model or reasoning effort", takesArg: true, argHint: "[model]", common: true, dangerous: false },
+  { command: "/status", description: "Show session stats, model, and connectivity status", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/subagents", description: "View and manage active background subagents", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/skills", description: "List and manage available skills", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/rules", description: "View loaded project rules and instructions", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/mcp", description: "List and manage Model Context Protocol servers", takesArg: true, argHint: "[server]", common: false, dangerous: false },
+  { command: "/hooks", description: "View configured event hooks and triggers", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/review", description: "Review uncommitted changes in current workspace", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/diff", description: "Show git diff of modified files", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/doctor", description: "Diagnose installation, tools, and system health", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/theme", description: "Change syntax and terminal theme", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/help", description: "Show help and list available commands", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/exit", description: "Exit the AGY CLI (alias: /quit)", takesArg: false, argHint: "", common: false, dangerous: true },
+];
+
 // ── Grok ─────────────────────────────────────────────────────────────────────
 // Sourced from Grok's published slash-command reference, not from pane captures.
 const GROK: readonly AgentCommand[] = [
@@ -251,6 +273,8 @@ const CATALOG: Record<string, readonly AgentCommand[]> = {
   opencode: OPENCODE,
   omp: OMP,
   grok: GROK,
+  agy: AGY,
+  antigravity: AGY,
 };
 
 /**

@@ -11,6 +11,7 @@ function brandKey(agent: string): string | undefined {
   if (k.startsWith("codex")) return "codex";
   if (k.startsWith("opencode")) return "opencode";
   if (k === "pi" || k.startsWith("pi-") || k.startsWith("pi.")) return "pi";
+  if (k === "agy" || k.startsWith("agy-") || k.startsWith("agy.") || k.startsWith("antigravity")) return "agy";
   return undefined;
 }
 
