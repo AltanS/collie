@@ -680,4 +680,7 @@ export const ko: Dictionary = {
   "worktree.empty": "아직 worktree가 없습니다.",
   "worktree.detached": "detached",
   "worktree.recoverOpen": "생성된 브랜치 열기",
+  "space.new.tab.plain": "스페이스",
+  "space.new.tab.worktree": "Worktree",
+  "space.new.repo.label": "저장소",
 };

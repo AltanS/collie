@@ -5,7 +5,13 @@ import { cn } from "@/lib/utils";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { StatusDot } from "@/components/status-badge";
-import { filterSpaces, sortSpacesByRecency, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
+import {
+  filterSpaces,
+  nestWorktrees,
+  sortSpacesByRecency,
+  spaceLastSeenMap,
+  spaceTriageMap,
+} from "@/lib/spaces";
 import { spaceKey } from "@/lib/hosts";
 import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
@@ -64,6 +70,10 @@ export function SpaceOverview({
   const worstBySpace = spaceTriageMap(agents);
   const blockedSpaces = [...worstBySpace.values()].filter((b) => b === "needs").length;
   const visible = filterSpaces(sortSpacesByRecency(workspaces, panes, lastSeen, host), query);
+  // Worktrees sit under the space holding their repo — but NOT while filtering: a filter that
+  // matched only the child would indent a row under a parent that is not on screen, which reads as
+  // a rendering fault rather than as structure.
+  const rows = query.trim() ? visible.map((space) => ({ space, depth: 0 as const })) : nestWorktrees(visible);
 
   return (
     <section className="flex flex-col gap-2 px-3 py-4">
@@ -143,7 +153,7 @@ export function SpaceOverview({
               {t("space.overview.empty.noMatch", { query })}
             </p>
           ) : (
-            visible.map((w) => {
+            rows.map(({ space: w, depth }) => {
               // (host, workspaceId): these rows are the lead's spaces, so a peer that happens to
               // expose the same workspace id contributes nothing to them.
               const key = spaceKey(host, w.workspaceId);
@@ -162,6 +172,9 @@ export function SpaceOverview({
                     // so it keeps its radius.
                     "w-full text-left transition-colors active:scale-[0.99]",
                     !blocked && "hover:bg-muted/50",
+                    // A worktree of the space above it. Indented rather than labelled: the nesting
+                    // IS the sentence, and a badge would repeat it once per row.
+                    depth === 1 && "pl-5",
                   )}
                 >
                   {/* Flat rows, not cards: these are single-line entries, so a card is 100% chrome

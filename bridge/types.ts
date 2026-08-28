@@ -157,6 +157,13 @@ export interface WorkspaceView {
    * absence as "no worktree rows", which is the fail-closed direction and needs no extra call.
    */
   repoRoot?: string;
+  /**
+   * Whether this space is a linked worktree of `repoRoot` rather than the repo's own checkout.
+   *
+   * Travels with `repoRoot` and is absent wherever that is. It is what lets the spaces list nest a
+   * worktree under the space showing the repo itself.
+   */
+  isWorktree?: boolean;
 }
 
 /** A tab within a workspace (a layout/view holding one or more panes). From `tab.list`. */

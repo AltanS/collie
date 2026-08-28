@@ -667,4 +667,7 @@ export const zh: Dictionary = {
   "worktree.empty": "还没有 worktree。",
   "worktree.detached": "游离头指针",
   "worktree.recoverOpen": "打开已创建的分支",
+  "space.new.tab.plain": "空间",
+  "space.new.tab.worktree": "Worktree",
+  "space.new.repo.label": "仓库",
 };

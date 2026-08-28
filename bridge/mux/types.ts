@@ -244,6 +244,13 @@ export interface MuxSpace {
    * walking the filesystem for `.git`, which is exactly the Git work ADR 0032 keeps out of the port.
    */
   readonly repoRoot?: string;
+  /**
+   * Whether this space is a LINKED worktree of {@link repoRoot} rather than the repo's own checkout.
+   *
+   * Absent wherever `repoRoot` is: the pair travels together, and asking one without the other is
+   * always a bug. `false` means "this is the repo itself", which is what a worktree row nests under.
+   */
+  readonly isWorktree?: boolean;
 }
 
 /** One tab within a space — a layout holding one or more panes. */

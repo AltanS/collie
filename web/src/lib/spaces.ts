@@ -125,3 +125,84 @@ export function filterSpaces(
   if (!q) return [...workspaces];
   return workspaces.filter((w) => w.label.toLowerCase().includes(q));
 }
+
+/**
+ * One row of the spaces list: a space, plus how deep it sits.
+ *
+ * `depth: 1` is a worktree shown under the space that holds its repo. It is a VIEW fact, computed
+ * per render, and deliberately not a field on the space: whether a worktree has a parent to sit
+ * under depends on what is open right now, which is not something a space can know about itself.
+ */
+export interface SpaceRow {
+  readonly space: WorkspaceView;
+  readonly depth: 0 | 1;
+}
+
+/**
+ * Nest each worktree under the space showing its repo, keeping the list's recency order.
+ *
+ * THREE RULES, and each answers a case the flat list never had:
+ *
+ *  • **A group takes the position of its most recent member.** Sorting by the parent alone would
+ *    bury a worktree you used a minute ago under a repo checkout you last touched last week — the
+ *    list promises "what is fresh is near the top", and a group must keep that promise.
+ *  • **A worktree whose repo is not open stays at depth 0.** There is no row to indent under, and
+ *    indenting under nothing reads as a rendering bug.
+ *  • **Order within a group is the incoming order**, which is already recency: the parent first,
+ *    then its worktrees as they were sorted.
+ *
+ * `ordered` must already be in the order the caller wants (see {@link sortSpacesByRecency}); this
+ * function only regroups, never re-sorts.
+ */
+export function nestWorktrees(ordered: readonly WorkspaceView[]): SpaceRow[] {
+  // Only a space that IS the repo's own checkout can be a parent (`isWorktree === false`).
+  const parentByRepo = new Map<string, WorkspaceView>();
+  for (const space of ordered) {
+    if (space.repoRoot !== undefined && space.isWorktree === false) {
+      parentByRepo.set(space.repoRoot, space);
+    }
+  }
+
+  const childrenByParent = new Map<string, WorkspaceView[]>();
+  for (const space of ordered) {
+    if (space.repoRoot === undefined || space.isWorktree !== true) continue;
+    const parent = parentByRepo.get(space.repoRoot);
+    if (parent === undefined) continue; // orphan — rendered flat, below
+    const kin = childrenByParent.get(parent.workspaceId) ?? [];
+    kin.push(space);
+    childrenByParent.set(parent.workspaceId, kin);
+  }
+
+  const rows: SpaceRow[] = [];
+  const placed = new Set<string>();
+  for (const space of ordered) {
+    if (placed.has(space.workspaceId)) continue;
+    const kin = childrenByParent.get(space.workspaceId);
+    // A parent reached through its own position, or dragged up here by a child that came first.
+    if (kin !== undefined) {
+      rows.push({ space, depth: 0 });
+      placed.add(space.workspaceId);
+      for (const child of kin) {
+        rows.push({ space: child, depth: 1 });
+        placed.add(child.workspaceId);
+      }
+      continue;
+    }
+    // A child met before its parent: emit the whole group HERE, at the child's (fresher) position.
+    if (space.repoRoot !== undefined && space.isWorktree === true) {
+      const parent = parentByRepo.get(space.repoRoot);
+      if (parent !== undefined && !placed.has(parent.workspaceId)) {
+        rows.push({ space: parent, depth: 0 });
+        placed.add(parent.workspaceId);
+        for (const child of childrenByParent.get(parent.workspaceId) ?? []) {
+          rows.push({ space: child, depth: 1 });
+          placed.add(child.workspaceId);
+        }
+        continue;
+      }
+    }
+    rows.push({ space, depth: 0 });
+    placed.add(space.workspaceId);
+  }
+  return rows;
+}

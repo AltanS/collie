@@ -320,6 +320,7 @@ const WORKSPACE_KEYS = {
   tabCount: true,
   paneCount: true,
   repoRoot: true,
+  isWorktree: true,
 } satisfies Record<keyof WorkspaceView, true>;
 
 const TAB_KEYS = {
@@ -401,6 +402,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
     expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
       "activeTabId",
       "focused",
+      "isWorktree",
       "label",
       "number",
       "paneCount",
