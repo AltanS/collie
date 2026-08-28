@@ -36,6 +36,7 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${ROOT}/bin/collie"
 TMP_ROOT="$(mktemp -d)"
+TMP_ROOT="$(cd "$TMP_ROOT" && pwd -P)"
 # The real PATH, for the two sections that need genuine `git` / `mkdir` / `bash` alongside the fakes
 # (`build` and `update` drive real throwaway git repos and a real filesystem). Everything before them
 # runs on a scratch PATH only; the fake directory always comes FIRST, so a fake never loses to a real
