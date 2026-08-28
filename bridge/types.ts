@@ -505,15 +505,6 @@ export type WorktreeOpenResponse =
   | { ok: true; pane: CreatedPane; alreadyOpen: boolean }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
-/**
- * POST /api/workspace/:id/worktree/remove — the checkout is gone and its space closed with it.
- *
- * `forced` reports what actually happened, never what was asked, so the phone can say "discarded
- * uncommitted work" only when it really did.
- */
-export type WorktreeRemoveResponse =
-  | { ok: true; path: string; forced: boolean }
-  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
 /**
  * Which role this collie plays in a pack (PACK_PROTOCOL.md §3). `solo` is a lead with zero peers —

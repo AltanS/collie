@@ -20,7 +20,6 @@ import {
   type MuxWorktree,
   type MuxWorktreeCreateRequest,
   type MuxWorktreeOpenRequest,
-  type MuxWorktreeRemoveRequest,
   type MuxWorktreeScope,
 } from "../mux/types.ts";
 
@@ -153,10 +152,6 @@ class StubAdapter implements MuxAdapter {
     return Promise.resolve(muxOk({ pane: { paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }, alreadyOpen: false }));
   }
 
-  removeWorktree(request: MuxWorktreeRemoveRequest) {
-    this.note("removeWorktree", request);
-    return Promise.resolve(muxOk({ path: "/tmp/wt", forced: request.force }));
-  }
 
   watch(options: MuxWatchOptions): MuxSubscription {
     this.note("watch", options);
@@ -266,7 +261,6 @@ describe("a decorator preserves the adapter's whole surface", () => {
     listWorktrees: true,
     createWorktree: true,
     openWorktree: true,
-    removeWorktree: true,
     watch: true,
   } satisfies Record<keyof Required<MuxAdapter>, true>;
 

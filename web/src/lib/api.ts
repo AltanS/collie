@@ -24,7 +24,6 @@ import type {
   UploadResponse,
   WorktreeListResponse,
   WorktreeOpenResponse,
-  WorktreeRemoveResponse,
 } from "./types";
 
 export type { NotifyPrefs, UpdateInfo };
@@ -604,24 +603,6 @@ export function openWorktree(
   );
 }
 
-/**
- * Remove the worktree that `target` is showing, closing that space with it.
- *
- * `workspaceId` is the space the sheet was opened from (the repo); `target` is the space showing the
- * checkout. `force` discards uncommitted work and is only ever sent after the operator has been
- * told, in those words, that it will.
- */
-export function removeWorktree(
-  workspaceId: string,
-  target: string,
-  force: boolean,
-  scope?: Scope,
-): Promise<WorktreeRemoveResponse> {
-  return req<WorktreeRemoveResponse>(
-    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree/remove`, scope),
-    { method: "POST", body: JSON.stringify({ workspaceId: target, force }) },
-  );
-}
 
 /**
  * The bridge's startup config: push setup, the build id, the operator's own rows, and the

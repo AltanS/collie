@@ -33,7 +33,6 @@ function stubAdapter(mux: string, target: MuxTarget): MuxAdapter {
     listWorktrees: () => Promise.resolve(muxUnsupported("listWorktrees", "stub")),
     createWorktree: () => Promise.resolve(muxUnsupported("createWorktree", "stub")),
     openWorktree: () => Promise.resolve(muxUnsupported("openWorktree", "stub")),
-    removeWorktree: () => Promise.resolve(muxUnsupported("removeWorktree", "stub")),
     createTab: () => Promise.resolve(muxUnsupported("createTab", "stub")),
     renameTab: () => Promise.resolve(muxUnsupported("renameTab", "stub")),
     closeTab: () => Promise.resolve(muxUnsupported("closeTab", "stub")),

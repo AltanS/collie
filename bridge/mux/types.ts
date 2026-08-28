@@ -387,25 +387,6 @@ export interface MuxWorktreeOpened {
   readonly alreadyOpen: boolean;
 }
 
-/**
- * What removing one asks for — the SPACE the worktree is open as, never a path.
- *
- * That is a constraint, not a preference: removal is scoped to a space so the multiplexer can close
- * what it opened. A worktree nothing is showing has no space to name, so it cannot be removed here
- * at all — {@link MuxWorktree.openSpaceId} being `null` is what a caller must check first.
- */
-export interface MuxWorktreeRemoveRequest {
-  readonly spaceId: string;
-  /** Discard uncommitted work. `false` asks the multiplexer to refuse a dirty checkout instead. */
-  readonly force: boolean;
-}
-
-/** What removal did. `forced` reports what actually happened, not what was asked. */
-export interface MuxWorktreeRemoved {
-  readonly path: string;
-  readonly forced: boolean;
-}
-
 // ── Learning that something changed ───────────────────────────────────────────
 
 /**
@@ -580,9 +561,6 @@ export interface MuxAdapter {
 
   /** Show an existing worktree as a space. Needs `openWorktree`. */
   openWorktree(request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>>;
-
-  /** Remove a worktree that is open as a space. Needs `removeWorktree`. */
-  removeWorktree(request: MuxWorktreeRemoveRequest): Promise<MuxOutcome<MuxWorktreeRemoved>>;
 
   /** Watch for change. Always available — an adapter with no push satisfies it by polling. */
   watch(options: MuxWatchOptions): MuxSubscription;

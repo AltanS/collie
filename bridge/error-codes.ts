@@ -90,12 +90,6 @@ export const ERROR_CODES = {
    */
   "worktree.created_not_opened": "the worktree was created but could not be opened: {reason}",
   "worktree.open_failed": "{reason}",
-  "worktree.remove_failed": "{reason}",
-  /**
-   * Removal refused because the checkout has uncommitted work. The ONE refusal the phone acts on
-   * rather than merely shows: it is what arms the second tap that discards it.
-   */
-  "worktree.dirty": "{reason}",
   /** Another worktree operation is still running — herdr serialises them. Try again in a moment. */
   "worktree.busy": "{reason}",
   /** The branch name matched more than one thing, so the multiplexer would not guess. */
@@ -104,11 +98,6 @@ export const ERROR_CODES = {
   "worktree.branch_required": "branch required",
   /** This space is not in a Git work tree, so it has no worktrees to show. */
   "worktree.not_a_repo": "{reason}",
-  /**
-   * Removal was asked for a checkout no space is showing. Herdr's removal is addressed by workspace
-   * and by nothing else, so there is no verb to reach it with (ADR 0032).
-   */
-  "worktree.not_open": "that worktree is not open as a space, so it cannot be removed from here",
 
   // ── Image upload: POST /api/pane/:id/upload → UploadResponse ───────────────────────
   /** Refused on the declared Content-Length (413) or on the decoded size (200 + ok:false). */

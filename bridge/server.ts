@@ -54,7 +54,6 @@ import type {
   CreateResponse,
   WorktreeListResponse,
   WorktreeOpenResponse,
-  WorktreeRemoveResponse,
   DeviceAuth,
   OperatorCommand,
   MuxConfig,
@@ -174,7 +173,7 @@ const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
  * route takes a path to a repo, only the checkout path inside one.
  */
 const WORKTREE_LIST_ROUTE = /^\/api\/workspace\/([^/]+)\/worktrees$/;
-const WORKTREE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree(?:\/(open|remove))?$/;
+const WORKTREE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree(?:\/(open))?$/;
 
 /**
  * Header the web app sets on its own pane reads, and the ONLY thing that lets a read mark a pane
@@ -685,9 +684,6 @@ export function startServer(opts: {
       const spaceId = decodeURIComponent(worktreeMatch[1]!);
       const action = worktreeMatch[2];
       const device = caller.device();
-      if (action === "remove") {
-        return removeWorktree(rt.herdr, rt.engine, spaceId, req, caller.audit, device, rt.name);
-      }
       if (action === "open") {
         return openWorktree(rt.herdr, rt.engine, spaceId, req, caller.audit, device, rt.name);
       }
@@ -2089,13 +2085,12 @@ function repoRootOf(engine: StateEngine, spaceId: string): string | null {
 /**
  * Which catalogued code a worktree refusal is.
  *
- * Only three refusals change what the phone DOES — a dirty checkout arms the discarding second tap,
- * a busy multiplexer means try again, an ambiguous branch means type a better one. Everything else
- * is shown, so it shares one code per verb and carries the multiplexer's own sentence in `{reason}`
- * (bridge/error-codes.ts: "a template that is only {reason} is not a mistake").
+ * Only two refusals change what the phone DOES — a busy multiplexer means try again, an ambiguous
+ * branch means type a better one. Everything else is shown, so it shares one code per verb and
+ * carries the multiplexer's own sentence in `{reason}` (bridge/error-codes.ts: "a template that is
+ * only {reason} is not a mistake").
  */
 function worktreeCode(detail: string, fallback: ErrorCode): ErrorCode {
-  if (detail.includes("dirty_worktree_requires_force")) return "worktree.dirty";
   if (detail.includes("worktree_operation_in_progress")) return "worktree.busy";
   if (detail.includes("ambiguous_worktree_branch")) return "worktree.ambiguous_branch";
   if (detail.includes("not_git_worktree")) return "worktree.not_a_repo";
@@ -2286,69 +2281,6 @@ async function openWorktree(
   );
 }
 
-async function removeWorktree(
-  herdr: MuxAdapter,
-  engine: StateEngine,
-  spaceId: string,
-  req: Request,
-  audit: AuditLog,
-  device: string | null,
-  session: string,
-): Promise<Response> {
-  const ae = req.headers.get("accept-encoding");
-  let body: JsonValue;
-  try {
-    // SAFETY: as createWorktree — checked below, never trusted as declared.
-    body = (await req.json()) as JsonValue;
-  } catch {
-    return text("bad body", 400);
-  }
-  const fields = asJsonRecord(body) ?? {};
-  // The space to remove is named in the BODY, not the path: the path segment is the repo's space
-  // (where the sheet was opened), and the two are different spaces whenever the sheet lists a
-  // sibling worktree. Missing ⇒ the checkout is not open, which is the one thing removal needs.
-  const target = typeof fields.workspaceId === "string" ? fields.workspaceId.trim() : "";
-  if (target === "") {
-    return json(
-      { ok: false, ...apiError("worktree.not_open", {}) } satisfies WorktreeRemoveResponse,
-      ae,
-    );
-  }
-  // The route's own space must itself be in a repo. Cheap (it reads the engine's snapshot, no RPC)
-  // and it keeps the verb what it says it is: worktree removal asked from a repo, not a general
-  // "close any space" back door reachable by naming one in the body.
-  if (repoRootOf(engine, spaceId) === null) {
-    return json(
-      {
-        ok: false,
-        ...apiError("worktree.not_a_repo", { reason: "this space is not in a Git work tree" }),
-      } satisfies WorktreeRemoveResponse,
-      ae,
-    );
-  }
-  const force = fields.force === true;
-  const outcome = await herdr.removeWorktree({ spaceId: target, force });
-  if (!outcome.ok) {
-    return json(
-      {
-        ok: false,
-        ...apiError(worktreeCode(outcome.detail, "worktree.remove_failed"), { reason: outcome.detail }),
-      } satisfies WorktreeRemoveResponse,
-      ae,
-    );
-  }
-  audit.record({
-    action: "worktree.remove",
-    session,
-    device,
-    detail: { workspaceId: target, path: outcome.value.path, forced: String(outcome.value.forced) },
-  });
-  await settleTopology(herdr, engine);
-  return json(
-    { ok: true, path: outcome.value.path, forced: outcome.value.forced } satisfies WorktreeRemoveResponse,
-    ae,
-  );
-}
 
 // Save an uploaded image to a host file and return its absolute path. The client then references
 // that path in a message; Claude Code / Codex read images by path (the terminal can't take a

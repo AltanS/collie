@@ -40,7 +40,6 @@ export const MUX_CAPABILITIES = [
   "listWorktrees",
   "createWorktree",
   "openWorktree",
-  "removeWorktree",
   "pushTopologyEvents",
   "pushPaneEvents",
 ] as const;
@@ -100,8 +99,6 @@ export const MUX_CAPABILITY_ROUTES = {
     "POST /api/workspace/:id/worktree — a new branch in a new worktree, opened as its own space.",
   openWorktree:
     "POST /api/workspace/:id/worktree/open — show a worktree that already exists on disk. Idempotent: a worktree already open answers with the space showing it rather than refusing.",
-  removeWorktree:
-    "POST /api/workspace/:id/worktree/remove — remove the worktree a space is showing, and close the space with it. Addressed by SPACE, never by path (MuxWorktreeRemoveRequest).",
   pushTopologyEvents:
     "bridge/event-poker.ts — panes/tabs/spaces appearing, closing or being renamed arrive as a push, so the snapshot poll can idle. Absent ⇒ the adapter polls to keep the same promise, and the poker learns nothing.",
   pushPaneEvents:
@@ -209,7 +206,6 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     listWorktrees: claimed.has("listWorktrees"),
     createWorktree: claimed.has("createWorktree"),
     openWorktree: claimed.has("openWorktree"),
-    removeWorktree: claimed.has("removeWorktree"),
     pushTopologyEvents: claimed.has("pushTopologyEvents"),
     pushPaneEvents: claimed.has("pushPaneEvents"),
   } satisfies Record<MuxCapability, boolean>;

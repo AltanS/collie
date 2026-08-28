@@ -559,7 +559,6 @@ export const MUX_CAPABILITIES = [
   "listWorktrees",
   "createWorktree",
   "openWorktree",
-  "removeWorktree",
   "pushTopologyEvents",
   "pushPaneEvents",
 ] as const;
@@ -734,7 +733,3 @@ export type WorktreeOpenResponse =
   | { ok: true; pane: CreatedPane; alreadyOpen: boolean }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
-/** POST /api/workspace/:id/worktree/remove — `forced` reports what happened, not what was asked. */
-export type WorktreeRemoveResponse =
-  | { ok: true; path: string; forced: boolean }
-  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };

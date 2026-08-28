@@ -522,7 +522,7 @@ describe("solo zero-tax — routes", () => {
       // the reason every other one is: a route arrives on purpose or it does not arrive.
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|focus))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
-      "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open|remove))?$/",
+      "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
       "/api/config",
       // Device pairing (bridge/pairing.ts) — a SOLO feature that legitimately extends this list.

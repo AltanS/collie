@@ -40,8 +40,6 @@ import type {
   MuxWorktreeCreateRequest,
   MuxWorktreeOpenRequest,
   MuxWorktreeOpened,
-  MuxWorktreeRemoveRequest,
-  MuxWorktreeRemoved,
   MuxWorktreeScope,
   MuxSubscription,
   MuxTabRequest,
@@ -181,8 +179,6 @@ export function withAgentHints(adapter: MuxAdapter, deps: AgentHintDeps): MuxAda
       adapter.createWorktree(request),
     openWorktree: (request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> =>
       adapter.openWorktree(request),
-    removeWorktree: (request: MuxWorktreeRemoveRequest): Promise<MuxOutcome<MuxWorktreeRemoved>> =>
-      adapter.removeWorktree(request),
     watch: (options: MuxWatchOptions): MuxSubscription => adapter.watch(options),
   };
 }
