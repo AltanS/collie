@@ -130,6 +130,19 @@ describe("chrome", () => {
     expect(locateComposer(splitLines(parseAnsi(real)))).not.toBeNull();
   });
 
+  it("locates the v0.150.1 status row with Context directly after the model", () => {
+    const screen = [
+      "› a message waiting to send",
+      "",
+      "  gpt-5.6-sol high · Context 68% left · main · +295 -1 · weekly 94% left",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(screen));
+
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe("a message waiting to send");
+  });
+
   it("a draft that wraps past 8 rows is still a composer", () => {
     // The old bound of 8 stranded a phone wrap: locateComposer returned null and the pane
     // reported a dialog. 1 prompt + 8 continuations is 9 rows, the first case that failed.
