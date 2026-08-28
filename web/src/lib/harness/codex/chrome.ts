@@ -34,6 +34,30 @@ const MAX_DRAFT_ROWS = 100;
 // Continuation rows are exactly two-space-indented text. Deeper indents belong to dialogs and
 // transcript blocks; a `› ` or `• ` row is never a continuation.
 const CONTINUATION = /^ {2}\S/;
+const PROMPT_PREFIX = "› ";
+
+/** The exact placeholder text is still a valid thing an operator might deliberately type. Codex
+ * distinguishes its empty hint by painting the whole body dim, so extraction should use that
+ * renderer evidence too instead of discarding an ordinary non-dim draft with those words. */
+function isEmptyPlaceholder(line: StyledLine): boolean {
+  const text = rstrip(lineText(line));
+  if (promptText(text) !== PLACEHOLDER) return false;
+
+  const bodyStart = PROMPT_PREFIX.length;
+  const bodyEnd = bodyStart + PLACEHOLDER.length;
+  let offset = 0;
+  let sawBody = false;
+  for (const segment of line.segments) {
+    const next = offset + segment.text.length;
+    if (Math.max(offset, bodyStart) < Math.min(next, bodyEnd)) {
+      sawBody = true;
+      if (segment.dim !== true) return false;
+    }
+    offset = next;
+    if (offset >= bodyEnd) break;
+  }
+  return sawBody;
+}
 
 /** The composer at the buffer tail, or null (a dialog owns the screen, or the frame is torn). */
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
@@ -89,7 +113,9 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
     parts.push(texts[i]!.trim());
   }
   const draft = parts.filter((p) => p !== "").join(" ");
-  if (draft === "" || draft === PLACEHOLDER) return null;
+  if (draft === "" || (draft === PLACEHOLDER && isEmptyPlaceholder(lines[box.promptRow]!))) {
+    return null;
+  }
   return draft;
 }
 

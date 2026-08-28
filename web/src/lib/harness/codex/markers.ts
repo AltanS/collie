@@ -57,7 +57,7 @@ export function promptText(text: string): string | null {
   return m === null ? null : m[1]!;
 }
 
-/** The empty composer's placeholder, captured verbatim; a draft equal to it is no draft. */
+/** The empty composer's placeholder, captured verbatim; chrome also requires its dim renderer style. */
 export const PLACEHOLDER = "Ask Codex to do anything";
 
 /** Index of the last non-blank row in `texts`, or -1 when the buffer is all blank. */
