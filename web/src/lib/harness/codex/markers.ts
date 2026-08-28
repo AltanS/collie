@@ -22,19 +22,24 @@ export function rstrip(text: string): string {
   return text.replace(/\s+$/, "");
 }
 
-// The status row under the composer: `  <model> · <cwd> · Context N% left[ · weekly N% left]`.
-// Everything before the Context token is OPAQUE — model names and directories change per
-// session and per release, and this file must never match them. What IS the grammar: the
-// two-space indent, at least two ` · `-separated fields before the token, and the token itself
-// (`left`, with `used` accepted — both spellings ship in the v0.149.0 binary). Requiring the
-// leading fields keeps a transcript line that merely mentions a context percentage from
-// claiming the row (review repro: `model · Context 50% left` at column 0 must not match).
+// The status row under the composer. v0.149.0 put at least two fields before Context:
+// `  <model> · <cwd> · Context N% left[ · weekly N% left]`. v0.150.1 moved Context directly
+// after the model and put branch/change fields after it:
+// `  <model> · Context N% left · <branch> · <changes> · weekly N% left`.
+//
+// Everything around the Context token is OPAQUE — model names, directories and branch names
+// change per session and release. What IS the grammar: the two-space indent, the model field,
+// the Context token (`left`, with `used` also accepted), plus either another field before Context
+// (the old shape) or one after it (the new shape). Requiring that extra field keeps a minimal
+// status-like prose row from claiming the composer; requiring the indent keeps a transcript line
+// that merely mentions a context percentage from claiming it at column 0.
 //
 // KNOWN LIMIT: Codex's status line is operator-configurable (`tui.status_line`, including
 // `null` to disable it). A custom or disabled status line never matches, so the composer is
 // never located and the pane falls back to the raw mirror with replies refused — safe, but
 // this adapter's lift only engages on the DEFAULT status line.
-const STATUS_ROW = /^ {2}\S.* · .* · .*Context \d+% (left|used)\b/;
+const STATUS_ROW =
+  /^ {2}\S.* · (?:(?:.* · )+Context \d+% (?:left|used)\b|Context \d+% (?:left|used)\b · \S)/;
 
 /** True when the row could be the composer's status line. Never decisive alone — the composer
  *  is located by the prompt-row-above-status shape at the buffer tail, not by any single row. */
