@@ -34,12 +34,36 @@ const MAX_DRAFT_ROWS = 100;
 // Continuation rows are exactly two-space-indented text. Deeper indents belong to dialogs and
 // transcript blocks; a `› ` or `• ` row is never a continuation.
 const CONTINUATION = /^ {2}\S/;
+const PROMPT_PREFIX = "› ";
+
+/** The exact placeholder text is still a valid thing an operator might deliberately type. Codex
+ * distinguishes its empty hint by painting the whole body dim, so extraction should use that
+ * renderer evidence too instead of discarding an ordinary non-dim draft with those words. */
+function isEmptyPlaceholder(line: StyledLine): boolean {
+  const text = rstrip(lineText(line));
+  if (promptText(text) !== PLACEHOLDER) return false;
+
+  const bodyStart = PROMPT_PREFIX.length;
+  const bodyEnd = bodyStart + PLACEHOLDER.length;
+  let offset = 0;
+  let sawBody = false;
+  for (const segment of line.segments) {
+    const next = offset + segment.text.length;
+    if (Math.max(offset, bodyStart) < Math.min(next, bodyEnd)) {
+      sawBody = true;
+      if (segment.dim !== true) return false;
+    }
+    offset = next;
+    if (offset >= bodyEnd) break;
+  }
+  return sawBody;
+}
 
 /** The composer at the buffer tail, or null (a dialog owns the screen, or the frame is torn). */
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
   const statusRow = lastNonBlankIndex(texts);
-  if (statusRow < 0 || !isStatusRow(texts[statusRow]!)) return null;
+  if (statusRow < 0 || !isStatusRow(texts[statusRow]!, lines[statusRow])) return null;
 
   // One blank row separates the prompt/draft run from the status row (every capture); above the
   // gap the run is CONTIGUOUS non-blank rows — wrapped-draft continuations under the `› ` prompt.
@@ -49,7 +73,7 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
     const t = texts[i]!;
     if (promptText(t) !== null) return { promptRow: i, statusRow };
     // A blank or foreign-shaped row inside the run means this status row is not under a composer.
-    if (isBlank(t) || !CONTINUATION.test(t) || isStatusRow(t)) return null;
+    if (isBlank(t) || !CONTINUATION.test(t) || isStatusRow(t, lines[i])) return null;
   }
   return null;
 }
@@ -89,7 +113,9 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
     parts.push(texts[i]!.trim());
   }
   const draft = parts.filter((p) => p !== "").join(" ");
-  if (draft === "" || draft === PLACEHOLDER) return null;
+  if (draft === "" || (draft === PLACEHOLDER && isEmptyPlaceholder(lines[box.promptRow]!))) {
+    return null;
+  }
   return draft;
 }
 
@@ -98,9 +124,16 @@ export function composerReady(lines: StyledLine[]): boolean {
   return locateComposer(lines) !== null;
 }
 
-/** The literal on-screen prompt row a destructive pre-clear sweep is bound to. */
+/** The literal on-screen prompt/draft run a destructive write is bound to. Ending at the last draft
+ * continuation keeps a wrapped message inside the bridge's bounded tail window; naming only the
+ * first `›` row would permanently 409 once six or more non-blank wrap rows sat beneath it. */
 export function composerPrompt(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
   if (box === null) return null;
-  return rstrip(lineText(lines[box.promptRow]!));
+  let end = box.statusRow;
+  while (end > box.promptRow + 1 && isBlank(lineText(lines[end - 1]!))) end--;
+  return lines
+    .slice(box.promptRow, end)
+    .map((line) => rstrip(lineText(line)))
+    .join("\n");
 }

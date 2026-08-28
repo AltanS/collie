@@ -42,6 +42,33 @@ and the observed commands were approved with no dialog painted.
 | `codex--ask-wizard-q1.txt` | Two-question set, `Question 1/2`; footer adds `←/→ to navigate questions`. Digit probed: answers and advances | `blocked` |
 | `codex--ask-wizard-q2.txt` | Same set, `Question 2/2`; footer `enter to submit all`. Digit probed: submits the whole set | `blocked` |
 | `codex--ask-notes-focused.txt` | Notes box open (`› Add notes`, footer `tab or esc to clear notes`): a digit would TYPE — the adapter refuses to raw | `blocked` |
+
+## Codex 0.150.1 corpus (captured 2026-08-28, herdr 0.8.2, Linux sandbox panes)
+
+Byte-faithful `format:ansi` captures from throwaway herdr tabs in `/tmp/collie-codex-sandbox`
+(a `git init` repo on `main`) and `/tmp/collie-codex-nogit`. **No scrubbing was needed** — no
+username, hostname or home path appears in any of the five files. Every session carries the
+host's `codex_apps` MCP 401 startup warning in its transcript; that is real screen output, not
+noise added here. **The headline: 0.150.1's DEFAULT status row is two fields,
+`<model-with-reasoning> · <current-dir>`, with no `Context N% left` token** — so the
+`Context`-bearing `STATUS_ROW` regex never matches. `isStatusRow` therefore also accepts the row
+by its RENDERER PAINT (unstyled two-space indent, coloured non-dim fields, dim ` · ` separators),
+which is what locates the composer on every capture below. Live-probed the same session with an explicit
+`-c 'tui.status_line=["model-with-reasoning","current-dir","git-branch","context-remaining","weekly-limit"]'`:
+`git-branch` renders `main` and `context-remaining` renders `Context 100% left`, so the Context
+field is simply absent from the default list, not suppressed by a degraded login.
+`codex--v0150-working` is MISSING: the capture host's ChatGPT auth could not refresh
+(`Your access token could not be refreshed because your refresh token was already used`), so no
+model turn could be run.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0150-idle.txt` | Git sandbox, trust and hooks dialogs answered, empty dim `› Ask Codex to do anything` composer over the two-field status row. Pins that the `Context`-bearing regex does NOT match here, and that the styled acceptor does | `idle` |
+| `codex--v0150-draft-wrapped.txt` | A 571-character sentence typed into the same composer, word-wrapped onto two two-space-indented continuation rows (the pane is 216 columns, so ~350 chars would not have wrapped three ways) | `idle` |
+| `codex--v0150-nogit-idle.txt` | Same idle screen in a directory with no git repo. The status row is the SAME two fields — no branch field to lose, because the default list has none | `idle` |
+| `codex--v0150-custom-status.txt` | `-c 'tui.status_line=["model-with-reasoning","current-dir","git-branch"]'` (Context deliberately omitted) with a short draft on the `› ` row. Pins the styled custom-status design: per-field colours and dim ` · ` separators | `idle` |
+| `codex--v0150-paste-placeholder.txt` | One `pane.send_text` of exactly 3000 non-newline ASCII characters lands as `[Pasted Content 1024 chars]` — **N is 1024, not 3000**. Codex's TUI keeps only the first 1024 characters of a single burst, so `draftCarriesSend("x".repeat(3000), draft)` is **false** (it is true for a 1024-character send). See `codex/paste.ts` | `idle` |
+
 ## Grok corpus (live panes 2026-08-21–23)
 
 Grok's composer is a rounded box at the tail: `╭─…─╮` / `│ ❯ … │` / `╰─ <status> ─╯`, then a blank and a key-hint row. The status run is opaque (display name, optional effort, optional permission mode). User-message bubbles use **square** corners (`┌ ┐ └ ┘`) and must never be read as the composer. **All identifying content genericized** per the repo's public-repo rule.
@@ -302,9 +329,30 @@ omp's `agent_status` stays `idle` while a picker is up; only the `ask` tool flip
 - **Menus are heterogeneous**: pointer rows (`❯ N.`), plain numbered rows, description sub-lines,
   and free-text escape rows ("Type something.", "Tell Claude what to change") all occur; footers
   are the most stable discriminator ("Enter to select/confirm", "Esc to cancel").
+
+
+## agy corpus (captured 2026-08-26, Antigravity CLI 1.1.17, sandbox panes)
+
+Byte-faithful `format:ansi` captures from running sandbox `agy` panes via `scripts/capture-fixture.sh <paneId> <name> 300`. Fastfetch system scrollback was trimmed, and all session identities were sanitized with length-preserving substitutions so row padding and column alignments stay byte-identical: account email (`developer.user@corp.test`) and session plan brain UUIDs (`00000000-0000-7000-8000-000000000000`).
+
+AGY renders a framed input box bounded by horizontal rules (`─`), with status / hint lines below the bottom border (`? for shortcuts`, `esc to cancel`, model/effort metadata). Its dialogs use standard footers (`Enter to select · ↑/↓ to navigate`, `Tab to amend · Esc to cancel`, `Enter to confirm · Esc to cancel`, `ctrl+g to edit`).
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `agy--fresh-idle.txt` | Fresh session: Antigravity header logo and session info, idle input box between horizontal rules, statusline below (`? for shortcuts`) | `idle` |
+| `agy--working.txt` | Mid-turn: tool calls, `⣾ Loading...` spinner with tip line, input box with `esc to cancel` status line | `working` |
+| `agy--done.txt` | Completed turn: tool output, assistant summary, idle input box | `idle` |
+| `agy--select-menu.txt` | AskUserQuestion single-select dialog: question, numbered options 1..3 with description sub-lines, free-text row "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip" footer | `blocked` |
+| `agy--permission-bash.txt` | Bash execution permission dialog: command, "Requesting permission for: ls -la /tmp", options 1..4 (Yes / allow in conversation / persist / No), "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command" footer | `blocked` |
+| `agy--permission-edit.txt` | File edit / multi-line write permission dialog: multi-line heredoc preview, options 1..4, "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command · ctrl+r Review" footer | `blocked` |
+| `agy--trust-prompt.txt` | Workspace folder trust prompt: "Do you trust the contents of this project?", options "Yes, I trust this folder" / "No, exit", "↑/↓ Navigate · enter Confirm" footer | `blocked` |
+| `agy--plan-approval.txt` | Plan approval dialog: plan question, options 1..3 (Execute plan / Request changes / Cancel) + "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip · ctrl+r Review" footer | `blocked` |
+
+
 - **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is
   empty. Type into the plan dialog's row 4 and the label becomes the user's own sentence. Its
   static `shift+tab to approve with this feedback` description is what identifies it in both
   states — and `❯` sitting on it means the field has focus, where every digit is swallowed as
   text rather than answering ([`PLAN_FEEDBACK_NOTES.md`](../../lib/grammar/PLAN_FEEDBACK_NOTES.md)).
   The row's DIGIT is install-dependent too (3 or 4), so it is read off the screen, never assumed.
+

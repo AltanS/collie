@@ -6,7 +6,16 @@
 // The rule and its reasoning are ADR 0018's; this module is only where it is computed.
 
 /** The catalog's own names for the agent families a scope may address. Pinned against CATALOG. */
-export const AGENT_FAMILIES = ["claude", "codex", "pi", "opencode", "omp", "grok"] as const;
+export const AGENT_FAMILIES = [
+  "claude",
+  "codex",
+  "pi",
+  "opencode",
+  "omp",
+  "grok",
+  "agy",
+  "antigravity",
+] as const;
 
 const FAMILIES: ReadonlySet<string> = new Set<string>(AGENT_FAMILIES);
 
@@ -40,6 +49,8 @@ export function canonicalAgent(key: string): string {
   // Catalog-only. Must not be copied into adapterFor — #99: prefix-matching there
   // would attach Grok's chrome strip (and, later, any dialog grammars) to any `grok*` agent string.
   if (key.startsWith("grok")) return "grok";
+  if (key.startsWith("agy")) return "agy";
+  if (key.startsWith("antigravity")) return "antigravity";
   return key;
 }
 

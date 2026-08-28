@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { AgentIcon } from "./agent-icon";
 
 describe("AgentIcon", () => {
-  it.each(["claude", "codex", "pi", "opencode"])(
+  it.each(["claude", "codex", "pi", "opencode", "agy", "antigravity"])(
     "renders the %s brand logo as an inline-SVG app-icon tile",
     (agent) => {
       const { container } = render(<AgentIcon agent={agent} />);
@@ -22,6 +22,8 @@ describe("AgentIcon", () => {
     ["opencode-dev"],
     ["pi-go"],
     ["PI"],
+    ["agy-cli"],
+    ["antigravity-dev"],
   ])("resolves label variant '%s' to a brand logo", (variant) => {
     const { container } = render(<AgentIcon agent={variant} />);
     expect(container.querySelector("svg path")).not.toBeNull();
