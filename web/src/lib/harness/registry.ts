@@ -18,11 +18,18 @@ import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { grokAdapter } from "./grok";
 import { ompAdapter } from "./omp";
+import { agyAdapter, antigravityAdapter } from "./agy";
 
 // Built FROM the adapter list (not a hand-written literal) so a key can't silently drift from its
-// adapter's own `agent` string — the map key IS `adapter.agent`.
 const ADAPTERS: Record<string, HarnessAdapter> = Object.fromEntries(
-  [claudeAdapter, codexAdapter, grokAdapter, ompAdapter].map((a) => [a.agent, a]),
+  [
+    claudeAdapter,
+    codexAdapter,
+    grokAdapter,
+    ompAdapter,
+    agyAdapter,
+    antigravityAdapter,
+  ].map((a) => [a.agent, a]),
 );
 
 /** The adapter for `agent`, or undefined when the agent is unknown/absent (→ raw fallback). `Object.hasOwn`
