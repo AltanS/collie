@@ -50,9 +50,10 @@ Byte-faithful `format:ansi` captures from throwaway herdr tabs in `/tmp/collie-c
 username, hostname or home path appears in any of the five files. Every session carries the
 host's `codex_apps` MCP 401 startup warning in its transcript; that is real screen output, not
 noise added here. **The headline: 0.150.1's DEFAULT status row is two fields,
-`<model-with-reasoning> · <current-dir>`, with no `Context N% left` token** — so `isStatusRow`
-never matches, `locateComposer` returns null and `composerReady` is **false on every capture
-below, idle included**. Live-probed the same session with an explicit
+`<model-with-reasoning> · <current-dir>`, with no `Context N% left` token** — so the
+`Context`-bearing `STATUS_ROW` regex never matches. `isStatusRow` therefore also accepts the row
+by its RENDERER PAINT (unstyled two-space indent, coloured non-dim fields, dim ` · ` separators),
+which is what locates the composer on every capture below. Live-probed the same session with an explicit
 `-c 'tui.status_line=["model-with-reasoning","current-dir","git-branch","context-remaining","weekly-limit"]'`:
 `git-branch` renders `main` and `context-remaining` renders `Context 100% left`, so the Context
 field is simply absent from the default list, not suppressed by a degraded login.
@@ -62,7 +63,7 @@ model turn could be run.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
-| `codex--v0150-idle.txt` | Git sandbox, trust and hooks dialogs answered, empty dim `› Ask Codex to do anything` composer over the two-field status row. Pins #134's status-row regex against real 0.150.1 bytes: it does NOT match | `idle` |
+| `codex--v0150-idle.txt` | Git sandbox, trust and hooks dialogs answered, empty dim `› Ask Codex to do anything` composer over the two-field status row. Pins that the `Context`-bearing regex does NOT match here, and that the styled acceptor does | `idle` |
 | `codex--v0150-draft-wrapped.txt` | A 571-character sentence typed into the same composer, word-wrapped onto two two-space-indented continuation rows (the pane is 216 columns, so ~350 chars would not have wrapped three ways) | `idle` |
 | `codex--v0150-nogit-idle.txt` | Same idle screen in a directory with no git repo. The status row is the SAME two fields — no branch field to lose, because the default list has none | `idle` |
 | `codex--v0150-custom-status.txt` | `-c 'tui.status_line=["model-with-reasoning","current-dir","git-branch"]'` (Context deliberately omitted) with a short draft on the `› ` row. Pins the styled custom-status design: per-field colours and dim ` · ` separators | `idle` |
