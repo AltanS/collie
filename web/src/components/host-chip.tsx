@@ -1,4 +1,4 @@
-import { Server } from "lucide-react";
+import { Server, ServerOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { hostName } from "@/lib/hosts";
@@ -15,8 +15,13 @@ interface HostChipProps {
    * switcher renders its own rows and would otherwise derive the same fact twice).
    */
   state?: HostState;
-  /** Extra emphasis for the write surfaces — a touch larger, with the "on" preposition. */
-  variant?: "tag" | "target";
+  /**
+   * `tag` — the default pill. `target` — extra emphasis for the write surfaces, a touch larger,
+   * with the "on" preposition. `caption` — no pill at all: the pane header's line 1, where the host
+   * is one word in a small uppercase run beside the status word, and a bordered chip would read as
+   * a second object rather than as part of that sentence.
+   */
+  variant?: "tag" | "target" | "caption";
   className?: string;
 }
 
@@ -65,6 +70,7 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
   const degraded =
     unreachable || health?.incompatible === true || (state ?? health?.state ?? "unknown") === "unknown";
   const target = variant === "target";
+  const caption = variant === "caption";
 
   return (
     <span
@@ -75,17 +81,41 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
         unreachable: unreachable ? t("connection.host.ariaUnreachableSuffix") : "",
       })}
       className={cn(
-        "inline-flex max-w-[8rem] shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium",
-        target ? "text-[11px]" : "text-[10px]",
+        "inline-flex items-center gap-1 font-medium",
+        // The caption is a text run inside the identity block, so it MAY give up width (the machine
+        // is a nice-to-know; the status word beside it is the answer and stays `shrink-0`). The pill
+        // may not: everywhere else it is the last thing to go and the name truncates first. Same
+        // reason it drops the 8rem cap — that cap showed 99px of a 170px `macbook-pro-16-2023.local`
+        // in a row that now has the room.
+        // `text-[10px]/3`, one utility and not `text-[10px] leading-3`: tailwind-merge lists
+        // `leading` as conflicting with `font-size` (a named Tailwind size sets both), so ANY later
+        // `text-<size>` in this same cn() silently deletes an earlier `leading-*`. It did — the
+        // caption rendered at a 15px line and grew the pane header to 63px. The slash form cannot be
+        // split apart, and the size ternary below is now gated so it never runs for the caption.
+        caption
+          ? "min-w-0 text-[10px]/3 uppercase tracking-wide"
+          : cn("max-w-[8rem] shrink-0 rounded-md border px-1.5 py-0.5", target ? "text-[11px]" : "text-[10px]"),
         degraded
           ? // Unreachable is a STATE, not a disappearance (PACK_PROTOCOL.md §10.2) — it stays legible,
             // dashed rather than dimmed, so a blocked agent on a down machine is never greyed away.
-            "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked"
-          : "border-border bg-muted/60 text-muted-foreground",
+            // In the caption there is no border to dash, so the SHAPE of the fault moves into the
+            // glyph — ServerOff rather than Server — because colour alone is the one encoding
+            // WCAG 1.4.1 names, and a red host name 15px from a possibly-red status word is exactly
+            // the confusion that rule exists for.
+            caption
+            ? "text-status-blocked"
+            : "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked"
+          : caption
+            ? "text-muted-foreground"
+            : "border-border bg-muted/60 text-muted-foreground",
         className,
       )}
     >
-      <Server className="size-3 shrink-0" aria-hidden />
+      {caption && degraded ? (
+        <ServerOff className="size-3 shrink-0" aria-hidden />
+      ) : (
+        <Server className="size-3 shrink-0" aria-hidden />
+      )}
       {target && (
         <span className="shrink-0 text-muted-foreground/70" aria-hidden>
           {t("connection.host.onPrefix")}

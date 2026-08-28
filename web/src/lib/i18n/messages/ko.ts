@@ -220,7 +220,8 @@ export const ko: Dictionary = {
   // --- chat (the pane view shell: header, mirror, switcher) ---
   "chat.find.aria": "출력에서 찾기",
   "chat.history.aria": "대화 기록",
-  "chat.header.openOverviewAria": "{workspace} 개요 열기",
+  "chat.header.openOverviewAria": "{workspace} 개요 열기{status}",
+  "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(에이전트 없음)",
   "chat.scrollback.showHistory": "전체 기록 보기",
   "chat.scrollback.loadOlder": "이전 내용 불러오기",

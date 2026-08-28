@@ -106,8 +106,19 @@ export function AppHeader({
           `min-h` rather than `h`: a future child taller than 44px still GROWS the row instead of
           being clipped or overflowing it — the header would get taller (on every route at once,
           because they all mount this row), which is a visible design decision rather than a silent
-          overlap. Keep `py-2` so that taller child keeps its 8px breathing room. */}
-      <div className="flex min-h-15 items-center gap-2 pl-4 pr-2 py-2">
+          overlap.
+
+          `py-1`, not `py-2` — and the 4px it gives back is not a saving, it is a RELOCATION. The
+          pane's identity block is three lines now (caption / name / cwd), and with 8px of outer
+          padding it had one leftover pixel to divide between them: measured, 8px above the block
+          against a 1px gap between its lines, an 8 : 1 ratio where the two-line block had been 5 : 1.
+          The line count rose 50% and the air between the lines halved, which is why fewer items did
+          not produce a calmer row — it reads as one grey paragraph rather than three lines. At `py-1`
+          the content box is 52px and the block spends it 12 / 4 / 20 / 4 / 12, so outer air and inner
+          air are both 4px and the row still measures exactly 60px on every route. Nothing moves and
+          nothing is clipped. What it gives up is the 8px of breathing room a future taller-than-44px
+          child would have got; it gets 4. */}
+      <div className="flex min-h-15 items-center gap-2 pl-4 pr-2 py-1">
         {override ?? (
           <>
             <CollieHome onHome={onHome} trouble={trouble} lost={lost} wordmark={wordmark} />

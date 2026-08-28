@@ -222,7 +222,8 @@ export const ja: Dictionary = {
   // --- chat (the pane view shell: header, mirror, switcher) ---
   "chat.find.aria": "出力内を検索",
   "chat.history.aria": "会話履歴",
-  "chat.header.openOverviewAria": "{workspace}の概要を開く",
+  "chat.header.openOverviewAria": "{workspace}の概要を開く{status}",
+  "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（エージェントなし）",
   "chat.scrollback.showHistory": "全履歴を表示",
   "chat.scrollback.loadOlder": "過去分を読み込む",

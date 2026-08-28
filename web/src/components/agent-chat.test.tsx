@@ -20,9 +20,9 @@ import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureTabs } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
-import type { ServerSummary } from "@/lib/types";
+import type { AgentStatus, ServerSummary } from "@/lib/types";
 import { AgentChat } from "./agent-chat";
 
 // The detail view's core job: type a reply and submit it to the bridge. This drives the whole wired
@@ -93,10 +93,12 @@ function SpaceOverviewSentinel() {
 }
 
 describe("AgentChat — header title block", () => {
-  it("leads with the space, puts the directory on the subline, and drops the redundant agent name", () => {
-    renderChat(); // claude @ /home/you/webapp → ~/webapp
+  it("leads with the space, and drops the redundant agent name and the directory that repeats it", () => {
+    renderChat(); // claude @ /home/you/webapp → ~/webapp, under the name "webapp"
     expect(screen.getByText("webapp")).toBeInTheDocument(); // space leads
-    expect(screen.getByText("~/webapp")).toBeInTheDocument(); // directory on the subline
+    // The cwd subline is gated on saying something the name does not: `~/webapp` under `webapp` is
+    // the same word twice, so line 3 does not render. See the cwd-gate describe block below.
+    expect(screen.queryByText("~/webapp")).toBeNull();
     // The agent is conveyed by its icon (aria-label only), so its name isn't repeated as text.
     // Scoped to the title block itself: the mirror below it may legitimately NAME the agent — the
     // no-session note (#137) does — and that is not the redundancy this asserts against.
@@ -132,6 +134,147 @@ describe("AgentChat — header title block", () => {
 
     await user.click(screen.getByRole("button", { name: /open webapp overview/i }));
     expect(await screen.findByText("overview:w1")).toBeInTheDocument();
+  });
+});
+
+// THE PANE HEADER'S IDENTITY BLOCK — a caption (host · state), the name at full width, and a cwd
+// line that only appears when it has something to add. The host chip and the status pill both left
+// the row: the state now rides with the identity it describes rather than competing with the two
+// actions for the name's width.
+//
+// Every query below is scoped to the render's OWN container by data-slot. `ui/strip-host.tsx` mounts
+// two permanent, empty sr-only live regions, so a bare `screen.getByRole("status")` is ambiguous in
+// any tree that holds a host, and the failure reads as a missing element rather than a duplicate one.
+describe("AgentChat — the pane header's identity block", () => {
+  const identity = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-identity"]');
+  const slot = (c: HTMLElement, name: string) =>
+    c.querySelector<HTMLElement>(`[data-slot="pane-${name}"]`);
+  /** Every named mark inside the identity block — the agent's own logo is one too. */
+  const names = (c: HTMLElement) =>
+    Array.from(identity(c)?.querySelectorAll('[role="img"]') ?? []).map((e) =>
+      e.getAttribute("aria-label"),
+    );
+
+  it("says the state in a WORD as well as in the dot, in every state the app has", () => {
+    // THE ONE THIS ROUND EXISTS FOR. Reducing the state to colour alone does not survive a
+    // colour-vision simulation on the app's own tokens: for a deuteranope, blocked / working / done
+    // collapse to ONE colour in light theme, and "needs you" against "done" — the most consequential
+    // opposite pair the app has — collapses in BOTH themes. Idle and unknown are 0.02 apart in
+    // lightness and are the same dot for everybody. So the dot is the anchor and the word is the
+    // statement, and the header owes both.
+    //
+    // Exhaustive by construction: a `Record<AgentStatus, string>` literal is complete-checked by tsc,
+    // so a sixth status cannot be added without either teaching this test or failing the typecheck.
+    const words = {
+      blocked: "needs you",
+      working: "working",
+      idle: "idle",
+      done: "done",
+      unknown: "unknown",
+    } satisfies Record<AgentStatus, string>;
+    // SAFETY: `words` is `satisfies Record<AgentStatus, string>` just above, so tsc has already
+    // proved its keys are exactly the members of AgentStatus — Object.entries widens them to string
+    // because it cannot see that proof.
+    for (const [status, word] of Object.entries(words) as [AgentStatus, string][]) {
+      const agent = { ...fixtureAgents[0]!, status };
+      const { container } = renderChat({ agent, agents: [agent] });
+      const caption = slot(container, "caption");
+      expect(caption).not.toBeNull();
+      expect(caption?.textContent).toContain(word); // the word, in the caption — not the right cluster
+      // …and the dot is still there, badged onto the agent's own tile inside the identity block, and
+      // it NAMES itself. The dot is an empty span; unnamed it reaches no screen reader and matches no
+      // text query. (The AgentIcon beside it is also a role="img", hence the list rather than a
+      // first-match query — the assertion is that the state is among the named marks.)
+      expect(names(container)).toContain(word);
+    }
+    // A bare shell has no agent status; the caption still carries a word, or a solo install's caption
+    // row would be two glyphs and nothing to read.
+    const shell = renderChat({ agent: fixtureShellPanes[0]!, agents: [fixtureShellPanes[0]!] });
+    expect(slot(shell.container, "caption")?.textContent).toContain("shell");
+    expect(names(shell.container)).toEqual([]); // no agent, no status, so no badge to name
+  });
+
+  it("puts the state into the accessibility tree, which the caption's own text cannot do", () => {
+    // An aria-label on a button REPLACES everything inside it, so moving the status word into this
+    // block would have taken the pane's status out of the accessibility tree altogether — the badge
+    // it replaced sat outside the button and was read. The label carries it instead, via a locale
+    // string, because where the punctuation goes is a translator's decision.
+    const { container } = renderChat(); // fixtureAgents[0] is blocked → "needs you"
+    expect(identity(container)?.getAttribute("aria-label")).toBe(
+      "Open webapp overview — needs you",
+    );
+  });
+
+  it("gives the thing you tap a real 44px hit box, not a 39px drawn one", () => {
+    // MEASURED, in the playground, at 390px: this button was 39.00px tall. It is the only way off the
+    // pane to the space overview, and it sat under the floor in the very row that states the floor
+    // for every other control in it. `min-h-11` is 44px, and it is what catches the COMMON case — the
+    // two-line block (caption 12 + gap 4 + name 20) is 36px and would otherwise draw at 36.
+    const { container } = renderChat();
+    const cls = identity(container)?.className ?? "";
+    expect(cls).toMatch(/(^|\s)min-h-11(?=\s|$)/);
+    // And no vertical padding on top of it: 52px of lines plus a `py-0.5` is 56px in the row's 52px
+    // content box, which grows the row to 64px on the pane route alone — exactly the route-local jump
+    // `min-h-15` was stated to prevent.
+    expect(cls).not.toMatch(/(^|\s)(?:p|py)-\d/);
+  });
+
+  it("still fits the row's stated 60px floor with all three lines present", () => {
+    // THE COUPLING, and it spans two files. agent-chat.tsx states the three line boxes and the gap
+    // between them; app-header.tsx states the row's floor and the padding that has to hold them. Each
+    // edit looks complete on its own, and the failure is a header that grows on ONE route — the
+    // navigation jump `min-h-15` exists to kill. So the arithmetic is read off the rendered elements
+    // rather than trusted: 12 + 4 + 20 + 4 + 12 = 52 = 60 − 2×4.
+    //
+    // If a future change genuinely needs more, DESIGN.md §6's answer is to raise the shared floor
+    // app-wide — never to clip, never to fix the height, never to let one route ride higher.
+    const { container } = renderChat({
+      agent: { ...fixtureAgents[0]!, cwd: "/home/you/webapp/worktrees/fix-42" },
+    });
+    const row = container.querySelector<HTMLElement>("header > div:last-child");
+    const spacing = (cls: string, re: RegExp) => {
+      const m = re.exec(cls);
+      expect(m, `${re} in "${cls}"`).not.toBeNull();
+      return Number(m![1]) * 4; // Tailwind's --spacing is 0.25rem, and the app's root is 16px
+    };
+    const floor = spacing(row?.className ?? "", /(?:^|\s)min-h-(\d+)(?=\s|$)/);
+    const pad = spacing(row?.className ?? "", /(?:^|\s)py-(\d+)(?=\s|$)/);
+    const gap = spacing(slot(container, "lines")?.className ?? "", /(?:^|\s)gap-(\d+)(?=\s|$)/);
+    // The caption's height is the status word's own line box; the name and the cwd state theirs.
+    const caption = spacing(
+      slot(container, "caption")?.textContent === undefined
+        ? ""
+        : (slot(container, "caption")?.querySelector("span:last-child")?.className ?? ""),
+      /(?:^|\s)text-\[10px\]\/(\d+)(?=\s|$)/,
+    );
+    const name = spacing(slot(container, "name")?.className ?? "", /(?:^|\s)leading-(\d+)(?=\s|$)/);
+    const cwd = slot(container, "cwd");
+    expect(cwd, "the third line must actually be rendered for this to be a three-line test").not.toBeNull();
+    const cwdBox = spacing(cwd?.className ?? "", /(?:^|\s)leading-(\d+)(?=\s|$)/);
+
+    expect([caption, name, cwdBox, gap, pad, floor]).toEqual([12, 20, 12, 4, 4, 60]);
+    expect(caption + gap + name + gap + cwdBox).toBe(floor - 2 * pad);
+    // The two-line case is the one the floor above catches rather than the padding: 36px of lines in
+    // a 52px box, which is why the identity button states `min-h-11`.
+    expect(caption + gap + name).toBeLessThan(44);
+  });
+
+  it("shows the cwd when it adds a segment and hides it when it only repeats the name", () => {
+    // The gate is `cwdBeyondName`, against the RENDERED NAME — see lib/pane-name.test.ts for the rule
+    // itself. Here: that the header actually mounts it, and mounts it on the right string.
+    const base = fixtureAgents[0]!; // workspaceLabel "webapp", cwd /home/you/webapp
+    // Nothing to add: `~/webapp` under the name `webapp` is the same word twice.
+    expect(slot(renderChat({ agent: base, agents: [base] }).container, "cwd")).toBeNull();
+    // A worktree is exactly the case the line exists for.
+    const worktree = { ...base, cwd: "/home/you/webapp/worktrees/fix-42" };
+    expect(slot(renderChat({ agent: worktree, agents: [worktree] }).container, "cwd")?.textContent)
+      .toBe("~/webapp/worktrees/fix-42");
+    // And the case the old PROJECT gate got backwards: a hand-set label names no directory at all, so
+    // suppressing the path would leave the pane with nothing on screen locating the work.
+    const named = { ...base, paneLabel: "logs" };
+    expect(slot(renderChat({ agent: named, agents: [named] }).container, "cwd")?.textContent).toBe(
+      "~/webapp",
+    );
   });
 });
 
@@ -521,17 +664,31 @@ describe("AgentChat — history affordance", () => {
     expect(screen.queryByRole("button", { name: /conversation history/i })).not.toBeInTheDocument();
   });
 
-  // Deliberate placement, not an accident of slot order: the status pill stays the rightmost thing on
-  // the pane screen (it's what you glance at), so History sits to its LEFT.
-  //
-  // (The top-of-mirror affordance is covered separately below.)
-  it("sits to the LEFT of the status pill", () => {
+  // The right cluster is EXACTLY two actions now — Find, then History — and the status is not a third.
+  // It used to be: the badge sat rightmost, in the row's action neighbourhood, being the one thing
+  // there that is not an action, and it was also the widest fixed item in the row. It moved into the
+  // identity block, where the state belongs to the pane it describes. So the assertion inverts: the
+  // status word must come BEFORE History in the document, because it is now part of the identity.
+  it("leaves the right cluster to Find and History, with the status ahead of them in the identity", () => {
     const agent = { ...fixtureAgents[0]!, hasSession: true };
-    renderChat({ agent, agents: [agent] });
+    const { container } = renderChat({ agent, agents: [agent] });
     const history = screen.getByRole("button", { name: /conversation history/i });
-    const pill = screen.getByText("needs you"); // fixtureAgents[0] is blocked → "needs you"
-    // Node.compareDocumentPosition: FOLLOWING (4) means the pill comes after History in the DOM.
-    expect(history.compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const word = screen.getByText("needs you"); // fixtureAgents[0] is blocked → "needs you"
+    // Node.compareDocumentPosition: PRECEDING (2) means the word comes before History in the DOM.
+    expect(history.compareDocumentPosition(word) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    // …and it is INSIDE the identity button, not merely earlier in the row.
+    const title = screen.getByRole("button", { name: /open webapp overview/i });
+    expect(title.contains(word)).toBe(true);
+    // Exactly two controls after the identity block: Find and History. Scoped to the header's own
+    // row, because the screen below it is full of buttons.
+    const row = container.querySelector("header > div:last-child");
+    const after = Array.from(row?.querySelectorAll("button") ?? []).filter(
+      (b) => title.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(after.map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Find in output",
+      "Conversation history",
+    ]);
   });
 });
 

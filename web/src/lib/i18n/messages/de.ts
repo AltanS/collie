@@ -228,7 +228,8 @@ export const de: Dictionary = {
   // --- chat (the pane view shell: header, mirror, switcher) ---
   "chat.find.aria": "In der Ausgabe suchen",
   "chat.history.aria": "Gesprächsverlauf",
-  "chat.header.openOverviewAria": "{workspace}-Übersicht öffnen",
+  "chat.header.openOverviewAria": "{workspace}-Übersicht öffnen{status}",
+  "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(Agent weg)",
   "chat.scrollback.showHistory": "Gesamten Verlauf zeigen",
   "chat.scrollback.loadOlder": "Ältere laden",

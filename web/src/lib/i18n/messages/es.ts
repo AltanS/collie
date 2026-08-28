@@ -227,7 +227,8 @@ export const es: Dictionary = {
   // --- chat (the pane view shell: header, mirror, switcher) ---
   "chat.find.aria": "Buscar en la salida",
   "chat.history.aria": "Historial de conversación",
-  "chat.header.openOverviewAria": "Abrir resumen de {workspace}",
+  "chat.header.openOverviewAria": "Abrir resumen de {workspace}{status}",
+  "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(agente ausente)",
   "chat.scrollback.showHistory": "Ver historial completo",
   "chat.scrollback.loadOlder": "Cargar más antiguos",

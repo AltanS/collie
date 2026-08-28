@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { paneParts, paneTitleInTab, TITLE_SEP } from "./pane-name";
+import { cwdBeyondName, paneParts, paneTitleInTab, TITLE_SEP } from "./pane-name";
 import type { AgentView } from "./types";
 
 function pane(over: Partial<AgentView> = {}): AgentView {
@@ -187,5 +187,74 @@ describe("a stale terminal title", () => {
     const over = { terminalTitle: STALE, terminalTitleStale: true };
     expect(paneParts(pane({ ...over, paneLabel: "hand-named" })).secondary).toBe("hand-named");
     expect(paneTitleInTab(pane({ ...over, paneLabel: "hand-named" })).primary).toBe("hand-named");
+  });
+});
+
+// THE CWD GATE THE PANE HEADER USES — and it is deliberately NOT `informativeCwd`.
+//
+// `informativeCwd` compares the directory's own name to the PROJECT, which is right in the herd list
+// because there line 1 IS the project. The pane header's line 1 is `paneLabel ?? sessionName ??
+// "space › tab"`, so the project may not be on screen at all — and run over the fixture herd, the
+// project gate hid the path on 14 panes of 14, including every hand-named one, where the path was the
+// only thing left naming the work. This gate asks the reader's own question instead: does the path
+// show me a SEGMENT the name above it does not already show?
+describe("cwdBeyondName — the header's cwd line", () => {
+  it("hides the path when the name above it already shows every segment", () => {
+    // The design's own specimen. `…/workspace-sprqvntrs/openplate` under
+    // `workspace-sprqvntrs › openplate` is the same two tokens with slashes instead of a chevron —
+    // three type sizes carrying two facts.
+    expect(
+      cwdBeyondName("/home/you/dev/workspace-sprqvntrs/openplate", "workspace-sprqvntrs › openplate"),
+    ).toBeNull();
+    // Order does not matter, and neither does case: it is a set of segments, not a prefix match.
+    expect(cwdBeyondName("/home/you/openplate", "OpenPlate")).toBeNull();
+  });
+
+  it("keeps the path the moment it carries a segment the name does not", () => {
+    // The case the line exists for: a pane sitting in a worktree, not at the space root.
+    expect(cwdBeyondName("/home/you/dev/openplate/worktrees/fix-42", "openplate › build")).toBe(
+      "~/dev/openplate/worktrees/fix-42",
+    );
+    // …and the case the PROJECT gate got wrong: a hand-set label names no directory at all, so the
+    // path is the only thing on screen locating the work. `informativeCwd` hid this one.
+    expect(cwdBeyondName("/home/you/src/sprqvntrs-api", "logs")).toBe("~/src/sprqvntrs-api");
+  });
+
+  it("never counts `~` or the elision marker as a segment", () => {
+    // `~` is $HOME collapsed and `…` is shortCwd's "some segments dropped" mark. If either counted,
+    // every home-relative path would look like it carried a segment the name lacks, and the gate
+    // would never close.
+    expect(cwdBeyondName("/home/you/openplate", "openplate")).toBeNull(); // `~/openplate`
+    // A path long enough for shortCwd to drop its head keeps `…/` as the first token. The specimen
+    // above is exactly that shape and still closes the gate, which is the proof: `…` is not a
+    // segment.
+    expect(
+      cwdBeyondName(
+        "/home/you/dev/workspace-sprqvntrs/openplate",
+        "workspace-sprqvntrs › openplate",
+      ),
+    ).toBeNull();
+  });
+
+  it("says nothing when there is no path", () => {
+    expect(cwdBeyondName("", "anything")).toBeNull();
+  });
+
+  it("leaves informativeCwd's own callers alone — the herd list still gates on the project", () => {
+    // THE COUPLING, stated as a test so the two rules cannot be merged by a later edit that notices
+    // they look alike. paneParts is informativeCwd's only caller: with the directory named after the
+    // project the secondary line stays empty, and it does so for a pane whose NAME would have kept
+    // the path under the header's gate.
+    expect(paneParts(pane({ cwd: "/home/kon/dev/moonward_os" })).secondary).toBeNull();
+    // …and the two genuinely disagree, which is the point: the header's gate keeps this path,
+    // because `dev` is a segment the name `moonward_os` does not show. The herd list drops it,
+    // because there line 1 IS `moonward_os` and eighteen rows would all repeat the same parent.
+    expect(cwdBeyondName("/home/kon/dev/moonward_os", "moonward_os")).toBe("~/dev/moonward_os");
+    // The hand-named pane is where the project gate actively misinforms: `informativeCwd` would hide
+    // the path under a name that mentions no project at all.
+    expect(paneParts(pane({ paneLabel: "logs", cwd: "/home/kon/dev/moonward_os" })).secondary).toBe(
+      "logs",
+    );
+    expect(cwdBeyondName("/home/kon/dev/moonward_os", "logs")).toBe("~/dev/moonward_os");
   });
 });

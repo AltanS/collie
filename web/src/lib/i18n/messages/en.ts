@@ -234,7 +234,8 @@ export const en = {
   // --- chat (the pane view shell: header, mirror, switcher) ---
   "chat.find.aria": "Find in output",
   "chat.history.aria": "Conversation history",
-  "chat.header.openOverviewAria": "Open {workspace} overview",
+  "chat.header.openOverviewAria": "Open {workspace} overview{status}",
+  "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(agent gone)",
   "chat.scrollback.showHistory": "Show entire history",
   "chat.scrollback.loadOlder": "Load older",

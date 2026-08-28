@@ -40,6 +40,8 @@ const RING = {
 export function StatusDot({
   status,
   surface = "bg-background",
+  label,
+  stale,
   className,
 }: {
   status: AgentStatus;
@@ -50,12 +52,36 @@ export function StatusDot({
    * badge. Pass the card's surface when the dot sits on a card.
    */
   surface?: string;
+  /**
+   * An ACCESSIBLE NAME for the dot, for the one caller where the dot is the only mark of the state
+   * in its group. The dot had none and could not have one: it is an empty `<span>`, so it named
+   * nothing, matched no text query, and reached no screen reader.
+   *
+   * Naming it is opt-in rather than default because most call sites put the dot IN FRONT OF the
+   * word it belongs to (`ui/chip.tsx`, `pane-strip.tsx`, `tab-strip.tsx`) — there a name is the
+   * state announced twice. Unnamed, it is explicitly `aria-hidden`, which is the same answer those
+   * call sites already got by accident, now stated.
+   */
+  label?: string;
+  /** The dot is showing the LAST snapshot's status while the connection is not live — dim it, and
+   *  stop the working pulse: a frozen reading must not animate as if it were arriving. Same
+   *  `opacity-40` the StatusBadge has always used, and the same instant restore on recovery. */
+  stale?: boolean;
   className?: string;
 }) {
   const hollow = RESTING.has(status);
   return (
-    <span className={cn("relative flex size-2.5 shrink-0", className)}>
-      {status === "working" && (
+    <span
+      role={label === undefined ? undefined : "img"}
+      aria-label={label}
+      aria-hidden={label === undefined ? true : undefined}
+      className={cn(
+        "relative flex size-2.5 shrink-0 transition-opacity",
+        stale === true && "opacity-40",
+        className,
+      )}
+    >
+      {status === "working" && stale !== true && (
         <span
           className={cn(
             "absolute inline-flex size-full animate-ping rounded-full opacity-75",
@@ -101,6 +127,62 @@ export function StatusBadge({
       <span className={cn("size-1.5 rounded-full", DOT[status])} />
       {statusLabel(status)}
     </Badge>
+  );
+}
+
+const WORD = {
+  blocked: "text-status-blocked",
+  working: "text-status-working",
+  done: "text-status-done",
+  idle: "text-status-idle",
+  unknown: "text-status-unknown",
+  shell: "text-muted-foreground",
+} satisfies Record<AgentStatus | "shell", string>;
+
+/**
+ * The status as a WORD, in the caption register — the pane header's line 1, where the state rides
+ * with the identity instead of competing with the actions for the name's width.
+ *
+ * Why a word at all, when the header already carries a dot: a 10px disc encodes this range in HUE
+ * ALONE, and the range does not survive it. Simulated on the app's own `--status-*` tokens, a
+ * deuteranope reads blocked, working and done as ONE colour in light theme (OKLab ΔE 0.014–0.046
+ * against a ~0.05 floor at this size), and "needs you" against "done" — the app's most consequential
+ * opposite pair — collapses in BOTH themes. Idle and unknown are 0.02 apart in lightness and are the
+ * same dot for everybody. The dot is the anchor and welds the state to its subject; the word is the
+ * statement for every reader the colour fails. Both, not either.
+ *
+ * Coloured with the same `--status-*` tokens as the chip's TEXT, not as its fill — those values are
+ * tuned for text contrast on this ground, which is exactly the job here. No alpha modifier: index.css
+ * says outright that no token value rescues a `/70`.
+ */
+export function StatusWord({
+  status,
+  stale,
+  className,
+}: {
+  /** `"shell"` for a bare shell pane, which has no agent and therefore no agent status. */
+  status: AgentStatus | "shell";
+  /** Frozen last-snapshot reading while the connection is not live — dimmed, as the badge is. */
+  stale?: boolean;
+  className?: string;
+}) {
+  useLocale();
+  return (
+    <span
+      className={cn(
+        // `text-[10px]/3` — 10px type in a stated 12px box, so the header's three-line budget is a
+        // sum of boxes rather than of font metrics. One utility rather than `text-[10px] leading-3`
+        // because tailwind-merge deletes an earlier `leading-*` when a later `text-<size>` lands in
+        // the same cn(), and a caller passing `className="text-xs"` would silently take the line
+        // height with it.
+        "shrink-0 text-[10px]/3 font-medium uppercase tracking-wide transition-opacity",
+        WORD[status],
+        stale === true && "opacity-40",
+        className,
+      )}
+    >
+      {status === "shell" ? t("status.shellBadge") : statusLabel(status)}
+    </span>
   );
 }
 

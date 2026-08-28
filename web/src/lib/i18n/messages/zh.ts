@@ -210,7 +210,8 @@ export const zh: Dictionary = {
   // --- chat (the pane view shell: header, mirror, switcher) ---
   "chat.find.aria": "在输出中查找",
   "chat.history.aria": "对话记录",
-  "chat.header.openOverviewAria": "打开 {workspace} 概览",
+  "chat.header.openOverviewAria": "打开 {workspace} 概览{status}",
+  "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（智能体已消失）",
   "chat.scrollback.showHistory": "查看完整记录",
   "chat.scrollback.loadOlder": "加载更早内容",

@@ -33,7 +33,7 @@ import { HostStaleBanner } from "@/components/host-stale-banner";
 import { useHostHealth } from "@/components/pack-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
-import { ShellBadge, StatusBadge } from "@/components/status-badge";
+import { StatusDot, StatusWord } from "@/components/status-badge";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
@@ -43,11 +43,11 @@ import type { PromptBlockAction } from "@/components/prompt-select-block";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
-import { shortCwd } from "@/lib/format";
+import { cwdBeyondName } from "@/lib/pane-name";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter } from "@/lib/journal-agents";
 import { historyPath, spacePath } from "@/lib/nav";
-import { isReadOnly } from "@/lib/types";
+import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
 import type {
@@ -122,8 +122,10 @@ export function AgentChat({
   const navigate = useNavigate();
   useLocale();
   // Poll-truth "is the data on screen not live". The header (AppHeader) reads the same inputs to drive
-  // the Collie mark + pill; here we use it to dim the StatusBadge, so the badge stops presenting the
-  // last snapshot's status as current while we're reconnecting/lost, and restores instantly on recovery.
+  // the Collie mark + pill; here we use it to dim the header's status dot AND its status word, so the
+  // pane stops presenting the last snapshot's status as current while we're reconnecting/lost, and
+  // restores instantly on recovery. Both marks dim together — dimming only one of them would leave a
+  // frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
@@ -137,6 +139,15 @@ export function AgentChat({
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
   const grammarsOn = !prefs.rawTerminal;
   const isShell = agent?.kind === "shell";
+  // The header's line 2 — the pane's rendered NAME. Hoisted out of the JSX because line 3 is gated
+  // against it: the cwd shows only when it names a segment this string does not already show.
+  const paneName =
+    agent === undefined
+      ? ""
+      : (agent.paneLabel ??
+        agent.sessionName ??
+        `${agent.workspaceLabel}${tabLabel !== undefined && tabLabel !== "" ? ` › ${tabLabel}` : ""}`);
+  const cwd = agent === undefined ? null : cwdBeyondName(agent.cwd, paneName);
   // This device may not type into agents: the backend rejects every write, so the composer drops to
   // read-only (and shows a banner). The mirror still polls (reading is fine). Either write gate puts
   // us here — the proxy-asserted allowlist, or a missing/rejected pairing credential — and the
@@ -680,10 +691,16 @@ export function AgentChat({
               />
             ) : undefined
           }
-          // Right cluster, in reading order: Find, History, then the agent status pill. The pill is the
-          // rightmost item on every pane screen (it's the thing you glance at), so the buttons sit to
-          // its LEFT rather than trailing it. All ride in `rightLead` because AppHeader renders
-          // `rightLead` before `rightTrail` — the order here IS the on-screen order.
+          // Right cluster, in reading order: Find, then History. EXACTLY two actions, and the status
+          // pill is deliberately not a third: it was the widest fixed item in the row (the Spanish
+          // "desconocido" chip measures 111px and left the pane name 24px at 390px), and it was
+          // sitting in the row's action neighbourhood while being the one thing here that is not an
+          // action. It moved into the identity block, where the state belongs to the pane it
+          // describes — the dot badged onto the agent's own tile, the word in the caption line.
+          // The budget rule this holds to: one Leave (the Collie mark) + one flexible Identity, which
+          // carries the state + at most two Actions. The Identity is the only flexible element; when
+          // the row would squeeze it below a recognisable handle, the newest FIXED element leaves —
+          // never the Identity.
           //
           // Find lives HERE, not in the composer, because the find bar it opens takes over this very
           // header row (see `override` above) — trigger and surface in the same place. It sat in the
@@ -695,8 +712,6 @@ export function AgentChat({
           // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
           // transcript can exist at all), so the button never leads to an empty screen.
           //
-          // The status pill is dimmed while the connection isn't live, so a frozen "working"/"idle"
-          // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
           rightLead={
             agent ? (
               <>
@@ -720,11 +735,6 @@ export function AgentChat({
                     <ScrollText className="size-4" />
                   </button>
                 )}
-                {isShell ? (
-                  <ShellBadge stale={connecting} />
-                ) : (
-                  <StatusBadge status={agent.status} stale={connecting} />
-                )}
               </>
             ) : undefined
           }
@@ -736,35 +746,103 @@ export function AgentChat({
             <button
               type="button"
               onClick={() => openSpace(agent.workspaceId)}
-              aria-label={t("chat.header.openOverviewAria", { workspace: agent.workspaceLabel })}
-              className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
+              // The block's TEXT does not reach a screen reader — an aria-label on a button replaces
+              // everything inside it — so the state has to be spelled into the label itself, or moving
+              // the status word in here would have taken the pane's status out of the accessibility
+              // tree entirely. The suffix is a locale string, not a "," glued on in code, because
+              // where the punctuation goes is a translator's decision (host-chip.tsx does the same
+              // with its unreachable suffix).
+              aria-label={t("chat.header.openOverviewAria", {
+                workspace: agent.workspaceLabel,
+                status: t("chat.header.statusAria", {
+                  label: isShell ? t("status.shellBadge") : statusLabel(agent.status),
+                }),
+              })}
+              // The three-line block's geometry is a rule that spans two files — this one states the
+              // line boxes, app-header.tsx states the row floor and the padding that has to hold them —
+              // so it is asserted mechanically in agent-chat.test.tsx. These slots are what that test
+              // reads; renaming one without updating it fails there rather than on a phone.
+              data-slot="pane-identity"
+              // A REAL 44px hit box, stated. This button is the only way off the pane to the space
+              // overview and it measured 39px — under the floor, in the row that states the floor for
+              // everything else. `min-h-11` rather than a taller drawn box, because with three lines
+              // present the block is already 52px and the floor only has to catch the two-line case.
+              // The old `py-0.5` is gone with it: 52px of lines plus 4px of padding is 56px in a 52px
+              // content box, which would have grown the row to 64px on the pane route alone — the
+              // route-local growth `min-h-15` exists to prevent.
+              className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 text-left transition-colors active:bg-muted/60"
             >
-              {isShell ? (
-                <div className="flex size-6 shrink-0 items-center justify-center rounded-md border bg-muted">
-                  <TerminalSquare className="size-3 text-muted-foreground" />
+              {/* The subject, with the state badged onto its corner — `agent-card.tsx`'s pattern, not
+                  a new one. Two reasons it is here rather than the state sitting alone in the caption
+                  run. First, the header had lost its only focal point when the filled status chip
+                  left: the heaviest mark in the row became the Collie mark, i.e. the button that
+                  LEAVES the pane, with nothing for the eye to land on in the pane's own identity.
+                  Second, in dark theme the Claude tile's orange (oklch 0.672 0.131 39) and
+                  --status-blocked (0.700 0.200 24) are 0.028 apart in lightness and 15° in hue: as two
+                  loose 10-12px marks on one line they are one colour, and "blocked" — the state that
+                  most needs to be seen — would disappear into the subject glyph. The ring separates
+                  them physically instead of by tuning colours. */}
+              <div className="relative shrink-0">
+                {isShell ? (
+                  <div className="flex size-6 items-center justify-center rounded-md border bg-muted">
+                    <TerminalSquare className="size-3 text-muted-foreground" />
+                  </div>
+                ) : (
+                  // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
+                  // pane's subject, not a second brand competing with Collie's for the header.
+                  <AgentIcon agent={agent.agent} className="size-6" />
+                )}
+                {/* A shell pane has no agent status, so it gets no badge — the tile alone says what it
+                    is, and the caption's "shell" says it in words. The dot IS named here, unlike every
+                    other StatusDot in the app: it is the only one that stands alone rather than
+                    leading a word, so unnamed it would be an empty span that names nothing and matches
+                    no text query. In focus mode the button's own aria-label is what a screen reader
+                    reads (a label replaces the content beneath it) and that label already carries the
+                    status; this name is what answers a browse-mode read of the glyph itself, and the
+                    fallback if that label ever loses its suffix. */}
+                {!isShell && (
+                  <StatusDot
+                    status={agent.status}
+                    label={statusLabel(agent.status)}
+                    stale={connecting}
+                    surface="bg-background"
+                    className="absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-background"
+                  />
+                )}
+              </div>
+              {/* Three lines with 4px between them — see the row's own note in app-header.tsx for why
+                  the air moved from outside the block to inside it. Each line states its own height
+                  (12 / 20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
+                  body's 1.45 strut and the block silently becomes ~54px, which the row would then have
+                  to grow to hold. */}
+              <div data-slot="pane-lines" className="flex min-w-0 flex-1 flex-col gap-1">
+                {/* Line 1, the caption: where this pane is, and what it is doing. The host hides
+                    itself on a single-machine pack (HostChip owns that rule); the status word never
+                    does, so the line always has something to say. */}
+                <div data-slot="pane-caption" className="flex min-w-0 items-center gap-1.5">
+                  <HostChip host={agent.host} variant="caption" />
+                  <StatusWord status={isShell ? "shell" : agent.status} stale={connecting} />
                 </div>
-              ) : (
-                // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
-                // pane's subject, not a second brand competing with Collie's for the header.
-                <AgentIcon agent={agent.agent} className="size-6" />
-              )}
-              <div className="min-w-0 flex-1">
-                {/* A user-set pane label leads when present (the identifier they chose), then Claude's
-                    own /rename session name, otherwise the default space › tab. The cwd subline keeps
-                    context either way. */}
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate font-semibold leading-tight">
-                    {agent.paneLabel ??
-                      agent.sessionName ??
-                      `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
+                {/* Line 2, the name, at the FULL width of the block. This is what the round was for:
+                    with the host pill and the status chip both out of the horizontal race, the name
+                    stops sharing its line with anything. A user-set pane label leads when present (the
+                    identifier they chose), then Claude's own /rename session name, otherwise the
+                    default space › tab. */}
+                <span data-slot="pane-name" className="block truncate font-semibold leading-5">
+                  {paneName}
+                </span>
+                {/* Line 3, conditional: the path, but only when it names a segment line 2 does not
+                    already show — see cwdBeyondName. Gated against the RENDERED NAME rather than
+                    against the project, because a hand-set label ("logs") puts no directory on line 2
+                    at all and the path is then the only thing locating the work. */}
+                {cwd !== null && (
+                  <span
+                    data-slot="pane-cwd"
+                    className="block truncate font-mono text-[11px] leading-3 text-muted-foreground"
+                  >
+                    {cwd}
                   </span>
-                  {/* Where space is tight the breadcrumb truncates the NAME (it already does) — never
-                      the host, which is `shrink-0` and therefore the last thing to go. */}
-                  <HostChip host={agent.host} />
-                </div>
-                <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
-                  {shortCwd(agent.cwd)}
-                </div>
+                )}
               </div>
             </button>
           ) : (
