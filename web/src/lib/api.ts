@@ -22,6 +22,9 @@ import type {
   SnapshotResponse,
   UpdateInfo,
   UploadResponse,
+  WorktreeListResponse,
+  WorktreeOpenResponse,
+  WorktreeRemoveResponse,
 } from "./types";
 
 export type { NotifyPrefs, UpdateInfo };
@@ -568,6 +571,56 @@ export function createWorkspace(
     method: "POST",
     body: JSON.stringify(opts),
   });
+}
+
+/** The worktrees of the repo a space sits in. Empty-handed when the space is not in one. */
+export function listWorktrees(workspaceId: string, scope?: Scope): Promise<WorktreeListResponse> {
+  return req<WorktreeListResponse>(
+    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktrees`, scope),
+  );
+}
+
+/** Create a worktree on a new branch and open it as its own space. */
+export function createWorktree(
+  workspaceId: string,
+  branch: string,
+  scope?: Scope,
+): Promise<WorktreeOpenResponse> {
+  return req<WorktreeOpenResponse>(
+    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree`, scope),
+    { method: "POST", body: JSON.stringify({ branch }) },
+  );
+}
+
+/** Show a worktree that already exists. Answers `alreadyOpen` rather than refusing. */
+export function openWorktree(
+  workspaceId: string,
+  path: string,
+  scope?: Scope,
+): Promise<WorktreeOpenResponse> {
+  return req<WorktreeOpenResponse>(
+    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree/open`, scope),
+    { method: "POST", body: JSON.stringify({ path }) },
+  );
+}
+
+/**
+ * Remove the worktree that `target` is showing, closing that space with it.
+ *
+ * `workspaceId` is the space the sheet was opened from (the repo); `target` is the space showing the
+ * checkout. `force` discards uncommitted work and is only ever sent after the operator has been
+ * told, in those words, that it will.
+ */
+export function removeWorktree(
+  workspaceId: string,
+  target: string,
+  force: boolean,
+  scope?: Scope,
+): Promise<WorktreeRemoveResponse> {
+  return req<WorktreeRemoveResponse>(
+    withScope(`/api/workspace/${encodeURIComponent(workspaceId)}/worktree/remove`, scope),
+    { method: "POST", body: JSON.stringify({ workspaceId: target, force }) },
+  );
 }
 
 /**
