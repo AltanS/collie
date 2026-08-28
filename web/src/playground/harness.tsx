@@ -6,7 +6,7 @@
 // and absent from `dist`. The components it mounts do their own translating, so switching the app's
 // locale still repaints every state below.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
@@ -237,6 +237,18 @@ export function PaneRouter({
 }
 
 /**
+ * The stack card's device gate, carried past the router rather than through it.
+ *
+ * `createMemoryRouter` is built once inside `useState`, so its loader data — including `device` — is
+ * frozen at first render, and a control that flips the prop afterwards changes nothing. That was
+ * fine while every notice on this card was static. It is not fine now: the ReadOnlyBanner's whole
+ * point after the `ui/notice.tsx` conversion is the TRANSITION, which cannot be looked at in a tree
+ * that can only be built already-refused. Context reaches the route element the ordinary React way,
+ * because `RouterProvider` renders it as a descendant.
+ */
+const StackDeviceContext = createContext<DeviceAuth | null>(null);
+
+/**
  * {@link PaneRouter}'s pane, PLUS the two tier-1 banners RootLayout mounts as its in-flow siblings —
  * `<UpdateAvailableBanner/>` and `<ConnectionBanner/>` — so the worst-case stack (gap 4) can be judged
  * as one screen instead of summed from cards measured apart. Same real components, same nesting order
@@ -276,22 +288,7 @@ export function PaneStackRouter({
               <div className="flex h-full flex-col">
                 <UpdateAvailableBanner />
                 <ConnectionBanner bridge={undefined} error authError />
-                <AgentChat
-                  paneId={fixture.pane.paneId}
-                  agent={fixture.pane}
-                  agents={data.agents}
-                  shellPanes={data.shellPanes}
-                  tabs={data.tabs}
-                  tabLabel={fixture.pane.tabLabel}
-                  text={fixture.text}
-                  requestedLines={400}
-                  revision={fixture.revision}
-                  device={data.device}
-                  bridge={data.bridge}
-                  error={false}
-                  onBack={() => {}}
-                  onSelect={() => {}}
-                />
+                <StackPane data={data} fixture={fixture} />
               </div>
             </PackProvider>
           ),
@@ -300,7 +297,34 @@ export function PaneStackRouter({
       { initialEntries: ["/"] },
     );
   });
-  return <RouterProvider router={router} />;
+  return (
+    <StackDeviceContext.Provider value={device}>
+      <RouterProvider router={router} />
+    </StackDeviceContext.Provider>
+  );
+}
+
+/** The stack card's pane, reading the live gate off the context above rather than frozen loader data. */
+function StackPane({ data, fixture }: { data: HomeData; fixture: PaneFixture }) {
+  const device = useContext(StackDeviceContext) ?? data.device;
+  return (
+    <AgentChat
+      paneId={fixture.pane.paneId}
+      agent={fixture.pane}
+      agents={data.agents}
+      shellPanes={data.shellPanes}
+      tabs={data.tabs}
+      tabLabel={fixture.pane.tabLabel}
+      text={fixture.text}
+      requestedLines={400}
+      revision={fixture.revision}
+      device={device}
+      bridge={data.bridge}
+      error={false}
+      onBack={() => {}}
+      onSelect={() => {}}
+    />
+  );
 }
 
 // ── Layout ───────────────────────────────────────────────────────────────────

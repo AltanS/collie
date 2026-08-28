@@ -39,6 +39,7 @@ import { holdReload, releaseReload, __resetReloadGuard } from "@/lib/reload-guar
 import { __resetSelfUpdate, __setReloadImpl } from "@/lib/self-update";
 import { observeServerBuild, __resetServerBuild } from "@/lib/server-build";
 import { clearStatus, setStatus } from "@/lib/status";
+import type { DeviceAuth } from "@/lib/types";
 import { BootSplash } from "@/routes/root";
 import {
   allPanes,
@@ -1046,9 +1047,15 @@ function WriteGateCard() {
       <div className="mb-2">
         <Segmented value={gate} options={GATE_OPTIONS} onChange={setGate} />
       </div>
-      <Stage>
-        <ReadOnlyBanner device={deviceRefused} />
-      </Stage>
+      {/* 390px and the routes' own `mx-4 mt-3`: this box WRAPS in five of six locales, so its
+          height is a function of the width it is read at, and a card-wide stage measures a box
+          nobody has. The gutter rides the component the way home.tsx and space.tsx pass it. */}
+      <div className="mx-auto w-[390px] max-w-full">
+        <Stage>
+          <ReadOnlyBanner device={deviceRefused} className="mx-4 mt-3" />
+          <div className="h-3" />
+        </Stage>
+      </div>
     </Card>
   );
 }
@@ -1125,6 +1132,13 @@ function NoEchoNoticeHarness() {
 // ── Gap 4: the stack ─────────────────────────────────────────────────────────
 
 /**
+ * The header gate as a device the bridge DOES allowlist — the same fixture with one bit flipped, so
+ * the read-only box can be made to leave as well as to arrive. Frozen at module scope: a fresh
+ * object each render would re-run every `device`-keyed effect inside the real AgentChat below.
+ */
+const deviceStackAllowed: DeviceAuth = { ...deviceStack, authorized: true };
+
+/**
  * Drives the self-updater's "confirmed stale but held" state (same recipe as
  * {@link StaleBuildHarness}, its own hold key so the two cards don't fight over one). `ConnectionBanner`'s
  * red and `ReadOnlyBanner`/`HostStaleBanner`'s locks are plain props on {@link PaneStackRouter} — see
@@ -1138,6 +1152,11 @@ function NoEchoNoticeHarness() {
  */
 function StackHarness() {
   const [showStatus, setShowStatus] = useState(false);
+  // The ReadOnlyBanner is the one surface on this card that can be made to appear and disappear on
+  // demand, and after its ui/notice.tsx conversion that transition is the thing worth looking at:
+  // it opens and closes over 240ms instead of popping, and the mirror under it resizes with it
+  // rather than teleporting. Flip this while watching the terminal tail.
+  const [readOnly, setReadOnly] = useState(true);
 
   useEffect(() => {
     __setReloadImpl(() => {});
@@ -1168,8 +1187,21 @@ function StackHarness() {
           ? "StatusArea toast: ON — tap to clear (and stop it leaking into every other pane card)"
           : "StatusArea toast: off — tap to fire one (leaks into every other pane card while on)"}
       </button>
+      <button
+        type="button"
+        onClick={() => setReadOnly((v) => !v)}
+        className="shrink-0 border-b border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
+      >
+        {readOnly
+          ? "read-only box: ON — tap to lift the gate and watch it collapse out"
+          : "read-only box: off — tap to refuse this device and watch it collapse in"}
+      </button>
       <div className="min-h-0 flex-1">
-        <PaneStackRouter home={homePack} fixture={paneStack} device={deviceStack} />
+        <PaneStackRouter
+          home={homePack}
+          fixture={paneStack}
+          device={readOnly ? deviceStack : deviceStackAllowed}
+        />
       </div>
     </div>
   );
