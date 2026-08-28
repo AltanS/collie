@@ -543,7 +543,7 @@ function toMuxPane(
 
 /** One Herdr workspace as a {@link MuxSpace}. `agent_status` is carried on the wire and unused. */
 function toMuxSpace(raw: WireWorkspace): MuxSpace {
-  return {
+  const space: MutableMuxSpace = {
     spaceId: raw.workspace_id,
     number: raw.number,
     label: raw.label,
@@ -552,7 +552,13 @@ function toMuxSpace(raw: WireWorkspace): MuxSpace {
     tabCount: raw.tab_count,
     paneCount: raw.pane_count,
   };
+  // Herdr carries the repo on the workspace itself (`worktree.repo_root`), so no extra call and no
+  // filesystem walk — see MuxSpace.repoRoot. OMITTED, never set to undefined, when there is none.
+  if (raw.worktree?.repo_root !== undefined) space.repoRoot = raw.worktree.repo_root;
+  return space;
 }
+
+type MutableMuxSpace = { -readonly [K in keyof MuxSpace]: MuxSpace[K] };
 
 /** One Herdr tab as a {@link MuxTab}. */
 function toMuxTab(raw: WireTab): MuxTab {

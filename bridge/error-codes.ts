@@ -78,6 +78,38 @@ export const ERROR_CODES = {
   "tab.workspace_required": "workspaceId required",
   "workspace.create_failed": "{reason}",
 
+  // ── Worktrees: /api/workspace/:id/worktree[s|/open|/remove] (ADR 0032) ─────────────
+  /** The list could not be read — the space is not in a Git work tree, or the mux refused. */
+  "worktree.list_failed": "{reason}",
+  /** Creation refused. `{reason}` is the multiplexer's own words, Git's sentence included. */
+  "worktree.create_failed": "{reason}",
+  /**
+   * The checkout was made and could not be shown — the branch EXISTS and nothing displays it.
+   * Distinct from `create_failed` because the recovery is opposite: open it, never create it again
+   * (a second create answers `create_failed`, the path being taken). Probed on herdr 0.8.2.
+   */
+  "worktree.created_not_opened": "the worktree was created but could not be opened: {reason}",
+  "worktree.open_failed": "{reason}",
+  "worktree.remove_failed": "{reason}",
+  /**
+   * Removal refused because the checkout has uncommitted work. The ONE refusal the phone acts on
+   * rather than merely shows: it is what arms the second tap that discards it.
+   */
+  "worktree.dirty": "{reason}",
+  /** Another worktree operation is still running — herdr serialises them. Try again in a moment. */
+  "worktree.busy": "{reason}",
+  /** The branch name matched more than one thing, so the multiplexer would not guess. */
+  "worktree.ambiguous_branch": "{reason}",
+  /** The request named no branch, or named one that is only whitespace. */
+  "worktree.branch_required": "branch required",
+  /** This space is not in a Git work tree, so it has no worktrees to show. */
+  "worktree.not_a_repo": "{reason}",
+  /**
+   * Removal was asked for a checkout no space is showing. Herdr's removal is addressed by workspace
+   * and by nothing else, so there is no verb to reach it with (ADR 0032).
+   */
+  "worktree.not_open": "that worktree is not open as a space, so it cannot be removed from here",
+
   // ── Image upload: POST /api/pane/:id/upload → UploadResponse ───────────────────────
   /** Refused on the declared Content-Length (413) or on the decoded size (200 + ok:false). */
   "upload.too_large": "image too large (max 10 MB)",

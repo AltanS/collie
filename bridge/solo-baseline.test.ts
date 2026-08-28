@@ -324,6 +324,7 @@ const WORKSPACE_KEYS = {
   activeTabId: true,
   tabCount: true,
   paneCount: true,
+  repoRoot: true,
 } satisfies Record<keyof WorkspaceView, true>;
 
 const TAB_KEYS = {
@@ -414,6 +415,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "label",
       "number",
       "paneCount",
+      "repoRoot",
       "tabCount",
       "workspaceId",
     ]);
@@ -518,6 +520,8 @@ describe("solo zero-tax — routes", () => {
       // the reason every other one is: a route arrives on purpose or it does not arrive.
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|focus))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open|remove))?$/",
+      "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
       "/api/config",
       // Device pairing (bridge/pairing.ts) — a SOLO feature that legitimately extends this list.
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.

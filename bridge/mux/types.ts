@@ -234,6 +234,16 @@ export interface MuxSpace {
   readonly activeTabId: string;
   readonly tabCount: number;
   readonly paneCount: number;
+  /**
+   * The root of the Git repo this space sits in, when the multiplexer knows one.
+   *
+   * A FACT, declared like {@link MuxCapabilityDeclaration.spaces} and for the same reason: it
+   * answers "which repo", never "can you". An adapter that keeps no repo mapping omits it, and
+   * omission is the honest fail-closed direction — no repo, no worktree rows, and nothing had to
+   * guess. It is here rather than derived from a pane's cwd because deriving it would mean Collie
+   * walking the filesystem for `.git`, which is exactly the Git work ADR 0032 keeps out of the port.
+   */
+  readonly repoRoot?: string;
 }
 
 /** One tab within a space — a layout holding one or more panes. */
