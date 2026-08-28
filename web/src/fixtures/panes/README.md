@@ -42,6 +42,32 @@ and the observed commands were approved with no dialog painted.
 | `codex--ask-wizard-q1.txt` | Two-question set, `Question 1/2`; footer adds `←/→ to navigate questions`. Digit probed: answers and advances | `blocked` |
 | `codex--ask-wizard-q2.txt` | Same set, `Question 2/2`; footer `enter to submit all`. Digit probed: submits the whole set | `blocked` |
 | `codex--ask-notes-focused.txt` | Notes box open (`› Add notes`, footer `tab or esc to clear notes`): a digit would TYPE — the adapter refuses to raw | `blocked` |
+
+## Codex 0.150.1 corpus (captured 2026-08-28, herdr 0.8.2, Linux sandbox panes)
+
+Byte-faithful `format:ansi` captures from throwaway herdr tabs in `/tmp/collie-codex-sandbox`
+(a `git init` repo on `main`) and `/tmp/collie-codex-nogit`. **No scrubbing was needed** — no
+username, hostname or home path appears in any of the five files. Every session carries the
+host's `codex_apps` MCP 401 startup warning in its transcript; that is real screen output, not
+noise added here. **The headline: 0.150.1's DEFAULT status row is two fields,
+`<model-with-reasoning> · <current-dir>`, with no `Context N% left` token** — so `isStatusRow`
+never matches, `locateComposer` returns null and `composerReady` is **false on every capture
+below, idle included**. Live-probed the same session with an explicit
+`-c 'tui.status_line=["model-with-reasoning","current-dir","git-branch","context-remaining","weekly-limit"]'`:
+`git-branch` renders `main` and `context-remaining` renders `Context 100% left`, so the Context
+field is simply absent from the default list, not suppressed by a degraded login.
+`codex--v0150-working` is MISSING: the capture host's ChatGPT auth could not refresh
+(`Your access token could not be refreshed because your refresh token was already used`), so no
+model turn could be run.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0150-idle.txt` | Git sandbox, trust and hooks dialogs answered, empty dim `› Ask Codex to do anything` composer over the two-field status row. Pins #134's status-row regex against real 0.150.1 bytes: it does NOT match | `idle` |
+| `codex--v0150-draft-wrapped.txt` | A 571-character sentence typed into the same composer, word-wrapped onto two two-space-indented continuation rows (the pane is 216 columns, so ~350 chars would not have wrapped three ways) | `idle` |
+| `codex--v0150-nogit-idle.txt` | Same idle screen in a directory with no git repo. The status row is the SAME two fields — no branch field to lose, because the default list has none | `idle` |
+| `codex--v0150-custom-status.txt` | `-c 'tui.status_line=["model-with-reasoning","current-dir","git-branch"]'` (Context deliberately omitted) with a short draft on the `› ` row. Pins the styled custom-status design: per-field colours and dim ` · ` separators | `idle` |
+| `codex--v0150-paste-placeholder.txt` | One `pane.send_text` of exactly 3000 non-newline ASCII characters lands as `[Pasted Content 1024 chars]` — **N is 1024, not 3000**. Codex's TUI keeps only the first 1024 characters of a single burst, so `draftCarriesSend("x".repeat(3000), draft)` is **false** (it is true for a 1024-character send). See `codex/paste.ts` | `idle` |
+
 ## Grok corpus (live panes 2026-08-21–23)
 
 Grok's composer is a rounded box at the tail: `╭─…─╮` / `│ ❯ … │` / `╰─ <status> ─╯`, then a blank and a key-hint row. The status run is opaque (display name, optional effort, optional permission mode). User-message bubbles use **square** corners (`┌ ┐ └ ┘`) and must never be read as the composer. **All identifying content genericized** per the repo's public-repo rule.

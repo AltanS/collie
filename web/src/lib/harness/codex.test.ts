@@ -37,6 +37,11 @@ const PINNED = [
   "codex--draft.txt",
   "codex--fresh-idle.txt",
   "codex--trust-prompt.txt",
+  "codex--v0150-custom-status.txt",
+  "codex--v0150-draft-wrapped.txt",
+  "codex--v0150-idle.txt",
+  "codex--v0150-nogit-idle.txt",
+  "codex--v0150-paste-placeholder.txt",
   "codex--working.txt",
 ];
 

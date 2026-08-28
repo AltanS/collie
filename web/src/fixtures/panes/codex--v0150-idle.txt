@@ -1,0 +1,31 @@
+
+[0m[1m[38;5;6mcollie-codex-sandbox[0m on [0m[1m[38;5;5m main[0m 
+[0m[1m[38;5;2m❯[0m codex
+
+[0m[2m╭───────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.150.1)                │[0m
+[0m[2m│                                           │[0m
+[0m[2m│ model:     [0mgpt-5.6-sol[0m[2m   [0m[38;5;6m/model[0m[2m to change │[0m
+[0m[2m│ directory: [0m/tmp/collie-codex-sandbox[0m[2m      │[0m
+[0m[2m╰───────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m Try the [0m[1mDesktop app[0m on Linux: install it from https://learn.chatgpt.com/docs/linux/linux-app and run 'chatgpt'.
+
+[0m[38;5;3m⚠ MCP client for `codex_apps` failed to start: MCP startup failed: handshaking with MCP server failed: Send message error Transport[0m
+  [0m[38;5;3m[codex_rmcp_client::event_notification_transport::EventNotificationTransport<rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<codex_rmcp_client::http_clie[0m
+  [0m[38;5;3mnt_adapter::StreamableHttpClientAdapter>>>] error: unexpected server response: HTTP 401: {[0m
+  [0m[38;5;3m  "error": {[0m
+  [0m[38;5;3m    "message": "Could not parse your authentication token. Please try signing in again.",[0m
+  [0m[38;5;3m    "type": null,[0m
+  [0m[38;5;3m    "code": "unauthorized_unknown",[0m
+  [0m[38;5;3m    "param": null[0m
+  [0m[38;5;3m  },[0m
+  [0m[38;5;3m  "status": 401[0m
+  [0m[38;5;3m}, when send initialize request[0m
+
+[0m[38;5;3m⚠ MCP startup incomplete (failed: codex_apps)[0m
+ 
+[0m[48;2;57;57;71m                                                                                                                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m›[0m[48;2;57;57;71m [0m[2m[48;2;57;57;71mAsk Codex to do anything[0m[48;2;57;57;71m                                                                                                                                                                                              [0m
+[0m[48;2;57;57;71m                                                                                                                                                                                                                        [0m
+  [0m[38;2;246;226;183mgpt-5.6-sol default[0m[2m · [0m[38;2;171;223;167m/tmp/collie-codex-sandbox[0m
