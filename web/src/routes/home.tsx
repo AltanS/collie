@@ -8,7 +8,7 @@ import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
-import { NewSpaceSheet } from "@/components/new-space-sheet";
+import { NewSpaceSheet, type WorktreeRepo } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
@@ -16,6 +16,10 @@ import { PackFooterLink } from "@/components/pack-footer-link";
 import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useMuxCapability } from "@/lib/mux-capability";
+import { createWorktree } from "@/lib/api";
+import { describeApiError } from "@/lib/api-error-message";
+import { setStatus } from "@/lib/status";
 import { ambientPanes, leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
@@ -29,6 +33,17 @@ export function HomeRoute() {
   const data = useRootData();
   const navigate = useNavigate();
   const { newSpace } = useSpaceActions();
+
+  // Which repos a worktree could be branched from: one entry per repo, taken from the space that
+  // shows the repo ITSELF (a worktree's own space would branch from the same repo, so listing both
+  // would offer the same thing twice under two names). In the spaces list's order, so the first
+  // entry — the sheet's default — is the repo most recently used.
+  const canCreateWorktree = useMuxCapability("createWorktree");
+  const worktreeRepos: WorktreeRepo[] = canCreateWorktree
+    ? data.workspaces
+        .filter((w) => w.repoRoot !== undefined && w.isWorktree === false)
+        .map((w) => ({ workspaceId: w.workspaceId, repoRoot: w.repoRoot!, label: w.label }))
+    : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const { prefs, setSpacesOpen, setRecentOpen, setRecentDir } = useDashPrefs();
   // No stored choice yet? The space count decides — a two-space install shouldn't be handed a
@@ -134,7 +149,21 @@ export function HomeRoute() {
         <StatusArea />
       </ToastViewport>
 
-      <NewSpaceSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} onCreate={newSpace} />
+      <NewSpaceSheet
+        open={newSpaceOpen}
+        onClose={() => setNewSpaceOpen(false)}
+        onCreate={newSpace}
+        repos={worktreeRepos}
+        onCreateWorktree={(workspaceId, branch) => {
+          void (async () => {
+            const res = await createWorktree(workspaceId, branch, data.scope);
+            // Same promise the sheet on a space makes: the phone goes to the new pane, the
+            // operator's own screen is not moved.
+            if (res.ok) navigate(panePath(res.pane.paneId, data.scope));
+            else setStatus(describeApiError(res), "error");
+          })();
+        }}
+      />
     </div>
   );
 }

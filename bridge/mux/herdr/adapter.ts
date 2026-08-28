@@ -554,7 +554,13 @@ function toMuxSpace(raw: WireWorkspace): MuxSpace {
   };
   // Herdr carries the repo on the workspace itself (`worktree.repo_root`), so no extra call and no
   // filesystem walk — see MuxSpace.repoRoot. OMITTED, never set to undefined, when there is none.
-  if (raw.worktree?.repo_root !== undefined) space.repoRoot = raw.worktree.repo_root;
+  if (raw.worktree?.repo_root !== undefined) {
+    space.repoRoot = raw.worktree.repo_root;
+    // Herdr's own word for it. `is_linked_worktree` is false for the repo's checkout and true for
+    // every worktree of it — probed 2026-08-28, and the pair is what lets a list nest one under the
+    // other without a second call.
+    space.isWorktree = raw.worktree.is_linked_worktree === true;
+  }
   return space;
 }
 

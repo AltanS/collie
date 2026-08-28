@@ -716,4 +716,7 @@ export const ja: Dictionary = {
   "worktree.empty": "worktree はまだありません。",
   "worktree.detached": "detached",
   "worktree.recoverOpen": "作成されたブランチを開く",
+  "space.new.tab.plain": "スペース",
+  "space.new.tab.worktree": "worktree",
+  "space.new.repo.label": "リポジトリ",
 };

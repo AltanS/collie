@@ -727,4 +727,7 @@ export const es: Dictionary = {
   "worktree.empty": "Todavía no hay worktrees.",
   "worktree.detached": "separado",
   "worktree.recoverOpen": "Abrir la rama que se creó",
+  "space.new.tab.plain": "Espacio",
+  "space.new.tab.worktree": "Worktree",
+  "space.new.repo.label": "Repositorio",
 };

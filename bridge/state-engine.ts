@@ -373,7 +373,10 @@ export class StateEngine {
           // Assigned only when there is one, so a space outside a repo carries no key at all: adding
           // `repoRoot` to every space would move every snapshot ETag once for nothing (the argument
           // bridge/types.ts makes about `pack`, applied here).
-          if (s.repoRoot !== undefined) view.repoRoot = s.repoRoot;
+          if (s.repoRoot !== undefined) {
+            view.repoRoot = s.repoRoot;
+            view.isWorktree = s.isWorktree === true;
+          }
           return view;
         })
         .toSorted((a, b) => a.number - b.number);

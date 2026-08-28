@@ -733,6 +733,9 @@ export const en = {
   "worktree.empty": "No worktrees yet.",
   "worktree.detached": "detached",
   "worktree.recoverOpen": "Open the branch that was created",
+  "space.new.tab.plain": "Space",
+  "space.new.tab.worktree": "Worktree",
+  "space.new.repo.label": "Repository",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

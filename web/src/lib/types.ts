@@ -154,6 +154,8 @@ export interface WorkspaceView {
    * the worktree rows, so no extra call is needed to decide whether to show them.
    */
   repoRoot?: string;
+  /** Whether this space is a linked worktree of `repoRoot`, not the repo's own checkout. */
+  isWorktree?: boolean;
 }
 
 /** A tab within a workspace (holds one or more panes). */

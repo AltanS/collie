@@ -730,4 +730,7 @@ export const de: Dictionary = {
   "worktree.empty": "Noch keine Worktrees.",
   "worktree.detached": "losgelöst",
   "worktree.recoverOpen": "Erstellten Branch öffnen",
+  "space.new.tab.plain": "Space",
+  "space.new.tab.worktree": "Worktree",
+  "space.new.repo.label": "Repository",
 };
