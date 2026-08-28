@@ -17,6 +17,8 @@ import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
 import { BuildStamp } from "@/components/build-stamp";
 import { CollieHome } from "@/components/collie-home";
+import { NewSpaceSheet } from "@/components/new-space-sheet";
+import { SpaceOverview } from "@/components/space-overview";
 import { CollieMark } from "@/components/collie-mark";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
@@ -69,6 +71,7 @@ import {
   paneWorking,
   rosterFive,
   spaces,
+  spacesWithWorktrees,
   tabs,
   updateMajor,
   updateRelease,
@@ -798,6 +801,47 @@ function SettingsSection() {
           <SettingsRouter home={homePack} devices={devicesPaired} />
         </PhoneFrameCard>
       </Card>
+      <Card
+        label="spaces — a repo and its worktrees"
+        reach="open a worktree of a repo you already have open as a space. Herdr reports the repo on both, so the list nests the worktree under the checkout showing that repo — no extra call, and nothing to switch on."
+        note="`blog` sits outside any repo and stays flat, which is the same row it always was. A worktree whose repo is NOT open would also stay flat: there would be nothing to indent under."
+        span={2}
+      >
+        <PhoneFrameCard height={430}>
+          <SpaceOverview
+            workspaces={spacesWithWorktrees}
+            // No agents: this card is about SHAPE. With a herd attached every row also carries its
+            // triage tint, and a wall of "needs you" red says nothing about nesting.
+            agents={[]}
+            onOpen={() => {}}
+            onNewSpace={() => {}}
+            open
+            onOpenChange={() => {}}
+          />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
+        label="new space — the worktree tab"
+        reach="tap + on the spaces list where at least one open space sits in a repo. With no repo open (or a multiplexer that cannot make one) the tab strip is not rendered at all and this is the plain new-space sheet."
+        note="The repo picker is here because the sheet is opened from the LIST, where there is no current space to take a repo from. `Or open one that already exists` reads the worktrees of the chosen repo once — it is the only route to a checkout that is not a space."
+        span={2}
+      >
+        <PhoneFrameCard height={560}>
+          <NewSpaceSheet
+            open
+            onClose={() => {}}
+            onCreate={() => {}}
+            repos={[
+              { workspaceId: "w1", repoRoot: "/src/collie", label: "collie" },
+              { workspaceId: "w9", repoRoot: "/src/nixcfg", label: "nixcfg" },
+            ]}
+            onCreateWorktree={() => {}}
+            onOpenWorktree={() => {}}
+          />
+        </PhoneFrameCard>
+      </Card>
+
     </Section>
   );
 }
