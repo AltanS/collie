@@ -222,7 +222,7 @@ export interface GuardedReplyArgs {
    * the guard re-confirms before typing.
    *
    * The argument carries the evidence FORWARD, not just the permission. `promptRegion` is the prompt
-   * row the adapter saw on the pane the pre-flight just read, and a caller that sends destructive
+   * tail the adapter saw on the pane the pre-flight just read, and a caller that sends destructive
    * keys must pass it to `api.sendKeys` as `expected_prompt`: an ordering guarantee alone cannot
    * bound the gap between the read and the keys, because that gap is a network round-trip and the
    * only limit on it is GET_TIMEOUT_MS. Binding hands the last word to the bridge, which re-reads
@@ -235,7 +235,7 @@ export interface GuardedReplyArgs {
 /** What the pre-flight's live read saw, handed to the caller's pre-type work. */
 export interface ComposerSeen {
   /**
-   * The composer's own prompt row, verbatim on screen, for binding a destructive write to it
+   * The composer's own prompt/draft tail, verbatim on screen, for binding a destructive write to it
    * (`api.sendKeys(..., expectedPrompt)`). `null` when the adapter has no `composerPrompt` — then the
    * write goes out unbound, which is the pre-existing behaviour and the reason the hook is optional.
    */

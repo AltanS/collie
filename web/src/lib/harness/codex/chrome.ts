@@ -124,9 +124,16 @@ export function composerReady(lines: StyledLine[]): boolean {
   return locateComposer(lines) !== null;
 }
 
-/** The literal on-screen prompt row a destructive pre-clear sweep is bound to. */
+/** The literal on-screen prompt/draft run a destructive write is bound to. Ending at the last draft
+ * continuation keeps a wrapped message inside the bridge's bounded tail window; naming only the
+ * first `›` row would permanently 409 once six or more non-blank wrap rows sat beneath it. */
 export function composerPrompt(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
   if (box === null) return null;
-  return rstrip(lineText(lines[box.promptRow]!));
+  let end = box.statusRow;
+  while (end > box.promptRow + 1 && isBlank(lineText(lines[end - 1]!))) end--;
+  return lines
+    .slice(box.promptRow, end)
+    .map((line) => rstrip(lineText(line)))
+    .join("\n");
 }

@@ -127,6 +127,19 @@ describe("chrome", () => {
     );
   });
 
+  it("binds composerPrompt to the whole wrapped draft run, not just the `\u203a` row", () => {
+    // The bridge matches the region against a bounded tail window. Naming only the first `\u203a`
+    // row would leave the wrap rows below it unmatched and 409 every legitimate sweep.
+    const region = codexAdapter.composerPrompt!(fixtureLines("codex--draft-wrapped.txt"))!;
+    const rows = region.split("\n");
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows[0]).toMatch(/^\u203a please summarize the architecture/);
+    expect(rows.slice(1).every((row) => /^ {2}\S/.test(row))).toBe(true);
+    expect(rows.at(-1)).toContain("we support today");
+    // Trailing layout blanks between the draft and the status row stay out of the region.
+    expect(rows.at(-1)!.trim()).not.toBe("");
+  });
+
   it("re-surfaces the status row and pairs composerPrompt with the ready screens", () => {
     const lines = fixtureLines("codex--fresh-idle.txt");
     const status = codexAdapter.extractStatusLines(lines);
