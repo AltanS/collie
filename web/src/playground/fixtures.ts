@@ -93,6 +93,50 @@ export const FIXTURE_TS = 400_000;
 // than one of them. Herdr numbers spaces per machine, which is why the ids repeat across hosts in
 // the pack snapshot below — that collision is the reason a pane row carries its own host.
 
+/**
+ * Spaces as a repo and its worktrees, for the nesting card.
+ *
+ * `repoRoot` + `isWorktree` are what the multiplexer reports on the workspace itself, so this is the
+ * real shape rather than a staged one: `collie` is the repo's own checkout, the two below it are
+ * worktrees of it, and `blog` sits outside any repo.
+ */
+export const spacesWithWorktrees: WorkspaceView[] = [
+  {
+    workspaceId: "w1",
+    number: 1,
+    label: "collie",
+    focused: true,
+    activeTabId: "w1:t1",
+    tabCount: 3,
+    paneCount: 4,
+    repoRoot: "/src/collie",
+    isWorktree: false,
+  },
+  {
+    workspaceId: "w2",
+    number: 2,
+    label: "feat-worktrees",
+    focused: false,
+    activeTabId: "w2:t1",
+    tabCount: 1,
+    paneCount: 1,
+    repoRoot: "/src/collie",
+    isWorktree: true,
+  },
+  {
+    workspaceId: "w3",
+    number: 3,
+    label: "fix-dirty-refusal",
+    focused: false,
+    activeTabId: "w3:t1",
+    tabCount: 1,
+    paneCount: 2,
+    repoRoot: "/src/collie",
+    isWorktree: true,
+  },
+  { workspaceId: "w4", number: 4, label: "blog", focused: false, activeTabId: "w4:t1", tabCount: 2, paneCount: 2 },
+];
+
 export const spaces: WorkspaceView[] = [
   { workspaceId: "w1", number: 1, label: "collie", focused: true, activeTabId: "w1:t1", tabCount: 3, paneCount: 4 },
   { workspaceId: "w2", number: 2, label: "sprqvntrs-api", focused: false, activeTabId: "w2:t1", tabCount: 3, paneCount: 4 },
