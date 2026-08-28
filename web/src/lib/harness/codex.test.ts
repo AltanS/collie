@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
-import { splitLines } from "../blocks";
+import { splitLines, type StyledLine } from "../blocks";
 import { codexAdapter } from "./codex";
 import { locateComposer, stripChrome } from "./codex/chrome";
-import { lineText, PLACEHOLDER } from "./codex/markers";
+import { isStatusRow, lineText, PLACEHOLDER } from "./codex/markers";
 import { detectApprovalRegion } from "./codex/approval";
 import { detectAskRegion } from "./codex/ask";
 import { detectTrustRegion } from "./codex/trust";
@@ -207,6 +207,140 @@ describe("chrome", () => {
     expect(
       locateComposer(splitLines(parseAnsi(["› start", ...cont.slice(1), "", status].join("\n")))),
     ).not.toBeNull();
+  });
+});
+
+// 0.150.1's DEFAULT `tui.status_line` carries no `context-remaining` field, so its status row is
+// just `  <model> · <cwd>`. These captures pin that the composer is found anyway, off the paint.
+const V0150 = [
+  "codex--v0150-custom-status.txt",
+  "codex--v0150-draft-wrapped.txt",
+  "codex--v0150-idle.txt",
+  "codex--v0150-nogit-idle.txt",
+  "codex--v0150-paste-placeholder.txt",
+];
+
+const V0150_WRAPPED_DRAFT =
+  "The quick brown fox jumps over the lazy dog while the composer wraps this sentence onto " +
+  "several continuation rows so that the fixture pins how Codex word-wraps a long stranded " +
+  "draft across the prompt region and keeps every continuation row indented by exactly two " +
+  "spaces beneath the arrow, which is the shape the adapter folds back into one space-joined " +
+  "line when it verifies that a reply actually reached the composer before the bridge presses " +
+  "enter on the operator's behalf, and this last clause is here only to push the draft past " +
+  "the third wrapped row on a wide pane.";
+
+describe("the 0.150.1 default status row", () => {
+  it.each(V0150)("%s: the composer is located on a Context-less row", (name) => {
+    const lines = fixtureLines(name);
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+
+    const status = codexAdapter.extractStatusLines(lines);
+    expect(status).toHaveLength(1);
+    expect(lineText(status[0]!)).not.toContain("Context");
+    expect(lineText(status[0]!).trimEnd()).toMatch(/^ {2}\S.* · \S/);
+    // The located row is the LAST non-blank row — the status row, not a transcript line.
+    expect(status[0]).toBe(lines[locateComposer(lines)!.statusRow]);
+  });
+
+  it.each(["codex--v0150-idle.txt", "codex--v0150-nogit-idle.txt"])(
+    "%s: an empty composer reports no draft",
+    (name) => {
+      expect(codexAdapter.extractInputDraft(fixtureLines(name))).toBeNull();
+    },
+  );
+
+  it("folds the wrapped draft back into the typed sentence", () => {
+    const lines = fixtureLines("codex--v0150-draft-wrapped.txt");
+    expect(codexAdapter.extractInputDraft(lines)).toBe(V0150_WRAPPED_DRAFT);
+
+    const rows = codexAdapter.composerPrompt!(lines)!.split("\n");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatch(/^› The quick brown fox/);
+    expect(rows.at(-1)).toContain("on a wide pane.");
+  });
+
+  it("reads a three-field custom status row and its draft", () => {
+    const lines = fixtureLines("codex--v0150-custom-status.txt");
+    expect(codexAdapter.extractInputDraft(lines)).toBe("check the status row styling");
+    expect(lineText(codexAdapter.extractStatusLines(lines)[0]!).trimEnd()).toMatch(
+      / · main$/,
+    );
+  });
+
+  it("keeps the paste placeholder verbatim as the draft", () => {
+    expect(codexAdapter.extractInputDraft(fixtureLines("codex--v0150-paste-placeholder.txt"))).toBe(
+      "[Pasted Content 1024 chars]",
+    );
+  });
+});
+
+describe("the styled status-row acceptor fails closed", () => {
+  const FG = "\u001b[38;5;223m";
+  const FG2 = "\u001b[38;5;151m";
+  const DIM = "\u001b[2m";
+  const BOLD = "\u001b[1m";
+  const OFF = "\u001b[0m";
+  const SEP = `${DIM} · ${OFF}`;
+
+  function row(raw: string): { text: string; line: StyledLine } {
+    const line = splitLines(parseAnsi(raw))[0]!;
+    return { text: lineText(line), line };
+  }
+
+  /** A row painted the way Codex paints one; each case varies exactly one property. */
+  function painted(fields: string[], sep: string = SEP, indent = "  ") {
+    return row(indent + fields.map((f) => `${FG}${f}${OFF}`).join(sep));
+  }
+
+  it("accepts the shape it was built for", () => {
+    const { text, line } = painted(["gpt-5.6-sol default", "/tmp/collie-codex-sandbox"]);
+    expect(isStatusRow(text, line)).toBe(true);
+  });
+
+  it("refuses the same text with no styling at all", () => {
+    const { text, line } = row("  gpt-5.6-sol default · /tmp/collie-codex-sandbox");
+    expect(isStatusRow(text, line)).toBe(false);
+    // …and refuses it just as flatly when no styled line is offered.
+    expect(isStatusRow(text)).toBe(false);
+  });
+
+  it("refuses coloured fields whose separator is not dim", () => {
+    const { text, line } = painted(["model", "/dir"], " · ");
+    expect(isStatusRow(text, line)).toBe(false);
+  });
+
+  it("refuses a separator that is not exactly ` · `", () => {
+    const { text, line } = painted(["model", "/dir"], `${DIM} - ${OFF}`);
+    expect(isStatusRow(text, line)).toBe(false);
+  });
+
+  it("refuses an indent that is not exactly two spaces", () => {
+    const { text, line } = painted(["model", "/dir"], SEP, "   ");
+    expect(isStatusRow(text, line)).toBe(false);
+  });
+
+  it("refuses a bold field", () => {
+    const { text, line } = row(`  ${BOLD}${FG2}model${OFF}${SEP}${FG}/dir${OFF}`);
+    expect(isStatusRow(text, line)).toBe(false);
+  });
+
+  it("holds the field count between two and twelve", () => {
+    const fields = (n: number) => Array.from({ length: n }, (_, i) => `f${i}`);
+    const one = painted(fields(1));
+    expect(isStatusRow(one.text, one.line)).toBe(false);
+    const twelve = painted(fields(12));
+    expect(isStatusRow(twelve.text, twelve.line)).toBe(true);
+    const thirteen = painted(fields(13));
+    expect(isStatusRow(thirteen.text, thirteen.line)).toBe(false);
+  });
+
+  it("refuses unstyled prose that merely contains ` · `", () => {
+    const { text, line } = row("  some prose · with a middle · and an end");
+    expect(isStatusRow(text, line)).toBe(false);
+  });
+
+  it("still accepts a Context-bearing row on text alone — the old fast path", () => {
+    expect(isStatusRow("  model x · /some/dir · Context 50% left")).toBe(true);
   });
 });
 

@@ -63,7 +63,7 @@ function isEmptyPlaceholder(line: StyledLine): boolean {
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
   const statusRow = lastNonBlankIndex(texts);
-  if (statusRow < 0 || !isStatusRow(texts[statusRow]!)) return null;
+  if (statusRow < 0 || !isStatusRow(texts[statusRow]!, lines[statusRow])) return null;
 
   // One blank row separates the prompt/draft run from the status row (every capture); above the
   // gap the run is CONTIGUOUS non-blank rows — wrapped-draft continuations under the `› ` prompt.
@@ -73,7 +73,7 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
     const t = texts[i]!;
     if (promptText(t) !== null) return { promptRow: i, statusRow };
     // A blank or foreign-shaped row inside the run means this status row is not under a composer.
-    if (isBlank(t) || !CONTINUATION.test(t) || isStatusRow(t)) return null;
+    if (isBlank(t) || !CONTINUATION.test(t) || isStatusRow(t, lines[i])) return null;
   }
   return null;
 }
