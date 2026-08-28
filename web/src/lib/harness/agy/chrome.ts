@@ -55,12 +55,13 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
     }
   }
 
-  // 2. Bare prompt line fallback
-  if (PROMPT_REGEX.test(texts[bot]!)) {
-    const draft = texts[bot]!.replace(PROMPT_REGEX, "").trim() || null;
-    return { top: bot, prompt: bot, bottomBorder: bot, statusEnd: end, draft };
-  }
-
+  // 2. No fallback. AGY's composer is ALWAYS boxed — a top rule, the `>` row, a bottom rule, then
+  // the `? for shortcuts …` status row (every capture in the corpus). A bare `>` row with nothing
+  // anchoring it is a TRANSCRIPT row, not a composer: AGY echoes each submitted message as `> …`
+  // and paints its ask_user_question selection the same way (see agy--done.txt). Claiming those
+  // would report a live composer over a busy agent, hand the echo back as the operator's draft, and
+  // authorise a reply the pane cannot receive. Failing closed costs a refused send; failing open
+  // types into a running turn.
   return null;
 }
 

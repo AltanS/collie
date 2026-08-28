@@ -10,16 +10,19 @@ import { describeAdapterConformance } from "../conformance";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
+/** AGY paints its composer between two full-width rules; 60 columns clears isBoxBorder. */
+const RULE = "────────────────────────────────────────────────────────────";
+
 const allFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.endsWith(".txt"))
-  .sort();
+  .toSorted();
 
 const allAgyFixtures = allFixtures.filter((f) => f.startsWith("agy--"));
 
-const NEUTRAL = ["agy--fresh-idle.txt", "agy--working.txt", "agy--done.txt"];
+const NEUTRAL = new Set(["agy--fresh-idle.txt", "agy--working.txt", "agy--done.txt"]);
 
-const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.includes(f));
-const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.includes(f));
+const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.has(f));
+const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.has(f));
 const foreignFixtures = allFixtures.filter((f) => !f.startsWith("agy--"));
 
 describeAdapterConformance(agyAdapter, {
@@ -110,10 +113,28 @@ describe("agyAdapter unit & footer safety", () => {
     expect(agyAdapter.composerReady!(lines)).toBe(false);
   });
 
-  it("answers composerReady true when at an idle prompt line", () => {
-    const raw = ["Ready for instructions.", "❯ "].join("\n");
+  it("answers composerReady true at a boxed idle composer", () => {
+    const raw = ["Ready for instructions.", RULE, "> ", RULE, "? for shortcuts"].join("\n");
     const lines = splitLines(parseAnsi(raw));
     expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+  });
+
+  // AGY echoes every submitted message as a `> ` transcript row, and paints an answered
+  // ask_user_question selection the same way. Without the enclosing box those rows are
+  // indistinguishable from a live composer, so an unanchored `>` must never claim one: Collie would
+  // report a writable pane over a busy agent and hand the echo back as the operator's draft.
+  it("refuses an unanchored tail `>` row — a transcript echo is not a composer", () => {
+    const raw = ["some transcript output", "----------------", "> this is a quoted line"].join("\n");
+    const lines = splitLines(parseAnsi(raw));
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+    expect(agyAdapter.extractStatusLines!(lines)).toEqual([]);
+  });
+
+  it("keeps a bare `>` prompt with no box and no status row out of the composer grammar", () => {
+    const lines = splitLines(parseAnsi(["Ready for instructions.", "> "].join("\n")));
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
   });
 
   it("correctly locates the input box and extracts statusline on agy--fresh-idle.txt", () => {
