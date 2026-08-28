@@ -719,4 +719,10 @@ export const ja: Dictionary = {
   "space.new.tab.plain": "スペース",
   "space.new.tab.worktree": "worktree",
   "space.new.repo.label": "リポジトリ",
+  "worktree.removed": "worktree を削除しました",
+  "worktree.removedForced": "worktree を削除しました（未コミットの変更は破棄）",
+  "space.actions.notAWorktree": "このスペースは worktree ではないため、削除できるものはありません。Collie がスペースを閉じることはありません。",
+  "space.actions.noRemoveCapability": "この多重化ツールは worktree を削除できません。",
+  "space.actions.readOnly": "このデバイスは読み取り専用です。",
+  "worktree.orOpenExisting": "または既存のものを開く",
 };

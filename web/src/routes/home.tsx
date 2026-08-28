@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
@@ -9,6 +9,7 @@ import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet, type WorktreeRepo } from "@/components/new-space-sheet";
+import { SpaceActionsSheet } from "@/components/space-actions-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
@@ -17,9 +18,10 @@ import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { createWorktree } from "@/lib/api";
+import { createWorktree, openWorktree } from "@/lib/api";
 import { describeApiError } from "@/lib/api-error-message";
 import { setStatus } from "@/lib/status";
+import { isReadOnly } from "@/lib/types";
 import { ambientPanes, leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
@@ -32,6 +34,7 @@ import { useRootData } from "@/lib/route-data";
 export function HomeRoute() {
   const data = useRootData();
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
   const { newSpace } = useSpaceActions();
 
   // Which repos a worktree could be branched from: one entry per repo, taken from the space that
@@ -45,6 +48,10 @@ export function HomeRoute() {
         .map((w) => ({ workspaceId: w.workspaceId, repoRoot: w.repoRoot!, label: w.label }))
     : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  // Long-pressed space, by id — resolved against the live snapshot at render so a space that goes
+  // away while the sheet is open cannot be acted on from a stale copy of itself.
+  const [actionsSpaceId, setActionsSpaceId] = useState<string | null>(null);
+  const actionsSpace = data.workspaces.find((w) => w.workspaceId === actionsSpaceId) ?? null;
   const { prefs, setSpacesOpen, setRecentOpen, setRecentDir } = useDashPrefs();
   // No stored choice yet? The space count decides — a two-space install shouldn't be handed a
   // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
@@ -125,6 +132,7 @@ export function HomeRoute() {
             host={navHost}
             onOpen={drillInto}
             onNewSpace={() => setNewSpaceOpen(true)}
+            onSpaceActions={setActionsSpaceId}
             open={spacesOpen}
             onOpenChange={setSpacesOpen}
           />
@@ -149,11 +157,28 @@ export function HomeRoute() {
         <StatusArea />
       </ToastViewport>
 
+      <SpaceActionsSheet
+        open={actionsSpace !== null}
+        onClose={() => setActionsSpaceId(null)}
+        space={actionsSpace}
+        scope={data.scope}
+        readOnly={isReadOnly(data.device)}
+        onRemoved={() => revalidator.revalidate()}
+      />
       <NewSpaceSheet
         open={newSpaceOpen}
         onClose={() => setNewSpaceOpen(false)}
         onCreate={newSpace}
         repos={worktreeRepos}
+        scope={data.scope}
+        onOpenWorktree={(workspaceId, path) => {
+          void (async () => {
+            const res = await openWorktree(workspaceId, path, data.scope);
+            // `alreadyOpen` is an answer, not a failure — either way the pane is where to go.
+            if (res.ok) navigate(panePath(res.pane.paneId, data.scope));
+            else setStatus(describeApiError(res), "error");
+          })();
+        }}
         onCreateWorktree={(workspaceId, branch) => {
           void (async () => {
             const res = await createWorktree(workspaceId, branch, data.scope);

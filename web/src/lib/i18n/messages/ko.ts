@@ -711,4 +711,10 @@ export const ko: Dictionary = {
   "space.new.tab.plain": "스페이스",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "저장소",
+  "worktree.removed": "worktree를 삭제했습니다",
+  "worktree.removedForced": "worktree를 삭제했습니다 — 커밋되지 않은 작업은 버려졌습니다",
+  "space.actions.notAWorktree": "이 스페이스는 worktree가 아니므로 삭제할 것이 없습니다. Collie는 스페이스를 닫지 않습니다.",
+  "space.actions.noRemoveCapability": "이 멀티플렉서는 worktree를 삭제할 수 없습니다.",
+  "space.actions.readOnly": "이 기기는 읽기 전용입니다.",
+  "worktree.orOpenExisting": "또는 이미 있는 것을 열기",
 };

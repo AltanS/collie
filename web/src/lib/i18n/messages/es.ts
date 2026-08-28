@@ -730,4 +730,10 @@ export const es: Dictionary = {
   "space.new.tab.plain": "Espacio",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repositorio",
+  "worktree.removed": "Worktree eliminado",
+  "worktree.removedForced": "Worktree eliminado: se descartaron los cambios sin confirmar",
+  "space.actions.notAWorktree": "Este espacio no es un worktree, así que no hay nada que eliminar. Collie nunca cierra un espacio.",
+  "space.actions.noRemoveCapability": "Este multiplexor no puede eliminar un worktree.",
+  "space.actions.readOnly": "Este dispositivo es de solo lectura.",
+  "worktree.orOpenExisting": "O abre uno que ya existe",
 };

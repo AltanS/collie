@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { listWorktrees } from "@/lib/api";
+import type { Scope } from "@/lib/scope";
+import type { WorktreeView } from "@/lib/types";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useHoldReload } from "@/lib/reload-guard";
 import { t } from "@/lib/i18n";
@@ -31,6 +34,10 @@ interface NewSpaceSheetProps {
   repos?: readonly WorktreeRepo[];
   /** Branch a worktree from `workspaceId`. Absent alongside an empty `repos`. */
   onCreateWorktree?: (workspaceId: string, branch: string) => void;
+  /** Show a worktree that exists on disk but is not open as a space. */
+  onOpenWorktree?: (workspaceId: string, path: string) => void;
+  /** Session scope for the listing read. */
+  scope?: Scope;
 }
 
 // Create a new space (workspace). Both fields are optional and dictation-friendly: leave the
@@ -42,6 +49,8 @@ export function NewSpaceSheet({
   onCreate,
   repos = NO_REPOS,
   onCreateWorktree,
+  onOpenWorktree,
+  scope,
 }: NewSpaceSheetProps) {
   useLocale();
   const [label, setLabel] = useState("");
@@ -53,6 +62,14 @@ export function NewSpaceSheet({
   const [branch, setBranch] = useState("");
   const [repo, setRepo] = useState("");
   const worktreesOffered = repos.length > 0 && onCreateWorktree !== undefined;
+  /**
+   * Worktrees of the chosen repo that NOTHING is showing.
+   *
+   * The ones that are open are already spaces in the list behind this sheet — offering them again
+   * here would be the same thing under two names. These are the only worktrees the phone has no
+   * other route to, which is exactly why they are here and not in a panel of their own.
+   */
+  const [unopened, setUnopened] = useState<WorktreeView[]>([]);
 
   // Don't let a self-update reload yank this tab/space form out from under a half-typed
   // directory/label — hold while it's open; the self-updater shows the banner and updates on close.
@@ -72,6 +89,23 @@ export function NewSpaceSheet({
     // reorders the repos must not wipe a half-typed branch name.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (!open || mode !== "worktree" || repo === "") {
+      setUnopened([]);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      const res = await listWorktrees(repo, scope);
+      // A read the operator asked for by opening this tab — not a poll, so it runs once per repo
+      // choice and never on the list behind it.
+      if (live) setUnopened(res.ok ? res.worktrees.filter((w) => w.linked && w.openWorkspaceId === null) : []);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [open, mode, repo, scope]);
 
   function create() {
     onCreate({ label: label.trim() || undefined, cwd: cwd.trim() || undefined });
@@ -142,6 +176,29 @@ export function NewSpaceSheet({
             <Button onClick={createWorktree} disabled={branch.trim() === ""} className="mt-1 h-11">
               {t("worktree.create")}
             </Button>
+            {unopened.length > 0 && onOpenWorktree !== undefined && (
+              <div className="flex flex-col gap-1 border-t border-border pt-3">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("worktree.orOpenExisting")}
+                </span>
+                {unopened.map((worktree) => (
+                  <button
+                    key={worktree.path}
+                    type="button"
+                    onClick={() => {
+                      onOpenWorktree(repo, worktree.path);
+                      onClose();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-accent"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {worktree.branch ?? t("worktree.detached")}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{t("worktree.open")}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         ) : (
         <>
