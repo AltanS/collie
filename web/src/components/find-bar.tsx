@@ -69,7 +69,10 @@ export function FindBar({
         aria-label={t("find.aria", { subject: resolvedSubject })}
         className="h-9 min-w-0 flex-1 bg-transparent text-base placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       />
-      <span className="shrink-0 whitespace-nowrap px-1 font-mono text-xs tabular-nums text-muted-foreground">
+      {/* A count, so it wears the UI face like every other count. `tabular-nums` is what keeps it
+          from jittering as it steps, and the shipped subset keeps `tnum` for exactly that — the
+          `font-mono` this used to carry was buying alignment the face already gives. */}
+      <span className="shrink-0 whitespace-nowrap px-1 text-xs tabular-nums text-muted-foreground">
         {countLabel}
       </span>
       <Button

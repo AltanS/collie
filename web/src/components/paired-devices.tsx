@@ -66,7 +66,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
       {data.current && (
         <p className="border-t border-border px-4 py-2.5 text-sm">
           {pairedAsBefore}
-          <span className="font-mono text-[13px] text-status-done">{data.current}</span>
+          <span className="text-[13px] font-medium text-status-done">{data.current}</span>
           {pairedAsAfter}
         </p>
       )}
@@ -142,7 +142,10 @@ function DeviceRow({
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <Smartphone className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-[13px]">{label}</span>
+          {/* A device name the operator typed, in the app's own face — the same face the field
+              that captures it uses below. Only the pairing CODE is monospaced, because that one is
+              eight characters you compare against a terminal. */}
+          <span className="truncate text-[13px] font-medium">{label}</span>
           {current && (
             <span className="shrink-0 rounded bg-status-done/15 px-1.5 py-0.5 text-[11px] font-medium text-status-done">
               {t("settings.devices.thisDevice")}

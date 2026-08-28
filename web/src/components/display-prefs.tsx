@@ -117,7 +117,7 @@ export function DisplayPrefsContent({
             >
               <AArrowDown className="size-4" />
             </Button>
-            <span className="w-8 text-center font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="w-8 text-center text-xs tabular-nums text-muted-foreground">
               {prefs.fontSize}
             </span>
             <Button

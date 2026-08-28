@@ -112,7 +112,7 @@ export function FontSettingsControl() {
             </Button>
             {/* Fixed width + tabular figures: the number must not resize its own slot as it steps,
                 or the two buttons beside it walk. */}
-            <span className="w-8 text-center font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="w-8 text-center text-xs tabular-nums text-muted-foreground">
               {prefs.fontSize}
             </span>
             <Button

@@ -38,7 +38,9 @@ export function ConnectionInfo({
         </div>
       </div>
       <dl className="divide-y divide-border border-t border-border">
-        <Row label={t("settings.connection.row.endpoint")}>{host}</Row>
+        <Row label={t("settings.connection.row.endpoint")} mono>
+          {host}
+        </Row>
         <Row label={t("settings.connection.row.secure")}>
           {secure ? t("settings.connection.secure.yes") : t("settings.connection.secure.no")}
         </Row>
@@ -50,17 +52,35 @@ export function ConnectionInfo({
         </Row>
         {/* Always present, even before the value lands: appearing late grew this card and moved
             everything under it. An em dash is a truthful "not known yet" and the same height. */}
-        <Row label={t("settings.connection.row.serverBuild")}>{build ?? "—"}</Row>
+        <Row label={t("settings.connection.row.serverBuild")} mono>
+          {build ?? "—"}
+        </Row>
       </dl>
     </Card>
   );
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+/** `mono` is not decoration: it marks the two rows whose VALUE is a machine identifier — a
+ *  host:port and a build id — where the reader compares characters and a 0/O or 1/l confusion is a
+ *  wrong answer. The other three rows say "Yes", "Connected", "Read-only": those are the app's own
+ *  words about itself, so they wear the app's face like every other label in Settings (F-D2). This
+ *  card used to set `font-mono` on every `dd`, which put four words of chrome in the terminal
+ *  stack for no reason but the look of a diagnostics table. */
+function Row({
+  label,
+  mono,
+  children,
+}: {
+  label: string;
+  mono?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-mono text-[13px]">{children}</dd>
+      <dd className={`min-w-0 truncate text-right text-[13px] ${mono ? "font-mono" : ""}`}>
+        {children}
+      </dd>
     </div>
   );
 }

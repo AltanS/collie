@@ -53,8 +53,13 @@ export function AlphaBar({ version = BUILD.version, className }: AlphaBarProps) 
       )}
     >
       <Info className="size-3 shrink-0" aria-hidden="true" />
+      {/* The version wears the app's face, not the terminal's. A bare semver is the app talking
+          about itself — chrome (F-D2) — and `font-mono` here was only ever the look of a build
+          stamp. The split the app now keeps: semver alone is chrome; a semver carrying a git hash
+          is a machine build id and stays monospaced (build-stamp.tsx, connection-info.tsx's
+          "Server build" row). */}
       <span className="truncate tracking-wide">
-        {label} <span aria-hidden="true">·</span> <span className="font-mono">{version}</span>
+        {label} <span aria-hidden="true">·</span> <span>{version}</span>
       </span>
     </div>
   );

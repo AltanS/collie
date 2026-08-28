@@ -174,7 +174,7 @@ export function NavTray({
         {held ? (
           <span className="mx-auto flex items-center gap-1">
             {content}
-            {repeat.count > 1 && <span className="font-mono text-xs tabular-nums">×{repeat.count}</span>}
+            {repeat.count > 1 && <span className="text-xs tabular-nums">×{repeat.count}</span>}
           </span>
         ) : phase === "done" ? (
           <Check className="mx-auto size-4" />
