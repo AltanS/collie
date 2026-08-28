@@ -86,7 +86,7 @@ function baseProps(
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, rawTerminal: false, tapToFocus: true },
+    prefs: { wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
