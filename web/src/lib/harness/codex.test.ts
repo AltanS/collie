@@ -6,7 +6,7 @@ import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
 import { codexAdapter } from "./codex";
 import { locateComposer, stripChrome } from "./codex/chrome";
-import { lineText } from "./codex/markers";
+import { lineText, PLACEHOLDER } from "./codex/markers";
 import { detectApprovalRegion } from "./codex/approval";
 import { detectAskRegion } from "./codex/ask";
 import { detectTrustRegion } from "./codex/trust";
@@ -96,6 +96,29 @@ describe("chrome", () => {
   it("extracts a one-line draft, and null for the placeholder", () => {
     expect(codexAdapter.extractInputDraft(fixtureLines("codex--draft.txt"))).toBe("hi there");
     expect(codexAdapter.extractInputDraft(fixtureLines("codex--fresh-idle.txt"))).toBeNull();
+  });
+
+  it("keeps the same words when they are an ordinary non-dim draft", () => {
+    // The placeholder's text is something an operator may deliberately type. Codex tells the two
+    // apart by painting its empty hint dim, so the dim style — not the words — is what makes the
+    // box empty.
+    const dim = fixtureLines("codex--fresh-idle.txt")
+      .flatMap((line) => line.segments)
+      .find((segment) => segment.text.includes(PLACEHOLDER))?.dim;
+    expect(dim).toBe(true);
+
+    const typed = splitLines(
+      parseAnsi(
+        [
+          "some output",
+          "",
+          `\u203a ${PLACEHOLDER}`,
+          "",
+          "  model-example · demo-project · Context 99% left",
+        ].join("\n"),
+      ),
+    );
+    expect(codexAdapter.extractInputDraft(typed)).toBe(PLACEHOLDER);
   });
 
   it("joins a wrapped draft back into the typed sentence", () => {
