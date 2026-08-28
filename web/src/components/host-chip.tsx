@@ -16,12 +16,21 @@ interface HostChipProps {
    */
   state?: HostState;
   /**
-   * `tag` — the default pill. `target` — extra emphasis for the write surfaces, a touch larger,
-   * with the "on" preposition. `caption` — no pill at all: the pane header's line 1, where the host
-   * is one word in a small uppercase run beside the status word, and a bordered chip would read as
-   * a second object rather than as part of that sentence.
+   * `tag` — the default pill. `target` — extra emphasis for a write surface's own HEADER, a touch
+   * larger, with the "on" preposition; it is a pill among pills there (the dock's title row, a
+   * sheet's title). `field` — no pill at all, a small uppercase run: the host docked INSIDE the
+   * composer's text box, where a bordered pill would read as a token the operator typed and an
+   * uppercase muted run cannot be mistaken for the draft. It is also the narrowest form the chip
+   * has, which is what makes it affordable in the one place whose width is the typing area.
    */
-  variant?: "tag" | "target" | "caption";
+  variant?: "tag" | "target" | "field";
+  /**
+   * An id ON THE LABELLED NODE, for a surface that references this chip with `aria-describedby`.
+   * It goes here rather than on a wrapper the caller could put it on, because the description is
+   * computed from the referenced element and the only element carrying words is this one — a
+   * wrapper resolves to the empty string (its text is `aria-hidden` and its label is a child's).
+   */
+  id?: string;
   className?: string;
 }
 
@@ -40,7 +49,7 @@ interface HostChipProps {
 // server glyph rather than the switcher's layers, and it is a plain text node — a host name comes
 // from the operator's `join` label and is rendered as text, never markup, like every other
 // user-supplied string that reaches this UI.
-export function HostChip({ host, state, variant = "tag", className }: HostChipProps) {
+export function HostChip({ host, state, variant = "tag", id, className }: HostChipProps) {
   useLocale();
   const { servers, multi } = usePack();
   const health = useHostHealth(host);
@@ -70,48 +79,51 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
   const degraded =
     unreachable || health?.incompatible === true || (state ?? health?.state ?? "unknown") === "unknown";
   const target = variant === "target";
-  const caption = variant === "caption";
+  const field = variant === "field";
 
   return (
     <span
+      id={id}
       // The name is decorative repetition for a screen reader if it were bare text, so the whole
-      // chip carries one label that says what it MEANS.
-      aria-label={t(target ? "connection.host.ariaSends" : "connection.host.ariaHost", {
+      // chip carries one label that says what it MEANS. Both write-surface variants say "sends to":
+      // `target` heads a dock or sheet that is about to write, and `field` sits IN the box being
+      // typed into. "Host: attic" there would be a fact with no verb, next to the one control whose
+      // whole question is where the text is going.
+      aria-label={t(target || field ? "connection.host.ariaSends" : "connection.host.ariaHost", {
         name,
         unreachable: unreachable ? t("connection.host.ariaUnreachableSuffix") : "",
       })}
       className={cn(
         "inline-flex items-center gap-1 font-medium",
-        // The caption is a text run inside the identity block, so it MAY give up width (the machine
-        // is a nice-to-know; the status word beside it is the answer and stays `shrink-0`). The pill
-        // may not: everywhere else it is the last thing to go and the name truncates first. Same
-        // reason it drops the 8rem cap — that cap showed 99px of a 170px `macbook-pro-16-2023.local`
-        // in a row that now has the room.
+        // The field run MAY give up width: it sits in the composer's own reserved strip, and the
+        // strip is a fixed budget the name truncates into rather than a claim the name can widen.
+        // The pill may not: everywhere else it is the last thing to go and the name truncates
+        // first. Same reason the run drops the 8rem cap — its caller states the cap that matters.
         // `text-[10px]/3`, one utility and not `text-[10px] leading-3`: tailwind-merge lists
         // `leading` as conflicting with `font-size` (a named Tailwind size sets both), so ANY later
-        // `text-<size>` in this same cn() silently deletes an earlier `leading-*`. It did — the
-        // caption rendered at a 15px line and grew the pane header to 63px. The slash form cannot be
-        // split apart, and the size ternary below is now gated so it never runs for the caption.
-        caption
+        // `text-<size>` in this same cn() silently deletes an earlier `leading-*`. It did — the run
+        // rendered at a 15px line and grew the pane header to 63px. The slash form cannot be split
+        // apart, and the size ternary below is now gated so it never runs for the field run.
+        field
           ? "min-w-0 text-[10px]/3 uppercase tracking-wide"
           : cn("max-w-[8rem] shrink-0 rounded-md border px-1.5 py-0.5", target ? "text-[11px]" : "text-[10px]"),
         degraded
           ? // Unreachable is a STATE, not a disappearance (PACK_PROTOCOL.md §10.2) — it stays legible,
             // dashed rather than dimmed, so a blocked agent on a down machine is never greyed away.
-            // In the caption there is no border to dash, so the SHAPE of the fault moves into the
+            // In the field run there is no border to dash, so the SHAPE of the fault moves into the
             // glyph — ServerOff rather than Server — because colour alone is the one encoding
-            // WCAG 1.4.1 names, and a red host name 15px from a possibly-red status word is exactly
-            // the confusion that rule exists for.
-            caption
+            // WCAG 1.4.1 names, and a red host name a few px from the composer's own red refusal
+            // copy is exactly the confusion that rule exists for.
+            field
             ? "text-status-blocked"
             : "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked"
-          : caption
+          : field
             ? "text-muted-foreground"
             : "border-border bg-muted/60 text-muted-foreground",
         className,
       )}
     >
-      {caption && degraded ? (
+      {field && degraded ? (
         <ServerOff className="size-3 shrink-0" aria-hidden />
       ) : (
         <Server className="size-3 shrink-0" aria-hidden />

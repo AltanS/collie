@@ -32,6 +32,12 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // in different languages. Copy alone cannot close that — `composer.placeholder.noMuxSend`
         // can also be the multiplexer's OWN note, which is machine-authored and unbounded.
         //
+        // THAT BUDGET IS 192px ON A PACK, not 252: the caller docks the host inside this field and
+        // pays for it in the same `pr-*` (composer.tsx), so a placeholder that just fits on a solo
+        // install clips 60px earlier the moment a second machine joins. Nothing here changes — the
+        // clip is the contract either way — but a placeholder written to the 252px figure is only
+        // written for half the installs, and the shortest string is the one that survives both.
+        //
         // So the field states the contract instead: a placeholder is a LABEL, one line, and it is
         // clipped if it does not fit rather than allowed to resize the control.
         //

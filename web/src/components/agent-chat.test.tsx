@@ -194,6 +194,30 @@ describe("AgentChat — the pane header's identity block", () => {
     expect(names(shell.container)).toEqual([]); // no agent, no status, so no badge to name
   });
 
+  it("no longer carries the host — that question moved to the composer, where it is asked", () => {
+    // THE OTHER HALF OF THIS ROUND. The caption line used to lead with the machine, which spent the
+    // identity block's width on an answer to a question nobody has while READING. It is docked in
+    // the composer's text box now (composer.test.tsx), so this asserts the absence here and the
+    // presence there — a chip deleted from both files passes neither.
+    //
+    // Scoped to the block by data-slot, never by a bare role query: `ui/strip-host.tsx` mounts two
+    // permanent sr-only live regions, so `getByRole("status")` is ambiguous in any tree with a host
+    // in it and would fail as "missing" rather than "duplicated".
+    renderPackChat("workshop"); // a REAL pack — the solo case proves nothing, HostChip hides there
+    const caption = document.querySelector<HTMLElement>('[data-slot="pane-caption"]');
+    expect(caption?.textContent).toContain("needs you"); // the line still has its one word
+    expect(caption?.textContent).not.toMatch(/workshop/i);
+    expect(caption?.querySelector('[aria-label*="workshop" i]')).toBeNull();
+    // …and the whole identity block, not just the caption: the machine is not tucked into the name
+    // line or badged onto the agent's tile instead.
+    const block = document.querySelector<HTMLElement>('[data-slot="pane-identity"]');
+    expect(block?.textContent).not.toMatch(/workshop/i);
+    // It IS on the screen, once, at the box you type into — and this pane's machine is unreachable,
+    // so the docked chip carries the fault with it rather than the composer showing a calm host name
+    // beside a placeholder that says the write will be refused.
+    expect(screen.getByLabelText(/^sends to host: workshop \(unreachable\)$/i)).toBeInTheDocument();
+  });
+
   it("puts the state into the accessibility tree, which the caption's own text cannot do", () => {
     // An aria-label on a button REPLACES everything inside it, so moving the status word into this
     // block would have taken the pane's status out of the accessibility tree altogether — the badge

@@ -1208,10 +1208,12 @@ describe("Composer — destructive-input confirm", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(
       "Destructive: sudo (runs as root) on workshop — tap Send again to confirm",
     );
-    // The status line above Send already names the machine ("… on workshop", asserted above) — the
-    // pane-view header is the single machine indicator now, so no standalone chip renders above the
-    // input to duplicate it.
-    expect(screen.queryByLabelText("Sends to host: workshop")).not.toBeInTheDocument();
+    // …and the SAME machine is named at the box the words were typed into. Two statements of one
+    // fact is right here and only here: the chip answers "where will this land" before you commit,
+    // the confirm answers it at the moment you do, and a destructive command on the wrong machine is
+    // the failure both exist to prevent. It is one node, docked inside the field, not a standalone
+    // row above it — the row above the input is the status line's.
+    expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
   });
 
   it("does not arm the confirm for innocent input", async () => {
@@ -1225,6 +1227,73 @@ describe("Composer — destructive-input confirm", () => {
     // Sent straight away — no "Really send?" ever appeared, and the draft cleared.
     expect(screen.queryByRole("button", { name: /really send/i })).not.toBeInTheDocument();
     await waitFor(() => expect(box).toHaveValue(""));
+  });
+});
+
+// THE MACHINE, DOCKED IN THE BOX YOU TYPE INTO. It used to lead the pane header's caption line, and
+// the move is the whole point of this round: "which machine will this land on" is a question you have
+// with your thumbs on the keyboard, not one you have while reading a transcript.
+//
+// Four claims, and each fails in BOTH directions — a chip that never appears passes none of them, and
+// a chip that always appears fails the solo case.
+describe("Composer — the host is docked inside the text field", () => {
+  const box = () => screen.getByPlaceholderText(/type a reply/i);
+  /** The field's own reserved strip. Read off the class, because the jsdom render has no layout. */
+  const reserved = (el: HTMLElement) => /(?:^|\s)pr-(\d+)(?=\s|$)/.exec(el.className)?.[1];
+
+  it("names the machine on a pack and renders NOTHING on a solo install", () => {
+    // Solo — every install that exists today. There is no "which machine" question to answer, and
+    // the field keeps all 252px of its typing width.
+    renderComposerWithStatus({ scope: { host: "workshop" } });
+    expect(screen.queryByLabelText(/sends to host/i)).not.toBeInTheDocument();
+    expect(reserved(box())).toBe("11"); // the attach button's strip, and nothing more
+    cleanup();
+
+    // Pack — the chip appears, and the strip widens by exactly the chip's budget in the SAME
+    // property. 26 = 11 (attach) + 15 (host), one class, so tailwind-merge cannot drop half of it.
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
+    expect(reserved(box())).toBe("26");
+  });
+
+  it("does not change the field's own height, empty or with a draft", async () => {
+    // MEASURED in the playground at a true 390px: 46px empty on both, and `field-sizing-content`
+    // cannot see the chip at all because the chip is out of flow. What this pins is the two facts
+    // that make that true and that a refactor could quietly undo — the chip is absolutely
+    // positioned, and it is a SIBLING of the textarea rather than a child of any flow it sizes.
+    const user = userEvent.setup();
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    const chip = screen.getByLabelText("Sends to host: workshop").parentElement!;
+    expect(chip.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(chip.contains(box())).toBe(false);
+    expect(box().parentElement).toBe(chip.parentElement); // one relative box, two siblings in it
+    // …and the field states no height of its own that a taller chip could win against.
+    await user.type(box(), "a draft that wraps onto a second line in the composer");
+    expect(box().className).not.toMatch(/(?:^|\s)h-\d/);
+  });
+
+  it("is the field's DESCRIPTION, never part of its accessible name", async () => {
+    // An empty composer's name is its placeholder, and that placeholder is the only instruction it
+    // gives. Wiring the host in as a label — or as a second labelledby node — would replace "Type a
+    // reply…" with a machine name. It is announced after the name instead, on focus.
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    // MEASURED IN CHROME over CDP (Accessibility.getPartialAXTree) on the playground's pack panes,
+    // because neither half of this is observable here: `toHaveAccessibleName` never sees the
+    // placeholder fallback and `toHaveAccessibleDescription` never sees an `aria-label` on the
+    // referenced node, so both read empty in jsdom and would pin nothing.
+    //   name        = "attic is unreachable · last seen 14m"   (the placeholder, untouched)
+    //   description = "Sends to host: bluefin"                 (the docked chip)
+    // What IS observable is the whole wiring that produces it, and every link in it can break on its
+    // own: the field takes no label of its own by either route, it points at an id, and the node at
+    // that id is the chip carrying the words.
+    expect(box().getAttribute("aria-label")).toBeNull();
+    expect(box().getAttribute("aria-labelledby")).toBeNull();
+    const described = document.getElementById(box().getAttribute("aria-describedby") ?? "");
+    expect(described).toBe(screen.getByLabelText("Sends to host: workshop"));
+    cleanup();
+    // Solo: no chip, so no dangling reference to an id that does not exist.
+    renderComposerWithStatus({ scope: { host: "workshop" } });
+    expect(box().getAttribute("aria-describedby")).toBeNull();
   });
 });
 

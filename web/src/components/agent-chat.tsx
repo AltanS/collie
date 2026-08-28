@@ -24,7 +24,6 @@ import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
-import { HostChip } from "@/components/host-chip";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { CompactStripLabels } from "@/components/ui/labelled-strip";
@@ -816,11 +815,17 @@ export function AgentChat({
                   body's 1.45 strut and the block silently becomes ~54px, which the row would then have
                   to grow to hold. */}
               <div data-slot="pane-lines" className="flex min-w-0 flex-1 flex-col gap-1">
-                {/* Line 1, the caption: where this pane is, and what it is doing. The host hides
-                    itself on a single-machine pack (HostChip owns that rule); the status word never
-                    does, so the line always has something to say. */}
+                {/* Line 1, the caption: what this pane is DOING. The host used to lead this line and
+                    has moved to the composer — "which machine will this land on" is a question you
+                    have while writing, not while reading, and it is now answered at the write
+                    surface itself (composer.tsx), in both action sheets, and by the host-stale
+                    notice when the machine is the problem.
+                    WHAT IS LEFT IS ONE WORD in a 212px line, and that is worth saying out loud
+                    rather than hiding in a diff: on every install this line now carries the status
+                    word alone. It is deliberately NOT redesigned here — the width it gives back
+                    goes to nothing yet, and folding the word up into the name line is a separate
+                    decision about the block's shape, not a side effect of moving the host. */}
                 <div data-slot="pane-caption" className="flex min-w-0 items-center gap-1.5">
-                  <HostChip host={agent.host} variant="caption" />
                   <StatusWord status={isShell ? "shell" : agent.status} stale={connecting} />
                 </div>
                 {/* Line 2, the name, at the FULL width of the block. This is what the round was for:
