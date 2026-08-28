@@ -237,8 +237,12 @@ COLLIE_PORT=8787
 EOF
 
   set +e
+  # An empty COLLIE_TAILSCALE_BIN is how you stage "this host has no CLI". A bare PATH no longer
+  # does it: resolve_tailscale also looks in the absolute install locations, and a Mac running
+  # these tests almost certainly has /Applications/Tailscale.app.
   HOME="$HOME_DIR" \
   HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
+  COLLIE_TAILSCALE_BIN= \
   PATH="$BIN_DIR" \
   /bin/bash "$CTL" serve > "${CASE_DIR}/missing.out" 2>&1
   rc=$?
@@ -633,7 +637,9 @@ bridge_ready() { return 0; }
 # a style choice: the probe runs the CLI under \`timeout\`, which execs a binary and never sees a
 # function, so a function-stubbed case would silently fall through to the developer's own tailscale
 # and test their tailnet instead of this branch. It cost a green suite against a broken probe once.
-stage_tailscale() { printf '%s\n' '#!/bin/sh' "\$1" > "${BIN_DIR}/tailscale"; chmod +x "${BIN_DIR}/tailscale"; }
+# Repointing \$TAILSCALE is the other half of that: the script resolves the CLI ONCE at load, and its
+# absolute-path fallbacks find /Applications/Tailscale.app on the developer's Mac.
+stage_tailscale() { printf '%s\n' '#!/bin/sh' "\$1" > "${BIN_DIR}/tailscale"; chmod +x "${BIN_DIR}/tailscale"; TAILSCALE="${BIN_DIR}/tailscale"; }
 
 echo "=== CASE deny-all"
 stage_tailscale 'echo "{\\"PacketFilter\\":[],\\"PacketFilterRules\\":null}"'

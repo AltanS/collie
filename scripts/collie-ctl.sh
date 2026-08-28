@@ -184,6 +184,50 @@ case "$BUN" in
     esac
     ;;
 esac
+# Find the Tailscale CLI on PATH, then in the usual install locations.
+#
+# macOS is why this exists. The App Store and standalone Tailscale builds ship the CLI *inside* the
+# app bundle, named `Tailscale` (capital T), and put nothing on PATH unless you ran the GUI's
+# "Install CLI" step. So `serve` reported "tailscale not found" on a Mac that was fully logged in
+# and connected, and the tailnet front door silently never came up — the bridge stayed on
+# 127.0.0.1 with no hint that the CLI was two directories away.
+#
+# The bundle path is NOT put on PATH: the binary there is `Tailscale`, which only resolves as
+# `tailscale` on a case-insensitive volume, and the directory holds the GUI app too. Call sites use
+# "$TAILSCALE" instead, the same way they already use "$BUN".
+#
+# Set COLLIE_TAILSCALE_BIN to point at a CLI somewhere else — or to the empty string to make Collie
+# behave as if the host has none.
+#
+# ABSOLUTE paths only, for the reason spelled out over resolve_bun: `command -v` reports a shell
+# function as a bare word. An empty result is fine — callers report "tailscale not found" and stop.
+resolve_tailscale() {
+  local candidate
+  if [ -n "${COLLIE_TAILSCALE_BIN+x}" ]; then
+    printf '%s' "$COLLIE_TAILSCALE_BIN"
+    return 0
+  fi
+  if candidate="$(command -v tailscale 2>/dev/null)"; then
+    case "$candidate" in
+      /*) printf '%s' "$candidate"; return 0 ;;
+    esac
+  fi
+  for candidate in \
+    /Applications/Tailscale.app/Contents/MacOS/Tailscale \
+    "${HOME}/Applications/Tailscale.app/Contents/MacOS/Tailscale" \
+    /usr/local/bin/tailscale \
+    /opt/homebrew/bin/tailscale \
+    /usr/bin/tailscale; do
+    if [ -x "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 0
+}
+TAILSCALE="$(resolve_tailscale)"
+have_tailscale() { [ -n "$TAILSCALE" ]; }
+
 WEB_DIST="${PLUGIN_ROOT}/web/dist/index.html"
 
 have_systemd() { command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; }
@@ -263,7 +307,7 @@ ensure_build() {
 }
 
 self_dnsname() {
-  tailscale status --json 2>/dev/null | bun -e \
+  "$TAILSCALE" status --json 2>/dev/null | bun -e \
     "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{process.stdout.write(JSON.parse(d).Self.DNSName.replace(/\.\$/,''))}catch{}})"
 }
 
@@ -273,7 +317,7 @@ self_dnsname() {
 # this script runs under `set -o pipefail`, and `tailscale status` fails on CI and logged-out hosts.
 self_hosts() {
   command -v bun >/dev/null || return 0
-  tailscale status --json 2>/dev/null | bun -e \
+  "$TAILSCALE" status --json 2>/dev/null | bun -e \
     "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const s=JSON.parse(d).Self;const o=[];if(s.DNSName)o.push(s.DNSName.replace(/\.\$/,''));for(const ip of s.TailscaleIPs||[])o.push(ip.includes(':')?'['+ip+']':ip);process.stdout.write(o.join(','))}catch{}})" || true
 }
 
@@ -366,7 +410,7 @@ bridge_ready() {
 # non-empty proves nothing (a filter can grant some peer some port and still not grant your phone
 # :443). This is a smoke alarm, not a reachability proof.
 tailnet_inbound_blocked() {
-  command -v tailscale >/dev/null 2>&1 || return 1
+  have_tailscale || return 1
   [ -n "$BUN" ] || return 1
   local netmap
   # Bounded, because a diagnostic must never hold the banner hostage: a wedged tailscaled (daemon
@@ -374,9 +418,9 @@ tailnet_inbound_blocked() {
   # every `start` — indefinitely. Stock macOS ships no `timeout(1)`, so there it stays unbounded
   # rather than gaining a dependency for a nice-to-have.
   if command -v timeout >/dev/null 2>&1; then
-    netmap="$(timeout 3 tailscale debug netmap 2>/dev/null)" || return 1
+    netmap="$(timeout 3 "$TAILSCALE" debug netmap 2>/dev/null)" || return 1
   else
-    netmap="$(tailscale debug netmap 2>/dev/null)" || return 1
+    netmap="$("$TAILSCALE" debug netmap 2>/dev/null)" || return 1
   fi
   [ -n "$netmap" ] || return 1
   printf '%s' "$netmap" | "$BUN" -e \
@@ -985,7 +1029,7 @@ cmd_apply_update() {
 remove_tailscale_handler() {
   local description="$1" output
   shift
-  if output="$(tailscale serve "$@" off 2>&1)"; then
+  if output="$("$TAILSCALE" serve "$@" off 2>&1)"; then
     return 0
   fi
   case "$output" in
@@ -1001,7 +1045,7 @@ remove_tailscale_handler() {
 tailscale_root_fingerprint() {
   local host_port="$1" port="$2" status_json result
   [ -n "$BUN" ] || return 1
-  status_json="$(tailscale serve status --json 2>/dev/null)" || return 1
+  status_json="$("$TAILSCALE" serve status --json 2>/dev/null)" || return 1
   result="$(
     printf '%s' "$status_json" |
       COLLIE_TS_HOST_PORT="$host_port" COLLIE_TS_PORT="$port" "$BUN" -e '
@@ -1081,7 +1125,7 @@ stop_tailscale_serve() {
     echo "tailscale serve: no Collie-managed mapping recorded"
     return 0
   fi
-  if ! command -v tailscale >/dev/null; then
+  if ! have_tailscale; then
     echo "error: tailscale not found; retained the managed ${managed_handler} state for retry" >&2
     return 1
   fi
@@ -1135,7 +1179,7 @@ ensure_tailscale_root_available() {
     echo "error: bun is required to inspect Tailscale serve ownership before publishing" >&2
     return 1
   }
-  if ! status_json="$(tailscale serve status --json 2>/dev/null)"; then
+  if ! status_json="$("$TAILSCALE" serve status --json 2>/dev/null)"; then
     echo "error: cannot inspect Tailscale serve status; refusing to overwrite the root mount on :${port}" >&2
     return 1
   fi
@@ -1226,7 +1270,7 @@ cmd_serve() {
        } ;;
   esac
   stop_tailscale_serve || return 1
-  command -v tailscale >/dev/null || {
+  have_tailscale || {
     echo "error: tailscale not found; cannot publish the tailnet front door" >&2
     return 1
   }
@@ -1240,7 +1284,7 @@ cmd_serve() {
   if [ "$SERVE_MODE" = "http" ]; then
     ensure_tailscale_root_available "$PORT" http "$expected_proxy" || return 1
     printf '%s|%s|%s\n' "http:${PORT}" "${tailscale_host}:${PORT}" "$expected_proxy" > "$TAILSCALE_HANDLER_FILE"
-    if tailscale serve --bg --http="$PORT" --set-path=/ "$PORT" >"$out" 2>&1; then
+    if "$TAILSCALE" serve --bg --http="$PORT" --set-path=/ "$PORT" >"$out" 2>&1; then
       echo "tailscale serve (http) → tailnet :${PORT} -> 127.0.0.1:${PORT}"
     else
       rm -f "$TAILSCALE_HANDLER_FILE"
@@ -1261,7 +1305,7 @@ cmd_serve() {
     else
       serve_argv=(serve --bg --https="$SERVE_PORT" --set-path=/ "$PORT")
     fi
-    if tailscale "${serve_argv[@]}" >"$out" 2>&1; then
+    if "$TAILSCALE" "${serve_argv[@]}" >"$out" 2>&1; then
       echo "tailscale serve (https) → tailnet :${SERVE_PORT} -> 127.0.0.1:${PORT}"
     else
       rm -f "$TAILSCALE_HANDLER_FILE"
@@ -1280,7 +1324,7 @@ cmd_status() {
   if [ "${COLLIE_SKIP_SERVE:-}" = "1" ]; then
     echo "  serve config: skipped (COLLIE_SKIP_SERVE=1)"
   else
-    echo "  serve config:"; tailscale serve status 2>/dev/null | sed 's/^/    /' || true
+    echo "  serve config:"; "$TAILSCALE" serve status 2>/dev/null | sed 's/^/    /' || true
   fi
 }
 
