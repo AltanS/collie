@@ -111,6 +111,36 @@ type ComposerDrawer = "quick" | "cmd" | "keys" | "display" | null;
 const CONTROL_ON = "bg-control-on text-control-on-foreground hover:bg-control-on";
 const CONTROL_OFF = "text-muted-foreground";
 
+// The box every LABELLED control on that row wears. Authored once because the row's whole defect was
+// per-button drift in a fixed width: four buttons sized by their own text, in a container that is
+// 366px on a 390px phone and cannot grow.
+//
+// `shrink` is the load-bearing word. `ui/button.tsx`'s base string carries `shrink-0`, so `flex-1`
+// (which does set flex-shrink:1, in a shorthand) lost to the longhand and every button sat at its
+// CONTENT width. Measured on the pane screen at 390px: the row's scrollWidth ran 18px past its
+// clientWidth in English and 70px past in Japanese, and the overflow-x-hidden ancestor on the pane
+// column cut the ⚙ in half rather than letting it scroll — the control was not reachable at all.
+// Restoring flex-shrink, plus `min-w-0` to lift the flex item's min-content floor, plus `truncate`
+// on the label span (below) makes the row structurally incapable of exceeding its container: the
+// worst case is now an ellipsis on the longest word, not a missing button.
+//
+// `h-11` is 44px — the tap target the row never actually had (it was `h-8`/32px). It costs the
+// composer 12px of height, and that is the trade: a control you can hit beats a control that only
+// looks tidy.
+//
+// The icon sits ABOVE the word (`flex-col`) rather than beside it, and that is a MEASUREMENT, not a
+// taste. Side by side, a 74.5px button spends 16px on the icon and its gap before the first letter,
+// which leaves ~38px of text — and four of the six shipped locales ellipsised at 390px, CJK worst
+// (`エージェント` is six full-width glyphs). Stacked, the word gets the button's whole width and a
+// 10px size, so all six draw in full at 390px and only ja's longest ellipsises at 320px. A fix that
+// only reads in English is not a fix.
+const CONTROL_BUTTON =
+  "h-11 min-w-0 flex-1 shrink flex-col gap-0.5 px-1 has-[>svg]:px-1 text-[10px] font-medium leading-none [&>svg]:shrink-0";
+// The label inside that box. `truncate` needs a box of its own to clip against — a bare text node
+// in a flex button has none — and `max-w-full` is what keeps that box from simply being the text's
+// own width.
+const CONTROL_LABEL = "max-w-full truncate";
+
 // Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text.
 const TUI_SETTLE_MS = 350;
 
@@ -949,14 +979,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             commands). Display prefs used to sit on a second, permanent icon-only "View" row above
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
             and NOT flex-1 — it's a settings affordance, not a peer of the three action toggles, and
-            keeping it narrow leaves the labelled buttons their width on a 390px phone. */}
+            keeping it to one square (44px, its tap target and nothing more) leaves the labelled
+            buttons the rest of a 390px phone. */}
         {/* The "Controls" tag is lifted OUT of the row's flex flow and floated just above it. In
             flow it was a fixed ~60px of a 390px phone width spent on a word that never changes,
             which is what squeezed the toggles; absolute costs nothing and the row gets the width
             back. `pt-3` on the row reserves the space it occupies so it can't collide with whatever
             sits above. */}
-        <div className="relative mb-2 flex items-center gap-2 pt-3">
-          <SectionLabel className="absolute left-0 top-0 text-[10px] leading-none opacity-80">
+        {/* `gap-1.5` rather than `gap-2`: four gaps at 8px is 32px of a 366px row, and 6px reads the
+            same. The group carries `aria-labelledby` to the tag above it, so the word is the run's
+            accessible name and not a stray span in front of five unrelated buttons. */}
+        <div
+          role="group"
+          aria-labelledby="composer-controls-label"
+          className="relative mb-2 flex items-center gap-1.5 pt-3"
+        >
+          <SectionLabel
+            id="composer-controls-label"
+            className="absolute left-0 top-0 text-[10px] leading-none opacity-80"
+          >
             {translate("composer.controls.label")}
           </SectionLabel>
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
@@ -965,13 +1006,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <Button
             variant="ghost"
             size="sm"
-            className={cn("h-8 flex-1 gap-1.5", drawer === "keys" ? CONTROL_ON : CONTROL_OFF)}
+            className={cn(CONTROL_BUTTON, drawer === "keys" ? CONTROL_ON : CONTROL_OFF)}
             disabled={locked}
             aria-expanded={drawer === "keys"}
+            aria-label={translate("composer.controls.keys")}
             onClick={() => requestDrawer(drawer === "keys" ? null : "keys")}
           >
             <Keyboard className="size-4" />
-            {translate("composer.controls.keys")}
+            <span className={CONTROL_LABEL}>{translate("composer.controls.keys")}</span>
           </Button>
           {/* "Type into terminal" lives HERE, beside Keys, rather than on the Send button.
               It is the same problem split in half: Keys exists because the phone keyboard cannot
@@ -987,7 +1029,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <Button
             variant="ghost"
             size="sm"
-            className={cn("h-8 flex-1 gap-1.5", direct.active ? CONTROL_ON : CONTROL_OFF)}
+            className={cn(CONTROL_BUTTON, direct.active ? CONTROL_ON : CONTROL_OFF)}
             disabled={locked || sending}
             aria-pressed={direct.active}
             aria-label={translate("composer.controls.typeAria")}
@@ -1004,29 +1046,31 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             }}
           >
             <Terminal className="size-4" />
-            {translate("composer.controls.type")}
+            <span className={CONTROL_LABEL}>{translate("composer.controls.type")}</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            className={cn("h-8 flex-1 gap-1.5", drawer === "quick" ? CONTROL_ON : CONTROL_OFF)}
+            className={cn(CONTROL_BUTTON, drawer === "quick" ? CONTROL_ON : CONTROL_OFF)}
             disabled={locked}
             aria-expanded={drawer === "quick"}
+            aria-label={translate("composer.controls.quick")}
             onClick={() => requestDrawer(drawer === "quick" ? null : "quick")}
           >
             <Zap className="size-4" />
-            {translate("composer.controls.quick")}
+            <span className={CONTROL_LABEL}>{translate("composer.controls.quick")}</span>
           </Button>
           {commands.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 flex-1 gap-1.5 text-muted-foreground"
+              className={cn(CONTROL_BUTTON, "text-muted-foreground")}
               disabled={locked}
+              aria-label={translate("composer.controls.agent")}
               onClick={() => requestDrawer("cmd")}
             >
               <Slash className="size-4" />
-              {translate("composer.controls.agent")}
+              <span className={CONTROL_LABEL}>{translate("composer.controls.agent")}</span>
             </Button>
           )}
           {/* Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view state, so a
@@ -1034,7 +1078,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <Button
             variant="ghost"
             size="icon"
-            className={cn("size-8 shrink-0", drawer === "display" ? CONTROL_ON : CONTROL_OFF)}
+            className={cn("size-11 shrink-0", drawer === "display" ? CONTROL_ON : CONTROL_OFF)}
             aria-label={translate("composer.controls.displayAria")}
             aria-expanded={drawer === "display"}
             onClick={() => requestDrawer(drawer === "display" ? null : "display")}

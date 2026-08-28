@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { createContext, useContext, useId, type ReactNode } from "react";
 
 import { SectionLabel } from "@/components/ui/section-label";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,39 @@ export const STRIP_TAP_TARGET =
  */
 export const STRIP_TAP_TARGET_SQUARE = `${STRIP_TAP_TARGET} before:-inset-x-[7px]`;
 
+/**
+ * Whether the strips in this subtree DRAW their names, or only expose them to a screen reader.
+ *
+ * This is a ROUTE-level treatment and deliberately not a prop. `hideLabel` used to be a prop and was
+ * deleted, because a per-strip switch lets one strip on a page be 47px while its neighbour is 63px,
+ * and the page then jumps 16px as a conditional strip appears — the same fault as a list row growing
+ * on hover. A context cannot express that: the value is read from an ancestor, so every strip under
+ * one provider answers it identically, and the only thing a caller can choose is where the provider
+ * goes. Put it around the route's content region and there is no "some strips" to get wrong.
+ *
+ * Default is `true`: every route that does not opt in draws its labels exactly as before.
+ */
+const StripLabelsVisible = createContext(true);
+
+/**
+ * The pane screen's treatment: strips keep their accessible names and lose their visible ones.
+ *
+ * The pane route stacks TWO strips (Tabs, then Panes) between a breadcrumb header that already says
+ * which space and tab you are in and the terminal mirror you came to read. Measured at 390x844: the
+ * chrome above the mirror was 231px, 27% of the viewport, and 126px of it was the two strips. The
+ * words TABS and PANES restate the header, so on this route only they are dropped from the paint
+ * and kept in the a11y tree via `sr-only` — the `aria-labelledby` pairing is untouched, so the rows
+ * are still named "Tabs" and "Panes" to a screen reader.
+ *
+ * That takes each strip to 47px: 1px top rule + the scroller's 6+34+6. That is the FLOOR, not a
+ * guess — the scroller's `py-1.5` is the room the pills' 44px tap area reaches into (see
+ * STRIP_TAP_TARGET), so it cannot be trimmed further without dropping the tap floor. Nothing else on
+ * this row is removable.
+ */
+export function CompactStripLabels({ children }: { children: ReactNode }) {
+  return <StripLabelsVisible.Provider value={false}>{children}</StripLabelsVisible.Provider>;
+}
+
 interface LabelledStripProps {
   /**
    * The row's name — Spaces · Tabs · Panes. Both the visible label and the strip's accessible name,
@@ -50,6 +83,10 @@ interface LabelledStripProps {
    * another would change height across that state — 50px against 67px on the space strip, measured
    * — and a whole page jumping 17px on a navigation is the same fault as a list row growing on
    * hover, just larger. The label is a fixed part of the row, so the row is one height.
+   *
+   * A route may hide every strip's label at once with {@link CompactStripLabels}, which is a
+   * property of the subtree rather than of a strip: the name is still required, still rendered and
+   * still the row's accessible name — it is only unpainted, and unpainted for all of them together.
    */
   label: string;
   /** Extra classes for the OUTER, non-scrolling element: the strip's borders, ground and padding. */
@@ -87,6 +124,9 @@ interface LabelledStripProps {
 // cannot drift apart. This owns the structure; that owns the word.
 export function LabelledStrip({ label, className, scrollerClassName, children }: LabelledStripProps) {
   const id = useId();
+  // Route-level, never per-strip: see StripLabelsVisible. Under a compact route the label keeps its
+  // id, its text and the `aria-labelledby` pairing and loses only its paint and its 16px of row.
+  const labelVisible = useContext(StripLabelsVisible);
   return (
     <nav
       aria-labelledby={id}
@@ -95,11 +135,15 @@ export function LabelledStrip({ label, className, scrollerClassName, children }:
       // pt-1.5 rather than pt-2 buys back 2px of the label's line, so the row grows by less than the
       // label costs. There is no `pb-*`: the row's bottom air is the scroller's `py-1.5`, which is
       // the same pixels one element further in, where the tap areas can use them.
-      className={cn("shrink-0 px-4 pt-1.5", className)}
+      // pt-1.5 is the LABEL's air and goes with it: with the word unpainted there is nothing above
+      // the scroller for it to separate, and keeping it would spend 6px on a blank line.
+      className={cn("shrink-0 px-4", labelVisible && "pt-1.5", className)}
     >
       {/* mb-0 overrides the placement's own mb-1 for the same reason: that 4px gap is now the top
-          half of the scroller's `py-1.5`, inside the clip boundary instead of outside it. */}
-      <SectionLabel id={id} placement="above" className="mb-0">
+          half of the scroller's `py-1.5`, inside the clip boundary instead of outside it.
+          sr-only rather than a conditional render: the element must stay in the tree, keep its id
+          and keep answering the nav's aria-labelledby, or the row loses its accessible name. */}
+      <SectionLabel id={id} placement="above" className={labelVisible ? "mb-0" : "sr-only"}>
         {label}
       </SectionLabel>
       <div

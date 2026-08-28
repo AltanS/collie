@@ -81,6 +81,45 @@ describe("AppHeader — the one shared header shell", () => {
     expect(markPaper(container)).toBe(`var(--${fill?.[1]})`);
   });
 
+  it("states the row's own height instead of inheriting it from whatever a caller passed", () => {
+    // THE SHIFT BUG. This row used to be `flex items-center … py-2` with no height of its own, so it
+    // took the height of its tallest CHILD — and the children are props. On the dashboard the tallest
+    // was the 44px SettingsGear (row 60px); inside a pane there is no gear, so the 40px Collie mark
+    // won (row 56px), and every dashboard→pane navigation jumped the header 4px. A row whose height
+    // is decided by its props cannot be stable, so the floor is stated on the row itself. Asserted
+    // two ways: the floor is there, and the two variants produce the SAME row.
+    const dash = renderHeader(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    const pane = renderHeader(
+      <AppHeader bridge="connected" error={false} onHome={() => {}}>
+        <span>webapp › main</span>
+      </AppHeader>,
+    );
+    const rowOf = (c: HTMLElement) => c.querySelector("header > div:last-child")?.className ?? "";
+    // min-h, not h: a child taller than the floor must still grow the row rather than be clipped.
+    expect(rowOf(dash.container)).toContain("min-h-15");
+    expect(rowOf(dash.container)).not.toMatch(/(^|\s)h-\d/);
+    // Same row, whatever the caller handed in — the geometry is the shell's, not the route's.
+    expect(rowOf(pane.container)).toBe(rowOf(dash.container));
+  });
+
+  it("gives the Collie mark the same 44px tap box every other control in the row has", () => {
+    // The mark is a BUTTON (it navigates home), so it owes the same tap floor as the gear beside it.
+    // It was `size-10` — 40px, under the target, and the reason the pane header was the short one.
+    // Coupled deliberately: read the size utility off both boxes and require one number, so shrinking
+    // either one fails here rather than on a phone.
+    const { container } = renderHeader(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    const size = (el: Element | null | undefined) =>
+      /(?:^|\s)size-(\d+)(?=\s|$)/.exec(el?.className ?? "")?.[1];
+    const markBox = container.querySelector('button[aria-label^="Collie"] > span');
+    const gear = screen.getByRole("button", { name: "Settings" });
+    expect(size(markBox)).toBe("11"); // 44px
+    expect(size(markBox)).toBe(size(gear));
+  });
+
   it("returns to the dashboard via onHome when the Collie mark is tapped", async () => {
     const onHome = vi.fn();
     renderHeader(<AppHeader bridge="connected" error={false} onHome={onHome} wordmark />);

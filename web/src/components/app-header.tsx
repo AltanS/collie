@@ -39,9 +39,13 @@ interface AppHeaderProps {
   /** Right-cluster trailing items (the Settings gear). */
   rightTrail?: ReactNode;
 
-  /** Full-width takeover of the header row (the pane's find bar). When set it replaces the normal
-   *  content while it's up — the find bar owns the row one-handed, exactly as before — but it still
-   *  lives inside this one shell so the sticky/safe-area/zinc bar is never copy-pasted. */
+  /** Full-width takeover of the header row: the caller supplies the row's whole content instead of
+   *  the mark + breadcrumb + right cluster. Two users, and they are deliberately the same mechanism.
+   *  The pane's FIND BAR sets it while searching, so the find bar owns the row one-handed. Settings
+   *  and Pack set it permanently, because they lead with a back button where the mark stands rather
+   *  than with the mark. Either way the row still lives inside this one shell, so the
+   *  sticky/safe-area/prerelease-strip/rule/height recipe is never copy-pasted — which is what a
+   *  hand-rolled `<header>` on those two routes had been doing, 20px shorter and with no AlphaBar. */
   override?: ReactNode;
 }
 
@@ -93,7 +97,17 @@ export function AppHeader({
     // background or every near-side bead grows a halo — app-header.test.tsx asserts the two agree.
     <header className="sticky top-0 z-20 flex flex-col border-b border-rule bg-background [padding-top:env(safe-area-inset-top)]">
       <AlphaBar />
-      <div className="flex items-center gap-2 pl-4 pr-2 py-2">
+      {/* The row has a FLOOR, not a fixed height: `min-h-15` (60px) = the 44px tap target every
+          icon control in here is built to + this row's own `py-2`. Before it, the row simply took
+          the height of the tallest thing a caller happened to pass, so the header was 60px on the
+          dashboard (the 44px SettingsGear) and 56px inside a pane (no gear, so the 40px mark was
+          tallest) — a 4px jump on every dashboard→pane navigation. A row whose height is decided by
+          its props cannot be stable, so the floor is stated here, once, and no caller can lower it.
+          `min-h` rather than `h`: a future child taller than 44px still GROWS the row instead of
+          being clipped or overflowing it — the header would get taller (on every route at once,
+          because they all mount this row), which is a visible design decision rather than a silent
+          overlap. Keep `py-2` so that taller child keeps its 8px breathing room. */}
+      <div className="flex min-h-15 items-center gap-2 pl-4 pr-2 py-2">
         {override ?? (
           <>
             <CollieHome onHome={onHome} trouble={trouble} lost={lost} wordmark={wordmark} />

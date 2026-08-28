@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Bell, Loader2 } from "lucide-react";
 import { useLoaderData, useNavigate } from "react-router";
 
+import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
@@ -73,26 +74,34 @@ export function SettingsRoute() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      {/* One header treatment app-wide: the page colour, cut off the content by a full-strength
-          rule. Was `bg-background/85 backdrop-blur-md`, which the dashboard header never had — three
-          headers, two treatments, one app. The blur is not merely redundant, it is a hazard: a
-          backdrop-filter makes the element a containing block, and session-switcher.tsx:63 already
-          carries the scar comment about the app header having clipped a portalled sheet that way.
-          `border-border/60` goes with it — it composites to 1.09:1 on the page, so at 85% opacity
-          the header was separated by essentially nothing. */}
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-rule bg-background px-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
-        <Button
-          variant="ghost"
-          size="icon"
-          // size="icon" is 36px; the header's other controls are 44px since the tap-target pass.
-          className="size-11"
-          onClick={() => navigate(homePath(scope))}
-          aria-label={t("settings.nav.back")}
-        >
-          <ArrowLeft className="size-5" />
-        </Button>
-        <h1 className="text-lg font-semibold tracking-tight">{t("settings.title")}</h1>
-      </header>
+      {/* One header treatment app-wide — and now that is a FACT, not a claim: this is the same
+          AppHeader shell every other route mounts. It used to be a hand-rolled `<header>` that only
+          copied the shell's colours, and it drifted the two ways a copy always does. It carried no
+          <AlphaBar/>, so walking into Settings off a prerelease build silently dropped the "you are
+          on a beta" strip; and its padding recipe was its own, so it could not track the shell's.
+          The row's CONTENT is this route's own — a back button where the mark stands, and the page
+          title — which is exactly what `override` is for (the pane's find bar is the other user).
+          The back button is `size-11` sitting at the row's `pl-4`, so its icon centre lands on the
+          same 38px as the Collie mark it stands in for: nothing shifts sideways either. */}
+      <AppHeader
+        bridge={root?.bridge}
+        error={root?.error ?? false}
+        override={
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              // 44px — the tap floor every control in this row shares. size="icon" alone is 36px.
+              className="size-11"
+              onClick={() => navigate(homePath(scope))}
+              aria-label={t("settings.nav.back")}
+            >
+              <ArrowLeft className="size-5" />
+            </Button>
+            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t("settings.title")}</h1>
+          </>
+        }
+      />
 
       {/* `relative` for the same reason PullToRefresh carries it: an `sr-only` (position: absolute)
           deep in this page would otherwise escape the scroller and grow the document's own

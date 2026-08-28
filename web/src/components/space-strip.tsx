@@ -54,7 +54,10 @@ export function SpaceStrip({
   // dropping it there would make this strip 50px in one state and 67px in the other, so navigating
   // in and out would jump the whole page by 17px. State does not get to change the box.
   return (
-    <LabelledStrip label={t("space.strip.title")}>
+    // border-b border-rule: this band closes its own bottom, from ABOVE, so the division between
+    // the Spaces row and the Tabs row below it is drawn once — not by whatever the tab bar draws
+    // from below, which would land on the same y and read as a doubled 2px line.
+    <LabelledStrip label={t("space.strip.title")} className="border-b border-rule">
       {onBack ? (
         <button
           type="button"

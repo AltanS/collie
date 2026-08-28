@@ -1,6 +1,11 @@
 import { render, screen } from "@testing-library/react";
 
-import { LabelledStrip, STRIP_TAP_TARGET, STRIP_TAP_TARGET_SQUARE } from "./labelled-strip";
+import {
+  CompactStripLabels,
+  LabelledStrip,
+  STRIP_TAP_TARGET,
+  STRIP_TAP_TARGET_SQUARE,
+} from "./labelled-strip";
 
 describe("LabelledStrip", () => {
   it("names the row for a screen reader, by pointing at the visible label", () => {
@@ -72,10 +77,10 @@ describe("LabelledStrip", () => {
     expect(scroller).toHaveClass("-mx-4");
   });
 
-  it("always draws the label, so no caller can make the row two different heights", () => {
-    // There is no way to suppress it. A strip that drew its name in one state and not in another
-    // would change height across that state, and a page that jumps on a navigation is the same
-    // fault as a list row that grows on hover.
+  it("draws the label by default, so no caller can make the row two different heights", () => {
+    // There is still no per-strip way to suppress it. A strip that drew its name in one state and
+    // not in another would change height across that state, and a page that jumps on a navigation
+    // is the same fault as a list row that grows on hover.
     render(
       <LabelledStrip label="Spaces">
         <button type="button">Back</button>
@@ -83,4 +88,57 @@ describe("LabelledStrip", () => {
     );
     expect(screen.getByText("Spaces")).toBeInTheDocument();
   });
+
+  it("hides every label in a compact subtree, or none — never one of two", () => {
+    // The replacement for the deleted `hideLabel` prop, and the reason it is a context: the choice
+    // is read from an ancestor, so two sibling strips CANNOT disagree and end up 47px against 63px.
+    // A caller picks where the provider goes, not which strips obey it.
+    render(
+      <CompactStripLabels>
+        <LabelledStrip label="Tabs">
+          <button type="button">t1</button>
+        </LabelledStrip>
+        <LabelledStrip label="Panes">
+          <button type="button">p1</button>
+        </LabelledStrip>
+      </CompactStripLabels>,
+    );
+    for (const name of ["Tabs", "Panes"]) {
+      const label = screen.getByText(name);
+      // sr-only, not removed: the element has to stay in the tree to keep answering the nav's
+      // aria-labelledby. Measured in Chrome at 390px, this takes each row 63px -> 47px.
+      expect(label).toHaveClass("sr-only");
+      expect(screen.getByRole("navigation", { name })).toContainElement(label);
+    }
+  });
+
+  it("keeps the strip's accessible name when the label is unpainted", () => {
+    // The whole point of sr-only over a conditional render. Before this round no strip had an
+    // accessible name at all; a compact route must not quietly give that back up.
+    render(
+      <CompactStripLabels>
+        <LabelledStrip label="Panes">
+          <button type="button">p1</button>
+        </LabelledStrip>
+      </CompactStripLabels>,
+    );
+    expect(screen.getByRole("navigation", { name: "Panes" })).toBeInTheDocument();
+  });
+
+  it("drops the label's own air with the label, and nothing the tap floor needs", () => {
+    // pt-1.5 is the space above the word; with no word painted it is a blank 6px. The scroller's
+    // py-1.5 is a different 6px — it is the room the pills' ::before reaches into — and it must
+    // survive the compact treatment untouched, or the 44px floor goes with the label.
+    render(
+      <CompactStripLabels>
+        <LabelledStrip label="Tabs">
+          <button type="button">t1</button>
+        </LabelledStrip>
+      </CompactStripLabels>,
+    );
+    const strip = screen.getByRole("navigation", { name: "Tabs" });
+    expect(strip).not.toHaveClass("pt-1.5");
+    expect(strip.querySelector(".overflow-x-auto")).toHaveClass("py-1.5");
+  });
+
 });

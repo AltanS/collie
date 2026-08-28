@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
-import { Chip } from "@/components/ui/chip";
-import { LabelledStrip, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
+import { STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
+import { StatusDot } from "@/components/status-badge";
+import { useLongPress } from "@/hooks/use-long-press";
 import { cn } from "@/lib/utils";
-import { worstTriage } from "@/lib/triage";
+import { TRIAGE_STATUS, worstTriage, type TriageKey } from "@/lib/triage";
 import { hostKey } from "@/lib/hosts";
+import { statusLabel } from "@/lib/types";
 import type { AgentView, TabView } from "@/lib/types";
 import { useMuxCapability } from "@/lib/mux-capability";
 import type { Scope } from "@/lib/scope";
@@ -23,7 +25,7 @@ interface TabStripProps {
   selected: string | null;
   onSelect: (tabId: string | null) => void;
   onNewTab: (workspaceId: string) => void;
-  /** Show the leading "All" chip (home space view); off for the in-pane tab bar. */
+  /** Show the leading "All" tab (home space view); off for the in-pane tab bar. */
   allowAll?: boolean;
   /** Session scope for the long-press tab actions (rename/close); undefined = primary. */
   scope?: Scope;
@@ -35,13 +37,35 @@ interface TabStripProps {
   onClosed?: (tabId: string) => void;
 }
 
-// The selected space's tabs as a horizontal strip — the second header row under SpaceStrip, mirroring
-// it one level down. "All" shows every tab's panes; tapping a tab filters the space to it; the
-// trailing + creates a new tab (and opens its fresh shell). The desktop-focused tab gets a ring;
-// each tab carries a status dot for the most urgent thing inside it. A long-press on a chip opens
-// its actions sheet
-// (rename / close) when the parent wires both onRenamed and onClosed (the "All" chip and the + never
-// take long-press).
+// The selected space's tabs, drawn as TABS — the file-folder kind, not the pill kind.
+//
+// The two rows around this one (Spaces above, Panes below) are pills, and that difference is doing
+// work: rows that navigate different dimensions should not look identical. A pill row says "pick one
+// of these"; a folder tab says "this one is the drawer you are looking into", because the active tab
+// is physically attached to the content beneath it.
+//
+// The illusion is three things, and all three have to be right or it reads as a button on a line:
+//
+//  1. A full-width baseline rule in --rule at the bottom of the row. It is the top edge of the
+//     content region below, which is why it belongs to this row and not to that region.
+//  2. The active tab is bordered on top/left/right in the SAME --rule, filled with the content
+//     surface, and OPEN at the bottom — it covers the baseline for its own width, so the tab and
+//     the content read as one continuous piece.
+//  3. Inactive tabs are recessed: a quieter fill, muted text, and their box stops one pixel short,
+//     so the baseline runs unbroken underneath them.
+//
+// The geometry that buys (2) is measured, not guessed, and the three numbers below are one set:
+// the scroller is pulled one pixel down over the <nav>'s bottom border (`-mb-px`), carries one pixel
+// of bottom padding so that pixel is INSIDE its clip box (`overflow-x` forces `overflow-y: auto`,
+// so anything past the padding box is clipped away), and the active tab covers it with a 1px
+// absolutely-positioned strip in the content colour. Change any one and the baseline shows through
+// under the active tab, which is the whole thing.
+//
+// This row draws no name. The shape announces itself — that is the operator's reason for choosing
+// it — so `LabelledStrip` is gone from here and the structure it provided lives inline: the <nav>,
+// the accessible name (now an `aria-label`, since there is no visible word to point at), and the
+// `-mx-4 px-4` that lets the last tab scroll clean off the screen while the first still starts on
+// the route's 16px gutter. Spaces and Panes keep the primitive and keep their labels.
 export function TabStrip({
   workspaceId,
   tabs,
@@ -60,66 +84,90 @@ export function TabStrip({
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
   const newTab = useMuxCapability("createTab");
   // Actions need both callbacks wired (revalidate on rename, fall back on close); without them the
-  // chips stay plain tap-to-switch — long-press is inert.
+  // tabs stay plain tap-to-switch — long-press is inert.
   const actionsEnabled = !!onRenamed && !!onClosed;
 
   // Tab status is computed over THIS machine's panes only: tab ids (`w1:t1`) collide across a pack
   // exactly as pane and workspace ids do, so an unfiltered merged list would paint a peer's blocked
-  // agent onto the lead's tab chip. Solo panes are untagged and `host` is undefined — same set as before.
+  // agent onto the lead's tab. Solo panes are untagged and `host` is undefined — same set as before.
   const here = agents.filter((a) => hostKey(a) === (host ?? ""));
   const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
   if (wsTabs.length === 0) return null;
 
   return (
     <>
-      <LabelledStrip
-        label={translate("space.tabStrip.title")}
-        className="border-t border-rule"
+      <nav
+        // The row's accessible name, which used to come from the visible word via aria-labelledby.
+        // The word is gone; the name is not. A row of buttons with no name is an unnamed run of
+        // buttons to a screen reader, which is the fault LabelledStrip was written to fix.
+        aria-label={translate("space.tabStrip.title")}
+        // shrink-0: this is a child of a `flex-1 flex-col` scroller, so without it the row shrinks
+        // while its tabs overflow and the row below paints over them.
+        // No border-t: SpaceStrip now draws its own border-b, which already closes the seam from
+        // above. A second hairline here would sit on the same line as that one and double it.
+        // border-b is the BASELINE — see the header comment; it is --rule because it cuts between
+        // two regions of chrome rather than around one component.
+        className="shrink-0 border-b border-rule px-4"
       >
-        {allowAll && (
-          <Chip
-            label={translate("space.tabStrip.all")}
-            active={selected === null}
-            onClick={() => onSelect(null)}
-          />
-        )}
-        {wsTabs.map((t) => (
-          <Chip
-            key={t.tabId}
-            label={t.label}
-            active={selected === t.tabId}
-            ring={t.focused}
-            // What's actually going on in there — blocked / ready / working / idle — instead of a
-            // dot that only ever appeared for blocked and left every other state unreadable.
-            status={worstTriage(here.filter((a) => a.tabId === t.tabId))}
-            onClick={() => onSelect(t.tabId)}
-            // Long-press (and a tap on the already-active tab) opens the actions sheet — only when the
-            // parent wired the actions; otherwise the chips stay plain tap-to-switch.
-            onLongPress={actionsEnabled ? () => setSheetTab(t) : undefined}
-            onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
-          />
-        ))}
-        {/* HIDE, don't explain (M10/06). A "+" at the end of the tab row is an affordance, not a
-            promise: nobody arrives at Collie needing to know why a particular multiplexer will not
-            open a tab, the way they arrive needing to know where their agent's history went. Every
-            adapter shipped today declares `createTab`, so this hides on none of them — it asks
-            anyway, because the alternative is a fourth adapter discovering the answer by 500ing. */}
-        {newTab.capable && (
-          <button
-            type="button"
-            onClick={() => onNewTab(workspaceId)}
-            aria-label={translate("space.tabStrip.new.aria")}
-            // 32px drawn, 46x46 hit — the space strip's "+" exactly, including the horizontal half
-            // of the floor that only a square sub-44px button takes.
-            className={cn(
-              STRIP_TAP_TARGET_SQUARE,
-              "flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95",
-            )}
-          >
-            <Plus className="size-4" />
-          </button>
-        )}
-      </LabelledStrip>
+        <div
+          // -mx-4 px-4: the gutter moves onto the scroller and is cancelled by the negative margin,
+          // so the last tab scrolls clean off the screen edge while the first still starts on the
+          // route's 16px gutter. The two halves are ONE number and must move together.
+          // -mb-px + pb-px: one pixel of the scroller hangs over the <nav>'s bottom border, and that
+          // pixel is inside the scroller's own padding box so it is not clipped. It is the room the
+          // active tab's cover strip lives in. items-start keeps every tab's TOP on the same line,
+          // which is what makes the row read as tabs rather than as boxes of different sizes.
+          className="-mx-4 -mb-px flex items-start gap-1 overflow-x-auto px-4 pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {allowAll && (
+            <Tab
+              label={translate("space.tabStrip.all")}
+              active={selected === null}
+              onClick={() => onSelect(null)}
+            />
+          )}
+          {wsTabs.map((t) => (
+            <Tab
+              key={t.tabId}
+              label={t.label}
+              active={selected === t.tabId}
+              ring={t.focused}
+              // What's actually going on in there — blocked / ready / working / idle — instead of a
+              // dot that only ever appeared for blocked and left every other state unreadable.
+              status={worstTriage(here.filter((a) => a.tabId === t.tabId))}
+              onClick={() => onSelect(t.tabId)}
+              // Long-press (and a tap on the already-active tab) opens the actions sheet — only when
+              // the parent wired the actions; otherwise the tabs stay plain tap-to-switch.
+              onLongPress={actionsEnabled ? () => setSheetTab(t) : undefined}
+              onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
+            />
+          ))}
+          {/* HIDE, don't explain (M10/06). A "+" at the end of the tab row is an affordance, not a
+              promise: nobody arrives at Collie needing to know why a particular multiplexer will not
+              open a tab, the way they arrive needing to know where their agent's history went. Every
+              adapter shipped today declares `createTab`, so this hides on none of them — it asks
+              anyway, because the alternative is a fourth adapter discovering the answer by 500ing. */}
+          {newTab.capable && (
+            <button
+              type="button"
+              onClick={() => onNewTab(workspaceId)}
+              aria-label={translate("space.tabStrip.new.aria")}
+              // 32px drawn, 44x46 hit — a true square, which is the one shape allowed to keep
+              // `rounded-full`. self-center against the row's items-start: it is a button beside the
+              // tabs, not a tab, so it centres in the row rather than hanging from the top line.
+              // The row is 44px, so the ::before's 7px reach is trimmed to the 6px above a centred
+              // 32px box: 32+6+6 = 44 vertically, 32+7+7 = 46 horizontally, where it is last in the
+              // row and the gap keeps it clear of its neighbour.
+              className={cn(
+                STRIP_TAP_TARGET_SQUARE,
+                "flex size-8 shrink-0 self-center items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+              )}
+            >
+              <Plus className="size-4" />
+            </button>
+          )}
+        </div>
+      </nav>
 
       {actionsEnabled && (
         <TabActionsSheet
@@ -133,5 +181,105 @@ export function TabStrip({
         />
       )}
     </>
+  );
+}
+
+interface TabProps {
+  label: string;
+  active: boolean;
+  /** Dimmed folder outline marking the tab focused in the desktop TUI. */
+  ring?: boolean;
+  /**
+   * The most urgent thing happening inside this tab ({@link worstTriage}) — drawn as a leading dot
+   * in the same palette the herd list uses. Omit (or pass null) when the tab holds no agent at all:
+   * that's not the same as idle, and a resting dot would claim otherwise.
+   */
+  status?: TriageKey | null;
+  onClick: () => void;
+  /** Long-press (or right-click / Android contextmenu) opens actions. Inert when unset. */
+  onLongPress?: () => void;
+  /** A plain tap when the tab is already `active` — opens actions instead of a no-op re-select. */
+  onTapActive?: () => void;
+}
+
+// One folder tab.
+function Tab({ label, active, ring, status, onClick, onLongPress, onTapActive }: TabProps) {
+  const longPress = useLongPress(onLongPress);
+
+  // A long-press already suppresses the ensuing click (via longPress.onClickCapture), so this only
+  // ever sees a genuine tap. Tapping the already-active tab opens actions rather than a dead
+  // re-select.
+  function handleClick() {
+    if (active && onTapActive) {
+      onTapActive();
+      return;
+    }
+    onClick();
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      {...longPress}
+      // Not role="tab". These do not swap a panel in place — they navigate: on the space route the
+      // selection is the route's own tab filter, and in the pane view a tap goes to another pane's
+      // URL. `role="tablist"` would promise arrow-key roving over panels that are not there and
+      // would fight the surrounding <nav>. A nav with aria-current is what this actually is, and it
+      // is what the space and pane strips already say.
+      aria-current={active ? "true" : undefined}
+      className={cn(
+        // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch
+        // callout, whose native long-press gesture otherwise fires pointercancel and kills the hold
+        // timer.
+        //
+        // THE NO-SHIFT RULE, which a folder tab is the classic place to break. The active tab gains
+        // a border on three sides and a fill; if the inactive ones did not already reserve that box,
+        // every label in the row would jump one pixel on every selection. So the border is in the
+        // BASE string, 1px on top/left/right, transparent at rest, and `border-b-0` in both states —
+        // the box is byte-identical and only the paint changes. `font-medium` is unconditional
+        // (Rule E): bolding the active label re-flows every tab to its right. Measured: a label's
+        // left edge, top edge and width are the same to three decimals in both states.
+        //
+        // Radius: the house 2px on the TOP corners only. A drawer tab does not round where it meets
+        // the drawer, and the bottom of this one is an open edge, not an edge at all.
+        //
+        // h-11 is a REAL 44px tap target, not a hit area faked over a smaller box. That is a thing a
+        // tab can do and a pill cannot without becoming a slab, and it is why this row needs none of
+        // STRIP_TAP_TARGET's machinery.
+        //
+        // The `after` strip is the cover: 1px tall, one pixel BELOW the tab, in the content surface,
+        // spanning the full border box so the side borders stop where the content begins. It is
+        // absolutely positioned, so it is outside layout and can never move anything; it is present
+        // in every state and merely transparent when inactive.
+        "relative flex h-11 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap rounded-t-md border border-b-0 border-transparent px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring after:absolute after:inset-x-0 after:-bottom-px after:h-px after:content-['']",
+        active
+          ? "border-rule bg-background text-foreground after:bg-background"
+          : "bg-muted/40 text-muted-foreground after:bg-transparent hover:bg-muted/60",
+        // The desktop-focus mark: the SAME folder outline, in the same --rule, but dashed. It used
+        // to be `border-primary/40`, which worked when the active state was a full primary fill and
+        // stopped working the moment the active state became a 1px --rule outline — measured in
+        // dark, primary/40 composites brighter than --rule, so the TUI-focused tab out-shouted the
+        // one that was actually open. Dashed says "this is where the desktop is looking" at exactly
+        // the weight of the thing it is a variant of, and it borrows the vocabulary the "+" button
+        // already uses: dashed is potential, solid is real. A border-STYLE change moves nothing.
+        ring && !active && "border-rule border-dashed",
+      )}
+    >
+      {status && (
+        <>
+          {/* A hollow resting dot is filled with the surface it sits ON, and the two states of this
+              tab are two different surfaces. */}
+          <StatusDot
+            status={TRIAGE_STATUS[status]}
+            surface={active ? "bg-background" : "bg-muted/40"}
+            className="size-2"
+          />
+          {/* The dot is colour-only; say it in words for screen readers. */}
+          <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>
+        </>
+      )}
+      {label}
+    </button>
   );
 }

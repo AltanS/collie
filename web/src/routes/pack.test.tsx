@@ -103,6 +103,19 @@ describe("formationLayout", () => {
 });
 
 describe("PackRoute", () => {
+  it("wears the ONE header shell — the same one every other route mounts", async () => {
+    // This page used to hand-roll its own <header> under a comment claiming "one header treatment
+    // app-wide", which it was not: no prerelease strip, and its own padding recipe, so it stood 20px
+    // short of every other route's header and dropped the "you are on a beta" line on the way in.
+    // It mounts AppHeader now. The strip is the proof it is the real shell (vitest's BUILD.version is
+    // "0.0.0-test", a prerelease), and the back button carries the row's 44px tap floor.
+    renderPack(loaded);
+    expect(await screen.findByText(/TEST/)).toBeInTheDocument();
+    expect(document.querySelectorAll("header")).toHaveLength(1);
+    const back = screen.getByRole("button", { name: "Back" });
+    expect(back.className).toContain("size-11");
+  });
+
   it("draws every member as a node, each announcing its name and its health", async () => {
     renderPack(loaded);
 

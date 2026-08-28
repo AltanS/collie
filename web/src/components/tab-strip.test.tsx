@@ -35,7 +35,10 @@ describe("TabStrip", () => {
     expect(renderedTabs).toEqual(["Second", "First"]);
   });
 
-  it("carries an accessible name, so the row of chips is not an unnamed run of buttons", () => {
+  // The row draws no name any more — a folder tab announces itself by its shape, which is why the
+  // operator asked for the word to go. The NAME is not the word: a run of buttons with no accessible
+  // name is what LabelledStrip existed to prevent, so it moved to an aria-label and must stay.
+  it("keeps its accessible name while drawing no visible label", () => {
     render(
       <TabStrip
         workspaceId="w1"
@@ -47,6 +50,54 @@ describe("TabStrip", () => {
       />,
     );
     expect(screen.getByRole("navigation", { name: "Tabs" })).toBeInTheDocument();
+    expect(screen.queryByText("Tabs")).toBeNull();
+  });
+
+  // THE fault a folder tab ships with. The active tab gains a border on three sides and a fill; if
+  // the inactive ones did not already reserve that box, every label to the right would jump on every
+  // selection. jsdom has no layout, so this pins the mechanism instead of the pixels: the border and
+  // padding classes are in the BASE string and therefore identical in both states, and only colour /
+  // background classes differ. The measured proof is in the browser — a label's left edge, top edge
+  // and width are the same to three decimals in both states at 390px.
+  it("reserves the active tab's box in every state, so no label moves on selection", () => {
+    const { rerender } = render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    const boxClasses = (el: Element) =>
+      el.className
+        .split(/\s+/)
+        .filter((c) => /^(h-|min-w-|px-|py-|p-|border($|-)|rounded)/.test(c))
+        .toSorted();
+
+    const inactive = boxClasses(screen.getByRole("button", { name: "2" }));
+    rerender(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected="w1:t2"
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    const active = screen.getByRole("button", { name: "2" });
+    expect(active).toHaveAttribute("aria-current", "true");
+    // Every box-affecting class is shared. The only difference is the border COLOUR — tailwind-merge
+    // resolves `border-transparent` against `border-rule`, so exactly one of the two is present in
+    // each state and the 1px border itself is in neither branch.
+    const colour = (c: string) => c === "border-transparent" || c === "border-rule";
+    expect(boxClasses(active).filter((c) => !colour(c))).toEqual(inactive.filter((c) => !colour(c)));
+    expect(inactive.filter(colour)).toEqual(["border-transparent"]);
+    expect(boxClasses(active).filter(colour)).toEqual(["border-rule"]);
+    // Rule E: state may not change font weight, or the whole row re-flows.
+    expect(active.className).toContain("font-medium");
   });
 
   it("shows All plus only this workspace's tabs, and reports selection", async () => {

@@ -27,6 +27,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { HostChip } from "@/components/host-chip";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
+import { CompactStripLabels } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { useHostHealth } from "@/components/pack-provider";
@@ -646,407 +647,419 @@ export function AgentChat({
   }
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden">
-      {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Collie mark is
-          identical on every screen (no hand-rolled bar to drift). The pane's own bits ride in via
-          slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as the right-cluster
-          lead, and the find bar as the full-row takeover while searching. */}
-      <AppHeader
-        bridge={bridge}
-        error={error}
-        stalled={stalled}
-        onHome={onBack}
-        override={
-          findOpen ? (
-            <FindBar
-              query={findQuery}
-              onQueryChange={setFindQuery}
-              count={matchCount}
-              current={currentMatch}
-              onPrev={() => gotoMatch(-1)}
-              onNext={() => gotoMatch(1)}
-              onClose={closeFind}
-            />
-          ) : undefined
-        }
-        // Right cluster, in reading order: Find, History, then the agent status pill. The pill is the
-        // rightmost item on every pane screen (it's the thing you glance at), so the buttons sit to
-        // its LEFT rather than trailing it. All ride in `rightLead` because AppHeader renders
-        // `rightLead` before `rightTrail` — the order here IS the on-screen order.
-        //
-        // Find lives HERE, not in the composer, because the find bar it opens takes over this very
-        // header row (see `override` above) — trigger and surface in the same place. It sat in the
-        // composer's old View row, which put the button at the bottom of the screen and its UI at the
-        // top. Offered only when there's buffered output to search; opening it freezes the tail.
-        //
-        // History opens the agent's own transcript, the only real conversation history a Claude pane
-        // has: its terminal runs on the alternate screen, so the mirror below can never show more
-        // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
-        // transcript can exist at all), so the button never leads to an empty screen.
-        //
-        // The status pill is dimmed while the connection isn't live, so a frozen "working"/"idle"
-        // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
-        rightLead={
-          agent ? (
-            <>
-              {display && (
-                <button
-                  type="button"
-                  onClick={openFind}
-                  aria-label={t("chat.find.aria")}
-                  className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-                >
-                  <Search className="size-4" />
-                </button>
-              )}
-              {historyAvailable && (
-                <button
-                  type="button"
-                  onClick={() => navigate(historyPath(paneId, scope))}
-                  aria-label={t("chat.history.aria")}
-                  className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-                >
-                  <ScrollText className="size-4" />
-                </button>
-              )}
-              {isShell ? (
-                <ShellBadge stale={connecting} />
-              ) : (
-                <StatusBadge status={agent.status} stale={connecting} />
-              )}
-            </>
-          ) : undefined
-        }
-      >
-        {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
-            name would just repeat the icon, so it's dropped), and the working directory on the
-            subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
-        {agent ? (
-          <button
-            type="button"
-            onClick={() => openSpace(agent.workspaceId)}
-            aria-label={t("chat.header.openOverviewAria", { workspace: agent.workspaceLabel })}
-            className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
-          >
-            {isShell ? (
-              <div className="flex size-6 shrink-0 items-center justify-center rounded-md border bg-muted">
-                <TerminalSquare className="size-3 text-muted-foreground" />
-              </div>
-            ) : (
-              // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
-              // pane's subject, not a second brand competing with Collie's for the header.
-              <AgentIcon agent={agent.agent} className="size-6" />
-            )}
-            <div className="min-w-0 flex-1">
-              {/* A user-set pane label leads when present (the identifier they chose), then Claude's
-                  own /rename session name, otherwise the default space › tab. The cwd subline keeps
-                  context either way. */}
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate font-semibold leading-tight">
-                  {agent.paneLabel ??
-                    agent.sessionName ??
-                    `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
-                </span>
-                {/* Where space is tight the breadcrumb truncates the NAME (it already does) — never
-                    the host, which is `shrink-0` and therefore the last thing to go. */}
-                <HostChip host={agent.host} />
-              </div>
-              <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
-                {shortCwd(agent.cwd)}
-              </div>
-            </div>
-          </button>
-        ) : (
-          <div className="min-w-0 flex-1">
-            <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
-          </div>
-        )}
-      </AppHeader>
-
-      {/* Content region below the header — the mirror inside is the scroller. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* Status line — a slim row pinned directly below the header (NOT the scrolling mirror), so a
-            "Sent" / "changed" notice reads at the top instead of floating over the terminal tail
-            (prompt/cursor + up-levelled prompt buttons) it used to cover. Renders nothing — no
-            reserved space — when idle; auto-dismisses. */}
-        <StatusArea className="mx-3 mt-1.5 shrink-0" />
-
-        {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
-        <ReadOnlyBanner device={device} className="mx-3 mt-1.5" />
-
-        {/* The pane's MACHINE is not answering the lead — the mirror below is last-good and the
-            composer is locked. Its tier-1 twin (the app-wide ConnectionBanner) lives up in
-            RootLayout; this one is scoped to the pane because the phone's link is fine. Renders
-            nothing on a solo install, or while the host is live. */}
-        <HostStaleBanner health={hostHealth} className="mx-3 mt-1.5" />
-
-        {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
-            pane, or create one with +. No "All" here (you're always in a specific tab). */}
-        {agent && (
-          <TabStrip
-            workspaceId={agent.workspaceId}
-            host={agent.host}
-            tabs={tabs}
-            agents={agents}
-            selected={agent.tabId}
-            onSelect={(id) => id && goToTab(id)}
-            onNewTab={newTab}
-            allowAll={false}
-            scope={scope}
-            readOnly={readOnly}
-            onRenamed={() => revalidator.revalidate()}
-            // Closing the tab this pane lives in kills the pane too — leave for Home the same way a
-            // pane-close does (onBack); closing any other tab just revalidates so it drops out.
-            onClosed={(tabId) => (agent?.tabId === tabId ? onBack() : revalidator.revalidate())}
-          />
-        )}
-
-        {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
-            tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
-        {agent && (
-          <PaneStrip
-            panes={[...agents, ...shellPanes]
-              .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-              .toSorted((a, b) => a.paneId.localeCompare(b.paneId))}
-            currentPaneId={paneId}
-            onSelect={switchTo}
-            scope={scope}
-            readOnly={readOnly}
-            onRenamed={() => revalidator.revalidate()}
-            // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
-            onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
-          />
-        )}
-
-        {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
-            (unless you're selecting text to copy, which the tap must not collapse). */}
-        {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
-            quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
-        {/* border-t border-rule like the strips above it: every band in this stack draws its own
-            TOP edge in the same token, so whichever one ends up last still has a boundary under it,
-            and all three read as one repeated division rather than a hierarchy. Without this the
-            pane row ran straight into terminal output — the chrome and the mirror read as one
-            surface. Drawing it here rather than as a border-b on PaneStrip covers the case where
-            that strip is absent (a tab holding a single pane), which is the common one. */}
-        {/* `role="presentation"` because that is what this element is: a layout wrapper with no
-            semantics of its own. Its click handler adds nothing a keyboard user needs — focusing the
-            composer is what a keyboard user already has (the textarea is the next tabbable thing),
-            and `focusFromMirror` deliberately declines a tap that landed on a control or a text
-            selection. It is a touch convenience layered over an already-reachable action. */}
-        <div
-          role="presentation"
-          className={cn("min-h-0 min-w-0 flex-1 border-t border-rule", mirrorFace.className)}
-          style={mirrorFace.style}
-          onClick={focusFromMirror}
-        >
-          <ChatMessageList
-            ref={listRef}
-            dep={display}
-            onAtBottomChange={setFollowing}
-            hasNew={hasNew}
-            className="px-2 py-3"
-          >
-            {display ? (
+    // The pane route draws its strips WITHOUT their names. The breadcrumb two rows up already says
+    // which space and tab you are in, so TABS and PANES restate it — and here, unlike anywhere else,
+    // two strips stack. Measured at 390x844: 231px of chrome above the mirror, 27% of the viewport,
+    // 126px of it these two rows. Unpainting both labels takes them to 47px each, the tap floor,
+    // and the chrome to 199px.
+    //
+    // It wraps the WHOLE route, not the two strips, on purpose: a strip added to this screen later
+    // cannot land outside it and end up 16px taller than its neighbours. That is the fault the old
+    // per-strip `hideLabel` prop could not prevent, which is why this is a context and not a prop.
+    <CompactStripLabels>
+      <div className="flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden">
+        {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Collie mark is
+            identical on every screen (no hand-rolled bar to drift). The pane's own bits ride in via
+            slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as the right-cluster
+            lead, and the find bar as the full-row takeover while searching. */}
+        <AppHeader
+          bridge={bridge}
+          error={error}
+          stalled={stalled}
+          onHome={onBack}
+          override={
+            findOpen ? (
+              <FindBar
+                query={findQuery}
+                onQueryChange={setFindQuery}
+                count={matchCount}
+                current={currentMatch}
+                onPrev={() => gotoMatch(-1)}
+                onNext={() => gotoMatch(1)}
+                onClose={closeFind}
+              />
+            ) : undefined
+          }
+          // Right cluster, in reading order: Find, History, then the agent status pill. The pill is the
+          // rightmost item on every pane screen (it's the thing you glance at), so the buttons sit to
+          // its LEFT rather than trailing it. All ride in `rightLead` because AppHeader renders
+          // `rightLead` before `rightTrail` — the order here IS the on-screen order.
+          //
+          // Find lives HERE, not in the composer, because the find bar it opens takes over this very
+          // header row (see `override` above) — trigger and surface in the same place. It sat in the
+          // composer's old View row, which put the button at the bottom of the screen and its UI at the
+          // top. Offered only when there's buffered output to search; opening it freezes the tail.
+          //
+          // History opens the agent's own transcript, the only real conversation history a Claude pane
+          // has: its terminal runs on the alternate screen, so the mirror below can never show more
+          // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
+          // transcript can exist at all), so the button never leads to an empty screen.
+          //
+          // The status pill is dimmed while the connection isn't live, so a frozen "working"/"idle"
+          // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
+          rightLead={
+            agent ? (
               <>
-                {/* Top-of-buffer affordance, reached by scrolling up. WHICH button appears is decided
-                    by what the pane can actually offer, because the two are never both possible:
-
-                      • an agent pane with a transcript → "Show entire history". Its terminal runs on
-                        the alternate screen, which keeps no scrollback ring, so the mirror can never
-                        show more than the viewport — the agent's own session log is the only history
-                        that exists (see bridge/transcript.ts).
-                      • a pane with real scrollback (a shell, on the primary screen) → "Load older",
-                        which grows the requested window.
-                      • neither → nothing.
-
-                    This used to be gated on `truncated`, which Herdr never sets true — so the button
-                    rendered on no pane at all. `readableLines` (scrollback depth + viewport) is the
-                    signal that actually works. */}
-                {historyAvailable ? (
+                {display && (
+                  <button
+                    type="button"
+                    onClick={openFind}
+                    aria-label={t("chat.find.aria")}
+                    className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                  >
+                    <Search className="size-4" />
+                  </button>
+                )}
+                {historyAvailable && (
                   <button
                     type="button"
                     onClick={() => navigate(historyPath(paneId, scope))}
-                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
+                    aria-label={t("chat.history.aria")}
+                    className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
                   >
-                    <ScrollText className="size-3.5" />
-                    {t("chat.scrollback.showHistory")}
+                    <ScrollText className="size-4" />
                   </button>
-                ) : moreScrollback ? (
-                  <button
-                    type="button"
-                    onClick={loadOlder}
-                    disabled={loadingOlder}
-                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
-                  >
-                    {loadingOlder ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <ArrowUpToLine className="size-3.5" />
-                    )}
-                    {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
-                  </button>
-                ) : null}
-                {/* EXPLAIN, don't hide (M10/06): on a multiplexer that keeps no agent session log,
-                    "Show entire history" is not merely unavailable — it can never appear, and a
-                    button that is simply absent reads as a bug. One muted line, in the ADAPTER's
-                    own words (it names the multiplexer; Collie is not at fault and does not say it
-                    is), at the exact place the missing button would have been.
-
-                    It renders under "Load older" rather than instead of it: screen scrollback and
-                    an agent's transcript are different capabilities, and a multiplexer can perfectly
-                    well have the first while lacking the second. Nothing renders on Herdr, which
-                    declares the capability — this whole branch is dead code there. */}
-                {!sessionLog.capable && sessionLog.note !== "" && (
-                  <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
-                    {sessionLog.note}
-                  </p>
                 )}
-                {/* The same rule one level down, per PANE rather than per multiplexer (#137): this
-                    agent CAN keep a session log, and this pane reported none. A muted line and not
-                    a control — there is nothing here to open, and a button that fetched nothing
-                    would be the worse answer. The remedy is the operator's own, on the machine the
-                    agent runs on, so the sentence names it and stops. */}
-                {noSessionReported && (
-                  <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
-                    {t("chat.scrollback.noSessionReported", { agent: agent?.agent ?? "" })}
-                  </p>
+                {isShell ? (
+                  <ShellBadge stale={connecting} />
+                ) : (
+                  <StatusBadge status={agent.status} stale={connecting} />
                 )}
-                <AnsiOutput
-                  text={display}
-                  wrap={prefs.wrap}
-                  fontSize={prefs.fontSize}
-                  query={findOpen ? findQuery : ""}
-                  currentMatch={findOpen ? currentMatch : -1}
-                  onMatchCount={findOpen ? handleMatchCount : undefined}
-                  agent={grammarsOn ? agent?.agent : undefined}
-                  onPromptAction={handlePromptAction}
-                  onWizardAction={handleWizardAction}
-                  onPreviewAction={handlePreviewAction}
-                  onMultiSelectAction={handleMultiSelectAction}
-                  onMenuAction={handleMenuAction}
-                  promptDisabled={readOnly || gone}
-                />
               </>
-            ) : (
-              <div className="py-16 text-center text-sm text-muted-foreground">
-                {t("chat.output.empty")}
-              </div>
-            )}
-          </ChatMessageList>
-        </div>
-
-        {/* Bottom region: the pane-switch handle + composer. The status line USED to float here as an
-            overlay just above the composer, but it covered the terminal tail (the prompt/cursor and
-            up-levelled prompt buttons) — it now lives as a slim row just below the header. */}
-        <div className="relative">
-
-          {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
-              panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
-              tap always works). Shown whenever a pane is open — even the last one, so it stays
-              closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
-              browser scroll. */}
-          {agents.length + shellPanes.length > 0 && (
+            ) : undefined
+          }
+        >
+          {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
+              name would just repeat the icon, so it's dropped), and the working directory on the
+              subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
+          {agent ? (
             <button
               type="button"
-              aria-label={t("chat.switcher.aria")}
-              {...swipe}
-              onClick={() => setDrawer("switcher")}
-              className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+              onClick={() => openSpace(agent.workspaceId)}
+              aria-label={t("chat.header.openOverviewAria", { workspace: agent.workspaceLabel })}
+              className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
             >
-              <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
-            </button>
-          )}
-
-          {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
-              would otherwise vanish with the stripped input box). Sits directly above the composer,
-              as it did in the TUI. Verbatim text — React text nodes, so no XSS surface.
-
-              STACKED, one row per line, each truncated — deliberately, over the two alternatives:
-              joining the rows with a separator would put ~150 chars on a strip that fits ~55 at this
-              size on a phone, truncating away exactly the fields (branch, permission mode) this
-              exists to surface; wrapping makes the strip's height depend on the pane width and turns
-              a column-aligned statusline into ragged prose. Stacking also preserves the shape the
-              user themselves configured in the TUI, so it reads as the same thing they know.
-              Height is bounded upstream (MAX_STATUS_LINES caps the run stripChrome will claim), so
-              there is no second cap here; the mirror is a flex child that shrinks, never pushed off. */}
-          {statusLines.length > 0 && (
-            <div
-              className={cn(
-                "border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
-                // The strip carries the agent's OWN terminal colour, so it renders in the mirror's
-                // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
-                // chosen against a near-black background and is illegible re-themed onto app chrome.
-                // It also makes the strip read as the bottom of the pane it was cut from, which is
-                // where the TUI drew it.
-                MIRROR_SPACE,
-                MIRROR_INVERT,
-                mirrorFace.className,
-              )}
-              style={mirrorFace.style}
-            >
-              {statusLines.map((row, i) => (
-                // Index key: these rows are a positional snapshot of the pane tail, re-derived on
-                // every poll — there is no identity to preserve across renders.
-                <div key={i} className="truncate">
-                  {row.segments.map((s, si) => (
-                    // Text nodes only — colour and weight come from the ANSI parse, never markup.
-                    // Same XSS boundary as the mirror.
-                    <span key={si} style={styleFor(s)}>
-                      {s.text}
-                    </span>
-                  ))}
+              {isShell ? (
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-md border bg-muted">
+                  <TerminalSquare className="size-3 text-muted-foreground" />
                 </div>
-              ))}
+              ) : (
+                // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
+                // pane's subject, not a second brand competing with Collie's for the header.
+                <AgentIcon agent={agent.agent} className="size-6" />
+              )}
+              <div className="min-w-0 flex-1">
+                {/* A user-set pane label leads when present (the identifier they chose), then Claude's
+                    own /rename session name, otherwise the default space › tab. The cwd subline keeps
+                    context either way. */}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate font-semibold leading-tight">
+                    {agent.paneLabel ??
+                      agent.sessionName ??
+                      `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
+                  </span>
+                  {/* Where space is tight the breadcrumb truncates the NAME (it already does) — never
+                      the host, which is `shrink-0` and therefore the last thing to go. */}
+                  <HostChip host={agent.host} />
+                </div>
+                <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
+                  {shortCwd(agent.cwd)}
+                </div>
+              </div>
+            </button>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
             </div>
           )}
+        </AppHeader>
 
-          <Composer
-            ref={composerRef}
-            paneId={paneId}
-            scope={scope}
-            agent={agent?.agent}
-            isShell={isShell}
-            gone={gone}
-            readOnly={readOnly}
-            // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the
-            // composer must not invite a reply it already knows the lead will refuse, and "which
-            // machine am I typing into" has to be answerable without tapping Send to find out.
-            hostBlock={hostBlock}
-            dialogPresent={dialogPresent}
-            text={text}
-            terminalDraft={terminalDraft}
-            rawTerminalDraft={rawTerminalDraft}
-            prefs={prefs}
-            setWrap={setWrap}
-            stepFontSize={stepFontSize}
-            setRawTerminal={setRawTerminal}
-            setTapToFocus={setTapToFocus}
-            onSent={onSent}
-          />
+        {/* Content region below the header — the mirror inside is the scroller. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* Status line — a slim row pinned directly below the header (NOT the scrolling mirror), so a
+              "Sent" / "changed" notice reads at the top instead of floating over the terminal tail
+              (prompt/cursor + up-levelled prompt buttons) it used to cover. Renders nothing — no
+              reserved space — when idle; auto-dismisses. */}
+          <StatusArea className="mx-3 mt-1.5 shrink-0" />
+
+          {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
+          <ReadOnlyBanner device={device} className="mx-3 mt-1.5" />
+
+          {/* The pane's MACHINE is not answering the lead — the mirror below is last-good and the
+              composer is locked. Its tier-1 twin (the app-wide ConnectionBanner) lives up in
+              RootLayout; this one is scoped to the pane because the phone's link is fine. Renders
+              nothing on a solo install, or while the host is live. */}
+          <HostStaleBanner health={hostHealth} className="mx-3 mt-1.5" />
+
+          {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
+              pane, or create one with +. No "All" here (you're always in a specific tab). */}
+          {agent && (
+            <TabStrip
+              workspaceId={agent.workspaceId}
+              host={agent.host}
+              tabs={tabs}
+              agents={agents}
+              selected={agent.tabId}
+              onSelect={(id) => id && goToTab(id)}
+              onNewTab={newTab}
+              allowAll={false}
+              scope={scope}
+              readOnly={readOnly}
+              onRenamed={() => revalidator.revalidate()}
+              // Closing the tab this pane lives in kills the pane too — leave for Home the same way a
+              // pane-close does (onBack); closing any other tab just revalidates so it drops out.
+              onClosed={(tabId) => (agent?.tabId === tabId ? onBack() : revalidator.revalidate())}
+            />
+          )}
+
+          {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
+              tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
+          {agent && (
+            <PaneStrip
+              panes={[...agents, ...shellPanes]
+                .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
+                .toSorted((a, b) => a.paneId.localeCompare(b.paneId))}
+              currentPaneId={paneId}
+              onSelect={switchTo}
+              scope={scope}
+              readOnly={readOnly}
+              onRenamed={() => revalidator.revalidate()}
+              // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
+              onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
+            />
+          )}
+
+          {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
+              (unless you're selecting text to copy, which the tap must not collapse). */}
+          {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
+              quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
+          {/* No border-t. This stack now draws each division ONCE, from ABOVE: the header, the tab
+              bar and (when present) the pane strip each close their own band with a border-b in
+              --rule. The tab bar has to own its baseline — it is a folder tab, and the active tab
+              covers that line for its own width so tab and content read as one piece; a second rule
+              drawn from below here is a pixel the tab cannot reach, and it shows through under the
+              open tab. Whichever band ends last still leaves a boundary above the mirror, down to the
+              header's own border-b when no strip renders. */}
+          {/* `role="presentation"` because that is what this element is: a layout wrapper with no
+              semantics of its own. Its click handler adds nothing a keyboard user needs — focusing the
+              composer is what a keyboard user already has (the textarea is the next tabbable thing),
+              and `focusFromMirror` deliberately declines a tap that landed on a control or a text
+              selection. It is a touch convenience layered over an already-reachable action. */}
+          <div
+            role="presentation"
+            className={cn("min-h-0 min-w-0 flex-1", mirrorFace.className)}
+            style={mirrorFace.style}
+            onClick={focusFromMirror}
+          >
+            <ChatMessageList
+              ref={listRef}
+              dep={display}
+              onAtBottomChange={setFollowing}
+              hasNew={hasNew}
+              className="px-2 py-3"
+            >
+              {display ? (
+                <>
+                  {/* Top-of-buffer affordance, reached by scrolling up. WHICH button appears is decided
+                      by what the pane can actually offer, because the two are never both possible:
+
+                        • an agent pane with a transcript → "Show entire history". Its terminal runs on
+                          the alternate screen, which keeps no scrollback ring, so the mirror can never
+                          show more than the viewport — the agent's own session log is the only history
+                          that exists (see bridge/transcript.ts).
+                        • a pane with real scrollback (a shell, on the primary screen) → "Load older",
+                          which grows the requested window.
+                        • neither → nothing.
+
+                      This used to be gated on `truncated`, which Herdr never sets true — so the button
+                      rendered on no pane at all. `readableLines` (scrollback depth + viewport) is the
+                      signal that actually works. */}
+                  {historyAvailable ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(historyPath(paneId, scope))}
+                      className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
+                    >
+                      <ScrollText className="size-3.5" />
+                      {t("chat.scrollback.showHistory")}
+                    </button>
+                  ) : moreScrollback ? (
+                    <button
+                      type="button"
+                      onClick={loadOlder}
+                      disabled={loadingOlder}
+                      className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
+                    >
+                      {loadingOlder ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <ArrowUpToLine className="size-3.5" />
+                      )}
+                      {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
+                    </button>
+                  ) : null}
+                  {/* EXPLAIN, don't hide (M10/06): on a multiplexer that keeps no agent session log,
+                      "Show entire history" is not merely unavailable — it can never appear, and a
+                      button that is simply absent reads as a bug. One muted line, in the ADAPTER's
+                      own words (it names the multiplexer; Collie is not at fault and does not say it
+                      is), at the exact place the missing button would have been.
+
+                      It renders under "Load older" rather than instead of it: screen scrollback and
+                      an agent's transcript are different capabilities, and a multiplexer can perfectly
+                      well have the first while lacking the second. Nothing renders on Herdr, which
+                      declares the capability — this whole branch is dead code there. */}
+                  {!sessionLog.capable && sessionLog.note !== "" && (
+                    <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
+                      {sessionLog.note}
+                    </p>
+                  )}
+                  {/* The same rule one level down, per PANE rather than per multiplexer (#137): this
+                      agent CAN keep a session log, and this pane reported none. A muted line and not
+                      a control — there is nothing here to open, and a button that fetched nothing
+                      would be the worse answer. The remedy is the operator's own, on the machine the
+                      agent runs on, so the sentence names it and stops. */}
+                  {noSessionReported && (
+                    <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
+                      {t("chat.scrollback.noSessionReported", { agent: agent?.agent ?? "" })}
+                    </p>
+                  )}
+                  <AnsiOutput
+                    text={display}
+                    wrap={prefs.wrap}
+                    fontSize={prefs.fontSize}
+                    query={findOpen ? findQuery : ""}
+                    currentMatch={findOpen ? currentMatch : -1}
+                    onMatchCount={findOpen ? handleMatchCount : undefined}
+                    agent={grammarsOn ? agent?.agent : undefined}
+                    onPromptAction={handlePromptAction}
+                    onWizardAction={handleWizardAction}
+                    onPreviewAction={handlePreviewAction}
+                    onMultiSelectAction={handleMultiSelectAction}
+                    onMenuAction={handleMenuAction}
+                    promptDisabled={readOnly || gone}
+                  />
+                </>
+              ) : (
+                <div className="py-16 text-center text-sm text-muted-foreground">
+                  {t("chat.output.empty")}
+                </div>
+              )}
+            </ChatMessageList>
+          </div>
+
+          {/* Bottom region: the pane-switch handle + composer. The status line USED to float here as an
+              overlay just above the composer, but it covered the terminal tail (the prompt/cursor and
+              up-levelled prompt buttons) — it now lives as a slim row just below the header. */}
+          <div className="relative">
+
+            {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
+                panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
+                tap always works). Shown whenever a pane is open — even the last one, so it stays
+                closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
+                browser scroll. */}
+            {agents.length + shellPanes.length > 0 && (
+              <button
+                type="button"
+                aria-label={t("chat.switcher.aria")}
+                {...swipe}
+                onClick={() => setDrawer("switcher")}
+                className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+              >
+                <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
+              </button>
+            )}
+
+            {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
+                would otherwise vanish with the stripped input box). Sits directly above the composer,
+                as it did in the TUI. Verbatim text — React text nodes, so no XSS surface.
+
+                STACKED, one row per line, each truncated — deliberately, over the two alternatives:
+                joining the rows with a separator would put ~150 chars on a strip that fits ~55 at this
+                size on a phone, truncating away exactly the fields (branch, permission mode) this
+                exists to surface; wrapping makes the strip's height depend on the pane width and turns
+                a column-aligned statusline into ragged prose. Stacking also preserves the shape the
+                user themselves configured in the TUI, so it reads as the same thing they know.
+                Height is bounded upstream (MAX_STATUS_LINES caps the run stripChrome will claim), so
+                there is no second cap here; the mirror is a flex child that shrinks, never pushed off. */}
+            {statusLines.length > 0 && (
+              <div
+                className={cn(
+                  "border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
+                  // The strip carries the agent's OWN terminal colour, so it renders in the mirror's
+                  // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
+                  // chosen against a near-black background and is illegible re-themed onto app chrome.
+                  // It also makes the strip read as the bottom of the pane it was cut from, which is
+                  // where the TUI drew it.
+                  MIRROR_SPACE,
+                  MIRROR_INVERT,
+                  mirrorFace.className,
+                )}
+                style={mirrorFace.style}
+              >
+                {statusLines.map((row, i) => (
+                  // Index key: these rows are a positional snapshot of the pane tail, re-derived on
+                  // every poll — there is no identity to preserve across renders.
+                  <div key={i} className="truncate">
+                    {row.segments.map((s, si) => (
+                      // Text nodes only — colour and weight come from the ANSI parse, never markup.
+                      // Same XSS boundary as the mirror.
+                      <span key={si} style={styleFor(s)}>
+                        {s.text}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Composer
+              ref={composerRef}
+              paneId={paneId}
+              scope={scope}
+              agent={agent?.agent}
+              isShell={isShell}
+              gone={gone}
+              readOnly={readOnly}
+              // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the
+              // composer must not invite a reply it already knows the lead will refuse, and "which
+              // machine am I typing into" has to be answerable without tapping Send to find out.
+              hostBlock={hostBlock}
+              dialogPresent={dialogPresent}
+              text={text}
+              terminalDraft={terminalDraft}
+              rawTerminalDraft={rawTerminalDraft}
+              prefs={prefs}
+              setWrap={setWrap}
+              stepFontSize={stepFontSize}
+              setRawTerminal={setRawTerminal}
+              setTapToFocus={setTapToFocus}
+              onSent={onSent}
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
-          Switch-only: pane closing lives in the pane pill's long-press sheet, not here. */}
-      <BottomSheet
-        open={drawer === "switcher"}
-        onClose={closeDrawer}
-        title={t("chat.switcher.title")}
-      >
-        <ThreadSidebar
-          agents={agents}
-          shellPanes={shellPanes}
-          currentPaneId={paneId}
-          onSelect={switchTo}
-          recentOpen={dash.prefs.recentOpen}
-          onRecentOpenChange={dash.setRecentOpen}
-          // Shells fold on the same count rule Spaces uses: on a herd with dozens of bare shells
-          // they'd otherwise bury the agents you opened this sheet to reach.
-          shellsOpen={openForCount(dash.prefs.shellsOpen, shellPanes.length)}
-          onShellsOpenChange={dash.setShellsOpen}
-          className="px-0 py-1"
-        />
-      </BottomSheet>
-    </div>
+        {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
+            Switch-only: pane closing lives in the pane pill's long-press sheet, not here. */}
+        <BottomSheet
+          open={drawer === "switcher"}
+          onClose={closeDrawer}
+          title={t("chat.switcher.title")}
+        >
+          <ThreadSidebar
+            agents={agents}
+            shellPanes={shellPanes}
+            currentPaneId={paneId}
+            onSelect={switchTo}
+            recentOpen={dash.prefs.recentOpen}
+            onRecentOpenChange={dash.setRecentOpen}
+            // Shells fold on the same count rule Spaces uses: on a herd with dozens of bare shells
+            // they'd otherwise bury the agents you opened this sheet to reach.
+            shellsOpen={openForCount(dash.prefs.shellsOpen, shellPanes.length)}
+            onShellsOpenChange={dash.setShellsOpen}
+            className="px-0 py-1"
+          />
+        </BottomSheet>
+      </div>
+    </CompactStripLabels>
   );
 }
