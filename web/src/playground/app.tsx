@@ -13,6 +13,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { AgentList } from "@/components/agent-list";
+import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeader, SettingsGear } from "@/components/app-header";
 import { BuildStamp } from "@/components/build-stamp";
 import { CollieHome } from "@/components/collie-home";
@@ -20,6 +21,7 @@ import { CollieMark } from "@/components/collie-mark";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { IdleLock } from "@/components/idle-lock";
+import { NoEchoNotice } from "@/components/no-echo-notice";
 import { PackFooterLink } from "@/components/pack-footer-link";
 import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -36,6 +38,7 @@ import { clearNotPaired, markNotPaired } from "@/lib/pairing";
 import { holdReload, releaseReload, __resetReloadGuard } from "@/lib/reload-guard";
 import { __resetSelfUpdate, __setReloadImpl } from "@/lib/self-update";
 import { observeServerBuild, __resetServerBuild } from "@/lib/server-build";
+import { clearStatus, setStatus } from "@/lib/status";
 import { BootSplash } from "@/routes/root";
 import {
   allPanes,
@@ -44,6 +47,7 @@ import {
   censusNine,
   censusTrio,
   deviceRefused,
+  deviceStack,
   devicesPaired,
   devicesUnpaired,
   herd,
@@ -54,8 +58,13 @@ import {
   hostIncompatible,
   hostNeverSeen,
   hostUnreachable,
+  noEchoPrompt,
   paneBlocked,
+  paneHostIncompatible,
+  paneHostNeverSeen,
+  paneHostUnreachable,
   paneShell,
+  paneStack,
   paneWorking,
   rosterFive,
   spaces,
@@ -71,6 +80,7 @@ import {
   PackedRootRouter,
   PackRouter,
   PaneRouter,
+  PaneStackRouter,
   PhoneFrame,
   RootRouter,
   Section,
@@ -250,6 +260,26 @@ function BrandSection() {
           <RootRouter data={homeSolo}>
             <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />
           </RootRouter>
+        </Stage>
+      </Card>
+
+      <Card
+        label="the prerelease strip — AlphaBar"
+        reach="run a v1 alpha build beside the stable install. It never appears at all on a stable
+          build — `prereleaseLabel` reads THIS bundle's own baked-in version (lib/build.ts, a vite
+          `define`) and returns nothing unless that version carries a SemVer prerelease tag."
+        note="`version` is AlphaBar's own injectable prop (its test seam, alpha-bar.test.tsx uses the
+          same one) — the honest way to stand in for the vite define without editing the component or
+          faking the build. In the real app it is mounted with no override, inside <AppHeader/>, above
+          the wordmark row; app-header.tsx is outside this pass's file allowlist, so it is shown here
+          on its own rather than forked into a second AppHeader mount."
+        span={2}
+      >
+        <Stage>
+          <div className="flex flex-col">
+            <AlphaBar version="1.0.0-alpha.3" />
+            <AlphaBar version="2.0.0-rc.1" />
+          </div>
         </Stage>
       </Card>
 
@@ -552,6 +582,45 @@ function PaneSection() {
           <PaneRouter home={homeSolo} fixture={paneShell} readOnly />
         </PhoneFrameCard>
       </Card>
+
+      <Card
+        label="no-echo notice — the composer refused a password prompt"
+        reach="tap Send at a pane sitting on `sudo`/`ssh`/`gpg`'s password prompt. Echo is off, so the
+          reply guard's usual evidence can never arrive, and Send is refused every time — this notice
+          is the one sentence that says why and points at the control that works (composer.tsx:1109)."
+        note="Real <NoEchoNotice/>, state-driven rather than reached through a live send (playground
+          writes go nowhere, and this path needs a real `res.noEcho`). `typed` picks which of the four
+          sentences shows; the ✕ is wired to real state — this is the only notice in the app with a
+          real dismiss, and tapping it here removes the card's content, not just a class."
+      >
+        <NoEchoNoticeHarness />
+      </Card>
+
+      <Card
+        label="the worst case — every notice live at once"
+        reach="never all six at once by accident, but never impossible either: a stale proxy session
+          (401), a confirmed-but-held update, a status toast, a device this proxy doesn't allowlist,
+          and a peer that has gone quiet — all independent facts that can coincide on one pane."
+        note="GENUINE together: UpdateAvailableBanner + ConnectionBanner (RootLayout's own two in-flow
+          rows) wrapping the real StatusArea/ReadOnlyBanner/HostStaleBanner/mirror inside the real
+          AgentChat — the exact nesting routes/root.tsx uses. STAGED: the five causes are independently
+          driven rather than provoked by one real outage, so they can be shown together on demand; nothing
+          here is a state the app cannot produce, only a coincidence forced for review. The red
+          ConnectionBanner is the auth-error branch (see PaneStackRouter's doc comment in harness.tsx)
+          rather than the trouble→lost escalation, which this page cannot repaint on command — the
+          clock's own `__resetConnectionHealth` never calls its store's `emit()`, so a control flip only
+          takes effect once each consumer's own mount timer next fires. That gap sits in lib/, outside
+          this pass's file allowlist — recommend fixing it there, not worked around by editing the
+          store from here. StatusArea is behind its own toggle below rather than always on: `lib/
+          status.ts` is ALSO a page-wide singleton, and every OTHER pane card on this page mounts a
+          real AgentChat too — an always-on toast here would silently print on every one of them.
+          Toggle it on only while measuring this card, then off again."
+        span={2}
+      >
+        <PhoneFrameCard height={800}>
+          <StackHarness />
+        </PhoneFrameCard>
+      </Card>
     </Section>
   );
 }
@@ -660,6 +729,40 @@ function PackSection() {
         <Stage>
           <HostStaleBanner health={hostIncompatible} />
         </Stage>
+      </Card>
+
+      <Card
+        label="host-stale banner — inside a real pane (unreachable)"
+        reach="open a pane on a peer that has gone quiet. It sits above the tab strip and the mirror, inside the pane frame — never the standalone box the three cards above show it in."
+        note="Real <PaneRouter/> on homePack (rosterFive), the pane re-hosted onto `attic` — the SAME
+          real AgentChat mount the Pane section uses, run through the real hostHealth() derivation
+          instead of a hand-built HostHealth. Every homeSolo pane fixture in the Pane section above
+          uses rosterSolo (empty), which is why this banner could never appear there."
+        span={2}
+      >
+        <PhoneFrameCard height={760}>
+          <PaneRouter home={homePack} fixture={paneHostUnreachable} />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
+        label="host-stale banner — inside a real pane (never seen)"
+        reach="`collie pack add` a machine, open a pane tagged to it before it has ever come up."
+        span={2}
+      >
+        <PhoneFrameCard height={760}>
+          <PaneRouter home={homePack} fixture={paneHostNeverSeen} />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
+        label="host-stale banner — inside a real pane (incompatible)"
+        reach="open a pane on a peer running a pack protocol this lead cannot speak."
+        span={2}
+      >
+        <PhoneFrameCard height={760}>
+          <PaneRouter home={homePack} fixture={paneHostIncompatible} />
+        </PhoneFrameCard>
       </Card>
     </Section>
   );
@@ -971,4 +1074,103 @@ function StaleBuildHarness() {
     };
   }, []);
   return <UpdateAvailableBanner />;
+}
+
+// ── Gap 2: NoEchoNotice ───────────────────────────────────────────────────────
+
+type NoEchoTyped = "untyped" | "typed";
+const NO_ECHO_OPTIONS = [
+  { value: "untyped", label: "Not typed yet" },
+  { value: "typed", label: "Already typed" },
+] as const satisfies readonly { value: NoEchoTyped; label: string }[];
+
+/**
+ * `NoEchoNotice`, state-driven since a real refusal needs a live send this page cannot produce
+ * (`res.noEcho`). `typed` picks which of the four sentences shows; the ✕ is wired to REAL local state
+ * — this is the only notice in the app with a real dismiss, so tapping it here has to remove the
+ * notice, not just prove a class toggled.
+ */
+function NoEchoNoticeHarness() {
+  const [typed, setTyped] = useState<NoEchoTyped>("untyped");
+  const [dismissed, setDismissed] = useState(false);
+  return (
+    <>
+      <div className="mb-2">
+        <Segmented value={typed} options={NO_ECHO_OPTIONS} onChange={setTyped} />
+      </div>
+      <Stage>
+        <div className="p-3">
+          {dismissed ? (
+            <button
+              type="button"
+              className="text-[11px] text-muted-foreground underline underline-offset-4"
+              onClick={() => setDismissed(false)}
+            >
+              dismissed — tap to show it again
+            </button>
+          ) : (
+            <NoEchoNotice
+              prompt={noEchoPrompt}
+              typed={typed === "typed"}
+              onUseType={() => {}}
+              onDismiss={() => setDismissed(true)}
+            />
+          )}
+        </div>
+      </Stage>
+    </>
+  );
+}
+
+// ── Gap 4: the stack ─────────────────────────────────────────────────────────
+
+/**
+ * Drives the self-updater's "confirmed stale but held" state (same recipe as
+ * {@link StaleBuildHarness}, its own hold key so the two cards don't fight over one). `ConnectionBanner`'s
+ * red and `ReadOnlyBanner`/`HostStaleBanner`'s locks are plain props on {@link PaneStackRouter} — see
+ * its own doc comment in harness.tsx for why the red state is the auth-error branch, not the
+ * escalation clock. `StatusArea` is NOT driven here — see {@link StackHarness}'s own toggle, and why.
+ *
+ * Cleanup releases only THIS component's own hold — never the shared
+ * `__resetSelfUpdate()`/`__resetServerBuild()`/`__resetReloadGuard()` reset {@link StaleBuildHarness}
+ * uses, because that reset is GLOBAL and this card and that one are both mounted on the page at once:
+ * either one remounting (a Vite HMR update to just this file, say) must not blank the other's banner.
+ */
+function StackHarness() {
+  const [showStatus, setShowStatus] = useState(false);
+
+  useEffect(() => {
+    __setReloadImpl(() => {});
+    holdReload("collie-playground-stack");
+    observeServerBuild("collie-playground-newer-build");
+    observeServerBuild("collie-playground-newer-build");
+    return () => releaseReload("collie-playground-stack");
+  }, []);
+
+  // `lib/status.ts` is a page-wide singleton, same shape as `lib/connection-health.ts` — and unlike
+  // the real app, this ONE page mounts several real `AgentChat`s (and therefore several real
+  // `StatusArea`s) at once. Firing it unconditionally on mount would print this card's toast on
+  // every other pane card too. So it is opt-in, and this card is the only reader that clears it again.
+  useEffect(() => {
+    if (!showStatus) return;
+    setStatus("Reply sent · 3 lines", "success", null);
+    return () => clearStatus();
+  }, [showStatus]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <button
+        type="button"
+        onClick={() => setShowStatus((v) => !v)}
+        className="shrink-0 border-b border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
+      >
+        {showStatus
+          ? "StatusArea toast: ON — tap to clear (and stop it leaking into every other pane card)"
+          : "StatusArea toast: off — tap to fire one (leaks into every other pane card while on)"}
+      </button>
+      <div className="min-h-0 flex-1">
+        <PaneStackRouter home={homePack} fixture={paneStack} device={deviceStack} />
+      </div>
+    </div>
+  );
 }

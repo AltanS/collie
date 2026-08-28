@@ -10,10 +10,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
+import { ConnectionBanner } from "@/components/connection-banner";
 import { PackProvider } from "@/components/pack-provider";
+import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
 import { ROOT_ROUTE_ID, type DevicesData, type HomeData, type PackData } from "@/lib/loaders";
+import type { DeviceAuth } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { PackRoute } from "@/routes/pack";
 import { SettingsRoute } from "@/routes/settings";
@@ -223,6 +226,73 @@ export function PaneRouter({
                 onBack={() => {}}
                 onSelect={() => {}}
               />
+            </PackProvider>
+          ),
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+  });
+  return <RouterProvider router={router} />;
+}
+
+/**
+ * {@link PaneRouter}'s pane, PLUS the two tier-1 banners RootLayout mounts as its in-flow siblings —
+ * `<UpdateAvailableBanner/>` and `<ConnectionBanner/>` — so the worst-case stack (gap 4) can be judged
+ * as one screen instead of summed from cards measured apart. Same real components, same nesting order
+ * as `routes/root.tsx`: banners first, pane second.
+ *
+ * The red `ConnectionBanner` here is deliberately the AUTH-ERROR branch (`bridge=undefined,
+ * authError`), not the trouble→lost escalation — that branch paints red off its props alone, with no
+ * dependency on the shared connection-health clock. The escalation branch cannot be driven reliably
+ * from a control on this page: `useConnectionClock`'s ticker mutates the shared store every second but
+ * never calls the store's own `emit()` (a real gap in `lib/connection-health.ts` — see this file's
+ * module comment above and the playground task notes), so a mounted card only repaints when a
+ * consumer's OWN once-per-mount timer fires, ~4s/~15s after THAT card mounted, not after a control
+ * flip. The auth-error branch sidesteps the bug entirely and is a genuine red `ConnectionBanner`
+ * state in its own right (see the "refused (401/403)" card in Boot & connection).
+ */
+export function PaneStackRouter({
+  home,
+  fixture,
+  device,
+}: {
+  home: HomeData;
+  fixture: PaneFixture;
+  /** The OTHER composer lock — the device gate, independent of the pack host gate the pane derives
+   *  from `home.servers`. Both are driven at once so the stack shows every lock at the same time. */
+  device: DeviceAuth;
+}) {
+  const [router] = useState(() => {
+    const data: HomeData = { ...home, device };
+    return createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => data,
+          element: (
+            <PackProvider servers={data.servers} ts={data.ts} pollMs={3_000}>
+              <div className="flex h-full flex-col">
+                <UpdateAvailableBanner />
+                <ConnectionBanner bridge={undefined} error authError />
+                <AgentChat
+                  paneId={fixture.pane.paneId}
+                  agent={fixture.pane}
+                  agents={data.agents}
+                  shellPanes={data.shellPanes}
+                  tabs={data.tabs}
+                  tabLabel={fixture.pane.tabLabel}
+                  text={fixture.text}
+                  requestedLines={400}
+                  revision={fixture.revision}
+                  device={data.device}
+                  bridge={data.bridge}
+                  error={false}
+                  onBack={() => {}}
+                  onSelect={() => {}}
+                />
+              </div>
             </PackProvider>
           ),
         },

@@ -624,7 +624,7 @@ export const homeSolo: HomeData = {
  * for `fixturePackShellPanes`, and for its reason: one clone per row instead of an object literal
  * plus a spread, and it says plainly that `host` is the ONLY difference from the solo pane.
  */
-function onHost(pane: AgentView, host: string): AgentView {
+export function onHost(pane: AgentView, host: string): AgentView {
   // SAFETY: `structuredClone` of an `AgentView` — a plain data record of strings, numbers and
   // booleans — is an `AgentView`. There is no function, class instance or cycle in the shape.
   const packed: AgentView = structuredClone(pane);
@@ -825,3 +825,49 @@ export const paneShell: PaneFixture = {
   text: shellPaneText,
   revision: 96,
 };
+
+// ── Host-tagged panes (HostStaleBanner inside a real pane) ─────────────────────────────────────────
+//
+// `HostStaleBanner` renders inside `AgentChat` off `useHostHealth(agent.host)`, which is derived from
+// `PackProvider`'s roster — so a pane can only show it mounted on a NON-empty roster, with `host` set
+// to one of that roster's own unhappy members. `rosterFive` (via {@link homePack}) already carries
+// three: `attic` unreachable, `cellar` never seen, `garage` incompatible — see the roster's own
+// comments. Re-hosting the SAME real `AgentChat` mount is more honest than hand-building a fourth
+// `HostHealth` value, because it runs the pane through `hostHealth()` itself rather than assuming it.
+
+/** Mid-tool-run, on `attic` — stale/unreachable: answered once, hasn't since. */
+export const paneHostUnreachable: PaneFixture = {
+  pane: onHost(working[0]!, "attic"),
+  text: claudeWorking,
+  revision: 4_517,
+};
+
+/** Mid-tool-run, on `cellar` — enrolled, never once reached: no last-good screen to show. */
+export const paneHostNeverSeen: PaneFixture = {
+  pane: onHost(working[0]!, "cellar"),
+  text: claudeWorking,
+  revision: 4_517,
+};
+
+/** Mid-tool-run, on `garage` — speaking a pack protocol this lead cannot. */
+export const paneHostIncompatible: PaneFixture = {
+  pane: onHost(working[0]!, "garage"),
+  text: claudeWorking,
+  revision: 4_517,
+};
+
+// ── The stack (gap 4) ────────────────────────────────────────────────────────────────────────────
+
+/** Same pane, same unreachable host, reused by the worst-case stack card in app.tsx. */
+export const paneStack: PaneFixture = paneHostUnreachable;
+
+/** A device the fronting proxy names and the bridge does not allowlist — the OTHER composer lock,
+ *  independent of the pack host gate above, both driven at once for the stack card. */
+export const deviceStack: DeviceAuth = deviceRefused;
+
+// ── NoEchoNotice (gap 2) ─────────────────────────────────────────────────────────────────────────
+
+/** A realistic refusal prompt, long enough that the mono, single-line, truncated row actually clips —
+ *  the render it exists to be checked against. Verbatim off the mirror, the way the real notice quotes it. */
+export const noEchoPrompt =
+  "Password for deploy@prod-db-03.internal.corp (sudo -u postgres psql -h 10.20.30.41 -p 5432 -d production_replica):";
