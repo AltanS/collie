@@ -48,6 +48,13 @@ import {
   type MuxTab,
   type MuxTabRequest,
   type MuxWatchOptions,
+  type MuxWorktree,
+  type MuxWorktreeCreateRequest,
+  type MuxWorktreeOpenRequest,
+  type MuxWorktreeOpened,
+  type MuxWorktreeRemoveRequest,
+  type MuxWorktreeRemoved,
+  type MuxWorktreeScope,
 } from "../types.ts";
 import {
   DEFAULT_TIMEOUT_MS,
@@ -58,6 +65,7 @@ import {
   type WirePane,
   type WireTab,
   type WireWorkspace,
+  type WireWorktree,
 } from "./client.ts";
 import { buildSubscriptions, changedPaneId } from "./events.ts";
 import { HERDR_UNSENDABLE_KEYS, toHerdrKey } from "./keys.ts";
@@ -89,6 +97,10 @@ const HERDR_CAPABILITIES = declareCapabilities({
     "renameTab",
     "closeTab",
     "createSpace",
+    "listWorktrees",
+    "createWorktree",
+    "openWorktree",
+    "removeWorktree",
     "pushTopologyEvents",
     "pushPaneEvents",
   ],
@@ -137,6 +149,57 @@ const GONE_CODES: readonly string[] = ["pane_not_found", "tab_not_found", "works
 function transportRefusal<T>(err: T): MuxRefusalOutcome {
   const detail = reason(err);
   return GONE_CODES.some((code) => detail.includes(code)) ? muxGone(detail) : muxUnreachable(detail);
+}
+
+/**
+ * The Herdr worktree codes that are the OPERATOR'S problem, not the transport's.
+ *
+ * Matched on the message for the same reason {@link GONE_CODES} is: `client.ts` folds Herdr's
+ * `{code, message}` into one Error whose text opens with the code. Every code below was seen
+ * first-hand on herdr 0.8.2 (2026-08-28) except the three marked, which come from herdr's own
+ * source (`src/app/api/worktrees.rs`) — they are classified, never declared, so an unprobed one
+ * still lands as a refusal the operator can read rather than a retry that cannot help.
+ */
+const WORKTREE_REFUSAL_CODES: readonly string[] = [
+  "dirty_worktree_requires_force",
+  "not_git_worktree",
+  "worktree_create_failed",
+  "worktree_open_failed",
+  "worktree_list_failed",
+  "worktree_remove_failed",
+  "ambiguous_worktree_branch", // source-only
+  "not_linked_worktree", // source-only
+  "worktree_operation_in_progress", // source-only
+  "stale_worktree_operation", // source-only
+];
+
+/** A checkout that is not there any more is `gone`, exactly like a pane that is not. */
+const WORKTREE_GONE_CODES: readonly string[] = ["worktree_not_found"];
+
+/**
+ * Which refusal a worktree exception is.
+ *
+ * Three buckets, and the split matters: `gone` says re-read, `refused` says read the sentence,
+ * `unreachable` says try again. Folding the middle one into `unreachable` would invite a retry of
+ * something a retry cannot fix — a dirty checkout stays dirty.
+ */
+function worktreeRefusal<T>(err: T): MuxRefusalOutcome {
+  const detail = reason(err);
+  if (WORKTREE_GONE_CODES.some((code) => detail.includes(code))) return muxGone(detail);
+  if (GONE_CODES.some((code) => detail.includes(code))) return muxGone(detail);
+  if (WORKTREE_REFUSAL_CODES.some((code) => detail.includes(code))) return muxRefused(detail);
+  return muxUnreachable(detail);
+}
+
+/** One Herdr worktree record in the port's words. */
+function toMuxWorktree(raw: WireWorktree): MuxWorktree {
+  return {
+    path: raw.path,
+    branch: raw.branch ?? null,
+    openSpaceId: raw.open_workspace_id ?? null,
+    linked: raw.is_linked_worktree,
+    prunable: raw.is_prunable,
+  };
 }
 
 export class HerdrMux implements MuxAdapter {
@@ -316,6 +379,53 @@ export class HerdrMux implements MuxAdapter {
       return muxOk(toCreatedPane(created));
     } catch (err) {
       return transportRefusal(err);
+    }
+  }
+
+  async listWorktrees(scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
+    try {
+      const raw = await this.client.listWorktrees(scope.repoRoot);
+      return muxOk(raw.map(toMuxWorktree));
+    } catch (err) {
+      return worktreeRefusal(err);
+    }
+  }
+
+  async createWorktree(request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    try {
+      const created = await this.client.createWorktree({
+        cwd: request.repoRoot,
+        branch: request.branch,
+      });
+      return muxOk(toCreatedPane(created));
+    } catch (err) {
+      return worktreeRefusal(err);
+    }
+  }
+
+  async openWorktree(request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
+    try {
+      const opened = await this.client.openWorktree({
+        cwd: request.repoRoot,
+        path: request.path,
+      });
+      return muxOk({ pane: toCreatedPane(opened.shell), alreadyOpen: opened.alreadyOpen });
+    } catch (err) {
+      return worktreeRefusal(err);
+    }
+  }
+
+  async removeWorktree(
+    request: MuxWorktreeRemoveRequest,
+  ): Promise<MuxOutcome<MuxWorktreeRemoved>> {
+    try {
+      const removed = await this.client.removeWorktree({
+        workspaceId: request.spaceId,
+        force: request.force,
+      });
+      return muxOk({ path: removed.path, forced: removed.forced });
+    } catch (err) {
+      return worktreeRefusal(err);
     }
   }
 

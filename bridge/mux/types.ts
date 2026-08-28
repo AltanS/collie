@@ -323,6 +323,72 @@ export interface MuxSpaceRequest {
   readonly label?: string;
 }
 
+// ── Worktrees ─────────────────────────────────────────────────────────────────
+//
+// A worktree is Git's, not the multiplexer's — so why is it here? Because the ACT is the
+// multiplexer's: every verb below ends in a space appearing, moving or going away, which is the one
+// thing a mux adapter owns. What a multiplexer may not have is the BOOKKEEPING that ties a checkout
+// to the space showing it; that is what these capabilities declare. See ADR 0032.
+
+/** A Git worktree of the repo a space sits in. */
+export interface MuxWorktree {
+  /** Absolute checkout path. The identity: a branch may be absent, and labels repeat. */
+  readonly path: string;
+  /** The branch checked out there, or `null` for a detached head. */
+  readonly branch: string | null;
+  /** The space showing it, or `null` when it exists on disk and nothing shows it. */
+  readonly openSpaceId: string | null;
+  /** `false` for the repo's own checkout — listed for context, never removable. */
+  readonly linked: boolean;
+  /** The checkout is gone and the administrative files could be pruned. */
+  readonly prunable: boolean;
+}
+
+/** Where a worktree question is asked from — the repo the asking space sits in. */
+export interface MuxWorktreeScope {
+  readonly repoRoot: string;
+}
+
+/** What a new worktree asks for. */
+export interface MuxWorktreeCreateRequest extends MuxWorktreeScope {
+  readonly branch: string;
+}
+
+/** Which existing worktree to show. */
+export interface MuxWorktreeOpenRequest extends MuxWorktreeScope {
+  readonly path: string;
+}
+
+/**
+ * Opening one either made a space or found the space already showing it.
+ *
+ * `alreadyOpen` is not an error and must not be rendered as one: asking for a worktree that is
+ * already up is the operator saying "take me there", and the pane below is where to go.
+ */
+export interface MuxWorktreeOpened {
+  readonly pane: MuxCreatedPane;
+  readonly alreadyOpen: boolean;
+}
+
+/**
+ * What removing one asks for — the SPACE the worktree is open as, never a path.
+ *
+ * That is a constraint, not a preference: removal is scoped to a space so the multiplexer can close
+ * what it opened. A worktree nothing is showing has no space to name, so it cannot be removed here
+ * at all — {@link MuxWorktree.openSpaceId} being `null` is what a caller must check first.
+ */
+export interface MuxWorktreeRemoveRequest {
+  readonly spaceId: string;
+  /** Discard uncommitted work. `false` asks the multiplexer to refuse a dirty checkout instead. */
+  readonly force: boolean;
+}
+
+/** What removal did. `forced` reports what actually happened, not what was asked. */
+export interface MuxWorktreeRemoved {
+  readonly path: string;
+  readonly forced: boolean;
+}
+
 // ── Learning that something changed ───────────────────────────────────────────
 
 /**
@@ -488,6 +554,18 @@ export interface MuxAdapter {
 
   /** New space, opening a fresh shell. Needs `createSpace`. */
   createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>>;
+
+  /** The worktrees of the repo a space sits in. Needs `listWorktrees`. */
+  listWorktrees(scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>>;
+
+  /** New worktree on a new branch, opened as a space. Needs `createWorktree`. */
+  createWorktree(request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>>;
+
+  /** Show an existing worktree as a space. Needs `openWorktree`. */
+  openWorktree(request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>>;
+
+  /** Remove a worktree that is open as a space. Needs `removeWorktree`. */
+  removeWorktree(request: MuxWorktreeRemoveRequest): Promise<MuxOutcome<MuxWorktreeRemoved>>;
 
   /** Watch for change. Always available — an adapter with no push satisfies it by polling. */
   watch(options: MuxWatchOptions): MuxSubscription;

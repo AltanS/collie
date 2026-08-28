@@ -298,6 +298,10 @@ export function withAgentBeacons(
     renameTab: (tabId, label) => adapter.renameTab(tabId, label),
     closeTab: (tabId) => adapter.closeTab(tabId),
     createSpace: (request) => adapter.createSpace(request),
+    listWorktrees: (scope) => adapter.listWorktrees(scope),
+    createWorktree: (request) => adapter.createWorktree(request),
+    openWorktree: (request) => adapter.openWorktree(request),
+    removeWorktree: (request) => adapter.removeWorktree(request),
     // Untouched, and the header says why a beacon change fires nothing here.
     watch: (options) => adapter.watch(options),
   };

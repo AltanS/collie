@@ -55,6 +55,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnsupported,
   muxUnreachable,
   type MuxAck,
   type MuxAdapter,
@@ -70,6 +71,13 @@ import {
   type MuxSubscription,
   type MuxTab,
   type MuxTabRequest,
+  type MuxWorktree,
+  type MuxWorktreeCreateRequest,
+  type MuxWorktreeOpenRequest,
+  type MuxWorktreeOpened,
+  type MuxWorktreeRemoveRequest,
+  type MuxWorktreeRemoved,
+  type MuxWorktreeScope,
   type MuxWatchOptions,
 } from "../types.ts";
 import {
@@ -480,6 +488,31 @@ export class TmuxMux implements MuxAdapter {
     const args = ["new-session", "-d", "-P", "-F", CREATED_FORMAT, "-c", request.cwd];
     if (request.label !== undefined) args.push("-s", request.label);
     return this.created(args);
+  }
+
+    // ── Worktrees: declined, and why ───────────────────────────────────────────
+  //
+  // tmux knows nothing about Git. `git worktree add` would run fine on this host — but these verbs
+  // do not promise a checkout, they promise a checkout WITH the session showing it, and removal is
+  // addressed by space precisely because the multiplexer must close what it opened. tmux keeps no
+  // such record, so a `createWorktree` here could not answer `openSpaceId`, and `removeWorktree`
+  // would have nothing to name. Declining is the honest answer until an adapter keeps that mapping
+  // itself and a probe proves it (MUX_CONTRIBUTING.md, "probe first, declare second").
+
+  listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
+    return Promise.resolve(muxUnsupported("listWorktrees", "tmux keeps no record tying a Git checkout to the session showing it, so a worktree opened here could not be found, listed or removed again"));
+  }
+
+  createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    return Promise.resolve(muxUnsupported("createWorktree", "tmux keeps no record tying a Git checkout to the session showing it, so a worktree opened here could not be found, listed or removed again"));
+  }
+
+  openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
+    return Promise.resolve(muxUnsupported("openWorktree", "tmux keeps no record tying a Git checkout to the session showing it, so a worktree opened here could not be found, listed or removed again"));
+  }
+
+  removeWorktree(_request: MuxWorktreeRemoveRequest): Promise<MuxOutcome<MuxWorktreeRemoved>> {
+    return Promise.resolve(muxUnsupported("removeWorktree", "tmux keeps no record tying a Git checkout to the session showing it, so a worktree opened here could not be found, listed or removed again"));
   }
 
   /** The contract's watch over control mode plus a bounded listing. All of it lives in watch.ts. */
