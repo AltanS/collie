@@ -152,7 +152,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
 
       {/* The pointed option's preview pane, verbatim (mono text nodes — never markup). */}
       {preview.preview.length > 0 && (
-        <div className="rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
+        <div className="rounded-lg border border-border bg-muted/20 px-2 py-1.5">
           {pointedLabel && (
             <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {t("dialog.preview.previewLabel", { label: pointedLabel })}
@@ -174,7 +174,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           ) : null}
         </div>
       ) : editorOpen ? (
-        <div className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+        <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2">
           <label
             htmlFor="preview-note-text"
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
@@ -191,7 +191,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
             rows={2}
             aria-label={t("dialog.preview.noteTextAria")}
             placeholder={t("dialog.preview.notePlaceholder")}
-            className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <div className="flex items-center justify-end gap-1.5">
             <button
@@ -214,7 +214,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
           </div>
         </div>
       ) : preview.note.state === "attached" ? (
-        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
           <StickyNote className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label={t("dialog.preview.noteAria")} />
           <span className="font-content min-w-0 flex-1 text-xs text-foreground/90">{preview.note.text}</span>
           <button
@@ -247,7 +247,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
             setDraft("");
             setEditorOpen(true);
           }}
-          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
+          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           <StickyNote className="size-3.5 shrink-0" />
           {t("dialog.preview.addNote")}

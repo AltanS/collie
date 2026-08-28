@@ -140,7 +140,7 @@ function QuestionStep({
             type="button"
             disabled={locked}
             onClick={() => onPress(id, option.keys)}
-            className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
+            className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
           >
             <span className="font-content min-w-0 flex-1">
               {option.label}
@@ -172,7 +172,7 @@ function ReviewStep({
     <>
       <div className="text-sm font-medium text-foreground">{t("dialog.reviewAnswers")}</div>
       {wizard.answers.length > 0 && (
-        <dl className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+        <dl className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2">
           {wizard.answers.map((qa, i) => (
             <div key={i}>
               <dt className="font-content text-xs text-muted-foreground">{qa.question}</dt>
@@ -203,7 +203,7 @@ function ReviewStep({
           type="button"
           disabled={locked}
           onClick={() => onPress("cancel", WIZARD_CANCEL_KEYS)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           {sendingId === "cancel" ? (
             <Loader2 className="size-3.5 shrink-0 animate-spin" aria-label={t("dialog.sendingAria")} />

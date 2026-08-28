@@ -4,8 +4,9 @@
 Tailscale. A mobile-first PWA (Vite + React + TS + Tailwind v4 + shadcn) plus a Bun/TS bridge that
 talks to Herdr's Unix socket, letting you monitor and reply to agents from a phone. The Herdr
 plugin id is `herdr.collie` (manifest: `herdr-plugin.toml`). Orientation:
-[`README.md`](./README.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · verified API
-[`HERDR_API.md`](./HERDR_API.md) · decisions [`.adr/`](./.adr/) · adding a harness
+[`README.md`](./README.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · the UI's visual
+language [`DESIGN.md`](./DESIGN.md) · verified API [`HERDR_API.md`](./HERDR_API.md) ·
+decisions [`.adr/`](./.adr/) · adding a harness
 [`HARNESS_CONTRIBUTING.md`](./HARNESS_CONTRIBUTING.md) · adding a multiplexer
 [`MUX_CONTRIBUTING.md`](./MUX_CONTRIBUTING.md).
 
@@ -112,6 +113,11 @@ the unit name; the Herdr action runs from anywhere.
   failed build never empties a live `web/dist` and never replaces the running binary. The binary is
   always renamed into place, never written through (the running service keeps its old inode until
   it restarts). Bare `cd web && bun run build` skips all of that; don't ship from it.
+- **Typecheck, and the trap in it:** the ROOT `bun run typecheck` does **not** cover `web/`'s test
+  files. Only `cd web && bun run typecheck` does. So a change to a shared type can leave the root
+  check green while `bun run build` — and therefore `make deploy` — fails on stale test fixtures.
+  Run **both**, every time: `bun run typecheck` at the root *and* `cd web && bun run typecheck`.
+  This has shipped a broken tip to `origin/v1` once; it is not theoretical.
 - **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
   browser); backend `bun run test` at the root — Bun's own runner over every pure-logic module in
   `bridge/` (access checks, state engine, config, journal adapters, notifications, uploads, …) plus
@@ -174,6 +180,11 @@ lint guard or the pack-wire guard.
 
 ## Frontend data layer (React Router, not TanStack)
 
+- **The UI has a written design language — read [`DESIGN.md`](./DESIGN.md) before building a
+  visual component.** Its first rule is the one that keeps getting broken: look in
+  `web/src/components/ui/` for an existing primitive, and promote one the moment a second
+  place needs the same visual idea. It also holds the no-shift rule, the radius and line
+  tokens, the mono-vs-sans split, and the Tailwind v4 traps that each cost a day.
 - **Check UI states in the playground** (`web/src/playground/`, `cd web && bun run playground`,
   README → "The states playground") before changing a banner, the mark, the boot splash, the idle
   lock, or the pack page — it renders every state at once. Never import playground code from app

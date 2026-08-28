@@ -133,7 +133,9 @@ export function SpaceOverview({
                 placeholder={t("space.overview.filter.placeholder")}
                 aria-label={t("space.overview.filter.aria")}
                 // min-h-9 so the control itself clears the 36px touch floor, not just its padded label.
-                className="min-h-9 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                // Focus is the app's outside channel (DESIGN.md §2): outline-2 offset-2 outline-ring,
+                // never `outline-none` alone — that cancels this ring with no replacement (trap #2).
+                className="min-h-9 min-w-0 flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               />
             </label>
           )}
