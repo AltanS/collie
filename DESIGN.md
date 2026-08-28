@@ -248,7 +248,10 @@ visible to be hit. Two measured numbers hold it together, both documented at the
 change the scroller's padding or the pill's border and you must re-measure.
 
 **A row states its own floor with `min-h`, never `h`.** `app-header.tsx:110` is
-`min-h-15` — 60px, which is 44px of tap target plus its `py-2`.
+`min-h-15` — 60px. It is a floor, not a sum: the row's own padding is `py-1`, and the
+floor stands above whatever the content needs so the row cannot shrink when a route
+passes less. The pane's stacked identity block and the dashboard's single 44px gear
+both land at 60px, which is the point — the header does not resize as you navigate.
 
 Why state it at all: this row used to have no height of its own, so it took the height of
 its tallest *child* — and the children are props. On the dashboard the tallest was the 44px
