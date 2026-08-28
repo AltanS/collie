@@ -191,6 +191,9 @@ export const en = {
   "settings.display.tapToType.label": "Tap to type",
   "settings.display.tapToType.hint":
     "On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document — taps land on the text and only the composer opens the keyboard.",
+  "settings.display.fullReply.label": "Full latest reply",
+  "settings.display.fullReply.hint":
+    "An agent's terminal keeps no scrollback, so a long answer loses its start. On, that reply is shown in full from the agent's own log, in place of the rows it covers.",
   "settings.display.rawTerminal.label": "Raw terminal",
   "settings.display.rawTerminal.hint":
     "Shows the plain mirror — no tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys.",
@@ -298,6 +301,9 @@ export const en = {
   "chat.scrollback.loading": "Loading…",
   "chat.scrollback.noSessionReported":
     "{agent} has not reported a session to Herdr. Install or update the Herdr integration for it, then restart the agent in this pane.",
+  "chat.fullReply.title": "Full reply",
+  "chat.fullReply.fromTranscript": "from transcript",
+  "chat.fullReply.showingTerminal": "showing the terminal",
   "chat.output.empty": "(no recent output)",
   "chat.switcher.aria": "Switch pane",
   "chat.switcher.title": "Switch pane",

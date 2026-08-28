@@ -179,6 +179,9 @@ export const de: Dictionary = {
   "settings.display.tapToType.label": "Tippen zum Schreiben",
   "settings.display.tapToType.hint":
     "Aktiv: Antippen des Spiegels öffnet überall die Tastatur. Deaktiviert: Spiegel bleibt Textanzeige, Tastatur öffnet nur im Eingabefeld.",
+  "settings.display.fullReply.label": "Vollständige letzte Antwort",
+  "settings.display.fullReply.hint":
+    "Das Terminal eines Agenten hat keinen Verlaufspuffer, daher fehlt bei langen Antworten der Anfang. Aktiv: Die Antwort erscheint vollständig aus dem Protokoll des Agenten und ersetzt die abgeschnittenen Zeilen.",
   "settings.display.rawTerminal.label": "Rohes Terminal",
   "settings.display.rawTerminal.hint":
     "Zeigt den reinen Terminal-Puffer ohne Buttons, Rahmen oder Statusleisten. Gedacht für falsch dargestellte TUI-Dialoge zur manuellen Tastensteuerung.",
@@ -281,6 +284,9 @@ export const de: Dictionary = {
   "chat.scrollback.loading": "Wird geladen…",
   "chat.scrollback.noSessionReported":
     "{agent} hat keine Sitzung an Herdr gemeldet. Herdr-Integration installieren oder aktualisieren und den Agenten in diesem Pane neu starten.",
+  "chat.fullReply.title": "Vollständige Antwort",
+  "chat.fullReply.fromTranscript": "aus dem Protokoll",
+  "chat.fullReply.showingTerminal": "Terminal wird gezeigt",
   "chat.output.empty": "(keine neue Ausgabe)",
   "chat.switcher.aria": "Pane wechseln",
   "chat.switcher.title": "Pane wechseln",
