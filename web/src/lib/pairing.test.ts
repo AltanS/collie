@@ -2,12 +2,15 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import {
+  __resetPairing,
   authHeader,
   clearDeviceToken,
   getDeviceToken,
   isNotPaired,
+  markNotPaired,
   NOT_PAIRED_BODY,
   setDeviceToken,
+  subscribePairing,
   TOKEN_STORAGE_KEY,
 } from "./pairing";
 import { closePane, fetchDevices, fetchPane, fetchSnapshot, pairDevice, revokeDevice } from "./api";
@@ -141,6 +144,32 @@ describe("the not-paired latch", () => {
     // fetchSnapshot throws; the loader swallows it. What matters is the latch stayed down.
     await expect(fetchSnapshot()).rejects.toThrow(/403/);
     expect(isNotPaired()).toBe(false);
+  });
+
+  it("__resetPairing notifies subscribers, same as markNotPaired/clearNotPaired", () => {
+    // Pins the fix: the reset helper used to assign `refused = false` on its own, so a subscriber —
+    // any component driven by usePairing/useSyncExternalStore — kept painting "read-only" until some
+    // unrelated render came along. Exactly the gap ec4bcd9 closed in connection-health and
+    // self-update; this instance was missed. Nothing ever documented the silence as deliberate, and
+    // every real mutation in this module has always emitted.
+    markNotPaired();
+    let hits = 0;
+    const unsub = subscribePairing(() => hits++);
+    __resetPairing();
+    expect(isNotPaired()).toBe(false);
+    expect(hits).toBe(1);
+    unsub();
+  });
+
+  it("emits nothing when the reset changes nothing", () => {
+    // The other half of the shape ec4bcd9 used: the guard inside the real mutator. A latch that is
+    // already down must not wake every subscriber in the app on a reset that did nothing.
+    expect(isNotPaired()).toBe(false);
+    let hits = 0;
+    const unsub = subscribePairing(() => hits++);
+    __resetPairing();
+    expect(hits).toBe(0);
+    unsub();
   });
 });
 

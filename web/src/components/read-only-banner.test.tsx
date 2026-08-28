@@ -72,10 +72,13 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
   it("owns no styling: the className it is handed is the caller's GUTTER, on the collapsing ROW", () => {
     // The seam the pilot exists to prove. The routes pass `mx-4 mt-3` and the pane passes
     // `mx-3 mt-1.5`; the caller supplies the gutter because only the caller knows what the box sits
-    // between (DESIGN.md §1). It lands on the row and NOT on the box, which is measured rather than
-    // preferred: ui/notice.tsx gives a box `w-full`, so a margin there resolves 100% against the
-    // full row and then offsets it — at 390px that put the box 12px past the right edge, clipped,
-    // with the right gutter gone. Insetting the row leaves the box filling what remains.
+    // between (DESIGN.md §1). It lands on the row and NOT on the box because the row is the thing
+    // whose height animates, so its margin is part of the same movement.
+    // NOTE, comment corrected with the w-full fix: this used to be a forced choice as well as a
+    // preferred one — a box carrying `w-full` resolved 100% against the full row and was then
+    // offset by the margin, hanging past the right edge, clipped. `ui/notice.tsx` sets no width on
+    // a box now, so `mx-4` on the box itself measures 358px with 16px both sides at 390px. The
+    // assertion below is unchanged: the row is still the owner, now by decision alone.
     const { container } = render(<ReadOnlyBanner device={REFUSED} className="mx-4 mt-3" />);
     expect(container.firstElementChild).toHaveClass("mx-4", "mt-3");
     expect(box(container)?.className).not.toMatch(/\bm[xt]-/);
@@ -127,8 +130,10 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     const { container } = render(<ReadOnlyBanner device={ALLOWED} />);
     expect(screen.getByText(/Not paired/)).toBeInTheDocument();
 
-    // `clearNotPaired`, not `__resetPairing`: only the real mutator notifies subscribers, and
-    // this test is about what the operator sees when the bridge accepts a write again.
+    // `clearNotPaired`, not `__resetPairing`: this test is about what the operator sees when the
+    // bridge accepts a write again, so it drives the real path rather than the test helper. (Both
+    // notify now — `__resetPairing` used to mutate the store silently, which is fixed in
+    // lib/pairing.ts and pinned in pairing.test.ts.)
     act(() => clearNotPaired());
     expect(container.firstElementChild).toHaveAttribute("data-state", "closed");
 

@@ -148,6 +148,71 @@ describe("Collapse — animated presence for anything in flow", () => {
     expect(container.querySelector(".min-h-0")).toHaveClass("overflow-visible");
   });
 
+  it("holds its last children through the exit, even when the caller stops rendering them", () => {
+    // THE PILOT'S FINDING, now the primitive's job. Keeping the child MOUNTED is a weaker promise
+    // than keeping it VISIBLE: the child is whatever the caller's render returns, so the instant the
+    // condition goes false the copy that described it is gone and a mounted-but-empty box slides
+    // shut on nothing — the same pop, one step quieter. The converted call site is
+    // `{gate ? <Notice/> : null}`, which is exactly this: children that vanish on the closing
+    // render. Before the hold, the read-only banner needed its own ref for this, and so would each
+    // of the six conversions after it.
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <Collapse open>
+        <p>Not paired — this device can only look.</p>
+      </Collapse>,
+    );
+    rerender(<Collapse open={false}>{null}</Collapse>);
+
+    act(() => {
+      vi.advanceTimersByTime(COLLAPSE_MS - 1);
+    });
+    expect(screen.getByText("Not paired — this device can only look.")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2);
+    });
+    expect(screen.queryByText("Not paired — this device can only look.")).toBeNull();
+  });
+
+  it("shows NEW children at once while it is open — the hold is for the exit only", () => {
+    // The failure mode on the other side of the hold: a snapshot taken too eagerly would pin an open
+    // notice to the first words it ever showed, so a host-stale box could not update its age and a
+    // strip could not be re-worded. While `open` is true the caller's current children are rendered,
+    // always; only a closed Collapse reads the hold.
+    const { rerender } = render(
+      <Collapse open>
+        <p>Reconnecting…</p>
+      </Collapse>,
+    );
+    rerender(
+      <Collapse open>
+        <p>No connection.</p>
+      </Collapse>,
+    );
+    expect(screen.getByText("No connection.")).toBeInTheDocument();
+    expect(screen.queryByText("Reconnecting…")).toBeNull();
+  });
+
+  it("never holds an empty child: a false condition cannot poison the next exit", () => {
+    // "Empty" is what React renders as nothing — null, undefined, true, false, an empty array — i.e.
+    // precisely what a conditional child produces. Holding one would pin the box empty for every
+    // LATER exit, which is the fault the hold exists to fix, arriving by the back door.
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <Collapse open>
+        <p>You are read-only.</p>
+      </Collapse>,
+    );
+    // Still open, but the caller has nothing to say for a render: this must not be captured.
+    rerender(<Collapse open>{false}</Collapse>);
+    rerender(<Collapse open={false}>{null}</Collapse>);
+    act(() => {
+      vi.advanceTimersByTime(COLLAPSE_MS - 1);
+    });
+    expect(screen.getByText("You are read-only.")).toBeInTheDocument();
+  });
+
   it("styles nothing about its child", () => {
     // It owns presence and geometry. Tone, padding, borders and text belong to the Notice inside,
     // so the same wrapper can carry a full-bleed strip and an inset box without knowing which.

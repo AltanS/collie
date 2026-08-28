@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Children, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,13 @@ import { cn } from "@/lib/utils";
  *     does nothing at all. The clip is what hides the content while the row is short.
  *  3. **Delayed unmount.** `open` going false must not remove the child, or there is nothing left
  *     to animate out. The child stays mounted for one duration and leaves after.
+ *  4. **A held copy of that child.** Keeping the child MOUNTED is not the same promise as keeping
+ *     it VISIBLE, and the pilot conversion found the gap: the child is whatever the caller's render
+ *     returns, so the moment the condition goes false the copy describing that condition is gone
+ *     and a mounted-but-empty box slides shut on nothing — the same pop, one step quieter. So the
+ *     last children that were not empty are held here and rendered for the whole exit. It belongs
+ *     in this file and not at the call sites: every notice that converts would otherwise hand-roll
+ *     the same ref, and seven copies of a rule is not a rule.
  *
  * It styles NOTHING. Tone, padding, borders and text all belong to what is inside it.
  */
@@ -41,9 +48,31 @@ const COLLAPSE_DURATION_CLASS = "duration-[240ms]";
 
 export interface CollapseProps {
   open: boolean;
-  /** Kept mounted through the exit; unmounted one {@link COLLAPSE_MS} after `open` goes false. */
+  /**
+   * Rendered, not merely mounted, through the exit: the last non-empty children are held and shown
+   * for the full {@link COLLAPSE_MS}, then unmounted. So a caller may return nothing at all the
+   * instant its condition lifts — `{gate ? <Notice/> : null}` is the intended shape — and the box
+   * still slides shut on the words that explain why it was ever there. While `open` is true the
+   * children are the caller's current ones, always: nothing stale is ever shown to a caller whose
+   * copy legitimately changed under it.
+   */
   children: ReactNode;
   className?: string;
+}
+
+/**
+ * "Empty" is exactly what React renders as nothing: `null`, `undefined`, `true`, `false`, an empty
+ * array, and any nesting of those — which is precisely the set a conditional child produces
+ * (`cond ? <X/> : null`, `cond && <X/>`). `Children.toArray` is the house predicate for it because
+ * it drops those and keeps everything else, so the question "would this paint?" is asked once and
+ * not re-derived per type. A deliberate `""` counts as content, which is correct: an empty string is
+ * a caller's choice of copy, not the absence of a child.
+ *
+ * This matters because holding an empty snapshot is worse than holding none — it would pin the box
+ * empty for every later exit, which is the very fault the hold exists to fix.
+ */
+function isEmpty(children: ReactNode): boolean {
+  return Children.toArray(children).length === 0;
 }
 
 /**
@@ -80,6 +109,21 @@ export function Collapse({ open, children, className }: CollapseProps) {
   const [rendered, setRendered] = useState(open);
   const [expanded, setExpanded] = useState(open);
   const [settled, setSettled] = useState(open);
+
+  // The held copy (part 4 of the header). Written in an EFFECT and not during render, so this stays
+  // a pure component: the effect for the render that SHOWED the children has already run by the
+  // time a later render needs to read them back, which is the only ordering the exit depends on.
+  // The guard is `open`, so an already-closing Collapse can never overwrite what it is busy
+  // animating out, and `isEmpty`, so a caller that returns nothing does not blank the hold.
+  const held = useRef<ReactNode>(null);
+  useEffect(() => {
+    if (open && !isEmpty(children)) held.current = children;
+  }, [open, children]);
+
+  // While open, the caller's CURRENT children — never the hold. A notice whose copy legitimately
+  // changes while it stands (a host-stale age, a re-worded refusal) must show the new words at once;
+  // the hold is for the exit and for nothing else.
+  const content = open ? children : held.current;
 
   // Open at first paint means the condition was already true when the page loaded — a read-only
   // session, a stale host known at loader time. That must NOT animate in: the notice is part of
@@ -129,7 +173,7 @@ export function Collapse({ open, children, className }: CollapseProps) {
         className,
       )}
     >
-      <div className={cn("min-h-0", settled ? "overflow-visible" : "overflow-hidden")}>{children}</div>
+      <div className={cn("min-h-0", settled ? "overflow-visible" : "overflow-hidden")}>{content}</div>
     </div>
   );
 }

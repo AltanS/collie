@@ -151,6 +151,15 @@ export const NOTICE_ACTION = `h-6 gap-1 px-2 text-xs ${NOTICE_ACTION_TAP}`;
  * one, so somebody has to look at the decision — rather than be clipped or overflow it silently.
  * The `py-1` stays so that taller child keeps its 4px of breathing room.
  *
+ * **`w-full` stays HERE and is load-bearing, unlike the box's** (see BOX below, where it was the
+ * fault). Two reasons, both measured in Chrome at 390px. First, the `onActivate` shape renders this
+ * root as a `<button>`, and a button sizes itself to its content even at `display: flex` and even as
+ * a stretch-aligned grid item — the whole-surface "new version, tap to update" row came out **160px
+ * wide instead of 390** without it, i.e. a tap target the width of its own sentence. Second, a
+ * percentage width can only collide with a margin, and a strip never carries one: it is full-bleed
+ * by definition and `ui/strip-host.tsx` owns the row it sits in, so there is no gutter for the 100%
+ * to be offset by. Both halves of that are what the box cannot say for itself.
+ *
  * No safe-area inset here. The band's top inset belongs to `ui/strip-host.tsx`, which owns the row;
  * three of the current strips carry it and one does not, which is exactly the drift a shared owner
  * ends. The FLOOR, by contrast, does belong here and not on the host: it is derived from the action
@@ -176,8 +185,21 @@ const STRIP = "flex min-h-[33px] w-full items-center gap-2 border-b px-4 py-1 te
  * beside the middle of a paragraph. A single line is then centred against the 24px first-line slot
  * by the body's own `min-h-6` (below), so a lone line sits optically centred instead of top-heavy —
  * both alignments, from one rule, without a conditional class that would make the box two heights.
+ *
+ * **No width utility, deliberately — a `w-full` here EATS the gutter it just asked the caller for.**
+ * The two sentences above are in direct contradiction with a 100% width: a margin does not shrink a
+ * percentage, it offsets it. Measured in Chrome at a 390px viewport with `mx-4`: `w-full` gave a box
+ * **390px wide starting 16px in**, so 16px hung past the right edge, clipped, and the right gutter
+ * was simply gone; without it the same box measures **358px with 16px on both sides**. Nothing is
+ * bought by the class either — this root is a block-level flex container, which already fills its
+ * line box and already shrinks by its own margins, so the fix is an absence and not a substitution.
+ * (The strip's `w-full` is a different case and stays — see STRIP above. The one shape that would
+ * still need a width here is a box with `onActivate`, whose root is a `<button>` and therefore
+ * content-sized: 162px at 390px, measured. No caller writes that combination — whole-surface tap is
+ * a strip affordance — and the answer when one does is `width: stretch`, which fills what the margin
+ * leaves, NOT a return to `w-full`.)
  */
-const BOX = "flex min-h-[42px] w-full items-start gap-2 rounded-sm border px-4 py-2 text-xs font-medium";
+const BOX = "flex min-h-[42px] items-start gap-2 rounded-sm border px-4 py-2 text-xs font-medium";
 
 export function Notice({
   tone,

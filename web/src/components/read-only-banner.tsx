@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import { KeyRound, Lock } from "lucide-react";
 
 import { Collapse } from "@/components/ui/collapse";
@@ -58,39 +57,35 @@ export function ReadOnlyBanner({
   const gate: Gate | null = refused ? "pairing" : isReadOnly(device) ? "device" : null;
   const deviceSuffix = device?.device ? ` (${device.device})` : "";
 
-  // Collapse keeps its child mounted through the exit, but it does not SNAPSHOT it — the child is
-  // whatever this render returns, and the moment the gate lifts, the words that described it are
-  // gone. So the last true gate is held here and keeps being rendered while the box slides shut.
-  // Without this the box empties one frame into a 240ms exit and closes on nothing, which is the
-  // same pop, just quieter. The latch is written in an effect rather than during render so this
-  // component stays pure: the effect for the render that SHOWED the notice has already run by the
-  // time a render needs to read it back.
-  const shown = useRef<{ gate: Gate; deviceSuffix: string }>({ gate: "device", deviceSuffix: "" });
-  useEffect(() => {
-    if (gate) shown.current = { gate, deviceSuffix };
-  }, [gate, deviceSuffix]);
-
-  const last = gate ? { gate, deviceSuffix } : shown.current;
-
   return (
+    // Nothing at all is rendered inside once the gate lifts, and that is the whole shape of a
+    // converted notice: `ui/collapse.tsx` HOLDS the last non-empty children and renders them for the
+    // full exit, so the box still slides shut on the sentence that explained it. This file used to
+    // carry its own ref for that, latched in an effect; the primitive carries it now, because the
+    // six conversions after this one would each have hand-rolled the same ref.
+    //
     // The gutter, and only the gutter — `mx-4 mt-3` on the routes, `mx-3 mt-1.5` in the pane. It
-    // rides the COLLAPSE, not the Notice, and that is measured rather than preferred: `ui/notice.tsx`
-    // gives a box `w-full`, so a margin on the box resolves 100% against the FULL row and then
-    // offsets it — at 390px the box came out 378px wide starting 12px in, i.e. 12px past the right
-    // edge and clipped, with the right gutter simply gone. Inset the row and the box fills what is
-    // left, which is what `w-full` is there for. Cost, and it is small but real: the top margin is
-    // outside the animated row, so 12px of the space arrives at once and 50px slides in behind it.
+    // rides the COLLAPSE rather than the Notice: the row is the thing whose height animates, so a
+    // margin on it is part of the same movement. (Either is now geometrically sound — the box no
+    // longer carries `w-full`, so at 390px `mx-4` on it measures 358px with 16px on both sides.
+    // Before that fix a margin on the box resolved 100% against the FULL row and was then offset by
+    // it, hanging past the right edge, and the row was the only correct owner.) One cost stays,
+    // small and real: `mt-3` sits outside the animated row, so 12px of the space arrives at once
+    // and the 50px box slides in behind it. Moving the gutter inward is what would close that, and
+    // it is a decision about every converted notice, not about this one.
     <Collapse open={gate !== null} className={className}>
-      <Notice
-        variant="box"
-        tone="caution"
-        announce="status"
-        icon={last.gate === "pairing" ? <KeyRound /> : <Lock />}
-      >
-        {last.gate === "pairing"
-          ? t("connection.readOnly.notPaired")
-          : t("connection.readOnly.device", { deviceSuffix: last.deviceSuffix })}
-      </Notice>
+      {gate ? (
+        <Notice
+          variant="box"
+          tone="caution"
+          announce="status"
+          icon={gate === "pairing" ? <KeyRound /> : <Lock />}
+        >
+          {gate === "pairing"
+            ? t("connection.readOnly.notPaired")
+            : t("connection.readOnly.device", { deviceSuffix })}
+        </Notice>
+      ) : null}
     </Collapse>
   );
 }

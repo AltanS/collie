@@ -47,6 +47,37 @@ describe("Notice — the one notice surface", () => {
     expect(box?.querySelector(".min-h-6")).not.toBeNull();
   });
 
+  it("sets no width on a BOX, so the gutter it asks the caller for survives", () => {
+    // MEASURED, in Chrome, at a 390px viewport, with the caller's `mx-4` on the box itself:
+    //   with `w-full`    → 390.0px wide, left edge 16px, right edge 16px PAST the viewport (clipped)
+    //   without `w-full` → 358.0px wide, 16px of gutter on both sides
+    // A margin does not shrink a percentage, it offsets it — so `w-full` and "the caller supplies
+    // the gutter" are in direct contradiction, and the box asked for both. jsdom has no layout
+    // engine, so what this file can pin is the cause rather than the 358: no width utility of any
+    // kind on the box's shape string. A block-level flex container already fills its line box and
+    // already shrinks by its own margins, so the absence is the whole fix — nothing replaces it.
+    // (The STRIP keeps its `w-full` and needs it: that root can be a <button>, which sizes itself
+    // to its content even at display:flex — 160px instead of 390px, measured — and a strip carries
+    // no margin for a percentage to collide with, because its host owns the row.)
+    const { container } = render(
+      <Notice tone="caution" variant="box" className="mx-4">
+        Read-only.
+      </Notice>,
+    );
+    const box = container.firstElementChild;
+    expect(box?.className).not.toMatch(/(?:^|\s)w-/);
+    expect(box?.className).not.toMatch(/(?:^|\s)(?:min-w|max-w)-/);
+    // The gutter the primitive asked for is still on the element that must honour it.
+    expect(box).toHaveClass("mx-4");
+    // The strip's is deliberate and stays; asserting it here keeps the two facts one decision.
+    const strip = render(
+      <Notice tone="caution" variant="strip">
+        Reconnecting…
+      </Notice>,
+    ).container.firstElementChild;
+    expect(strip).toHaveClass("w-full");
+  });
+
   it("gives every tone the same box, with and without an action", () => {
     // The reason the floor exists at all: an outage row carrying Retry and an ambient
     // "Reconnecting…" row must be the same height, or the band changes size as the session
