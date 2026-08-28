@@ -17,6 +17,11 @@ import {
   type MuxSubscription,
   type MuxTabRequest,
   type MuxWatchOptions,
+  type MuxWorktree,
+  type MuxWorktreeCreateRequest,
+  type MuxWorktreeOpenRequest,
+  type MuxWorktreeRemoveRequest,
+  type MuxWorktreeScope,
 } from "../mux/types.ts";
 
 // THE DECORATOR'S OWN TESTS — the join, the two-way capability lift, and the pass-through.
@@ -133,6 +138,26 @@ class StubAdapter implements MuxAdapter {
     return Promise.resolve(muxOk({ paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }));
   }
 
+  listWorktrees(scope: MuxWorktreeScope) {
+    this.note("listWorktrees", scope);
+    return Promise.resolve(muxOk<readonly MuxWorktree[]>([]));
+  }
+
+  createWorktree(request: MuxWorktreeCreateRequest) {
+    this.note("createWorktree", request);
+    return Promise.resolve(muxOk({ paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }));
+  }
+
+  openWorktree(request: MuxWorktreeOpenRequest) {
+    this.note("openWorktree", request);
+    return Promise.resolve(muxOk({ pane: { paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }, alreadyOpen: false }));
+  }
+
+  removeWorktree(request: MuxWorktreeRemoveRequest) {
+    this.note("removeWorktree", request);
+    return Promise.resolve(muxOk({ path: "/tmp/wt", forced: request.force }));
+  }
+
   watch(options: MuxWatchOptions): MuxSubscription {
     this.note("watch", options);
     return this.subscription;
@@ -238,6 +263,10 @@ describe("a decorator preserves the adapter's whole surface", () => {
     renameTab: true,
     closeTab: true,
     createSpace: true,
+    listWorktrees: true,
+    createWorktree: true,
+    openWorktree: true,
+    removeWorktree: true,
     watch: true,
   } satisfies Record<keyof Required<MuxAdapter>, true>;
 

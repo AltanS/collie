@@ -230,6 +230,17 @@ function callTargets(snapshot: MuxSnapshot): CallTargets {
   };
 }
 
+/** The repo the worktree calls aim at. A path, because that is what the port asks for. */
+const CONFORMANCE_REPO = "/tmp";
+
+let probeBranchCounter = 0;
+
+/** A branch nothing has taken, so a second run in the same world is not "already exists". */
+function nextProbeBranch(): string {
+  probeBranchCounter += 1;
+  return `collie/conformance-${String(probeBranchCounter)}`;
+}
+
 function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityCall[] {
   return [
     {
@@ -280,6 +291,61 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       capability: "createSpace",
       writes: true,
       run: async () => refusalOf(await adapter.createSpace({ cwd: "/tmp" })),
+    },
+    // ── Worktrees ────────────────────────────────────────────────────────────
+    //
+    // Two directions, one table, and these three need the split spelled out. An adapter that DOES
+    // NOT declare them must refuse before it looks anything up, so a synthetic target is exactly
+    // right. An adapter that DOES declare them is being asked to prove the verb works — and
+    // "open this" and "remove that" cannot be proven against a checkout nothing made. So the
+    // declared side makes one first, through the adapter's own `createWorktree`, and aims at that.
+    {
+      capability: "listWorktrees",
+      // A read: it asks Git through the multiplexer and changes nothing.
+      writes: false,
+      run: async () => refusalOf(await adapter.listWorktrees({ repoRoot: CONFORMANCE_REPO })),
+    },
+    {
+      capability: "createWorktree",
+      writes: true,
+      run: async () =>
+        refusalOf(
+          await adapter.createWorktree({ repoRoot: CONFORMANCE_REPO, branch: nextProbeBranch() }),
+        ),
+    },
+    {
+      capability: "openWorktree",
+      writes: true,
+      run: async () => {
+        if (!declares(adapter, "openWorktree")) {
+          return refusalOf(
+            await adapter.openWorktree({ repoRoot: CONFORMANCE_REPO, path: "/tmp/collie-no-worktree" }),
+          );
+        }
+        const made = await adapter.createWorktree({
+          repoRoot: CONFORMANCE_REPO,
+          branch: nextProbeBranch(),
+        });
+        if (!made.ok) return made;
+        return refusalOf(
+          await adapter.openWorktree({ repoRoot: CONFORMANCE_REPO, path: made.value.cwd }),
+        );
+      },
+    },
+    {
+      capability: "removeWorktree",
+      writes: true,
+      run: async () => {
+        if (!declares(adapter, "removeWorktree")) {
+          return refusalOf(await adapter.removeWorktree({ spaceId: targets.spaceId, force: false }));
+        }
+        const made = await adapter.createWorktree({
+          repoRoot: CONFORMANCE_REPO,
+          branch: nextProbeBranch(),
+        });
+        if (!made.ok) return made;
+        return refusalOf(await adapter.removeWorktree({ spaceId: made.value.spaceId, force: false }));
+      },
     },
     {
       capability: "setFocus",

@@ -83,6 +83,13 @@ import {
   type MuxSubscription,
   type MuxTab,
   type MuxTabRequest,
+  type MuxWorktree,
+  type MuxWorktreeCreateRequest,
+  type MuxWorktreeOpenRequest,
+  type MuxWorktreeOpened,
+  type MuxWorktreeRemoveRequest,
+  type MuxWorktreeRemoved,
+  type MuxWorktreeScope,
   type MuxWatchOptions,
 } from "../types.ts";
 import { resolveZellijBinary, SpawnZellijExec } from "./exec.ts";
@@ -480,6 +487,28 @@ export class ZellijMux implements MuxAdapter {
         "a Collie on zellij drives exactly one zellij session, and a session created from here would not appear in it",
       ),
     );
+  }
+
+    // ── Worktrees: declined, and why ───────────────────────────────────────────
+  //
+  // Two reasons, and the first alone settles it: a Collie on zellij drives exactly ONE session, so
+  // there is no second space for a worktree to be opened as — the same fact that declines
+  // `createSpace`. The second is tmux's: zellij keeps no record tying a checkout to what shows it.
+
+  listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
+    return Promise.resolve(muxUnsupported("listWorktrees", "a Collie on zellij drives exactly one session, so a worktree has no second space to be opened as"));
+  }
+
+  createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    return Promise.resolve(muxUnsupported("createWorktree", "a Collie on zellij drives exactly one session, so a worktree has no second space to be opened as"));
+  }
+
+  openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
+    return Promise.resolve(muxUnsupported("openWorktree", "a Collie on zellij drives exactly one session, so a worktree has no second space to be opened as"));
+  }
+
+  removeWorktree(_request: MuxWorktreeRemoveRequest): Promise<MuxOutcome<MuxWorktreeRemoved>> {
+    return Promise.resolve(muxUnsupported("removeWorktree", "a Collie on zellij drives exactly one session, so a worktree has no second space to be opened as"));
   }
 
   /** The contract's watch over the pane stream plus a bounded census. All of it lives in watch.ts. */
