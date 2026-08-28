@@ -47,7 +47,7 @@ export function NotifyPrefsControl() {
       {ROWS.map((row) => (
           <div
             key={row.key}
-            className="flex items-center justify-between gap-4 border-t border-border/60 px-4 py-3"
+            className="flex items-center justify-between gap-4 border-t border-rule px-4 py-3"
           >
             <div className="min-w-0">
               <div className="text-sm font-medium">{t(row.labelKey)}</div>

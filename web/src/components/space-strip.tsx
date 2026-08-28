@@ -1,7 +1,12 @@
 import { ChevronLeft, Plus } from "lucide-react";
 
 import { Chip } from "@/components/ui/chip";
-import { SectionLabel } from "@/components/ui/section-label";
+import {
+  LabelledStrip,
+  STRIP_TAP_TARGET,
+  STRIP_TAP_TARGET_SQUARE,
+} from "@/components/ui/labelled-strip";
+import { cn } from "@/lib/utils";
 import { worstTriage } from "@/lib/triage";
 import { useMuxCapability, useMuxHasSpaces } from "@/lib/mux-capability";
 import type { AgentView, WorkspaceView } from "@/lib/types";
@@ -43,25 +48,32 @@ export function SpaceStrip({
   // except the way back, which is navigation rather than a space and must not disappear with them.
   // With no back button there is nothing left to render at all.
   if (!hasSpaces && onBack === undefined) return null;
-  // shrink-0: this strip is a child of the space route's `flex-1 flex-col` scroller, so without it
-  // the strip flex-shrinks to 16px while its 32px chips overflow — the tab row below then paints
-  // straight over the chips.
+  // The name sits ABOVE the row, not beside it, and outside the scroller — see LabelledStrip, which
+  // also carries the `shrink-0` this strip needs as a child of the space route's `flex-1 flex-col`
+  // scroller. The label is drawn in BOTH branches, including the drill-in that leads with Back:
+  // dropping it there would make this strip 50px in one state and 67px in the other, so navigating
+  // in and out would jump the whole page by 17px. State does not get to change the box.
   return (
-    <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <LabelledStrip label={t("space.strip.title")}>
       {onBack ? (
         <button
           type="button"
           onClick={onBack}
-          className="flex shrink-0 items-center gap-0.5 rounded-full border border-border bg-background py-1 pl-1.5 pr-3 text-sm font-medium text-foreground transition-colors hover:bg-muted active:scale-95"
+          // `rounded-md` (2px): a chevron plus a word is a stadium, and it leads a row of chips that
+          // now take the house radius. Full-round stays reserved for the square "+" at the end.
+          // It stands in a chip's place, so it takes a chip's height (py-1.5, 34px) and a chip's
+          // tap floor (STRIP_TAP_TARGET, 46px hit box) — the row must not answer the way back
+          // differently from the way sideways.
+          className={cn(
+            STRIP_TAP_TARGET,
+            "flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-background py-1.5 pl-1.5 pr-3 text-sm font-medium text-foreground transition-colors hover:bg-muted active:scale-95",
+          )}
         >
           <ChevronLeft className="size-4" />
           {t("space.strip.back")}
         </button>
       ) : (
-        <>
-          <SectionLabel>{t("space.strip.title")}</SectionLabel>
-          <Chip label={t("space.strip.all")} active={selected === null} onClick={() => onSelect(null)} />
-        </>
+        <Chip label={t("space.strip.all")} active={selected === null} onClick={() => onSelect(null)} />
       )}
       {hasSpaces &&
         workspaces.map((w) => (
@@ -84,11 +96,17 @@ export function SpaceStrip({
           type="button"
           onClick={onNewSpace}
           aria-label={t("space.overview.new.aria")}
-          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95"
+          // 32px drawn, 46x46 hit: STRIP_TAP_TARGET_SQUARE adds the horizontal half of the floor,
+          // which only this button needs and only this button can safely take (it is last in the
+          // row). `rounded-full` stays — width equals height, so it is a circle and not a stadium.
+          className={cn(
+            STRIP_TAP_TARGET_SQUARE,
+            "flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+          )}
         >
           <Plus className="size-4" />
         </button>
       )}
-    </div>
+    </LabelledStrip>
   );
 }

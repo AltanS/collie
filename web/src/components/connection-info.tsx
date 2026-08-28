@@ -37,7 +37,7 @@ export function ConnectionInfo({
           <p className="text-sm text-muted-foreground">{t("settings.connection.description")}</p>
         </div>
       </div>
-      <dl className="divide-y divide-border/60 border-t border-border/60">
+      <dl className="divide-y divide-rule border-t border-rule">
         <Row label={t("settings.connection.row.endpoint")}>{host}</Row>
         <Row label={t("settings.connection.row.secure")}>
           {secure ? t("settings.connection.secure.yes") : t("settings.connection.secure.no")}

@@ -309,7 +309,7 @@ export function HistoryRoute() {
             (20 human turns in 900 is typical). Bottom-right so it's thumb-reachable and clear of the
             centred "scroll to latest" button. Hidden while find is open, which owns prev/next then. */}
         {userTurns.length > 1 && !findOpen && (
-          <div className="absolute bottom-3 right-3 z-10 flex flex-col overflow-hidden rounded-full border bg-background/90 shadow-md backdrop-blur">
+          <div className="absolute bottom-3 right-3 z-10 flex flex-col overflow-hidden rounded-md border bg-background/90 shadow-md backdrop-blur">
             <button
               type="button"
               onClick={() => jumpTo(step(userTurns, cursor, -1))}

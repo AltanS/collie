@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import type { ReactElement } from "react";
 
 import { server } from "@/test/setup";
-import { collieMark, markIsLive } from "@/test/collie-mark";
+import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { AppHeader, SettingsGear } from "./app-header";
@@ -60,6 +60,25 @@ describe("AppHeader — the one shared header shell", () => {
     expect(screen.getByText("Collie")).toBeInTheDocument(); // wordmark
     expect(container.querySelector(".dog-gallop")).toBeNull(); // mark at rest while live
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("knocks the mark out in the SAME paper the header is filled with", () => {
+    // THE COUPLING. The mark makes "in front" by cutting the head away behind a near-side bead and
+    // filling the cut with the page colour — that fill is CollieHome's `paper` prop. It is not a
+    // colour the mark picks; it is a claim about what the mark is sitting on. Change the header's
+    // background and forget `paper` and every near-side bead gets a halo in the old ground, which
+    // is a subtle enough failure to survive a screenshot review. So it is asserted mechanically:
+    // read the background utility off the <header> element, read the custom property off the mark,
+    // and require that they name the same token. Either edit alone fails this test.
+    const { container } = renderHeader(
+      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    const fill = /(?:^|\s)bg-([a-z][a-z-]*)(?:\/\d+)?(?=\s|$)/.exec(header?.className ?? "");
+    // A bare token, no `/opacity`: chrome is the page colour outright, never a wash over content.
+    expect(fill?.[0].trim()).toBe("bg-background");
+    expect(markPaper(container)).toBe(`var(--${fill?.[1]})`);
   });
 
   it("returns to the dashboard via onHome when the Collie mark is tapped", async () => {

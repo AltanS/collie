@@ -66,6 +66,10 @@ export function StatusDot({
       {/* size-full, not a second size-2.5: the wrapper owns the size so `className` can change it
           (the chips ask for size-2), and a hard-coded inner would overflow or get squashed by the
           flex parent instead. The ping span above already works this way. */}
+      {/* Hollow and solid are the same box: measured at 10x10 in both, because `size-full` fixes the
+          outer geometry and the 1.5px border is drawn inside it (border-box). The dot has no content
+          to push in, and nothing outside it moves, so the ring/fill swap is paint only. Left as is
+          on purpose — this is not a no-shift case. */}
       <span
         className={cn(
           "relative inline-flex size-full rounded-full",
@@ -106,7 +110,7 @@ export function ShellBadge({ stale, className }: { stale?: boolean; className?: 
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-opacity",
+        "shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground transition-opacity",
         stale && "opacity-40",
         className,
       )}

@@ -35,6 +35,20 @@ describe("TabStrip", () => {
     expect(renderedTabs).toEqual(["Second", "First"]);
   });
 
+  it("carries an accessible name, so the row of chips is not an unnamed run of buttons", () => {
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("navigation", { name: "Tabs" })).toBeInTheDocument();
+  });
+
   it("shows All plus only this workspace's tabs, and reports selection", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

@@ -882,7 +882,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <>
-      <div className="border-t border-border/60 bg-muted px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2.5">
+      <div className="border-t border-rule bg-muted px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2.5">
         {/* Pending-send preview: visible from send until the mirror echoes back (or 6s). Shows the
             user what landed so they don't double-tap while waiting for the terminal to update. */}
         {lastSent && (
@@ -1163,7 +1163,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // bottom edge.
               "block pr-11",
               direct.active &&
-                "border-primary focus-visible:border-primary focus-visible:ring-primary/30",
+                "border-primary focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             )}
             disabled={locked}
             rows={1}
@@ -1194,7 +1194,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // submit key is still conditional on the verify step behind it.
             <Button
               variant="destructive"
-              className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
+              className="h-11 shrink-0 rounded-md px-4 text-sm font-semibold"
               onClick={onSendClick}
               disabled={locked || !input.trim() || sending}
               aria-label={translate("composer.send.typeAnyway")}
@@ -1204,7 +1204,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           ) : !direct.active && confirmingSend ? (
             <Button
               variant="destructive"
-              className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold"
+              className="h-11 shrink-0 rounded-md px-4 text-sm font-semibold"
               onClick={onSendClick}
               disabled={locked || !input.trim() || sending}
               aria-label={translate("composer.send.reallySend")}

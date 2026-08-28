@@ -33,7 +33,7 @@ export function AgentIcon({
     return (
       <span
         className={cn(
-          "inline-flex shrink-0 items-center justify-center rounded-[22%] border bg-muted text-[0.5em] font-semibold uppercase leading-none text-muted-foreground",
+          "inline-flex shrink-0 items-center justify-center rounded-md border bg-muted text-[0.5em] font-semibold uppercase leading-none text-muted-foreground",
           className,
         )}
         role="img"

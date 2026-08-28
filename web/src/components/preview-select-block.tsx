@@ -189,7 +189,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
             rows={2}
             aria-label={t("dialog.preview.noteTextAria")}
             placeholder={t("dialog.preview.notePlaceholder")}
-            className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary/60"
+            className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <div className="flex items-center justify-end gap-1.5">
             <button

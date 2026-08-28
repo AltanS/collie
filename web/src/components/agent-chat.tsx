@@ -708,7 +708,7 @@ export function AgentChat({
             className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
           >
             {isShell ? (
-              <div className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-muted">
+              <div className="flex size-6 shrink-0 items-center justify-center rounded-md border bg-muted">
                 <TerminalSquare className="size-3 text-muted-foreground" />
               </div>
             ) : (
@@ -801,11 +801,12 @@ export function AgentChat({
             (unless you're selecting text to copy, which the tap must not collapse). */}
         {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
             quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
-        {/* border-t like the strips above it: every band in this stack draws its own TOP edge, so
-            whichever one ends up last still has a boundary under it. Without this the pane row ran
-            straight into terminal output — the chrome and the mirror read as one surface. Drawing it
-            here rather than as a border-b on PaneStrip covers the case where that strip is absent
-            (a tab holding a single pane), which is the common one. */}
+        {/* border-t border-rule like the strips above it: every band in this stack draws its own
+            TOP edge in the same token, so whichever one ends up last still has a boundary under it,
+            and all three read as one repeated division rather than a hierarchy. Without this the
+            pane row ran straight into terminal output — the chrome and the mirror read as one
+            surface. Drawing it here rather than as a border-b on PaneStrip covers the case where
+            that strip is absent (a tab holding a single pane), which is the common one. */}
         {/* `role="presentation"` because that is what this element is: a layout wrapper with no
             semantics of its own. Its click handler adds nothing a keyboard user needs — focusing the
             composer is what a keyboard user already has (the textarea is the next tabbable thing),
@@ -813,7 +814,7 @@ export function AgentChat({
             selection. It is a touch convenience layered over an already-reachable action. */}
         <div
           role="presentation"
-          className="min-h-0 min-w-0 flex-1 border-t border-border/40"
+          className="min-h-0 min-w-0 flex-1 border-t border-rule"
           onClick={focusFromMirror}
         >
           <ChatMessageList
@@ -920,7 +921,7 @@ export function AgentChat({
               onClick={() => setDrawer("switcher")}
               className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
             >
-              <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
+              <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
             </button>
           )}
 

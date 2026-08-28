@@ -40,7 +40,7 @@ export function IdleLock({ onUnlock, catchingUp = false }: IdleLockProps) {
     >
       {/* The panel carries its own, heavier blur so the copy stays readable over arbitrary pane text,
           while the scrim above keeps the herd recognisable behind it. */}
-      <div className="flex flex-col items-center gap-6 rounded-3xl border border-border/60 bg-card/70 px-8 py-10 text-center shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">
+      <div className="flex flex-col items-center gap-6 rounded-lg border border-border/60 bg-card/70 px-8 py-10 text-center shadow-2xl ring-1 ring-white/10 backdrop-blur-2xl">
         <div className="flex flex-col items-center gap-3">
           {/* ONE mark in both states, in one 80px box, so the panel's geometry never shifts as the
               resume fetch starts and finishes — nothing is swapped and nothing can resize. The

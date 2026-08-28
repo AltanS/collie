@@ -207,7 +207,7 @@ export function NavTray({
   };
 
   return (
-    <div className="space-y-2 border-t border-border/60 bg-muted/30 px-3 py-2.5">
+    <div className="space-y-2 border-t border-rule bg-muted/30 px-3 py-2.5">
       {/* Staging strip — visible only while composing (a modifier armed or keys queued). Same on
           both tabs; the review-and-Send surface replaces the old "⇧ armed" hint line. */}
       <KeyQueueStrip

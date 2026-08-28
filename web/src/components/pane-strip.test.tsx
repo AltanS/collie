@@ -33,6 +33,17 @@ describe("PaneStrip", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("carries an accessible name, so the row of pills is not an unnamed run of buttons", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("navigation", { name: "Panes" })).toBeInTheDocument();
+  });
+
   it("lists every pane in the tab and marks the current one", () => {
     render(
       <PaneStrip

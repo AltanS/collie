@@ -48,7 +48,7 @@ export function NewSpaceSheet({ open, onClose, onCreate }: NewSpaceSheetProps) {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -57,7 +57,7 @@ export function NewSpaceSheet({ open, onClose, onCreate }: NewSpaceSheetProps) {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder={t("space.new.label.placeholder")}
-            className="h-11 rounded-lg border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-11 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
         </label>
         <Button onClick={create} className="mt-1 h-11">

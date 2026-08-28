@@ -67,7 +67,7 @@ export function FindBar({
         }}
         placeholder={t("find.placeholder", { subject: resolvedSubject })}
         aria-label={t("find.aria", { subject: resolvedSubject })}
-        className="h-9 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+        className="h-9 min-w-0 flex-1 bg-transparent text-base placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       />
       <span className="shrink-0 whitespace-nowrap px-1 font-mono text-xs tabular-nums text-muted-foreground">
         {countLabel}

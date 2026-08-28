@@ -8,8 +8,14 @@ import { useLocale } from "@/hooks/use-locale";
 
 // The chip pill, identical for a question and for the trailing Submit — the only difference is which
 // one is current, which the callers know and this component does not infer.
-const CHIP_CLASS = "flex min-w-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-tight";
-const CHIP_CURRENT = "border-primary/60 bg-primary/15 font-medium text-foreground";
+// `font-medium` is in the SHARED string, not on the current chip: a weight change is a width
+// change, so a chip putting it on when it becomes current would grow and shove every chip after it
+// along the strip. The final weight is shipped at rest and the state is carried by colour alone —
+// the border, the tint and the text token below. Reserving the wider metric this way costs nothing;
+// the idle chip is already held back far enough by `text-muted-foreground` on a bare border.
+const CHIP_CLASS =
+  "flex min-w-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium leading-tight";
+const CHIP_CURRENT = "border-primary/60 bg-primary/15 text-foreground";
 const CHIP_IDLE = "border-border/60 text-muted-foreground";
 // 28px keeps the strip slim; the hit area is bled into the gap around it so the target is 44px
 // without the visual weight — the same trick the mirror's tap-to-open links use.

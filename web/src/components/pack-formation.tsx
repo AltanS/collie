@@ -368,7 +368,7 @@ function FormationNodeMark({
         e.preventDefault();
         onSelect(m);
       }}
-      className="group cursor-pointer outline-none"
+      className="group cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       {/* A transparent disc wider than the body: the tap target is 72px across at phone scale, and
           the ring alone would be a 4px-wide thing to hit with a thumb. */}

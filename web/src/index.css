@@ -33,7 +33,14 @@
 :root {
   color-scheme: light dark;
 
-  --radius: 0.65rem;
+  /* 2px, not the stock 0.65rem, and it does not ramp. The radius descends from the mark: the mark
+     holds a disc and a traced line, and it holds no stadium and no soft-cornered box anywhere. A
+     corner is either a full circle (width == height — a dot, an avatar, the switch thumb) or it is
+     effectively square. 2px is the smallest radius that still reads as intentional rather than as a
+     rasterizer artefact, so it is the floor the whole surface sits on. The four derived steps below
+     are hard-set to the same 2px: the stock shadcn calc() ramp subtracts up to 4px, which at this
+     base computes negative and is invalid. */
+  --radius: 2px;
   /* Light deviates from stock shadcn in two places, both measured rather than taste:
      --background is a step off white (stock has background == card == popover == pure white, so the
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
@@ -43,8 +50,13 @@
   --foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
   --card: light-dark(oklch(1 0 0), oklch(0.205 0 0));
   --card-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
-  --popover: light-dark(oklch(1 0 0), oklch(0.205 0 0));
-  --popover-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
+  /* Pinned to --card, not a value of its own. `bg-popover` / `text-popover-foreground` appear ZERO
+     times in src/ — Collie's floating layer is the BottomSheet (ui/sheet.tsx), which is
+     `bg-background` over a `bg-black/50` scrim. The pair is kept rather than deleted only so a
+     future `npx shadcn add` of a Popover/Tooltip primitive lands on a Collie surface instead of
+     stock white; it is an alias, and there is no third paper behind it. */
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
   --primary: light-dark(oklch(0.205 0 0), oklch(0.922 0 0));
   --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
   /* The "this control is ON" tint — a very light sky. Its own token pair rather than reusing
@@ -61,8 +73,14 @@
   --control-on-foreground: light-dark(oklch(0.38 0.12 245), oklch(0.89 0.06 235));
   --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
   --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
-  /* Light --muted is a step BELOW --background so the header/composer chrome band still reads as a
-     distinct surface now that the page is no longer white. */
+  /* The INERT fill — a well, a disabled track, a quiet chip on a card. Value unchanged (rgb 235
+     light / 38 dark), but its old job is gone: it used to be the chrome band behind the header,
+     "a step BELOW --background so the band still reads as a distinct surface". The band existed
+     because the line it competed with was not a line — `border-border/60` composites to 1.09:1
+     against the page in light and 1.16:1 in dark, i.e. a rumour. --rule below is that line drawn
+     properly, and chrome is now the page colour (app-header.tsx, settings.tsx, pack.tsx).
+     Do NOT put --muted back behind chrome: on the pane screen it re-opens the seam --background's
+     0.97 was chosen to close, and it is the worst ground a status chip has ever landed on. */
   --muted: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
   /* Light was oklch(0.556) — 4.74:1 on white, i.e. zero headroom, so every /70, /80 and opacity-60
      derivative in the app fell under 3:1 while its dark counterpart passed. Darkened to buy that
@@ -82,6 +100,17 @@
   --destructive-foreground: light-dark(oklch(0.985 0 0), oklch(0.985 0 0));
   --border: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 12%));
   --input: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 15%));
+  /* The STRUCTURAL line, and deliberately stronger than --border. --border draws one component's
+     edge; --rule draws the cut between two regions of chrome — the header's bottom edge, a strip
+     separator, the composer's top edge — where the whole job is to separate chrome from page
+     without a fill.
+     Measured against --background, which is the only ground chrome sits on:
+       border-border/60  1.09:1 light  ·  1.16:1 dark   ← what the header used, invisible
+       border-border     1.16:1 light  ·  1.26:1 dark
+       --rule            1.34:1 light  ·  2.06:1 dark
+     rgb(214) on rgb(245) light; white 24% over rgb(10) = rgb(69) dark. At 3x DPR on a phone that
+     is a crisp 1px cut, which is the mark's own vocabulary — a cut, not a wash. */
+  --rule: light-dark(oklch(0.875 0 0), oklch(1 0 0 / 24%));
   /* Light is darkened off stock shadcn (0.708 → 0.62): at 0.708 the focus ring measures 2.58:1 on
      white, under the 3:1 WCAG 1.4.11 floor for a non-text indicator — and components draw it at
      `ring-ring/50`, which halves that again. On an app whose buttons type into a live shell, a focus
@@ -98,22 +127,76 @@
      makes the dots darker; if that costs the dashboard its glance-ability outdoors, the fallback is
      splitting fill and text into separate tokens.
 
-     The light values are measured against the WORST ground this text lands on, which took three
-     tries to get right. Tuned against plain white they were 5.4/4.8/4.6 and failed on the chip.
-     Tuned against the `bg-status-X/15` chip on a white card they were 4.90/4.58/4.46 and still
-     failed, because the chip is translucent and the card underneath varies: `needs you` sits on a
-     `bg-status-blocked/5` card (4.17) and the pane header's chip sits on `bg-muted`, rgb(235) not
-     rgb(255) (3.91). These are tuned against that rgb(235) case. When touching them, measure the
-     chip on the pane header, not the dot on the dashboard. */
+     Measure the CHIP, never the dot: the chip is `bg-status-X/15` under `text-status-X`, so the
+     translucent wash lifts the ground toward the ink and the ratio is always worse than the solid
+     text. /15 is the strict case and the one the table below uses; status-badge.tsx draws its chip
+     at /10, which is ~0.4 kinder everywhere, so anything that passes here passes there too. Tuned against plain white these read 5.4/4.8/4.6 and failed on the chip; tuned against
+     the chip on a white card they read 4.90/4.58/4.46 and still failed, because the ground varies.
+
+     The historic worst ground was the header band, `bg-muted` rgb(235) — that band is GONE (see
+     --muted). Chips now land on --background or --card and on nothing else. The table below is
+     RASTERISED, not arithmetic: each cell was rendered by the browser at DPR 1 and the pixel read
+     back, so the oklab `color-mix` Tailwind emits for `/15` is measured rather than modelled. Plain
+     sRGB alpha arithmetic agrees to within 0.08 and always in the pessimistic direction.
+
+       ground              blocked working done  idle  unknown info
+       --card    255        5.71   5.75   5.39  5.96  6.40    5.19   (light)
+       --background 245     5.23   5.28   4.95  5.47  5.88    4.77   (light, the only chrome ground)
+       --muted   235        4.83   4.89   4.58  5.06  5.44   *4.41   (light, the old header band)
+       --accent  228        4.55   4.60  *4.31  4.77  5.12   *4.16   (light, NOT A PERMITTED GROUND)
+       --background 10      5.59   8.67   7.37  6.79  5.75    8.41   (dark)
+       --card     23        4.90   7.47   6.39  5.89  5.01    7.28   (dark)
+       --muted    38       *4.13   6.16   5.29  4.87 *4.16    6.02   (dark, the old header band)
+       --accent   38       *4.13   6.16   5.29  4.87 *4.16    6.02   (dark, NOT A PERMITTED GROUND)
+
+     Every cell on --background and --card clears 4.5. The starred cells are why the two fills are
+     not permitted grounds, and they are recorded so nobody re-derives them the expensive way.
+
+     Both of the failures this table used to record are now CLOSED, and the fixes were of two
+     different kinds — keep the distinction, because it is the rule for the next one:
+       · dark `unknown` was 4.35 on --background and 3.82 on --card. No ground could reach it, so
+         the TOKEN moved. See --status-idle / --status-unknown below.
+       · the switcher active row was `bg-accent` (rgb 228 light / 38 dark) and it CONTAINS status
+         count pills: blocked 4.55 / working 4.60 light — hairline — and blocked 4.13 dark, an
+         outright fail. The GROUND moved: the fill is gone and the row is marked by a 2px inset rail
+         in --primary (session-switcher.tsx, server-switcher.tsx), so the pills land on the sheet's
+         --background at 5.23 / 5.28 light and 5.59 / 8.67 dark.
+     A chip belongs on --background or --card and on nothing else. */
   --status-blocked: light-dark(oklch(0.46 0.2 25), oklch(0.7 0.2 24));
   --status-working: light-dark(oklch(0.46 0.12 72), oklch(0.82 0.15 82));
   --status-done: light-dark(oklch(0.45 0.14 152), oklch(0.74 0.16 152));
-  --status-idle: light-dark(oklch(0.45 0.02 250), oklch(0.65 0.02 250));
-  --status-unknown: light-dark(oklch(0.43 0.02 250), oklch(0.6 0.02 250));
+  /* The two quiet ends of the palette, and the only pair in it tuned as a PAIR. Light halves are
+     untouched (chip on --background: idle 5.47, unknown 5.88).
 
-  /* Calm-info sky blue — same shape as the lifecycle palette above (light tuned to clear 4.5:1 on
-     the rgb(235) chip ground, dark brighter to glow on near-black) but a distinct hue (230, cool
-     sky) so it never gets confused with `status-working`'s amber "needs attention" signal. Used by
+     Both dark halves were raised, and both had to move together. Dark `unknown` was oklch(0.6 0.02)
+     = rgb(119,129,140): its chip measured 4.35 on --background and 3.82 on --card, so it failed the
+     4.5 floor on every ground it is allowed to sit on and no ground change could reach it. Clearing
+     --card (the binding ground, since the wash lifts less over a lighter paper) needs L >= 0.645 for
+     a bare pass; 0.68 was taken instead so the pass has ~0.46 of headroom rather than a hairline.
+     Raising `unknown` to 0.68 would have put it ABOVE `idle` at 0.65 and inverted the pair, so
+     `idle` went up to 0.73 and the 0.05 L gap between them is preserved exactly.
+
+     The chroma went 0.02 -> 0.03 in the dark halves only, and that is the load-bearing part: at
+     L 0.68/0.73 these values sit on either side of --muted-foreground (0.708, rgb 161,161,161), so
+     lightness can no longer separate them from ordinary quiet text and the tint has to. Measured as
+     rgb distance, the three pairs now sit in one band — idle/unknown 26.6 (was 26.0),
+     idle/muted-fg 27.5 (was 32.5), unknown/muted-fg 25.2 — i.e. no pair is closer than the
+     idle/unknown pair this file already treats as far enough apart. 0.03 is still the lowest chroma
+     in the app; --control-on is 0.05 and every other status hue is 0.15 or more, so neither of these
+     reads as a signal blue.
+
+     Dark chips, --background / --card:  idle 6.79 / 5.89   unknown 5.75 / 5.01. New rgb values are
+     idle 154,170,186 and unknown 139,154,171. */
+  --status-idle: light-dark(oklch(0.45 0.02 250), oklch(0.73 0.03 250));
+  --status-unknown: light-dark(oklch(0.43 0.02 250), oklch(0.68 0.03 250));
+
+  /* Calm-info sky blue — same shape as the lifecycle palette above (dark brighter to glow on
+     near-black). It is the palette's tightest light value: on the old rgb(235) header band its chip
+     measured 4.41 — under the floor the block above claims. Chrome is the page now, so the one
+     surface that uses it (alpha-bar.tsx, inside the header) reads 4.77. It has ~0.27 of headroom
+     and no more; do not lighten it, and do not put it back on a fill. Same shape as the lifecycle
+     values but a distinct hue (230, cool sky) so it never gets confused with `status-working`'s
+     amber "needs attention" signal. Used by
      surfaces that are informational, not a status: currently just the prerelease strip
      (alpha-bar.tsx). */
   --status-info: light-dark(oklch(0.46 0.14 230), oklch(0.8 0.15 230));
@@ -153,10 +236,14 @@
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* One radius, four names. There is no ramp to walk: sm/md/lg/xl all resolve to the same 2px, so
+     `rounded-md` and `rounded-xl` are the same corner and no component can drift rounder than its
+     neighbour by picking a bigger step. Written out rather than left as calc(): at --radius: 2px
+     the stock `- 2px` and `- 4px` forms compute 0 and -2px, and a negative radius is invalid. */
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -178,6 +265,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-rule: var(--rule);
   --color-ring: var(--ring);
 
   --color-status-blocked: var(--status-blocked);

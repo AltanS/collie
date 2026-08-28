@@ -76,7 +76,7 @@ export function PromptPanel({ ariaLabel, children }: { ariaLabel: string; childr
 
 // The small primary tick that flags an option group as "the terminal is asking you something",
 // separating the block from the raw mirror above it. Shared by both group headers below.
-const accentTick = <span aria-hidden className="h-3 w-0.5 shrink-0 rounded-full bg-primary/60" />;
+const accentTick = <span aria-hidden className="h-3 w-0.5 shrink-0 rounded-md bg-primary/60" />;
 
 /** The compact caption above an option group — a short uppercase label, for the single-question
  *  dialogs whose actual question stays visible in the raw scrollback just above. Non-semantic (the

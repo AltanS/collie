@@ -83,7 +83,7 @@ export function KeyQueueStrip({
           disabled={disabled}
           onChange={(e) => onBaseChar(e.target.value)}
           aria-label={t("keys.queue.charAria")}
-          className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:opacity-50"
+          className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
         />
       )}
 

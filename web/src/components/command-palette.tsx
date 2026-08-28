@@ -83,7 +83,7 @@ export function CommandPalette({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("commands.search.placeholder", { count: all.length })}
-          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring"
+          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-3 text-base placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
       </div>
 

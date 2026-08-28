@@ -3,6 +3,7 @@ import { ChevronRight, Info, TriangleAlert, User, Wrench } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { MarkdownText } from "@/components/markdown-text";
+import { cn } from "@/lib/utils";
 import { splitHighlight } from "@/lib/transcript-search";
 import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
 import { getLocaleSnapshot, t } from "@/lib/i18n";
@@ -214,11 +215,17 @@ export function TranscriptView({
           <div
             key={entry.uuid}
             data-turn={entry.uuid}
-            className={`${showHeader ? "space-y-3 pt-1" : "space-y-3"} ${
-              entry.uuid === focusedUuid
-                ? "rounded-lg ring-2 ring-primary/60 ring-offset-2 ring-offset-background"
-                : ""
-            }`}
+            // The jump target's mark is a border that is present in every turn and transparent
+            // until the turn is the one you jumped to, so nothing reflows when it lands. It used to
+            // be `ring-2 ring-offset-2`, which paints OUTSIDE the box: in this scroller the first
+            // and last turn lost their mark at the container edge, and a later turn's own fill
+            // painted over it. The radius is unconditional for the same reason — a shape that
+            // changes with state is still a box that changes.
+            className={cn(
+              "rounded-lg border border-transparent",
+              showHeader ? "space-y-3 pt-1" : "space-y-3",
+              entry.uuid === focusedUuid && "border-primary/60",
+            )}
           >
             {newDay && (
               <div className="flex items-center gap-2 pt-1">

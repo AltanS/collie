@@ -108,7 +108,7 @@ export function SpaceOverview({
       />
 
       {open && (
-        <div id="spaces-body" className="flex flex-col divide-y divide-border/60">
+        <div id="spaces-body" className="flex flex-col divide-y divide-rule">
           {/* The other half of the hidden "+" above: the adapter's own reason, where the operator
               who went looking for it is already reading. Renders nothing on a multiplexer that can
               create a space, and nothing on one that declined without saying why. */}
@@ -158,8 +158,8 @@ export function SpaceOverview({
                   onClick={() => onOpen(w.workspaceId)}
                   className={cn(
                     // Square, like the herd rows: this is a divide-y list, and a rounded fill under
-                    // a straight hairline reads as a fault. The blocked row below has a real border,
-                    // so it keeps its radius.
+                    // a straight hairline reads as a fault. That holds for EVERY state — corners
+                    // belong to the row's place in the list, never to what the row is doing.
                     "w-full text-left transition-colors active:scale-[0.99]",
                     !blocked && "hover:bg-muted/50",
                   )}
@@ -170,8 +170,14 @@ export function SpaceOverview({
                       tint — that's the one cue worth the weight. */}
                   <div
                     className={cn(
-                      "flex flex-row items-center gap-3 px-2.5 py-2.5",
-                      blocked && "rounded-lg border border-status-blocked/40 bg-status-blocked/5",
+                      // A 2px left rail, present in every state and transparent at rest, instead of
+                      // a four-sided border: the box is then identical whether the row is blocked or
+                      // not, so the text can't step sideways and the row can't grow. A full border
+                      // would also land its bottom edge 1px above the list's own divide-y hairline
+                      // and read as a 2px double line under one row.
+                      "flex flex-row items-center gap-3 px-2.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]",
+                      blocked &&
+                        "bg-status-blocked/5 shadow-[inset_2px_0_0_0_var(--color-status-blocked)]",
                     )}
                   >
                     {status ? (

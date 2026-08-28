@@ -64,7 +64,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
       </div>
 
       {data.current && (
-        <p className="border-t border-border/60 px-4 py-2.5 text-sm">
+        <p className="border-t border-rule px-4 py-2.5 text-sm">
           {pairedAsBefore}
           <span className="font-mono text-[13px] text-status-done">{data.current}</span>
           {pairedAsAfter}
@@ -72,13 +72,13 @@ export function PairedDevices({ data }: { data: DevicesData }) {
       )}
 
       {data.error && (
-        <p className="border-t border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
+        <p className="border-t border-rule px-4 py-2.5 text-xs text-muted-foreground">
           {t("settings.devices.loadError")}
         </p>
       )}
 
       {data.devices.length > 0 && (
-        <ul className="divide-y divide-border/60 border-t border-border/60">
+        <ul className="divide-y divide-rule border-t border-rule">
           {data.devices.map((d) => (
             <DeviceRow
               key={d.label}
@@ -220,7 +220,7 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
   const [hintBefore, hintAfter] = splitAroundValue(hintMessage, command);
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border/60 p-4">
+    <div className="flex flex-col gap-3 border-t border-rule p-4">
       <div>
         <div className="font-medium">{t("settings.devices.pair.title")}</div>
         <p className="text-sm text-muted-foreground">
@@ -242,7 +242,7 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
           autoComplete="off"
           spellCheck={false}
           aria-label={t("settings.devices.pair.codeLabel")}
-          className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tracking-widest outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm tracking-widest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
       </label>
       <label className="flex flex-col gap-1">
@@ -256,7 +256,7 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
           autoCorrect="off"
           autoComplete="off"
           aria-label={t("settings.devices.pair.nameLabel")}
-          className="h-11 rounded-lg border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
       </label>
       {error && <p className="text-xs text-status-blocked">{error}</p>}

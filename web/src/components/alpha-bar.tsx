@@ -22,7 +22,14 @@ interface AlphaBarProps {
 // setting to forget to turn off.
 //
 // Colours are the shared `status-info` sky token, which is declared with `light-dark()` in
-// index.css and therefore already correct under both themes — hence NO `dark:` variants here. Sky
+// index.css and therefore already correct under both themes — hence NO `dark:` variants here.
+//
+// This strip is the tightest contrast case in the app, because it is a translucent wash under its
+// own solid ink and it inherits whatever the header is filled with. On the header's old `bg-muted`
+// band (rgb 235) the `/15` chip measured 4.41:1 — under the 4.5 floor index.css claims for the
+// token. The header is the page colour now (app-header.tsx), so the same pair reads 4.79:1 light
+// and 8.40:1 dark. The margin in light is ~0.29 and that is the whole margin: do not re-tint the
+// header behind this strip, and do not drop the wash below /15. Sky
 // rather than the `status-working` amber deliberately: this strip isn't a warning, just a calm
 // "you're on the prerelease build" fact. The treatment (border-b + /15 wash + solid token text) is
 // deliberately the ReadOnlyBanner's, so the app's two "this session is not normal" strips read as

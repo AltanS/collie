@@ -72,7 +72,14 @@ export function SettingsRoute() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-background/85 px-2 py-2 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
+      {/* One header treatment app-wide: the page colour, cut off the content by a full-strength
+          rule. Was `bg-background/85 backdrop-blur-md`, which the dashboard header never had — three
+          headers, two treatments, one app. The blur is not merely redundant, it is a hazard: a
+          backdrop-filter makes the element a containing block, and session-switcher.tsx:63 already
+          carries the scar comment about the app header having clipped a portalled sheet that way.
+          `border-border/60` goes with it — it composites to 1.09:1 on the page, so at 85% opacity
+          the header was separated by essentially nothing. */}
+      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-rule bg-background px-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
         <Button
           variant="ghost"
           size="icon"
@@ -133,12 +140,12 @@ export function SettingsRoute() {
           </div>
 
           {state && blocked && (
-            <p className="border-t border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
+            <p className="border-t border-rule px-4 py-2.5 text-xs text-muted-foreground">
               {availabilityNote(state.availability)}
             </p>
           )}
           {error && (
-            <p className="border-t border-border/60 px-4 py-2.5 text-xs text-status-blocked">
+            <p className="border-t border-rule px-4 py-2.5 text-xs text-status-blocked">
               {error}
             </p>
           )}

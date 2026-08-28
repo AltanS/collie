@@ -127,7 +127,7 @@ export function RenameView({
           onChange={(e) => onLabelChange(e.target.value)}
           onKeyDown={onInputKeyDown}
           placeholder={placeholder}
-          className="h-11 rounded-lg border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
       </label>
       <Button onClick={onSave} disabled={saving || !canSave} className="h-11">

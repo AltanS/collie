@@ -53,7 +53,13 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label={t("connection.session.aria", { name: currentName })}
-        className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70 active:scale-95"
+        // Bordered, not filled, and deliberately identical to the server pill beside it. The
+        // bg-muted this used to carry was invisible by accident: the header was bg-muted too, so the
+        // fill painted nothing. The header is bg-background now, which made a 1.09:1 (light) /
+        // 1.31:1 (dark) smudge suddenly visible — a fill too weak to be a surface and too present to
+        // be nothing. A component's edge is --border (1.16:1 light / 1.33:1 dark), which is the
+        // treatment the sibling trigger already used.
+        className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent active:scale-95"
       >
         <Layers className="size-3.5" />
         <span className="max-w-[7rem] truncate">{currentName}</span>
@@ -76,9 +82,16 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
                     aria-current={active ? "true" : undefined}
                     className={cn(
                       "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                      // "Current" is a 2px inset cut in --primary, not a fill. The fill it replaces
+                      // was bg-accent inside a bg-background sheet: 1.17:1 light, 1.31:1 dark, i.e.
+                      // barely a surface — while putting the status count pills on rgb(228)/rgb(38),
+                      // where blocked measures 4.55 light and 4.13 dark. The rail is 16.44:1 light /
+                      // 15.72:1 dark against the same ground and costs no layout, so the row does not
+                      // move between states. Same treatment as the alert rows in space-overview and
+                      // agent-card.
                       active
-                        ? "bg-accent text-accent-foreground"
-                        : "hover:bg-muted/60 active:bg-muted",
+                        ? "shadow-[inset_2px_0_0_0_var(--primary)]"
+                        : "hover:bg-accent active:bg-accent",
                       !s.reachable && "cursor-not-allowed opacity-50 hover:bg-transparent",
                     )}
                   >
@@ -87,7 +100,7 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate text-sm font-medium">{s.name}</span>
                         {s.isPrimary && (
-                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             {t("connection.session.primary")}
                           </span>
                         )}
@@ -100,12 +113,12 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
                       {s.reachable && (s.blocked > 0 || s.working > 0) && (
                         <div className="mt-1 flex items-center gap-1.5">
                           {s.blocked > 0 && (
-                            <span className="rounded-full border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
+                            <span className="rounded-md border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
                               {tn("status.count.needsYou", s.blocked)}
                             </span>
                           )}
                           {s.working > 0 && (
-                            <span className="rounded-full border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
+                            <span className="rounded-md border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
                               {tn("status.count.working", s.working)}
                             </span>
                           )}

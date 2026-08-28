@@ -75,7 +75,7 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
         unreachable: unreachable ? t("connection.host.ariaUnreachableSuffix") : "",
       })}
       className={cn(
-        "inline-flex max-w-[8rem] shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium",
+        "inline-flex max-w-[8rem] shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium",
         target ? "text-[11px]" : "text-[10px]",
         degraded
           ? // Unreachable is a STATE, not a disappearance (PACK_PROTOCOL.md §10.2) — it stays legible,

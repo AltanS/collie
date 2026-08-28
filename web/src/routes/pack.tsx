@@ -71,7 +71,14 @@ export function PackRoute() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border/60 bg-background/85 px-2 py-2 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
+      {/* One header treatment app-wide: the page colour, cut off the content by a full-strength
+          rule. Was `bg-background/85 backdrop-blur-md`, which the dashboard header never had — three
+          headers, two treatments, one app. The blur is not merely redundant, it is a hazard: a
+          backdrop-filter makes the element a containing block, and session-switcher.tsx:63 already
+          carries the scar comment about the app header having clipped a portalled sheet that way.
+          `border-border/60` goes with it — it composites to 1.09:1 on the page, so at 85% opacity
+          the header was separated by essentially nothing. */}
+      <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-rule bg-background px-2 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
         <Button
           variant="ghost"
           size="icon"
@@ -168,7 +175,9 @@ function MemberSheet({
   return (
     <div className="space-y-3">
       {(member.isLead || isDeputy) && (
-        <span className="flex w-fit items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+        // `rounded-md` (2px): an icon plus an uppercase word is a stadium, not a circle. Full-round
+        // is reserved for shapes whose width equals their height.
+        <span className="flex w-fit items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
           {member.isLead ? (
             <Crown className="size-2.5" aria-hidden />
           ) : (
@@ -178,7 +187,7 @@ function MemberSheet({
         </span>
       )}
 
-      <dl className="divide-y divide-border/60 rounded-lg border border-border/60">
+      <dl className="divide-y divide-rule rounded-lg border border-border/60">
         <Row label={t("pack.member.health")}>
           {/* The lead's own word for this member, and its reason VERBATIM under it — never
               paraphrased, because the operator's next move is to read it and go fix a version, a

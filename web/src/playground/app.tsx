@@ -21,9 +21,12 @@ import { ConnectionBanner } from "@/components/connection-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { IdleLock } from "@/components/idle-lock";
 import { PackFooterLink } from "@/components/pack-footer-link";
+import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { SessionSwitcher } from "@/components/session-switcher";
+import { SpaceStrip } from "@/components/space-strip";
+import { TabStrip } from "@/components/tab-strip";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { UpdateBanner } from "@/components/update-banner";
 import { useTheme, type Theme } from "@/hooks/use-theme";
@@ -34,6 +37,7 @@ import { __resetSelfUpdate, __setReloadImpl } from "@/lib/self-update";
 import { observeServerBuild, __resetServerBuild } from "@/lib/server-build";
 import { BootSplash } from "@/routes/root";
 import {
+  allPanes,
   censusConflicted,
   censusFive,
   censusNine,
@@ -53,6 +57,8 @@ import {
   paneShell,
   paneWorking,
   rosterFive,
+  spaces,
+  tabs,
   updateMajor,
   updateRelease,
   updateRestart,
@@ -419,6 +425,28 @@ function DashboardSection() {
       <WriteGateCard />
 
       <Card
+        label="the three strips — spaces › tabs › panes"
+        reach="open a space. The three navigation rows stack under the header, one level apart, and every one of them overflows on a phone. Scroll each row sideways: the name stays put, because it sits above the scroller rather than inside it."
+        note="Real <SpaceStrip>, <TabStrip> and <PaneStrip> with the fixture herd, in a 390px frame — the width the row was measured at. The chips are live: tapping one moves the selection. Every pill is drawn 34px tall and answers a 46px touch: the extra 12px is a transparent hit area inside the row's own padding, so the tap floor costs no height. Try tapping just above or just below a pill."
+        span={2}
+      >
+        <PhoneFrameCard height={240}>
+          <StripsHarness />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
+        label="space strip — the drill-in (leads with Back)"
+        reach="tap into a single space. The row leads with an explicit way back instead of the “All” chip."
+        note="Same height as the card above, deliberately: the label is drawn in both states, so navigating in and out does not jump the page."
+        span={2}
+      >
+        <PhoneFrameCard height={140}>
+          <StripsHarness backOnly />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
         label="update — the slim top row"
         reach="a fresh build is confirmed on the server but the app cannot auto-update right now: unsent work, an open sheet, an upload — or it already auto-updated once for this build."
         note="Driven through the actual controller: a reload hold is taken and a newer build id is observed twice, which is the hysteresis the real poll performs."
@@ -434,7 +462,7 @@ function DashboardSection() {
         note="Three snapshots, three routers — the three cannot be true at once on one bridge."
       >
         <Stage>
-          <div className="flex flex-col divide-y divide-border/60">
+          <div className="flex flex-col divide-y divide-rule">
             <RootRouter data={{ ...homeSolo, update: updateRestart }}>
               <div className="p-3">
                 <UpdateBanner />
@@ -685,7 +713,7 @@ function Sidebar({ active, clock, onClock, phoneWidth, onPhoneWidth }: ControlPr
         <div className="mt-4">
           <SideNav sections={SECTIONS} active={active} />
         </div>
-        <div className="mt-5 space-y-3 border-t border-border/60 pt-4">
+        <div className="mt-5 space-y-3 border-t border-rule pt-4">
           <Controls
             clock={clock}
             onClock={onClock}
@@ -789,6 +817,46 @@ function Field({
     <div className="flex items-center gap-2">
       <span className="text-[11px] text-muted-foreground">{label}</span>
       {children}
+    </div>
+  );
+}
+
+/**
+ * The three navigation strips, stacked as the space route stacks them (space › tab › pane) and
+ * wired to real state so the selection actually moves. `backOnly` shows the drill-in branch, where
+ * SpaceStrip leads with Back instead of the "All" chip.
+ *
+ * They need no provider: every capability they gate on reads as present when no bridge has said
+ * otherwise (lib/mux-capability.ts), which is the same answer the real app gets on a fresh load.
+ */
+function StripsHarness({ backOnly = false }: { backOnly?: boolean }) {
+  const [space, setSpace] = useState<string | null>("w1");
+  const [tab, setTab] = useState<string | null>("w1:t1");
+  const panes = allPanes.filter((p) => p.tabId === "w1:t1");
+  const [pane, setPane] = useState(panes[0]?.paneId ?? "");
+  return (
+    <div className="flex flex-col">
+      <SpaceStrip
+        workspaces={spaces}
+        agents={allPanes}
+        selected={space}
+        onSelect={setSpace}
+        onNewSpace={() => {}}
+        onBack={backOnly ? () => {} : undefined}
+      />
+      {!backOnly && (
+        <>
+          <TabStrip
+            workspaceId={space ?? "w1"}
+            tabs={tabs}
+            agents={allPanes}
+            selected={tab}
+            onSelect={setTab}
+            onNewTab={() => {}}
+          />
+          <PaneStrip panes={panes} currentPaneId={pane} onSelect={setPane} />
+        </>
+      )}
     </div>
   );
 }

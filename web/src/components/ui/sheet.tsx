@@ -146,15 +146,18 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
           transition: drag.current.engaged ? "none" : "transform 0.2s ease-out",
         }}
         className={cn(
-          "relative z-10 max-h-[82dvh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border-t border-border bg-background shadow-2xl duration-200 animate-in slide-in-from-bottom",
+          // `rounded-t-md` (2px), not `rounded-t-2xl`: 16px was the roundest corner left in the app and it
+          // sat on the most-seen surface. The sheet is a panel, and a panel has an edge.
+          "relative z-10 max-h-[82dvh] w-full overflow-y-auto overscroll-contain rounded-t-md border-t border-border bg-background shadow-2xl duration-200 animate-in slide-in-from-bottom",
           "pb-[calc(env(safe-area-inset-bottom)_+_1rem)]",
           className,
         )}
       >
-        <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 backdrop-blur-md">
+        <div className="sticky top-0 z-10 border-b border-rule bg-background/95 backdrop-blur-md">
           {/* Grab handle — pull down (from anywhere at the top) to dismiss. */}
           <div className="flex justify-center pt-2 pb-1">
-            <span className="h-1 w-9 rounded-full bg-muted-foreground/40" />
+            {/* 4px tall, 36px wide — a stadium, so it takes the house 2px rather than full-round. */}
+            <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />
           </div>
           <div className="flex items-center justify-between px-4 pb-3">
             <span id={title ? titleId : undefined} className="text-sm font-semibold">
@@ -242,7 +245,7 @@ export function SideSheet({
           className,
         )}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-rule bg-background/95 px-4 py-3 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)]">
           <span id={title ? titleId : undefined} className="text-sm font-semibold">
             {title}
           </span>
@@ -261,7 +264,7 @@ export function SideSheet({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
         {footer && (
-          <div className="shrink-0 border-t border-border/60 px-3 py-2 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]">
+          <div className="shrink-0 border-t border-rule px-3 py-2 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]">
             {footer}
           </div>
         )}

@@ -56,7 +56,7 @@ export function SnoozeControl({ snoozedUntil }: { snoozedUntil: number | null })
         {busy && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-border/60 p-3">
+      <div className="flex items-center gap-2 border-t border-rule p-3">
         {snoozed ? (
           <Button variant="secondary" size="sm" disabled={busy} onClick={() => apply(null)}>
             {t("settings.snooze.resume")}

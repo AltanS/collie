@@ -46,7 +46,7 @@ export function ThemeControl() {
       <div
         role="radiogroup"
         aria-label={t("settings.theme.title")}
-        className="flex gap-1 border-t border-border/60 p-2"
+        className="flex gap-1 border-t border-rule p-2"
       >
         {OPTIONS.map((option) => {
           const selected = option.value === theme;
@@ -59,12 +59,12 @@ export function ThemeControl() {
               onClick={() => setTheme(option.value)}
               className={cn(
                 // min-h-11 = 44px, the iOS/Android comfort target rather than the 24px AA floor.
-                "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+                "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 // Selected is a filled pill, not a tint: `bg-secondary` on a white card is 1.09:1,
-                // which leaves the selection carried entirely by the label weight.
-                selected
-                  ? "bg-primary font-medium text-primary-foreground"
-                  : "text-muted-foreground active:bg-muted",
+                // so the fill has to carry the selection on its own. `font-medium` is therefore
+                // unconditional: bold glyphs are wider, so putting the weight on at selection made
+                // the label grow inside its own button and the icon beside it slide.
+                selected ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted",
               )}
             >
               <option.icon className="size-4 shrink-0" />

@@ -245,7 +245,7 @@ export interface SectionDef {
 
 export function Section({ def, children }: { def: SectionDef; children: ReactNode }) {
   return (
-    <section id={def.id} className="scroll-mt-4 border-t border-border/60 pt-6">
+    <section id={def.id} className="scroll-mt-4 border-t border-rule pt-6">
       <h2 className="text-base font-semibold tracking-tight">{def.title}</h2>
       <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">{def.intent}</p>
       <div className="pg-grid mt-4">{children}</div>
@@ -439,7 +439,7 @@ export function ChipNav({
           href={`#${s.id}`}
           aria-current={s.id === active ? "true" : undefined}
           className={cn(
-            "shrink-0 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+            "shrink-0 rounded-md border px-2.5 py-1 text-[11px] transition-colors",
             s.id === active
               ? "border-foreground bg-foreground text-background"
               : "border-border text-muted-foreground",

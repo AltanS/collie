@@ -14,7 +14,12 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
       autoComplete="off"
       autoCapitalize="none"
       className={cn(
-        "field-sizing-content max-h-40 min-h-11 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-base shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        // The border is unconditional and only its colour moves on focus, so the textarea never
+        // resizes under the caret. Focus adds a second, separate mark OUTSIDE the box — `outline-2
+        // outline-offset-2` — rather than the old `ring-[3px]`, which sat flush against the border
+        // and read as one 4px smear. No `outline-none` reset: in Tailwind v4 that sets
+        // `--tw-outline-style: none`, which `focus-visible:outline-2` would resolve through.
+        "field-sizing-content max-h-40 min-h-11 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-base shadow-xs transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}

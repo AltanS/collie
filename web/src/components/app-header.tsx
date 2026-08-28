@@ -45,7 +45,7 @@ interface AppHeaderProps {
   override?: ReactNode;
 }
 
-// The single header shell every screen mounts: the sticky, safe-area-aware zinc bar with the Collie
+// The single header shell every screen mounts: the sticky, safe-area-aware bar with the Collie
 // mark on the left, an optional route breadcrumb in the middle, and the caller's right cluster. The
 // mark's connection animation is baked in here (not a slot), so no caller can forget it: it gallops on
 // sustained trouble and rests muted once lost, computed from the SAME shared clock as the top
@@ -84,7 +84,14 @@ export function AppHeader({
     // the row's own py-2 reproduce the old `calc(safe-area + 0.5rem)` top padding exactly. The strip
     // sits ABOVE everything including the find-bar override: while you're searching an alpha it is
     // still an alpha.
-    <header className="sticky top-0 z-20 flex flex-col border-b border-border/60 bg-muted [padding-top:env(safe-area-inset-top)]">
+    // Chrome is the PAGE colour, separated by a rule — not a fill. The old `bg-muted` band was a
+    // step below the page, and on the pane screen that stacked 235 (header) → 241 (tab strip wash)
+    // → 245 (mirror) in the 120px where --background's 0.97 was picked precisely to close the seam
+    // against the inverted mirror. The band only existed because `border-border/60` measures 1.09:1
+    // on the page and could not carry the separation alone; `border-rule` is 1.34:1 light / 2.06:1
+    // dark and can. COUPLED: CollieHome's `paper` is the knockout colour and must name this same
+    // background or every near-side bead grows a halo — app-header.test.tsx asserts the two agree.
+    <header className="sticky top-0 z-20 flex flex-col border-b border-rule bg-background [padding-top:env(safe-area-inset-top)]">
       <AlphaBar />
       <div className="flex items-center gap-2 pl-4 pr-2 py-2">
         {override ?? (

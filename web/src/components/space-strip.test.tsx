@@ -29,6 +29,34 @@ describe("SpaceStrip", () => {
     expect(screen.queryByRole("button", { name: /back/i })).toBeNull();
   });
 
+  it("carries an accessible name, so the row of chips is not an unnamed run of buttons", () => {
+    render(
+      <SpaceStrip
+        workspaces={[ws]}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewSpace={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("navigation", { name: "Spaces" })).toBeInTheDocument();
+  });
+
+  it("keeps that name in the drill-in too, so the strip is one height in both states", () => {
+    render(
+      <SpaceStrip
+        workspaces={[ws]}
+        agents={[]}
+        selected="w1"
+        onSelect={vi.fn()}
+        onNewSpace={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("navigation", { name: "Spaces" })).toBeInTheDocument();
+    expect(screen.getByText("Spaces")).toBeInTheDocument();
+  });
+
   it("shows a Back button (and no 'All' chip) in the drill-in, returning to the dashboard", async () => {
     const user = userEvent.setup();
     const onBack = vi.fn();

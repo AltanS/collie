@@ -153,7 +153,7 @@ export function AgentList({
                   // Cards mean "a human is required here", so only the attention sections get them.
                   // The rest are flat rows divided by a hairline — which also gives the page a
                   // second boundary cue, so section gaps aren't doing that job alone.
-                  ATTENTION.has(s.key) ? "gap-2" : "divide-y divide-border/60",
+                  ATTENTION.has(s.key) ? "gap-2" : "divide-y divide-rule",
                 )}
               >
                 {/* statusStyle="dot": the section heading already says the status, so a pill on
@@ -192,7 +192,7 @@ function SortToggle({ dir, onChange }: { dir: RecentDir; onChange: (dir: RecentD
       // than something you can press. Fixed width so flipping it doesn't shift the header. No fill —
       // filled, it outweighed the heading it sits beside, which is backwards for a control that
       // reorders the section you care least about.
-      className="flex min-h-9 items-center justify-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+      className="flex min-h-9 items-center justify-center gap-1 rounded-md border px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
     >
       <Icon className="size-3.5" aria-hidden />
       <span className="w-[3.25rem] text-left">{newest ? t("home.sort.newest") : t("home.sort.oldest")}</span>

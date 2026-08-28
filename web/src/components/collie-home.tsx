@@ -60,9 +60,12 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
           40px circle with `overflow-hidden` would clip the beads that pass widest. The box keeps
           its size-10 geometry, because the header row is sized by it (see AppHeader).
 
-          `paper` is the header's own ground, `bg-muted`. It is the colour of the knockout that
+          `paper` is the header's own ground, which is `bg-background` (app-header.tsx — chrome is
+          the page colour, separated by a rule, not a fill). It is the colour of the knockout that
           makes a near-side bead read as being IN FRONT of the head; anything else shows up as a
-          halo around those beads, so this value tracks the ground and is not a taste choice.
+          halo around those beads, so this value tracks the ground and is not a taste choice. The
+          two are COUPLED and the coupling is easy to forget, so app-header.test.tsx fails if the
+          header's background utility and this prop ever name different tokens.
 
           Muted while lost — grayscale + dimmed, to read asleep/inactive — and the orbit stops
           turning again. Mirrors the boot splash's not-connected state. */}
@@ -71,7 +74,7 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
           size={40}
           weight="header"
           loading={bloom}
-          paper="var(--muted)"
+          paper="var(--background)"
           className={cn("transition-opacity", lost && "opacity-40 grayscale")}
         />
       </span>

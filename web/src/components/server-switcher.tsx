@@ -94,7 +94,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
         type="button"
         onClick={() => setOpen(true)}
         aria-label={t("connection.server.aria", { name: currentName })}
-        className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 active:scale-95"
+        className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent active:scale-95"
       >
         <Server className="size-3.5" />
         <span className="max-w-[6rem] truncate">{currentName}</span>
@@ -117,9 +117,12 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                     aria-current={active ? "true" : undefined}
                     className={cn(
                       "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                      // A 2px inset cut in --primary, not a fill — see session-switcher.tsx for the
+                      // measurements. The fill was 1.17:1 light / 1.31:1 dark on the sheet's
+                      // bg-background while grounding the status pills at blocked 4.13 in dark.
                       active
-                        ? "bg-accent text-accent-foreground"
-                        : "hover:bg-muted/60 active:bg-muted",
+                        ? "shadow-[inset_2px_0_0_0_var(--primary)]"
+                        : "hover:bg-accent active:bg-accent",
                       // Dimmed, not disabled: what you will find there is last-known and read-only,
                       // and the row says both — but it still goes there (see the note above).
                       !h.writable && "opacity-60",
@@ -130,7 +133,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate text-sm font-medium">{s.name || s.id}</span>
                         {s.isLead && (
-                          <span className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <span className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             <Crown className="size-2.5" aria-hidden />
                             {t("connection.host.lead")}
                           </span>
@@ -172,12 +175,12 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                       {(c.blocked > 0 || c.working > 0) && (
                         <div className="mt-1 flex items-center gap-1.5">
                           {c.blocked > 0 && (
-                            <span className="rounded-full border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
+                            <span className="rounded-md border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
                               {tn("status.count.needsYou", c.blocked)}
                             </span>
                           )}
                           {c.working > 0 && (
-                            <span className="rounded-full border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
+                            <span className="rounded-md border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
                               {tn("status.count.working", c.working)}
                             </span>
                           )}
@@ -202,7 +205,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
               setOpen(false);
               navigate(packPath(scope));
             }}
-            className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-border/60 px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 active:bg-muted"
+            className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-rule px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent active:bg-accent"
           >
             <Network className="size-4 shrink-0" />
             {t("pack.entry.title")}

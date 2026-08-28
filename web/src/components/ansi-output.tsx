@@ -274,7 +274,7 @@ export const AnsiOutput = memo(function AnsiOutput({
           ref={attach ? currentRef : undefined}
           data-find-match={isCurrent ? "current" : "other"}
           className={cn(
-            "rounded-[2px]",
+            "rounded-md",
             // Asymmetric on purpose, and the asymmetry is the whole subtlety.
             //
             // The CURRENT match re-applies the mirror's filter to cancel it, because otherwise

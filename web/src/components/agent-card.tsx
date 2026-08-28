@@ -87,27 +87,43 @@ export function AgentCard({
       onClick={onClick}
       className={cn(
         "w-full text-left transition-transform active:scale-[0.99]",
-        // No radius on a flat row. These sit in a `divide-y` list, and a rounded hover fill under a
-        // full-width straight hairline reads as a rendering fault — the corners pull away from a
-        // line that doesn't follow them. A radius here would need a real border to belong to; the
-        // rows that DO have one (blocked) keep theirs below.
+        // No radius on a flat row, in ANY state. These sit in a `divide-y` list, and a rounded fill
+        // under a full-width straight hairline reads as a rendering fault — the corners pull away
+        // from a line that doesn't follow them. Corners belong to where the row sits, never to what
+        // it is doing, so a blocked flat row stays square too and takes a left rail instead.
         flat && "transition-colors hover:bg-muted/50",
       )}
     >
       <Shell
         className={cn(
           // The 15px inset matches the card's 14px padding + 1px border, so the avatar column runs
-          // straight down the page instead of stepping 5px sideways at each section boundary.
+          // straight down the page instead of stepping 5px sideways at each section boundary. The
+          // rail below is a box-shadow, which takes no room, so this number still holds.
           flat
-            ? "flex flex-row items-center gap-3 px-[0.9375rem] py-2.5"
+            ? "flex flex-row items-center gap-3 px-[0.9375rem] py-2.5 shadow-[inset_2px_0_0_0_transparent]"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
           // The blocked tint survives both treatments — it's the one cue that reads at a glance.
-          blocked && "border-status-blocked/40 bg-status-blocked/5",
+          // The EDGE cannot: one class string, two containers. A card sits in a gap list and already
+          // carries a border in every state, so it only recolours. A flat row sits in a divide-y
+          // list, where a four-sided edge would double the hairline — and where a bare colour
+          // utility paints nothing at all, because preflight leaves the width at 0. So the flat row
+          // takes a 2px left rail, reserved transparent above so the box never changes.
+          blocked &&
+            (flat
+              ? "bg-status-blocked/5 shadow-[inset_2px_0_0_0_var(--color-status-blocked)]"
+              : "border-status-blocked/40 bg-status-blocked/5"),
         )}
       >
         <div className="relative shrink-0">
+          {/* An avatar is a FRAME around someone else's artwork, not a shape that means something, so
+              the whole family — this shell tile, the same tile in `agent-chat.tsx`, and the branded
+              `AgentIcon` beside it — is framed at the house radius. A circle would crop the artwork,
+              which is why `agent-icon.tsx` carried its own 22% radius before this; one slot may not
+              hold two shapes for one role. Full-round stays RESERVED for things that are a circle in
+              meaning: status dots (the corner dot just below), the switch thumb, round icon buttons.
+              Don't "fix" one of the three back to `rounded-full`. */}
           {isShell ? (
-            <div className="flex size-9 items-center justify-center rounded-full border bg-muted">
+            <div className="flex size-9 items-center justify-center rounded-md border bg-muted">
               <TerminalSquare className="size-4 text-muted-foreground" />
             </div>
           ) : (

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { SectionLabel } from "@/components/ui/section-label";
+import { LabelledStrip, STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { StatusDot } from "@/components/status-badge";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -51,8 +51,16 @@ export function PaneStrip({
 
   return (
     <>
-      <div className="flex items-center gap-2 overflow-x-auto border-t border-border/40 bg-muted/20 px-3 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <SectionLabel>{t("space.paneStrip.title")}</SectionLabel>
+      {/* The strip keeps its own tinted band: it is the third row down, and the one row of the three
+          that can appear and disappear as tabs are switched. Its padding is now the shared one — a
+          tighter row here would have given its pills a smaller tap target than the two rows above. */}
+      <LabelledStrip
+        label={t("space.paneStrip.title")}
+        // No pb-* override any more: the row's bottom air is LabelledStrip's scroller padding, which
+        // is what the pills' tap areas extend into. Overriding it here would either clip the floor
+        // or hand this row a different one from the two rows above it.
+        className="border-t border-rule bg-muted/20"
+      >
         {panes.map((p) => (
           <PanePill
             key={p.paneId}
@@ -65,7 +73,7 @@ export function PaneStrip({
             onTapActive={actionsEnabled ? () => setSheetPane(p) : undefined}
           />
         ))}
-      </div>
+      </LabelledStrip>
 
       {actionsEnabled && (
         <PaneActionsSheet
@@ -124,7 +132,25 @@ function PanePill({
       className={cn(
         // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch callout,
         // whose native long-press gesture otherwise fires pointercancel and kills our hold timer.
-        "flex shrink-0 select-none [-webkit-touch-callout:none] items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-sm font-medium transition-colors active:scale-95",
+        //
+        // `rounded-md` (2px), not `rounded-full`: this pill carries a name and a tag, so it is far
+        // wider than it is tall — a stadium, not a circle. Full-round is reserved for width ===
+        // height. It also has to match the chips in the two strips directly above it, which are the
+        // same control one level up.
+        //
+        // The border and the focus outline are `ui/chip.tsx`'s, copied rather than reinvented: this
+        // pill is the space/tab chip one level down and the two must not answer state differently.
+        // The border is transparent at rest and lives in the base string, so resting and active
+        // occupy exactly the same box and only the paint changes. Focus is a separate channel and
+        // sits OUTSIDE the box, so it can never move the row either.
+        //
+        // Same tap floor as the chips, by the same means: STRIP_TAP_TARGET's transparent ::before
+        // takes the hit box to 46px without drawing a pixel. `py-1.5` (was `py-1`) is the one real
+        // growth in the whole change — 30px to 34px — and it is not for the floor, which the ::before
+        // already clears. It is so this pill and the chips in the two rows above are the SAME height:
+        // they are one control at three levels, and the mis-tap that matters most lands here.
+        STRIP_TAP_TARGET,
+        "flex min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 py-1.5 text-sm font-medium transition-colors active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-muted text-muted-foreground hover:bg-muted/70",
