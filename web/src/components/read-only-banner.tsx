@@ -65,21 +65,26 @@ export function ReadOnlyBanner({
     // six conversions after this one would each have hand-rolled the same ref.
     //
     // The gutter, and only the gutter — `mx-4 mt-3` on the routes, `mx-3 mt-1.5` in the pane. It
-    // rides the COLLAPSE rather than the Notice: the row is the thing whose height animates, so a
-    // margin on it is part of the same movement. (Either is now geometrically sound — the box no
-    // longer carries `w-full`, so at 390px `mx-4` on it measures 358px with 16px on both sides.
-    // Before that fix a margin on the box resolved 100% against the FULL row and was then offset by
-    // it, hanging past the right edge, and the row was the only correct owner.) One cost stays,
-    // small and real: `mt-3` sits outside the animated row, so 12px of the space arrives at once
-    // and the 50px box slides in behind it. Moving the gutter inward is what would close that, and
-    // it is a decision about every converted notice, not about this one.
-    <Collapse open={gate !== null} className={className}>
+    // rides the NOTICE now, not the Collapse: the ROW is the thing whose height animates, but the
+    // row's own margin sits OUTSIDE the box it grows — `grid-template-rows` interpolates the height
+    // of the grid ITEM (the inner `min-h-0 overflow-hidden` wrapper in ui/collapse.tsx), and a margin
+    // on the grid CONTAINER around that item is never part of what is being measured. That was the
+    // fault: `mt-3` arrived in full the instant the row mounted, so 12px of space appeared at once
+    // and the 50px box slid in behind it. Putting the margin on the Notice instead puts it INSIDE the
+    // measured item — the collapse wrapper's `overflow-hidden` forms a block-formatting context, so
+    // the Notice's top margin does not collapse through it and is counted in the wrapper's own
+    // height, the same height the collapse's `0fr`↔`1fr` grid-row transition animates. The whole
+    // 50px + 12px now arrives as one continuous slide. (The box still carries no width utility —
+    // ui/notice.tsx's BOX — so `mx-4` on it measures 358px with 16px on both sides at 390px, the
+    // same reading the pilot took.)
+    <Collapse open={gate !== null}>
       {gate ? (
         <Notice
           variant="box"
           tone="caution"
           announce="status"
           icon={gate === "pairing" ? <KeyRound /> : <Lock />}
+          className={className}
         >
           {gate === "pairing"
             ? t("connection.readOnly.notPaired")

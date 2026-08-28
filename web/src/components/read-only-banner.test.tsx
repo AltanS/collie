@@ -69,25 +69,31 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     expect(box(container)).toHaveClass("min-h-[42px]");
   });
 
-  it("owns no styling: the className it is handed is the caller's GUTTER, on the collapsing ROW", () => {
+  it("owns no styling: the className it is handed is the caller's GUTTER, on the BOX inside the row", () => {
     // The seam the pilot exists to prove. The routes pass `mx-4 mt-3` and the pane passes
     // `mx-3 mt-1.5`; the caller supplies the gutter because only the caller knows what the box sits
-    // between (DESIGN.md §1). It lands on the row and NOT on the box because the row is the thing
-    // whose height animates, so its margin is part of the same movement.
-    // NOTE, comment corrected with the w-full fix: this used to be a forced choice as well as a
-    // preferred one — a box carrying `w-full` resolved 100% against the full row and was then
-    // offset by the margin, hanging past the right edge, clipped. `ui/notice.tsx` sets no width on
-    // a box now, so `mx-4` on the box itself measures 358px with 16px both sides at 390px. The
-    // assertion below is unchanged: the row is still the owner, now by decision alone.
+    // between (DESIGN.md §1). It now lands on the NOTICE, inside the animated row, and NOT on the
+    // Collapse root: `grid-template-rows` interpolates the height of the grid ITEM (the row Collapse
+    // measures), and a margin on the grid CONTAINER around that item is never part of what is
+    // measured — it would arrive in full the instant the row mounts, instead of animating with it.
+    // Putting the margin on the box instead puts it inside the item the wrapper measures, so the
+    // whole height, margin included, animates as one movement.
     const { container } = render(<ReadOnlyBanner device={REFUSED} className="mx-4 mt-3" />);
-    expect(container.firstElementChild).toHaveClass("mx-4", "mt-3");
-    expect(box(container)?.className).not.toMatch(/\bm[xt]-/);
-    // And nothing else: this file adds no class of its own on top of the primitive's.
-    expect(box(container)?.className).toBe(
-      render(<ReadOnlyBanner device={REFUSED} />).container.querySelector(
-        '[data-slot="collapse"] > div > div',
-      )?.className,
-    );
+    // The Collapse root carries no gutter of its own — that would put the margin back outside the
+    // animated row, reintroducing the jump this change closes.
+    expect(container.firstElementChild).not.toHaveClass("mx-4");
+    expect(container.firstElementChild).not.toHaveClass("mt-3");
+    expect(box(container)).toHaveClass("mx-4", "mt-3");
+    // And nothing else: this file adds no class of its own on top of the primitive's, beyond the
+    // gutter it was handed.
+    const bare = render(<ReadOnlyBanner device={REFUSED} />).container.querySelector(
+      '[data-slot="collapse"] > div > div',
+    )?.className;
+    const withGutter = box(container)
+      ?.className?.split(/\s+/)
+      .filter((cls) => !/^m[xt]-/.test(cls))
+      .join(" ");
+    expect(withGutter).toBe(bare);
   });
 
   it("announces politely, with a role and no aria-live", () => {
