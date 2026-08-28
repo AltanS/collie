@@ -8,6 +8,7 @@ import {
   __setReloadImpl,
   selfUpdateBannerVisible,
   startSelfUpdate,
+  subscribeBanner,
 } from "./self-update";
 
 // self-update's default update path calls lib/pwa's checkForUpdate (which reloads onto the fresh
@@ -85,6 +86,26 @@ describe("safety gate — never reload over unsent work", () => {
     releaseReload("composer:w1:p1"); // hold clears while still stale → reload now
     expect(reload).toHaveBeenCalledTimes(1);
     expect(selfUpdateBannerVisible()).toBe(false);
+  });
+});
+
+describe("__resetSelfUpdate notifies subscribers", () => {
+  it("notifies when the reset changes the banner's visibility", () => {
+    // Pins the fix: __resetSelfUpdate used to assign `banner = false` directly instead of going
+    // through setBanner, so a subscriber (a component driven by useSelfUpdate/useSyncExternalStore)
+    // never repainted when a reset hid a visible banner.
+    holdReload("composer:w1:p1");
+    observeServerBuild(STALE);
+    observeServerBuild(STALE); // confirmed but held → banner visible
+    expect(selfUpdateBannerVisible()).toBe(true);
+
+    let hits = 0;
+    const unsub = subscribeBanner(() => hits++);
+    __resetSelfUpdate();
+    expect(selfUpdateBannerVisible()).toBe(false);
+    expect(hits).toBe(1);
+    unsub();
+    releaseReload("composer:w1:p1");
   });
 });
 

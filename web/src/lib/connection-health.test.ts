@@ -81,6 +81,17 @@ describe("connection-health store", () => {
     expect(lastHealthyAt()).toBe(pinned);
   });
 
+  it("__resetConnectionHealth notifies subscribers, same as markLive/markWake/latchLost", () => {
+    // Pins the fix: a reset used to mutate the store silently, so a subscriber (a component driven
+    // by useConnectionHealth/useSyncExternalStore) never repainted until its own once-per-mount
+    // setTimeout happened to re-check — up to CONNECTION_LOST_MS later, not right after the reset.
+    let hits = 0;
+    const unsub = subscribeHealth(() => hits++);
+    __resetConnectionHealth(123_456);
+    expect(hits).toBe(1);
+    unsub();
+  });
+
   // Sticky-escalation latch — the fix for a mid-outage app switch downgrading red → amber.
   describe("sticky-escalation latch", () => {
     it("latchLost sets the latch and notifies once; repeat calls are no-ops", () => {

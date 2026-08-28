@@ -192,10 +192,16 @@ if (hasDocument()) {
   });
 }
 
-/** Test helper — reset both anchors (defaults to now) AND clear the sticky latch between cases. */
+/**
+ * Test helper — reset both anchors (defaults to now) AND clear the sticky latch between cases.
+ * Notifies subscribers, same as every other mutation in this module (markLive/markWake/latchLost),
+ * so a reset mid-test (e.g. the playground driving a control) repaints deterministically instead of
+ * waiting for a consumer's own once-per-mount self-correction timer.
+ */
 export function __resetConnectionHealth(now = Date.now()): void {
   lastLiveAt = now;
   lastWakeAt = now;
   lostLatched = false;
   longUploads = 0;
+  emit();
 }

@@ -155,7 +155,8 @@ export function selfUpdateBannerVisible(): boolean {
   return banner;
 }
 
-function subscribeBanner(cb: () => void): () => void {
+/** Subscribe to the banner store (busy.ts idiom) — exported for the hook above and for tests. */
+export function subscribeBanner(cb: () => void): () => void {
   bannerListeners.add(cb);
   return () => bannerListeners.delete(cb);
 }
@@ -170,10 +171,15 @@ export function useSelfUpdate(): boolean {
   return useSyncExternalStore(subscribeBanner, selfUpdateBannerVisible, selfUpdateBannerVisible);
 }
 
-/** Test helper — reset controller state (not subscriptions; those are disposer-managed). */
+/**
+ * Test helper — reset controller state (not subscriptions; those are disposer-managed). Uses
+ * setBanner rather than assigning `banner` directly so a reset that changes the banner's visibility
+ * notifies subscribers, same as every other path that touches it (act/onServerBuild) — a reset mid-
+ * test must repaint deterministically instead of waiting on a consumer's own timer.
+ */
 export function __resetSelfUpdate(): void {
   pendingStale = undefined;
   confirmedStale = undefined;
-  banner = false;
+  setBanner(false);
   reloadImpl = () => void checkForUpdate();
 }
