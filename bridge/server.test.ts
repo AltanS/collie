@@ -536,6 +536,25 @@ describe("pane write prompt binding", () => {
     expect(client.texts).toEqual([["w1:p1", "hello"]]);
   });
 
+  test("matching expected_prompt submits an existing Codex draft without retyping it", async () => {
+    const client = new FakePaneClient();
+    client.text = "some output\n\u203a ship it please\n\n  model \u00b7 project \u00b7 Context 99% left";
+    const { audit } = auditEntries();
+    const res = await replyPane(
+      client as unknown as HerdrClient,
+      cfg(),
+      "w1:p1",
+      request({ text: "", submit: true, expected_prompt: "\u203a ship it please" }),
+      audit,
+      null,
+      "default",
+    );
+
+    expect(res.status).toBe(200);
+    expect(client.texts).toEqual([]);
+    expect(client.keys).toEqual([["w1:p1", cfg().submitKeys]]);
+  });
+
   test("stale expected_prompt returns prompt_changed and sends no keys", async () => {
     const client = new FakePaneClient();
     client.text = "Command finished";
