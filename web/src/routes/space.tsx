@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRevalidator } from "react-router";
 
-import { AppHeader, SettingsGear } from "@/components/app-header";
+import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
@@ -11,7 +11,6 @@ import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
-import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { homePath, panePath, spacePath } from "@/lib/nav";
 import { leadHost, paneScope } from "@/lib/hosts";
@@ -27,7 +26,6 @@ import { useRootData } from "@/lib/route-data";
 export function SpaceRoute() {
   const data = useRootData();
   const { spaceId = "" } = useParams();
-  const stalled = useLoadingStalled();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { newTab, newSpace } = useSpaceActions();
@@ -78,12 +76,10 @@ export function SpaceRoute() {
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The space header: same shell as the dashboard, minus the session switcher (you switch
           sessions from home). Wordmark + shared pill + Settings gear. */}
-      <AppHeader
-        bridge={data.bridge}
-        error={data.error}
-        stalled={stalled}
+      <RouteHeader
         onHome={toDashboard}
         wordmark
+        width="column"
         rightTrail={<SettingsGear scope={data.scope} />}
       />
 

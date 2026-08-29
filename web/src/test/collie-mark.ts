@@ -4,7 +4,7 @@
 // is a module constant shared by every instance on the page (a stylesheet inside an inline SVG is
 // document-scoped), so the whole difference between rest and the bloom is a set of CSS custom
 // properties on the element itself, plus the `cm-live` class that starts the animation. That is
-// where these read it from — and every suite that asks (CollieHome, AppHeader, BootSplash) would
+// where these read it from — and every suite that asks (CollieHome, the header, BootSplash) would
 // otherwise spell the same query.
 //
 // There is no longer a "resting turn" — at rest the mark is a still drawing with no animation

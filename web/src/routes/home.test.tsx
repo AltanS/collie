@@ -17,6 +17,7 @@ import {
   fixtureWorkspaces,
 } from "@/test/handlers";
 import type { SnapshotResponse } from "@/lib/types";
+import { withHeaderHost } from "@/test/header-host";
 import { HomeRoute } from "./home";
 
 // The dashboard, one machine and several. The point of the pair is that the FIRST one is unchanged:
@@ -49,10 +50,10 @@ function renderHome(data: HomeData) {
         id: ROOT_ROUTE_ID,
         path: "/",
         loader: () => data,
-        element: (
+        element: withHeaderHost(
           <PackProvider servers={data.servers} ts={data.ts} pollMs={1500}>
             <HomeRoute />
-          </PackProvider>
+          </PackProvider>,
         ),
       },
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },

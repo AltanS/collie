@@ -13,7 +13,7 @@ import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
-import { AppHeader } from "@/components/app-header";
+import { RouteHeader } from "@/components/app-header";
 import { AnsiOutput } from "@/components/ansi-output";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { cn } from "@/lib/utils";
@@ -77,9 +77,11 @@ interface AgentChatProps {
   revision?: number;
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
-  // Global connection state — fed straight to the shared AppHeader, which drives the header Collie
-  // mark (gallop/rest, identically to the dashboard), and lets us dim the stale StatusBadge while not
-  // live. Defaults describe a healthy link so tests that don't care render "live".
+  // Global connection state, used HERE to dim the stale status dot while the data on screen is not
+  // live. It no longer feeds the header: the Collie mark lives in the one hoisted shell now
+  // (app-header.tsx) and reads bridge/error off the root snapshot itself, so this pane and that mark
+  // cannot be handed different answers. Defaults describe a healthy link so tests that don't care
+  // render "live".
   bridge?: BridgeStatus | undefined;
   error?: boolean;
   stalled?: boolean;
@@ -121,11 +123,11 @@ export function AgentChat({
   const revalidator = useRevalidator();
   const navigate = useNavigate();
   useLocale();
-  // Poll-truth "is the data on screen not live". The header (AppHeader) reads the same inputs to drive
-  // the Collie mark + pill; here we use it to dim the header's status dot AND its status word, so the
-  // pane stops presenting the last snapshot's status as current while we're reconnecting/lost, and
-  // restores instantly on recovery. Both marks dim together — dimming only one of them would leave a
-  // frozen reading looking half live.
+  // Poll-truth "is the data on screen not live". The one header shell derives the same boolean from
+  // the same two root-snapshot fields to drive the Collie mark; here we use it to dim the header's
+  // status dot AND its status word, so the pane stops presenting the last snapshot's status as
+  // current while we're reconnecting/lost, and restores instantly on recovery. Both marks dim
+  // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab } = useSpaceActions();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
@@ -669,14 +671,13 @@ export function AgentChat({
     // per-strip `hideLabel` prop could not prevent, which is why this is a context and not a prop.
     <CompactStripLabels>
       <div className="flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden">
-        {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Collie mark is
-            identical on every screen (no hand-rolled bar to drift). The pane's own bits ride in via
-            slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as the right-cluster
-            lead, and the find bar as the full-row takeover while searching. */}
-        <AppHeader
-          bridge={bridge}
-          error={error}
-          stalled={stalled}
+        {/* Header — this route's contribution to the ONE header shell, which is mounted above the
+            outlet in RootLayout and is the same element on every screen (so the Collie mark is not
+            only identical, it is literally the same drawing, still turning). The pane's own bits are
+            portalled into it: the `space › tab` breadcrumb as the center, the ⋮ as the right-cluster
+            lead, and the find bar as the full-row takeover while searching. No `width`: the pane is
+            the edge-to-edge one, which is this component's default. */}
+        <RouteHeader
           onHome={onBack}
           override={
             findOpen ? (
@@ -868,7 +869,7 @@ export function AgentChat({
               <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
             </div>
           )}
-        </AppHeader>
+        </RouteHeader>
 
         {/* Content region below the header — the mirror inside is the scroller. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -1197,7 +1198,7 @@ export function AgentChat({
 
         {/* The pane menu the header's ⋮ opens — the SAME sheet the pane pill opens, given the two
             read rows the strip can't offer (see its props). Mounted HERE, a sibling of the switcher
-            sheet, and deliberately NOT inside the AppHeader slot that triggers it: the sheet is a
+            sheet, and deliberately NOT inside the header slot that triggers it: the sheet is a
             plain `fixed inset-0` element with no portal (ui/sheet.tsx — "no Radix, no portals"), so
             it is positioned by the nearest transformed/filtered ancestor and stacks within the
             nearest stacking context. The header is `sticky z-20` and animates; a sheet mounted inside

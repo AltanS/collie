@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
-import { AppHeader, SettingsGear } from "@/components/app-header";
+import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -14,7 +14,6 @@ import { BuildStamp } from "@/components/build-stamp";
 import { PackFooterLink } from "@/components/pack-footer-link";
 import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
-import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
@@ -27,10 +26,6 @@ import { useRootData } from "@/lib/route-data";
 // Tapping an agent opens its pane; tapping a space drills into /space/:id.
 export function HomeRoute() {
   const data = useRootData();
-  // A stalled load (a black-holed poll, or a pane-open tap whose navigation hangs) gallops the
-  // Collie mark within the threshold — instant feedback while you're still on the dashboard, even
-  // though the tap otherwise shows no visual change until its loader finally settles or times out.
-  const stalled = useLoadingStalled();
   const navigate = useNavigate();
   const { newSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
@@ -57,11 +52,9 @@ export function HomeRoute() {
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
           and the Settings gear. The switcher self-hides on a single-session install. */}
-      <AppHeader
-        bridge={data.bridge}
-        error={data.error}
-        stalled={stalled}
+      <RouteHeader
         wordmark
+        width="column"
         rightLead={
           <>
             {/* Host first, then session — outer dimension first, and the two are deliberately

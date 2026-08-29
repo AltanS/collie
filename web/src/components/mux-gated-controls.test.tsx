@@ -6,6 +6,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { server } from "@/test/setup";
 import { fixtureAgents } from "@/test/handlers";
+import { withHeaderHost } from "@/test/header-host";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import type { MuxCapability, MuxConfig } from "@/lib/types";
 import { AgentChat } from "./agent-chat";
@@ -344,7 +345,7 @@ function chat(agentOver: Partial<(typeof fixtureAgents)[number]> = {}) {
     onBack: vi.fn(),
     onSelect: vi.fn(),
   };
-  const router = createMemoryRouter([{ path: "/", element: <AgentChat {...props} /> }]);
+  const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<AgentChat {...props} />) }]);
   render(<RouterProvider router={router} />);
 }
 

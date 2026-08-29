@@ -11,7 +11,7 @@ interface AlphaBarProps {
   className?: string;
 }
 
-// The prerelease marker: a thin amber strip across the top of the one AppHeader, saying which
+// The prerelease marker: a thin amber strip across the top of the one header shell, saying which
 // non-stable build you are looking at. It exists because a v1 alpha runs BESIDE the stable install on
 // its own origin — same dog, same layout, different machine-eating capabilities — and "which tab is
 // which" cannot be left to the operator's memory of a port number.

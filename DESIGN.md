@@ -265,7 +265,7 @@ each is thirty pixels of list the operator stops seeing — and a target does no
 visible to be hit. Two measured numbers hold it together, both documented at the constant;
 change the scroller's padding or the pill's border and you must re-measure.
 
-**A row states its own floor with `min-h`, never `h`.** `app-header.tsx:110` is
+**A row states its own floor with `min-h`, never `h`.** `app-header.tsx:212` is
 `min-h-15` — 60px. It is a floor, not a sum: the row's own padding is `py-1`, and the
 floor stands above whatever the content needs so the row cannot shrink when a route
 passes less. The pane's stacked identity block and the dashboard's single 44px gear
@@ -389,15 +389,14 @@ Stated so nobody reads this document as a description of a clean tree.
 3. **`no-echo-notice.tsx:43` and `terminal-draft-preview.tsx:32`** — a `bg-muted/40` fill
    with no border, above the composer. A fill-delimited notice is a third idea about what a
    notice is, and §4 says chrome separates with a line.
-4. **`composer.tsx` — the composer dock is `bg-muted`, and its status band is now `bg-card`.**
-   Two chrome fills, not one. The dock's is the older gap and `index.css`'s `--muted` comment
-   argues against it directly. The band's is the maker's own call, made with the numbers in front
-   of him and recorded at the line that draws it: measured, the fill separates the band from the
-   dock below by **1.19:1 in both themes** — barely off the 1.09:1 that got the header band
-   deleted — and from the terminal mirror above by **1.09:1 light / 1.10:1 dark**, so in dark it
-   reads as a continuation of the terminal. The `border-b border-rule` beside it measures 1.45:1
-   light and 2.19:1 dark. The rule is doing the separating; the fill is decoration. Removing the
-   dock's fill first would change the answer for both.
+4. **`composer.tsx` — the composer dock is `bg-muted`.** One chrome fill, not two. The status
+   band above it carried a `bg-card` fill briefly and lost it once measured: the fill separated
+   the band from the dock below by **1.19:1 in both themes** — barely off the 1.09:1 that got the
+   header band deleted — and from the terminal mirror above by **1.09:1 light / 1.10:1 dark**, so
+   in dark it read as a continuation of the terminal rather than as chrome. The `border-b
+   border-rule` beside it measures 1.45:1 light and 2.19:1 dark. The rule was doing the
+   separating, so the fill went and the band is unpainted. The dock's own fill is the older gap
+   and the one that remains; `index.css`'s `--muted` comment argues against it directly.
 5. **The `/60`-and-`/70` border alphas** — `wizard-block.tsx`, `preview-select-block.tsx`,
    `menu-block.tsx` and `status-area.tsx:45` still draw edges at `border-border/60` or `/70`,
    which §4 measured at 1.09:1 in light. These are inside the agent-dialog blocks, which are
@@ -482,7 +481,7 @@ has to exist *before* its content changes to be announced reliably.
 `min-h-[33px]` for a strip, `min-h-[42px]` for a box, stated once in `ui/notice.tsx` and not
 lowerable by a caller. Both are derived, not picked: the 24px action slot plus the shape's own
 padding plus its border, which `border-box` counts inside a min-height. `min-h` and never `h`, for
-the reason §6 gives at `app-header.tsx:110`. They are **floors** — a two-line host-stale message
+the reason §6 gives at `app-header.tsx:212`. They are **floors** — a two-line host-stale message
 legitimately grows its box — and what they buy is that two one-line notices are the same height
 whether or not one carries a button, so swapping one strip for another inside the open band
 repaints it and never moves it.

@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, Crown, Network, Shield } from "lucide-react";
 import { useLoaderData, useNavigate } from "react-router";
 
-import { AppHeader } from "@/components/app-header";
+import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ListGroup } from "@/components/ui/list-group";
@@ -73,8 +73,9 @@ export function PackRoute() {
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
-      {/* One header treatment app-wide — and now that is a FACT, not a claim: this is the same
-          AppHeader shell every other route mounts. It used to be a hand-rolled `<header>` that only
+      {/* One header treatment app-wide — and now that is a FACT, not a claim: this route does not
+          mount a header at all, it fills the one that is already there (RootLayout's
+          <AppHeaderHost/>). It used to be a hand-rolled `<header>` that only
           copied the shell's colours, and it drifted the two ways a copy always does. It carried no
           <AlphaBar/>, so walking into the Pack page off a prerelease build silently dropped the "you are
           on a beta" strip; and its padding recipe was its own, so it could not track the shell's.
@@ -82,9 +83,8 @@ export function PackRoute() {
           title — which is exactly what `override` is for (the pane's find bar is the other user).
           The back button is `size-11` sitting at the row's `pl-4`, so its icon centre lands on the
           same 38px as the Collie mark it stands in for: nothing shifts sideways either. */}
-      <AppHeader
-        bridge={root?.bridge}
-        error={root?.error ?? false}
+      <RouteHeader
+        width="column"
         override={
           <>
             <Button

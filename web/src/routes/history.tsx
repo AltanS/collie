@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLoaderData, useNavigate, useParams } from "react-router";
 import { ArrowUpToLine, ChevronDown, ChevronUp, Loader2, ScrollText, Search, X } from "lucide-react";
 
-import { AppHeader } from "@/components/app-header";
+import { RouteHeader } from "@/components/app-header";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { FindBar } from "@/components/find-bar";
 import { TranscriptView } from "@/components/transcript-view";
@@ -199,9 +199,7 @@ export function HistoryRoute() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AppHeader
-        bridge={root.bridge}
-        error={root.error}
+      <RouteHeader
         onHome={() => navigate(panePath(paneId, scope))}
         override={
           findOpen ? (
@@ -256,7 +254,7 @@ export function HistoryRoute() {
           </div>
           <div className="truncate text-xs leading-tight text-muted-foreground">{title}</div>
         </div>
-      </AppHeader>
+      </RouteHeader>
 
       <div className="relative min-h-0 min-w-0 flex-1">
         <ChatMessageList ref={listRef} className="px-3 py-3">

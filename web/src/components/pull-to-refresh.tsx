@@ -15,7 +15,7 @@ import type { ReactNode } from "react";
 //
 // A COMPONENT RATHER THAN A HOOK AT EACH SITE, because the indicator is the gesture: a screen that
 // wired the handlers and forgot the row would open a gap and say nothing, which reads as a layout
-// bug. Home and space share one shell for the same reason they share `AppHeader`.
+// bug. Home and space share one shell for the same reason they share the one hoisted header.
 //
 // It is deliberately NOT on the pane view. A pane's screen is already re-read every 1.5 s from the
 // multiplexer's own live grid, and the scroller there is the terminal mirror — a pull at the top of

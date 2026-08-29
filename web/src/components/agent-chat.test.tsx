@@ -23,6 +23,7 @@ import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
 import type { AgentStatus, ServerSummary } from "@/lib/types";
+import { withHeaderHost } from "@/test/header-host";
 import { AgentChat } from "./agent-chat";
 
 // The detail view's core job: type a reply and submit it to the bridge. This drives the whole wired
@@ -48,7 +49,7 @@ function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
     onSelect: vi.fn(),
     ...overrides,
   };
-  const router = createMemoryRouter([{ path: "/", element: <AgentChat {...props} /> }]);
+  const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<AgentChat {...props} />) }]);
   const { container } = render(<RouterProvider router={router} />);
   return { props, container };
 }
@@ -126,7 +127,7 @@ describe("AgentChat — header title block", () => {
         { path: "/space/:spaceId", element: <SpaceOverviewSentinel /> },
         {
           path: "/pane/:paneId",
-          element: (
+          element: withHeaderHost(
             <AgentChat
               paneId={agent.paneId}
               agent={agent}
@@ -136,7 +137,7 @@ describe("AgentChat — header title block", () => {
               text="out"
               onBack={vi.fn()}
               onSelect={vi.fn()}
-            />
+            />,
           ),
         },
       ],
@@ -498,7 +499,7 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
         />
       );
     }
-    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
     render(<RouterProvider router={router} />);
     return (pane: { text: string; revision: number }) => advance(pane);
   }
@@ -695,7 +696,7 @@ describe("AgentChat — shared header: stale-status dimming", () => {
         />
       );
     }
-    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
     render(<RouterProvider router={router} />);
 
     const badge = screen.getByText("needs you");
@@ -785,7 +786,7 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
       onSelect: vi.fn(),
     };
     const router = createMemoryRouter([
-      { path: "/", element: <AgentChat {...props} /> },
+      { path: "/", element: withHeaderHost(<AgentChat {...props} />) },
       { path: "/pane/:paneId/history", element: <div>transcript route</div> },
     ]);
     render(<RouterProvider router={router} />);
@@ -812,6 +813,26 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(screen.queryByRole("button", { name: /open webapp overview/i })).not.toBeInTheDocument();
     // \u2026 and it is focused, so the phone keyboard is already up.
     expect(document.activeElement).toBe(field);
+  });
+
+  // The takeover happens INSIDE the one hoisted shell (app-header.tsx): the header element itself is
+  // mounted above the outlet and is not the route's to replace. Opening and closing find therefore
+  // swaps the row's CONTENTS and nothing else — the same <header>, the same prerelease strip, the
+  // same 60px floor. A find bar that mounted a header of its own would pass every assertion in the
+  // case above and fail this one.
+  it("takes the row over inside the one shell, not by mounting a header of its own", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat();
+    const shell = container.querySelector("header");
+    const row = container.querySelector('[data-slot="header-row"]');
+    const recipe = row?.className;
+    await openFind(user);
+    expect(document.querySelectorAll("header")).toHaveLength(1);
+    expect(container.querySelector("header")).toBe(shell);
+    expect(container.querySelector('[data-slot="header-row"]')).toBe(row);
+    expect(row?.className).toBe(recipe); // the row's box is the shell's, not the find bar's
+    await user.click(screen.getByRole("button", { name: /close find/i }));
+    expect(container.querySelector("header")).toBe(shell);
   });
 
   // The status word has left this row entirely — it stands on the composer's status strip now. What
@@ -957,10 +978,10 @@ function renderPackChat(host: string, overrides: Partial<ComponentProps<typeof A
   const router = createMemoryRouter([
     {
       path: "/",
-      element: (
+      element: withHeaderHost(
         <PackProvider servers={packRoster} ts={20_000} pollMs={1500}>
           <AgentChat {...props} />
-        </PackProvider>
+        </PackProvider>,
       ),
     },
   ]);

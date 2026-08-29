@@ -14,7 +14,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { AgentList } from "@/components/agent-list";
 import { AlphaBar } from "@/components/alpha-bar";
-import { AppHeader, SettingsGear } from "@/components/app-header";
+import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
 import { BuildStamp } from "@/components/build-stamp";
 import { CollieHome } from "@/components/collie-home";
 import { CollieMark } from "@/components/collie-mark";
@@ -254,12 +254,14 @@ function BrandSection() {
       <Card
         label="“Collie on <mux>” — the header wordmark"
         reach="open the dashboard or a space view. The caption rides WITH the wordmark and never appears inside a pane, where the breadcrumb owns the middle of the bar."
-        note="Real <AppHeader wordmark/>. The name and the logo come from this bridge's own /api/config — so with no bridge behind the dev proxy the caption renders NOTHING, deliberately: “on unknown” would be a worse header than no line at all."
+        note="Real <AppHeaderHost>+<RouteHeader wordmark/>. The name and the logo come from this bridge's own /api/config — so with no bridge behind the dev proxy the caption renders NOTHING, deliberately: “on unknown” would be a worse header than no line at all."
         span={2}
       >
         <Stage>
           <RootRouter data={homeSolo}>
-            <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />
+            <AppHeaderHost bridge="connected" error={false}>
+              <RouteHeader wordmark rightTrail={<SettingsGear />} />
+            </AppHeaderHost>
           </RootRouter>
         </Stage>
       </Card>
@@ -271,9 +273,9 @@ function BrandSection() {
           `define`) and returns nothing unless that version carries a SemVer prerelease tag."
         note="`version` is AlphaBar's own injectable prop (its test seam, alpha-bar.test.tsx uses the
           same one) — the honest way to stand in for the vite define without editing the component or
-          faking the build. In the real app it is mounted with no override, inside <AppHeader/>, above
-          the wordmark row; app-header.tsx is outside this pass's file allowlist, so it is shown here
-          on its own rather than forked into a second AppHeader mount."
+          faking the build. In the real app it is mounted once, inside the one <AppHeaderHost/> above
+          the wordmark row — the header is hoisted out of the routes now, so there is exactly one of
+          it for the app's lifetime; it is shown here on its own so its `version` seam can be driven."
         span={2}
       >
         <Stage>
@@ -368,7 +370,9 @@ function BootSection({ clock }: { clock: ClockMode }) {
       >
         <Stage>
           <RootRouter data={homeSolo}>
-            <AppHeader bridge="disconnected" error wordmark rightTrail={<SettingsGear />} />
+            <AppHeaderHost bridge="disconnected" error>
+              <RouteHeader wordmark rightTrail={<SettingsGear />} />
+            </AppHeaderHost>
           </RootRouter>
         </Stage>
       </Card>

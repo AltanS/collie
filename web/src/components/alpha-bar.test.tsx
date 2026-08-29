@@ -1,18 +1,36 @@
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import type { ReactElement } from "react";
+import type { ComponentProps, ReactElement } from "react";
 
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { AlphaBar } from "./alpha-bar";
-import { AppHeader } from "./app-header";
+import { AppHeaderHost, RouteHeader } from "./app-header";
+import type { BridgeStatus } from "@/lib/types";
 
-// AppHeader reads the root snapshot (for the freshness line) as well as navigating, so it needs a
+// The header host reads the root snapshot (for the freshness line) as well as navigating, so it needs a
 // DATA router. No loader: the header then sees `undefined` data, which is all these cases need.
 function renderInHeaderShell(ui: ReactElement) {
   const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: ui }], {
     initialEntries: ["/"],
   });
   return render(<RouterProvider router={router} />);
+}
+
+// THE HEADER IS ONE SHELL ABOVE THE OUTLET NOW (app-header.tsx). A case therefore mounts the pair
+// RootLayout mounts: the HOST, which owns the <header> element, the strip, the row's floor and the
+// Collie mark, wrapped around the route's own contribution, which portals its items into it. Held
+// together here so every case below reads as the single component it used to be — what changed is
+// where the shell lives, not what the header is.
+function Header({
+  bridge,
+  error,
+  ...route
+}: { bridge: BridgeStatus | undefined; error: boolean } & ComponentProps<typeof RouteHeader>) {
+  return (
+    <AppHeaderHost bridge={bridge} error={error}>
+      <RouteHeader {...route} />
+    </AppHeaderHost>
+  );
 }
 
 describe("AlphaBar — the prerelease marker", () => {
@@ -55,15 +73,15 @@ describe("AlphaBar — the prerelease marker", () => {
   });
 });
 
-describe("AlphaBar inside the one AppHeader", () => {
+describe("AlphaBar inside the one header shell", () => {
   // The vitest define stamps BUILD.version as "0.0.0-test" (see vitest.config.ts), which IS a
   // prerelease — so the header under test carries the strip, and these assert it sits there without
   // disturbing the row.
   it("rides above the header row and leaves the row's own content intact", () => {
     renderInHeaderShell(
-      <AppHeader bridge="connected" error={false} wordmark>
+      <Header bridge="connected" error={false} wordmark>
         <span>webapp › main</span>
-      </AppHeader>,
+      </Header>,
     );
     expect(screen.getByText(/TEST/)).toBeInTheDocument();
     expect(screen.getByText("Collie")).toBeInTheDocument();
@@ -72,7 +90,7 @@ describe("AlphaBar inside the one AppHeader", () => {
 
   it("still marks the build while the find bar has taken over the row", () => {
     renderInHeaderShell(
-      <AppHeader bridge="connected" error={false} override={<div>FINDBAR</div>} />,
+      <Header bridge="connected" error={false} override={<div>FINDBAR</div>} />,
     );
     expect(screen.getByText("FINDBAR")).toBeInTheDocument();
     expect(screen.getByText(/TEST/)).toBeInTheDocument();

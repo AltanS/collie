@@ -63,7 +63,7 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
           icon control in the header carries (SettingsGear, the Settings/Pack back button). This is a
           real button — it navigates home — so 40px was simply under the target, and it was also what
           made the header row 4px shorter inside a pane, where no 44px gear was there to set the
-          height. The row now states its own floor (`min-h-15` in AppHeader), so this box no longer
+          height. The row now states its own floor (`min-h-15` in app-header.tsx), so this box no longer
           SIZES the header; it just stops being the short child. Keep the two numbers apart: 40 is the
           mark, 44 is the touchable box it is centred in.
 

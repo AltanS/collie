@@ -9,6 +9,7 @@ import { ServerSwitcher } from "@/components/server-switcher";
 import { type PackData } from "@/lib/loaders";
 import type { PackMemberStatus } from "@/lib/types";
 import { fixturePackStatus, fixtureServers } from "@/test/handlers";
+import { withHeaderHost } from "@/test/header-host";
 import { PackRoute } from "./pack";
 
 // The pack census, and the two entry points that lead to it.
@@ -20,7 +21,7 @@ import { PackRoute } from "./pack";
 function renderPack(data: PackData, entry = "/pack") {
   const router = createMemoryRouter(
     [
-      { path: "/pack", loader: () => data, element: <PackRoute /> },
+      { path: "/pack", loader: () => data, element: withHeaderHost(<PackRoute />) },
       { path: "/", element: <div data-testid="home" /> },
     ],
     { initialEntries: [entry] },
@@ -107,7 +108,7 @@ describe("PackRoute", () => {
     // This page used to hand-roll its own <header> under a comment claiming "one header treatment
     // app-wide", which it was not: no prerelease strip, and its own padding recipe, so it stood 20px
     // short of every other route's header and dropped the "you are on a beta" line on the way in.
-    // It mounts AppHeader now. The strip is the proof it is the real shell (vitest's BUILD.version is
+    // It fills the one hoisted shell now. The strip is the proof it is that shell (vitest's BUILD.version is
     // "0.0.0-test", a prerelease), and the back button carries the row's 44px tap floor.
     renderPack(loaded);
     expect(await screen.findByText(/TEST/)).toBeInTheDocument();

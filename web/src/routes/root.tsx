@@ -7,6 +7,7 @@ import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { ConnectionBanner } from "@/components/connection-banner";
+import { AppHeaderHost } from "@/components/app-header";
 import { PackProvider } from "@/components/pack-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { describeThrownError } from "@/lib/api-error-message";
@@ -92,7 +93,23 @@ export function RootLayout() {
           authError={data.authError}
           lastSeenAt={shownLastSeenAt(data, pane)}
         />
-        <Outlet />
+        {/* THE ONE HEADER, and the third thing on this shelf. The two banners above it have always
+            survived a navigation because they are rendered HERE rather than inside `<Outlet/>`; the
+            header did not, because all six routes mounted their own copy of it, and a header inside
+            the outlet unmounts and remounts on every route change. That restarted the Collie mark's
+            37 CSS animations at zero each time — the operator's report — and rebuilt every gradient,
+            filter and mask id in the drawing with it. It is one shell now, mounted once for the life
+            of the app, and each route portals its own items into it via `<RouteHeader/>`.
+
+            It WRAPS the outlet rather than sitting beside it, which is the structural half of the
+            fix: there is no arrangement of this app in which a route mounts without a header above
+            it, and `<RouteHeader/>` throws outside the host rather than quietly rendering nothing.
+            `bridge` and `error` are read here, once, off the root snapshot every route was
+            forwarding them from anyway — six copies of the same two fields was six chances to
+            disagree with the ConnectionBanner two lines up. */}
+        <AppHeaderHost bridge={data.bridge} error={data.error}>
+          <Outlet />
+        </AppHeaderHost>
       </div>
     </PackProvider>
   );
