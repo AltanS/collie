@@ -11,6 +11,7 @@ import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
+import { ZenControl } from "@/components/zen-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
@@ -79,6 +80,9 @@ export function SettingsRoute() {
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}
         <HapticsControl />
+
+        {/* Availability only — zen's entry point is a button in the pane header. Off by default. */}
+        <ZenControl />
 
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">

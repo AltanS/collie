@@ -18,6 +18,7 @@ vi.mock("@/lib/wizard-action", () => ({
 
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
+import { setZenEnabled, __resetZen } from "@/lib/zen";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents } from "@/test/handlers";
@@ -31,7 +32,10 @@ beforeAll(() => {
   // jsdom doesn't implement scrollTo; the terminal mirror's auto-scroll calls it.
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
-beforeEach(() => clearStatus());
+beforeEach(() => {
+  clearStatus();
+  __resetZen();
+});
 
 function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
   const agent = fixtureAgents[0]!; // a blocked claude agent
@@ -580,5 +584,112 @@ describe("AgentChat — top-of-mirror history affordance", () => {
     renderChat({ agent, agents: [agent], requestedLines: 600 });
     expect(showHistory()).toBeInTheDocument();
     expect(loadOlder()).not.toBeInTheDocument();
+  });
+});
+
+// Zen mode: the whole point is that the chrome UNMOUNTS, so these assert absence of the surfaces
+// every other test in this file relies on — and that the one floating way out brings them all back.
+describe("AgentChat — zen mode", () => {
+  it("offers no entry while the setting is off (the default)", () => {
+    renderChat();
+
+    expect(screen.queryByRole("button", { name: "Enter zen mode" })).not.toBeInTheDocument();
+  });
+
+  // Entering zen unmounts the composer, and "Tap to type" (on by default) means its <textarea> is
+  // often the focused node at that moment. On iOS the soft keyboard belongs to whatever holds focus,
+  // so unmounting it focused can leave the keyboard up over a screen that no longer has an input.
+  // Dropping focus first is the invariant this pins.
+  it("drops focus before the composer unmounts, so iOS dismisses the keyboard with it", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    renderChat();
+
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.click(box);
+    expect(box).toHaveFocus();
+    const blurred = vi.spyOn(box, "blur");
+
+    // fireEvent, not userEvent: iOS does not move focus to a <button> on tap, so the composer is
+    // still the active element when the handler runs. userEvent emulates desktop focus management
+    // and would blur the box for us, hiding the very thing this test pins.
+    fireEvent.click(screen.getByRole("button", { name: "Enter zen mode" }));
+
+    expect(blurred).toHaveBeenCalled();
+  });
+
+  it("enters from the header in a single tap, and the floating pill restores everything", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    renderChat();
+
+    // One tap, straight off the header — no dock to open first. That is the whole point of the
+    // placement: zen is toggled repeatedly, so it must never sit behind the ⚙.
+    await user.click(screen.getByRole("button", { name: "Enter zen mode" }));
+
+    // Chrome gone: the header (implicit banner role) and the composer.
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/type a reply/i)).not.toBeInTheDocument();
+    // Content stays — zen hides Collie's chrome, never the pane's output.
+    expect(screen.getByText("recent pane output")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Exit zen mode" }));
+
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+  });
+
+  it("keeps the entry out of the Display dock — the dock is for prefs, not actions", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    renderChat();
+
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+
+    // The dock still opens and still carries its prefs…
+    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
+    // …and there is exactly one way into zen, the header button — not a second copy in here.
+    expect(screen.getAllByRole("button", { name: "Enter zen mode" })).toHaveLength(1);
+  });
+
+  // "Transient by design" is what justifies never persisting zen, and the mechanism lives entirely
+  // in DetailRoute's key={paneId} — nothing inside AgentChat implements it. Pin it here, or removing
+  // that key would silently leak a chrome-free view into the next pane with the suite still green.
+  it("resets on a pane switch, because the pane view is keyed by paneId", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    const first = fixtureAgents[0]!;
+    const second = fixtureAgents[1]!;
+    let advance: (paneId: string) => void = () => {};
+
+    function Harness() {
+      const [paneId, setPaneId] = useState(first.paneId);
+      advance = setPaneId;
+      const agent = paneId === first.paneId ? first : second;
+      // The key is what DetailRoute does; without it this state would survive the switch.
+      return (
+        <AgentChat
+          key={paneId}
+          paneId={paneId}
+          agent={agent}
+          agents={fixtureAgents}
+          shellPanes={[]}
+          tabs={[]}
+          text="recent pane output"
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: "Enter zen mode" }));
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+
+    act(() => advance(second.paneId));
+
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
   });
 });

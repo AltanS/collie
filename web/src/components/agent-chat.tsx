@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useRevalidator } from "react-router";
-import { ArrowUpToLine, Loader2, ScrollText, Search, TerminalSquare } from "lucide-react";
+import {
+  ArrowUpToLine,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  ScrollText,
+  Search,
+  TerminalSquare,
+} from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
@@ -9,6 +17,7 @@ import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { isConnecting } from "@/lib/connection";
 import { setStatus } from "@/lib/status";
+import { useZenEnabled } from "@/lib/zen";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
 import { AppHeader } from "@/components/app-header";
@@ -128,6 +137,52 @@ export function AgentChat({
   // unrepresentable to violate.
   const [drawer, setDrawer] = useState<Drawer>(null);
   const closeDrawer = () => setDrawer(null);
+
+  // Zen mode — chrome-free, mirror-only viewing. Transient by design: not persisted, and the
+  // key={paneId} remount in DetailRoute resets it on a pane switch, so a pane always opens normal.
+  // The persisted half is only AVAILABILITY (Settings → Zen mode), which gates the entry point.
+  const [zen, setZen] = useState(false);
+  const zenAvailable = useZenEnabled();
+
+  // Zen has exactly one exit, so give the keyboard the two things it needs. Escape dismisses it —
+  // BottomSheet and SideSheet already bind Escape, so zen was the one full-screen surface ignoring
+  // the convention. And leaving hands focus back to the header button the pill stands in for, since
+  // the pill unmounts while holding focus and would otherwise drop it to <body>, restarting tab
+  // order at the top of the document.
+  const zenButtonRef = useRef<HTMLButtonElement>(null);
+  const wasZen = useRef(false);
+  useEffect(() => {
+    if (wasZen.current && !zen) zenButtonRef.current?.focus();
+    wasZen.current = zen;
+  }, [zen]);
+  useEffect(() => {
+    if (!zen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zen]);
+
+  // Entering must clear the chrome that carries state of its own: the switcher sheet would otherwise
+  // survive into zen as a covering sheet whose trigger is hidden, and the find bar lives IN the
+  // header row that is about to unmount. It also discards a sequence staged in the Keys dock,
+  // WITHOUT the two-tap confirm composer.tsx's requestDrawer puts on that — the parent cannot reach
+  // that choke point. Accepted: ADR 0005's rule is that a queue never outlives its dock, and
+  // switchTo already destroys one the same way.
+  function enterZen() {
+    // Blur BEFORE the chrome unmounts. "Tap to type" is on by default, so any earlier tap on the
+    // mirror has parked focus in the composer's <textarea> — and on iOS the soft keyboard belongs
+    // to the focused node, so unmounting it while focused can leave the keyboard up with the visual
+    // viewport still offset. Blunt on purpose: the header button, the find input and the composer
+    // all vanish here, and pinning down which of them holds focus costs more than it saves. It can
+    // also blur a control that SURVIVES into zen (a prompt button, the preview note editor's
+    // textarea) — accepted, since that costs one tap to resume and the keyboard never strands.
+    (document.activeElement as HTMLElement | null)?.blur();
+    setDrawer(null);
+    closeFind();
+    setZen(true);
+  }
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
 
@@ -549,6 +604,9 @@ export function AgentChat({
   //  - the user is selecting text (a long-press selection), so copy works instead of the tap
   //    collapsing the selection and popping the keyboard.
   function focusFromMirror(e: ReactMouseEvent<HTMLDivElement>) {
+    // Nothing zen-specific here: in zen the composer is unmounted so composerRef.current is null
+    // and the focus call below is already a no-op, and the exit pill is a <button>, which the
+    // selector two lines down bails on exactly as it does the prompt buttons.
     if (!prefs.tapToFocus) return;
     const target = e.target as Element | null;
     // The `a` is what keeps a tap on an autolinked URL (components/ansi-output) from popping the
@@ -565,159 +623,220 @@ export function AgentChat({
           identical on every screen (no hand-rolled bar to drift). The pane's own bits ride in via
           slots: the `space › tab` breadcrumb as the center, the agent StatusBadge as the right-cluster
           lead, and the find bar as the full-row takeover while searching. */}
-      <AppHeader
-        bridge={bridge}
-        error={error}
-        stalled={stalled}
-        onHome={onBack}
-        override={
-          findOpen ? (
-            <FindBar
-              query={findQuery}
-              onQueryChange={setFindQuery}
-              count={matchCount}
-              current={currentMatch}
-              onPrev={() => gotoMatch(-1)}
-              onNext={() => gotoMatch(1)}
-              onClose={closeFind}
-            />
-          ) : undefined
-        }
-        // Right cluster, in reading order: Find, History, then the agent status pill. The pill is the
-        // rightmost item on every pane screen (it's the thing you glance at), so the buttons sit to
-        // its LEFT rather than trailing it. All ride in `rightLead` because AppHeader renders
-        // `rightLead` before `rightTrail` — the order here IS the on-screen order.
-        //
-        // Find lives HERE, not in the composer, because the find bar it opens takes over this very
-        // header row (see `override` above) — trigger and surface in the same place. It sat in the
-        // composer's old View row, which put the button at the bottom of the screen and its UI at the
-        // top. Offered only when there's buffered output to search; opening it freezes the tail.
-        //
-        // History opens the agent's own transcript, the only real conversation history a Claude pane
-        // has: its terminal runs on the alternate screen, so the mirror below can never show more
-        // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
-        // transcript can exist at all), so the button never leads to an empty screen.
-        //
-        // The status pill is dimmed while the connection isn't live, so a frozen "working"/"idle"
-        // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
-        rightLead={
-          agent ? (
-            <>
-              {display && (
-                <button
-                  type="button"
-                  onClick={openFind}
-                  aria-label="Find in output"
-                  className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-                >
-                  <Search className="size-4" />
-                </button>
-              )}
-              {agent.hasSession && (
-                <button
-                  type="button"
-                  onClick={() => navigate(historyPath(paneId, session))}
-                  aria-label="Conversation history"
-                  className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-                >
-                  <ScrollText className="size-4" />
-                </button>
-              )}
+      {!zen && (
+        <AppHeader
+          bridge={bridge}
+          error={error}
+          stalled={stalled}
+          onHome={onBack}
+          override={
+            findOpen ? (
+              <FindBar
+                query={findQuery}
+                onQueryChange={setFindQuery}
+                count={matchCount}
+                current={currentMatch}
+                onPrev={() => gotoMatch(-1)}
+                onNext={() => gotoMatch(1)}
+                onClose={closeFind}
+              />
+            ) : undefined
+          }
+          // Right cluster, in reading order: Find, History, then the agent status pill. The pill is the
+          // rightmost item on every pane screen (it's the thing you glance at), so the buttons sit to
+          // its LEFT rather than trailing it. All ride in `rightLead` because AppHeader renders
+          // `rightLead` before `rightTrail` — the order here IS the on-screen order.
+          //
+          // Find lives HERE, not in the composer, because the find bar it opens takes over this very
+          // header row (see `override` above) — trigger and surface in the same place. It sat in the
+          // composer's old View row, which put the button at the bottom of the screen and its UI at the
+          // top. Offered only when there's buffered output to search; opening it freezes the tail.
+          //
+          // History opens the agent's own transcript, the only real conversation history a Claude pane
+          // has: its terminal runs on the alternate screen, so the mirror below can never show more
+          // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
+          // transcript can exist at all), so the button never leads to an empty screen.
+          //
+          // Zen sits in this cluster because it belongs to the same family as Find and History —
+          // "look at the output differently" — and because it must be ONE tap: it is the only control
+          // here you toggle repeatedly in a session, which is exactly why it is not behind the ⚙.
+          // Gated twice: the Settings toggle (zenAvailable) decides whether this phone offers zen at
+          // all, and `display` keeps it off a pane with nothing to show, the way Find is gated.
+          //
+          // The status pill is dimmed while the connection isn't live, so a frozen "working"/"idle"
+          // from the last snapshot doesn't masquerade as current. A bare shell shows a muted "shell" tag.
+          rightLead={
+            agent ? (
+              <>
+                {display && (
+                  <button
+                    type="button"
+                    onClick={openFind}
+                    aria-label="Find in output"
+                    className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                  >
+                    <Search className="size-4" />
+                  </button>
+                )}
+                {agent.hasSession && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(historyPath(paneId, session))}
+                    aria-label="Conversation history"
+                    className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                  >
+                    <ScrollText className="size-4" />
+                  </button>
+                )}
+                {zenAvailable && display && (
+                  <button
+                    type="button"
+                    ref={zenButtonRef}
+                    onClick={enterZen}
+                    aria-label="Enter zen mode"
+                    className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                  >
+                    <Maximize2 className="size-4" />
+                  </button>
+                )}
+                {isShell ? (
+                  <ShellBadge stale={connecting} />
+                ) : (
+                  <StatusBadge status={agent.status} stale={connecting} />
+                )}
+              </>
+            ) : undefined
+          }
+        >
+          {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
+              name would just repeat the icon, so it's dropped), and the working directory on the
+              subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
+          {agent ? (
+            <button
+              type="button"
+              onClick={() => openSpace(agent.workspaceId)}
+              aria-label={`Open ${agent.workspaceLabel} overview`}
+              className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
+            >
               {isShell ? (
-                <ShellBadge stale={connecting} />
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-muted">
+                  <TerminalSquare className="size-3 text-muted-foreground" />
+                </div>
               ) : (
-                <StatusBadge status={agent.status} stale={connecting} />
+                // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
+                // pane's subject, not a second brand competing with Collie's for the header.
+                <AgentIcon agent={agent.agent} className="size-6" />
               )}
-            </>
-          ) : undefined
-        }
-      >
-        {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
-            name would just repeat the icon, so it's dropped), and the working directory on the
-            subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
-        {agent ? (
-          <button
-            type="button"
-            onClick={() => openSpace(agent.workspaceId)}
-            aria-label={`Open ${agent.workspaceLabel} overview`}
-            className="-mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors active:bg-muted/60"
-          >
-            {isShell ? (
-              <div className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-muted">
-                <TerminalSquare className="size-3 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                {/* A user-set pane label leads when present (the identifier they chose), then Claude's
+                    own /rename session name, otherwise the default space › tab. The cwd subline keeps
+                    context either way. */}
+                <div className="truncate font-semibold leading-tight">
+                  {agent.paneLabel ??
+                    agent.sessionName ??
+                    `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
+                </div>
+                <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
+                  {shortCwd(agent.cwd)}
+                </div>
               </div>
-            ) : (
-              // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
-              // pane's subject, not a second brand competing with Collie's for the header.
-              <AgentIcon agent={agent.agent} className="size-6" />
-            )}
+            </button>
+          ) : (
             <div className="min-w-0 flex-1">
-              {/* A user-set pane label leads when present (the identifier they chose), then Claude's
-                  own /rename session name, otherwise the default space › tab. The cwd subline keeps
-                  context either way. */}
-              <div className="truncate font-semibold leading-tight">
-                {agent.paneLabel ??
-                  agent.sessionName ??
-                  `${agent.workspaceLabel}${tabLabel ? ` › ${tabLabel}` : ""}`}
-              </div>
-              <div className="truncate font-mono text-xs leading-tight text-muted-foreground">
-                {shortCwd(agent.cwd)}
-              </div>
+              <span className="truncate font-semibold">(agent gone)</span>
             </div>
-          </button>
-        ) : (
-          <div className="min-w-0 flex-1">
-            <span className="truncate font-semibold">(agent gone)</span>
-          </div>
-        )}
-      </AppHeader>
+          )}
+        </AppHeader>
+      )}
 
       {/* Content region below the header — the mirror inside is the scroller. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1 flex-col",
+          // Zen unmounts the header (which carried the top inset) and the composer (the bottom one),
+          // so without these the mirror runs under the notch and the home indicator.
+          zen &&
+            "[padding-top:env(safe-area-inset-top)] [padding-bottom:env(safe-area-inset-bottom)]",
+        )}
+      >
+        {/* The only way out of zen — one floating affordance over the mirror rather than a strip, so
+            "everything hides" stays literally true. Translucent + blurred so the terminal text it
+            covers stays readable.
+
+            TOP-right, deliberately, to sit where the header's "Enter zen mode" button was: zen is
+            toggled constantly, and a control that enters from one corner and leaves from the
+            opposite one makes you re-aim every time.
+
+            It is the FIRST child of this wrapper, and absolute against it, for two reasons that both
+            bite if you put it inside the mirror instead. Tab order: this is the only structural
+            control left in zen, so it has to come before the buffer rather than behind every
+            autolink and prompt button in it. And position: anchoring to the mirror ties it to
+            StatusArea, which renders nothing when idle — so the one way out would slide down by the
+            height of a notice after every prompt tap, then slide back when it dismissed. The top
+            inset is taken explicitly because an absolute box is offset from its containing block's
+            PADDING edge, which on this wrapper sits above the notch. StatusArea takes `mr-16` in zen
+            so a notice never runs up against the pill. */}
+        {zen && (
+          <button
+            type="button"
+            onClick={() => setZen(false)}
+            aria-label="Exit zen mode"
+            // size-11 = 44px, per the tap-target pass — a real box, not a bled hit area. This is
+            // the ONLY way out of zen, so it is the last control that should be under-sized.
+            className="absolute right-3 z-20 flex size-11 items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground backdrop-blur transition-colors active:bg-muted/60 [top:calc(env(safe-area-inset-top)+0.75rem)]"
+          >
+            <Minimize2 className="size-4" />
+          </button>
+        )}
+
         {/* Status line — a slim row pinned directly below the header (NOT the scrolling mirror), so a
             "Sent" / "changed" notice reads at the top instead of floating over the terminal tail
             (prompt/cursor + up-levelled prompt buttons) it used to cover. Renders nothing — no
             reserved space — when idle; auto-dismisses. */}
-        <StatusArea className="mx-3 mt-1.5 shrink-0" />
+        <StatusArea className={cn("mx-3 mt-1.5 shrink-0", zen && "mr-16")} />
 
-        {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
-        <ReadOnlyBanner device={device} />
+        {!zen && (
+          <>
+            {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
+            <ReadOnlyBanner device={device} />
 
-        {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
-            pane, or create one with +. No "All" here (you're always in a specific tab). */}
-        {agent && (
-          <TabStrip
-            workspaceId={agent.workspaceId}
-            tabs={tabs}
-            agents={agents}
-            selected={agent.tabId}
-            onSelect={(id) => id && goToTab(id)}
-            onNewTab={newTab}
-            allowAll={false}
-            session={session}
-            readOnly={readOnly}
-            onRenamed={() => revalidator.revalidate()}
-            // Closing the tab this pane lives in kills the pane too — leave for Home the same way a
-            // pane-close does (onBack); closing any other tab just revalidates so it drops out.
-            onClosed={(tabId) => (agent?.tabId === tabId ? onBack() : revalidator.revalidate())}
-          />
-        )}
+            {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
+                pane, or create one with +. No "All" here (you're always in a specific tab). */}
+            {agent && (
+              <TabStrip
+                workspaceId={agent.workspaceId}
+                tabs={tabs}
+                agents={agents}
+                selected={agent.tabId}
+                onSelect={(id) => id && goToTab(id)}
+                onNewTab={newTab}
+                allowAll={false}
+                session={session}
+                readOnly={readOnly}
+                onRenamed={() => revalidator.revalidate()}
+                // Closing the tab this pane lives in kills the pane too — leave for Home the same way a
+                // pane-close does (onBack); closing any other tab just revalidates so it drops out.
+                onClosed={(tabId) => (agent?.tabId === tabId ? onBack() : revalidator.revalidate())}
+              />
+            )}
 
-        {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
-            tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
-        {agent && (
-          <PaneStrip
-            panes={[...agents, ...shellPanes]
-              .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-              .sort((a, b) => a.paneId.localeCompare(b.paneId))}
-            currentPaneId={paneId}
-            onSelect={switchTo}
-            session={session}
-            readOnly={readOnly}
-            onRenamed={() => revalidator.revalidate()}
-            // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
-            onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
-          />
+            {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
+                tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
+            {agent && (
+              <PaneStrip
+                panes={[...agents, ...shellPanes]
+                  .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
+                  .sort((a, b) => a.paneId.localeCompare(b.paneId))}
+                currentPaneId={paneId}
+                onSelect={switchTo}
+                session={session}
+                readOnly={readOnly}
+                onRenamed={() => revalidator.revalidate()}
+                // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
+                onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
+              />
+            )}
+          </>
         )}
 
         {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
@@ -729,7 +848,10 @@ export function AgentChat({
             straight into terminal output — the chrome and the mirror read as one surface. Drawing it
             here rather than as a border-b on PaneStrip covers the case where that strip is absent
             (a tab holding a single pane), which is the common one. */}
-        <div className="min-h-0 min-w-0 flex-1 border-t border-border/40" onClick={focusFromMirror}>
+        <div
+          className="min-h-0 min-w-0 flex-1 border-t border-border/40"
+          onClick={focusFromMirror}
+        >
           <ChatMessageList
             ref={listRef}
             dep={display}
@@ -802,86 +924,88 @@ export function AgentChat({
         {/* Bottom region: the pane-switch handle + composer. The status line USED to float here as an
             overlay just above the composer, but it covered the terminal tail (the prompt/cursor and
             up-levelled prompt buttons) — it now lives as a slim row just below the header. */}
-        <div className="relative">
+        {!zen && (
+          <div className="relative">
 
-          {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
-              panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
-              tap always works). Shown whenever a pane is open — even the last one, so it stays
-              closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
-              browser scroll. */}
-          {agents.length + shellPanes.length > 0 && (
-            <button
-              type="button"
-              aria-label="Switch pane"
-              {...swipe}
-              onClick={() => setDrawer("switcher")}
-              className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
-            >
-              <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
-            </button>
-          )}
+            {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
+                panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
+                tap always works). Shown whenever a pane is open — even the last one, so it stays
+                closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
+                browser scroll. */}
+            {agents.length + shellPanes.length > 0 && (
+              <button
+                type="button"
+                aria-label="Switch pane"
+                {...swipe}
+                onClick={() => setDrawer("switcher")}
+                className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+              >
+                <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
+              </button>
+            )}
 
-          {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
-              would otherwise vanish with the stripped input box). Sits directly above the composer,
-              as it did in the TUI. Verbatim text — React text nodes, so no XSS surface.
+            {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
+                would otherwise vanish with the stripped input box). Sits directly above the composer,
+                as it did in the TUI. Verbatim text — React text nodes, so no XSS surface.
 
-              STACKED, one row per line, each truncated — deliberately, over the two alternatives:
-              joining the rows with a separator would put ~150 chars on a strip that fits ~55 at this
-              size on a phone, truncating away exactly the fields (branch, permission mode) this
-              exists to surface; wrapping makes the strip's height depend on the pane width and turns
-              a column-aligned statusline into ragged prose. Stacking also preserves the shape the
-              user themselves configured in the TUI, so it reads as the same thing they know.
-              Height is bounded upstream (MAX_STATUS_LINES caps the run stripChrome will claim), so
-              there is no second cap here; the mirror is a flex child that shrinks, never pushed off. */}
-          {statusLines.length > 0 && (
-            <div
-              className={cn(
-                "border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
-                // The strip carries the agent's OWN terminal colour, so it renders in the mirror's
-                // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
-                // chosen against a near-black background and is illegible re-themed onto app chrome.
-                // It also makes the strip read as the bottom of the pane it was cut from, which is
-                // where the TUI drew it.
-                MIRROR_SPACE,
-                MIRROR_INVERT,
-              )}
-            >
-              {statusLines.map((row, i) => (
-                // Index key: these rows are a positional snapshot of the pane tail, re-derived on
-                // every poll — there is no identity to preserve across renders.
-                <div key={i} className="truncate">
-                  {row.segments.map((s, si) => (
-                    // Text nodes only — colour and weight come from the ANSI parse, never markup.
-                    // Same XSS boundary as the mirror.
-                    <span key={si} style={styleFor(s)}>
-                      {s.text}
-                    </span>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
+                STACKED, one row per line, each truncated — deliberately, over the two alternatives:
+                joining the rows with a separator would put ~150 chars on a strip that fits ~55 at this
+                size on a phone, truncating away exactly the fields (branch, permission mode) this
+                exists to surface; wrapping makes the strip's height depend on the pane width and turns
+                a column-aligned statusline into ragged prose. Stacking also preserves the shape the
+                user themselves configured in the TUI, so it reads as the same thing they know.
+                Height is bounded upstream (MAX_STATUS_LINES caps the run stripChrome will claim), so
+                there is no second cap here; the mirror is a flex child that shrinks, never pushed off. */}
+            {statusLines.length > 0 && (
+              <div
+                className={cn(
+                  "border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
+                  // The strip carries the agent's OWN terminal colour, so it renders in the mirror's
+                  // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
+                  // chosen against a near-black background and is illegible re-themed onto app chrome.
+                  // It also makes the strip read as the bottom of the pane it was cut from, which is
+                  // where the TUI drew it.
+                  MIRROR_SPACE,
+                  MIRROR_INVERT,
+                )}
+              >
+                {statusLines.map((row, i) => (
+                  // Index key: these rows are a positional snapshot of the pane tail, re-derived on
+                  // every poll — there is no identity to preserve across renders.
+                  <div key={i} className="truncate">
+                    {row.segments.map((s, si) => (
+                      // Text nodes only — colour and weight come from the ANSI parse, never markup.
+                      // Same XSS boundary as the mirror.
+                      <span key={si} style={styleFor(s)}>
+                        {s.text}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
 
-          <Composer
-            ref={composerRef}
-            paneId={paneId}
-            session={session}
-            agent={agent?.agent}
-            isShell={isShell}
-            gone={gone}
-            readOnly={readOnly}
-            dialogPresent={dialogPresent}
-            text={text}
-            terminalDraft={terminalDraft}
-            rawTerminalDraft={rawTerminalDraft}
-            prefs={prefs}
-            setWrap={setWrap}
-            stepFontSize={stepFontSize}
-            setRawTerminal={setRawTerminal}
-            setTapToFocus={setTapToFocus}
-            onSent={onSent}
-          />
-        </div>
+            <Composer
+              ref={composerRef}
+              paneId={paneId}
+              session={session}
+              agent={agent?.agent}
+              isShell={isShell}
+              gone={gone}
+              readOnly={readOnly}
+              dialogPresent={dialogPresent}
+              text={text}
+              terminalDraft={terminalDraft}
+              rawTerminalDraft={rawTerminalDraft}
+              prefs={prefs}
+              setWrap={setWrap}
+              stepFontSize={stepFontSize}
+              setRawTerminal={setRawTerminal}
+              setTapToFocus={setTapToFocus}
+              onSent={onSent}
+            />
+          </div>
+        )}
       </div>
 
       {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.

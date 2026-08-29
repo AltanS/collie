@@ -45,6 +45,7 @@ public access, Collie isn't built for it. Read the
   [Your own key presets](#your-own-key-presets) ·
   [Your own quick replies](#your-own-quick-replies) · [Multi-session](#multi-session)
 - [Dark mode / light mode](#dark-mode--light-mode)
+- [Zen mode](#zen-mode)
 - [Commands](#commands)
 - [Manage & update](#manage--update)
 - [Deployment variants](#deployment-variants) · [B–E in `DEPLOYMENT.md`](./DEPLOYMENT.md)
@@ -379,6 +380,19 @@ inverting is what keeps the contrast they designed for
 agents on a dark theme — a light-themed agent emits dark-on-light colours that are unreadable under
 either appearance. (Installed on iOS, the status-bar text stays white in light mode; iOS gives web
 apps no way to change that at runtime.)
+
+## Zen mode
+
+**Off by default.** Turn it on in **Settings → Zen mode** (per device, stored in the browser) and a
+full-screen button joins the pane header beside Find and History. One tap hides every Collie
+surface — header, tab and pane strips, statusline, the composer and its docks — leaving the terminal
+mirror alone on the screen. A floating button in the same top-right corner brings it all back, and
+Escape does too.
+
+Zen is deliberately **transient**: the setting persists, the state does not. It resets when you
+switch pane or reload, so a pane always opens with its chrome. The mirror keeps polling while you're
+in it, and the output stays interactive — prompt buttons and the top-of-buffer "Load older" /
+"Show entire history" affordances are content, not chrome, so they stay.
 
 ## Commands
 
