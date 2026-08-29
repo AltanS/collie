@@ -43,7 +43,7 @@ want a mic that doesn't depend on the keyboard, Collie has its own
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
   [Your own key presets](#your-own-key-presets) ·
   [Your own quick replies](#your-own-quick-replies) · [Multi-session](#multi-session)
-- [Dark mode / light mode](#dark-mode--light-mode) · [Language](#language)
+- [Dark mode / light mode](#dark-mode--light-mode) · [Zen mode](#zen-mode) · [Language](#language)
 - [Commands](#commands) · [Pack commands](#pack-commands) ·
   [Put `collie` on your PATH](#put-collie-on-your-path) · [Herdr actions](#herdr-actions)
 - [Manage & update](#manage--update) · [Migrating from 0.x](#migrating-from-0x)
@@ -633,6 +633,19 @@ Two things follow that are worth knowing:
 > **Installed on iOS?** In light mode the status-bar text stays white and can disappear against the
 > page. iOS gives web apps no way to change this at runtime — use the browser rather than the
 > installed app if it bothers you.
+
+## Zen mode
+
+**Off by default.** Turn it on in **Settings → Zen mode** (per device, stored in the browser) and a
+**Zen mode** row joins the pane's own menu, under the ⋮ beside Find and History. One tap takes every
+Collie surface off the screen — the header, the tab and pane strips, the agent's statusline, the
+composer and its docks — and leaves the terminal mirror alone. A floating button in the top-right
+corner brings it all back, and Escape does too.
+
+Zen is deliberately **transient**: the setting persists, the state does not. It resets when you
+switch pane or reload, so a pane always opens with its chrome. The mirror keeps polling while you
+are in it, and the output stays interactive — prompt buttons and the top-of-buffer "Load older" /
+"Show entire history" affordances are content, not chrome, so they stay.
 
 ## Language
 

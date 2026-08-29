@@ -15,6 +15,7 @@ import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
+import { ZenControl } from "@/components/zen-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
 import { UpdateCheckControl } from "@/components/update-check-control";
@@ -128,6 +129,13 @@ export function SettingsRoute() {
             haptics rather than with the herd settings below. Renders nothing where no provider is
             configured or the browser cannot record. */}
         <HandsFreeControl />
+
+        {/* AVAILABILITY ONLY. This row does not turn zen on — it decides whether the pane's actions
+            sheet offers the "Zen mode" row at all. It sits with haptics and voice because it is the
+            same kind of thing: a persisted, per-device decision about how this phone treats you,
+            not a rendering pref (those live in the pane's own Display dock). Off by default, because
+            zen takes away every way back except one floating button. */}
+        <ZenControl />
 
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">

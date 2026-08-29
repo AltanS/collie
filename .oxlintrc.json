@@ -147,6 +147,7 @@
         "**/web/src/hooks/use-theme.ts",
         "**/web/src/lib/drafts.ts",
         "**/web/src/lib/haptics.ts",
+        "**/web/src/lib/zen.ts",
         "**/web/src/lib/follow-terminal.ts"
       ],
       "rules": {

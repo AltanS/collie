@@ -113,7 +113,7 @@ describe("the header — the one shared shell", () => {
         <span>webapp › main</span>
       </Header>,
     );
-    const rowOf = (c: HTMLElement) => c.querySelector("header > div:last-child")?.className ?? "";
+    const rowOf = (c: HTMLElement) => c.querySelector('header [data-slot="header-row"]')?.className ?? "";
     // min-h, not h: a child taller than the floor must still grow the row rather than be clipped.
     expect(rowOf(dash.container)).toContain("min-h-15");
     expect(rowOf(dash.container)).not.toMatch(/(^|\s)h-\d/);

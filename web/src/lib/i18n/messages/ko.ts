@@ -23,6 +23,11 @@ export const ko: Dictionary = {
   "settings.haptics.description": "키를 누르거나 빠른 답장을 보낼 때 짧은 진동을 울립니다.",
 
 
+  // --- settings.zen ---
+  // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.zen.title": "젠 모드",
+  "settings.zen.description": "터미널만 남기고 모두 숨기는 항목을 페인 메뉴에 추가합니다.",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "핸즈프리 음성",
   "settings.handsFree.description":
@@ -218,6 +223,9 @@ export const ko: Dictionary = {
   "sendMode.armed.stop": "중지",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
+  "chat.zen.label": "젠 모드",
+  // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
+  "chat.zen.exitAria": "젠 모드 끝내기",
   "chat.find.label": "출력에서 찾기",
   "chat.history.label": "대화 기록",
   "chat.paneMenu.aria": "페인 작업",

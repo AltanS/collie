@@ -22,6 +22,11 @@ export const ja: Dictionary = {
   "settings.haptics.description": "キー操作やクイック返信時に短く振動します。",
 
 
+  // --- settings.zen ---
+  // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.zen.title": "Zen モード",
+  "settings.zen.description": "ターミナル以外をすべて隠す項目をペインのメニューに追加します。",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "ハンズフリー音声",
   "settings.handsFree.description":
@@ -220,6 +225,9 @@ export const ja: Dictionary = {
   "sendMode.armed.stop": "停止",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
+  "chat.zen.label": "Zen モード",
+  // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
+  "chat.zen.exitAria": "Zen モードを終了",
   "chat.find.label": "出力内を検索",
   "chat.history.label": "会話履歴",
   "chat.paneMenu.aria": "ペインの操作",

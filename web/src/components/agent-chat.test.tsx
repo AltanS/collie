@@ -18,6 +18,7 @@ vi.mock("@/lib/wizard-action", () => ({
 
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
+import { setZenEnabled, __resetZen } from "@/lib/zen";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
@@ -34,7 +35,12 @@ beforeAll(() => {
   // jsdom doesn't implement scrollTo; the terminal mirror's auto-scroll calls it.
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
-beforeEach(() => clearStatus());
+beforeEach(() => {
+  clearStatus();
+  // Zen's availability is a module-scoped, localStorage-backed store — one case turning it on would
+  // otherwise leave every later case rendering a menu row it never asked for.
+  __resetZen();
+});
 
 function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
   const agent = fixtureAgents[0]!; // a blocked claude agent
@@ -290,7 +296,7 @@ describe("AgentChat — the pane header's identity block", () => {
     const { container } = renderChat({
       agent: { ...fixtureAgents[0]!, cwd: "/home/you/webapp/worktrees/fix-42" },
     });
-    const row = container.querySelector<HTMLElement>("header > div:last-child");
+    const row = container.querySelector<HTMLElement>('header [data-slot="header-row"]');
     const spacing = (cls: string, re: RegExp) => {
       const m = re.exec(cls);
       expect(m, `${re} in "${cls}"`).not.toBeNull();
@@ -852,7 +858,7 @@ describe("AgentChat — shared header: stale-status dimming", () => {
 describe("AgentChat \u2014 the pane menu in the header", () => {
   /** The header's own row \u2014 the screen below it is full of buttons, so every query here is scoped. */
   const headerRow = (container: HTMLElement) =>
-    container.querySelector<HTMLElement>("header > div:last-child")!;
+    container.querySelector<HTMLElement>('header [data-slot="header-row"]')!;
 
   // THE POINT OF THE CHANGE. Two icons became one control; the row must not carry find or history as
   // controls of its own any more. Asserted over the header row's whole button list, so a stray third
@@ -1377,14 +1383,21 @@ describe("the pane fits its viewport", () => {
     const { container } = renderChat({ text: STATUS_TEXT });
     const block = container.querySelector('[data-slot="chrome-block"]')!;
     const bottom = block.parentElement!;
-    // The mirror is the bottom region's own previous sibling — taken that way rather than by a
+    // ROW IDENTITY, NOT ELEMENT IDENTITY — the same reading the docking test above states. The whole
+    // bottom region now stands inside a `Collapse`: it leaves as one row when zen hides the chrome.
+    // `Collapse` is a presence animation and styles NOTHING, so the ROW in this flex column is that
+    // wrapper, and the adjacency claim is about the row. Asserted through it rather than around it:
+    // the wrapper must be found, so a bottom region that quietly escaped its Collapse fails here too.
+    const bottomRow = bottom.closest('[data-slot="collapse"]')!;
+    expect(bottomRow).not.toBeNull();
+    // The mirror is the bottom row's own previous sibling — taken that way rather than by a
     // selector, so this asserts the ADJACENCY the argument rests on instead of merely finding two
     // elements that happen to match.
-    const mirror = bottom.previousElementSibling!;
+    const mirror = bottomRow.previousElementSibling!;
 
     // The two are flex siblings in the same column: one gives, one does not.
     expect(mirror.getAttribute("role")).toBe("presentation");
-    expect(mirror.parentElement).toBe(bottom.parentElement);
+    expect(mirror.parentElement).toBe(bottomRow.parentElement);
     expect(mirror.className).toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
     expect(mirror.className).toMatch(/(?:^|\s)flex-1(?=\s|$)/);
 
@@ -1493,8 +1506,11 @@ describe("the pane fits its viewport", () => {
     // the baseline rule lands flush against the mirror's top rule as one doubled 2px hairline,
     // which DESIGN.md §4 forbids by name. Both halves are pinned here, positively.
     const { container } = renderChat({ text: STATUS_TEXT });
-    const mirror = container.querySelector('[data-slot="chrome-block"]')!.parentElement!
-      .previousElementSibling!;
+    // Through the bottom region's own `Collapse` row — see the region test above for why that
+    // wrapper, not the region's element, is the row this column is made of.
+    const mirror = container
+      .querySelector('[data-slot="chrome-block"]')!
+      .closest('[data-slot="collapse"]')!.previousElementSibling!;
     expect(mirror.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
     // A gap, and a real one — not `mt-0`, and not absent.
     expect(mirror.className).toMatch(/(?:^|\s)mt-[1-9](?:\.5)?(?=\s|$)/);
@@ -1509,5 +1525,210 @@ describe("the pane fits its viewport", () => {
     const field = screen.getByRole("textbox");
     expect(field.className).toMatch(/max-h-\[min\(10rem,\d+dvh\)\]/);
     expect(field.className).not.toMatch(/(?:^|\s)max-h-40(?=\s|$)/);
+  });
+});
+
+// ZEN MODE — the whole point is that the chrome LEAVES, so these assert the absence of surfaces
+// every other test in this file leans on, and that the one floating way out brings them all back.
+//
+// "The chrome" is read as its ROWS, not as its elements: the shared `<header>` element stays mounted
+// (it keeps the safe-area inset and its reserved rule) and its ROW collapses away inside it, and the
+// bottom region leaves as one row through its own `Collapse`. Both leave the tree at the end of the
+// exit rather than at the start, which is why the disappearance is awaited — a control that is off
+// the screen must not still be focusable, and that is the half worth pinning.
+describe("AgentChat — zen mode", () => {
+  const headerRowOf = (container: HTMLElement) =>
+    container.querySelector('header [data-slot="header-row"]');
+
+  async function enterZen(user: User) {
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Zen mode" }));
+  }
+
+  it("offers no way in while the setting is off, which is the default", async () => {
+    // Zen takes away every way back except one floating button, so it may never arrive uninvited.
+    const user = userEvent.setup();
+    renderChat();
+
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: "Zen mode" })).not.toBeInTheDocument();
+    // …and the rows it stands beside are untouched, so this is a hidden row and not a broken sheet.
+    expect(screen.getByRole("button", { name: "Find in output" })).toBeInTheDocument();
+  });
+
+  it("offers nothing on a pane with no output either — the same gate Find takes", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    renderChat({ text: "" });
+
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: "Zen mode" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Find in output" })).not.toBeInTheDocument();
+  });
+
+  it("takes every Collie surface off the screen and leaves the pane's own output", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    const { container } = renderChat({ tabs: fixtureTabs, text: STATUS_TEXT });
+
+    await enterZen(user);
+
+    // The header ROW, the tab strip and the whole bottom region (statusline, handle, composer).
+    await waitFor(() => expect(headerRowOf(container)).toBeNull());
+    expect(screen.queryByRole("navigation", { name: /tabs/i })).not.toBeInTheDocument();
+    expect(container.querySelector('[data-slot="chrome-block"]')).toBeNull();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pane actions" })).not.toBeInTheDocument();
+
+    // The header ELEMENT stays: it carries the safe-area inset that the notch needs whether or not
+    // there is a row inside it, and a route taking that inset over would pay for it twice.
+    expect(container.querySelector("header")).not.toBeNull();
+
+    // Content stays. Zen hides Collie's chrome, never the pane's output — the mirror keeps polling
+    // and keeps rendering exactly as it did.
+    expect(screen.getByText("Welcome back!")).toBeInTheDocument();
+  });
+
+  it("brings all of it back from the one floating way out", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    const { container } = renderChat({ tabs: fixtureTabs });
+
+    await enterZen(user);
+    await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+    await user.click(screen.getByRole("button", { name: "Exit zen mode" }));
+
+    await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+    expect(screen.getByRole("navigation", { name: /tabs/i })).toBeInTheDocument();
+    expect(container.querySelector('[data-slot="chrome-block"]')).not.toBeNull();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    // …and the way out goes with it, so nothing floats over a screen that already has its chrome.
+    expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+  });
+
+  it("gives the one way out a REAL 44px box, not a bled hit area", async () => {
+    // DESIGN.md §6. This is the last control in the app that should be under-sized: it is the only
+    // thing on the screen that is not terminal output.
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    renderChat();
+
+    await enterZen(user);
+
+    const pill = screen.getByRole("button", { name: "Exit zen mode" });
+    expect(pill.className).toMatch(/(?:^|\s)size-11(?=\s|$)/);
+    // A ground of its own, and not the page colour: in dark `--background` IS the mirror's fill
+    // (mirror-space.ts), so a pill painted in it would be a control standing on nothing.
+    expect(pill.className).toMatch(/(?:^|\s)bg-chrome(?=\s|$)/);
+  });
+
+  it("hides the chrome THROUGH Collapse, never by tearing it out of the flow", async () => {
+    // DESIGN.md §1: an in-flow surface appears and disappears through `ui/collapse.tsx` and through
+    // nothing else, which is also §2's answer to 60px of header vanishing between two frames. The
+    // coupling is asserted rather than commented: read the surface, walk up to its row, require the
+    // row to be a Collapse that is CLOSED. A bare conditional passes every other test in this file.
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    const { container } = renderChat({ tabs: fixtureTabs });
+
+    const headerRow = headerRowOf(container)!;
+    const bottom = container.querySelector('[data-slot="chrome-block"]')!.parentElement!;
+    const rowOf = (el: Element) => el.closest('[data-slot="collapse"]')!;
+    expect(rowOf(headerRow)).not.toBeNull();
+    expect(rowOf(bottom)).not.toBeNull();
+
+    await enterZen(user);
+
+    // Read while the exit is still running — `Collapse` holds its child for the full slide, so this
+    // is the frame that proves the surface is animating out rather than simply gone.
+    expect(rowOf(headerRow).getAttribute("data-state")).toBe("closed");
+    expect(rowOf(bottom).getAttribute("data-state")).toBe("closed");
+  });
+
+  it("leaves on Escape, the way every other full-screen surface here does", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    const { container } = renderChat();
+
+    await enterZen(user);
+    await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+  });
+
+  it("drops focus before the composer leaves, so iOS dismisses the keyboard with it", async () => {
+    // On iOS the soft keyboard belongs to whatever holds focus, so unmounting a focused <textarea>
+    // can leave the keyboard standing over a screen that no longer has an input.
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    renderChat();
+
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.click(box);
+    expect(box).toHaveFocus();
+
+    await enterZen(user);
+
+    expect(box).not.toHaveFocus();
+  });
+
+  it("keeps the entry out of the Display dock — that dock is prefs, this is an act", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    renderChat();
+
+    await openPaneMenu(user);
+    // Exactly ONE way in, and it is this row — a second entry point creeping back in fails here.
+    expect(screen.getAllByRole("button", { name: "Zen mode" })).toHaveLength(1);
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zen mode" })).not.toBeInTheDocument();
+  });
+
+  // "Transient by design" is what justifies never persisting zen, and the mechanism lives entirely
+  // in DetailRoute's key={paneId} — nothing inside AgentChat implements it. Pinned here, or removing
+  // that key would silently leak a chrome-free view into the next pane with the suite still green.
+  it("resets on a pane switch, because the pane view is keyed by paneId", async () => {
+    setZenEnabled(true);
+    const user = userEvent.setup();
+    const first = fixtureAgents[0]!;
+    const second = fixtureAgents[1]!;
+    let advance: (paneId: string) => void = () => {};
+
+    function Harness() {
+      const [paneId, setPaneId] = useState(first.paneId);
+      advance = setPaneId;
+      const agent = paneId === first.paneId ? first : second;
+      // The key is what DetailRoute does; without it this state would survive the switch.
+      return (
+        <AgentChat
+          key={paneId}
+          paneId={paneId}
+          agent={agent}
+          agents={fixtureAgents}
+          shellPanes={[]}
+          tabs={[]}
+          text="recent pane output"
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    const { container } = render(<RouterProvider router={router} />);
+
+    await enterZen(user);
+    await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+    act(() => advance(second.paneId));
+
+    expect(headerRowOf(container)).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
   });
 });

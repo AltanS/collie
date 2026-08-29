@@ -23,6 +23,11 @@ export const zh: Dictionary = {
   "settings.haptics.description": "按键或快速回复时轻微震动。",
 
 
+  // --- settings.zen ---
+  // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.zen.title": "禅模式",
+  "settings.zen.description": "在窗格菜单中加入一项，隐藏除终端以外的一切。",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "免提语音",
   "settings.handsFree.description":
@@ -208,6 +213,9 @@ export const zh: Dictionary = {
   "sendMode.armed.stop": "停止",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
+  "chat.zen.label": "禅模式",
+  // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
+  "chat.zen.exitAria": "退出禅模式",
   "chat.find.label": "在输出中查找",
   "chat.history.label": "对话记录",
   "chat.paneMenu.aria": "窗格操作",

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Monitor, Pencil, ScrollText, Search, XCircle } from "lucide-react";
+import { Maximize2, Monitor, Pencil, ScrollText, Search, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -32,26 +32,34 @@ interface PaneActionsSheetProps {
    *  pane currently open, or revalidates so it drops out of the list. */
   onClosed: (paneId: string) => void;
 
-  /* The two READ rows. Both are optional and both are omitted by the pane strip, because they only
+  /* The READ rows. All are optional and all are omitted by the pane strip, because they only
    * mean anything for the pane you are LOOKING AT: "find in output" searches the buffer this screen
    * has already fetched, and a strip pill can open this sheet on a pane whose output was never
    * loaded. The pane header passes them; the strip does not. Each is `undefined` when the caller has
-   * nothing to offer (no buffered output yet; no agent session, so no transcript), and a row with no
-   * callback is HIDDEN — the same "a sheet is a list of things you can do" rule the capability gates
-   * below follow. The sheet closes itself before firing either, so the surface a row leads to (the
-   * header's find bar, the history route) is the only thing on screen when it arrives. */
+   * nothing to offer (no buffered output yet; no agent session, so no transcript; a device that never
+   * asked for zen), and a row with no callback is HIDDEN — the same "a sheet is a list of things you
+   * can do" rule the capability gates below follow. The sheet closes itself before firing any of
+   * them, so the surface a row leads to (the header's find bar, the history route, the bare mirror)
+   * is the only thing on screen when it arrives. */
 
   /** Open find-in-output. The pane header's find bar takes over the header row. */
   onFind?: () => void;
   /** Open the agent's own transcript. */
   onHistory?: () => void;
+  /** Enter zen mode — hide every Collie surface and leave the mirror alone on the screen.
+   *
+   *  The THIRD read row, and it is gated twice through this one prop: `Settings → Zen mode` decides
+   *  whether this phone offers zen at all, and the pane header only passes a callback when there is
+   *  buffered output to look at. Absence IS the gate, exactly as it is for find and history above —
+   *  a device that never asked for zen sees a sheet byte-identical to today's. */
+  onZen?: () => void;
 }
 
 type Mode = "actions" | "rename";
 
 // The actions for a single pane. TWO entry points, one sheet: long-pressing (or re-tapping) a pane
-// pill in the strip, and the ⋮ button in the pane header — which is why find and history live here
-// rather than in a second menu of their own. The header used to spend two of its four slots on those
+// pill in the strip, and the ⋮ button in the pane header — which is why find, history and zen live
+// here rather than in a second menu of their own. The header used to spend two of its four slots on those
 // two icons; the pane already had a menu, so they became rows in it.
 // Rename (set/clear its label) and close (kill). Opens on an action-list view; rename is a second
 // tap away so the sheet doesn't shove a keyboard-triggering input at you just to close a pane. The
@@ -69,6 +77,7 @@ export function PaneActionsSheet({
   onClosed,
   onFind,
   onHistory,
+  onZen,
 }: PaneActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -239,7 +248,7 @@ export function PaneActionsSheet({
           sheet; rename and close are the half you arrive at deliberately.
           Hidden in `rename` mode with the rest of the list — that view is a sub-screen, not a
           section. */}
-      {mode === "actions" && (onFind || onHistory) && (
+      {mode === "actions" && (onFind || onHistory || onZen) && (
         <div className="mb-1 flex flex-col gap-1">
           {onFind && (
             <ActionRow
@@ -260,6 +269,21 @@ export function PaneActionsSheet({
               onClick={() => {
                 onClose();
                 onHistory();
+              }}
+            />
+          )}
+          {/* Zen trails find and history rather than leading them: it is the same family — "look at
+              the output differently" — but it is the one row here that takes the whole screen over,
+              so it is the deliberate tap at the end of the run rather than the first thing under the
+              thumb. Close-then-act, for the reason the find row states: both land in one React
+              event, so the sheet unmounts in the same commit the chrome starts leaving. */}
+          {onZen && (
+            <ActionRow
+              icon={<Maximize2 className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("chat.zen.label")}
+              onClick={() => {
+                onClose();
+                onZen();
               }}
             />
           )}

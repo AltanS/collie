@@ -32,6 +32,11 @@ export const en = {
   "settings.haptics.description": "A short buzz when you press a key or a quick reply.",
 
 
+  // --- settings.zen ---
+  // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.zen.title": "Zen mode",
+  "settings.zen.description": "Adds a row to the pane menu that hides everything but the terminal.",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "Hands-free voice",
   "settings.handsFree.description":
@@ -232,6 +237,9 @@ export const en = {
   "sendMode.armed.stop": "Stop",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
+  "chat.zen.label": "Zen mode",
+  // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
+  "chat.zen.exitAria": "Exit zen mode",
   "chat.find.label": "Find in output",
   "chat.history.label": "Conversation history",
   // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.

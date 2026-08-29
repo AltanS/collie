@@ -22,6 +22,11 @@ export const es: Dictionary = {
   "settings.haptics.description": "Un zumbido corto al pulsar una tecla o una respuesta rápida.",
 
 
+  // --- settings.zen ---
+  // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.zen.title": "Modo zen",
+  "settings.zen.description": "Añade una fila al menú del panel que oculta todo excepto el terminal.",
+
   // --- settings.handsFree ---
   "settings.handsFree.title": "Voz manos libres",
   "settings.handsFree.description":
@@ -225,6 +230,9 @@ export const es: Dictionary = {
   "sendMode.armed.stop": "Detener",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
+  "chat.zen.label": "Modo zen",
+  // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
+  "chat.zen.exitAria": "Salir del modo zen",
   "chat.find.label": "Buscar en la salida",
   "chat.history.label": "Historial de conversación",
   "chat.paneMenu.aria": "Acciones del panel",
