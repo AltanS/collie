@@ -164,6 +164,12 @@ describe("AgentChat — the pane header's identity block", () => {
     c.querySelector<HTMLElement>(`[data-slot="pane-${name}"]`);
   /** The composer's status strip — where the word went. Same render, same container, same rule. */
   const strip = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="composer-status"]');
+  /** The word the status slot is SHOWING. The slot renders every word it could ever hold, stacked in
+   *  one grid cell so its width is the widest of them and no state can move the host beside it
+   *  (ui/one-of.tsx, DESIGN.md §2) — so its `textContent` is all five, and the visible one is the
+   *  layer marked `data-active`. */
+  const shownWord = (c: HTMLElement | null) =>
+    c?.querySelector<HTMLElement>("[data-active]")?.textContent ?? null;
   /** Every named mark inside the identity block — the agent's own logo is one too. */
   const names = (c: HTMLElement) =>
     Array.from(identity(c)?.querySelectorAll('[role="img"]') ?? []).map((e) =>
@@ -232,7 +238,9 @@ describe("AgentChat — the pane header's identity block", () => {
     expect(block?.textContent).not.toContain("needs you");
     // …and one strip below carries the pair, in that order: which machine, then what it is doing.
     const line = strip(container);
-    expect(line?.textContent).toBe("workshopneeds you");
+    // Machine first, then what it is doing. The host is read off its own label rather than the
+    // strip's text, because the strip's text now includes the four words it is RESERVING for.
+    expect(shownWord(line)).toBe("needs you");
     // This pane's machine is unreachable, so the host run carries the fault with it rather than
     // showing a calm name beside a placeholder that says the write will be refused.
     expect(

@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { Collapse } from "@/components/ui/collapse";
+import { OneOf } from "@/components/ui/one-of";
 import { cn } from "@/lib/utils";
 
 /**
@@ -88,9 +89,9 @@ export function StripHost({ children, className }: { children: ReactNode; classN
   if (winner) last.current = { id: winner, node: slots.get(winner)?.node ?? null };
   const ghost = slots.size === 0 ? last.current : null;
 
-  const layers: Array<{ id: string; node: ReactNode; front: boolean }> = ghost
-    ? [{ id: ghost.id, node: ghost.node, front: true }]
-    : [...slots].map(([id, entry]) => ({ id, node: entry.node, front: id === winner }));
+  const layers: Array<{ key: string; node: ReactNode }> = ghost
+    ? [{ key: ghost.id, node: ghost.node }]
+    : [...slots].map(([id, entry]) => ({ key: id, node: entry.node }));
 
   return (
     <StripRegistry.Provider value={register}>
@@ -114,28 +115,20 @@ export function StripHost({ children, className }: { children: ReactNode; classN
           carry `env(safe-area-inset-top)` themselves and one does not, so which strip you are
           looking at decides whether the band clears the notch. One owner, one answer — and it is
           the row, not the Notice, because it is a fact about the band's position in the viewport.
+
+          All layers share ONE grid cell, so the band is as tall as the tallest of them and a swap
+          cannot change its height even for a frame. The winner is opaque, the losers fade out under
+          it — a dissolve inside the already-open Collapse, with no second height animation. The
+          stacking itself is `ui/one-of.tsx`, which is where the same idiom now serves the composer's
+          status slot; what stays here is what the band alone knows — which slot wins, how long the
+          dissolve takes, and the ghost that keeps painting through the exit.
         */}
-        <div className="grid [padding-top:env(safe-area-inset-top)]">
-          {layers.map((layer) => (
-            <div
-              key={layer.id}
-              // All layers share ONE grid cell, so the band is as tall as the tallest of them and
-              // a swap cannot change its height even for a frame. The winner is opaque, the losers
-              // fade out under it — a dissolve inside the already-open Collapse, with no second
-              // height animation. `inert` rather than `aria-hidden` alone: a fading strip may still
-              // hold a focusable Retry button, and hiding a focusable thing from the a11y tree
-              // without also taking it out of the tab order is the worse of the two bugs.
-              inert={!layer.front}
-              className={cn(
-                "[grid-area:1/1] transition-opacity ease-out motion-reduce:transition-none",
-                SWAP_CLASS,
-                layer.front ? "opacity-100" : "pointer-events-none opacity-0",
-              )}
-            >
-              {layer.node}
-            </div>
-          ))}
-        </div>
+        <OneOf
+          active={ghost ? ghost.id : winner}
+          options={layers}
+          className="[padding-top:env(safe-area-inset-top)]"
+          layerClassName={cn("transition-opacity ease-out motion-reduce:transition-none", SWAP_CLASS)}
+        />
       </Collapse>
 
       {children}

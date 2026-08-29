@@ -35,6 +35,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/collapse.tsx` | The only sanctioned way an in-flow surface appears or disappears: an eased 240ms height+opacity slide that holds its last child through the exit. Styles nothing. |
 | `ui/list-group.tsx` | A run of flat rows drawn as ONE bordered region. Gives a `divide-y` list a first and last edge. |
 | `ui/labelled-strip.tsx` | The structure of a named, horizontally scrolling pill row: non-scrolling label, `aria-labelledby`, edge-to-edge scroller. Also exports `STRIP_TAP_TARGET`. |
+| `ui/one-of.tsx` | One box, several alternatives, exactly one shown — all of them stacked in a single grid cell, so the box is sized by the widest and a swap is paint, not layout. The §2 technique for a run of text whose WORD changes with the state. |
 | `ui/notice.tsx` | The app's ONE notice look: five tones × two placements (`strip`, `box`), each on its own height floor, and the single table the tint recipe may appear in. Owns shape, tone and live-region semantics; owns no words and no visibility. |
 | `ui/section-label.tsx` | The small uppercase word that names a section. Type only — it renders a `<span>` and owns no structure. |
 | `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer; there is no popover, no dialog, no tooltip. |
@@ -108,6 +109,23 @@ surface between the 1px state border and the focus mark, so the two read as two 
 rather than one 4px smear. Outline is the right tool here for the same reasons it is the
 wrong tool for state: it never reflows, it paints above everything, and it is transient.
 Outside `ring-*` for state is retired.
+
+### A run of text whose WORD changes needs a reserved slot, not a reserved number
+
+The transparent-border technique reserves an *edge*. It has nothing to say about a caption whose
+text changes with the state — and that is the same fault: at 390px "needs you" is 54.6px and
+"done" is 27.9px, so a strip holding the word plus a host name moved the host name 33px sideways
+every time the pane changed state. A hard-coded width is not the fix either: the same slot is
+"braucht dich" (72.2px) in German and "desconocido" (70.0px) in Spanish, so any constant clips one
+locale or wastes another's space.
+
+**Reserve the SLOT, sized by the widest word in the active locale.** `ui/one-of.tsx` renders every
+alternative in one grid cell and shows one; the layout engine measures the real glyphs of the real
+dictionary, so a new translation is correct on arrival. Call sites:
+`status-badge.tsx`'s `StatusWordSlot` (the composer's status band) and `ui/strip-host.tsx` (the
+band above the header, where the same idiom was first written). A state with nothing to say —
+a gone pane, showing no word at all — keeps the slot rather than collapsing it, because
+"shows nothing" is a state too.
 
 ### The rule generalises past borders
 
@@ -371,8 +389,15 @@ Stated so nobody reads this document as a description of a clean tree.
 3. **`no-echo-notice.tsx:43` and `terminal-draft-preview.tsx:32`** — a `bg-muted/40` fill
    with no border, above the composer. A fill-delimited notice is a third idea about what a
    notice is, and §4 says chrome separates with a line.
-4. **`composer.tsx:915`** — the composer dock is `bg-muted`. It is the last surviving chrome
-   fill, and `index.css`'s `--muted` comment argues against it directly.
+4. **`composer.tsx` — the composer dock is `bg-muted`, and its status band is now `bg-card`.**
+   Two chrome fills, not one. The dock's is the older gap and `index.css`'s `--muted` comment
+   argues against it directly. The band's is the maker's own call, made with the numbers in front
+   of him and recorded at the line that draws it: measured, the fill separates the band from the
+   dock below by **1.19:1 in both themes** — barely off the 1.09:1 that got the header band
+   deleted — and from the terminal mirror above by **1.09:1 light / 1.10:1 dark**, so in dark it
+   reads as a continuation of the terminal. The `border-b border-rule` beside it measures 1.45:1
+   light and 2.19:1 dark. The rule is doing the separating; the fill is decoration. Removing the
+   dock's fill first would change the answer for both.
 5. **The `/60`-and-`/70` border alphas** — `wizard-block.tsx`, `preview-select-block.tsx`,
    `menu-block.tsx` and `status-area.tsx:45` still draw edges at `border-border/60` or `/70`,
    which §4 measured at 1.09:1 in light. These are inside the agent-dialog blocks, which are

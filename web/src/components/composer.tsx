@@ -26,7 +26,7 @@ import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-config";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
-import { StatusWord } from "@/components/status-badge";
+import { StatusWordSlot } from "@/components/status-badge";
 import { useAmbientHost, useHostLabel } from "@/components/pack-provider";
 import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
@@ -1001,18 +1001,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             and NOT flex-1 — it's a settings affordance, not a peer of the three action toggles, and
             keeping it to one square (44px, its tap target and nothing more) leaves the labelled
             buttons the rest of a 390px phone. */}
-        {/* THE STRIP ABOVE THE BUTTONS IS A STATUS LINE, NOT A HEADING. `pt-3` on the row reserves
-            12px above the toggles and whatever stands there is lifted OUT of the flex flow, so the
-            occupants cost the row no width at all. It used to hold the word "Controls", which named
-            a row whose five buttons already carry their own labels; it now reads as ONE SENTENCE —
-            the machine every one of those buttons (and the field below) writes to, and what that
-            machine's pane is doing.
+        {/* THE STATUS BAND — A STATUS LINE, NOT A HEADING, AND NOW A REGION OF ITS OWN.
+
+            It used to be 12px of `pt-3` reserved at the top of the controls row, with its two runs
+            lifted out of the flex flow into one `absolute` box. It is now a real box, a sibling
+            above the row, because the operator asked for a different ground and a bottom rule and
+            neither can be drawn on padding. What it SAYS is unchanged: it reads as ONE SENTENCE —
+            the machine every button on the row (and the field below) writes to, and what that
+            machine's pane is doing. It replaced the word "Controls", which named a row whose five
+            buttons already carry their own labels.
 
             WHY HERE AND NOT IN THE FIELD. The host was docked inside the text box for one round.
             The reasoning survives ("which machine will this land on" is asked while writing, not
             while reading) but the price does not: docked, it took 60px out of the typing area, the
-            widest and most contested part of the composer. This strip is at the same write surface
-            and its width was already bought and already unused. Same answer, no bill.
+            widest and most contested part of the composer. This band is at the same write surface
+            and costs the typing area nothing.
 
             WHY THE STATUS WORD CAME DOWN HERE. It was the pane header's caption line, and once the
             host left that line it was ONE word holding a whole line of a 60px row — the operator
@@ -1023,21 +1026,70 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             header, welded to its subject; the word stands here, where the same question is being
             asked about the same machine.
 
-            NOTHING HERE CAN MOVE THE ROW. The 12px is reserved unconditionally by `pt-3` and the
-            occupants sit in ONE `absolute` box, so the row stands at one height on a solo install
-            (where HostChip renders null — its hide rule, unchanged, leaving the word alone), on a
-            pack, and across every relabelling of a machine in between. Both runs are `text-[10px]/3`
-            — a 12px line box, exactly the reservation — and the icon beside the host is `size-3`,
-            the same 12. `max-w-full` on the box plus `min-w-0` on the chip makes the HOST truncate
-            into the strip; the word carries `shrink-0` and never does, because the word is the half
-            of the pair that a colour-blind reader depends on. DESIGN.md §2: reserve, never reflow.
+            NOTHING HERE CAN MOVE ANYTHING. Both runs state the same 12px line box (`text-[10px]/3`,
+            one utility — tailwind-merge deletes an earlier `leading-*` when a later `text-<size>`
+            follows it in the same cn()), and the icon beside the host is `size-3`, the same 12. So
+            the band is 12px + its rule — 13px — on a solo install (where HostChip renders null, its
+            hide rule unchanged, leaving the word alone), on a pack, and on a gone pane (no word at
+            all), and band + row measures 57.00px in every one of those. `text-[10px]/3` is stated
+            on the BAND as well as on both runs, and that is load-bearing rather than decorative: a
+            block layer inside the slot takes its line box from its OWN inherited strut, so without
+            it the 14px page strut won and the band measured 25px instead of 13px.
+            The WORD's own width is the case padding cannot reserve — "needs you" is 54.6px and
+            "done" 27.9px — so it stands in a slot sized to every word it can hold, which is what
+            `StatusWordSlot` is for; the machine's name truncates into what is left, always the same
+            amount of it. DESIGN.md §2: reserve, never reflow.
 
-            RIGHT-ALIGNED, and the row's inset trimmed with it: `-mx-0.5` pulls the row 2px out of
-            the dock's `px-3` on each side, so the strip's inset is 10px rather than 12px. It is a
-            margin on the ROW and not a smaller `px-*` on the dock, because the dock's gutter is also
-            the input field's and the operator asked about this row. Two pixels is the smallest step
-            Tailwind's scale offers here, which is what "slightly" bought. The buttons below gain 1px
-            of width each and keep their 44px box. */}
+            THE GROUND IS `--card`, AND IT IS THE OPERATOR'S CALL OVER DESIGN.md §4, WHICH SAYS
+            CHROME IS THE PAGE COLOUR SEPARATED BY A RULE AND NEVER A FILL BAND. They asked for a
+            different background here and the rule is theirs to overrule; what is NOT negotiable is
+            that the numbers go in the file beside it, because §4 is a measurement and this band is
+            now a second data point for it.
+
+            `--card` is the only token in the palette that differs from the dock's `--muted` in BOTH
+            themes: `--secondary` and `--accent` are byte-identical to `--muted` in dark, and
+            `--background` is the terminal mirror's own colour. Nothing was minted. Measured
+            (WCAG, sRGB, against every neighbour this band has):
+
+              band vs dock below      1.19:1 light   1.19:1 dark
+              band vs mirror above    1.09:1 light   1.10:1 dark
+              the RULE vs the band    1.45:1 light   2.19:1 dark
+
+            Read those honestly. §4 deleted the header's `bg-muted` band because the line it competed
+            with measured 1.09:1 and was "a rumour, not a cut" — and this fill lands at 1.19:1 over
+            the dock, barely off that floor, while the RULE beside it does between 1.2x and 2x more
+            separating work in light and 1.8x in dark. In DARK the fill is worse than useless: at
+            1.10:1 from the terminal mirror it reads as a continuation of the terminal rather than as
+            a band of chrome, which is precisely the three-near-identical-greys failure §4 names.
+            The separation the operator asked for is being delivered by `border-b border-rule`; the
+            fill is delivering about a fifth of it in light and none in dark.
+
+            ONE RULE, DRAWN ONCE, FROM ABOVE (§4). `border-b` here and no `border-t` on the controls
+            row below. The band's own top edge is not its either — the dock already closes it with
+            `border-t border-rule`, so the seam above and the seam below are one hairline each.
+            Verified in the browser, not assumed: dock `border-top: 1px`, band `border-bottom: 1px`,
+            controls row 0 on every side. Two components drawing one boundary is a fault this
+            codebase has already fixed twice (`space-strip.tsx` / `tab-strip.tsx`).
+
+            THE ROW COSTS ONE PIXEL. It was 56px — 12px of `pt-3` plus a 44px button — and it is
+            57px: the same 12px, the same 44px, plus the rule. The controls row takes NO top padding
+            to pay for the seam; the buttons' own box already holds the icon 6px clear of it, so a
+            gap there would have bought air twice.
+
+            FULL-BLEED, and the content still at 10px. `-mx-3` cancels the dock's `px-3` so the
+            ground and the rule run edge to edge — a fill that stopped 12px short would read as a
+            floating bar rather than a band, and a rule that stopped short would not separate the
+            two regions it sits between. `px-2.5` then puts the content back at the 10px inset the
+            controls row asked for, so nothing on this line moved by a pixel: the band is what
+            absorbs the old `-mx-0.5`, which as a 2px overhang on a TRANSPARENT strip was invisible
+            and on a filled one would not have been. */}
+        <div
+          data-slot="composer-status"
+          className="-mx-3 flex items-center justify-end gap-1.5 border-b border-rule bg-card px-2.5 text-[10px]/3"
+        >
+          <HostChip host={writeHost} variant="caption" className="min-w-0" />
+          <StatusWordSlot status={statusWord} stale={stale} />
+        </div>
         {/* `gap-1.5` rather than `gap-2`: four gaps at 8px is 32px of a 366px row, and 6px reads the
             same. The group still carries `aria-labelledby` to the word "Controls" — the word is now
             `sr-only` rather than deleted, because it was doing TWO jobs and only one of them was
@@ -1045,26 +1097,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             the accessibility tree it is the only thing that names the group at all, and dropping it
             would leave a bare `role="group"` wrapping Keys/Type/Quick/Agent/⚙ with no name for a
             screen reader to announce on entry. The host does NOT inherit that job: it names a
-            machine, not a run of controls, and it is absent on every solo install. */}
+            machine, not a run of controls, and it is absent on every solo install — which is also
+            why it now stands OUTSIDE this group, in the band above, where it belongs to the line it
+            completes rather than to five buttons it does not describe. */}
         <div
           data-slot="composer-controls"
           role="group"
           aria-labelledby="composer-controls-label"
-          className="relative -mx-0.5 mb-2 flex items-center gap-1.5 pt-3"
+          className="-mx-0.5 mb-2 flex items-center gap-1.5"
         >
           <SectionLabel id="composer-controls-label" className="sr-only">
             {translate("composer.controls.label")}
           </SectionLabel>
-          {/* One out-of-flow box for both runs, right-aligned. It is a single box rather than two
-              separately-positioned children so the pair reads as one line and so the host's
-              truncation is decided against the word's real width, not against the whole row. */}
-          <div
-            data-slot="composer-status"
-            className="absolute right-0 top-0 flex max-w-full items-center gap-1.5"
-          >
-            <HostChip host={writeHost} variant="caption" className="min-w-0" />
-            {statusWord !== undefined && <StatusWord status={statusWord} stale={stale} />}
-          </div>
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
               again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
               while open. Both share the single-valued `drawer`, so opening one closes the other. */}

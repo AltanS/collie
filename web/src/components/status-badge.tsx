@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { OneOf } from "@/components/ui/one-of";
 import { type AgentStatus, statusLabel } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -183,6 +184,69 @@ export function StatusWord({
     >
       {status === "shell" ? t("status.shellBadge") : statusLabel(status)}
     </span>
+  );
+}
+
+/**
+ * Every word an AGENT pane's slot can ever hold. Ordered as the state machine reads, not
+ * alphabetically; the order is only the paint order of stacked layers, so nothing depends on it.
+ */
+const AGENT_WORDS: ReadonlyArray<AgentStatus> = ["blocked", "working", "done", "idle", "unknown"];
+
+/**
+ * {@link StatusWord} in a slot WIDE ENOUGH FOR EVERY WORD IT CAN EVER HOLD — the form to use
+ * anywhere something else stands beside it.
+ *
+ * The bare word is a run of text whose width is the state's: at 390px in English "needs you" is
+ * 54.6px and "done" is 27.9px, so a strip holding the word plus anything else re-lays-out every
+ * time the pane changes state, and the thing beside it slides. That is DESIGN.md §2 — a state may
+ * repaint, it may not re-lay-out — and §2's own technique (reserve the border, transparent) has
+ * nothing to say about a changing WORD.
+ *
+ * So the slot reserves the widest word instead, by rendering all of them stacked in one grid cell
+ * (`ui/one-of.tsx`) and showing one. A hard-coded width could not do this job: the same slot is
+ * "braucht dich" (72.2px) in German and "desconocido" (70.0px) in Spanish, so any constant clips a
+ * locale or wastes a locale's space. The layout engine measures the real glyphs of the real
+ * dictionary, so a new translation is correct on arrival and a retranslation cannot silently
+ * un-reserve the slot.
+ *
+ * WHICH words are reserved is decided by what the PANE can become, not by the union of everything:
+ *
+ *  • a bare shell has no agent and therefore no agent status — its word is "shell" forever, so
+ *    reserving the agent set would buy a solo shell ~30px of permanent emptiness for a state it can
+ *    never enter;
+ *  • an agent pane reserves the five agent words, `undefined` included. `undefined` is a GONE pane,
+ *    which has nothing left to describe and shows no word at all — and a state that shows nothing
+ *    is still a state, so it keeps the slot rather than collapsing it. Without that, a pane dying
+ *    under you would slide the machine's name sideways at the exact moment you are reading it.
+ */
+export function StatusWordSlot({
+  status,
+  stale,
+  className,
+}: {
+  /** The word to show. `undefined` shows none — the slot keeps its width. */
+  status: AgentStatus | "shell" | undefined;
+  stale?: boolean;
+  className?: string;
+}) {
+  // No `useLocale()` here: this component renders no text of its own. Each StatusWord below
+  // subscribes for itself, so a locale change repaints every layer AND re-measures the cell.
+  const words: ReadonlyArray<AgentStatus | "shell"> = status === "shell" ? ["shell"] : AGENT_WORDS;
+  return (
+    <OneOf
+      active={status ?? null}
+      options={words.map((word) => ({
+        key: word,
+        node: <StatusWord status={word} stale={stale} />,
+      }))}
+      // `shrink-0`, and it is the pair to the host chip's `min-w-0`: the slot is the fixed budget
+      // and the machine's name is what truncates into what is left. The word is the half of the
+      // pair a colour-blind reader depends on, so it is never the half that gives up width.
+      // `justify-items-end` because the strip is right-aligned — the visible word hugs the slot's
+      // right edge, and the reserve it does not use opens to its LEFT, where nothing stands.
+      className={cn("shrink-0 justify-items-end", className)}
+    />
   );
 }
 

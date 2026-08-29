@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 
 import type { AgentStatus } from "@/lib/types";
-import { StatusDot, StatusWord } from "./status-badge";
+import { StatusDot, StatusWord, StatusWordSlot } from "./status-badge";
 
 // Exhaustive BY CONSTRUCTION: a `Record<AgentStatus, …>` object literal is complete-checked by tsc,
 // so adding a sixth status to lib/types.ts fails the typecheck here rather than quietly leaving one
@@ -107,5 +107,67 @@ describe("StatusWord — the caption's plain-language state", () => {
     expect(
       render(<StatusWord status="working" />).container.firstElementChild?.className,
     ).not.toContain("opacity-40");
+  });
+});
+
+describe("StatusWordSlot — the word, in a slot every word it can hold fits into", () => {
+  const layers = (c: HTMLElement) => [...c.querySelectorAll("[class*='grid-area']")];
+  const shown = (c: HTMLElement) => c.querySelector("[data-active]")?.textContent ?? null;
+
+  it("reserves the AGENT set for an agent pane, and shows one of it", () => {
+    // The bare word's width is the state's — "needs you" is 54.6px and "done" 27.9px at 390px — so
+    // a strip holding the word plus anything else re-lays-out on every status change and the thing
+    // beside it slides (DESIGN.md §2). The slot renders all five and shows one, so the box is the
+    // widest word IN THE ACTIVE LOCALE and a change of state is paint.
+    const { container } = render(<StatusWordSlot status="done" />);
+    expect(layers(container).map((l) => l.textContent)).toEqual([
+      "needs you",
+      "working",
+      "done",
+      "idle",
+      "unknown",
+    ]);
+    expect(shown(container)).toBe("done");
+  });
+
+  it("reserves only 'shell' for a shell pane, which can never be anything else", () => {
+    // A bare shell has no agent and therefore no agent status. Reserving the agent set here would
+    // buy a solo shell ~24px of permanent emptiness for states the pane cannot enter.
+    const { container } = render(<StatusWordSlot status="shell" />);
+    expect(layers(container)).toHaveLength(1);
+    expect(shown(container)).toBe("shell");
+  });
+
+  it("shows NO word for a gone pane, and keeps the slot open anyway", () => {
+    // A gone pane has nothing left to describe, and the band stands wordless rather than reporting
+    // a stale state as current. It keeps its width: a pane dying under you must not slide the
+    // machine's name sideways at the moment you are reading it.
+    const { container } = render(<StatusWordSlot status={undefined} />);
+    expect(layers(container)).toHaveLength(5);
+    expect(shown(container)).toBeNull();
+  });
+
+  it("gives up no width, and states no pixel number", () => {
+    // `shrink-0` is the pair to the host chip's `min-w-0`: the slot is the fixed budget and the
+    // machine's name truncates into what is left. The word is the half of the pair a colour-blind
+    // reader depends on, so it is never the half that gives up width. And there is no constant to
+    // give up — the same slot is "braucht dich" (72.2px) in German and "desconocido" (70.0px) in
+    // Spanish, so any hard-coded width clips one locale or wastes another's space.
+    const cls = render(<StatusWordSlot status="idle" />).container.firstElementChild?.className ?? "";
+    expect(cls).toContain("shrink-0");
+    expect(cls).toContain("justify-items-end"); // the visible word hugs the band's right inset
+    expect(cls).not.toMatch(/(^|\s)(?:min-)?w-/);
+  });
+
+  it("dims the shown word when the reading is frozen, without changing its box", () => {
+    const { container } = render(<StatusWordSlot status="working" stale />);
+    expect(container.querySelector("[data-active] > span")?.className).toContain("opacity-40");
+    // Opacity only — no size, weight or tracking change, which §2 forbids in a state because bold
+    // and wider glyphs move everything after them.
+    const stale = container.querySelector("[data-active] > span")?.className ?? "";
+    const live =
+      render(<StatusWordSlot status="working" />).container.querySelector("[data-active] > span")
+        ?.className ?? "";
+    expect(stale.replace(/\s*opacity-40/, "")).toBe(live);
   });
 });
