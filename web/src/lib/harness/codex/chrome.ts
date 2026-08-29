@@ -31,9 +31,18 @@ export interface ComposerBox {
 // Claude. A run deeper than this is not a composer (fail closed — locateComposer returns null).
 const MAX_DRAFT_ROWS = 100;
 
-// Continuation rows are exactly two-space-indented text. Deeper indents belong to dialogs and
-// transcript blocks; a `› ` or `• ` row is never a continuation.
-const CONTINUATION = /^ {2}\S/;
+// A continuation row is the composer's TWO-SPACE GUTTER followed by the draft's own text — and
+// that text may ITSELF begin with spaces. Type two spaces mid-sentence, or let a soft wrap land
+// inside a run of them, and Codex paints a four-space-indented row that is a perfectly healthy
+// continuation. The old `/^ {2}\S/` demanded a non-space at column 2, read that row as foreign,
+// and made `locateComposer` return null — which refused EVERY send in the pane with "the input
+// box isn't on screen — a menu or dialog is probably up" for as long as the draft sat there. That
+// is a DEADLOCK, not a transient: the refusal is itself what keeps the draft from being sent, so
+// the pane never recovers on its own. Only the gutter is asserted here, because only the gutter is
+// the renderer's; what the walk actually bounds the run with is the blank row above it (`isBlank`,
+// checked first in the same test), and Codex separates every section of a screen with one. A `› `
+// or `• ` row still starts at column 0, so neither can pass as a continuation.
+const CONTINUATION = /^ {2}\s*\S/;
 const PROMPT_PREFIX = "› ";
 
 /** The exact placeholder text is still a valid thing an operator might deliberately type. Codex
