@@ -1451,16 +1451,15 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // was bought for. tailwind-merge keeps only the LAST padding-* in one cn(), which is why the
     // band's inset is one `px-*` and not two.
     //
-    // THE FILL is `--card`, and it is the maker's call over §4, which says chrome is the page colour
-    // separated by a rule and never a fill band. It is the only token that differs from the dock's
-    // `--muted` in BOTH themes (`--secondary` and `--accent` are byte-identical to it in dark;
-    // `--background` is the terminal mirror's own colour). MEASURED: 1.19:1 against the dock below in
-    // both themes, 1.09:1 / 1.10:1 against the mirror above — against a `border-b border-rule` doing
-    // 1.45:1 light and 2.19:1 dark. DESIGN.md §10 gap 4 carries those numbers and the argument.
+    // NO FILL. `--card` was tried here and measured against DESIGN.md §4, which says chrome is the
+    // page colour separated by a rule and never a fill band: 1.19:1 against the dock below in both
+    // themes, 1.09:1 / 1.10:1 against the mirror above, against a `border-b border-rule` doing
+    // 1.45:1 light and 2.19:1 dark. The rule was doing the separating; the fill was dropped. The
+    // band is page colour, per §4 — no `bg-*` utility of its own.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
     expect(band().className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
     expect(band().className).toMatch(/(?:^|\s)px-2\.5(?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)bg-card(?=\s|$)/);
+    expect(band().className).not.toMatch(/(?:^|\s)bg-/);
     expect(band().className).toMatch(/(?:^|\s)justify-end(?=\s|$)/);
     expect(row().className).toMatch(/(?:^|\s)-mx-0\.5(?=\s|$)/);
     expect(row().className).not.toMatch(/(?:^|\s)px-/); // the row's inset is the dock's, trimmed

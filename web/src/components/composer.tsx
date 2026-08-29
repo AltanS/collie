@@ -1005,8 +1005,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
             It used to be 12px of `pt-3` reserved at the top of the controls row, with its two runs
             lifted out of the flex flow into one `absolute` box. It is now a real box, a sibling
-            above the row, because the operator asked for a different ground and a bottom rule and
-            neither can be drawn on padding. What it SAYS is unchanged: it reads as ONE SENTENCE —
+            above the row, because the operator asked for a bottom rule, and a rule cannot be drawn
+            on padding. What it SAYS is unchanged: it reads as ONE SENTENCE —
             the machine every button on the row (and the field below) writes to, and what that
             machine's pane is doing. It replaced the word "Controls", which named a row whose five
             buttons already carry their own labels.
@@ -1040,29 +1040,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             `StatusWordSlot` is for; the machine's name truncates into what is left, always the same
             amount of it. DESIGN.md §2: reserve, never reflow.
 
-            THE GROUND IS `--card`, AND IT IS THE OPERATOR'S CALL OVER DESIGN.md §4, WHICH SAYS
-            CHROME IS THE PAGE COLOUR SEPARATED BY A RULE AND NEVER A FILL BAND. They asked for a
-            different background here and the rule is theirs to overrule; what is NOT negotiable is
-            that the numbers go in the file beside it, because §4 is a measurement and this band is
-            now a second data point for it.
-
-            `--card` is the only token in the palette that differs from the dock's `--muted` in BOTH
-            themes: `--secondary` and `--accent` are byte-identical to `--muted` in dark, and
-            `--background` is the terminal mirror's own colour. Nothing was minted. Measured
-            (WCAG, sRGB, against every neighbour this band has):
-
-              band vs dock below      1.19:1 light   1.19:1 dark
-              band vs mirror above    1.09:1 light   1.10:1 dark
-              the RULE vs the band    1.45:1 light   2.19:1 dark
-
-            Read those honestly. §4 deleted the header's `bg-muted` band because the line it competed
-            with measured 1.09:1 and was "a rumour, not a cut" — and this fill lands at 1.19:1 over
-            the dock, barely off that floor, while the RULE beside it does between 1.2x and 2x more
-            separating work in light and 1.8x in dark. In DARK the fill is worse than useless: at
-            1.10:1 from the terminal mirror it reads as a continuation of the terminal rather than as
-            a band of chrome, which is precisely the three-near-identical-greys failure §4 names.
-            The separation the operator asked for is being delivered by `border-b border-rule`; the
-            fill is delivering about a fifth of it in light and none in dark.
+            THE GROUND IS THE PAGE COLOUR, PER DESIGN.md §4: CHROME SEPARATES WITH A RULE, NOT A
+            FILL. A fill was tried here and measured — 1.19:1 against the dock below, 1.09:1 /
+            1.10:1 against the terminal mirror above, both themes, against a `border-b border-rule`
+            doing 1.45:1 light and 2.19:1 dark — and the rule was doing between 1.2x and 2x more of
+            the separating in light, and all of it in dark, where the fill read as a continuation of
+            the terminal rather than as a band of chrome. It is gone; the band is unpainted, and the
+            rule below is what tells it apart from the mirror above it.
 
             ONE RULE, DRAWN ONCE, FROM ABOVE (§4). `border-b` here and no `border-t` on the controls
             row below. The band's own top edge is not its either — the dock already closes it with
@@ -1077,15 +1061,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             gap there would have bought air twice.
 
             FULL-BLEED, and the content still at 10px. `-mx-3` cancels the dock's `px-3` so the
-            ground and the rule run edge to edge — a fill that stopped 12px short would read as a
-            floating bar rather than a band, and a rule that stopped short would not separate the
-            two regions it sits between. `px-2.5` then puts the content back at the 10px inset the
-            controls row asked for, so nothing on this line moved by a pixel: the band is what
-            absorbs the old `-mx-0.5`, which as a 2px overhang on a TRANSPARENT strip was invisible
-            and on a filled one would not have been. */}
+            rule runs edge to edge — one that stopped short would not separate the two regions it
+            sits between. `px-2.5` then puts the content back at the 10px inset the controls row
+            asked for, so nothing on this line moved by a pixel: the band is what absorbs the old
+            `-mx-0.5`, a 2px overhang that was invisible on this unpainted strip either way. */}
         <div
           data-slot="composer-status"
-          className="-mx-3 flex items-center justify-end gap-1.5 border-b border-rule bg-card px-2.5 text-[10px]/3"
+          className="-mx-3 flex items-center justify-end gap-1.5 border-b border-rule px-2.5 text-[10px]/3"
         >
           <HostChip host={writeHost} variant="caption" className="min-w-0" />
           <StatusWordSlot status={statusWord} stale={stale} />
