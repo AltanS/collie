@@ -53,6 +53,18 @@ function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
   return { props, container };
 }
 
+// Find and History are ROWS in the pane's actions sheet now — the header spends ONE ⋮ on the whole
+// menu instead of two icons on two actions. Every test that used to click a header icon goes through
+// this door, which is also the point: there is exactly one door.
+type User = ReturnType<typeof userEvent.setup>;
+async function openPaneMenu(user: User) {
+  await user.click(screen.getByRole("button", { name: "Pane actions" }));
+}
+async function openFind(user: User) {
+  await openPaneMenu(user);
+  await user.click(screen.getByRole("button", { name: "Find in output" }));
+}
+
 describe("AgentChat — reply flow", () => {
   it("sends a typed reply and clears the composer on success", async () => {
     const user = userEvent.setup();
@@ -482,8 +494,8 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
     await screen.findByRole("button", { name: "Yes" });
 
     // Freeze the mirror (opening find pins the tail — the same `following=false` state a scroll-up
-    // freeze produces).
-    await user.click(screen.getByRole("button", { name: "Find in output" }));
+    // freeze produces). Find is a row in the pane menu now, so this goes through the ⋮.
+    await openFind(user);
 
     // The pane advances while frozen: new output below the menu + a bumped revision.
     act(() => advance({ text: `${MENU_TEXT}\n● proceeding…\n`, revision: 2 }));
@@ -522,7 +534,7 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
     // The real detector lifted the multi-question tail into a wizard with option buttons.
     await screen.findByRole("button", { name: /Parser/ });
 
-    await user.click(screen.getByRole("button", { name: "Find in output" })); // freeze the tail
+    await openFind(user); // freeze the tail
     act(() => advance({ text: `${WIZARD_TEXT}\n● advancing…\n`, revision: 2 }));
 
     await user.click(screen.getByRole("button", { name: /Parser/ }));
@@ -676,43 +688,121 @@ describe("AgentChat — shared header: stale-status dimming", () => {
 // has, because its terminal runs on the alternate screen and Herdr retains nothing behind the
 // viewport. It's gated on the pane actually reporting an agent session, so the button can never
 // lead to an empty screen.
-describe("AgentChat — history affordance", () => {
-  it("is offered when the pane reports an agent session id", () => {
+describe("AgentChat \u2014 the pane menu in the header", () => {
+  /** The header's own row \u2014 the screen below it is full of buttons, so every query here is scoped. */
+  const headerRow = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>("header > div:last-child")!;
+
+  // THE POINT OF THE CHANGE. Two icons became one control; the row must not carry find or history as
+  // controls of its own any more. Asserted over the header row's whole button list, so a stray third
+  // control added later fails here rather than on a phone.
+  it("no longer renders Find and History as separate header controls", () => {
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
+    const { container } = renderChat({ agent, agents: [agent] });
+    const title = screen.getByRole("button", { name: /open webapp overview/i });
+    const after = Array.from(headerRow(container).querySelectorAll("button")).filter(
+      (b) => title.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(after.map((b) => b.getAttribute("aria-label"))).toEqual(["Pane actions"]);
+  });
+
+  // The glyph is a \u22ee and names nothing on its own, so the accessible name is the whole of what a
+  // screen reader gets. It has to say what the control OPENS.
+  it("gives the one control an accessible name that says what it opens", () => {
+    renderChat();
+    const menu = screen.getByRole("button", { name: "Pane actions" });
+    expect(menu).toBeInTheDocument();
+    // 44px, stated \u2014 the drawn box IS the hit box here (no negative margin pulling it back).
+    expect(menu.className).toContain("size-11");
+  });
+
+  // \u00a72: no state may move content. Opening the menu must not touch the row that triggered it \u2014
+  // the sheet is a fixed overlay mounted OUTSIDE the header, so the row's own box is untouched.
+  it("leaves the header row's geometry alone when the menu opens", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat();
+    const before = headerRow(container).className;
+    expect(before).toContain("min-h-15"); // the 60px floor \u2014 app-header.tsx states it once
+    await openPaneMenu(user);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    const row = headerRow(container);
+    expect(row.className).toBe(before);
+    // The sheet is not INSIDE the header \u2014 ui/sheet.tsx uses no portal, so a sheet mounted in the
+    // sticky header would be positioned and stacked against it instead of the viewport.
+    expect(container.querySelector("header")!.contains(screen.getByRole("dialog"))).toBe(false);
+  });
+
+  it("offers History behind the menu when the pane reports an agent session id", async () => {
+    const user = userEvent.setup();
     const agent = { ...fixtureAgents[0]!, hasSession: true };
     renderChat({ agent, agents: [agent] });
+    expect(screen.queryByRole("button", { name: /conversation history/i })).not.toBeInTheDocument();
+    await openPaneMenu(user);
     expect(screen.getByRole("button", { name: /conversation history/i })).toBeInTheDocument();
   });
 
-  it("is hidden when the pane has no agent session (a shell, or a harness without one)", () => {
+  it("hides the History row when the pane has no agent session (a shell, or a harness without one)", async () => {
+    const user = userEvent.setup();
     renderChat(); // fixture agents carry no session
+    await openPaneMenu(user);
+    expect(screen.getByRole("dialog")).toBeInTheDocument(); // the menu really did open
     expect(screen.queryByRole("button", { name: /conversation history/i })).not.toBeInTheDocument();
   });
 
-  // The right cluster is EXACTLY two actions now — Find, then History — and the status is not a third.
-  // It used to be: the badge sat rightmost, in the row's action neighbourhood, being the one thing
-  // there that is not an action, and it was also the widest fixed item in the row. It moved into the
-  // identity block, where the state belongs to the pane it describes. So the assertion inverts: the
-  // status word must come BEFORE History in the document, because it is now part of the identity.
-  it("leaves the right cluster to Find and History, with the status ahead of them in the identity", () => {
+  // The row must reach the SAME route the header icon reached \u2014 that is the whole of what moved.
+  it("navigates History to the pane's transcript route", async () => {
+    const user = userEvent.setup();
     const agent = { ...fixtureAgents[0]!, hasSession: true };
-    const { container } = renderChat({ agent, agents: [agent] });
-    const history = screen.getByRole("button", { name: /conversation history/i });
-    const word = screen.getByText("needs you"); // fixtureAgents[0] is blocked → "needs you"
-    // Node.compareDocumentPosition: PRECEDING (2) means the word comes before History in the DOM.
-    expect(history.compareDocumentPosition(word) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
-    // …and it is INSIDE the identity button, not merely earlier in the row.
+    const props: ComponentProps<typeof AgentChat> = {
+      paneId: agent.paneId,
+      agent,
+      agents: [agent],
+      shellPanes: [],
+      tabs: [],
+      text: "recent pane output",
+      onBack: vi.fn(),
+      onSelect: vi.fn(),
+    };
+    const router = createMemoryRouter([
+      { path: "/", element: <AgentChat {...props} /> },
+      { path: "/pane/:paneId/history", element: <div>transcript route</div> },
+    ]);
+    render(<RouterProvider router={router} />);
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: /conversation history/i }));
+    expect(await screen.findByText("transcript route")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/pane/${encodeURIComponent(agent.paneId)}/history`);
+  });
+
+  // THE FIND PATH, end to end, because it is the one that spans three components. The row closes the
+  // sheet and opens find in ONE React event: the sheet's focus-restore (aimed at the \u22ee, which the
+  // takeover has just removed) must lose to the find bar's own mount focus, or a one-handed operator
+  // gets a sheet-shaped animation and no keyboard.
+  it("opening Find from the menu takes the header row over, with focus in the field", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat();
+    await openFind(user);
+    // The sheet is gone \u2026
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // \u2026 the find bar owns the whole row (the identity block and the \u22ee are both out of it) \u2026
+    const field = screen.getByRole("textbox", { name: /find in output/i });
+    expect(headerRow(container).contains(field)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Pane actions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open webapp overview/i })).not.toBeInTheDocument();
+    // \u2026 and it is focused, so the phone keyboard is already up.
+    expect(document.activeElement).toBe(field);
+  });
+
+  // The status word moved into the identity block and must stay ahead of the action cluster, which is
+  // now one control rather than two. Same rule, one fewer button.
+  it("keeps the status word inside the identity, ahead of the menu", () => {
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
+    renderChat({ agent, agents: [agent] });
+    const menu = screen.getByRole("button", { name: "Pane actions" });
+    const word = screen.getByText("needs you"); // fixtureAgents[0] is blocked \u2192 "needs you"
+    expect(menu.compareDocumentPosition(word) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     const title = screen.getByRole("button", { name: /open webapp overview/i });
     expect(title.contains(word)).toBe(true);
-    // Exactly two controls after the identity block: Find and History. Scoped to the header's own
-    // row, because the screen below it is full of buttons.
-    const row = container.querySelector("header > div:last-child");
-    const after = Array.from(row?.querySelectorAll("button") ?? []).filter(
-      (b) => title.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(after.map((b) => b.getAttribute("aria-label"))).toEqual([
-      "Find in output",
-      "Conversation history",
-    ]);
   });
 });
 

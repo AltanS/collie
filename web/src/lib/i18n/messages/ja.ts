@@ -220,8 +220,9 @@ export const ja: Dictionary = {
   "sendMode.armed.stop": "停止",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
-  "chat.find.aria": "出力内を検索",
-  "chat.history.aria": "会話履歴",
+  "chat.find.label": "出力内を検索",
+  "chat.history.label": "会話履歴",
+  "chat.paneMenu.aria": "ペインの操作",
   "chat.header.openOverviewAria": "{workspace}の概要を開く{status}",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（エージェントなし）",

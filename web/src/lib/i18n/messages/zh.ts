@@ -208,8 +208,9 @@ export const zh: Dictionary = {
   "sendMode.armed.stop": "停止",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
-  "chat.find.aria": "在输出中查找",
-  "chat.history.aria": "对话记录",
+  "chat.find.label": "在输出中查找",
+  "chat.history.label": "对话记录",
+  "chat.paneMenu.aria": "窗格操作",
   "chat.header.openOverviewAria": "打开 {workspace} 概览{status}",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（智能体已消失）",

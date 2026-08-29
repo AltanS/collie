@@ -27,7 +27,11 @@ export function ActionRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted"
+      // `min-h-11` — a REAL 44px hit box, stated (DESIGN.md §6). `px-3 py-2.5` around a 20px
+      // `text-sm` line drew 40px, five under the floor, on rows a thumb reaches for in a sheet that
+      // has just slid up under it. A floor rather than a fixed height, so a row whose label wraps on
+      // a narrow phone still grows instead of clipping.
+      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted"
     >
       {icon}
       {label}
@@ -64,7 +68,9 @@ export function DestructiveActionRow({
       onClick={onClick}
       disabled={closing}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors disabled:opacity-60",
+        // Same 44px floor as ActionRow above — and it matters more here, because this is the row a
+        // mis-tap arms.
+        "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors disabled:opacity-60",
         armed
           ? "bg-destructive text-destructive-foreground"
           : "text-destructive hover:bg-destructive/10 active:bg-destructive/15",

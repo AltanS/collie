@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Monitor, Pencil, XCircle } from "lucide-react";
+import { Monitor, Pencil, ScrollText, Search, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -30,12 +30,29 @@ interface PaneActionsSheetProps {
   /** Fired after a successful close, with the closed pane id — the parent navigates Home if it's the
    *  pane currently open, or revalidates so it drops out of the list. */
   onClosed: (paneId: string) => void;
+
+  /* The two READ rows. Both are optional and both are omitted by the pane strip, because they only
+   * mean anything for the pane you are LOOKING AT: "find in output" searches the buffer this screen
+   * has already fetched, and a strip pill can open this sheet on a pane whose output was never
+   * loaded. The pane header passes them; the strip does not. Each is `undefined` when the caller has
+   * nothing to offer (no buffered output yet; no agent session, so no transcript), and a row with no
+   * callback is HIDDEN — the same "a sheet is a list of things you can do" rule the capability gates
+   * below follow. The sheet closes itself before firing either, so the surface a row leads to (the
+   * header's find bar, the history route) is the only thing on screen when it arrives. */
+
+  /** Open find-in-output. The pane header's find bar takes over the header row. */
+  onFind?: () => void;
+  /** Open the agent's own transcript. */
+  onHistory?: () => void;
 }
 
 type Mode = "actions" | "rename";
 
-// Long-press actions for a single pane: rename (set/clear its label) and close (kill). Reached by
-// long-pressing a pane pill. Opens on an action-list view (Rename / Close pane); rename is a second
+// The actions for a single pane. TWO entry points, one sheet: long-pressing (or re-tapping) a pane
+// pill in the strip, and the ⋮ button in the pane header — which is why find and history live here
+// rather than in a second menu of their own. The header used to spend two of its four slots on those
+// two icons; the pane already had a menu, so they became rows in it.
+// Rename (set/clear its label) and close (kill). Opens on an action-list view; rename is a second
 // tap away so the sheet doesn't shove a keyboard-triggering input at you just to close a pane. The
 // action rows + rename view are the SHARED pieces (action-sheet-rows) the tab sheet also uses, so the
 // two stay identical. The label is user text rendered only into an <input> value / text node — never
@@ -49,6 +66,8 @@ export function PaneActionsSheet({
   readOnly = false,
   onRenamed,
   onClosed,
+  onFind,
+  onHistory,
 }: PaneActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -160,6 +179,42 @@ export function PaneActionsSheet({
       onClose={onClose}
       title={pane ? paneDisplayName(pane) : t("paneActions.title.fallback")}
     >
+      {/* The READ rows lead, and they sit OUTSIDE the read-only / host-unreachable gates below on
+          purpose. Neither of those refusals is about them: find searches a buffer this phone already
+          holds, and history opens a transcript the lead reads off its own disk — a device that may
+          not write, or a member machine that has stopped answering, takes away nothing either one
+          needs. Folding them under the gate would have made "the machine is quiet" the reason you
+          cannot search the last output you got from it, which is precisely when you want to.
+          They lead rather than trail because they are the cheap, repeatable, reversible half of this
+          sheet; rename and close are the half you arrive at deliberately.
+          Hidden in `rename` mode with the rest of the list — that view is a sub-screen, not a
+          section. */}
+      {mode === "actions" && (onFind || onHistory) && (
+        <div className="mb-1 flex flex-col gap-1">
+          {onFind && (
+            <ActionRow
+              icon={<Search className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("chat.find.label")}
+              onClick={() => {
+                // Close FIRST, then act. Both land in one React event, so the sheet unmounts in the
+                // same commit that mounts the find bar — see the focus note in agent-chat.tsx.
+                onClose();
+                onFind();
+              }}
+            />
+          )}
+          {onHistory && (
+            <ActionRow
+              icon={<ScrollText className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("chat.history.label")}
+              onClick={() => {
+                onClose();
+                onHistory();
+              }}
+            />
+          )}
+        </div>
+      )}
       {readOnly ? (
         <p className="py-2 text-sm text-muted-foreground">{t("paneActions.readOnly")}</p>
       ) : hostBlock ? (

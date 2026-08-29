@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
@@ -347,10 +348,18 @@ function chat(agentOver: Partial<(typeof fixtureAgents)[number]> = {}) {
   render(<RouterProvider router={router} />);
 }
 
+// History is a ROW in the pane's actions sheet now, not a header icon — the header spends one ⋮ on
+// the whole menu. So the capability gate is read through that door.
+async function openPaneMenu() {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Pane actions" }));
+}
+
 describe("Pane history — agentSessionRef", () => {
   it("is reachable when the multiplexer can name an agent's session", async () => {
     declares({ agentSessionRef: true });
     chat();
+    await openPaneMenu();
     expect(await screen.findByRole("button", { name: "Conversation history" })).toBeInTheDocument();
   });
 
@@ -361,12 +370,14 @@ describe("Pane history — agentSessionRef", () => {
     );
     chat();
     expect(await screen.findByText(/keeps no agent session log/i)).toBeInTheDocument();
+    await openPaneMenu();
     expect(screen.queryByRole("button", { name: "Conversation history" })).toBeNull();
   });
 
   it("says nothing when the capability is there — no Herdr operator gains an explanation", async () => {
     declares({ agentSessionRef: true });
     chat();
+    await openPaneMenu();
     await screen.findByRole("button", { name: "Conversation history" });
     expect(screen.queryByText(/keeps no agent session log/i)).toBeNull();
   });

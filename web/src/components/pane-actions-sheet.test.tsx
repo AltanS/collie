@@ -255,3 +255,68 @@ describe("PaneActionsSheet — a pane on an unreachable machine", () => {
     expect(screen.getByRole("button", { name: /close pane/i })).toBeInTheDocument();
   });
 });
+
+// The two READ rows the pane header hands this sheet when the ⋮ opens it. The pane STRIP passes
+// neither, and that asymmetry is the design: find searches the buffer the open pane already fetched,
+// and a strip pill can open this sheet on a pane whose output was never loaded.
+describe("PaneActionsSheet — the read rows", () => {
+  it("shows neither row when the caller offers neither (the pane strip's case)", () => {
+    renderSheet();
+    expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Conversation history" })).toBeNull();
+  });
+
+  it("shows only the row it was given a callback for", () => {
+    renderSheet({ onFind: vi.fn() });
+    expect(screen.getByRole("button", { name: "Find in output" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Conversation history" })).toBeNull();
+  });
+
+  it("closes the sheet BEFORE it acts, so the surface the row leads to arrives alone", async () => {
+    const user = userEvent.setup();
+    const onFind = vi.fn();
+    const props = renderSheet({ onFind });
+    await user.click(screen.getByRole("button", { name: "Find in output" }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(onFind).toHaveBeenCalledTimes(1);
+    // Order matters: the find bar takes over the header row, and the sheet must not still be over it.
+    expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(
+      onFind.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("leads the list — reads come before the writes you arrive at deliberately", () => {
+    renderSheet({ onFind: vi.fn(), onHistory: vi.fn() });
+    const find = screen.getByRole("button", { name: "Find in output" });
+    const rename = screen.getByRole("button", { name: "Rename" });
+    expect(find.compareDocumentPosition(rename) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Neither read is a write, so neither refusal is about them. A device that may not write can still
+  // search the output it already has; a machine that has stopped answering is exactly when you want
+  // to read the last thing it said.
+  it("survives read-only, which takes only the writes", () => {
+    renderSheet({ readOnly: true, onFind: vi.fn(), onHistory: vi.fn() });
+    expect(screen.getByText(/read-only/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Find in output" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Conversation history" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+  });
+
+  it("goes away in rename mode — that view is a sub-screen, not a section", async () => {
+    const user = userEvent.setup();
+    renderSheet({ onFind: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
+  });
+
+  // DESIGN.md §6: 44px is the floor for anything tappable, and a sheet row is a thumb target that
+  // slides up under the finger. Every row in here states the floor — `min-h-11` around a 20px
+  // `text-sm` line, because `px-3 py-2.5` alone drew 40.
+  it("gives every row a 44px hit box", () => {
+    renderSheet({ onFind: vi.fn(), onHistory: vi.fn() });
+    for (const name of ["Find in output", "Conversation history", "Rename", "Close pane"]) {
+      expect(screen.getByRole("button", { name })).toHaveClass("min-h-11");
+    }
+  });
+});

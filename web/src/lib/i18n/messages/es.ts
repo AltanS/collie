@@ -225,8 +225,9 @@ export const es: Dictionary = {
   "sendMode.armed.stop": "Detener",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
-  "chat.find.aria": "Buscar en la salida",
-  "chat.history.aria": "Historial de conversación",
+  "chat.find.label": "Buscar en la salida",
+  "chat.history.label": "Historial de conversación",
+  "chat.paneMenu.aria": "Acciones del panel",
   "chat.header.openOverviewAria": "Abrir resumen de {workspace}{status}",
   "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(agente ausente)",

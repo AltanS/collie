@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useRevalidator } from "react-router";
-import { ArrowUpToLine, Loader2, ScrollText, Search, TerminalSquare } from "lucide-react";
+import { ArrowUpToLine, EllipsisVertical, Loader2, ScrollText, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
@@ -26,6 +26,7 @@ import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
+import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CompactStripLabels } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
@@ -88,7 +89,7 @@ interface AgentChatProps {
 
 // At most one drawer/sheet is open at a time; null = none. (The composer's own Keys/Quick/Agent
 // sheets are separate and live inside <Composer>.)
-type Drawer = "switcher" | null;
+type Drawer = "switcher" | "paneMenu" | null;
 
 // The detail view mirrors a terminal pane, NOT a chat thread. The pane's output comes from the
 // route loader (`text`); polling revalidates it. Replies/keys are confirmed via the header status
@@ -690,51 +691,56 @@ export function AgentChat({
               />
             ) : undefined
           }
-          // Right cluster, in reading order: Find, then History. EXACTLY two actions, and the status
-          // pill is deliberately not a third: it was the widest fixed item in the row (the Spanish
-          // "desconocido" chip measures 111px and left the pane name 24px at 390px), and it was
+          // Right cluster: ONE control. Find and History used to sit here as two 32px icons; they
+          // are now the first two rows of the pane's own actions sheet, which a ⋮ opens. The
+          // operator's ask was to unclutter the row, and the sheet already existed — the pane pill
+          // has opened it (rename / show in terminal / close) since it was written, so this is a
+          // second door onto the same menu rather than a new one. It is also the only door when the
+          // tab holds a single pane: PaneStrip renders nothing below two, so on most panes rename
+          // and close had no reachable entry point at all.
+          //
+          // A ⋮ and not a labelled button: at this width a word costs more than the two icons it
+          // replaced, and ⋮ is the one glyph a phone user reads as "the rest of this thing's
+          // actions" without being taught. Its accessible name says what it opens, because the glyph
+          // itself names nothing.
+          //
+          // WHAT THIS COSTS, stated rather than buried: two visible actions become zero. Find in
+          // particular is a repeat action — you search, read, search again — and every one of those
+          // now costs a tap, a sheet animation and a second tap. That is the trade the ask makes;
+          // the sheet's read rows lead the list so the second tap is the shortest one available.
+          //
+          // The status pill is deliberately not in here either: it was the widest fixed item in the
+          // row (the Spanish "desconocido" chip measures 111px and left the pane name 24px at 390px), and it was
           // sitting in the row's action neighbourhood while being the one thing here that is not an
           // action. It moved into the identity block, where the state belongs to the pane it
           // describes — the dot badged onto the agent's own tile, the word in the caption line.
           // The budget rule this holds to: one Leave (the Collie mark) + one flexible Identity, which
           // carries the state + at most two Actions. The Identity is the only flexible element; when
           // the row would squeeze it below a recognisable handle, the newest FIXED element leaves —
-          // never the Identity.
+          // never the Identity. The cluster now spends one Action slot, not two.
           //
-          // Find lives HERE, not in the composer, because the find bar it opens takes over this very
-          // header row (see `override` above) — trigger and surface in the same place. It sat in the
-          // composer's old View row, which put the button at the bottom of the screen and its UI at the
-          // top. Offered only when there's buffered output to search; opening it freezes the tail.
-          //
-          // History opens the agent's own transcript, the only real conversation history a Claude pane
-          // has: its terminal runs on the alternate screen, so the mirror below can never show more
-          // than the visible viewport. Offered only when the pane reported an agent session id (i.e. a
-          // transcript can exist at all), so the button never leads to an empty screen.
-          //
+          // Find stays anchored to THIS screen — the bar it opens takes over this very header row
+          // (see `override` above), so the trigger and its surface are still in the same place even
+          // with a sheet between them. Offered only when there's buffered output to search; opening
+          // it freezes the tail. History opens the agent's own transcript, the only real conversation
+          // history a Claude pane has: its terminal runs on the alternate screen, so the mirror below
+          // can never show more than the visible viewport. Offered only when the pane reported an
+          // agent session id, so the row never leads to an empty screen. Both gates are now `undefined`
+          // callbacks rather than unrendered buttons; the sheet hides a row it was given no callback for.
           rightLead={
             agent ? (
-              <>
-                {display && (
-                  <button
-                    type="button"
-                    onClick={openFind}
-                    aria-label={t("chat.find.aria")}
-                    className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-                  >
-                    <Search className="size-4" />
-                  </button>
-                )}
-                {historyAvailable && (
-                  <button
-                    type="button"
-                    onClick={() => navigate(historyPath(paneId, scope))}
-                    aria-label={t("chat.history.aria")}
-                    className="-mr-1 flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-                  >
-                    <ScrollText className="size-4" />
-                  </button>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={() => setDrawer("paneMenu")}
+                aria-label={t("chat.paneMenu.aria")}
+                // A real 44px box, stated, for the same reason SettingsGear states one and with no
+                // negative margin for the same reason: the two icons this replaces were size-8 with
+                // `-mr-1`, i.e. 32px drawn and 28px of unshared hit area at the very edge of the row.
+                // One control can afford the floor.
+                className="grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+              >
+                <EllipsisVertical className="size-5" />
+              </button>
             ) : undefined
           }
         >
@@ -1175,6 +1181,34 @@ export function AgentChat({
             className="px-0 py-1"
           />
         </BottomSheet>
+
+        {/* The pane menu the header's ⋮ opens — the SAME sheet the pane pill opens, given the two
+            read rows the strip can't offer (see its props). Mounted HERE, a sibling of the switcher
+            sheet, and deliberately NOT inside the AppHeader slot that triggers it: the sheet is a
+            plain `fixed inset-0` element with no portal (ui/sheet.tsx — "no Radix, no portals"), so
+            it is positioned by the nearest transformed/filtered ancestor and stacks within the
+            nearest stacking context. The header is `sticky z-20` and animates; a sheet mounted inside
+            it would be laid out and z-ordered against the header rather than the viewport.
+
+            FOCUS, for the find row specifically: the row calls `onClose()` and then `openFind()` in
+            one React event, so a single commit unmounts the sheet and renders the FindBar into the
+            header's `override`. React runs the unmounting tree's effect cleanups before the mounting
+            tree's effects, so BottomSheet's focus-restore fires first — and it aims at the ⋮ button,
+            which the override has just removed from the document, so it is a no-op on a detached
+            node. FindBar's own mount effect then focuses the input and pops the keyboard. Verified in
+            agent-chat.test.tsx rather than reasoned about, because the ordering is the whole
+            argument. */}
+        <PaneActionsSheet
+          open={drawer === "paneMenu"}
+          onClose={closeDrawer}
+          pane={agent ?? null}
+          scope={scope}
+          readOnly={readOnly}
+          onRenamed={() => revalidator.revalidate()}
+          onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
+          onFind={display ? openFind : undefined}
+          onHistory={historyAvailable ? () => navigate(historyPath(paneId, scope)) : undefined}
+        />
       </div>
     </CompactStripLabels>
   );

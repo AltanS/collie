@@ -232,8 +232,10 @@ export const en = {
   "sendMode.armed.stop": "Stop",
 
   // --- chat (the pane view shell: header, mirror, switcher) ---
-  "chat.find.aria": "Find in output",
-  "chat.history.aria": "Conversation history",
+  "chat.find.label": "Find in output",
+  "chat.history.label": "Conversation history",
+  // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.
+  "chat.paneMenu.aria": "Pane actions",
   "chat.header.openOverviewAria": "Open {workspace} overview{status}",
   "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(agent gone)",
