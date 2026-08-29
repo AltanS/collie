@@ -10,6 +10,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
+import { AppHeaderHost } from "@/components/app-header";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { PackProvider } from "@/components/pack-provider";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
@@ -124,7 +125,9 @@ export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
           loader: () => home,
           element: (
             <PackProvider servers={home.servers} ts={home.ts} pollMs={3_000}>
-              <Outlet />
+              <AppHeaderHost bridge={home.bridge} error={false}>
+                <Outlet />
+              </AppHeaderHost>
             </PackProvider>
           ),
           children: [
@@ -159,7 +162,9 @@ export function SettingsRouter({ home, devices }: { home: HomeData; devices: Dev
           loader: () => home,
           element: (
             <PackProvider servers={home.servers} ts={home.ts} pollMs={3_000}>
-              <Outlet />
+              <AppHeaderHost bridge={home.bridge} error={false}>
+                <Outlet />
+              </AppHeaderHost>
             </PackProvider>
           ),
           children: [
@@ -210,22 +215,24 @@ export function PaneRouter({
           loader: () => data,
           element: (
             <PackProvider servers={data.servers} ts={data.ts} pollMs={3_000}>
-              <AgentChat
-                paneId={fixture.pane.paneId}
-                agent={fixture.pane}
-                agents={data.agents}
-                shellPanes={data.shellPanes}
-                tabs={data.tabs}
-                tabLabel={fixture.pane.tabLabel}
-                text={fixture.text}
-                requestedLines={400}
-                revision={fixture.revision}
-                device={data.device}
-                bridge={data.bridge}
-                error={false}
-                onBack={() => {}}
-                onSelect={() => {}}
-              />
+              <AppHeaderHost bridge={data.bridge} error={false}>
+                <AgentChat
+                  paneId={fixture.pane.paneId}
+                  agent={fixture.pane}
+                  agents={data.agents}
+                  shellPanes={data.shellPanes}
+                  tabs={data.tabs}
+                  tabLabel={fixture.pane.tabLabel}
+                  text={fixture.text}
+                  requestedLines={400}
+                  revision={fixture.revision}
+                  device={data.device}
+                  bridge={data.bridge}
+                  error={false}
+                  onBack={() => {}}
+                  onSelect={() => {}}
+                />
+              </AppHeaderHost>
             </PackProvider>
           ),
         },
@@ -288,7 +295,9 @@ export function PaneStackRouter({
               <div className="flex h-full flex-col">
                 <UpdateAvailableBanner />
                 <ConnectionBanner bridge={undefined} error authError />
-                <StackPane data={data} fixture={fixture} />
+                <AppHeaderHost bridge={data.bridge} error={false}>
+                  <StackPane data={data} fixture={fixture} />
+                </AppHeaderHost>
               </div>
             </PackProvider>
           ),
