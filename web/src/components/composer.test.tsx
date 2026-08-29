@@ -1230,70 +1230,83 @@ describe("Composer — destructive-input confirm", () => {
   });
 });
 
-// THE MACHINE, DOCKED IN THE BOX YOU TYPE INTO. It used to lead the pane header's caption line, and
-// the move is the whole point of this round: "which machine will this land on" is a question you have
-// with your thumbs on the keyboard, not one you have while reading a transcript.
+// THE MACHINE, ON THE COMPOSER'S STATUS STRIP. For one round it was docked inside the text box; the
+// reasoning survives ("which machine will this land on" is asked while writing, not while reading)
+// but the 60px it took out of the typing area does not. The strip above the controls row is the same
+// write surface and its space was already reserved and already empty.
 //
-// Four claims, and each fails in BOTH directions — a chip that never appears passes none of them, and
-// a chip that always appears fails the solo case.
-describe("Composer — the host is docked inside the text field", () => {
+// Four claims, each failing in BOTH directions — a chip that never renders passes none of them, a
+// chip that always renders fails the solo case, and a chip put back in the field fails the second.
+describe("Composer — the host stands on the controls row, not in the field", () => {
   const box = () => screen.getByPlaceholderText(/type a reply/i);
+  const row = () => document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
   /** The field's own reserved strip. Read off the class, because the jsdom render has no layout. */
   const reserved = (el: HTMLElement) => /(?:^|\s)pr-(\d+)(?=\s|$)/.exec(el.className)?.[1];
 
-  it("names the machine on a pack and renders NOTHING on a solo install", () => {
-    // Solo — every install that exists today. There is no "which machine" question to answer, and
-    // the field keeps all 252px of its typing width.
+  it("names the machine on the controls row on a pack, and renders NOTHING on a solo install", () => {
+    // Solo — every install that exists today. There is no "which machine" question to answer, so the
+    // strip stands empty. Scoped to the row by data-slot, never a bare role query: `ui/strip-host`
+    // mounts two permanent sr-only live regions, so a role sweep is ambiguous in any tree with a host.
     renderComposerWithStatus({ scope: { host: "workshop" } });
-    expect(screen.queryByLabelText(/sends to host/i)).not.toBeInTheDocument();
-    expect(reserved(box())).toBe("11"); // the attach button's strip, and nothing more
+    expect(row().querySelector('[aria-label*="host" i]')).toBeNull();
     cleanup();
 
-    // Pack — the chip appears, and the strip widens by exactly the chip's budget in the SAME
-    // property. 26 = 11 (attach) + 15 (host), one class, so tailwind-merge cannot drop half of it.
+    // Pack — the chip appears, INSIDE the controls row and nowhere else.
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
-    expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
-    expect(reserved(box())).toBe("26");
+    const chip = screen.getByLabelText("Sends to host: workshop");
+    expect(row().contains(chip)).toBe(true);
   });
 
-  it("does not change the field's own height, empty or with a draft", async () => {
-    // MEASURED in the playground at a true 390px: 46px empty on both, and `field-sizing-content`
-    // cannot see the chip at all because the chip is out of flow. What this pins is the two facts
-    // that make that true and that a refactor could quietly undo — the chip is absolutely
-    // positioned, and it is a SIBLING of the textarea rather than a child of any flow it sizes.
+  it("is NOT in the composer field: no chip in the box, and the typing width is the attach strip alone", async () => {
+    // The revision this round is. `pr-11` and only `pr-11` — MEASURED at 254px of typing width at a
+    // true 390px content width and 184px at 320px, on a pack exactly as on a solo install; docked,
+    // the pack figures were 194px and 124px. A second conditional `pr-*` would not stack
+    // (tailwind-merge keeps the last padding-right), which is why the number is read off the class.
     const user = userEvent.setup();
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
-    const chip = screen.getByLabelText("Sends to host: workshop").parentElement!;
-    expect(chip.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
-    expect(chip.contains(box())).toBe(false);
-    expect(box().parentElement).toBe(chip.parentElement); // one relative box, two siblings in it
-    // …and the field states no height of its own that a taller chip could win against.
+    expect(reserved(box())).toBe("11");
+    // …and nothing in the field's own relative box carries the host, by either route: no chip node
+    // inside it, and no `aria-describedby` pointing the textarea at one.
+    const field = box().parentElement!;
+    expect(field.querySelector('[aria-label*="host" i]')).toBeNull();
+    expect(box().getAttribute("aria-describedby")).toBeNull();
+    // The placeholder is still the field's whole accessible name, unshared.
+    expect(box().getAttribute("aria-label")).toBeNull();
+    expect(box().getAttribute("aria-labelledby")).toBeNull();
+    // A wrapping draft still grows the field and nothing else claims a height in the box.
     await user.type(box(), "a draft that wraps onto a second line in the composer");
     expect(box().className).not.toMatch(/(?:^|\s)h-\d/);
   });
 
-  it("is the field's DESCRIPTION, never part of its accessible name", async () => {
-    // An empty composer's name is its placeholder, and that placeholder is the only instruction it
-    // gives. Wiring the host in as a label — or as a second labelledby node — would replace "Type a
-    // reply…" with a machine name. It is announced after the name instead, on focus.
+  it("keeps the controls group NAMED once the visible word is gone", () => {
+    // "Controls" was doing two jobs and only one of them was visual. Sighted it labelled five
+    // self-labelling buttons; in the accessibility tree it is the ONLY thing naming the group. So it
+    // is `sr-only`, not deleted — which is also why `composer.controls.label` is still a live key in
+    // all six dictionaries. Delete the label and this group announces as an unnamed run of buttons.
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
-    // MEASURED IN CHROME over CDP (Accessibility.getPartialAXTree) on the playground's pack panes,
-    // because neither half of this is observable here: `toHaveAccessibleName` never sees the
-    // placeholder fallback and `toHaveAccessibleDescription` never sees an `aria-label` on the
-    // referenced node, so both read empty in jsdom and would pin nothing.
-    //   name        = "attic is unreachable · last seen 14m"   (the placeholder, untouched)
-    //   description = "Sends to host: bluefin"                 (the docked chip)
-    // What IS observable is the whole wiring that produces it, and every link in it can break on its
-    // own: the field takes no label of its own by either route, it points at an id, and the node at
-    // that id is the chip carrying the words.
-    expect(box().getAttribute("aria-label")).toBeNull();
-    expect(box().getAttribute("aria-labelledby")).toBeNull();
-    const described = document.getElementById(box().getAttribute("aria-describedby") ?? "");
-    expect(described).toBe(screen.getByLabelText("Sends to host: workshop"));
-    cleanup();
-    // Solo: no chip, so no dangling reference to an id that does not exist.
+    expect(screen.getByRole("group", { name: "Controls" })).toBe(row());
+    // The host did not inherit that job: it names a machine, and it is absent on a solo install.
+    expect(row().getAttribute("aria-labelledby")).toBe("composer-controls-label");
+    const label = document.getElementById("composer-controls-label")!;
+    expect(label.className).toMatch(/(?:^|\s)sr-only(?=\s|$)/);
+  });
+
+  it("stands at ONE height, solo and pack alike — the strip is reserved, never reflowed", () => {
+    // MEASURED in the playground: 56px in both topologies, both themes, at 390px and at 320px, and
+    // the whole composer block is 129px empty / 177px with a two-line draft in both. jsdom has no
+    // layout, so what is pinned here are the two facts that make that true and that a refactor could
+    // quietly undo — the row's own box is byte-identical between the two renders, and the occupant of
+    // the reserved strip is out of flow, so it cannot size anything.
     renderComposerWithStatus({ scope: { host: "workshop" } });
-    expect(box().getAttribute("aria-describedby")).toBeNull();
+    const solo = row().className;
+    expect(solo).toMatch(/(?:^|\s)pt-3(?=\s|$)/); // the reservation, unconditional
+    cleanup();
+
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    expect(row().className).toBe(solo); // the pack pays nothing for the chip
+    const chip = screen.getByLabelText("Sends to host: workshop");
+    expect(chip.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(chip.parentElement).toBe(row()); // in the row's own positioning context, not a wrapper
   });
 });
 

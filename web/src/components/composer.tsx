@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
@@ -221,24 +221,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const writeHost = useAmbientHost(scope?.host);
   // Its display name, or undefined when there is no pack — the copy-level half of the hide rule.
   const writeHostLabel = useHostLabel(scope?.host);
-  // …and the same fact as a LAYOUT question, which is why it is read here rather than left to
-  // HostChip's own hide rule. The chip below is docked INSIDE the text box, so the space it stands
-  // in has to come out of the textarea's own padding — and padding is a property of the textarea,
-  // not of the chip. HostChip can decline to render; it cannot reach back and un-reserve a strip.
-  //
-  // Reserving unconditionally was the first thing tried and it is wrong: every install that exists
-  // today is solo, and they would each give 60px of typing width to a chip that never appears.
-  // Conditioning on this is sound because the condition is the INSTALLATION'S TOPOLOGY, not a state
-  // the pane passes through — `multi` flips once, when a second machine joins a pack, and a machine
-  // joining mid-draft is a real event that has genuinely new content to show. What DESIGN.md §2
-  // forbids is the reflow you get for free: a chip whose width tracked the host's NAME would move
-  // the wrap point every time the roster relabelled a machine. It cannot — the strip below is a
-  // fixed budget and the name truncates into it.
-  const hostDocked = writeHostLabel !== undefined;
-  // The docked chip is the textarea's DESCRIPTION, never part of its name. A label would replace
-  // "Type a reply…" with a machine name, which is the wrong sentence and loses the only instruction
-  // the empty field gives.
-  const hostDockId = useId();
   // …and a ref alongside it, for the ONE caller that reads it after an await. `send()` checks
   // `locked` once, up front, but its pre-clear sweep goes out on the far side of the pre-flight's
   // pane read; a re-render that locks the composer in that window must be able to stop the most
@@ -999,25 +981,43 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             and NOT flex-1 — it's a settings affordance, not a peer of the three action toggles, and
             keeping it to one square (44px, its tap target and nothing more) leaves the labelled
             buttons the rest of a 390px phone. */}
-        {/* The "Controls" tag is lifted OUT of the row's flex flow and floated just above it. In
-            flow it was a fixed ~60px of a 390px phone width spent on a word that never changes,
-            which is what squeezed the toggles; absolute costs nothing and the row gets the width
-            back. `pt-3` on the row reserves the space it occupies so it can't collide with whatever
-            sits above. */}
+        {/* THE STRIP ABOVE THE BUTTONS IS A STATUS LINE, NOT A HEADING. `pt-3` on the row reserves
+            12px above the toggles and whatever stands there is lifted OUT of the flex flow, so the
+            occupant costs the row no width at all. It used to hold the word "Controls", which named
+            a row whose five buttons already carry their own labels; it now holds the machine every
+            one of those buttons — and the field below — writes to.
+
+            WHY HERE AND NOT IN THE FIELD. The host was docked inside the text box for one round.
+            The reasoning survives ("which machine will this land on" is asked while writing, not
+            while reading) but the price does not: docked, it took 60px out of the typing area, the
+            widest and most contested part of the composer. This strip is at the same write surface
+            and its width was already bought and already unused. Same answer, no bill.
+
+            NOTHING HERE CAN MOVE THE ROW. The 12px is reserved unconditionally by `pt-3` and the
+            occupant is `absolute`, so the row stands at one height on a solo install (where HostChip
+            renders null — its hide rule, unchanged), on a pack, and across every relabelling of a
+            machine in between. MEASURED: 56px in both topologies, both themes, at 390px and at
+            320px. `max-w-full` makes the name truncate into the strip rather than widen past it; the
+            chip's `text-[10px]/3` is a 12px line box, exactly the reservation. DESIGN.md §2: reserve,
+            never reflow. */}
         {/* `gap-1.5` rather than `gap-2`: four gaps at 8px is 32px of a 366px row, and 6px reads the
-            same. The group carries `aria-labelledby` to the tag above it, so the word is the run's
-            accessible name and not a stray span in front of five unrelated buttons. */}
+            same. The group still carries `aria-labelledby` to the word "Controls" — the word is now
+            `sr-only` rather than deleted, because it was doing TWO jobs and only one of them was
+            visual. Sighted, it labelled a row of five self-labelling buttons and earned nothing. In
+            the accessibility tree it is the only thing that names the group at all, and dropping it
+            would leave a bare `role="group"` wrapping Keys/Type/Quick/Agent/⚙ with no name for a
+            screen reader to announce on entry. The host does NOT inherit that job: it names a
+            machine, not a run of controls, and it is absent on every solo install. */}
         <div
+          data-slot="composer-controls"
           role="group"
           aria-labelledby="composer-controls-label"
           className="relative mb-2 flex items-center gap-1.5 pt-3"
         >
-          <SectionLabel
-            id="composer-controls-label"
-            className="absolute left-0 top-0 text-[10px] leading-none opacity-80"
-          >
+          <SectionLabel id="composer-controls-label" className="sr-only">
             {translate("composer.controls.label")}
           </SectionLabel>
+          <HostChip host={writeHost} variant="caption" className="absolute left-0 top-0 max-w-full" />
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
               again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
               while open. Both share the single-valued `drawer`, so opening one closes the other. */}
@@ -1173,14 +1173,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
             field and Send, and the old spacing left them looking joined. */}
         <div className="flex items-end gap-3">
-          {/* The input, its attach button and — on a pack — the machine this write lands on all
-              share one box. The button is positioned INSIDE the field, messenger-style, rather than
-              sitting beside it as a third control in the row. It used to occupy a full-height slot
-              to the left, which spent the widest part of the composer on the least-used action;
-              inside the field it costs nothing but a strip of padding the text was not using
-              anyway. `pr-11` on the textarea reserves that strip so a long line can never run
-              underneath the icon, and the host below extends the SAME reservation rather than
-              inventing a second technique for the same problem. */}
+          {/* The input and its attach button share one box: the button is positioned INSIDE the
+              field, messenger-style, rather than sitting beside it as a third control in the row.
+              It used to occupy a full-height slot to the left, which spent the widest part of the
+              composer on the least-used action; inside the field it costs nothing but a strip of
+              padding the text was not using anyway. `pr-11` on the textarea reserves that strip so a
+              long line can never run underneath the icon.
+
+              The machine this write lands on is NOT in here. It was, for one round, docked at the
+              field's right edge — and it cost 60px of typing width on a pack, out of the widest part
+              of the composer. It answers the same question from the controls row above (the status
+              strip there), which is equally at the write surface and costs the draft nothing. */}
           <div className="relative min-w-0 flex-1">
           <ChatInput
             ref={inputRef}
@@ -1226,28 +1229,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // baseline gap beneath it and the absolutely-positioned button hangs past the field's
               // bottom edge.
               //
-              // ── AND, ON A PACK, ROOM FOR THE HOST BESIDE IT ─────────────────────────────
-              // `pr-26` = 104px = the attach button's own 44px strip + the host's 60px. ONE class,
-              // not `pr-11` plus a second conditional `pr-*`: tailwind-merge keeps only the last
-              // padding-right in a cn(), so a two-class spelling would work by accident today and
-              // break silently the moment the order changed (DESIGN.md §7). MEASURED in the
-              // playground at a true 390px: the field is 310px, so the typing area goes 252px →
-              // 192px on a pack and stays 252px on every solo install. At 320px it is 182px → 122px,
-              // which is the tightest this gets and the number to argue with if anyone does. That
-              // 60px is the real price of the move, taken from the widest part of the composer; it
-              // buys the answer to "which machine will this land on" at the moment the question is
-              // actually being asked, and a solo install pays none of it.
-              hostDocked ? "block pr-26" : "block pr-11",
+              // ONE `pr-*` here, unconditionally, and it is the attach button's alone. MEASURED in
+              // the playground at a true 390px content width: the field is 310px, so the typing area
+              // is 254px — on a pack and on a solo install alike. At 320px it is 184px, again both.
+              // For one round a pack paid 60px of that to a chip docked at the field's right edge
+              // (194px and 124px); the host answers the same question from the status strip above
+              // now, and the width came back. A second, conditional `pr-*` in this same cn() would
+              // not stack — tailwind-merge keeps only the last padding-right (DESIGN.md §7) — which
+              // is why nothing else may reserve space by adding one here.
+              "block pr-11",
               direct.active &&
                 "border-primary focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             )}
             disabled={locked}
             rows={1}
-            // NOT `aria-labelledby`: the placeholder is this field's accessible name and it is the
-            // only instruction an empty composer gives. The machine is a DESCRIPTION — announced
-            // after the name, on focus, and never in place of it. Omitted entirely on a solo
-            // install, where the referenced node does not exist.
-            aria-describedby={hostDocked ? hostDockId : undefined}
           />
             <Button
               type="button"
@@ -1268,36 +1263,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <ImagePlus className="size-4" />
               )}
             </Button>
-            {/* THE MACHINE THIS SEND LANDS ON, docked in the field it lands FROM. It used to lead
-                the pane header's caption line, which is a reading surface: "which machine will this
-                land on" is a question you have with your thumbs on the keyboard, not one you have
-                while looking at a transcript. Here it completes a line the app already draws — the
-                Keys dock names the machine in its title, both action sheets name it above their
-                rows, and the host-stale notice names it when the machine is the problem.
-
-                `right-11` puts it just clear of the attach button's own 44px strip, and the `h-9`
-                box centres it on that button's optical line rather than on the field's, so the two
-                read as one row of chrome at the field's foot instead of two marks at two heights.
-                `bottom-1` for the same reason the button uses it: the field grows UPWARD as the
-                draft wraps, and anything centred vertically would drift away from the thumb.
-
-                `max-w-15` is 60px and it is a BUDGET, not a measurement — the strip reserved above
-                is fixed, so a longer host name truncates inside it and the text's wrap point never
-                moves. `pointer-events-none` because this is not a control and must not eat a tap
-                aimed at the last line of the draft underneath it (HostChip is deliberately not the
-                session switcher's twin, and a tappable-feeling host here would be that mis-tap).
-                `aria-hidden` is NOT used: the chip is the field's DESCRIPTION, wired by the id
-                above. The id goes on the CHIP and not on this positioning wrapper, because the
-                description is computed from the referenced element and the wrapper computes to the
-                empty string — its own text is the chip's `aria-hidden` children and its only words
-                are a child's `aria-label`. That was found by the test failing, not assumed. Verified
-                in Chrome over CDP on a pack pane: name "attic is unreachable · last seen 14m",
-                description "Sends to host: bluefin", and no description at all on a solo install. */}
-            {hostDocked && (
-              <span className="pointer-events-none absolute bottom-1 right-11 flex h-9 items-center">
-                <HostChip id={hostDockId} host={writeHost} variant="field" className="max-w-15" />
-              </span>
-            )}
           </div>
           {!direct.active && forcingSend ? (
             // The pre-flight refused and the user is being offered the override. Labelled for what it
