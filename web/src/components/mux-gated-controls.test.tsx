@@ -250,16 +250,16 @@ describe("Pane actions — renamePane and closePane", () => {
     expect(screen.getByText("Close pane")).toBeInTheDocument();
   });
 
-  it("offers 'Show in terminal' only where the multiplexer can move focus", async () => {
+  it("offers 'Focus in <mux>' only where the multiplexer can move focus", async () => {
     declares({ renamePane: true, closePane: true, setFocus: true });
     paneSheet();
-    expect(await screen.findByText("Show in terminal")).toBeInTheDocument();
+    expect(await screen.findByText("Focus in reference")).toBeInTheDocument();
   });
 
-  it("drops 'Show in terminal' where it is declared absent — the other rows stay", async () => {
+  it("drops 'Focus in <mux>' where it is declared absent — the other rows stay", async () => {
     declares({ renamePane: true, closePane: true, setFocus: false });
     paneSheet();
-    await waitFor(() => expect(screen.queryByText("Show in terminal")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Focus in reference")).toBeNull());
     expect(screen.getByText("Rename")).toBeInTheDocument();
     expect(screen.getByText("Close pane")).toBeInTheDocument();
   });

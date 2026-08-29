@@ -278,9 +278,13 @@ export const ja: Dictionary = {
   "paneActions.close.label": "ペインを閉じる",
   "paneActions.close.confirm": "閉じるにはもう一度タップ",
   "paneActions.close.closing": "閉じています…",
-  "paneActions.showInTerminal.label": "ターミナルに表示",
-  "paneActions.showInTerminal.done": "ターミナルに表示しました",
-  "paneActions.showInTerminal.failed": "ターミナルに表示できませんでした",
+  // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
+  // translator's call on the verb ("focus") and where a multiplexer name sits in a Japanese
+  // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
+  "paneActions.focus.labelWithMux": "ターミナルに表示",
+  "paneActions.focus.labelFallback": "ターミナルに表示",
+  "paneActions.focus.done": "ターミナルに表示しました",
+  "paneActions.focus.failed": "ターミナルに表示できませんでした",
   "paneActions.empty.fallback": "このマルチプレクサはペインに対する操作を提供していません。",
   "paneActions.status.renamed": "名前を変更しました",
   "paneActions.status.labelCleared": "ラベルを消去しました",

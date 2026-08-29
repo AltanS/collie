@@ -266,9 +266,13 @@ export const zh: Dictionary = {
   "paneActions.close.label": "关闭窗格",
   "paneActions.close.confirm": "再次点击以关闭",
   "paneActions.close.closing": "正在关闭…",
-  "paneActions.showInTerminal.label": "在终端中显示",
-  "paneActions.showInTerminal.done": "已在终端中显示",
-  "paneActions.showInTerminal.failed": "无法在终端中显示",
+  // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
+  // translator's call on the verb ("focus") and where a multiplexer name sits in a Chinese
+  // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
+  "paneActions.focus.labelWithMux": "在终端中显示",
+  "paneActions.focus.labelFallback": "在终端中显示",
+  "paneActions.focus.done": "已在终端中显示",
+  "paneActions.focus.failed": "无法在终端中显示",
   "paneActions.empty.fallback": "此多路复用器不提供任何窗格操作。",
   "paneActions.status.renamed": "已重命名",
   "paneActions.status.labelCleared": "标签已清除",

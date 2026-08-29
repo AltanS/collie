@@ -276,9 +276,13 @@ export const ko: Dictionary = {
   "paneActions.close.label": "창 닫기",
   "paneActions.close.confirm": "닫으려면 다시 탭하세요",
   "paneActions.close.closing": "닫는 중…",
-  "paneActions.showInTerminal.label": "터미널에 표시",
-  "paneActions.showInTerminal.done": "터미널에 표시했어요",
-  "paneActions.showInTerminal.failed": "터미널에 표시하지 못했어요",
+  // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
+  // translator's call on the verb ("focus") and where a multiplexer name sits in a Korean
+  // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
+  "paneActions.focus.labelWithMux": "터미널에 표시",
+  "paneActions.focus.labelFallback": "터미널에 표시",
+  "paneActions.focus.done": "터미널에 표시했어요",
+  "paneActions.focus.failed": "터미널에 표시하지 못했어요",
   "paneActions.empty.fallback": "이 멀티플렉서는 창에 대한 동작을 제공하지 않아요.",
   "paneActions.status.renamed": "이름을 바꿨어요",
   "paneActions.status.labelCleared": "라벨을 지웠어요",

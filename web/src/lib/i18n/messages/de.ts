@@ -284,9 +284,13 @@ export const de: Dictionary = {
   "paneActions.close.label": "Pane schließen",
   "paneActions.close.confirm": "Erneut antippen zum Schließen",
   "paneActions.close.closing": "Schließt…",
-  "paneActions.showInTerminal.label": "Im Terminal anzeigen",
-  "paneActions.showInTerminal.done": "Im Terminal angezeigt",
-  "paneActions.showInTerminal.failed": "Konnte es nicht im Terminal anzeigen",
+  // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
+  // translator's call on the verb ("focus") and where a multiplexer name sits in a German
+  // sentence. Kept the old "show" wording for now rather than guess; `{mux}` is unused here.
+  "paneActions.focus.labelWithMux": "Im Terminal anzeigen",
+  "paneActions.focus.labelFallback": "Im Terminal anzeigen",
+  "paneActions.focus.done": "Im Terminal angezeigt",
+  "paneActions.focus.failed": "Konnte es nicht im Terminal anzeigen",
   "paneActions.empty.fallback": "Dieser Multiplexer bietet keine Aktionen für ein Pane.",
   "paneActions.status.renamed": "Umbenannt",
   "paneActions.status.labelCleared": "Label gelöscht",

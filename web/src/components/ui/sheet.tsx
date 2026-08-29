@@ -28,7 +28,15 @@ function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | n
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
-  title?: string;
+  /**
+   * A string everywhere except PaneActionsSheet, which composes the pane name with a `HostChip`
+   * (the "which machine" disambiguator) on the same row — so this is `ReactNode`, not `string`.
+   * Every other caller already passes a plain translated string, which is a `ReactNode` too, so
+   * widening this cost them nothing. The `title ? … : undefined` id-linking below still works
+   * because a non-empty node is truthy and the only falsy `ReactNode`s a caller passes here are
+   * `undefined` and `""`, both "no title".
+   */
+  title?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
@@ -159,14 +167,23 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
             {/* 4px tall, 36px wide — a stadium, so it takes the house 2px rather than full-round. */}
             <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />
           </div>
-          <div className="flex items-center justify-between px-4 pb-3">
-            <span id={title ? titleId : undefined} className="text-sm font-semibold">
+          <div data-slot="sheet-title-row" className="flex items-center justify-between px-4 pb-3">
+            <span
+              id={title ? titleId : undefined}
+              data-slot="sheet-title"
+              // `flex min-w-0 flex-1 items-center gap-1.5`: harmless for the plain-string title
+              // every caller but PaneActionsSheet passes (a lone text child in a flex box still
+              // renders as one line) and is what lets THAT caller's composed node — the pane name
+              // plus a `HostChip` — share the row and shrink into it instead of overflowing past
+              // the close button.
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
+            >
               {title}
             </span>
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="size-8 shrink-0"
               onClick={onClose}
               aria-label={translate("common.closeAria")}
             >

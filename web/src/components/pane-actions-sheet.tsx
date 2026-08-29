@@ -4,13 +4,13 @@ import { Monitor, Pencil, ScrollText, Search, XCircle } from "lucide-react";
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
-import { useHostWriteBlock } from "@/components/pack-provider";
+import { useHostWriteBlock, usePack } from "@/components/pack-provider";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useLocale } from "@/hooks/use-locale";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
-import { useMuxCapability } from "@/lib/mux-capability";
+import { useMuxCapability, useMuxName } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
 import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -86,6 +86,19 @@ export function PaneActionsSheet({
   const canClose = useMuxCapability("closePane");
   const canFocus = useMuxCapability("setFocus");
   const [focusing, setFocusing] = useState(false);
+  // The mux name for the "Focus in <mux>" row and its toast — see `focusMux` below for why this
+  // is gated to panes on the LOCAL machine before it's trusted.
+  const localMuxName = useMuxName();
+  const { lead } = usePack();
+  // `useMuxName()` always answers for the collie THIS PAGE IS RUNNING ON (its own `/api/config`,
+  // never a peer's — see that hook's own comment). A pane's `host` is undefined on a solo install
+  // and, on a pack, is the LEAD's own id for a lead-hosted pane (lib/types.ts's doc on `host`) — so
+  // either of those means "focus" runs on the mux this page already knows the name of. A pane whose
+  // `host` names some OTHER member may be driven by a different multiplexer entirely, and naming the
+  // local one would be a guess dressed as a fact. `focusMux` is `""` in that case, which is also the
+  // "bridge hasn't answered yet" case `useMuxName()` itself returns — both get the same generic,
+  // never-wrong fallback copy below.
+  const focusMux = pane?.host === undefined || pane.host === lead ? localMuxName : "";
 
   // Reset to the action list — and reprefill the label — whenever the sheet opens on a (new) pane,
   // AND whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the
@@ -159,10 +172,10 @@ export function PaneActionsSheet({
     try {
       const res = await api.focusPane(pane.paneId, scope);
       if (res.ok) {
-        setStatus(t("paneActions.showInTerminal.done"), "success");
+        setStatus(t("paneActions.focus.done"), "success");
         onClose();
       } else {
-        setStatus(describeApiError(res, t("paneActions.showInTerminal.failed")), "error");
+        setStatus(describeApiError(res, t("paneActions.focus.failed")), "error");
       }
     } catch (e) {
       setStatus(describeThrownError(e), "error");
@@ -177,7 +190,28 @@ export function PaneActionsSheet({
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={pane ? paneDisplayName(pane) : t("paneActions.title.fallback")}
+      title={
+        pane ? (
+          // Every row below acts on THIS pane on THIS machine — rename, close, focus — so the
+          // machine belongs beside the name in the one place every one of those rows sits under:
+          // the title. `HostChip` self-hides on a solo install (its own `multi` gate), so this
+          // row is byte-identical to the old plain-string title everywhere except a pack.
+          //
+          // The pane name truncates; the host does not. `min-w-0 truncate` on the name plus
+          // `HostChip`'s own `shrink-0` is what makes that trade: the host is short, bounded, and
+          // is the disambiguator that makes "close" and "focus" safe to tap — a truncated machine
+          // name is worse than a truncated pane name, because it is the half that keeps you from
+          // acting on the wrong one.
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span data-slot="pane-actions-title-name" className="min-w-0 truncate">
+              {paneDisplayName(pane)}
+            </span>
+            <HostChip host={pane.host} variant="target" />
+          </span>
+        ) : (
+          t("paneActions.title.fallback")
+        )
+      }
     >
       {/* The READ rows lead, and they sit OUTSIDE the read-only / host-unreachable gates below on
           purpose. Neither of those refusals is about them: find searches a buffer this phone already
@@ -227,9 +261,9 @@ export function PaneActionsSheet({
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
-          {/* Close kills a real terminal; on a pack the sheet says which machine's before you arm
-              the two-tap. Renders nothing on a single-host install. */}
-          <HostChip host={pane?.host} variant="target" className="mb-1 self-start" />
+          {/* Close kills a real terminal, and on a pack the sheet says which machine's — but that
+              chip now lives in the TITLE row above (beside the pane name), since every row here,
+              not just Close, acts on this pane's machine. Nothing to render here on its own. */}
           {/* Each row asks its OWN capability, not one "can this sheet do things" flag: a
               multiplexer that renames but will not close is an ordinary shape, and a single gate
               would take the other row down with it. A row a multiplexer cannot back is HIDDEN — the
@@ -246,7 +280,11 @@ export function PaneActionsSheet({
           {canFocus.capable && (
             <ActionRow
               icon={<Monitor className="size-4 shrink-0 text-muted-foreground" />}
-              label={t("paneActions.showInTerminal.label")}
+              label={
+                focusMux
+                  ? t("paneActions.focus.labelWithMux", { mux: focusMux })
+                  : t("paneActions.focus.labelFallback")
+              }
               onClick={() => void showInTerminal()}
             />
           )}
