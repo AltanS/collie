@@ -1,5 +1,5 @@
 import { useState, type ComponentProps } from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
@@ -149,10 +149,11 @@ describe("AgentChat — header title block", () => {
   });
 });
 
-// THE PANE HEADER'S IDENTITY BLOCK — a caption (host · state), the name at full width, and a cwd
-// line that only appears when it has something to add. The host chip and the status pill both left
-// the row: the state now rides with the identity it describes rather than competing with the two
-// actions for the name's width.
+// THE PANE HEADER'S IDENTITY BLOCK — TWO lines now: the name at full width, and a cwd line that only
+// appears when it has something to add. The caption line above them is gone, and the status word it
+// held moved DOWN to the composer's status strip, beside the host. The dot badged onto the agent's
+// own tile did NOT move: dot and word carry the state together (status-badge.tsx measures why a dot
+// alone cannot), and only one half of the pair changed address.
 //
 // Every query below is scoped to the render's OWN container by data-slot. `ui/strip-host.tsx` mounts
 // two permanent, empty sr-only live regions, so a bare `screen.getByRole("status")` is ambiguous in
@@ -161,19 +162,25 @@ describe("AgentChat — the pane header's identity block", () => {
   const identity = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-identity"]');
   const slot = (c: HTMLElement, name: string) =>
     c.querySelector<HTMLElement>(`[data-slot="pane-${name}"]`);
+  /** The composer's status strip — where the word went. Same render, same container, same rule. */
+  const strip = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="composer-status"]');
   /** Every named mark inside the identity block — the agent's own logo is one too. */
   const names = (c: HTMLElement) =>
     Array.from(identity(c)?.querySelectorAll('[role="img"]') ?? []).map((e) =>
       e.getAttribute("aria-label"),
     );
 
-  it("says the state in a WORD as well as in the dot, in every state the app has", () => {
-    // THE ONE THIS ROUND EXISTS FOR. Reducing the state to colour alone does not survive a
-    // colour-vision simulation on the app's own tokens: for a deuteranope, blocked / working / done
-    // collapse to ONE colour in light theme, and "needs you" against "done" — the most consequential
-    // opposite pair the app has — collapses in BOTH themes. Idle and unknown are 0.02 apart in
-    // lightness and are the same dot for everybody. So the dot is the anchor and the word is the
-    // statement, and the header owes both.
+  it("says the state in a WORD on the composer strip and in the DOT up here, in every state", () => {
+    // THE ONE THIS ROUND EXISTS FOR, restated after the move. Reducing the state to colour alone does
+    // not survive a colour-vision simulation on the app's own tokens: for a deuteranope, blocked /
+    // working / done collapse to ONE colour in light theme, and "needs you" against "done" — the most
+    // consequential opposite pair the app has — collapses in BOTH themes. Idle and unknown are 0.02
+    // apart in lightness and are the same dot for everybody. So the word may move, and may not go.
+    //
+    // THREE claims per status, and each fails on its own: the word is ON the composer's status strip,
+    // the word is NOT in the header any more, and the dot is STILL badged onto the agent's tile.
+    // Delete the word and the first fails; leave it in the caption and the second fails; drop the
+    // badge while "tidying" the header and the third fails.
     //
     // Exhaustive by construction: a `Record<AgentStatus, string>` literal is complete-checked by tsc,
     // so a sixth status cannot be added without either teaching this test or failing the typecheck.
@@ -190,44 +197,47 @@ describe("AgentChat — the pane header's identity block", () => {
     for (const [status, word] of Object.entries(words) as [AgentStatus, string][]) {
       const agent = { ...fixtureAgents[0]!, status };
       const { container } = renderChat({ agent, agents: [agent] });
-      const caption = slot(container, "caption");
-      expect(caption).not.toBeNull();
-      expect(caption?.textContent).toContain(word); // the word, in the caption — not the right cluster
+      expect(strip(container)?.textContent).toContain(word); // down at the write surface
+      // …and NOT in the identity block's own text. (Its aria-label still carries the state — see the
+      // accessibility-tree test below — because a label on a button replaces everything inside it.)
+      expect(identity(container)?.textContent).not.toContain(word);
+      expect(slot(container, "caption")).toBeNull(); // the line itself is gone, not merely emptied
       // …and the dot is still there, badged onto the agent's own tile inside the identity block, and
       // it NAMES itself. The dot is an empty span; unnamed it reaches no screen reader and matches no
       // text query. (The AgentIcon beside it is also a role="img", hence the list rather than a
       // first-match query — the assertion is that the state is among the named marks.)
       expect(names(container)).toContain(word);
+      cleanup();
     }
-    // A bare shell has no agent status; the caption still carries a word, or a solo install's caption
-    // row would be two glyphs and nothing to read.
+    // A bare shell has no agent status; the strip still carries a word, or a solo install's strip
+    // would be empty and the row would be a run of buttons with nothing said above it.
     const shell = renderChat({ agent: fixtureShellPanes[0]!, agents: [fixtureShellPanes[0]!] });
-    expect(slot(shell.container, "caption")?.textContent).toContain("shell");
+    expect(strip(shell.container)?.textContent).toContain("shell");
     expect(names(shell.container)).toEqual([]); // no agent, no status, so no badge to name
   });
 
-  it("no longer carries the host — that question moved to the composer, where it is asked", () => {
-    // THE OTHER HALF OF THIS ROUND. The caption line used to lead with the machine, which spent the
-    // identity block's width on an answer to a question nobody has while READING. It is docked in
-    // the composer's text box now (composer.test.tsx), so this asserts the absence here and the
-    // presence there — a chip deleted from both files passes neither.
+  it("carries neither the host nor the state — both stand on the composer's strip, as one sentence", () => {
+    // THE OTHER HALF, now complete. The caption line led with the machine, which spent the identity
+    // block's width on an answer to a question nobody has while READING; the machine left first and
+    // the word followed it. Both are asserted absent HERE and present THERE, so a run deleted from
+    // both files passes neither test.
     //
-    // Scoped to the block by data-slot, never by a bare role query: `ui/strip-host.tsx` mounts two
-    // permanent sr-only live regions, so `getByRole("status")` is ambiguous in any tree with a host
-    // in it and would fail as "missing" rather than "duplicated".
-    renderPackChat("workshop"); // a REAL pack — the solo case proves nothing, HostChip hides there
-    const caption = document.querySelector<HTMLElement>('[data-slot="pane-caption"]');
-    expect(caption?.textContent).toContain("needs you"); // the line still has its one word
-    expect(caption?.textContent).not.toMatch(/workshop/i);
-    expect(caption?.querySelector('[aria-label*="workshop" i]')).toBeNull();
-    // …and the whole identity block, not just the caption: the machine is not tucked into the name
-    // line or badged onto the agent's tile instead.
-    const block = document.querySelector<HTMLElement>('[data-slot="pane-identity"]');
+    // Scoped by data-slot, never by a bare role query: `ui/strip-host.tsx` mounts two permanent
+    // sr-only live regions, so `getByRole("status")` is ambiguous in any tree with a host in it and
+    // would fail as "missing" rather than "duplicated".
+    const { container } = renderPackChat("workshop"); // a REAL pack — HostChip hides on a solo one
+    expect(slot(container, "caption")).toBeNull();
+    const block = identity(container);
     expect(block?.textContent).not.toMatch(/workshop/i);
-    // It IS on the screen, once, at the box you type into — and this pane's machine is unreachable,
-    // so the docked chip carries the fault with it rather than the composer showing a calm host name
-    // beside a placeholder that says the write will be refused.
-    expect(screen.getByLabelText(/^sends to host: workshop \(unreachable\)$/i)).toBeInTheDocument();
+    expect(block?.textContent).not.toContain("needs you");
+    // …and one strip below carries the pair, in that order: which machine, then what it is doing.
+    const line = strip(container);
+    expect(line?.textContent).toBe("workshopneeds you");
+    // This pane's machine is unreachable, so the host run carries the fault with it rather than
+    // showing a calm name beside a placeholder that says the write will be refused.
+    expect(
+      within(line!).getByLabelText(/^sends to host: workshop \(unreachable\)$/i),
+    ).toBeInTheDocument();
   });
 
   it("puts the state into the accessibility tree, which the caption's own text cannot do", () => {
@@ -255,15 +265,19 @@ describe("AgentChat — the pane header's identity block", () => {
     expect(cls).not.toMatch(/(^|\s)(?:p|py)-\d/);
   });
 
-  it("still fits the row's stated 60px floor with all three lines present", () => {
-    // THE COUPLING, and it spans two files. agent-chat.tsx states the three line boxes and the gap
-    // between them; app-header.tsx states the row's floor and the padding that has to hold them. Each
-    // edit looks complete on its own, and the failure is a header that grows on ONE route — the
+  it("is TWO lines now, and the row still stands on its 60px floor rather than shrinking to them", () => {
+    // THE COUPLING, and it spans two files. agent-chat.tsx states the line boxes and the gap between
+    // them; app-header.tsx states the row's floor and the padding that has to hold them. Each edit
+    // looks complete on its own, and the failure is a header that changes height on ONE route — the
     // navigation jump `min-h-15` exists to kill. So the arithmetic is read off the rendered elements
-    // rather than trusted: 12 + 4 + 20 + 4 + 12 = 52 = 60 − 2×4.
+    // rather than trusted.
     //
-    // If a future change genuinely needs more, DESIGN.md §6's answer is to raise the shared floor
-    // app-wide — never to clip, never to fix the height, never to let one route ride higher.
+    // The block lost its caption line, so it is 20 + 4 + 12 = 36px where it was 52px. `min-h-15` is a
+    // FLOOR and not a sum: 36px of lines plus 2×4px of padding is 44px, well under 60, so the row
+    // measures 60px exactly as it did before and on every other route. That is the assertion —
+    // shrinking the header to fit the shorter block would lower a floor shared app-wide, which
+    // DESIGN.md §6 forbids. (Verified in the playground at a true 390px content width: the header
+    // row is 60.00px before and after, the identity button 52 → 44px, the lines box 52 → 36px.)
     const { container } = renderChat({
       agent: { ...fixtureAgents[0]!, cwd: "/home/you/webapp/worktrees/fix-42" },
     });
@@ -276,23 +290,22 @@ describe("AgentChat — the pane header's identity block", () => {
     const floor = spacing(row?.className ?? "", /(?:^|\s)min-h-(\d+)(?=\s|$)/);
     const pad = spacing(row?.className ?? "", /(?:^|\s)py-(\d+)(?=\s|$)/);
     const gap = spacing(slot(container, "lines")?.className ?? "", /(?:^|\s)gap-(\d+)(?=\s|$)/);
-    // The caption's height is the status word's own line box; the name and the cwd state theirs.
-    const caption = spacing(
-      slot(container, "caption")?.textContent === undefined
-        ? ""
-        : (slot(container, "caption")?.querySelector("span:last-child")?.className ?? ""),
-      /(?:^|\s)text-\[10px\]\/(\d+)(?=\s|$)/,
-    );
     const name = spacing(slot(container, "name")?.className ?? "", /(?:^|\s)leading-(\d+)(?=\s|$)/);
     const cwd = slot(container, "cwd");
-    expect(cwd, "the third line must actually be rendered for this to be a three-line test").not.toBeNull();
+    expect(cwd, "the second line must actually be rendered for this to be a two-line test").not.toBeNull();
     const cwdBox = spacing(cwd?.className ?? "", /(?:^|\s)leading-(\d+)(?=\s|$)/);
 
-    expect([caption, name, cwdBox, gap, pad, floor]).toEqual([12, 20, 12, 4, 4, 60]);
-    expect(caption + gap + name + gap + cwdBox).toBe(floor - 2 * pad);
-    // The two-line case is the one the floor above catches rather than the padding: 36px of lines in
-    // a 52px box, which is why the identity button states `min-h-11`.
-    expect(caption + gap + name).toBeLessThan(44);
+    // There is no third line to measure, and that is the first claim: the caption row is REMOVED,
+    // not emptied. An empty flex row would still cost its gap and would reappear the moment somebody
+    // put something back in it.
+    expect(slot(container, "caption")).toBeNull();
+    expect(slot(container, "lines")?.children).toHaveLength(2);
+    expect([name, cwdBox, gap, pad, floor]).toEqual([20, 12, 4, 4, 60]);
+    // The lines no longer fill the content box — the FLOOR is what holds the row up, and it must.
+    expect(name + gap + cwdBox + 2 * pad).toBeLessThan(floor);
+    // Which is also why the identity button has to state its own 44px box: 36px of lines would draw
+    // a 36px tap target in the row that states the floor for everything else.
+    expect(name + gap + cwdBox).toBeLessThan(44);
   });
 
   it("shows the cwd when it adds a segment and hides it when it only repeats the name", () => {
@@ -793,16 +806,21 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(document.activeElement).toBe(field);
   });
 
-  // The status word moved into the identity block and must stay ahead of the action cluster, which is
-  // now one control rather than two. Same rule, one fewer button.
-  it("keeps the status word inside the identity, ahead of the menu", () => {
+  // The status word has left this row entirely — it stands on the composer's status strip now. What
+  // the header row still owes is its ORDER: the identity leads and the one action follows it. The
+  // word's own absence here is asserted rather than assumed, because "the header got quieter" is
+  // exactly the kind of change that silently takes a state report with it.
+  it("holds the identity ahead of the menu, and holds no status word at all", () => {
     const agent = { ...fixtureAgents[0]!, hasSession: true };
-    renderChat({ agent, agents: [agent] });
+    const { container } = renderChat({ agent, agents: [agent] });
     const menu = screen.getByRole("button", { name: "Pane actions" });
-    const word = screen.getByText("needs you"); // fixtureAgents[0] is blocked \u2192 "needs you"
-    expect(menu.compareDocumentPosition(word) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     const title = screen.getByRole("button", { name: /open webapp overview/i });
-    expect(title.contains(word)).toBe(true);
+    expect(title.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(headerRow(container).textContent).not.toContain("needs you");
+    // …and it is not simply missing: it is one row down, at the surface being typed into.
+    expect(container.querySelector('[data-slot="composer-status"]')?.textContent).toContain(
+      "needs you",
+    );
   });
 });
 
@@ -938,8 +956,8 @@ function renderPackChat(host: string, overrides: Partial<ComponentProps<typeof A
       ),
     },
   ]);
-  render(<RouterProvider router={router} />);
-  return props;
+  const { container } = render(<RouterProvider router={router} />);
+  return { props, container };
 }
 
 describe("AgentChat — a pane on a host the lead can't reach", () => {

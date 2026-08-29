@@ -33,7 +33,7 @@ import { HostStaleBanner } from "@/components/host-stale-banner";
 import { useHostHealth } from "@/components/pack-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
-import { StatusDot, StatusWord } from "@/components/status-badge";
+import { StatusDot } from "@/components/status-badge";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
@@ -139,7 +139,7 @@ export function AgentChat({
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
   const grammarsOn = !prefs.rawTerminal;
   const isShell = agent?.kind === "shell";
-  // The header's line 2 — the pane's rendered NAME. Hoisted out of the JSX because line 3 is gated
+  // The header's line 1 — the pane's rendered NAME. Hoisted out of the JSX because line 2 is gated
   // against it: the cwd shows only when it names a segment this string does not already show.
   const paneName =
     agent === undefined
@@ -713,7 +713,9 @@ export function AgentChat({
           // row (the Spanish "desconocido" chip measures 111px and left the pane name 24px at 390px), and it was
           // sitting in the row's action neighbourhood while being the one thing here that is not an
           // action. It moved into the identity block, where the state belongs to the pane it
-          // describes — the dot badged onto the agent's own tile, the word in the caption line.
+          // describes — the dot badged onto the agent's own tile. The WORD that rides with it has
+          // since moved on again, down to the composer's status strip beside the host, and the dot
+          // stayed: DESIGN.md's reason for having both is unchanged, only where the word stands.
           // The budget rule this holds to: one Leave (the Collie mark) + one flexible Identity, which
           // carries the state + at most two Actions. The Identity is the only flexible element; when
           // the row would squeeze it below a recognisable handle, the newest FIXED element leaves —
@@ -770,16 +772,17 @@ export function AgentChat({
               data-slot="pane-identity"
               // A REAL 44px hit box, stated. This button is the only way off the pane to the space
               // overview and it measured 39px — under the floor, in the row that states the floor for
-              // everything else. `min-h-11` rather than a taller drawn box, because with three lines
-              // present the block is already 52px and the floor only has to catch the two-line case.
-              // The old `py-0.5` is gone with it: 52px of lines plus 4px of padding is 56px in a 52px
-              // content box, which would have grown the row to 64px on the pane route alone — the
+              // everything else. `min-h-11` is 44px and it is now what DRAWS this button: with the
+              // caption line gone the block is 36px of lines (name 20 + gap 4 + cwd 12), or 20px with
+              // no cwd, so the floor catches every case rather than only the short one. No vertical
+              // padding on top of it, for the reason it never had any: lines plus padding must stay
+              // inside the row's 52px content box or the header grows on the pane route alone — the
               // route-local growth `min-h-15` exists to prevent.
               className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 text-left transition-colors active:bg-muted/60"
             >
               {/* The subject, with the state badged onto its corner — `agent-card.tsx`'s pattern, not
-                  a new one. Two reasons it is here rather than the state sitting alone in the caption
-                  run. First, the header had lost its only focal point when the filled status chip
+                  a new one. Two reasons it is here rather than the state standing alone in a line of
+                  its own. First, the header had lost its only focal point when the filled status chip
                   left: the heaviest mark in the row became the Collie mark, i.e. the button that
                   LEAVES the pane, with nothing for the eye to land on in the pane's own identity.
                   Second, in dark theme the Claude tile's orange (oklch 0.672 0.131 39) and
@@ -798,7 +801,7 @@ export function AgentChat({
                   <AgentIcon agent={agent.agent} className="size-6" />
                 )}
                 {/* A shell pane has no agent status, so it gets no badge — the tile alone says what it
-                    is, and the caption's "shell" says it in words. The dot IS named here, unlike every
+                    is, and the composer strip's "shell" says it in words. The dot IS named here, unlike every
                     other StatusDot in the app: it is the only one that stands alone rather than
                     leading a word, so unnamed it would be an empty span that names nothing and matches
                     no text query. In focus mode the button's own aria-label is what a screen reader
@@ -815,26 +818,30 @@ export function AgentChat({
                   />
                 )}
               </div>
-              {/* Three lines with 4px between them — see the row's own note in app-header.tsx for why
+              {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
                   the air moved from outside the block to inside it. Each line states its own height
-                  (12 / 20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
-                  body's 1.45 strut and the block silently becomes ~54px, which the row would then have
-                  to grow to hold. */}
+                  (20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
+                  body's 1.45 strut and the block silently becomes taller than the row was measured
+                  for.
+
+                  THE CAPTION LINE IS GONE, and the word it held is not. Line 1 carried the status
+                  word alone once the host left for the composer, so the top of the pane spent a
+                  whole line of a 60px row on one word — the operator asked for that top back. The
+                  word DID NOT get deleted with the line: simulated on the app's own `--status-*`
+                  tokens, a deuteranope reads blocked / working / done as ONE colour in light theme
+                  and "needs you" against "done" collapses in BOTH, so a dot alone cannot carry this
+                  range and deleting the word would have re-opened that failure (status-badge.tsx
+                  states the measurement). It moved DOWN, onto the composer's status strip beside the
+                  host, where "which machine, and what is it doing" reads as one sentence at the
+                  surface you are typing into. The dot badged onto the agent's tile above STAYS — it
+                  is the anchor that welds the state to its subject, and its ring is what separates
+                  it from the Claude tile's own orange.
+
+                  The row does not shrink for the missing line: `min-h-15` is a FLOOR (app-header.tsx),
+                  36px of lines centred in it still measures 60px, and that floor is shared by every
+                  route and must not be lowered to fit this one. */}
               <div data-slot="pane-lines" className="flex min-w-0 flex-1 flex-col gap-1">
-                {/* Line 1, the caption: what this pane is DOING. The host used to lead this line and
-                    has moved to the composer — "which machine will this land on" is a question you
-                    have while writing, not while reading, and it is now answered at the write
-                    surface itself (composer.tsx), in both action sheets, and by the host-stale
-                    notice when the machine is the problem.
-                    WHAT IS LEFT IS ONE WORD in a 212px line, and that is worth saying out loud
-                    rather than hiding in a diff: on every install this line now carries the status
-                    word alone. It is deliberately NOT redesigned here — the width it gives back
-                    goes to nothing yet, and folding the word up into the name line is a separate
-                    decision about the block's shape, not a side effect of moving the host. */}
-                <div data-slot="pane-caption" className="flex min-w-0 items-center gap-1.5">
-                  <StatusWord status={isShell ? "shell" : agent.status} stale={connecting} />
-                </div>
-                {/* Line 2, the name, at the FULL width of the block. This is what the round was for:
+                {/* Line 1, the name, at the FULL width of the block. This is what the round was for:
                     with the host pill and the status chip both out of the horizontal race, the name
                     stops sharing its line with anything. A user-set pane label leads when present (the
                     identifier they chose), then Claude's own /rename session name, otherwise the
@@ -842,9 +849,9 @@ export function AgentChat({
                 <span data-slot="pane-name" className="block truncate font-semibold leading-5">
                   {paneName}
                 </span>
-                {/* Line 3, conditional: the path, but only when it names a segment line 2 does not
+                {/* Line 2, conditional: the path, but only when it names a segment line 1 does not
                     already show — see cwdBeyondName. Gated against the RENDERED NAME rather than
-                    against the project, because a hand-set label ("logs") puts no directory on line 2
+                    against the project, because a hand-set label ("logs") puts no directory on line 1
                     at all and the path is then the only thing locating the work. */}
                 {cwd !== null && (
                   <span
@@ -1140,6 +1147,12 @@ export function AgentChat({
               scope={scope}
               agent={agent?.agent}
               isShell={isShell}
+              // The state, as the WORD on the composer's status strip. It used to be the pane
+              // header's caption line; the dot badged onto the agent's tile up there stays, because
+              // the two carry the range together (status-badge.tsx). `stale` is the same
+              // `connecting` the dot reads, so the pair still dims as one.
+              status={agent?.status}
+              stale={connecting}
               gone={gone}
               readOnly={readOnly}
               // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the

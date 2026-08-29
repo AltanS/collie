@@ -4,6 +4,7 @@ import { useRevalidator } from "react-router";
 import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
+import type { AgentStatus } from "@/lib/types";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
@@ -25,6 +26,7 @@ import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-config";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
+import { StatusWord } from "@/components/status-badge";
 import { useAmbientHost, useHostLabel } from "@/components/pack-provider";
 import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
@@ -50,8 +52,22 @@ interface ComposerProps {
   scope?: Scope;
   /** The pane's agent name — drives the slash-command palette and the reply-vs-shell placeholder. */
   agent: string | undefined | null;
-  /** True for a bare shell pane (tweaks the placeholder copy). */
+  /** True for a bare shell pane (tweaks the placeholder copy, and is its own status word). */
   isShell: boolean;
+  /**
+   * What the pane is DOING, as the word on the status strip above the controls row. Undefined only
+   * when there is no pane left to describe (`gone`), where the strip stands empty.
+   *
+   * It lives here rather than in the pane header because that is where the operator's question is:
+   * the header's caption line held this one word and nothing else, so the top of a 60px row was
+   * spent on it. Beside the host it completes a sentence — which machine, and what is it doing —
+   * at the surface being typed into. The header keeps the DOT badged on the agent's own tile; the
+   * word is the half of that pair a colour-blind reader can use (status-badge.tsx measures why),
+   * so it moved rather than went.
+   */
+  status?: AgentStatus;
+  /** The reading is the last snapshot's, not live — dims the word exactly as the header's dot dims. */
+  stale?: boolean;
   /** Pane is gone (no agent) — locks the composer with a distinct placeholder. */
   gone: boolean;
   /** This device isn't authorised to type — locks the composer with a distinct placeholder. */
@@ -195,7 +211,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, onSent },
+  { paneId, scope, agent, isShell, status, stale, gone, readOnly, hostBlock, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -219,6 +235,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // carried in `?h=` since the row was opened), so the ambient scope IS the target here. Undefined on
   // a solo install, which renders no chip and leaves every confirm string unchanged.
   const writeHost = useAmbientHost(scope?.host);
+  // The word for the status strip. A bare shell has no agent and therefore no agent status, but it
+  // still owes the strip a word or a solo install's strip would be empty; a GONE pane has nothing
+  // left to describe, and the strip stands empty rather than reporting a stale state as current.
+  const statusWord: AgentStatus | "shell" | undefined = isShell ? "shell" : status;
   // Its display name, or undefined when there is no pack — the copy-level half of the hide rule.
   const writeHostLabel = useHostLabel(scope?.host);
   // …and a ref alongside it, for the ONE caller that reads it after an await. `send()` checks
@@ -983,9 +1003,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             buttons the rest of a 390px phone. */}
         {/* THE STRIP ABOVE THE BUTTONS IS A STATUS LINE, NOT A HEADING. `pt-3` on the row reserves
             12px above the toggles and whatever stands there is lifted OUT of the flex flow, so the
-            occupant costs the row no width at all. It used to hold the word "Controls", which named
-            a row whose five buttons already carry their own labels; it now holds the machine every
-            one of those buttons — and the field below — writes to.
+            occupants cost the row no width at all. It used to hold the word "Controls", which named
+            a row whose five buttons already carry their own labels; it now reads as ONE SENTENCE —
+            the machine every one of those buttons (and the field below) writes to, and what that
+            machine's pane is doing.
 
             WHY HERE AND NOT IN THE FIELD. The host was docked inside the text box for one round.
             The reasoning survives ("which machine will this land on" is asked while writing, not
@@ -993,13 +1014,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             widest and most contested part of the composer. This strip is at the same write surface
             and its width was already bought and already unused. Same answer, no bill.
 
+            WHY THE STATUS WORD CAME DOWN HERE. It was the pane header's caption line, and once the
+            host left that line it was ONE word holding a whole line of a 60px row — the operator
+            asked for the top back. It could not simply be deleted: on the app's own `--status-*`
+            tokens a deuteranope reads blocked / working / done as one colour in light theme, and
+            "needs you" against "done" collapses in both, so the DOT alone cannot carry the range
+            (status-badge.tsx holds the measurement). The dot stays badged on the agent's tile in the
+            header, welded to its subject; the word stands here, where the same question is being
+            asked about the same machine.
+
             NOTHING HERE CAN MOVE THE ROW. The 12px is reserved unconditionally by `pt-3` and the
-            occupant is `absolute`, so the row stands at one height on a solo install (where HostChip
-            renders null — its hide rule, unchanged), on a pack, and across every relabelling of a
-            machine in between. MEASURED: 56px in both topologies, both themes, at 390px and at
-            320px. `max-w-full` makes the name truncate into the strip rather than widen past it; the
-            chip's `text-[10px]/3` is a 12px line box, exactly the reservation. DESIGN.md §2: reserve,
-            never reflow. */}
+            occupants sit in ONE `absolute` box, so the row stands at one height on a solo install
+            (where HostChip renders null — its hide rule, unchanged, leaving the word alone), on a
+            pack, and across every relabelling of a machine in between. Both runs are `text-[10px]/3`
+            — a 12px line box, exactly the reservation — and the icon beside the host is `size-3`,
+            the same 12. `max-w-full` on the box plus `min-w-0` on the chip makes the HOST truncate
+            into the strip; the word carries `shrink-0` and never does, because the word is the half
+            of the pair that a colour-blind reader depends on. DESIGN.md §2: reserve, never reflow.
+
+            RIGHT-ALIGNED, and the row's inset trimmed with it: `-mx-0.5` pulls the row 2px out of
+            the dock's `px-3` on each side, so the strip's inset is 10px rather than 12px. It is a
+            margin on the ROW and not a smaller `px-*` on the dock, because the dock's gutter is also
+            the input field's and the operator asked about this row. Two pixels is the smallest step
+            Tailwind's scale offers here, which is what "slightly" bought. The buttons below gain 1px
+            of width each and keep their 44px box. */}
         {/* `gap-1.5` rather than `gap-2`: four gaps at 8px is 32px of a 366px row, and 6px reads the
             same. The group still carries `aria-labelledby` to the word "Controls" — the word is now
             `sr-only` rather than deleted, because it was doing TWO jobs and only one of them was
@@ -1012,12 +1050,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           data-slot="composer-controls"
           role="group"
           aria-labelledby="composer-controls-label"
-          className="relative mb-2 flex items-center gap-1.5 pt-3"
+          className="relative -mx-0.5 mb-2 flex items-center gap-1.5 pt-3"
         >
           <SectionLabel id="composer-controls-label" className="sr-only">
             {translate("composer.controls.label")}
           </SectionLabel>
-          <HostChip host={writeHost} variant="caption" className="absolute left-0 top-0 max-w-full" />
+          {/* One out-of-flow box for both runs, right-aligned. It is a single box rather than two
+              separately-positioned children so the pair reads as one line and so the host's
+              truncation is decided against the word's real width, not against the whole row. */}
+          <div
+            data-slot="composer-status"
+            className="absolute right-0 top-0 flex max-w-full items-center gap-1.5"
+          >
+            <HostChip host={writeHost} variant="caption" className="min-w-0" />
+            {statusWord !== undefined && <StatusWord status={statusWord} stale={stale} />}
+          </div>
           {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
               again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
               while open. Both share the single-valued `drawer`, so opening one closes the other. */}

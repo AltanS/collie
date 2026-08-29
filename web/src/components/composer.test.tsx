@@ -1240,6 +1240,8 @@ describe("Composer — destructive-input confirm", () => {
 describe("Composer — the host stands on the controls row, not in the field", () => {
   const box = () => screen.getByPlaceholderText(/type a reply/i);
   const row = () => document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
+  /** The out-of-flow status strip inside it: the host run, the status word, or both. */
+  const strip = () => document.querySelector<HTMLElement>('[data-slot="composer-status"]')!;
   /** The field's own reserved strip. Read off the class, because the jsdom render has no layout. */
   const reserved = (el: HTMLElement) => /(?:^|\s)pr-(\d+)(?=\s|$)/.exec(el.className)?.[1];
 
@@ -1292,21 +1294,69 @@ describe("Composer — the host stands on the controls row, not in the field", (
   });
 
   it("stands at ONE height, solo and pack alike — the strip is reserved, never reflowed", () => {
-    // MEASURED in the playground: 56px in both topologies, both themes, at 390px and at 320px, and
-    // the whole composer block is 129px empty / 177px with a two-line draft in both. jsdom has no
-    // layout, so what is pinned here are the two facts that make that true and that a refactor could
-    // quietly undo — the row's own box is byte-identical between the two renders, and the occupant of
-    // the reserved strip is out of flow, so it cannot size anything.
-    renderComposerWithStatus({ scope: { host: "workshop" } });
+    // MEASURED in the playground at a true 390px content width and at 320px, both themes: the row is
+    // 56.00px with the word alone (solo), with host + word (pack) and with the strip empty (a gone
+    // pane). jsdom has no layout, so what is pinned here are the facts that make that true and that a
+    // refactor could quietly undo — the row's own box is byte-identical between the two renders, the
+    // strip is out of flow so it cannot size anything, and BOTH runs state the same 12px line box,
+    // which is exactly what `pt-3` reserves.
+    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
     const solo = row().className;
     expect(solo).toMatch(/(?:^|\s)pt-3(?=\s|$)/); // the reservation, unconditional
+    expect(strip().className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(strip().parentElement).toBe(row()); // the row's own positioning context, not a wrapper
     cleanup();
 
-    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
     expect(row().className).toBe(solo); // the pack pays nothing for the chip
-    const chip = screen.getByLabelText("Sends to host: workshop");
-    expect(chip.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
-    expect(chip.parentElement).toBe(row()); // in the row's own positioning context, not a wrapper
+    // `text-[10px]/3` on both, and as ONE utility: tailwind-merge drops an earlier `leading-*` when a
+    // later `text-<size>` lands in the same cn(), and that exact fault once rendered the host run at
+    // a 15px line and grew the pane header to 63px. A 12px line box IS the `pt-3` reservation, so a
+    // run that quietly grows is a row that quietly grows.
+    for (const occupant of Array.from(strip().children)) {
+      expect(occupant.className).toContain("text-[10px]/3");
+      expect(occupant.className).not.toMatch(/(?:^|\s)leading-/);
+    }
+  });
+
+  it("holds host + word on a pack, the word ALONE on a solo install, in that order", () => {
+    // THE MOVE THIS ROUND MAKES. The pane header's caption line carried the status word by itself,
+    // so the top of a 60px row was spent on one word; it came down here, beside the machine, where
+    // "which machine, and what is it doing" reads as one sentence at the surface being typed into.
+    // It was MOVED and not deleted: on the app's own tokens a deuteranope reads blocked / working /
+    // done as one colour in light theme, so the header's dot cannot carry the range alone
+    // (status-badge.tsx holds the measurement, agent-chat.test.tsx pins the dot's survival).
+    renderComposerWithStatus({ scope: { host: "workshop" }, status: "blocked" }, fixtureServers);
+    expect(strip().textContent).toBe("workshopneeds you"); // machine first, then what it is doing
+    cleanup();
+
+    // Solo — every install that exists today. HostChip renders null, so the word stands alone and the
+    // strip is still exactly one 12px line: the row does not know or care which case it is in.
+    renderComposerWithStatus({ scope: { host: "workshop" }, status: "blocked" });
+    expect(strip().textContent).toBe("needs you");
+    expect(strip().querySelector('[aria-label*="host" i]')).toBeNull();
+    cleanup();
+
+    // A bare shell has no agent and therefore no agent status, and still owes the strip a word.
+    renderComposerWithStatus({ isShell: true, scope: { host: "workshop" } });
+    expect(strip().textContent).toBe("shell");
+  });
+
+  it("aligns the strip to the right, on a row whose inset is trimmed to 10px", () => {
+    // The operator's ask, and both halves of it are read off the class because jsdom has no layout.
+    // MEASURED in the playground: the row's inset went 12px → 10px on each side (dock `px-3` minus
+    // the row's own `-mx-0.5`), the row 366 → 370px at 390px and 296 → 300px at 320px, and the strip
+    // now ends 10px from the dock's right edge instead of starting 12px from its left. The five
+    // buttons gained 1px of width each and still measure 44.00px tall — DESIGN.md §6's floor.
+    //
+    // `-mx-0.5` on the ROW rather than a smaller `px-*` on the dock: the dock's gutter is also the
+    // input field's, and the ask named this row. tailwind-merge keeps only the LAST padding-* in one
+    // cn(), which is the other reason not to express this as a second padding.
+    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
+    expect(row().className).toMatch(/(?:^|\s)-mx-0\.5(?=\s|$)/);
+    expect(row().className).not.toMatch(/(?:^|\s)px-/); // the inset is the dock's, trimmed — not a new one
+    expect(strip().className).toMatch(/(?:^|\s)right-0(?=\s|$)/);
+    expect(strip().className).not.toMatch(/(?:^|\s)left-0(?=\s|$)/);
   });
 });
 

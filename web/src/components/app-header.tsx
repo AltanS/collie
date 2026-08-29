@@ -117,7 +117,15 @@ export function AppHeader({
           the content box is 52px and the block spends it 12 / 4 / 20 / 4 / 12, so outer air and inner
           air are both 4px and the row still measures exactly 60px on every route. Nothing moves and
           nothing is clipped. What it gives up is the 8px of breathing room a future taller-than-44px
-          child would have got; it gets 4. */}
+          child would have got; it gets 4.
+
+          SINCE THEN the pane's block lost its caption line — the status word moved down to the
+          composer's status strip — so it is TWO lines and 36px, not three and 52px. `py-1` is
+          therefore no longer load-bearing here: 36px of lines centred inside a 60px floor leaves
+          12px of air above and below whether this padding is 4px or 8px, measured both ways. So
+          `py-2` would now read identically and would hand a future taller-than-44px child its 8px
+          back. That is a PROPOSAL, not a change — the number is left exactly where it was measured,
+          one variable at a time. */}
       <div className="flex min-h-15 items-center gap-2 pl-4 pr-2 py-1">
         {override ?? (
           <>
