@@ -117,10 +117,19 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
         className,
       )}
     >
+      {/* `size-2.5` (10px) in the caption run, `size-3` (12px) in the pills — and that is a
+          MEASUREMENT of the strip this run stands in, not a taste. The composer's status band is
+          13px: 12px of line box plus its own 1px rule. A 12px glyph in it is the whole content box,
+          so it ran 0.0 → 12.0 against the band's own top edge — no clearance at the seam above, the
+          rule immediately under it, and an optical centre (6.0) that matched neither the band's
+          (6.5) nor the caps beside it (5.5, before the band took its pixel back). At 10px it is
+          1.5 → 11.5 in the same box, centroid 6.5: the band's centre, the same centre as the text
+          it stands with, and clear of both edges. It is also the right weight beside 10px type —
+          the pill variants sit in boxes with their own padding and keep the 12. */}
       {caption && degraded ? (
-        <ServerOff className="size-3 shrink-0" aria-hidden />
+        <ServerOff className="size-2.5 shrink-0" aria-hidden />
       ) : (
-        <Server className="size-3 shrink-0" aria-hidden />
+        <Server className={cn("shrink-0", caption ? "size-2.5" : "size-3")} aria-hidden />
       )}
       {target && (
         <span className="shrink-0 text-muted-foreground/70" aria-hidden>

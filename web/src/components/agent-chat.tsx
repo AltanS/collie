@@ -1077,31 +1077,17 @@ export function AgentChat({
             </ChatMessageList>
           </div>
 
-          {/* Bottom region: the pane-switch handle + composer. The status line USED to float here as an
+          {/* Bottom region, in the order it paints: the agent's own statusline (the mirror's last row),
+              the pane-switch handle, the composer. The connection status line USED to float here as an
               overlay just above the composer, but it covered the terminal tail (the prompt/cursor and
               up-levelled prompt buttons) — it now lives as a slim row just below the header. */}
           <div className="relative">
 
-            {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
-                panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
-                tap always works). Shown whenever a pane is open — even the last one, so it stays
-                closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
-                browser scroll. */}
-            {agents.length + shellPanes.length > 0 && (
-              <button
-                type="button"
-                aria-label={t("chat.switcher.aria")}
-                {...swipe}
-                onClick={() => setDrawer("switcher")}
-                className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
-              >
-                <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
-              </button>
-            )}
-
             {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
-                would otherwise vanish with the stripped input box). Sits directly above the composer,
-                as it did in the TUI. Verbatim text — React text nodes, so no XSS surface.
+                would otherwise vanish with the stripped input box). It is the LAST ROW OF THE MIRROR,
+                so it is welded to the mirror's bottom edge and nothing may come between the two — it
+                was cut from the pane tail and it reads as the bottom of the screen it was cut from,
+                exactly as it did in the TUI. Verbatim text — React text nodes, so no XSS surface.
 
                 STACKED, one row per line, each truncated — deliberately, over the two alternatives:
                 joining the rows with a separator would put ~150 chars on a strip that fits ~55 at this
@@ -1140,6 +1126,36 @@ export function AgentChat({
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
+                panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
+                tap always works). Shown whenever a pane is open — even the last one, so it stays
+                closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
+                browser scroll.
+
+                IT SITS DIRECTLY ABOVE THE COMPOSER, BELOW THE AGENT'S STATUSLINE, AND THAT ORDER IS
+                THE FIX RATHER THAN A PREFERENCE. It used to render ABOVE the statusline, which made
+                its position a function of pane state: on a pane whose agent prints a statusline the
+                handle stood 50px further up than on one that does not, and the same handle moved
+                again the moment the agent added or dropped a row (the strip is 1–3 rows, re-derived
+                every poll). A control the thumb reaches for by muscle memory may not move because the
+                terminal printed something — DESIGN.md §2. Rendered here it is always the last thing
+                above the composer's status band, on every pane and in every state.
+
+                It also puts the statusline back where it belongs: that strip is the mirror's own last
+                row, cut from the pane tail, and a 34px gap with a grab handle in it read as a seam
+                between the terminal and a piece of chrome that IS the terminal. */}
+            {agents.length + shellPanes.length > 0 && (
+              <button
+                type="button"
+                aria-label={t("chat.switcher.aria")}
+                {...swipe}
+                onClick={() => setDrawer("switcher")}
+                className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+              >
+                <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
+              </button>
             )}
 
             <Composer

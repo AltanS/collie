@@ -1393,19 +1393,25 @@ describe("Composer — the machine and the state, on a band of their own", () =>
   });
 
   it("stands at ONE height — solo, pack, shell, gone, and across every status", () => {
-    // MEASURED in the playground at a true 390px content width and at 320px, English and German,
-    // both themes: the band is 13.00px (a 12px line box + its 1px rule) and band + controls row is
-    // 57.00px, with the word alone (solo), with host + word (pack), on a shell, with no word at all
-    // (a gone pane) and on every one of the five statuses. The five buttons still measure 44.00px —
-    // DESIGN.md §6's floor. It was 56.00px before the rule; the rule is the one pixel it cost, and
-    // the controls row takes NO top padding to pay for the seam, because the button's own box
-    // already holds its icon clear of it.
+    // MEASURED in the browser on the pane screen at a true 390px viewport, both themes: the band is
+    // 13.00px and band + controls row is 57.00px, with the word alone (solo), with host + word
+    // (pack), on a shell, with no word at all (a gone pane) and on every one of the five statuses.
+    // The five buttons still measure 44.00px — DESIGN.md §6's floor. It was 56.00px before the rule;
+    // the rule is the one pixel it cost, and the controls row takes NO top padding to pay for the
+    // seam, because the button's own box already holds its icon clear of it.
+    //
+    // The 13px is now STATED (`h-[13px]`) rather than summed from whatever stands in the band. It
+    // used to be 12px of line box plus the rule, i.e. equal solo and on a pack only because the
+    // occupants happened to agree; an occupant that ever measured 13 would have grown the band and
+    // nothing would have said so. Pinning the border box makes solo and pack identical by
+    // construction, and it is also what lets `pt-px` below buy a pixel without spending one.
     //
     // jsdom has no layout, so what is pinned are the facts that make that true and that a refactor
     // could quietly undo.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
     const soloBand = band().className;
     const soloRow = row().className;
+    expect(soloBand).toMatch(/(?:^|\s)h-\[13px\](?=\s|$)/);
     // The 12px line box is stated on the BAND, not just on the runs inside it, and that is
     // load-bearing: a block layer in the slot takes its line box from its own inherited strut, so
     // without this the 14px page strut wins and the band measures 25px instead of 13px. One utility
@@ -1417,8 +1423,11 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // Nothing pads the row above the buttons any more — the band IS the reservation now.
     expect(soloRow).not.toMatch(/(?:^|\s)pt-/);
     expect(soloRow).not.toMatch(/(?:^|\s)py-/);
-    // …and the band pays for its own rule with no vertical padding either, so 12 + 1 is the whole sum.
-    expect(soloBand).not.toMatch(/(?:^|\s)(?:pt|pb|py)-/);
+    // The band's only vertical padding is the single centring pixel (see the centring test below).
+    // Nothing may pad the BOTTOM or state a `py-*`: the bottom of this box is the rule, and a pixel
+    // spent under the content would push the rule off the 13px the row was argued down to.
+    expect(soloBand).not.toMatch(/(?:^|\s)(?:pb|py)-/);
+    expect(soloBand).toMatch(/(?:^|\s)pt-px(?=\s|$)/);
     cleanup();
 
     for (const overrides of [
@@ -1436,6 +1445,65 @@ describe("Composer — the machine and the state, on a band of their own", () =>
       }
       cleanup();
     }
+  });
+
+  it("centres both occupants on the band's OWN middle, not on its content box's", () => {
+    // THE OPERATOR'S SECOND REPORT: "the status row needs to vertically center the contained divs."
+    //
+    // `items-center` was already here and was already doing its job. The fault it cannot reach is
+    // that the box it centres in is the CONTENT box — 12px — while the band the eye reads is 13px,
+    // because the rule below belongs to the band and not to the centring. MEASURED in the browser
+    // on the pane screen at a true 390px viewport, ink rows relative to the band's own top edge
+    // (0 → 13, rule at 12 → 13), by sampling the rendered pixels rather than the boxes:
+    //
+    //                       BEFORE                    AFTER
+    //   host caps           2.0 → 9.0, centroid 5.54  3.0 → 10.0, centroid 6.54
+    //   status word caps    2.0 → 9.0, centroid 5.48  3.0 → 10.0, centroid 6.48
+    //   host glyph          0.0 → 12.0, centroid 6.00 2.0 → 12.0, centroid 6.99
+    //   band centre         6.5                       6.5
+    //
+    // So the two text runs stood a whole pixel high, with 2px of air above the letters and 4px
+    // below them, and the 12px `size-3` glyph was the whole content box: flush against the seam
+    // above, the rule immediately under it, and a third optical centre of its own.
+    //
+    // THE PIXEL HAS TO COME FROM SOMEWHERE AND THE BAND MAY NOT GROW. `h-[13px]` fixes the border
+    // box, `pt-px` spends one pixel of it above the content, and the 12px line box is then centred
+    // in the 11px that remain — it hangs 0.5px past each end, which is legal here (nothing clips)
+    // and is exactly the half pixel the rule stole. The text's baseline lands on 10.00 rather than
+    // 9.50, so it SNAPS to a whole device pixel instead of rounding half of one up, at every device
+    // pixel ratio. The host's glyph is `size-2.5` in this variant for the other half of the sum.
+    //
+    // jsdom has no layout — it cannot measure any of the above — so what is pinned is the mechanism
+    // that produces it, and every clause fails in both directions: drop `items-center` and nothing
+    // centres, drop `pt-px` and the content goes back to sitting a pixel high, drop `h-[13px]` and
+    // that pixel grows the band to 14px, put the glyph back to `size-3` and it fills the box again.
+    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
+    expect(band().className).toMatch(/(?:^|\s)items-center(?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)h-\[13px\](?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)pt-px(?=\s|$)/);
+    // The pixel is bought, not added: the height is stated, so `pt-px` cannot make the band 14px.
+    // One height utility and no bottom padding — a second `h-*` would win under tailwind-merge and
+    // a `pb-*` would push the rule off the 13px the row was argued down to.
+    expect(band().className.match(/(?:^|\s)h-\S+/g)).toEqual([" h-[13px]"]);
+    expect(band().className).not.toMatch(/(?:^|\s)(?:pb|py)-/);
+    // The glyph beside the host name is 10px here and nothing else. At 12px it was the band's whole
+    // content box, so it could not be centred in it — there was no room either side to centre into.
+    const glyph = band().querySelector("svg")!;
+    expect(glyph.getAttribute("class")).toMatch(/(?:^|\s)size-2\.5(?=\s|$)/);
+    expect(glyph.getAttribute("class")).not.toMatch(/(?:^|\s)size-3(?=\s|$)/);
+    // And the line box is still ONE utility on the band, unsplit — the whole geometry above is a
+    // sum of stated boxes, and a `leading-*` that tailwind-merge could delete would undo it.
+    expect(band().className).toContain("text-[10px]/3");
+    expect(band().className).not.toMatch(/(?:^|\s)leading-/);
+    cleanup();
+
+    // A SOLO install renders no host at all, so the band's only occupant is the word — and the
+    // centring must not be a fact about the pack. Same three utilities, same class string.
+    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
+    expect(band().querySelector("svg")).toBeNull();
+    expect(band().className).toMatch(/(?:^|\s)items-center(?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)h-\[13px\](?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)pt-px(?=\s|$)/);
   });
 
   it("runs the ground and the rule edge to edge, and still insets the content by 10px", () => {

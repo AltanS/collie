@@ -281,6 +281,19 @@ Why `min-h` and not `h`: with a fixed height, a child taller than the floor is c
 overlaps on one screen, silently. With `min-h` it grows the row **on every route at once** —
 a visible design decision somebody has to look at.
 
+**The one exception is a strip that is a RESERVATION rather than a row**, and it is named
+here so it stays one: the composer's status band
+(`composer.tsx`, `data-slot="composer-status"`) is `h-[13px]`. It is not a row whose height
+follows its content — it is 13px of reserved chrome with a 1px rule at the bottom, and its
+occupants are two runs that both *state* their box (`text-[10px]/3`, a 12px line box) rather
+than measuring one from their glyphs. A floor would not do the job it exists for: the band
+also spends `pt-px` to centre that 12px content on the band's own middle instead of on its
+content box's, and under `min-h` that pixel would simply make the band 14px. The trade §6
+warns about is paid honestly — nothing here can grow, because nothing here is sized by text —
+and it is written down at the line. Add a second one only with the same two properties:
+every occupant states its own box, and the strip's height is a number the layout was designed
+around rather than a consequence of what it holds.
+
 ---
 
 ## 7. Tailwind v4 traps

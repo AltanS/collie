@@ -1028,13 +1028,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
             NOTHING HERE CAN MOVE ANYTHING. Both runs state the same 12px line box (`text-[10px]/3`,
             one utility — tailwind-merge deletes an earlier `leading-*` when a later `text-<size>`
-            follows it in the same cn()), and the icon beside the host is `size-3`, the same 12. So
-            the band is 12px + its rule — 13px — on a solo install (where HostChip renders null, its
-            hide rule unchanged, leaving the word alone), on a pack, and on a gone pane (no word at
-            all), and band + row measures 57.00px in every one of those. `text-[10px]/3` is stated
-            on the BAND as well as on both runs, and that is load-bearing rather than decorative: a
-            block layer inside the slot takes its line box from its OWN inherited strut, so without
-            it the 14px page strut won and the band measured 25px instead of 13px.
+            follows it in the same cn()). `h-[13px]` then STATES the band's height rather than
+            letting it be the sum of whatever stands in it, so a solo install (where HostChip renders
+            null, its hide rule unchanged, leaving the word alone), a pack, and a gone pane (no word
+            at all) are identical BY CONSTRUCTION and not by three occupants happening to agree; band
+            + row measures 57.00px in every one of those. `text-[10px]/3` is stated on the BAND as
+            well as on both runs, and that is load-bearing rather than decorative: a block layer
+            inside the slot takes its line box from its OWN inherited strut, so without it the 14px
+            page strut won and the band measured 25px instead of 13px.
             The WORD's own width is the case padding cannot reserve — "needs you" is 54.6px and
             "done" 27.9px — so it stands in a slot sized to every word it can hold, which is what
             `StatusWordSlot` is for; the machine's name truncates into what is left, always the same
@@ -1060,6 +1061,32 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             to pay for the seam; the buttons' own box already holds the icon 6px clear of it, so a
             gap there would have bought air twice.
 
+            AND THAT ONE PIXEL IS WHY `h-[13px] pt-px` IS HERE RATHER THAN `items-center` ALONE.
+            `items-center` was already on this band and was already doing its job — the fault it
+            could not reach is that the box it centres in is the CONTENT box, 12px, while the band
+            the eye reads is 13px, because the rule below is part of the band and not part of the
+            centring. MEASURED at 390px on the pane screen, ink rows relative to the band's own top
+            (0 → 13, rule at 12 → 13): the caps of BLUEFIN and of WORKING ran 2.0 → 9.0, centroid
+            5.5, against a band centre of 6.5 — a whole pixel high, with 2px of air above the letters
+            and 4px below them. The `size-3` server glyph ran 0.0 → 12.0: dead centre of the content
+            box and flush against the band's own top edge, with nothing between it and the seam.
+            Two occupants, two different optical centres, neither of them the band's.
+
+            The pixel has to come from somewhere and the band may not grow, so it is taken back from
+            the content box: `h-[13px]` fixes the border box, `pt-px` spends 1px of it above the
+            content, and the content box is left 11px for a 12px line box. `items-center` then
+            centres that 12px box in 11px — it hangs 0.5px past each end, which is legal (nothing
+            here clips) and is exactly the half pixel the rule stole. The text's baseline lands on
+            10.00 instead of 9.50, so it SNAPS to a whole device pixel rather than rounding half a
+            one up the way it did before: caps 3.0 → 10.0, centroid 6.5, the band's own centre, at
+            every device pixel ratio. The host's glyph is `size-2.5` in this variant for the other
+            half of the same sum (host-chip.tsx states why at the line): 10px centred in the same
+            box is 1.5 → 11.5, centroid 6.5, and it finally clears both the seam above and the rule
+            below instead of touching one of them.
+
+            Nothing about the reserve changes: the slot still stacks every word (§2), the height is
+            still 13px solo and on a pack, and band + row is still 57.00px.
+
             FULL-BLEED, and the content still at 10px. `-mx-3` cancels the dock's `px-3` so the
             rule runs edge to edge — one that stopped short would not separate the two regions it
             sits between. `px-2.5` then puts the content back at the 10px inset the controls row
@@ -1067,7 +1094,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             `-mx-0.5`, a 2px overhang that was invisible on this unpainted strip either way. */}
         <div
           data-slot="composer-status"
-          className="-mx-3 flex items-center justify-end gap-1.5 border-b border-rule px-2.5 text-[10px]/3"
+          className="-mx-3 flex h-[13px] items-center justify-end gap-1.5 border-b border-rule px-2.5 pt-px text-[10px]/3"
         >
           <HostChip host={writeHost} variant="caption" className="min-w-0" />
           <StatusWordSlot status={statusWord} stale={stale} />

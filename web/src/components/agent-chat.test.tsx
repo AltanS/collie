@@ -598,6 +598,46 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
     expect(screen.queryByText(/❯/)).toBeNull(); // the input box was stripped off the mirror
   });
 
+  it("docks the pane-switch handle between the statusline and the composer, always", () => {
+    // THE OPERATOR'S REPORT, verbatim: "the switch panel up drawer sits above the agent Statusline,
+    // it should always be right above the bottom status row."
+    //
+    // It did. MEASURED in the browser on the pane screen at a true 390px viewport, page-relative
+    // tops, with the agent's own statusline present (a 3-row Claude run):
+    //
+    //   BEFORE   mirror 217.8 → 629.8 · handle 629.8 → 663.8 · statusline 663.8 → 714 · composer 714
+    //   AFTER    mirror 217.8 → 629.8 · statusline 629.8 → 680 · handle 680 → 714 · composer 714
+    //
+    // The handle stood 50px further up on a pane whose agent prints a statusline than on one that
+    // does not — and it moved again whenever the agent added or dropped a row, because that strip
+    // is 1–3 rows re-derived from the pane tail on every poll. A control the thumb reaches for by
+    // muscle memory may not be relocated by something the terminal printed: DESIGN.md §2. "Always"
+    // is the whole claim, so BOTH cases are asserted below, and the handle must be the last thing
+    // before the composer in each.
+    //
+    // It also puts the statusline back against the mirror it was cut from — that strip is the
+    // mirror's own last row, and a 34px grab handle wedged into the seam read as a boundary
+    // between the terminal and a piece of chrome that IS the terminal.
+    for (const text of [STATUS_TEXT, MENU_TEXT]) {
+      const { container } = renderChat({ text });
+      const handle = screen.getByRole("button", { name: "Switch pane" });
+      const band = container.querySelector('[data-slot="composer-status"]')!;
+      const composer = band.parentElement!;
+      // Same parent, and the handle is the sibling immediately before the composer — so nothing,
+      // statusline or otherwise, can ever get between the two.
+      expect(handle.parentElement).toBe(composer.parentElement);
+      expect(handle.nextElementSibling).toBe(composer);
+      // …and where a statusline exists it is ABOVE the handle, welded to the mirror's bottom edge.
+      const strip = screen.queryByText("[Opus 4.8] ~/webapp · main")?.closest("div.truncate")
+        ?.parentElement;
+      if (strip) {
+        expect(strip.nextElementSibling).toBe(handle);
+        expect(handle.previousElementSibling).toBe(strip);
+      }
+      cleanup();
+    }
+  });
+
   it("leaves an adapterless agent's input-box buffer fully raw — no status strip, box kept in the mirror", () => {
     renderChat({ text: STATUS_TEXT, agent: opencodeAgent });
     // The statusline is NOT hoisted into an app strip — it stays inside the raw <pre> mirror…

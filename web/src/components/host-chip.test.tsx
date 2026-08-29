@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
@@ -92,6 +92,54 @@ describe("the herd list — one cross-host 'Needs you', labelled not split", () 
     const withHosts = triage(fixturePackAgents).map((s) => [s.key, s.agents.map((a) => a.paneId)]);
     const without = triage(stripped).map((s) => [s.key, s.agents.map((a) => a.paneId)]);
     expect(withHosts).toEqual(without);
+  });
+});
+
+// The caption run is the ONE variant that stands in a strip somebody else reserved, so its glyph is
+// sized by that strip and not by the chip's own taste.
+describe("HostChip — the caption glyph is sized by the band it stands in", () => {
+  const glyph = () => document.querySelector("svg")!;
+
+  it("draws a 10px glyph in the caption run and 12px in the pills", () => {
+    // MEASURED in the browser on the pane screen at a true 390px viewport. The composer's status
+    // band is 13px: a 12px line box plus its own 1px rule. A `size-3` glyph is 12px — the band's
+    // whole content box — so it painted 0.0 → 12.0 from the band's top edge: no clearance at the
+    // seam above it, the rule immediately below it, and an optical centre (6.00) that was neither
+    // the band's (6.5) nor the caps' beside it. There was no room either side to centre it INTO.
+    // At `size-2.5` it is 1.5 → 11.5 in the same box, centroid 6.5 — the band's own middle, the
+    // same middle as the text it stands with, and clear of both edges. It is also the right weight
+    // beside 10px type. The pills keep 12: they sit in boxes with their own padding.
+    //
+    // Fails in both directions: 12px in the caption run puts the glyph back on the seam, and 10px
+    // in a pill shrinks a glyph whose box was never the constraint.
+    render(<HostChip host="workshop" variant="caption" />, { wrapper: pack });
+    expect(glyph().getAttribute("class")).toMatch(/(?:^|\s)size-2\.5(?=\s|$)/);
+    cleanup();
+
+    for (const variant of ["tag", "target"] as const) {
+      render(<HostChip host="workshop" variant={variant} />, { wrapper: pack });
+      expect(glyph().getAttribute("class")).toMatch(/(?:^|\s)size-3(?=\s|$)/);
+      cleanup();
+    }
+  });
+
+  it("keeps the size when the caption run degrades to the OTHER glyph", () => {
+    // The caption run has no border to dash, so the shape of the fault moves into the glyph —
+    // ServerOff rather than Server (WCAG 1.4.1: colour alone may not carry it). That swap is PAINT,
+    // not layout: an unreachable machine may not be 2px taller than a reachable one, or the band's
+    // whole centring is a fact about health. DESIGN.md §2.
+    const down: ServerSummary[] = [
+      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+      { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 98_000 },
+    ];
+    const unreachable = ({ children }: { children: React.ReactNode }) => (
+      <PackProvider servers={down} ts={100_000} pollMs={1500}>
+        {children}
+      </PackProvider>
+    );
+    render(<HostChip host="workshop" variant="caption" />, { wrapper: unreachable });
+    expect(screen.getByLabelText(/workshop \(unreachable\)/i)).toBeInTheDocument();
+    expect(glyph().getAttribute("class")).toMatch(/(?:^|\s)size-2\.5(?=\s|$)/);
   });
 });
 
