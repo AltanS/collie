@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 
-import type { AgentStatus } from "@/lib/types";
+import { type AgentStatus, statusLabel } from "@/lib/types";
 import { StatusDot, StatusWord, StatusWordSlot } from "./status-badge";
 
 // Exhaustive BY CONSTRUCTION: a `Record<AgentStatus, …>` object literal is complete-checked by tsc,
@@ -128,6 +128,20 @@ describe("StatusWordSlot — the word, in a slot every word it can hold fits int
       "unknown",
     ]);
     expect(shown(container)).toBe("done");
+  });
+
+  it("reserves EVERY agent status — a new state cannot silently un-reserve the slot", () => {
+    // THE GUARD. The slot is only as wide as the words it renders, so a status left out of
+    // AGENT_WORDS is a word wider than the space reserved for it: the host beside it slides on the
+    // day that state first occurs, which is exactly the bug the slot exists to fix, re-armed and
+    // invisible until then. `satisfies ReadonlyArray<AgentStatus>` on the array proves its members
+    // are statuses; it cannot prove none is MISSING. STATUSES above can — it is the key set of a
+    // `Record<AgentStatus, true>`, complete-checked by tsc — so this comparison fails on the day a
+    // sixth status joins the union and the reserve does not (an independent oracle, not a restated
+    // constant: nothing here reads AGENT_WORDS).
+    const { container } = render(<StatusWordSlot status="idle" />);
+    const reserved = layers(container).map((l) => l.textContent);
+    expect(reserved.toSorted()).toEqual(STATUSES.map((s) => statusLabel(s)).toSorted());
   });
 
   it("reserves only 'shell' for a shell pane, which can never be anything else", () => {

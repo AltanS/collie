@@ -190,8 +190,22 @@ export function StatusWord({
 /**
  * Every word an AGENT pane's slot can ever hold. Ordered as the state machine reads, not
  * alphabetically; the order is only the paint order of stacked layers, so nothing depends on it.
+ *
+ * IT MUST LIST EVERY MEMBER OF {@link AgentStatus}, and that is a guard rather than a habit: the
+ * slot reserves exactly what stands in it, so a sixth status left out of this array would be a word
+ * WIDER than the space reserved for it, and the host beside it would slide on the day that state
+ * first occurs — the very bug the slot exists to fix, re-armed silently. `satisfies` only proves
+ * the members ARE statuses; it cannot prove none is missing. An exhaustive list is pinned in
+ * `status-badge.test.tsx` against a `Record<AgentStatus, …>` (complete-checked by tsc), and that
+ * pin has been SEEN to fail with a status removed.
  */
-const AGENT_WORDS: ReadonlyArray<AgentStatus> = ["blocked", "working", "done", "idle", "unknown"];
+const AGENT_WORDS = [
+  "blocked",
+  "working",
+  "done",
+  "idle",
+  "unknown",
+] as const satisfies ReadonlyArray<AgentStatus>;
 
 /**
  * {@link StatusWord} in a slot WIDE ENOUGH FOR EVERY WORD IT CAN EVER HOLD — the form to use
