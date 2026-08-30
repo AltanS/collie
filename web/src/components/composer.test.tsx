@@ -1372,62 +1372,73 @@ describe("Composer — the machine and the state, on a band of their own", () =>
   });
 
   it("carries exactly ONE rule at each seam, and draws each from above", () => {
-    // DESIGN.md §4: where two chrome regions stack, the UPPER one closes its own bottom edge and the
-    // lower draws no top edge. Two components drawing one boundary gives a 2px line where the
-    // language says 1px — a fault this codebase has already fixed twice (space-strip / tab-strip).
-    // MEASURED in the browser: dock border-top 1px, band border-bottom 1px, controls row 0 on every
-    // side. `border-rule` and not `border-border`: this is a cut between REGIONS, 1.34:1 light and
-    // 2.06:1 dark, where --border is a component's own edge at 1.16:1 / 1.26:1.
+    // DESIGN.md §4: where two chrome regions stack, ONE component draws the boundary. Two drawing it
+    // gives a 2px line where the language says 1px — a fault this codebase has already fixed twice
+    // (space-strip / tab-strip).
+    //
+    // THE BAND NOW CLOSES BOTH OF ITS OWN EDGES, and that is the operator's third report answered:
+    // it had a rule below and the dock's 10px `pt-2.5` above, so the box the EYE drew ran from the
+    // dock's top rule to the band's bottom one — ~23px of unbroken ground with the words sitting at
+    // the bottom of it. Bounded on both edges the band IS the box it is centred in. The 10px moved
+    // BELOW, onto the controls row, where it separates the band from the buttons.
+    //
+    // The dock therefore draws NOTHING: its top rule and fill moved out to the chrome block in
+    // agent-chat.tsx, which also carries the swipe handle, so the boundary against the terminal is
+    // drawn once above everything the thumb operates. agent-chat.test.tsx pins that half.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
-    expect(band().className).toMatch(/(?:^|\s)border-b(?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
     expect(band().className).toMatch(/(?:^|\s)border-rule(?=\s|$)/);
-    expect(band().className).not.toMatch(/(?:^|\s)border-t(?=\s|$)/); // the dock already drew it
+    // …stated as ONE utility. `border-b border-t` would paint the same two lines and read as two
+    // decisions, and a later `border-b` in the same cn() would silently drop the top one.
+    expect(band().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
     // The row below draws nothing at all: no edge of its own, in any direction.
     expect(row().className).not.toMatch(/(?:^|\s)border/);
-    // …and the seam above the band is the dock's single `border-t`, not a second line here.
+    // …and the dock around them draws no edge either — the chrome block above it does.
     const dock = band().parentElement!;
-    expect(dock.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
-    expect(dock.className).not.toMatch(/(?:^|\s)border-b(?=\s|$)/);
+    expect(dock.className).not.toMatch(/(?:^|\s)border/);
+    // The 10px the dock used to spend above the band is now below it, on the controls row.
+    expect(dock.className).not.toMatch(/(?:^|\s)pt-/);
+    expect(row().className).toMatch(/(?:^|\s)mt-2\.5(?=\s|$)/);
     // A border colour with no width paints nothing (DESIGN.md §7 trap 1) — so the width is asserted
     // beside the colour, and this pin fails if either is dropped.
   });
 
   it("stands at ONE height — solo, pack, shell, gone, and across every status", () => {
     // MEASURED in the browser on the pane screen at a true 390px viewport, both themes: the band is
-    // 13.00px and band + controls row is 57.00px, with the word alone (solo), with host + word
-    // (pack), on a shell, with no word at all (a gone pane) and on every one of the five statuses.
-    // The five buttons still measure 44.00px — DESIGN.md §6's floor. It was 56.00px before the rule;
-    // the rule is the one pixel it cost, and the controls row takes NO top padding to pay for the
-    // seam, because the button's own box already holds its icon clear of it.
+    // 14.00px — 1 + 12 + 1 — with the word alone (solo), with host + word (pack), on a shell, with
+    // no word at all (a gone pane) and on every one of the five statuses. The five buttons below
+    // still measure 44.00px, DESIGN.md §6's floor.
     //
-    // The 13px is now STATED (`h-[13px]`) rather than summed from whatever stands in the band. It
-    // used to be 12px of line box plus the rule, i.e. equal solo and on a pack only because the
-    // occupants happened to agree; an occupant that ever measured 13 would have grown the band and
-    // nothing would have said so. Pinning the border box makes solo and pack identical by
-    // construction, and it is also what lets `pt-px` below buy a pixel without spending one.
+    // THE STACK GOT 9px SHORTER in the same edit: the dock's 10px of top padding went away and the
+    // band's new top rule cost 1px back.
+    //
+    // The height is STATED (`h-[14px]`) rather than summed from whatever stands in the band. It used
+    // to be 12px of line box plus the rules, i.e. equal solo and on a pack only because the occupants
+    // happened to agree; an occupant that ever measured 13 would have grown the band and nothing
+    // would have said so. Pinning the border box makes solo and pack identical by construction.
     //
     // jsdom has no layout, so what is pinned are the facts that make that true and that a refactor
     // could quietly undo.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
     const soloBand = band().className;
     const soloRow = row().className;
-    expect(soloBand).toMatch(/(?:^|\s)h-\[13px\](?=\s|$)/);
+    expect(soloBand).toMatch(/(?:^|\s)h-\[14px\](?=\s|$)/);
     // The 12px line box is stated on the BAND, not just on the runs inside it, and that is
     // load-bearing: a block layer in the slot takes its line box from its own inherited strut, so
-    // without this the 14px page strut wins and the band measures 25px instead of 13px. One utility
+    // without this the 14px page strut wins and the band measures 25px instead of 14px. One utility
     // and never `text-[10px] leading-3` — tailwind-merge drops an earlier `leading-*` when a later
     // `text-<size>` lands in the same cn(), which once rendered the host run at a 15px line and grew
     // the pane header to 63px.
     expect(soloBand).toContain("text-[10px]/3");
     expect(soloBand).not.toMatch(/(?:^|\s)leading-/);
-    // Nothing pads the row above the buttons any more — the band IS the reservation now.
+    // Nothing PADS the row of buttons — the 10px above it is a margin, outside the band's box, so
+    // the band's own height stays a fact about the band.
     expect(soloRow).not.toMatch(/(?:^|\s)pt-/);
     expect(soloRow).not.toMatch(/(?:^|\s)py-/);
-    // The band's only vertical padding is the single centring pixel (see the centring test below).
-    // Nothing may pad the BOTTOM or state a `py-*`: the bottom of this box is the rule, and a pixel
-    // spent under the content would push the rule off the 13px the row was argued down to.
-    expect(soloBand).not.toMatch(/(?:^|\s)(?:pb|py)-/);
-    expect(soloBand).toMatch(/(?:^|\s)pt-px(?=\s|$)/);
+    // And the band carries NO vertical padding in any direction: it is 1 + 12 + 1 exactly, and a
+    // pixel spent on either side would push a rule off the height the row was argued down to. The
+    // `pt-px` that used to sit here is gone with the reason for it — see the centring test below.
+    expect(soloBand).not.toMatch(/(?:^|\s)(?:pt|pb|py)-/);
     cleanup();
 
     for (const overrides of [
@@ -1448,44 +1459,47 @@ describe("Composer — the machine and the state, on a band of their own", () =>
   });
 
   it("centres both occupants on the band's OWN middle, not on its content box's", () => {
-    // THE OPERATOR'S SECOND REPORT: "the status row needs to vertically center the contained divs."
+    // THE OPERATOR'S THIRD REPORT: "content in the bottom status row is still not vertically
+    // centered." The second report had already been answered with `h-[13px] pt-px`, and the numbers
+    // said it worked — so the third report is the useful one, because it says the numbers were
+    // answering the wrong question.
     //
-    // `items-center` was already here and was already doing its job. The fault it cannot reach is
-    // that the box it centres in is the CONTENT box — 12px — while the band the eye reads is 13px,
-    // because the rule below belongs to the band and not to the centring. MEASURED in the browser
-    // on the pane screen at a true 390px viewport, ink rows relative to the band's own top edge
-    // (0 → 13, rule at 12 → 13), by sampling the rendered pixels rather than the boxes:
+    // THE BOX WAS WRONG, NOT THE CENTRING. The band had a rule below it and the dock's `pt-2.5`
+    // above it, on the dock's own ground: nothing marked where the band started, so the box the eye
+    // drew ran from the dock's top rule to the band's bottom rule — about 23px of unbroken surface
+    // with the two runs sitting in the last 13 of it. No amount of centring inside the 13px can fix
+    // a 23px box. `border-y` states the box instead, and the 10px goes below the band as the
+    // controls row's `mt-2.5`, where it separates rather than pretending to belong.
     //
-    //                       BEFORE                    AFTER
-    //   host caps           2.0 → 9.0, centroid 5.54  3.0 → 10.0, centroid 6.54
-    //   status word caps    2.0 → 9.0, centroid 5.48  3.0 → 10.0, centroid 6.48
-    //   host glyph          0.0 → 12.0, centroid 6.00 2.0 → 12.0, centroid 6.99
-    //   band centre         6.5                       6.5
+    // AND THE 1px NUDGE GOES WITH IT. `pt-px` existed to pay for a hairline on ONE edge. With both
+    // edges ruled the box is symmetric by construction and a compensation still applied tips it the
+    // other way. MEASURED on the page at 390px, DPR 3, dark, as ink rows in the band's own 14px
+    // border box (rules at 0 → 1 and 13 → 14), by sampling rendered pixels rather than boxes:
     //
-    // So the two text runs stood a whole pixel high, with 2px of air above the letters and 4px
-    // below them, and the 12px `size-3` glyph was the whole content box: flush against the seam
-    // above, the rule immediately under it, and a third optical centre of its own.
+    //                            WITH pt-px        WITHOUT
+    //   caps, both runs          4.00 → 11.00      3.00 → 10.00
+    //   caps centroid            7.33              6.33
+    //   ALL ink centroid         7.83              6.83
+    //   band centre              7.00              7.00
     //
-    // THE PIXEL HAS TO COME FROM SOMEWHERE AND THE BAND MAY NOT GROW. `h-[13px]` fixes the border
-    // box, `pt-px` spends one pixel of it above the content, and the 12px line box is then centred
-    // in the 11px that remain — it hangs 0.5px past each end, which is legal here (nothing clips)
-    // and is exactly the half pixel the rule stole. The text's baseline lands on 10.00 rather than
-    // 9.50, so it SNAPS to a whole device pixel instead of rounding half of one up, at every device
-    // pixel ratio. The host's glyph is `size-2.5` in this variant for the other half of the sum.
+    // The eye centres the CLUSTER, not the capital letters — the host's 10px glyph is part of the
+    // line and sits lower than the caps do — so the all-ink row is the one that decides: 0.83px low
+    // becomes 0.17px high. `items-center` over a stated height does the whole job.
     //
     // jsdom has no layout — it cannot measure any of the above — so what is pinned is the mechanism
     // that produces it, and every clause fails in both directions: drop `items-center` and nothing
-    // centres, drop `pt-px` and the content goes back to sitting a pixel high, drop `h-[13px]` and
-    // that pixel grows the band to 14px, put the glyph back to `size-3` and it fills the box again.
+    // centres, drop a rule and the box stops being the one the eye reads, put `pt-px` back and the
+    // cluster sits low again, put the glyph back to `size-3` and it fills the content box entirely.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
     expect(band().className).toMatch(/(?:^|\s)items-center(?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)h-\[13px\](?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)pt-px(?=\s|$)/);
-    // The pixel is bought, not added: the height is stated, so `pt-px` cannot make the band 14px.
-    // One height utility and no bottom padding — a second `h-*` would win under tailwind-merge and
-    // a `pb-*` would push the rule off the 13px the row was argued down to.
-    expect(band().className.match(/(?:^|\s)h-\S+/g)).toEqual([" h-[13px]"]);
-    expect(band().className).not.toMatch(/(?:^|\s)(?:pb|py)-/);
+    expect(band().className).toMatch(/(?:^|\s)h-\[14px\](?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
+    // No compensating pixel, in either direction. This is the clause that fails if someone reads
+    // the old comment and "restores" the nudge.
+    expect(band().className).not.toMatch(/(?:^|\s)(?:pt|pb|py)-/);
+    // One height utility — a second `h-*` would win under tailwind-merge and the stated box would
+    // quietly become someone else's.
+    expect(band().className.match(/(?:^|\s)h-\S+/g)).toEqual([" h-[14px]"]);
     // The glyph beside the host name is 10px here and nothing else. At 12px it was the band's whole
     // content box, so it could not be centred in it — there was no room either side to centre into.
     const glyph = band().querySelector("svg")!;
@@ -1498,12 +1512,13 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     cleanup();
 
     // A SOLO install renders no host at all, so the band's only occupant is the word — and the
-    // centring must not be a fact about the pack. Same three utilities, same class string.
+    // centring must not be a fact about the pack. Same utilities, same class string.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
     expect(band().querySelector("svg")).toBeNull();
     expect(band().className).toMatch(/(?:^|\s)items-center(?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)h-\[13px\](?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)pt-px(?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)h-\[14px\](?=\s|$)/);
+    expect(band().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
+    expect(band().className).not.toMatch(/(?:^|\s)(?:pt|pb|py)-/);
   });
 
   it("runs the ground and the rule edge to edge, and still insets the content by 10px", () => {
