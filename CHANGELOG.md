@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.40] - 2026-08-30
+
+### Changed
+
+- The mark's orbit round is thrown rather than switched on: it accelerates from rest, peaks at twice the sprint halfway through, and comes back down to rest, the way a spun wheel behaves. It still covers exactly one turn in exactly the same time — the curve is a raised cosine, whose mean is exactly 1, so the easing redistributes the turn without spending or saving any of it
+- Both joins with the resting drift are now at zero speed, so the round no longer starts or ends with a velocity jump
+
 ## [1.0.0-beta.39] - 2026-08-30
 
 ### Fixed

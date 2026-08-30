@@ -1463,12 +1463,11 @@ describe("the pane fits its viewport", () => {
       );
       expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull();
 
-      // The two NAVIGATION rows above the mirror go with them, for the same reason and by the same
-      // test: read before typing, never during it. This is the largest single block on the screen,
-      // and taking it with the keyboard rather than with a tab count is what keeps DESIGN.md §2
-      // intact — a second tab can appear with no operator action at all (opened from the desktop,
-      // or another phone), and a row arriving on its own would push the whole mirror down.
-      expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
+      // THE NAVIGATION ROWS ARE NOT ON THIS LIST, and that is a decision rather than an omission.
+      // The tab row and the pane switcher were briefly taken with the keyboard too, for 53px, and
+      // the operator declined it: the tab row is how you know where you are, and losing it the
+      // moment you start typing costs more than the pixels are worth. Its HEIGHT is the thing to
+      // reduce, not its presence — see tab-strip.tsx.
 
       // …and the band is untouched, keyboard or no keyboard.
       expect(container.querySelector('[data-slot="composer-status"]')).not.toBeNull();

@@ -1061,23 +1061,7 @@ export function AgentChat({
 
           {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
               pane, or create one with +. No "All" here (you're always in a specific tab).
-
-              ── IT STANDS DOWN WITH THE KEYBOARD, LIKE THE OTHER TWO NAVIGATION ROWS ────
-              53px with its gap, and the largest single block ABOVE the mirror. It passes the same
-              test the pane-switch handle and the agent statusline pass (`composing`, declared at the
-              top of this component): it is read BEFORE typing, never during it. Switching tab
-              mid-sentence would abandon the draft, and creating one is not a thing anybody does with
-              a half-typed reply on screen.
-              WHY NOT the tempting alternative — "hide it when the space has only one tab", which
-              buys the same 53px permanently. Because a second tab can appear WITHOUT the operator
-              doing anything: opened from the desktop, or from another phone. The row would then
-              arrive on its own and push the whole mirror down, which is DESIGN.md §2's fault exactly,
-              with no action to make the movement legible. The keyboard has no such problem — it is
-              the operator's own act, it is already re-laying out the entire page, and the row comes
-              back untouched the moment they dismiss it. Same pixels, none of the cost.
-              WHAT IS NOT LOST: the header breadcrumb still reads `space › tab` while composing, so
-              "which tab am I typing into" is still answered on screen. */}
-          <Collapse open={!composing}>
+ */}
           {agent && (
             <TabStrip
               workspaceId={agent.workspaceId}
@@ -1100,10 +1084,7 @@ export function AgentChat({
           )}
 
           {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
-              tabbed row rather than tiling the panes; only appears when the tab holds more than one.
-              Stands down with the keyboard for the same reason as the tab bar above it — and in the
-              SAME Collapse, deliberately: two navigation rows leaving as one movement rather than two
-              boxes closing beside each other. */}
+              tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
           {agent && (
             <PaneStrip
               // The SAME list the header's discriminator is gated on, and hoisted for that reason —
@@ -1118,7 +1099,6 @@ export function AgentChat({
               onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
             />
           )}
-          </Collapse>
 
           {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
               (unless you're selecting text to copy, which the tap must not collapse). */}

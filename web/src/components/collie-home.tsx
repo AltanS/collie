@@ -44,6 +44,34 @@ interface CollieHomeProps {
 // over to here by hand, and this is the only thing on this side that knows the number.
 const ORBIT_TURN_MS = 1800;
 
+/**
+ * The round's SHAPE, as a multiplier on the mark's own live rate: `1 - cos(2πt/T)`.
+ *
+ * The round used to be a square wave — the orbit went from its 48s drift to its 1.8s sprint in one
+ * frame, held, and dropped back just as hard. That reads as a film starting, not as a thing being
+ * spun. The operator asked for it to "behave kinda as if a human spun a wheel", which is a statement
+ * about the DERIVATIVE: a wheel leaves your hand accelerating and comes back to rest slowing down.
+ *
+ * A raised cosine is the one curve that gives that for free AND keeps the round honest:
+ *
+ *   • `rate(0) = 0` and `rate(T) = 0` — it starts and ends at a standstill, so the join with the
+ *     resting drift has no velocity STEP at either end. That is strictly smoother than what it
+ *     replaces, where the orbit jumped to 27x and back in a frame.
+ *   • peak `2` at the halfway mark — twice the sprint at the middle of the throw.
+ *   • **mean exactly 1**, because ∫₀ᵀ(1 − cos(2πt/T))dt = T. So the round still covers EXACTLY one
+ *     turn in exactly `ORBIT_TURN_MS`, which is the property the whole round rests on: shorter cuts
+ *     it off part way, longer starts a second one. The easing is therefore FREE — it redistributes
+ *     the turn in time without spending or saving any of it. Change the curve and you must re-derive
+ *     that integral, or the round stops landing where it started.
+ *
+ * Pure, exported and tested, because it is the only half of this that can be checked without eyes.
+ */
+export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
+  if (totalMs <= 0) return 1;
+  const at = Math.min(Math.max(elapsedMs, 0), totalMs);
+  return 1 - Math.cos((2 * Math.PI * at) / totalMs);
+}
+
 export function CollieHome({ onHome, trouble, lost = false, wordmark = false, className }: CollieHomeProps) {
   useLocale();
   const bloom = trouble && !lost;
@@ -90,11 +118,101 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
   const roundId = status?.id ?? 0;
   const [round, setRound] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── THE THROW: the round's rate is ramped, not switched ──────────────────────
+  //
+  // Everything above decides WHETHER the orbit turns. This decides HOW. `spinRate` is the curve and
+  // states why it is that curve; this is the machinery that applies it, and there are three reasons
+  // it is done HERE, in JavaScript, rather than as an easing in the stylesheet.
+  //
+  //  1. **The stylesheet is not ours to edit.** components/collie-mark.tsx is GENERATED and
+  //     hash-sealed — a test recomputes the digest and fails on any hand-edit; changes belong in the
+  //     collie-brand repo's scripts/logo-ship.ts. The `linear` on the bead animations is emitted
+  //     there.
+  //  2. **An `animation-timing-function` would tear the mark in two.** Each bead runs TWO animations
+  //     off one clock: `cm-tN` moves it, and `cm-nN`/`cm-fN` are `step-end` switches that swap it
+  //     between the near group (drawn over the head, with a knockout) and the far group. Easing the
+  //     first and not the second makes the bead cross in front of the head at the wrong angle. They
+  //     have to stay on ONE timeline, which is exactly what a playback rate is and a timing function
+  //     is not.
+  //  3. **It would fight the phase carry.** collie-mark.tsx hand-corrects every animation's
+  //     `currentTime` across a rate change, because a running CSS animation keeps its elapsed time
+  //     and not its progress. That correction preserves the FRACTION, and under a non-linear timing
+  //     function the fraction and the rendered position stop being the same thing — so the round
+  //     would begin and end with the beads jumping up to ~35°, which is the exact glitch that code
+  //     exists to prevent. `updatePlaybackRate` has no such problem: it is specified to hold the
+  //     current time and change only the rate from here on, so progress and time stay identified and
+  //     the `step-end` switches keep landing where the beads actually are.
+  //
+  // It costs one `requestAnimationFrame` loop for 1.8 seconds per round and nothing at all between
+  // rounds. That is not the "never per frame" the mark's own phase-carry comment rules out — that
+  // rule is about the RESTING mark, where a per-frame cost would be permanent.
+  //
+  // ONLY THE ROUND IS RAMPED, never the bloom. `bloom` is a sustained connection state and must turn
+  // steadily; a wheel-throw there would read as an event that keeps happening. So the ramp is
+  // declined whenever the bloom is what is driving the mark, and the round below still runs — it is
+  // simply invisible under a bloom that is already turning, which was already true.
+  const mark = useRef<HTMLSpanElement>(null);
+  const frame = useRef<number | null>(null);
+  const ramp = useRef<((rate: number) => void) | null>(null);
+
+  // Every `cm-*` CSS animation under the mark, or null where the ramp cannot run: no element yet, no
+  // `getAnimations` (jsdom under test, older engines), or reduced motion — where the stylesheet has
+  // already switched every animation off and there is nothing to rate. In each case the round falls
+  // back to exactly the square wave it has always been, which is why none of them is an error.
+  function collect(): Animation[] | null {
+    const el = mark.current;
+    // `in`, not a `typeof` probe: the question is whether this DOM implementation HAS the method at
+    // all — jsdom under test does not, and neither do older engines — which is a fact about the
+    // object, not about the shape of a value we were handed.
+    if (el === null || !("getAnimations" in el)) return null;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true) return null;
+    return el.getAnimations({ subtree: true }).filter((a) => {
+      // SAFETY: `getAnimations` returns transitions as well as animations, and only a CSSAnimation
+      // carries `animationName`. The `in` check IS the discriminator — anything without the property
+      // is filtered out before the cast is read, so the cast can only ever see a CSSAnimation. The
+      // name prefix then keeps this to the mark's own animations, never a caller's `className`.
+      const named = "animationName" in a ? (a as CSSAnimation).animationName : "";
+      return named.startsWith("cm-");
+    });
+  }
+
   useEffect(() => {
     if (roundId === 0 || timer.current !== null) return;
     setRound(true);
+    // Started in the NEXT frame, not this one: `loading` has only just flipped, so the mark has not
+    // yet re-rendered with its sprint rate and collie-mark.tsx's phase-carry effect has not yet run.
+    // Collecting now would rate a set of animations that is about to be re-timed underneath us.
+    const started = performance.now();
+    let collected = false;
+    const step = () => {
+      // Collected ONCE, on the first frame, and never re-attempted — `collected` flips whether or not
+      // there was anything to collect. Retrying would walk the subtree 108 times a round on exactly
+      // the environments that already told us they cannot answer (no `getAnimations`, reduced
+      // motion), which are the ones least able to afford it.
+      if (!collected) {
+        collected = true;
+        const anims = collect();
+        ramp.current = anims === null ? () => {} : (rate) => {
+          for (const a of anims) a.updatePlaybackRate(rate);
+        };
+      }
+      const elapsed = performance.now() - started;
+      ramp.current?.(spinRate(elapsed, ORBIT_TURN_MS));
+      frame.current = elapsed >= ORBIT_TURN_MS ? null : requestAnimationFrame(step);
+    };
+    frame.current = requestAnimationFrame(step);
     timer.current = setTimeout(() => {
       timer.current = null;
+      // Rate restored BEFORE the state flips, and in this order deliberately. Dropping `round`
+      // re-renders the mark with `loading` false, which runs its phase carry — and that correction
+      // is written for animations playing at rate 1. Handing it a set still playing at the curve's
+      // final rate (0) would leave the orbit stopped on the resting drift. The loop is cancelled
+      // first so it cannot write a rate back after this.
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = null;
+      ramp.current?.(1);
+      ramp.current = null;
       setRound(false);
     }, ORBIT_TURN_MS);
     // NO CLEANUP HERE, deliberately. React runs an effect's cleanup on every dependency change,
@@ -103,7 +221,13 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
     // the round. That is the bug this guard exists to stop. The timer is torn down on UNMOUNT
     // instead, by the effect below.
   }, [roundId]);
-  useEffect(() => () => (timer.current === null ? undefined : clearTimeout(timer.current)), []);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+    },
+    [],
+  );
   return (
     <button
       type="button"
@@ -143,7 +267,10 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
 
           Muted while lost — grayscale + dimmed, to read asleep/inactive — and the orbit stops
           turning again. Mirrors the boot splash's not-connected state. */}
-      <span className="grid size-11 shrink-0 place-items-center">
+      {/* The ramp's scope, and the reason this wrapper carries a ref at all: `getAnimations` is
+          collected from HERE and not from the button, so the button's own `transition-opacity` — and
+          anything a caller's `className` animates — is never handed a playback rate. */}
+      <span ref={mark} className="grid size-11 shrink-0 place-items-center">
         <CollieMark
           size={40}
           weight="header"
