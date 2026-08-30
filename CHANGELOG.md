@@ -6,6 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.44] - 2026-08-30
+
+### Fixed
+
+- **`collie build` no longer runs the lint gate — a gate on the operator's path bricked installs.** `build` is the ONE build every operator path runs: a clean install through Herdr's `[[build]]` step, `update`, and the 0.x→1.0 crossing. oxlint's Rust allocator aborts with SIGABRT (a panic in `oxc_allocator/src/pool/fixed_size.rs`) on a host with less than roughly 7 GB of RAM — bisected on identical VM guests: 4 GB and 6 GB abort, 7, 8 and 12 GB pass. So a clean v1 install ended `Plugin was not installed.`, and an upgrade left a detached checkout with no `bin/collie`. `SKIP_LINT=1` was the workaround, and needing one to install a plugin is the bug. The mux-name check left with the lint step, having ridden the same hatch by design; `SKIP_LINT` is gone, because nothing reads it any more (4720769)
+- Lint is still enforced where a developer can act on it, and nothing about ADR 0019 changes: CI's `Lint` step runs the full tree and remains the authority, the pre-commit hook lints the staged files, and CI covers the mux-name check through `scripts/check-mux-names.test.ts`, which runs the script over the real `web/src`
+
+### Changed
+
+- **Correcting beta.43's notes:** they said each of the three agent-parser fixes "carried a real capture rather than a guess". Two did — [#140](https://github.com/AltanS/collie/pull/140) and [#142](https://github.com/AltanS/collie/pull/142) added capture fixtures. [#141](https://github.com/AltanS/collie/pull/141) used a synthetic test row
+
 ## [1.0.0-beta.43] - 2026-08-30
 
 ### Fixed
