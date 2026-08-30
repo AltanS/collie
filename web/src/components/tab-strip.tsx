@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
+import { AgentIcon } from "@/components/agent-icon";
 import { STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
@@ -135,6 +136,11 @@ export function TabStrip({
               // What's actually going on in there — blocked / ready / working / idle — instead of a
               // dot that only ever appeared for blocked and left every other state unreadable.
               status={worstTriage(here.filter((a) => a.tabId === t.tabId))}
+              // WHICH agent is in there. The pane header names ONE agent, and a tab is exactly the
+              // dimension along which that answer changes: `docs` may be Claude and `shell` a bare
+              // terminal, and switching between them used to change the header's mark with no warning
+              // in the row you switched from. Named here, the answer is in the row you choose.
+              agent={soleAgent(here, t.tabId)}
               onClick={() => onSelect(t.tabId)}
               // Long-press (and a tap on the already-active tab) opens the actions sheet — only when
               // the parent wired the actions; otherwise the tabs stay plain tap-to-switch.
@@ -184,6 +190,18 @@ export function TabStrip({
   );
 }
 
+// The ONE agent a tab runs, or undefined. Undefined is the honest answer in two different cases and
+// both must stay unmarked: a tab with no agent at all (a bare shell), and a tab running two brands at
+// once — a mark for either would be a claim about the whole tab that only one pane in it supports.
+// Scoped to `here`, the panes on THIS machine, for the same reason the status count is: tab ids
+// collide across a pack.
+function soleAgent(here: AgentView[], tabId: string): string | undefined {
+  const brands = new Set(here.filter((a) => a.tabId === tabId).map((a) => a.agent));
+  if (brands.size !== 1) return undefined;
+  const [only] = brands;
+  return only || undefined;
+}
+
 interface TabProps {
   label: string;
   active: boolean;
@@ -195,6 +213,9 @@ interface TabProps {
    * that's not the same as idle, and a resting dot would claim otherwise.
    */
   status?: TriageKey | null;
+  /** The agent every pane in this tab runs, drawn as its brand tile. Omitted when the tab runs none,
+   *  or more than one — see {@link soleAgent}. */
+  agent?: string;
   onClick: () => void;
   /** Long-press (or right-click / Android contextmenu) opens actions. Inert when unset. */
   onLongPress?: () => void;
@@ -203,7 +224,7 @@ interface TabProps {
 }
 
 // One folder tab.
-function Tab({ label, active, ring, status, onClick, onLongPress, onTapActive }: TabProps) {
+function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapActive }: TabProps) {
   const longPress = useLongPress(onLongPress);
 
   // A long-press already suppresses the ensuing click (via longPress.onClickCapture), so this only
@@ -278,6 +299,22 @@ function Tab({ label, active, ring, status, onClick, onLongPress, onTapActive }:
           {/* The dot is colour-only; say it in words for screen readers. */}
           <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>
         </>
+      )}
+      {/* The brand tile, 14px, between the dot and the label. ORDER MATTERS and it is this one: the
+          dot has always led this row and it keeps that position, because it is the mark the eye
+          scans the whole row for — "where is the trouble" is asked of every tab at once, "which
+          agent" is asked of one tab at a time. The tile then sits against the label it introduces.
+          It is `aria-hidden` and it has to be: AgentIcon names itself "<agent> logo", and a tab that
+          already carries a label and a status announces enough — a third name on the same control is
+          noise, not information. The dot keeps its own `sr-only` word, which is the one thing here
+          with no visible text.
+          14px rather than 16: the row is `h-11` and unpadded vertically, so the tile must not become
+          the tallest thing in a tab whose height belongs to the tap target, and it may not outweigh
+          the label it introduces. */}
+      {agent && (
+        <span aria-hidden="true" className="flex shrink-0 items-center">
+          <AgentIcon agent={agent} className="size-3.5" />
+        </span>
       )}
       {label}
     </button>

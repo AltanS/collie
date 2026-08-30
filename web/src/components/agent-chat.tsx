@@ -747,9 +747,9 @@ export function AgentChat({
             ) : undefined
           }
         >
-          {/* Title block: the space › tab leads, with the agent's brand logo to its left (the agent
-              name would just repeat the icon, so it's dropped), and the working directory on the
-              subline. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
+          {/* Title block: the agent's brand logo and the space › tab share line 1 (the agent name
+              would just repeat the icon, so it's dropped), and the working directory has line 2 to
+              itself. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
           {agent ? (
             <button
               type="button"
@@ -779,46 +779,8 @@ export function AgentChat({
               // padding on top of it, for the reason it never had any: lines plus padding must stay
               // inside the row's 52px content box or the header grows on the pane route alone — the
               // route-local growth `min-h-15` exists to prevent.
-              className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 text-left transition-colors active:bg-muted/60"
+              className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center rounded-lg px-1 text-left transition-colors active:bg-muted/60"
             >
-              {/* The subject, with the state badged onto its corner — `agent-card.tsx`'s pattern, not
-                  a new one. Two reasons it is here rather than the state standing alone in a line of
-                  its own. First, the header had lost its only focal point when the filled status chip
-                  left: the heaviest mark in the row became the Collie mark, i.e. the button that
-                  LEAVES the pane, with nothing for the eye to land on in the pane's own identity.
-                  Second, in dark theme the Claude tile's orange (oklch 0.672 0.131 39) and
-                  --status-blocked (0.700 0.200 24) are 0.028 apart in lightness and 15° in hue: as two
-                  loose 10-12px marks on one line they are one colour, and "blocked" — the state that
-                  most needs to be seen — would disappear into the subject glyph. The ring separates
-                  them physically instead of by tuning colours. */}
-              <div className="relative shrink-0">
-                {isShell ? (
-                  <div className="flex size-6 items-center justify-center rounded-md border bg-muted">
-                    <TerminalSquare className="size-3 text-muted-foreground" />
-                  </div>
-                ) : (
-                  // Deliberately smaller than the size-8 Collie mark beside it — the agent logo is the
-                  // pane's subject, not a second brand competing with Collie's for the header.
-                  <AgentIcon agent={agent.agent} className="size-6" />
-                )}
-                {/* A shell pane has no agent status, so it gets no badge — the tile alone says what it
-                    is, and the composer strip's "shell" says it in words. The dot IS named here, unlike every
-                    other StatusDot in the app: it is the only one that stands alone rather than
-                    leading a word, so unnamed it would be an empty span that names nothing and matches
-                    no text query. In focus mode the button's own aria-label is what a screen reader
-                    reads (a label replaces the content beneath it) and that label already carries the
-                    status; this name is what answers a browse-mode read of the glyph itself, and the
-                    fallback if that label ever loses its suffix. */}
-                {!isShell && (
-                  <StatusDot
-                    status={agent.status}
-                    label={statusLabel(agent.status)}
-                    stale={connecting}
-                    surface="bg-background"
-                    className="absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-background"
-                  />
-                )}
-              </div>
               {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
                   the air moved from outside the block to inside it. Each line states its own height
                   (20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
@@ -842,14 +804,61 @@ export function AgentChat({
                   36px of lines centred in it still measures 60px, and that floor is shared by every
                   route and must not be lowered to fit this one. */}
               <div data-slot="pane-lines" className="flex min-w-0 flex-1 flex-col gap-1">
-                {/* Line 1, the name, at the FULL width of the block. This is what the round was for:
-                    with the host pill and the status chip both out of the horizontal race, the name
-                    stops sharing its line with anything. A user-set pane label leads when present (the
-                    identifier they chose), then Claude's own /rename session name, otherwise the
-                    default space › tab. */}
-                <span data-slot="pane-name" className="block truncate font-semibold leading-5">
-                  {paneName}
-                </span>
+                {/* Line 1: the agent's own mark, then the name. The mark used to stand OUTSIDE this
+                    column, centred against both lines, which spent the block's entire left edge on it
+                    and pushed the path in under the name with nothing above it. On line 1 it reads as
+                    what it is — a mark ON the name, the way a favicon sits on a title — and line 2
+                    reclaims the full width of the block for the path.
+
+                    16px, not the 24px it was. Beside 16px semibold text, inside a 20px line box, and
+                    in a row that also holds the 32px Collie mark: the pane's subject may be the thing
+                    the eye lands on and may not be the heaviest mark in the header.
+
+                    The subject carries the state BADGED onto its corner — `agent-card.tsx`'s pattern,
+                    not a new one. In dark theme the Claude tile's orange (oklch 0.672 0.131 39) and
+                    --status-blocked (0.700 0.200 24) are 0.028 apart in lightness and 15° in hue: as
+                    two loose marks on one line they are one colour, and "blocked" — the state that
+                    most needs to be seen — would disappear into the subject glyph. The ring separates
+                    them physically instead of by tuning colours. The dot drops to 8px with the tile,
+                    so the badge stays a badge instead of swallowing the mark it sits on.
+
+                    The line states its own 20px height either way (`items-center` over a 16px mark in
+                    a 20px line box), so the block is still 20 + 4 + 12 and the header row's floor is
+                    untouched — DESIGN.md §2. A user-set pane label leads when present (the identifier
+                    they chose), then Claude's own /rename session name, otherwise the default
+                    space › tab. */}
+                <div className="flex min-w-0 items-center gap-2 leading-5">
+                  <div className="relative shrink-0">
+                    {isShell ? (
+                      <div className="flex size-4 items-center justify-center rounded-sm border bg-muted">
+                        <TerminalSquare className="size-2.5 text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <AgentIcon agent={agent.agent} className="size-4" />
+                    )}
+                    {/* A shell pane has no agent status, so it gets no badge — the tile alone says
+                        what it is, and the composer strip's "shell" says it in words. The dot IS
+                        named here, unlike every other StatusDot in the app: it is the only one that
+                        stands alone rather than leading a word, so unnamed it would be an empty span
+                        that names nothing and matches no text query. In focus mode the button's own
+                        aria-label is what a screen reader reads (a label replaces the content beneath
+                        it) and that label already carries the status; this name is what answers a
+                        browse-mode read of the glyph itself, and the fallback if that label ever
+                        loses its suffix. */}
+                    {!isShell && (
+                      <StatusDot
+                        status={agent.status}
+                        label={statusLabel(agent.status)}
+                        stale={connecting}
+                        surface="bg-background"
+                        className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-background"
+                      />
+                    )}
+                  </div>
+                  <span data-slot="pane-name" className="block truncate font-semibold leading-5">
+                    {paneName}
+                  </span>
+                </div>
                 {/* Line 2, conditional: the path, but only when it names a segment line 1 does not
                     already show — see cwdBeyondName. Gated against the RENDERED NAME rather than
                     against the project, because a hand-set label ("logs") puts no directory on line 1

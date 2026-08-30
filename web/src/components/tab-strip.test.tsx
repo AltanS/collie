@@ -344,4 +344,36 @@ describe("TabStrip — status on the chips", () => {
       expect(empty).not.toHaveTextContent(word);
     }
   });
+
+  // WHICH AGENT IS IN THERE — the operator's ask, and the reason it belongs on the tab rather than
+  // only in the pane header: a space's tabs are exactly the dimension along which the answer changes,
+  // so the header names one agent and switching tabs changes it with no warning in the row you came
+  // from. The tile is drawn only when the tab's panes agree on ONE brand. Silence is the honest
+  // answer in the other two cases and both are pinned below, because a mark is a claim about the
+  // whole tab that only one pane in it would support.
+  //
+  // Read through the LOGO's own accessible name, not a class: AgentIcon labels itself "<agent> logo"
+  // and the wrapper hides it from the tab's own name, so the query has to reach inside the button.
+  const logos = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('[role="img"]')).map((n) => n.getAttribute("aria-label"));
+
+  it("marks a tab with the agent it runs, when its panes agree on one", () => {
+    strip([pane("w1:t1", "idle"), { ...pane("w1:t1", "working"), paneId: "w1:t1:p2" }]);
+    expect(logos(screen.getByRole("button", { name: /code/ }))).toEqual(["claude logo"]);
+    // …and it is not announced a second time: the tab already says its label and its status.
+    expect(screen.getByRole("button", { name: /code/ }).getAttribute("aria-label")).toBeNull();
+    expect(screen.getByRole("button", { name: /code/ })).not.toHaveTextContent("claude");
+  });
+
+  it("marks nothing when a tab runs two different agents", () => {
+    strip([pane("w1:t1", "idle"), { ...pane("w1:t1", "idle"), paneId: "w1:t1:p2", agent: "codex" }]);
+    expect(logos(screen.getByRole("button", { name: /code/ }))).toEqual([]);
+    // The status is still counted over both panes — only the BRAND claim is withheld.
+    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("idle");
+  });
+
+  it("marks nothing on a tab with no agents at all", () => {
+    strip([pane("w1:t1", "idle")]);
+    expect(logos(screen.getByRole("button", { name: /empty/ }))).toEqual([]);
+  });
 });
