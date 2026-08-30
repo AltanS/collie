@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.48] - 2026-08-30
+
+### Added
+
+- **Zen mode — one tap takes every Collie surface off the screen and leaves the terminal mirror alone.** Off by default; turn it on in **Settings → Zen mode** (per device, in the browser) and a **Zen mode** row joins the pane's ⋮ menu beside Find and History. It hides the header row, the tab and pane strips, the agent's statusline, the composer and its docks — on a phone that is most of the viewport, and all of it is in the way while you read a long build log or a wide TUI. A floating 44px button in the top-right brings it back, and so does Escape. Deliberately transient: the setting persists, the state does not, so a pane always opens with its chrome. The mirror keeps polling and stays interactive throughout — prompt buttons and the top-of-buffer scrollback affordances are content, not chrome. Ported to v1 and re-expressed in its terms (the entry is a menu row, not a header button; every surface leaves through `ui/collapse.tsx`; the one hoisted header collapses its own row on a new `HeaderClaim.hidden`) — thanks @abosnjakovic (#139) (44f343d)
+
 ## [1.0.0-beta.47] - 2026-08-30
 
 ### Added
