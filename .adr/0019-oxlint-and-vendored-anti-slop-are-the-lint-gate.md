@@ -52,19 +52,25 @@ run all pick up the whole gate with no flags. `web/` deliberately has no oxlint 
 lint script of its own — the root config already covers `web/src`. There is no second, weaker
 configuration to run by accident.
 
-**The gate runs on five surfaces, in a stated authority order.** In order of latency:
+**The gate runs on four surfaces, in a stated authority order.** In order of latency:
 
 | surface | scope | what it is |
 | --- | --- | --- |
 | editor (`.vscode/`, oxc extension) | file | on type, fix on save |
 | agent edit loop (`.claude/hooks/lint-edited-file.sh`, PostToolUse) | file | exit 2, diagnostic to the model |
 | pre-commit (`scripts/git-hooks/pre-commit`) | staged files | independent of the version guard |
-| `collie build` (`cli/build.ts`) | full tree | after installs, before the typechecks |
 | CI (`.github/workflows/ci.yml`) | full tree | after version consistency, before typecheck/test |
 
-**Only the full-tree runs define "passing".** The three narrower surfaces are convenience — a
+**Only the full-tree run defines "passing".** The three narrower surfaces are convenience — a
 single-file run can miss a cross-file finding, and none of them may declare the tree green. Each
 wiring point states this at the line that does it.
+
+**`collie build` was a fifth surface and is not one any more (1.0.0-beta.44).** `build` is the path
+a clean install and `update` run on the OPERATOR'S machine, and oxlint's allocator aborts with
+SIGABRT on a host below roughly 7 GB of RAM — measured on identical VM guests: 4 GB and 6 GB abort,
+7/8/12 GB pass. The gate therefore ended clean installs with `Plugin was not installed.` and left
+upgrades with no `bin/collie`. A developer gate on an operator's path is not a gate. Nothing about
+the decision above changes: CI is still the authority, and `SKIP_LINT` is gone with the step.
 
 **A finding is fixed in the code. A rule is never downgraded to clear one, and nothing is ever
 suppressed.** There are zero `oxlint-disable` comments in `bridge/`, `web/src/` and `cli/`, and
@@ -214,15 +220,15 @@ setup next:**
   hook short-circuits on `tools/oxlint/anti-slop/*` and `contrib/*` paths itself instead of
   trusting the config to ignore them.
 - **The escape hatches are named per surface on purpose** — `SKIP_LINT_CHECK` (pre-commit),
-  `SKIP_LINT` (`collie build`), `SKIP_VERSION_CHECK` (pre-commit), `SKIP_TYPECHECK`
-  (`collie build`), `SKIP_TESTS` (pre-push). One name per guard per surface, so skipping the
-  staged-file lint for one commit cannot also disarm the full-tree gate in a build. The
+  `SKIP_VERSION_CHECK` (pre-commit), `SKIP_TYPECHECK` (`collie build`), `SKIP_TESTS` (pre-push).
+  One name per guard per surface, so skipping the
+  staged-file lint for one commit cannot also disarm the full-tree gate in CI. (`SKIP_LINT` was
+  `collie build`'s, and went when that step did.) The
   pre-commit hook's two guards were made **independent** in the same change: `SKIP_VERSION_CHECK=1`
   used to exit 0 out of the whole hook. They are listed together in `CLAUDE.md`.
 - **CI lints before it installs `web/`, typechecks or tests**, right after the version-consistency
   step: lint is the cheapest thing that can fail, so it should be what a doomed run burns minutes
-  on. `collie build` puts its lint step *after* the installs for the same reason inverted — oxlint
-  lives in the root `node_modules`, so there is nothing to run before them.
+  on. That ordering is CI's alone now that `collie build` no longer lints.
 
 **oxlint's bin carries a `#!/usr/bin/env node` shebang**, so `bun run lint` executes it under Node
 whenever Node is on `PATH`. The Bun-native path was spiked anyway (`bun node_modules/oxlint/bin/oxlint`,

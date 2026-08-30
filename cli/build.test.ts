@@ -33,7 +33,6 @@ const DIST = webDist(ROOT);
 const STAGING = webStaging(ROOT);
 const BINARY_NEW = collieBinaryStaging(ROOT);
 const GATE = `${ROOT}/scripts/check-version.sh`;
-const MUX_GATE = `${ROOT}/scripts/check-mux-names.sh`;
 
 interface Harness {
   deps: BuildDeps;
@@ -64,15 +63,13 @@ const servedBundle = (files: FakeFiles): SeededFiles =>
   );
 
 describe("build: the ordered steps", () => {
-  test("gate → install both trees → lint (+ mux names) → typecheck both sides → compile the CLI → build the web UI", () => {
+  test("gate → install both trees → typecheck both sides → compile the CLI → build the web UI", () => {
     const h = harness();
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toEqual([
       `${ROOT}$ bash ${GATE}`,
       `${ROOT}$ bun install`,
       `${WEB}$ bun install`,
-      `${ROOT}$ bun run lint`,
-      `${ROOT}$ bash ${MUX_GATE}`,
       `${ROOT}$ bun run typecheck`,
       `${WEB}$ bun run typecheck`,
       `${ROOT}$ bun build --compile --target=bun ./cli/main.ts --outfile ${BINARY_NEW}`,
@@ -104,18 +101,28 @@ describe("build: the ordered steps", () => {
     expect(h.files.ops).toContain(`mv ${BINARY_NEW} ${BINARY}`);
   });
 
-  test("SKIP_VERSION_CHECK=1, SKIP_LINT=1 and SKIP_TYPECHECK=1 drop exactly their own step", () => {
-    const h = harness({
-      env: { SKIP_VERSION_CHECK: "1", SKIP_LINT: "1", SKIP_TYPECHECK: "1" },
-    });
+  test("SKIP_VERSION_CHECK=1 and SKIP_TYPECHECK=1 drop exactly their own step", () => {
+    const h = harness({ env: { SKIP_VERSION_CHECK: "1", SKIP_TYPECHECK: "1" } });
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls.some((c) => c.includes("check-version.sh"))).toBe(false);
-    expect(h.exec.calls.some((c) => c.includes("run lint"))).toBe(false);
-    // The mux-name gate rides SKIP_LINT with the lint gate, on purpose — one hatch, one lint step.
-    expect(h.exec.calls.some((c) => c.includes("check-mux-names.sh"))).toBe(false);
     expect(h.exec.calls.some((c) => c.includes("typecheck"))).toBe(false);
     expect(h.exec.calls).toContain(`${ROOT}$ bun install`);
     expect(h.exec.calls).toContain(`${WEB}$ bun run build -- --outDir dist-staging --emptyOutDir`);
+  });
+
+  test("the operator build issues NO lint invocation at all — a lint gate here aborted installs on hosts under ~7 GB of RAM", () => {
+    // The regression this fix exists to prevent. `build` is what a clean install (Herdr's
+    // `[[build]]`) and `update` run on the OPERATOR'S machine; oxlint's allocator SIGABRTs below
+    // roughly 7 GB, so a lint step here ended installs with `Plugin was not installed.` and left
+    // upgrades with no `bin/collie`. No env var may re-arm it, so the empty environment is the
+    // case that matters — and nothing named SKIP_LINT exists to turn it back off.
+    for (const env of [{}, { SKIP_LINT: "1" }, { SKIP_LINT: "0" }]) {
+      const h = harness({ env });
+      expect(cmdBuild(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.calls.some((c) => c.includes("lint"))).toBe(false);
+      expect(h.exec.calls.some((c) => c.includes("oxlint"))).toBe(false);
+      expect(h.exec.calls.some((c) => c.includes("check-mux-names.sh"))).toBe(false);
+    }
   });
 
   test("bun missing is a legible hard failure, not an ENOENT", () => {
@@ -131,8 +138,6 @@ describe("build: a failure never empties the live web/dist", () => {
   const cases: [name: string, prefix: string][] = [
     ["the version gate", `${ROOT}$ bash ${GATE}`],
     ["the root install", `${ROOT}$ bun install`],
-    ["the lint gate", `${ROOT}$ bun run lint`],
-    ["the mux-name gate", `${ROOT}$ bash ${MUX_GATE}`],
     ["the web typecheck", `${WEB}$ bun run typecheck`],
     ["the CLI compile", `${ROOT}$ bun build --compile`],
     ["the web build", `${WEB}$ bun run build --`],

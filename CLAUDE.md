@@ -107,8 +107,7 @@ the unit name; the Herdr action runs from anywhere.
 - **Backend changes** (`bridge/*.ts`): Bun does **not** hot-reload the service — you must
   `systemctl --user restart collie`. Forgetting this is the #1 "my change didn't take" trap.
 - `bun run build` (root) is now **one definition**: it runs `collie build`, which gates on
-  `scripts/check-version.sh`, installs both trees, **lints the full tree**, **typechecks both
-  sides** (root tsc + web tsc),
+  `scripts/check-version.sh`, installs both trees, **typechecks both sides** (root tsc + web tsc),
   compiles `bin/collie`, builds web to `dist-staging`, and swaps both artifacts in **last** — a
   failed build never empties a live `web/dist` and never replaces the running binary. The binary is
   always renamed into place, never written through (the running service keeps its old inode until
@@ -143,10 +142,13 @@ the unit name; the Herdr action runs from anywhere.
   correctness/suspicious/perf catalog plus all 15 rules of the vendored
   [anti-slop](./tools/oxlint/README.md) plugin, at `error`. Don't add ESLint or biome
   ([ADR 0019](./.adr/0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md)).
-- **One config, `.oxlintrc.json` at the root** — the editor, the PostToolUse hook, pre-commit,
-  `collie build` and CI all shell out to it with no flags of their own. `web/` has no lint script;
-  the root config already covers `web/src`. Only the **full-tree** runs (`collie build`, CI) define
-  "passing".
+- **One config, `.oxlintrc.json` at the root** — the editor, the PostToolUse hook, pre-commit and
+  CI all shell out to it with no flags of their own. `web/` has no lint script;
+  the root config already covers `web/src`. Only the **full-tree** run (CI) defines "passing".
+- **`collie build` does NOT lint, and must not learn to.** `build` is the operator's path — a clean
+  install and `update` both run it on the operator's machine — and oxlint's allocator SIGABRTs below
+  roughly 7 GB of RAM, which bricked installs on ordinary boxes (1.0.0-beta.44). The mux-name check
+  left with it; CI covers it through `scripts/check-mux-names.test.ts`.
 - **A finding is fixed in the code, never suppressed and never cleared by downgrading a rule.**
   There are zero `oxlint-disable` comments in the tree and that is the policy. A `// SAFETY:`
   comment must state the invariant that makes the assertion sound — "safe, trust me" clears the
@@ -171,7 +173,6 @@ a single command; never export one.
 | `SKIP_VERSION_CHECK=1` | `git commit` (pre-commit hook) | the version-consistency + bump-on-change guard |
 | `SKIP_LINT_CHECK=1` | `git commit` (pre-commit hook) | oxlint over the staged files |
 | `SKIP_PACK_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the pack-wire decision guard |
-| `SKIP_LINT=1` | `bun run build` / `collie build` | the full-tree lint step |
 | `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
 | `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
 
