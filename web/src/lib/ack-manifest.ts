@@ -98,7 +98,19 @@ export const ACK_MANIFEST = {
   },
   closeTab: {
     channel: "echo",
-    why: "Same as closePane, and the blast radius makes it matter more: the tab leaving the strip is the outcome, the echo is the acceptance of a tap that kills every pane inside it.",
+    // TWO paths reach this export and they are acknowledged differently, the same way `sendKeys`
+    // above is. Closing ANOTHER tab is the plain case the entry describes. Closing the tab you are
+    // IN also NAVIGATES you — components/agent-chat.tsx's `closeCurrentTab` lands you on a
+    // neighbouring tab of the space, or Home — and that is the `createTab` case, not this one: the
+    // eye has already left the control, so an echo on a button inside a strip that is unmounting is
+    // an acknowledgement drawn where nobody can be looking. That path therefore ALSO publishes a
+    // status, which turns the mark's orbit one round.
+    //
+    // It stays classified `"echo"` because the classification names the channel the EXPORT is
+    // acknowledged on, and the plain close is the path that owns a control with a phase to show —
+    // the same reading `sendKeys` takes. The operator found this: "when closing a tab btw the orbit
+    // is not spinning, why?"
+    why: "Same as closePane, and the blast radius makes it matter more: the tab leaving the strip is the outcome, the echo is the acceptance of a tap that kills every pane inside it. Closing the tab you are IN navigates, so that path adds a status — see the note above it.",
   },
   createTab: {
     channel: "status",

@@ -703,6 +703,23 @@ export function AgentChat({
   // strand the close. onBack() (Home) is the last resort, only when no tab in the space resolves to
   // an open pane at all.
   function closeCurrentTab(tabId: string) {
+    // ── IT SAYS SO, AND THE ORBIT TURNS WITH IT ─────────────────────────────────
+    // `closeTab` is classified `"echo"` in lib/ack-manifest.ts — the tab leaving the strip IS the
+    // outcome, so the ✓ on the tapped control carries only the acceptance. That reasoning is right
+    // for closing ANOTHER tab and wrong for this path, and the manifest's own neighbouring entry is
+    // the proof: `createTab` takes `"status"` because "the app navigates to the new pane, so the
+    // operator's eye has already left the control that was tapped". This function navigates too.
+    // The echo is on a button inside a strip that is about to unmount, on a screen the operator is
+    // about to leave — so the acknowledgement is drawn where nobody can be looking, which is the
+    // same as not drawing one. The operator reported it as the orbit not turning; the orbit not
+    // turning is the visible half of that.
+    //
+    // `setStatus` is the app's ONE definition of "worth telling the operator about" (lib/status.ts),
+    // and every publish turns the mark's orbit one round. Published BEFORE the navigation, on both
+    // exits, because it is the same fact either way — the tab you were in is gone and you are
+    // somewhere else now. The status layer is module-scoped and outlives the route change, which is
+    // the same thing routes/detail.tsx relies on when a pane closes under you.
+    setStatus(t("space.tab.closed"), "info");
     if (!agent) return onBack();
     const wsTabs = tabs.filter((tab) => tab.workspaceId === agent.workspaceId);
     const closedIndex = wsTabs.findIndex((tab) => tab.tabId === tabId);

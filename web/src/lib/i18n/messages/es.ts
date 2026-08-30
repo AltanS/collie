@@ -393,6 +393,7 @@ export const es: Dictionary = {
   "space.tab.renamed": "Renombrada",
   "space.tab.renameFailed": "Error al renombrar",
   "space.tab.closeFailed": "Error al cerrar",
+  "space.tab.closed": "Pestaña cerrada",
   "space.readOnly.notPaired": "Sin vincular — vincula este dispositivo en Ajustes",
   "space.readOnly.deviceUnauthorised": "Solo lectura — dispositivo no autorizado",
   "space.create.ready": "Nuevo: {what} — inicia tu agente",

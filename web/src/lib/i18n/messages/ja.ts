@@ -387,6 +387,7 @@ export const ja: Dictionary = {
   "space.tab.renamed": "名前を変更しました",
   "space.tab.renameFailed": "名前の変更に失敗しました",
   "space.tab.closeFailed": "終了に失敗しました",
+  "space.tab.closed": "タブを閉じました",
   "space.readOnly.notPaired": "未ペアリング — 設定でこの端末をペアリングしてください",
   "space.readOnly.deviceUnauthorised": "読み取り専用 — この端末は許可されていません",
   "space.create.ready": "新しい{what}の準備ができました — エージェントを起動してください",

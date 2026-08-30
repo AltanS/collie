@@ -393,6 +393,7 @@ export const de: Dictionary = {
   "space.tab.renamed": "Umbenannt",
   "space.tab.renameFailed": "Umbenennen fehlgeschlagen",
   "space.tab.closeFailed": "Schließen fehlgeschlagen",
+  "space.tab.closed": "Tab geschlossen",
   "space.readOnly.notPaired": "Nicht gekoppelt — dieses Gerät in den Einstellungen koppeln",
   "space.readOnly.deviceUnauthorised": "Schreibgeschützt — Gerät nicht autorisiert",
   "space.create.ready": "Neuer {what} bereit — Agent starten",

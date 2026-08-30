@@ -385,6 +385,7 @@ export const ko: Dictionary = {
   "space.tab.renamed": "이름 변경됨",
   "space.tab.renameFailed": "이름 변경 실패",
   "space.tab.closeFailed": "닫기 실패",
+  "space.tab.closed": "탭을 닫았습니다",
   "space.readOnly.notPaired": "연결되지 않음 — 설정에서 이 기기를 연결하세요",
   "space.readOnly.deviceUnauthorised": "읽기 전용 — 이 기기는 권한이 없어요",
   "space.create.ready": "새 {what} 준비됨 — 에이전트를 실행하세요",

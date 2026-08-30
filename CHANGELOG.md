@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.39] - 2026-08-30
+
+### Fixed
+
+- Closing the tab you are IN now says so, and the mark's orbit turns with it. That path navigates you to a neighbouring tab, so the ✓ on the button you tapped was being drawn inside a strip that was unmounting, on a screen you were leaving — an acknowledgement nobody could be looking at. Closing any OTHER tab is unchanged: the tab leaving the strip is the outcome, and the echo carries the acceptance
+
 ## [1.0.0-beta.38] - 2026-08-30
 
 ### Changed

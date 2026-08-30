@@ -375,6 +375,7 @@ export const zh: Dictionary = {
   "space.tab.renamed": "已重命名",
   "space.tab.renameFailed": "重命名失败",
   "space.tab.closeFailed": "关闭失败",
+  "space.tab.closed": "已关闭标签页",
   "space.readOnly.notPaired": "未配对 — 请在设置中配对此设备",
   "space.readOnly.deviceUnauthorised": "只读 — 此设备未获授权",
   "space.create.ready": "新{what}已就绪 — 启动你的智能体",

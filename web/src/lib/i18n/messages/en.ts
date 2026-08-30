@@ -397,6 +397,7 @@ export const en = {
   "space.tab.renamed": "Renamed",
   "space.tab.renameFailed": "Rename failed",
   "space.tab.closeFailed": "Close failed",
+  "space.tab.closed": "Tab closed",
   "space.readOnly.notPaired": "Not paired — pair this device in Settings",
   "space.readOnly.deviceUnauthorised": "Read-only — device not authorised",
   "space.create.ready": "New {what} ready — launch your agent",

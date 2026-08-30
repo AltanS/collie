@@ -1277,6 +1277,12 @@ describe("AgentChat — closing the current tab", () => {
 
     await waitFor(() => expect(onSelect).toHaveBeenCalledExactlyOnceWith("w2:p2"));
     expect(onBack).not.toHaveBeenCalled();
+    // …AND IT SAYS SO. Closing the tab you are IN navigates, so the ✓ on the tapped control is
+    // drawn inside a strip that is unmounting, on a screen the operator is leaving — an
+    // acknowledgement nobody can be looking at. `createTab` takes a status for exactly this reason
+    // (lib/ack-manifest.ts) and this path is the same shape. Every status publish also turns the
+    // mark's orbit one round, which is the half the operator noticed was missing.
+    expect(await screen.findByText("Tab closed")).toBeInTheDocument();
   });
 
   it("closing the LAST tab in the strip falls back to the previous one", async () => {
@@ -1339,6 +1345,10 @@ describe("AgentChat — closing the current tab", () => {
 
     await waitFor(() => expect(onBack).toHaveBeenCalledOnce());
     expect(onSelect).not.toHaveBeenCalled();
+    // Both exits from `closeCurrentTab` say it, because it is the same fact either way: the tab you
+    // were in is gone and you are somewhere else now. A status on only one branch would be silent on
+    // the more disorienting of the two.
+    expect(await screen.findByText("Tab closed")).toBeInTheDocument();
   });
 });
 
