@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { compareSemver, majorOf, parseSemverTag } from "../bridge/update.ts";
+import { compareSemver, followsTrain, majorOf, parsePrereleaseTag } from "../bridge/update.ts";
 import { manifestVersionFrom } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
 import { EXIT } from "./io.ts";
@@ -31,24 +31,40 @@ export const MAJOR_ACTION = "herdr plugin action invoke update-major --plugin he
 // ── Target selection (pure — ADR 0020) ───────────────────────────────────────
 // A routine `update` no longer means "the tip of the default branch": it means "the newest RELEASE
 // of the major this install is already on". Crossing a major is a separate act, consented to by
-// `--major`. Everything that decides WHICH commit to land on is a pure function over the remote's
-// tag list, so `bun test` covers the whole decision without a git remote.
+// `--major`. One amendment since (ADR 0020, 2026-08-30): an install whose OWN version carries a
+// prerelease tail may also follow its major's prerelease train — but only as a FALLBACK, when no
+// strict release of that major is newer than it. Beta to beta while the release is unpublished, then
+// straight onto the release the moment it exists. That is a property of the installed version, not a
+// flag, so there is no switch to get wrong and a stable install cannot be pulled onto a beta.
+//
+// Everything that decides WHICH commit to land on is a pure function over the remote's tag list, so
+// `bun test` covers the whole decision without a git remote.
 
-/** One strict `vX.Y.Z` release tag, as the remote reports it. */
+/** One `vX.Y.Z` or `vX.Y.Z-<tail>` tag, as the remote reports it. */
 export interface ReleaseTag {
-  /** The ref name (`v1.2.3`) — what we fetch by, because a bare sha may not be a valid want. */
+  /** The ref name (`v1.2.3`, `v1.0.0-beta.44`) — what we fetch by, because a bare sha may not be a
+   *  valid want. A prerelease name needs no special handling downstream: `refs/tags/<tag>` is a ref
+   *  like any other. */
   tag: string;
   /** Dotted version, no leading `v`. */
   version: string;
   major: number;
+  /** The `-` tail (`beta.44`), or null for a strict release. A prerelease tag is a candidate ONLY for
+   *  an install that itself carries a tail — see {@link planUpdate}. */
+  prerelease: string | null;
   /** The commit the tag resolves to — the PEELED one for an annotated tag. */
   commit: string;
 }
 
+/** Just the strict releases. The candidate set for a stable install, for `--major`, and for pinning an
+ *  unversioned checkout — none of those three ever touches a prerelease. */
+const strictOnly = (tags: readonly ReleaseTag[]): ReleaseTag[] => tags.filter((t) => t.prerelease === null);
+
 /**
- * Strict release tags out of `git ls-remote --tags origin`. Prereleases and every non-release ref are
- * dropped by the same anchor the banner uses (`bridge/update.ts`'s `SEMVER_TAG`), so the verb can
- * never land on something the banner would not have announced.
+ * Release AND prerelease tags out of `git ls-remote --tags origin`. Every non-version ref is dropped
+ * by the same anchor the banner uses (`bridge/update.ts`'s `PRERELEASE_SEMVER_TAG`), so the verb can
+ * never land on something the banner would not have announced. Which of these tags an install may
+ * actually take is decided later, by {@link planUpdate}, from the INSTALLED version alone.
  *
  * An ANNOTATED tag is listed twice — once at the tag object, once peeled (`^{}`) at the commit. The
  * peeled line is the one that names a commit, so it wins wherever both appear.
@@ -62,28 +78,42 @@ export function parseRemoteTags(stdout: string): ReleaseTag[] {
     const raw = ref.slice("refs/tags/".length);
     const peeled = raw.endsWith("^{}");
     const name = peeled ? raw.slice(0, -3) : raw;
-    if (parseSemverTag(name) === null) continue;
+    if (parsePrereleaseTag(name) === null) continue;
     const seen = byTag.get(name);
     if (seen !== undefined && seen.peeled && !peeled) continue;
     byTag.set(name, { commit, peeled });
   }
-  return [...byTag].map(([tag, { commit }]) => ({
-    tag,
-    version: tag.slice(1),
-    major: parseSemverTag(tag)![0],
-    commit,
-  }));
+  return [...byTag].flatMap(([tag, { commit }]) => {
+    const parsed = parsePrereleaseTag(tag);
+    if (parsed === null) return [];
+    return [
+      { tag, version: tag.slice(1), major: parsed.triple[0], prerelease: parsed.prerelease, commit },
+    ];
+  });
 }
 
-/** The highest release among `tags`, or null when there is none. */
+/** The highest tag among `tags` by full semver, or null when there is none. Filter FIRST — this does
+ *  not know which of them the caller is allowed to take. */
 export function highestRelease(tags: readonly ReleaseTag[]): ReleaseTag | null {
   let best: ReleaseTag | null = null;
   for (const t of tags) if (best === null || compareSemver(t.version, best.version) > 0) best = t;
   return best;
 }
 
-/** The highest release inside `major` — the target of a routine update. */
+/** The highest STRICT release inside `major` — the target of a routine update on a stable install. */
 export function releaseInMajor(tags: readonly ReleaseTag[], major: number): ReleaseTag | null {
+  return highestRelease(strictOnly(tags).filter((t) => t.major === major));
+}
+
+/**
+ * The highest tag inside `major` counting PRERELEASES — the FALLBACK target for an install that is
+ * itself on a prerelease and has no newer strict release of its major to take.
+ *
+ * The caller asks `followsTrain` first, so this is never what a stable install sees, and never what a
+ * beta install sees once its release is out: the release supersedes the betas that led to it. This is
+ * only how a tester walks beta.44 → beta.45 while `v1.0.0` does not exist yet.
+ */
+export function trainInMajor(tags: readonly ReleaseTag[], major: number): ReleaseTag | null {
   return highestRelease(tags.filter((t) => t.major === major));
 }
 
@@ -94,7 +124,9 @@ export function releaseInMajor(tags: readonly ReleaseTag[], major: number): Rele
  * crossing is the one the operator consented to and its release notes are the ones that apply.
  */
 export function nextMajorRelease(tags: readonly ReleaseTag[], major: number): ReleaseTag | null {
-  const above = tags.filter((t) => t.major > major);
+  // Strict only: crossing a major lands on a RELEASE. A prerelease of the next major is not something
+  // `--major` may hand an operator who has not opted into that train by installing one.
+  const above = strictOnly(tags).filter((t) => t.major > major);
   if (above.length === 0) return null;
   const next = Math.min(...above.map((t) => t.major));
   return releaseInMajor(above, next);
@@ -131,7 +163,7 @@ export function planUpdate(a: {
 }): UpdatePlan {
   const major = a.installed === null ? null : majorOf(a.installed);
   if (major === null || a.installed === null) {
-    return { kind: "unknown-version", newest: highestRelease(a.tags) };
+    return { kind: "unknown-version", newest: highestRelease(strictOnly(a.tags)) };
   }
   const higher = nextMajorRelease(a.tags, major);
   if (a.crossMajor) {
@@ -139,7 +171,12 @@ export function planUpdate(a: {
       ? { kind: "no-higher-major", major }
       : { kind: "advance", target: higher, crossesMajor: true, higher };
   }
-  const best = releaseInMajor(a.tags, major);
+  // Prerelease-following is decided by the INSTALLED version, never by a flag — and the rule itself
+  // lives in ONE place, `followsTrain`, which the banner reads too. A stable install is offered
+  // strict releases only (unchanged, byte for byte). A prerelease install PREFERS strict releases as
+  // well, and drops to its major's train only when no strict release there is newer than it.
+  const strict = releaseInMajor(a.tags, major);
+  const best = followsTrain(a.installed, strict?.version ?? null) ? trainInMajor(a.tags, major) : strict;
   if (best === null) return { kind: "no-release", major, higher };
   // Already there — by commit (the usual case) or by version (a rebuilt tag, a rolled-forward
   // manifest). Either answer means there is nothing in this major left to take.
@@ -276,8 +313,10 @@ function updateLinked(
 }
 
 /**
- * A Herdr-managed checkout is detached, so `update` re-detaches it — onto the newest RELEASE TAG of
- * the major it is on, never onto whatever the default branch says right now.
+ * A Herdr-managed checkout is detached, so `update` re-detaches it — onto the newest TAG of the major
+ * it is on (prereleases counting only as a fallback, for an install that is on one), never onto
+ * whatever the default branch says right now. A prerelease tag needs nothing special here: it is fetched as
+ * `refs/tags/<tag>` like every other.
  */
 function updateManaged(
   deps: UpdateDeps,
@@ -317,7 +356,11 @@ function updateManaged(
     return EXIT.OK;
   }
   if (plan.kind === "current") {
-    deps.io.out(`already current — v${plan.at.version} is the newest release of major ${plan.at.major}.`);
+    deps.io.out(
+      plan.at.prerelease === null
+        ? `already current — v${plan.at.version} is the newest release of major ${plan.at.major}.`
+        : `already current — v${plan.at.version} is the newest on the major ${plan.at.major} prerelease train.`,
+    );
     announceMajor(deps, plan.higher);
     return EXIT.OK;
   }

@@ -2,11 +2,15 @@ import { describe, expect, it } from "bun:test";
 
 import {
   compareSemver,
+  followsTrain,
   githubReleaseUrl,
+  isPrereleaseVersion,
+  latestUpdateInMajor,
   latestReleaseAboveMajor,
   latestReleaseInMajor,
   latestReleaseTag,
   majorOf,
+  parsePrereleaseTag,
   parseSemverTag,
   shouldNotify,
   stampOf,
@@ -31,6 +35,85 @@ describe("compareSemver", () => {
     expect(compareSemver("1.0.0", "1.0.0-beta.5")).toBe(1);
     expect(compareSemver("1.0.0-beta.5", "0.31.1")).toBe(1);
     expect(compareSemver("1.0.0-beta.5+ab12cd3", "1.0.1")).toBe(-1);
+  });
+
+  it("orders prerelease tails by semver §11 — the whole beta train, in order", () => {
+    // The chain a beta install walks. `beta.9` vs `beta.10` used to compare EQUAL (the tail was
+    // reduced to a boolean), which would have frozen the train at its first two-digit beta.
+    const chain = ["1.0.0-beta.9", "1.0.0-beta.10", "1.0.0-rc.1", "1.0.0"];
+    for (let i = 0; i + 1 < chain.length; i++) {
+      expect(compareSemver(chain[i]!, chain[i + 1]!)).toBe(-1);
+      expect(compareSemver(chain[i + 1]!, chain[i]!)).toBe(1);
+    }
+    // Numeric identifiers sort BELOW alphanumeric ones, and a shorter tail that is a prefix of a
+    // longer one sorts first.
+    expect(compareSemver("1.0.0-1", "1.0.0-alpha")).toBe(-1);
+    expect(compareSemver("1.0.0-beta", "1.0.0-beta.1")).toBe(-1);
+    expect(compareSemver("1.0.0-beta.44", "1.0.0-beta.44")).toBe(0);
+    expect(compareSemver("1.0.0-alpha.1", "1.0.0-beta.1")).toBe(-1);
+  });
+});
+
+describe("parsePrereleaseTag / isPrereleaseVersion", () => {
+  it("accepts vX.Y.Z and vX.Y.Z-<tail>, and keeps the tail apart", () => {
+    expect(parsePrereleaseTag("v1.2.3")).toEqual({ triple: [1, 2, 3], prerelease: null });
+    expect(parsePrereleaseTag(" v1.0.0-beta.44 ")).toEqual({ triple: [1, 0, 0], prerelease: "beta.44" });
+    expect(parsePrereleaseTag("v1.0.0-rc.1")).toEqual({ triple: [1, 0, 0], prerelease: "rc.1" });
+  });
+
+  it("rejects garbage — remote ref names are untrusted input", () => {
+    expect(parsePrereleaseTag("v1.0.0-")).toBeNull(); // a bare trailing hyphen names no tail
+    expect(parsePrereleaseTag("v1.0.0-beta..1")).toBeNull(); // an empty identifier
+    expect(parsePrereleaseTag("refs/tags/v1.0.0-beta.1")).toBeNull(); // slashes never survive
+    expect(parsePrereleaseTag("v1.0.0-beta.1/x")).toBeNull();
+    expect(parsePrereleaseTag("v1.0.0-beta.1^{}")).toBeNull();
+    expect(parsePrereleaseTag("1.0.0-beta.1")).toBeNull(); // no leading v
+    expect(parsePrereleaseTag("v1.0-beta.1")).toBeNull();
+    expect(parsePrereleaseTag("nightly")).toBeNull();
+    // The STRICT parser is unchanged — it still means "strict releases only".
+    expect(parseSemverTag("v1.0.0-beta.44")).toBeNull();
+  });
+
+  it("reads prerelease-following off the installed version, never off a flag", () => {
+    expect(isPrereleaseVersion("1.0.0-beta.44")).toBe(true);
+    expect(isPrereleaseVersion("1.0.0")).toBe(false);
+    expect(isPrereleaseVersion("0.32.0")).toBe(false);
+    expect(isPrereleaseVersion("unknown")).toBe(false);
+  });
+});
+
+describe("followsTrain / latestUpdateInMajor", () => {
+  const tags = ["v0.32.0", "v1.0.0-beta.9", "v1.0.0-beta.10", "v1.0.0-rc.1", "v1.0.0", "nightly"];
+
+  it("the train is a FALLBACK, never a preference", () => {
+    expect(followsTrain("1.0.0", "1.0.0")).toBe(false); // stable install: never
+    expect(followsTrain("1.0.0", null)).toBe(false);
+    expect(followsTrain("1.0.0-beta.44", null)).toBe(true); // no strict release of the major at all
+    expect(followsTrain("1.0.0-beta.44", "1.0.0")).toBe(false); // a strict release is out → take it
+    expect(followsTrain("1.0.0-rc.1", "0.32.0")).toBe(true); // that strict one is not of this major
+    expect(followsTrain("1.0.0-beta.44", "1.0.0-beta.44")).toBe(true); // not newer than installed
+  });
+
+  it("a STABLE install never sees a prerelease — the regression this must not lose", () => {
+    // Only newer prereleases exist above it, and it is offered none of them.
+    const betasOnly = ["v1.0.0", "v1.1.0-beta.1", "v1.1.0-beta.2"];
+    expect(latestUpdateInMajor(betasOnly, 1, "1.0.0")).toBe("1.0.0");
+    expect(latestUpdateInMajor(tags, 0, "0.32.0")).toBe("0.32.0");
+    // Identical to the strict resolver, by construction.
+    expect(latestUpdateInMajor(tags, 1, "1.0.0")).toBe(latestReleaseInMajor(tags, 1));
+  });
+
+  it("a PRERELEASE install takes the train only while no strict release of its major is newer", () => {
+    // Fallback: nothing strict published in major 1 yet → the next beta.
+    expect(latestUpdateInMajor(["v1.0.0-beta.44", "v1.0.0-beta.45"], 1, "1.0.0-beta.44")).toBe("1.0.0-beta.45");
+    // Supersede: once v1.0.0 exists it wins, and beta.45 is skipped entirely.
+    expect(latestUpdateInMajor(["v1.0.0-beta.45", "v1.0.0"], 1, "1.0.0-beta.44")).toBe("1.0.0");
+    // The consent was to the road TO the release, not to the major's prereleases forever: a LATER
+    // minor's rc is as invisible to a beta install as it is to a stable one.
+    expect(latestUpdateInMajor(["v1.0.0", "v1.1.0-rc.1"], 1, "1.0.0-beta.5")).toBe("1.0.0");
+    expect(latestUpdateInMajor(tags, 1, "1.0.0-beta.10")).toBe("1.0.0");
+    // …and it never crosses out of its own major.
+    expect(latestUpdateInMajor(["v0.32.0", "v2.0.0"], 1, "1.0.0-beta.1")).toBeNull();
   });
 });
 
@@ -183,6 +266,52 @@ describe("UpdateMonitor", () => {
       majorAvailable: null,
       majorUrl: null,
     });
+  });
+
+  it("a beta install is offered the next beta — the banner follows the train too", async () => {
+    // The banner and the verb share `latestUpdateInMajor`, so this is the same rule, not a copy of it.
+    const { monitor, notified } = makeMonitor({
+      current: "1.0.0-beta.44",
+      fetchTags: async () => ["v0.32.0", "v1.0.0-beta.44", "v1.0.0-beta.45", "nightly"],
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({
+      latest: "1.0.0-beta.45",
+      latestUrl: "https://github.com/AltanS/collie/releases/tag/v1.0.0-beta.45",
+      releaseAvailable: true,
+      majorAvailable: null,
+    });
+    expect(notified).toEqual(["1.0.0-beta.45"]);
+  });
+
+  it("a beta install already on the newest beta is offered nothing", async () => {
+    const { monitor, notified } = makeMonitor({
+      current: "1.0.0-beta.45",
+      fetchTags: async () => ["v1.0.0-beta.44", "v1.0.0-beta.45"],
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: "1.0.0-beta.45", releaseAvailable: false });
+    expect(notified).toEqual([]);
+  });
+
+  it("a beta install is pointed at the RELEASE once it exists, skipping the betas after it", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.0.0-beta.44",
+      fetchTags: async () => ["v1.0.0-beta.45", "v1.0.0", "v1.1.0-rc.1"],
+    });
+    await monitor.checkRelease();
+    // v1.0.0, not beta.45 (superseded) and not v1.1.0-rc.1 (the consent ended at the release).
+    expect(monitor.status()).toMatchObject({ latest: "1.0.0", releaseAvailable: true });
+  });
+
+  it("a STABLE install stays blind to prereleases — no banner for a beta, ever", async () => {
+    const { monitor, notified } = makeMonitor({
+      current: "1.0.0",
+      fetchTags: async () => ["v1.0.0", "v1.1.0-beta.1", "v1.1.0-rc.2"],
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: "1.0.0", releaseAvailable: false });
+    expect(notified).toEqual([]);
   });
 
   it("githubReleaseUrl reconstructs the vX.Y.Z tag page", () => {

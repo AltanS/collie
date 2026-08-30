@@ -851,7 +851,10 @@ itself — that is deliberate, and the reasoning is
 If something outside Collie has to answer *"which release is current?"* — a packager, a CI job, the
 demo site that pins a release bundle — **read the repo's git tags and sort them by semver**. Include
 or exclude the `-beta` / `-rc` tails according to what you want; Collie's own update banner and
-`collie update` both do exactly this (`bridge/update.ts`, `cli/update.ts`).
+`collie update` both do exactly this (`bridge/update.ts`, `cli/update.ts`), and which tails they keep
+depends on the version the checkout is already running — a stable install reads strict tags only, and
+a prerelease install falls back to its own major's prereleases only while that major has no strict
+release newer than it ([below](#testing-the-v1-beta)).
 
 ```bash
 # newest stable release
@@ -866,18 +869,19 @@ a hint for people.
 
 #### Testing the v1 beta
 
-The v1 line is a prerelease train — `v1.0.0-beta.N` tags cut off the `v1` branch. **A routine update
-never lands on one, and that is the design, not a gap:** `collie update` and the in-app banner resolve
-strict `vX.Y.Z` tags only ([above](#resolving-the-newest-release-from-a-script)), so on 0.x `update`
-stays on 0.x and `update --major` answers *"no release above major 0 exists yet — nothing to cross
-to."* Taking a beta is a deliberate act, by one of two routes.
+The v1 line is a prerelease train — `v1.0.0-beta.N` tags cut off the `v1` branch. **Joining the train
+is a deliberate act; staying on it is automatic.** A stable install never lands on a beta: `collie
+update` and the in-app banner resolve strict `vX.Y.Z` tags only for it, so on 0.x `update` stays on
+0.x and `update --major` answers *"no release above major 0 exists yet — nothing to cross to."*
+Installing a beta is what opts you in, and from then on both the verb and the banner keep you moving
+along that major until its release lands (see below). Take it by one of two routes.
 
 **Herdr-managed, pinned to the tag:**
 
 ```bash
 # Fetches that one tag and detaches the checkout onto it, then builds the UI right there
 # (the manifest's [[build]] step, GitHub installs only) — see above.
-herdr plugin install AltanS/collie --ref v1.0.0-beta.16 --yes
+herdr plugin install AltanS/collie --ref v1.0.0-beta.44 --yes
 herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
 
 # NEW in v1: every verb now lives at <checkout>/bin/collie. Putting `collie` on your PATH is
@@ -886,9 +890,17 @@ bin/collie link                                            # ~/.local/bin/collie
 collie stt setup                                           # …and bare `collie` works from anywhere
 ```
 
-A pinned install does not self-update: `update` on a beta checkout reports *"no release of major 1 yet
-— leaving this checkout where it is."* Take the next beta the way you took this one, with the newer
-tag.
+**A beta install then keeps itself moving.** Because the version on disk carries a prerelease tail,
+`update` and the banner both fall back to that major's prereleases — but only while the major has no
+strict release newer than you. So `update` walks `beta.44` → `beta.45` → … while `v1.0.0` is
+unpublished, and takes `v1.0.0` the moment it exists, skipping any beta above you: the release
+supersedes every beta that led to it. From there the install is stable and reads strict releases
+only, so a later `v1.1.0-rc.1` is as invisible to it as it is to everyone else. The consent you gave
+by installing a beta was to the road *to* its release, not to that major's prereleases forever.
+Nothing here is a flag — it is a property of the version you installed, which is why a stable install
+can never be pulled onto a beta
+([ADR 0020](./.adr/0020-a-major-upgrade-is-consented-by-flag.md), amended 2026-08-30). Pin a
+*specific* beta only if you mean to stay on it, and re-pin by hand to move.
 
 `link` is itself a v1 feature worth exercising — [details](#put-collie-on-your-path),
 reasoning in [ADR 0021](./.adr/0021-the-path-name-is-a-pointer-never-a-copy.md). Skip it and every
@@ -897,7 +909,7 @@ command below reads `bin/collie …` from the checkout instead.
 **Linked clone:**
 
 ```bash
-git fetch --tags && git checkout v1   # or a tag: git checkout v1.0.0-beta.16
+git fetch --tags && git checkout v1   # or a tag: git checkout v1.0.0-beta.44
 bin/collie build && bin/collie restart
 ```
 

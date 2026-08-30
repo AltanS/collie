@@ -86,6 +86,48 @@ flagged act.**
 > resolving "the newest Collie" must read git tags instead — README → *Resolving the newest release
 > from a script*.
 
+> **Amended (2026-08-30, prerelease-following is a property of the installed version).** The first
+> bullet of the 2026-08-20 amendment above is **withdrawn**: a beta install is no longer frozen. It
+> was accepted on the reading that "no install is offered an update" costs nothing for the length of
+> a train. That reading held for a train of a few tags cut over days. It did not hold for
+> `v1.0.0-beta.1…44`: every recruited tester froze on the exact beta they installed, `update`
+> answered *"no release of major 1 yet — leaving this checkout where it is"* forever, and the only
+> way forward was a hand-typed `herdr plugin install --ref`. A test train nobody can walk is not a
+> test train.
+>
+> The new rule, and it is a rule about the INSTALLED version, never a flag:
+>
+> - **A strict-release install is unchanged, byte for byte.** It sees strict `vX.Y.Z` tags only —
+>   banner and verb both. Nothing can pull it onto a prerelease. That is the property this amendment
+>   protects hardest, because it is the one Decision 3 above exists to give.
+> - **A prerelease install prefers strict releases, and follows its train only as a FALLBACK.** If a
+>   strict release of the installed major is newer than the installed version, that release is the
+>   target — normal stable selection, the train ignored. Only when the major has no strict release
+>   newer than the install does the candidate set widen to every tag of that major, prereleases
+>   included, highest by full semver. So `1.0.0-beta.44` walks `1.0.0-beta.45` → … while `v1.0.0` is
+>   unpublished, and goes straight to `v1.0.0` the moment it exists — skipping any beta above it,
+>   because the release supersedes every prerelease that led to it.
+> - **The consent was to the road TO the release, not to the major's prereleases forever.** Installing
+>   a beta *is* the consent, and landing on `X.0.0` spends it. A `1.0.0-beta.5` install with `v1.0.0`
+>   and `v1.1.0-rc.1` both published lands on `v1.0.0`; the `v1.1.0-rc.1` is as invisible to it as it
+>   is to every stable install. From there the install is stable and the first bullet governs it
+>   again. There is no way back onto a train except by installing a prerelease on purpose, which is
+>   exactly how it was joined.
+> - **`--major` is untouched.** It still targets the next major's highest STRICT release. A beta of
+>   major N updates within major N until a strict release exists, and then follows the normal rules.
+>
+> Two things make this small rather than a new mechanism. There is **no flag, channel or pin file**
+> — the third *Alternatives considered* entry stands, and the installed version remains the channel,
+> which is why nothing new can disagree with `herdr-plugin.toml`. And the **banner and the verb still
+> share one resolver** — `bridge/update.ts`'s `followsTrain` decides the rule, `latestUpdateInMajor`
+> applies it, both over the prerelease-aware `PRERELEASE_SEMVER_TAG` (`parseSemverTag` stays strict
+> for every caller that means "releases only") — so the verb still cannot land where the banner would
+> not have announced.
+>
+> The second bullet of the 2026-08-20 amendment — the `v1.0.0` release notes MUST carry the
+> migration section — and both of its mechanics (prerelease tags publish as GitHub prereleases; read
+> git tags, never `releases/latest`) are unaffected and still hold.
+
 ## Consequences
 
 - **An install that never takes 0.32.0 is not protected.** It is still pointed at origin HEAD and

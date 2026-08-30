@@ -13,6 +13,7 @@ import {
   type SeededFiles,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import { latestUpdateInMajor } from "../bridge/update.ts";
 import {
   cmdApplyUpdate,
   cmdUpdate,
@@ -23,6 +24,7 @@ import {
   planUpdate,
   refreshRegistry,
   releaseInMajor,
+  trainInMajor,
   updateCheckout,
   type UpdateDeps,
   wantsMajor,
@@ -37,8 +39,8 @@ const GIT = `git -C ${ROOT}`;
 const DIST = `${ROOT}/web/dist`;
 
 // `git ls-remote --tags origin` as the remote actually answers: an ANNOTATED tag appears twice, and
-// the peeled (`^{}`) line is the one naming a commit. `v1.1.0-rc.1` and `nightly` are the refs the
-// strict anchor must drop.
+// the peeled (`^{}`) line is the one naming a commit. `nightly` is the ref the anchor must drop;
+// `v1.1.0-rc.1` is parsed but reachable only by an install that is itself on a major-1 prerelease.
 const LS_REMOTE = [
   "a1a1a1a1\trefs/tags/v0.31.1",
   "b2b2b2b2\trefs/tags/v0.32.0",
@@ -50,6 +52,15 @@ const LS_REMOTE = [
 ].join("\n");
 /** The same remote before v1.0.0 was ever tagged. */
 const ONLY_0X = "a1a1a1a1\trefs/tags/v0.31.1\nb2peeled\trefs/tags/v0.32.0\n";
+/** A remote mid-beta-train: the 1.x line exists only as prereleases. */
+const BETA_TRAIN = [
+  "a1a1a1a1\trefs/tags/v0.32.0",
+  "b9b9b9b9\trefs/tags/v1.0.0-beta.9",
+  "c0c0c0c0\trefs/tags/v1.0.0-beta.10",
+  "",
+].join("\n");
+/** The same train once v1.0.0 was cut. */
+const TRAIN_DONE = `${BETA_TRAIN}d0d0d0d0\trefs/tags/v1.0.0\n`;
 
 interface Harness {
   deps: UpdateDeps;
@@ -122,16 +133,29 @@ describe("one predicate, both decisions", () => {
 // Pure over the remote's tag list, so the whole decision is provable without a remote.
 
 describe("parseRemoteTags", () => {
-  test("keeps strict releases only, and prefers the peeled commit of an annotated tag", () => {
+  test("keeps releases AND prereleases, and prefers the peeled commit of an annotated tag", () => {
     expect(parseRemoteTags(LS_REMOTE)).toEqual([
-      { tag: "v0.31.1", version: "0.31.1", major: 0, commit: "a1a1a1a1" },
+      { tag: "v0.31.1", version: "0.31.1", major: 0, prerelease: null, commit: "a1a1a1a1" },
       // b2peeled, NOT b2b2b2b2: the peeled line is the one that names a commit.
-      { tag: "v0.32.0", version: "0.32.0", major: 0, commit: "b2peeled" },
-      { tag: "v1.0.0", version: "1.0.0", major: 1, commit: "cccccccc" },
+      { tag: "v0.32.0", version: "0.32.0", major: 0, prerelease: null, commit: "b2peeled" },
+      { tag: "v1.0.0", version: "1.0.0", major: 1, prerelease: null, commit: "cccccccc" },
+      // Parsed and carried — WHO may take it is `planUpdate`'s question, not the parser's.
+      { tag: "v1.1.0-rc.1", version: "1.1.0-rc.1", major: 1, prerelease: "rc.1", commit: "dddddddd" },
     ]);
-    // A prerelease and a non-semver ref are invisible to the verb, exactly as they are to the banner.
-    expect(parseRemoteTags("x\trefs/tags/v1.1.0-rc.1\ny\trefs/heads/main\n")).toEqual([]);
+    // A non-version ref is invisible to the verb, exactly as it is to the banner.
+    expect(parseRemoteTags("y\trefs/heads/main\n")).toEqual([]);
     expect(parseRemoteTags("")).toEqual([]);
+  });
+
+  test("a malformed prerelease ref is dropped, not guessed at", () => {
+    const junk = [
+      "1\trefs/tags/v1.0.0-",
+      "2\trefs/tags/v1.0.0-beta..1",
+      "3\trefs/tags/v1.0.0-beta.1/x",
+      "4\trefs/tags/release-v1.0.0-beta.1",
+      "",
+    ].join("\n");
+    expect(parseRemoteTags(junk)).toEqual([]);
   });
 });
 
@@ -143,6 +167,15 @@ describe("releaseInMajor / nextMajorRelease", () => {
   test("the routine target is the highest release inside the installed major", () => {
     expect(releaseInMajor(tags, 1)?.tag).toBe("v1.2.0");
     expect(releaseInMajor(tags, 2)).toBeNull();
+  });
+
+  test("releaseInMajor is strict; trainInMajor is the fallback that counts prereleases", () => {
+    const train = parseRemoteTags(TRAIN_DONE);
+    expect(releaseInMajor(train, 1)?.tag).toBe("v1.0.0");
+    expect(trainInMajor(train, 1)?.tag).toBe("v1.0.0"); // the release outranks its own betas
+    const mid = parseRemoteTags(BETA_TRAIN);
+    expect(releaseInMajor(mid, 1)).toBeNull(); // nothing strict in major 1 yet
+    expect(trainInMajor(mid, 1)?.tag).toBe("v1.0.0-beta.10"); // …10 above …9, numerically
   });
 
   test("--major crosses ONE major at a time — the next one that has a release", () => {
@@ -162,9 +195,9 @@ describe("planUpdate", () => {
   test("a routine update takes the newest release of its own major and names the one above", () => {
     expect(plan("0.31.1", "a1a1a1a1")).toEqual({
       kind: "advance",
-      target: { tag: "v0.32.0", version: "0.32.0", major: 0, commit: "b2peeled" },
+      target: { tag: "v0.32.0", version: "0.32.0", major: 0, prerelease: null, commit: "b2peeled" },
       crossesMajor: false,
-      higher: { tag: "v1.0.0", version: "1.0.0", major: 1, commit: "cccccccc" },
+      higher: { tag: "v1.0.0", version: "1.0.0", major: 1, prerelease: null, commit: "cccccccc" },
     });
   });
 
@@ -176,15 +209,69 @@ describe("planUpdate", () => {
     expect(plan("0.32.0", "somewhere-else").kind).toBe("current");
   });
 
-  test("no release of the installed major yet (a beta before its 1.0.0) → do nothing", () => {
+  test("no tag of the installed major at all (a beta before any 1.x tag) → do nothing", () => {
     // The 0.x tags are not a 1.x install's to take, and its own major has nothing tagged yet.
     expect(
       planUpdate({ tags: parseRemoteTags(ONLY_0X), installed: "1.0.0-beta.5", head: "zzz", crossMajor: false }),
     ).toEqual({ kind: "no-release", major: 1, higher: null });
-    // Once v1.0.0 IS tagged, the beta is simply behind its own release — no crossing involved.
+  });
+
+  test("a STABLE install is offered nothing when only newer prereleases exist", () => {
+    // THE regression. `v1.1.0-rc.1` sits above `v1.0.0` in the fixture and must stay invisible here.
+    const done = plan("1.0.0", "cccccccc");
+    expect(done.kind).toBe("current");
+    expect(done.kind === "current" && done.at.tag).toBe("v1.0.0");
+  });
+
+  test("a PRERELEASE install takes the train only as a FALLBACK", () => {
+    const mid = parseRemoteTags(BETA_TRAIN); // no strict 1.x tag exists yet
+    // Fallback: offered the next beta…
+    const next = planUpdate({ tags: mid, installed: "1.0.0-beta.9", head: "b9b9b9b9", crossMajor: false });
+    expect(next.kind === "advance" && next.target.tag).toBe("v1.0.0-beta.10");
+    expect(next.kind === "advance" && next.crossesMajor).toBe(false);
+    // …already on the newest beta → nothing to take, and it says so as a train, not as a release.
+    const at = planUpdate({ tags: mid, installed: "1.0.0-beta.10", head: "c0c0c0c0", crossMajor: false });
+    expect(at.kind).toBe("current");
+    expect(at.kind === "current" && at.at.prerelease).toBe("beta.10");
+    // Supersede: once v1.0.0 exists it wins, and the beta above the install is skipped entirely.
+    const out = planUpdate({
+      tags: parseRemoteTags(TRAIN_DONE),
+      installed: "1.0.0-beta.9",
+      head: "b9b9b9b9",
+      crossMajor: false,
+    });
+    expect(out.kind === "advance" && out.target.tag).toBe("v1.0.0");
+  });
+
+  test("a beta install's consent ends at the release — a later minor's rc stays invisible", () => {
+    // LS_REMOTE holds v1.0.0 AND v1.1.0-rc.1. A 1.0.0-beta.5 install takes the release, not the rc:
+    // the consent taken with a beta was to the road TO its release, not to major 1's prereleases
+    // forever. From v1.0.0 on it is a stable install, and blind to the rc like any other.
     const out = plan("1.0.0-beta.5", "zzz");
     expect(out.kind === "advance" && out.target.tag).toBe("v1.0.0");
     expect(out.kind === "advance" && out.crossesMajor).toBe(false);
+  });
+
+  test("banner and verb resolve the SAME target from the same inputs", () => {
+    // The coupling ADR 0020 relies on: the verb can never land where the banner would not have
+    // announced. Both read `bridge/update.ts` — one over ref names, one over parsed tags. The three
+    // cases the rule turns on are all in here: fallback, supersede, and consent-ended.
+    const sets = [
+      ["v0.32.0", "v1.0.0-beta.44", "v1.0.0-beta.45", "nightly"], // fallback: no strict 1.x
+      ["v1.0.0-beta.45", "v1.0.0"], // supersede: beta.44 skips beta.45
+      ["v0.32.0", "v1.0.0", "v1.1.0-rc.1"], // consent-ended: the rc is invisible
+    ];
+    for (const names of sets) {
+      const tagList = parseRemoteTags(names.map((n, i) => `c${i}\trefs/tags/${n}`).join("\n"));
+      for (const installed of ["0.32.0", "1.0.0-beta.5", "1.0.0-beta.44", "1.0.0", "1.1.0-rc.1"]) {
+        const major = Number(installed.split(".")[0]);
+        const verb = planUpdate({ tags: tagList, installed, head: "nowhere", crossMajor: false });
+        const banner = latestUpdateInMajor(names, major, installed);
+        const target =
+          verb.kind === "advance" ? verb.target.version : verb.kind === "current" ? verb.at.version : null;
+        expect(target).toBe(banner);
+      }
+    }
   });
 
   test("--major targets the next major; without one, it says so and acts on nothing", () => {
@@ -195,7 +282,7 @@ describe("planUpdate", () => {
   });
 
   test("an unreadable version falls back to the newest RELEASE, never to origin HEAD", () => {
-    const newest = { tag: "v1.0.0", version: "1.0.0", major: 1, commit: "cccccccc" };
+    const newest = { tag: "v1.0.0", version: "1.0.0", major: 1, prerelease: null, commit: "cccccccc" };
     expect(plan(null, "zzz")).toEqual({ kind: "unknown-version", newest });
     expect(plan("unknown", "zzz")).toEqual({ kind: "unknown-version", newest });
   });
@@ -351,8 +438,77 @@ describe("updateCheckout", () => {
     expect(h.io.stdout.join("\n")).toContain("no release above major 1");
   });
 
-  test("a major with no release of its own yet leaves the checkout alone", () => {
-    // A 1.0.0-beta install before v1.0.0 is tagged: the 0.x tags are not its to take.
+  test("a beta checkout takes the RELEASE once it exists, over a newer beta", () => {
+    const h = harness({
+      installed: "1.0.0-beta.9",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: TRAIN_DONE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "b9b9b9b9\n" }],
+        ...SHALLOW,
+        [`${GIT} log -1`, { stdout: "d0d0d0d the release\n" }],
+      ],
+    });
+    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    // v1.0.0, NOT v1.0.0-beta.10: the release supersedes every beta that led to it.
+    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin refs/tags/v1.0.0`);
+    expect(h.io.stdout.join("\n")).toContain("detach onto v1.0.0");
+  });
+
+  test("a beta checkout detaches onto the next beta tag while its release is unpublished", () => {
+    const h = harness({
+      installed: "1.0.0-beta.9",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: BETA_TRAIN }],
+        [`${GIT} rev-parse HEAD`, { stdout: "b9b9b9b9\n" }],
+        ...SHALLOW,
+        [`${GIT} log -1`, { stdout: "c0c0c0c the next beta\n" }],
+      ],
+    });
+    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    // A prerelease tag name reaches `refs/tags/` untouched — it is a ref like any other.
+    expect(gitRuns(h.exec)).toEqual([
+      `${GIT} fetch --depth 1 origin refs/tags/v1.0.0-beta.10`,
+      `${GIT} checkout -q --detach --force FETCH_HEAD`,
+    ]);
+    expect(h.io.stdout.join("\n")).toContain("detach onto v1.0.0-beta.10");
+  });
+
+  test("a beta checkout already on the newest beta names the train, and moves nothing", () => {
+    const h = harness({
+      installed: "1.0.0-beta.10",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: BETA_TRAIN }],
+        [`${GIT} rev-parse HEAD`, { stdout: "c0c0c0c0\n" }],
+      ],
+    });
+    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(gitRuns(h.exec)).toEqual([]);
+    expect(h.io.stdout.join("\n")).toContain(
+      "already current — v1.0.0-beta.10 is the newest on the major 1 prerelease train.",
+    );
+    expect(h.io.stdout.join("\n")).not.toContain("no release of major 1 yet");
+  });
+
+  test("a stable checkout is never pulled onto a prerelease", () => {
+    // v1.1.0-rc.1 is in LS_REMOTE and above v1.0.0. A 1.0.0 install must not see it.
+    const h = harness({
+      installed: "1.0.0",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "cccccccc\n" }],
+      ],
+    });
+    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(gitRuns(h.exec)).toEqual([]);
+    expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is the newest release of major 1.");
+  });
+
+  test("a major with no tag of its own yet leaves the checkout alone", () => {
+    // A 1.0.0-beta install before ANY v1 tag is cut: the 0.x tags are not its to take.
     const h = harness({
       installed: "1.0.0-beta.5",
       answers: [
