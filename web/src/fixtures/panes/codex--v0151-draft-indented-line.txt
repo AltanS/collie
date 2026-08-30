@@ -1,0 +1,21 @@
+[user@sbox collie-codex-sandbox]$ codex
+
+[0m[2m╭────────────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.151.0)                         │[0m
+[0m[2m│                                                    │[0m
+[0m[2m│ model:       [0mgpt-5.6-sol medium[0m[2m   [0m[38;5;6m/model[0m[2m to change │[0m
+[0m[2m│ directory:   [0m/tmp/collie-codex-sandbox[0m[2m             │[0m
+[0m[2m│ permissions: [0m[1m[38;5;5mYOLO mode[0m[2m                             │[0m
+[0m[2m╰────────────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m Use /compact when the conversation gets long to
+  summarize history and free up context.
+
+[0m[2m• [0mYou have 1 usage limit reset available. Run /usage to use
+one.
+ 
+ 
+[0m[1m›[0m please move all the images across to the new blog
+    then take the originals down once the copy is verified
+ 
+  [0m[38;2;246;226;183mgpt-5.6-sol medium[0m[2m · [0m[38;2;171;223;167m/tmp/collie-codex-sandbox[0m

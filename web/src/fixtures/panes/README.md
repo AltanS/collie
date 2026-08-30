@@ -69,6 +69,20 @@ model turn could be run.
 | `codex--v0150-custom-status.txt` | `-c 'tui.status_line=["model-with-reasoning","current-dir","git-branch"]'` (Context deliberately omitted) with a short draft on the `› ` row. Pins the styled custom-status design: per-field colours and dim ` · ` separators | `idle` |
 | `codex--v0150-paste-placeholder.txt` | One `pane.send_text` of exactly 3000 non-newline ASCII characters lands as `[Pasted Content 1024 chars]` — **N is 1024, not 3000**. Codex's TUI keeps only the first 1024 characters of a single burst, so `draftCarriesSend("x".repeat(3000), draft)` is **false** (it is true for a 1024-character send). See `codex/paste.ts` | `idle` |
 
+## Codex 0.151.0 capture (2026-08-29, herdr 0.8.2, Linux sandbox pane)
+
+Byte-faithful `format:ansi` capture from a throwaway herdr tab in `/tmp/collie-codex-sandbox`, with
+one length-preserving sanitization pass on the shell prompt the pane opened with (`user@sbox`, `$`).
+Status row is 0.150.1's two-field default, so the styled acceptor is what locates the composer here
+too. **The headline: a continuation row is NOT always two-space indented.** The gutter is two
+spaces, but what follows it is the operator's own text — and a draft carrying a hard line break
+whose next line begins with spaces (one shift+enter, trivial to type on a phone) paints a FOUR-space
+row. That is an ordinary draft, not a dialog.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0151-draft-indented-line.txt` | Two-line draft: the `› ` row, then a hard line break whose text starts with two spaces, painted as a four-space-indented continuation above the two-field status row. `composerReady` must be TRUE — `/^ {2}\S/` refused it, `locateComposer` returned null, and the pane refused every send with "the agent's input box isn't on screen" until the draft was cleared | `idle` |
+
 ## Grok corpus (live panes 2026-08-21–23)
 
 Grok's composer is a rounded box at the tail: `╭─…─╮` / `│ ❯ … │` / `╰─ <status> ─╯`, then a blank and a key-hint row. The status run is opaque (display name, optional effort, optional permission mode). User-message bubbles use **square** corners (`┌ ┐ └ ┘`) and must never be read as the composer. **All identifying content genericized** per the repo's public-repo rule.
