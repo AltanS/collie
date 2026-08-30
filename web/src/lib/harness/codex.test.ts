@@ -297,6 +297,26 @@ describe("the styled status-row acceptor fails closed", () => {
     expect(isStatusRow(text, line)).toBe(true);
   });
 
+  it("accepts Codex's dim final status field", () => {
+    // Current Codex paints the final collaboration-mode field together with its separator:
+    // `...<coloured cwd><dim> · Main [default]</dim>`. This is the live shape that left Collie's
+    // composer visible but made the reply pre-flight report that no input box was on screen.
+    const { text, line } = row(
+      `  ${FG}gpt-5.6-sol medium${OFF}${SEP}${FG2}/tmp/project${OFF}${DIM} · Main [default]${OFF}`,
+    );
+    expect(isStatusRow(text, line)).toBe(true);
+  });
+
+  it("accepts the dim suffix only after two painted fields and only at the end", () => {
+    const tooEarly = row(`  ${FG}model${OFF}${DIM} · Main [default]${OFF}`);
+    expect(isStatusRow(tooEarly.text, tooEarly.line)).toBe(false);
+
+    const notFinal = row(
+      `  ${FG}model${OFF}${SEP}${FG2}/dir${OFF}${DIM} · Main [default]${OFF}${SEP}${FG}extra${OFF}`,
+    );
+    expect(isStatusRow(notFinal.text, notFinal.line)).toBe(false);
+  });
+
   it("refuses the same text with no styling at all", () => {
     const { text, line } = row("  gpt-5.6-sol default · /tmp/collie-codex-sandbox");
     expect(isStatusRow(text, line)).toBe(false);
