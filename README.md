@@ -203,6 +203,9 @@ Push](#web-push-optional)).
 
 On the host, not your phone. Two ways in.
 
+**Herdr's server has to be running first** — start the Herdr TUI (`herdr`), or `herdr server &`.
+Without it the `invoke start` line below fails on the socket with `server_not_running`.
+
 **From GitHub (turnkey)** — Herdr fetches and builds for you:
 
 ```bash
