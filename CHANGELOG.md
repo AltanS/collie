@@ -21,6 +21,7 @@ All notable changes to Collie are recorded here. The format follows
 ### Fixed
 
 - The composer's status row is bounded on both edges, so the box it centres in is the box you see; the stack got 9px shorter with it (40c1883)
+- The composer's chrome stands on its own `--chrome` token — rgb(23) in dark instead of `--muted`'s rgb(38), which read as a bright slab under the terminal; light is unchanged (c93c9ad)
 
 ## [1.0.0-beta.33] - 2026-08-28
 
