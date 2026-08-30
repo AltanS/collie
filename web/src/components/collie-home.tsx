@@ -45,31 +45,70 @@ interface CollieHomeProps {
 const ORBIT_TURN_MS = 1800;
 
 /**
- * The round's SHAPE, as a multiplier on the mark's own live rate: `1 - cos(2πt/T)`.
+ * The round's SHAPE, as a multiplier on the mark's own live rate: a raised cosine on a WARPED clock.
  *
  * The round used to be a square wave — the orbit went from its 48s drift to its 1.8s sprint in one
  * frame, held, and dropped back just as hard. That reads as a film starting, not as a thing being
  * spun. The operator asked for it to "behave kinda as if a human spun a wheel", which is a statement
  * about the DERIVATIVE: a wheel leaves your hand accelerating and comes back to rest slowing down.
  *
- * A raised cosine is the one curve that gives that for free AND keeps the round honest:
+ * A raised cosine `1 − cos(2πθ)` gave that, and it is still the curve underneath. What it got wrong
+ * is that it is SYMMETRIC: it decelerates exactly as hard as it accelerates, and a thrown wheel does
+ * not. The hand is on it for a moment and gone; friction then takes it down over a long tail. The
+ * operator's follow-up — "the slowdown can be even smoother" — is that asymmetry, named.
  *
- *   • `rate(0) = 0` and `rate(T) = 0` — it starts and ends at a standstill, so the join with the
- *     resting drift has no velocity STEP at either end. That is strictly smoother than what it
- *     replaces, where the orbit jumped to 27x and back in a frame.
- *   • peak `2` at the halfway mark — twice the sprint at the middle of the throw.
- *   • **mean exactly 1**, because ∫₀ᵀ(1 − cos(2πt/T))dt = T. So the round still covers EXACTLY one
- *     turn in exactly `ORBIT_TURN_MS`, which is the property the whole round rests on: shorter cuts
- *     it off part way, longer starts a second one. The easing is therefore FREE — it redistributes
- *     the turn in time without spending or saving any of it. Change the curve and you must re-derive
- *     that integral, or the round stops landing where it started.
+ * ── THE WARP, AND WHY IT COSTS NOTHING ───────────────────────────────────────
+ * The fix is not a different curve, it is the same curve on a clock that does not run evenly:
+ *
+ *     rate(θ) = (1 − cos(2π·u(θ))) · u′(θ)      u(θ) = θ + s·θ(1−θ)      s = {@link SPIN_SKEW}
+ *
+ * `u` is a smooth increasing bijection of [0,1] onto itself, so this is a substitution — and by the
+ * substitution rule ∫₀¹ (1−cos 2πu) u′ dθ = ∫₀¹ (1−cos 2πu) du = 1, **for ANY such `u`**. That is
+ * the whole reason the warp is expressed this way rather than by hand-shaping a tail: the mean is 1
+ * BY CONSTRUCTION, not by a constant somebody re-derived. Skew it further, or swap `u` entirely, and
+ * the round still covers exactly one turn in exactly `ORBIT_TURN_MS` — which is the property
+ * everything else rests on (shorter cuts the turn off part way, longer starts a second one).
+ *
+ * Every property the symmetric version was chosen for survives the warp, and two improve:
+ *
+ *   • `rate(0) = rate(T) = 0` — both factors' zeros are at the ends of `u`, and `u′` never vanishes,
+ *     so the standstill at each join is untouched by any `s`.
+ *   • `rate′(0) = rate′(T) = 0` — likewise. No velocity step at either join, same as before.
+ *   • **mean exactly 1**, as above. Unchanged, and now structural rather than incidental.
+ *   • **the stop is 8× less abrupt.** `rate″(T) = 4π²(1−s)³`, so at s = 0.5 the curvature the round
+ *     ends on is an eighth of the symmetric curve's. Measured on the rate itself: 90% of the way
+ *     through, the orbit is at 0.036 of the sprint rather than 0.191 — a five-fold gentler tail.
+ *   • **the throw is sharper**, which is the same fact: `rate″(0) = 4π²(1+s)³`, 3.4× steeper. The
+ *     turn is conserved, so a longer coast has to be paid for by a quicker throw. That is not a
+ *     side effect to apologise for — it is what a hand does.
+ *
+ * The peak moves with it: 2.27 at 35% of the round, rather than 2.00 at 50%. So the deceleration now
+ * owns 65% of the round and the acceleration 35%.
  *
  * Pure, exported and tested, because it is the only half of this that can be checked without eyes.
  */
+
+/**
+ * How far the clock is warped, in [0,1). `0` is the plain symmetric raised cosine this replaced, so
+ * the change is a strict generalisation and the old behaviour is one constant away.
+ *
+ * It may not reach 1: `u′(θ) = 1 + s(1−2θ)` falls to `1 − s` at the end of the round, so at s = 1
+ * the clock stops dead and the tail is infinitely long; past it `u′` goes negative and the orbit
+ * would run BACKWARDS through the last of the round. 0.5 is half the available skew and the number
+ * the tail figures in the header were measured at.
+ */
+const SPIN_SKEW = 0.5;
+
 export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
   if (totalMs <= 0) return 1;
   const at = Math.min(Math.max(elapsedMs, 0), totalMs);
-  return 1 - Math.cos((2 * Math.PI * at) / totalMs);
+  const theta = at / totalMs;
+  // The warped clock and its speed. Both are needed: the substitution that keeps the mean at 1 is
+  // exactly `(curve ∘ u) · u′`, and dropping the `u′` factor would skew the shape AND spend part of
+  // the turn — the round would land short of where it started.
+  const u = theta + SPIN_SKEW * theta * (1 - theta);
+  const du = 1 + SPIN_SKEW * (1 - 2 * theta);
+  return (1 - Math.cos(2 * Math.PI * u)) * du;
 }
 
 export function CollieHome({ onHome, trouble, lost = false, wordmark = false, className }: CollieHomeProps) {

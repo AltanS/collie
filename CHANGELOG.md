@@ -6,6 +6,14 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.42] - 2026-08-30
+
+### Changed
+
+- The mark's orbit round now throws quickly and coasts down slowly, instead of decelerating exactly as hard as it accelerates. The curve is still a raised cosine; it runs on a warped clock, which moves the peak to 35% of the round and gives the slowdown the other 65%. Nine tenths of the way through, the orbit is five times slower than it used to be at the same instant, and the curvature it stops on is an eighth
+- The throw is correspondingly sharper, and that is the same fact rather than a side effect: the round still covers exactly one turn in exactly the same time, so a longer coast has to be paid for by a quicker throw
+- The mean is now 1 BY CONSTRUCTION rather than by a derived constant — the warp is a substitution, so the turn is conserved for any skew, and the amount of skew can be retuned by feel without re-deriving anything
+
 ## [1.0.0-beta.41] - 2026-08-30
 
 ### Changed
