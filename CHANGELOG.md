@@ -6,6 +6,13 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.38] - 2026-08-30
+
+### Changed
+
+- The read-only notice is a thin strip instead of a wrapping box. It was ~62px on a phone — more than the pane-switch handle and the agent statusline combined — spent on a standing condition that never changes for the life of the device. It uses the short copy that was already written and already translated for the space route, and drops the device-name suffix, which was answering "which device is this?" on the device you are holding
+- The tab bar and the pane switcher stand down while the soft keyboard is up, with the pane-switch handle and the agent statusline. 53px, and the largest single block above the mirror. Taken with the keyboard rather than with a tab count on purpose: a second tab can appear with no operator action at all, and a row arriving on its own would push the whole mirror down. The header breadcrumb still names the tab while you type
+
 ## [1.0.0-beta.37] - 2026-08-30
 
 ### Fixed

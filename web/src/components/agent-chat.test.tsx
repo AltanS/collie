@@ -1453,6 +1453,13 @@ describe("the pane fits its viewport", () => {
       );
       expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull();
 
+      // The two NAVIGATION rows above the mirror go with them, for the same reason and by the same
+      // test: read before typing, never during it. This is the largest single block on the screen,
+      // and taking it with the keyboard rather than with a tab count is what keeps DESIGN.md §2
+      // intact — a second tab can appear with no operator action at all (opened from the desktop,
+      // or another phone), and a row arriving on its own would push the whole mirror down.
+      expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
+
       // …and the band is untouched, keyboard or no keyboard.
       expect(container.querySelector('[data-slot="composer-status"]')).not.toBeNull();
       // The dock also stops paying the home-indicator inset twice: the keyboard covers the
