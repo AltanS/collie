@@ -83,19 +83,40 @@ export const NAVIGATION_NETWORK_ONLY = [
  *
  *  - The Nerd Font symbol faces are LAZY. `unicode-range` means a herd whose agents print no Nerd
  *    Font glyph never fetches them, and ~1.1 MB is not something to charge an install for.
- *  - The UI typeface is on the critical path — it dresses every label — so it is fetched on the
- *    first load and served from this cache on every load after, online or not. It is out of the
+ *  - The DEFAULT UI typeface is on the critical path — it dresses every label — so it is fetched on
+ *    the first load and served from this cache on every load after, online or not. It is out of the
  *    precache anyway because that install has to fetch it during the same first paint regardless,
- *    and putting it in `globPatterns` would only make the install pay for it twice. 27 KB.
+ *    and putting it in `globPatterns` would only make the install pay for it twice. 27 KB. The other
+ *    shipped face (Aldrich, 8 KB) is only ever fetched by a device whose reader chose it, and is
+ *    cached the same way from that moment on — including offline, which is the point of listing it.
  *
  * Runtime caching is cache-first (src/sw.ts), so an update that renames the file re-fetches once
  * and the sweep drops the superseded entry. Offline after any prior visit is covered by the cache;
  * offline on a device that has never loaded the app is not a font problem.
  */
+/**
+ * The UI face a device gets when it has never touched the Typeface setting — Space Grotesk.
+ *
+ * Named separately because it is the one URL that is on the CRITICAL PATH: index.html preloads it,
+ * the boot splash re-declares it, and `fonts.test.ts` holds it to the ~60 KB budget. The other
+ * shipped faces are opt-in, so they are fetched when a reader picks one and never before.
+ */
+export const DEFAULT_UI_FONT_URL = "/fonts/ui-space-grotesk-2.000-latin.woff2";
+
+/**
+ * Every SHIPPED UI face — the ones the Typeface setting can be set to (ADR 0033). In the order
+ * index.css declares them, because `fonts.test.ts` compares the two lists element by element.
+ *
+ * An OPERATOR's face is not here and must never be: those live behind `/api/fonts/`, are fetched
+ * from the network like any other API call, and are neither precached nor swept. A URL added here
+ * that does not sit under `/fonts/` would be swept out of the font cache on every activate.
+ */
+export const UI_FONT_URLS = [DEFAULT_UI_FONT_URL, "/fonts/ui-aldrich-1.002-latin.woff2"] as const;
+
 export const FONT_URLS = [
   "/fonts/nerd-symbols-3.5.0-pua.woff2",
   "/fonts/nerd-symbols-3.5.0-spua.woff2",
-  "/fonts/ui-space-grotesk-2.000-latin.woff2",
+  ...UI_FONT_URLS,
 ] as const;
 
 /**

@@ -147,6 +147,21 @@ export const en = {
   "settings.updateBanner.majorAvailable": "Collie {version} — a new major",
   "settings.updateBanner.copyAria": "Copy command: {command}",
 
+  // --- settings.typeface (the APP's own face — a per-device preference since ADR 0033) ---
+  // FAMILY NAMES ARE NOT HERE, and must not be added: "Space Grotesk" and "Aldrich" are proper
+  // nouns and are named the same in every locale, exactly like the terminal families below. The
+  // NOTES are phrases about a face rather than the name of one, so they are translated.
+  "settings.typeface.title": "Typeface",
+  "settings.typeface.description": "The app's own face, on this device.",
+  "settings.typeface.family": "Family",
+  "settings.typeface.system": "System default",
+  "settings.typeface.note.system": "Your phone's own face. Downloads nothing.",
+  "settings.typeface.note.grotesk": "Collie's own voice, drawn to match the mark.",
+  // Says the cost out loud rather than letting it be discovered: Aldrich ships one weight, so every
+  // bold in the app is the browser thickening the regular outlines.
+  "settings.typeface.note.aldrich": "One weight — bold is thickened by your browser.",
+  "settings.typeface.note.operator": "Added by this collie's operator.",
+
   // --- settings.fonts (the terminal mirror's face and size; NOT the app's own typeface) ---
   "settings.fonts.title": "Terminal font",
   "settings.fonts.description": "The terminal mirror only, on this device.",

@@ -637,6 +637,25 @@ export interface OperatorQuickReplyRow {
   items: string[];
 }
 
+/**
+ * One operator-declared UI typeface (a `[[font]]` row in their `theme.toml`). Mirrors
+ * `OperatorFontRow` in bridge/types.ts.
+ *
+ * These ADD to the shipped faces rather than replacing them, which is where `theme.toml` parts
+ * company with the ADR 0018 trio — a font cannot fire an action, so it shadows nothing (ADR 0033).
+ *
+ * NO URL CROSSES THE WIRE, only the basename: `lib/operator-fonts.ts` builds `/api/fonts/<name>`
+ * itself, and re-validates every field here before any of it reaches a stylesheet.
+ */
+export interface OperatorFontRow {
+  /** Display name AND the CSS family name. */
+  family: string;
+  /** The file's bare name, which is also the row's identity and the tail of its URL. */
+  basename: string;
+  /** `font-weight` for the `@font-face`, e.g. `400` or `400 700`. Absent = the browser's default. */
+  weight?: string;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
@@ -654,6 +673,8 @@ export interface BridgeConfig {
   operatorKeys?: OperatorKeyRow[];
   /** The operator's own Quick-dock groups. Absent when there is no `quick-replies.toml`. */
   operatorQuickReplies?: OperatorQuickReplyRow[];
+  /** The operator's own UI typefaces. Absent when there is no `theme.toml` (ADR 0033). */
+  operatorFonts?: OperatorFontRow[];
   /**
    * The multiplexer and its declared capabilities. **Absent on a bridge older than this field**, and
    * that absence is read as "everything is supported" — a mid-upgrade Herdr operator must never

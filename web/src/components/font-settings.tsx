@@ -16,9 +16,14 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-// The Fonts settings card. It configures the TERMINAL font — the mirror's face and its size — and
-// nothing else. There is deliberately no control here for the app's own typeface: that is the
-// maker's choice and ships app-wide (round-4 F-D1). Don't add one, and don't leave a hook for one.
+// The Terminal font card. It configures the mirror's face and its size, and nothing else.
+//
+// THE APP'S OWN TYPEFACE IS NOT HERE, and that is still true — but for the opposite reason it used
+// to be. This comment said the app face was "the maker's choice" with no setting and no hook
+// (round-4 F-D1). That decision fell in round 5: it is a per-device preference now, and it has its
+// own card, <TypefaceControl/>, mounted directly ABOVE this one (ADR 0033). So don't add a second
+// control for it here — the two faces are two settings because they are two questions, and merging
+// them would put the app's own voice behind a heading that says "Terminal".
 //
 // Shape follows the cards already in Settings rather than inventing a third one: the
 // icon/title/description header every row here shares, then the controls in their own band under a

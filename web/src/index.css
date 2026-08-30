@@ -299,7 +299,10 @@
     "Roboto Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
-  /* The UI typeface — CHROME ONLY. See the @font-face block below for what that means and why the
+  /* The UI typeface — CHROME ONLY, and the DEFAULT one. Which face this actually is became a
+     per-device setting in ADR 0033; this is the stack a device that has never touched the setting
+     gets, which is why it is still spelled here and not behind a class. The `:root.font-*` blocks
+     below hold the others. See the @font-face block for what "chrome only" means and why the
      stand-in family in the middle of the stack is not optional. */
   --font-sans:
     "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
@@ -354,11 +357,15 @@
   unicode-range: U+F0000-F1AFF;
 }
 
-/* The UI typeface — Space Grotesk, bundled. The app's own voice, and NOTHING ELSE'S.
+/* The UI typefaces — Space Grotesk (the default) and Aldrich, both bundled. The app's own voice,
+ * and NOTHING ELSE'S.
  *
  * WHAT IT DRESSES. Chrome: headers, section labels, buttons, settings rows, banners, counts, the
- * wordmark. It is the MAKER'S choice and there is no setting for it — the Fonts section in Settings
- * configures the TERMINAL family (--font-mono), which this block does not touch.
+ * wordmark. WHICH face does that is the reader's choice, per device: the Typeface card in Settings
+ * writes `collie:design:v1` and public/theme-init.js turns it into a root class before first paint
+ * (ADR 0033). This used to say "the maker's choice and there is no setting for it"; that decision
+ * fell, and the ADR records why. The Terminal font card below it is a DIFFERENT setting — it
+ * configures --font-mono, which nothing in this block touches.
  *
  * WHAT IT MUST NEVER DRESS. Anything an agent or a machine authored: the pane mirror, the
  * transcript, agent prose and markdown, code, command text, file paths, ANSI. Two mechanisms hold
@@ -379,8 +386,8 @@
  * at 18px reads as one drawing with the mark beside it. Its cost is the small end: x-height is
  * 486/1000, the lowest of the three faces measured, so 11px uppercase labels and the 13px tier are
  * where it has to be judged. The other two candidates (IBM Plex Sans 3.201, Geist 1.800) are on
- * disk in public/fonts/ and wired into the playground's "UI typeface" card behind a live switcher;
- * changing the winner is the --font-sans line above plus the URL below, nothing else.
+ * disk in public/fonts/ and wired into the playground's "UI typeface" card behind a live switcher —
+ * that card is where a candidate is AUDITIONED before anyone argues for shipping it.
  *
  * WEIGHT. 27 KB, subset to Latin + Latin-Ext-A + the punctuation this app actually prints (·, —, …,
  * ‹›, arrows, ×, ✓) and instanced to wght 400–700. Compare 641 KB / 504 KB for the two Nerd Font
@@ -429,6 +436,94 @@
   ascent-override: 91.51%;
   descent-override: 27.16%;
   line-gap-override: 0%;
+}
+
+/* Aldrich — the second SHIPPED face, and the one a reader picks deliberately. Built by the same
+ * scripts/build-ui-font.sh run, subset to the same ranges, 8 KB.
+ *
+ * ONE WEIGHT, AND THE BOLD IS THE BROWSER'S. Aldrich is drawn at 400 and upstream ships nothing
+ * else, so `font-weight: 400` is the honest declaration. The app asks for 500 and 600 in a hundred
+ * places, and every one of them renders as SYNTHESIZED bold — the engine smearing the 400 outlines.
+ * That is accepted, disclosed in the Settings note under the picker, and is why this line is not
+ * `400 700`: a RANGE would tell the browser it already has those weights, suppress synthesis, and
+ * flatten every bold in the app to regular. A wrong-looking bold beats no bold at all.
+ *
+ * Aldrich is SIL OFL 1.1 — public/fonts/LICENSE-aldrich.txt. */
+@font-face {
+  font-family: "Aldrich";
+  src: url("/fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+/* Aldrich's own metric-matched stand-in, on exactly the terms Space Grotesk's has above: no
+   `src: url()`, the same one metric family, and every number recomputed by scripts/build-ui-font.sh
+   rather than hand-picked. Aldrich's line box is a good deal shallower than Space Grotesk's, which
+   is why it needs its OWN table and cannot borrow the one above — sharing it would reintroduce on
+   this face precisely the shift the mechanism exists to remove. */
+@font-face {
+  font-family: "Aldrich Fallback";
+  src:
+    local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+    local("Liberation Sans"), local("Arimo"), local("Roboto");
+  size-adjust: 113.37%;
+  ascent-override: 63.53%;
+  descent-override: 18.52%;
+  line-gap-override: 4.22%;
+}
+
+/* ── The typeface setting: CSS owns every stack, JavaScript only swaps a class ───────────────────
+ *
+ * THE WHOLE MECHANISM IS THESE THREE BLOCKS. `public/theme-init.js` reads `collie:design:v1` before
+ * first paint and adds ONE class to <html>; `lib/design.ts` swaps it at runtime. Neither ever holds
+ * a font list, sets a family, or writes a custom property — because a font stack in JavaScript is a
+ * second source of truth for something this file already states, and the two would drift.
+ *
+ * The DEFAULT (Space Grotesk) is deliberately NOT a class: no class means the `--font-sans` in the
+ * @theme block above, which is the stack index.html preloads and the boot splash re-declares. A
+ * device that never opens the setting therefore has no JavaScript in its first-paint path at all.
+ *
+ * Each block sets BOTH properties. `--font-sans` is what `body` resolves through; Tailwind's
+ * `--default-font-family` is what preflight hands to form controls, which would otherwise keep the
+ * default face while everything around them changed.
+ *
+ * Specificity, since it is load-bearing: `:root.font-*` is (0,2,0) and unlayered, and the @theme
+ * block emits (0,1,0) inside Tailwind's `theme` layer. These win on both counts. */
+:root.font-system {
+  /* No webfont, no stand-in, no bytes: the phone's own interface face. This is the same stack
+     --font-content uses, spelled out rather than aliased — the two are equal today by coincidence
+     of both wanting "the system face", not because one is defined as the other. */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --default-font-family: var(--font-sans);
+}
+:root.font-aldrich {
+  --font-sans:
+    "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
+}
+/* An operator's own face (theme.toml, ADR 0033). The FAMILY NAME is the one thing this file cannot
+   know, so `lib/operator-fonts.ts` injects a <style> element that sets `--font-operator-family` and
+   declares the matching `@font-face` — one validated name and one validated URL, nothing else. The
+   stack around it still lives here.
+ *
+ * THE `var()` FALLBACK IS THE OFFLINE STORY, and it is not decoration. A device set to an operator
+ * face that cannot be resolved — first paint before /api/config answers, offline, or the operator
+ * deleted the row — has no `--font-operator-family`, so the stack starts at "Space Grotesk": the
+ * DEFAULT SHIPPED FACE, never a bare `sans-serif`. Space Grotesk is named a second time after the
+ * var() so that a resolved-but-unfetchable face lands there too rather than on the metric twin,
+ * which is Arial wearing Space Grotesk's measurements and not the same thing at all.
+ *
+ * The preference is NOT cleared when this happens. A phone that is briefly offline must not
+ * silently forget a choice it will be able to honour again in a minute. */
+:root.font-operator {
+  --font-sans:
+    var(--font-operator-family, "Space Grotesk"), "Space Grotesk",
+    "Space Grotesk Fallback", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --default-font-family: var(--font-sans);
 }
 
 @layer base {

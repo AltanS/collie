@@ -36,8 +36,11 @@
          index.css already guarantees no layout shift with a metric-matched fallback, so this is not
          load-bearing — it just means the swap usually never happens at all. `crossorigin` is
          MANDATORY on a font preload even same-origin (fonts are fetched in CORS mode); without it
-         the browser fetches the file twice. Keep the URL in step with FONT_URLS in
-         src/lib/sw-routes.ts and the @font-face in src/index.css — fonts.test.ts pins all three. -->
+         the browser fetches the file twice. ONLY THE DEFAULT FACE is preloaded — the other shipped
+         face is a deliberate choice a reader made, and preloading a file most devices never render
+         would spend everyone's first paint on a minority. Keep the URL in step with
+         DEFAULT_UI_FONT_URL in src/lib/sw-routes.ts and the @font-face in src/index.css —
+         fonts.test.ts pins all three. -->
     <link
       rel="preload"
       href="/fonts/ui-space-grotesk-2.000-latin.woff2"
@@ -69,12 +72,12 @@
       :root.dark {
         color-scheme: dark;
       }
-      /* The UI typeface, declared a second time. index.css has not loaded here either, and the
+      /* The UI typefaces, declared a second time. index.css has not loaded here either, and the
          splash's caption is the same string at the same size as routes/root.tsx's BootSplash — so
-         if the splash painted in the system face and React's copy painted in Space Grotesk, the
-         hand-off would change the family and the line under the operator's eyes. Same face, same
-         stand-in, same overrides; keep them in step with index.css. The file itself is preloaded
-         above, so this costs no extra request. */
+         if the splash painted in the system face and React's copy painted in the chosen one, the
+         hand-off would change the family and the line under the operator's eyes. Same faces, same
+         stand-ins, same overrides; keep them in step with index.css. The default file is preloaded
+         above, so for most devices this costs no extra request. */
       @font-face {
         font-family: "Space Grotesk";
         src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
@@ -91,6 +94,28 @@
         descent-override: 27.16%;
         line-gap-override: 0%;
       }
+      /* Aldrich, for the same reason and on the same terms — theme-init.js has already put
+         `font-aldrich` on <html> by the time this parses, so a reader who chose it must find the
+         face declared here or the splash paints in the system font and the hand-off to React
+         changes the voice under them. One weight; the synthesized bold is index.css's note. Not
+         preloaded (only the default face is), so this costs a fetch for the readers who chose it
+         and nothing at all for everyone else. Keep in step with index.css. */
+      @font-face {
+        font-family: "Aldrich";
+        src: url("/fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
+        font-weight: 400;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Aldrich Fallback";
+        src:
+          local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+          local("Liberation Sans"), local("Arimo"), local("Roboto");
+        size-adjust: 113.37%;
+        ascent-override: 63.53%;
+        descent-override: 18.52%;
+        line-gap-override: 4.22%;
+      }
       .boot-splash {
         position: fixed;
         inset: 0;
@@ -106,12 +131,29 @@
         background: light-dark(#f5f5f5, #0a0a0a);
         color: light-dark(#5d5d5d, #a1a1a1);
         font:
-          500 0.875rem/1.4 "Space Grotesk",
-          "Space Grotesk Fallback",
-          system-ui,
-          -apple-system,
-          "Segoe UI",
-          sans-serif;
+          500 0.875rem/1.4 var(--font-sans);
+      }
+      /* The typeface setting, mirrored from index.css (ADR 0033). The splash resolves --font-sans
+         like everything else does, so the same three blocks decide the same thing here — otherwise
+         a reader on Aldrich would get a Space Grotesk splash and a change of voice on hand-off,
+         which is the exact failure the block above this one exists to prevent. `font-operator` is
+         NOT mirrored: an operator face has no pre-paint path (theme-init.js says why), so it
+         resolves through the default below, which is what it should do. Keep in step with
+         index.css. */
+      :root {
+        --font-sans:
+          "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+          -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      :root.font-system {
+        --font-sans:
+          ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      }
+      :root.font-aldrich {
+        --font-sans:
+          "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       .boot-splash__dog {
         --dog-size: 4rem;

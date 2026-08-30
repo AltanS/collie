@@ -140,6 +140,16 @@ export const de: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — eine neue Hauptversion",
   "settings.updateBanner.copyAria": "Befehl kopieren: {command}",
 
+  // --- settings.typeface ---
+  "settings.typeface.title": "Schriftart",
+  "settings.typeface.description": "Die eigene Schrift der App, auf diesem Gerät.",
+  "settings.typeface.family": "Schriftart",
+  "settings.typeface.system": "Systemstandard",
+  "settings.typeface.note.system": "Die Schrift deines Telefons. Kein Download nötig.",
+  "settings.typeface.note.grotesk": "Collies eigene Stimme, passend zum Logo.",
+  "settings.typeface.note.aldrich": "Nur ein Schnitt — Fett wird vom Browser nachgebildet.",
+  "settings.typeface.note.operator": "Von diesem Collie-Betreiber hinzugefügt.",
+
   // --- settings.fonts ---
   "settings.fonts.title": "Terminal-Schrift",
   "settings.fonts.description": "Nur der Terminal-Spiegel, auf diesem Gerät.",

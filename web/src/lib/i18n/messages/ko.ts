@@ -135,6 +135,16 @@ export const ko: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — 새 메이저 버전",
   "settings.updateBanner.copyAria": "명령어 복사: {command}",
 
+  // --- settings.typeface ---
+  "settings.typeface.title": "글꼴",
+  "settings.typeface.description": "앱 자체의 글꼴이에요. 이 기기에 적용돼요.",
+  "settings.typeface.family": "글꼴",
+  "settings.typeface.system": "시스템 기본",
+  "settings.typeface.note.system": "이 폰의 기본 글꼴이에요. 다운로드가 없어요.",
+  "settings.typeface.note.grotesk": "로고와 어울리는 Collie만의 목소리예요.",
+  "settings.typeface.note.aldrich": "굵기가 하나뿐이라, 굵게는 브라우저가 만들어내요.",
+  "settings.typeface.note.operator": "이 collie 운영자가 추가했어요.",
+
   // --- settings.fonts ---
   "settings.fonts.title": "터미널 글꼴",
   "settings.fonts.description": "이 기기의 터미널 화면에만 적용돼요.",

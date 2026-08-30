@@ -18,6 +18,7 @@ import { HandsFreeControl } from "@/components/hands-free-control";
 import { ZenControl } from "@/components/zen-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
+import { TypefaceControl } from "@/components/typeface-control";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
@@ -116,9 +117,18 @@ export function SettingsRoute() {
             ahead of device behaviour, which is more of a per-device tweak than a standing choice. */}
         <LanguageControl />
 
-        {/* Fonts sits with appearance, immediately under Language: all three are "how this phone
-            presents itself". It configures the TERMINAL font only — the app's own typeface is the
-            maker's choice and has no setting (round-4 F-D1). */}
+        {/* TWO FONT CARDS, ADJACENT, AND NO HEADING OVER THEM. They sit with appearance, immediately
+            under Language: all four are "how this phone presents itself".
+
+            The pair is deliberately not a labelled "Design" section. Settings is a flat stack of
+            cards and has no headings at all; introducing the first one here would imply four more
+            and would push a set-once preference down the page behind furniture. Adjacency does the
+            grouping instead — and it does the other job too, which is answering the only question
+            either card raises. "Typeface" is the APP's own face (ADR 0033, a per-device setting
+            since round 5); "Terminal font" is the mirror's. Reading them one after the other is
+            what makes the split obvious. Keep them together and keep them in this order: the app's
+            own voice first, the thing it renders second. */}
+        <TypefaceControl />
         <FontSettingsControl />
 
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed

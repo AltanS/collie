@@ -127,6 +127,16 @@ export const zh: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — 新的主版本",
   "settings.updateBanner.copyAria": "复制命令：{command}",
 
+  // --- settings.typeface ---
+  "settings.typeface.title": "字体",
+  "settings.typeface.description": "应用自身的字体，仅影响本设备。",
+  "settings.typeface.family": "字体",
+  "settings.typeface.system": "系统默认",
+  "settings.typeface.note.system": "手机自带字体，不产生下载。",
+  "settings.typeface.note.grotesk": "Collie 自己的声音，与标志相配。",
+  "settings.typeface.note.aldrich": "只有一种字重——粗体由浏览器合成。",
+  "settings.typeface.note.operator": "由本 collie 的运营者添加。",
+
   // --- settings.fonts ---
   "settings.fonts.title": "终端字体",
   "settings.fonts.description": "仅影响本设备的终端镜像。",

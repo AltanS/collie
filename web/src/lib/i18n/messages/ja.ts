@@ -136,6 +136,16 @@ export const ja: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — 新しいメジャーバージョン",
   "settings.updateBanner.copyAria": "コマンドをコピー: {command}",
 
+  // --- settings.typeface ---
+  "settings.typeface.title": "書体",
+  "settings.typeface.description": "アプリ自体の書体です。この端末に適用されます。",
+  "settings.typeface.family": "書体",
+  "settings.typeface.system": "システム標準",
+  "settings.typeface.note.system": "お使いの端末の書体です。ダウンロードは発生しません。",
+  "settings.typeface.note.grotesk": "ロゴに合わせた、Collie自身の書体です。",
+  "settings.typeface.note.aldrich": "太さは1種類のみ — 太字はブラウザが疑似的に生成します。",
+  "settings.typeface.note.operator": "このcollieの運用者が追加しました。",
+
   // --- settings.fonts ---
   "settings.fonts.title": "ターミナルのフォント",
   "settings.fonts.description": "この端末のターミナル表示のみに適用されます。",

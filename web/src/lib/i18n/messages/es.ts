@@ -139,6 +139,16 @@ export const es: Dictionary = {
   "settings.updateBanner.majorAvailable": "Collie {version} — una nueva versión mayor",
   "settings.updateBanner.copyAria": "Copiar comando: {command}",
 
+  // --- settings.typeface ---
+  "settings.typeface.title": "Tipografía",
+  "settings.typeface.description": "La fuente propia de la app, en este dispositivo.",
+  "settings.typeface.family": "Familia",
+  "settings.typeface.system": "Predeterminada del sistema",
+  "settings.typeface.note.system": "La fuente de tu teléfono. No descarga nada.",
+  "settings.typeface.note.grotesk": "La voz propia de Collie, a juego con el logo.",
+  "settings.typeface.note.aldrich": "Un solo grosor — la negrita la genera tu navegador.",
+  "settings.typeface.note.operator": "Añadida por el operador de este collie.",
+
   // --- settings.fonts ---
   "settings.fonts.title": "Fuente de la terminal",
   "settings.fonts.description": "Solo el espejo de la terminal, en este dispositivo.",
