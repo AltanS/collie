@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
+
 import { cn } from "@/lib/utils";
 import { CollieMark } from "@/components/collie-mark";
 import { t } from "@/lib/i18n";
+import { useStatus } from "@/lib/status";
 import { useLocale } from "@/hooks/use-locale";
 
 interface CollieHomeProps {
@@ -34,9 +37,43 @@ interface CollieHomeProps {
 // Tapping it returns to the dashboard. The dashboard shows the "Collie" wordmark too; inside a pane
 // the mark stands alone (the breadcrumb carries the context). Both headers render THIS component —
 // the consistency is structural, not a convention two files have to keep agreeing on.
+// One full round of the orbit at the mark's LOADING rate, in milliseconds. <CollieMark/> owns that
+// rate (`TURN.live` = 2.4s, collie-mark.tsx) and does not export it, so this number is a copy and
+// has to stay in step with it: shorter cuts the round off part way, longer starts a second one.
+const ORBIT_TURN_MS = 2400;
+
 export function CollieHome({ onHome, trouble, lost = false, wordmark = false, className }: CollieHomeProps) {
   useLocale();
   const bloom = trouble && !lost;
+
+  // ONE FULL ROUND OF THE ORBIT whenever a status is published (a send, a kill, an error —
+  // lib/status.ts). The notice itself no longer moves the page to announce itself: it floats now,
+  // and a thing that floats in at the top of a busy screen is easy to miss. The mark is the second
+  // half of that announcement — it is already where the eye goes for connection state, so the round
+  // lands where the reader is watching, and it costs no layout.
+  //
+  // It is the ORBIT that turns, not the mark. The whole SVG was rotated first and that was wrong:
+  // the head span round with it, which is not a thing the drawing does. So this uses the mark's own
+  // `loading` input instead — the same beads on the same path, at 20x the resting drift. The mark
+  // carries the phase across the rate change by hand (collie-mark.tsx says how), so the round joins
+  // the drift where it left it and rejoins it where it lands. Nothing jumps at either end.
+  //
+  // The accents come up to full chroma for the round as well. That is the mark's own coupling, not
+  // an extra: under `prefers-reduced-motion` the turning stops and the colour is the only thing
+  // left saying anything happened.
+  //
+  // It never fights the connection state. `bloom` is already the loading input and outranks this —
+  // a round would tell the reader nothing there — and while `lost` the mark stays still and muted,
+  // which is a state a passing event must not overwrite.
+  const status = useStatus();
+  const statusId = status?.id ?? 0;
+  const [round, setRound] = useState(false);
+  useEffect(() => {
+    if (statusId === 0) return;
+    setRound(true);
+    const timer = setTimeout(() => setRound(false), ORBIT_TURN_MS);
+    return () => clearTimeout(timer);
+  }, [statusId]);
   return (
     <button
       type="button"
@@ -80,7 +117,7 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
         <CollieMark
           size={40}
           weight="header"
-          loading={bloom}
+          loading={bloom || (round && !lost)}
           paper="var(--background)"
           className={cn("transition-opacity", lost && "opacity-40 grayscale")}
         />

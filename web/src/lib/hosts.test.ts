@@ -9,6 +9,7 @@ import {
   leadHost,
   paneScope,
   paneSpaceKey,
+  primarySession,
   serverFor,
   sessionsOnHost,
   spaceKey,
@@ -112,6 +113,107 @@ describe("findPane — the same id on two machines is two terminals", () => {
 
   it("returns undefined for a host that holds no such pane", () => {
     expect(findPane(panes, "w9:p9", { host: "workshop" }, pack)).toBeUndefined();
+  });
+});
+
+// ── The SESSION dimension of the same address ────────────────────────────────
+//
+// A pane id is unique only within one session on one machine: every named Herdr session is its own
+// server. So `w1:p1` in `work` and `w1:p1` in the primary session are two different terminals, on one
+// machine, with byte-identical ids — the pack bug one dimension down. A pane names its session only
+// on a WIDENED body (`?all=1`), which is the only list that ever holds both at once.
+const inSession = (p: AgentView, session: string): AgentView => ({ ...p, session });
+
+const registry = [
+  { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0 },
+  { name: "work", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0 },
+];
+
+describe("primarySession", () => {
+  it("names the session an absent `?s=` means", () => {
+    expect(primarySession(registry)).toBe("default");
+  });
+
+  it("says nothing rather than guessing when the bridge listed none", () => {
+    // A guess here would be a lookup that silently finds nothing, and a url that names the wrong
+    // session. Undefined makes both normalisation and matching no-ops instead.
+    expect(primarySession(undefined)).toBeUndefined();
+    expect(primarySession([])).toBeUndefined();
+  });
+});
+
+describe("findPane — the same id in two sessions is two terminals too", () => {
+  const widened = [
+    inSession(pane("w1:p1"), "default"),
+    inSession(pane("w1:p1", undefined, "blocked"), "work"),
+  ];
+
+  it("finds the pane in the scope's session, not the first id match", () => {
+    expect(findPane(widened, "w1:p1", { session: "work" }, undefined, registry)!.status).toBe(
+      "blocked",
+    );
+    // An absent `?s=` IS the primary session, and a tagged pane spells that name out — so the two
+    // have to be resolved against each other or the primary row becomes unreachable.
+    expect(findPane(widened, "w1:p1", {}, undefined, registry)!.status).toBe("idle");
+  });
+
+  it("matches untagged panes under any scope — the un-widened lookup, unchanged", () => {
+    expect(findPane([pane("w1:p1")], "w1:p1", { session: "work" }, undefined, registry)).toBeDefined();
+    expect(findPane([pane("w1:p1")], "w1:p1", {}, undefined)).toBeDefined();
+  });
+
+  it("skips the session test entirely when no registry was passed", () => {
+    // The only body with no session list is a body in which no pane can be tagged, so this is not a
+    // hole — it is the old signature continuing to mean what it meant.
+    expect(findPane(widened, "w1:p1", { session: "work" }, undefined)).toBeDefined();
+  });
+
+  it("still separates by host, and by both at once", () => {
+    const both = [
+      inSession(pane("w1:p1", "bluefin"), "default"),
+      inSession(pane("w1:p1", "bluefin", "blocked"), "work"),
+      inSession(pane("w1:p1", "workshop", "working"), "work"),
+    ];
+    expect(findPane(both, "w1:p1", { host: "workshop", session: "work" }, pack, registry)!.status).toBe(
+      "working",
+    );
+    expect(findPane(both, "w1:p1", { session: "work" }, pack, registry)!.status).toBe("blocked");
+  });
+});
+
+describe("paneScope — a row is opened with its OWN session", () => {
+  it("carries a named session onto the navigation, over the ambient one", () => {
+    // THE GUARD. The widened list holds panes from several sessions; opening one with the ambient
+    // session would point every read, key press and reply at the identically-numbered pane in
+    // whichever session the url happened to be on.
+    expect(
+      paneScope({ session: "other" }, inSession(pane("w1:p1"), "work"), undefined, registry),
+    ).toEqual({ host: undefined, session: "work" });
+  });
+
+  it("normalises the PRIMARY session back to an absent one — today's bare URL", () => {
+    // A row opened from the widened list must produce the same url it would have produced from the
+    // narrow one. You cannot tell from a pane url which view you came from, which is exactly what
+    // keeps the breadth out of the address.
+    expect(paneScope({}, inSession(pane("w1:p1"), "default"), undefined, registry)).toEqual({
+      host: undefined,
+      session: undefined,
+    });
+  });
+
+  it("leaves a named session spelled out when it cannot know which is primary", () => {
+    // An un-normalised name still addresses the right session — it just says so in the url. That is
+    // strictly better than guessing, which would address the wrong one.
+    expect(paneScope({}, inSession(pane("w1:p1"), "default"), undefined)).toEqual({
+      host: undefined,
+      session: "default",
+    });
+  });
+
+  it("resolves both halves from the pane at once", () => {
+    expect(
+      paneScope({ session: "other" }, inSession(pane("w1:p1", "workshop"), "work"), pack, registry),
+    ).toEqual({ host: "workshop", session: "work" });
   });
 });
 

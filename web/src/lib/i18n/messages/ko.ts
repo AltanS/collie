@@ -451,6 +451,10 @@ export const ko: Dictionary = {
   "connection.session.aria": "세션: {name}. 세션 전환",
   "connection.session.primary": "기본",
   "connection.session.unreachable": "연결 불가",
+  "connection.session.ariaIn": "세션 안: {name}",
+  "connection.session.all": "모든 세션",
+  "connection.session.allDescription": "이 컴퓨터의 모든 세션을 한 목록에",
+  "connection.session.allAria": "모든 세션을 표시 중. 세션 전환",
   "connection.server.title": "호스트",
   "connection.server.aria": "호스트: {name}. 호스트 전환",
 

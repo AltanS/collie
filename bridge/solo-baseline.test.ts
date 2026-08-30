@@ -292,6 +292,11 @@ const PANE_WIRE_KEYS = {
   // Also not a pack dimension: an optional sentence the bridge composes for one kind of pane
   // (M11/05). Absent on every pane in this baseline, so no golden byte moved.
   hint: true,
+  // The OTHER half of a pane's address, and the one field here that is written by a request rather
+  // than by the pane's own state: present only when the caller asked to widen (`?sessions=all`),
+  // and then on every pane in the body. Nothing in this baseline asks, so it is absent on every
+  // pane here and no golden byte moved — which is the claim, not an aside.
+  session: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -359,7 +364,12 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
     ]);
   });
 
-  test("PaneWire gained `host` and nothing else", () => {
+  // `host` and `session` are the pane's ADDRESS — the `?h=` and `?s=` halves — and they are the only
+  // two fields here a REQUEST can turn on. Both are optional-and-absent unless something asked: a
+  // host tag exists only on a merged pack body, a session tag only on a widened one
+  // (`?sessions=all`). Neither is asked for anywhere in this baseline, which is what the golden
+  // bodies below prove; this list is the tripwire that a THIRD such field cannot be added quietly.
+  test("PaneWire carries the two address dimensions and nothing else", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "agent",
       "cwd",
@@ -373,6 +383,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "paneId",
       "paneLabel",
       "readableLines",
+      "session",
       "sessionName",
       "status",
       "tabId",

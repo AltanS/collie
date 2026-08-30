@@ -34,9 +34,22 @@ function renderSwitcher(
   sessions: SessionSummary[],
   current: string | undefined,
   initialPath = "/",
+  viewAll = false,
+  host?: string,
 ) {
   const router = createMemoryRouter(
-    [{ path: "/", element: <SessionSwitcher sessions={sessions} scope={{ session: current }} /> }],
+    [
+      {
+        path: "/",
+        element: (
+          <SessionSwitcher
+            sessions={sessions}
+            scope={{ host, session: current }}
+            viewAll={viewAll}
+          />
+        ),
+      },
+    ],
     { initialEntries: [initialPath] },
   );
   render(<RouterProvider router={router} />);
@@ -93,5 +106,69 @@ describe("SessionSwitcher — sheet + selection", () => {
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /default/ }));
 
     await waitFor(() => expect(location(router)).toBe("/"));
+  });
+});
+
+// ── "All sessions" ───────────────────────────────────────────────────────────
+//
+// The one row here that does not pick a session. It asks for all of them at once, which is a
+// different QUESTION from the rows below it rather than a different answer to theirs — hence its
+// position above them, and hence the tests below being about the URL rather than about the list.
+describe("SessionSwitcher — the widened view", () => {
+  const open = async (name: RegExp) => {
+    await userEvent.click(screen.getByRole("button", { name }));
+  };
+
+  it("leads the sheet, and is not one of the sessions", async () => {
+    renderSwitcher([primary, demo], undefined);
+    await open(/switch session/i);
+    const rows = within(screen.getByRole("list")).getAllByRole("button");
+    expect(rows[0]).toHaveTextContent("All sessions");
+    // Putting it among the rows would make it look like a session called that.
+    expect(rows.slice(1).map((r) => r.textContent)).not.toContain("All sessions");
+  });
+
+  it("navigates with `?all=1` and DROPS `?s=`", async () => {
+    // The address stays "this machine, its primary session" — which is what `bridge`, the spaces
+    // list and every write with no row of its own go on using. Carrying `?s=` too would name a
+    // session the list no longer restricts itself to: the same url would contradict itself.
+    const router = renderSwitcher([primary, demo], "collie-demo", "/?s=collie-demo");
+    await open(/switch session/i);
+    await userEvent.click(screen.getByRole("button", { name: /all sessions/i }));
+    expect(location(router)).toBe("/?all=1");
+  });
+
+  it("keeps the host it was on", async () => {
+    // Widening is a statement about one machine. It may never also move you to another.
+    const router = renderSwitcher([primary, demo], undefined, "/?h=attic", false, "attic");
+    await open(/switch session/i);
+    await userEvent.click(screen.getByRole("button", { name: /all sessions/i }));
+    expect(location(router)).toBe("/?h=attic&all=1");
+  });
+
+  it("says it is widened on the trigger, and marks no session as current", async () => {
+    renderSwitcher([primary, demo], undefined, "/?all=1", true);
+    expect(screen.getByRole("button", { name: /showing every session/i })).toHaveTextContent(
+      "All sessions",
+    );
+    await open(/showing every session/i);
+    const rows = within(screen.getByRole("list")).getAllByRole("button");
+    expect(rows[0]).toHaveAttribute("aria-current", "true");
+    // No session row claims to be the one you are on — you are on all of them.
+    expect(rows.slice(1).filter((r) => r.getAttribute("aria-current") === "true")).toHaveLength(0);
+  });
+
+  it("still offers a way back to a single session", async () => {
+    const router = renderSwitcher([primary, demo], undefined, "/?all=1", true);
+    await open(/showing every session/i);
+    await userEvent.click(screen.getByRole("button", { name: /collie-demo/i }));
+    expect(location(router)).toBe("/?s=collie-demo");
+  });
+
+  // The trigger's own hide rule has to learn about this state, or a widened view on a bridge that
+  // reports one session would hide the only control that can un-widen it.
+  it("shows the trigger while widened even with a single session", () => {
+    renderSwitcher([primary], undefined, "/?all=1", true);
+    expect(screen.getByRole("button", { name: /showing every session/i })).toBeInTheDocument();
   });
 });

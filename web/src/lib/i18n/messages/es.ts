@@ -460,6 +460,10 @@ export const es: Dictionary = {
   "connection.session.aria": "Sesión: {name}. Cambiar sesión",
   "connection.session.primary": "principal",
   "connection.session.unreachable": "inaccesible",
+  "connection.session.ariaIn": "En la sesión: {name}",
+  "connection.session.all": "Todas las sesiones",
+  "connection.session.allDescription": "Todas las sesiones de esta máquina, en una lista",
+  "connection.session.allAria": "Mostrando todas las sesiones. Cambiar sesión",
   "connection.server.title": "Máquinas",
   "connection.server.aria": "Host: {name}. Cambiar host",
 

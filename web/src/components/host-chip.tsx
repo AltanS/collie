@@ -1,6 +1,7 @@
 import { Server, ServerOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AddressTag } from "@/components/ui/address-tag";
 import { hostName } from "@/lib/hosts";
 import type { HostState } from "@/lib/host-health";
 import { useHostHealth, usePack } from "@/components/pack-provider";
@@ -74,71 +75,62 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
     unreachable || health?.incompatible === true || (state ?? health?.state ?? "unknown") === "unknown";
   const target = variant === "target";
   const caption = variant === "caption";
+  // The name is decorative repetition for a screen reader if it were bare text, so the WHOLE chip
+  // carries one label that says what it MEANS. Both write-surface variants say "sends to": `target`
+  // heads a dock or sheet that is about to write, and `caption` stands on the composer's own status
+  // strip, a thumb's width from the box being typed into. "Host: attic" there would be a fact with no
+  // verb, beside the one control whose whole question is where the text is going.
+  const label = t(target || caption ? "connection.host.ariaSends" : "connection.host.ariaHost", {
+    name,
+    unreachable: unreachable ? t("connection.host.ariaUnreachableSuffix") : "",
+  });
+
+  // THE CAPTION RUN IS NOT A PILL, which is why it is not an AddressTag. It is a small uppercase run
+  // standing in a line of chrome type — the composer's status band — where a bordered pill would read
+  // as a second object dropped into the sentence rather than as part of it. It has no border to dash,
+  // so the SHAPE of the fault moves into the glyph (ServerOff rather than Server), because colour
+  // alone is the encoding WCAG 1.4.1 names and a red host name a few px from the composer's own red
+  // refusal copy is exactly the confusion that rule exists for.
+  //
+  // `text-[10px]/3`, one utility and never `text-[10px] leading-3`: tailwind-merge lists `leading` as
+  // conflicting with `font-size`, so ANY later `text-<size>` in the same cn() silently deletes an
+  // earlier `leading-*`. It did — the run rendered at a 15px line and grew the pane header to 63px.
+  //
+  // `size-2.5` (10px) rather than the pills' `size-3`, and that is a MEASUREMENT of the band it
+  // stands in, not a taste: the band's content box is 12px, so a 12px glyph IS the box and touches
+  // both rules. At 10px it clears them and shares the caps' optical centre. composer.tsx holds the
+  // full sum.
+  if (caption) {
+    return (
+      <span
+        aria-label={label}
+        className={cn(
+          "inline-flex min-w-0 items-center gap-1 text-[10px]/3 font-medium uppercase tracking-wide",
+          degraded ? "text-status-blocked" : "text-muted-foreground",
+          className,
+        )}
+      >
+        {degraded ? (
+          <ServerOff className="size-2.5 shrink-0" aria-hidden />
+        ) : (
+          <Server className="size-2.5 shrink-0" aria-hidden />
+        )}
+        <span className="truncate" aria-hidden>
+          {name}
+        </span>
+      </span>
+    );
+  }
 
   return (
-    <span
-      // The name is decorative repetition for a screen reader if it were bare text, so the whole
-      // chip carries one label that says what it MEANS. Both write-surface variants say "sends to":
-      // `target` heads a dock or sheet that is about to write, and `caption` stands on the composer's
-      // own status strip, a thumb's width from the box being typed into. "Host: attic" there would be
-      // a fact with no verb, beside the one control whose whole question is where the text is going.
-      aria-label={t(target || caption ? "connection.host.ariaSends" : "connection.host.ariaHost", {
-        name,
-        unreachable: unreachable ? t("connection.host.ariaUnreachableSuffix") : "",
-      })}
-      className={cn(
-        "inline-flex items-center gap-1 font-medium",
-        // The caption run MAY give up width: it sits in a strip its caller has already reserved, and
-        // that strip is a fixed budget the name truncates into rather than a claim the name can
-        // widen. The pill may not: everywhere else it is the last thing to go and the name truncates
-        // first. Same reason the run drops the 8rem cap — its caller states the cap that matters.
-        // `text-[10px]/3`, one utility and not `text-[10px] leading-3`: tailwind-merge lists
-        // `leading` as conflicting with `font-size` (a named Tailwind size sets both), so ANY later
-        // `text-<size>` in this same cn() silently deletes an earlier `leading-*`. It did — the run
-        // rendered at a 15px line and grew the pane header to 63px. The slash form cannot be split
-        // apart, and the size ternary below is now gated so it never runs for the caption run. The
-        // 12px line box is also exactly the strip the composer reserves for it.
-        caption
-          ? "min-w-0 text-[10px]/3 uppercase tracking-wide"
-          : cn("max-w-[8rem] shrink-0 rounded-md border px-1.5 py-0.5", target ? "text-[11px]" : "text-[10px]"),
-        degraded
-          ? // Unreachable is a STATE, not a disappearance (PACK_PROTOCOL.md §10.2) — it stays legible,
-            // dashed rather than dimmed, so a blocked agent on a down machine is never greyed away.
-            // In the caption run there is no border to dash, so the SHAPE of the fault moves into
-            // the glyph — ServerOff rather than Server — because colour alone is the one encoding
-            // WCAG 1.4.1 names, and a red host name a few px from the composer's own red refusal
-            // copy is exactly the confusion that rule exists for.
-            caption
-            ? "text-status-blocked"
-            : "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked"
-          : caption
-            ? "text-muted-foreground"
-            : "border-border bg-muted/60 text-muted-foreground",
-        className,
-      )}
-    >
-      {/* `size-2.5` (10px) in the caption run, `size-3` (12px) in the pills — and that is a
-          MEASUREMENT of the strip this run stands in, not a taste. The composer's status band is
-          13px: 12px of line box plus its own 1px rule. A 12px glyph in it is the whole content box,
-          so it ran 0.0 → 12.0 against the band's own top edge — no clearance at the seam above, the
-          rule immediately under it, and an optical centre (6.0) that matched neither the band's
-          (6.5) nor the caps beside it (5.5, before the band took its pixel back). At 10px it is
-          1.5 → 11.5 in the same box, centroid 6.5: the band's centre, the same centre as the text
-          it stands with, and clear of both edges. It is also the right weight beside 10px type —
-          the pill variants sit in boxes with their own padding and keep the 12. */}
-      {caption && degraded ? (
-        <ServerOff className="size-2.5 shrink-0" aria-hidden />
-      ) : (
-        <Server className={cn("shrink-0", caption ? "size-2.5" : "size-3")} aria-hidden />
-      )}
-      {target && (
-        <span className="shrink-0 text-muted-foreground/70" aria-hidden>
-          {t("connection.host.onPrefix")}
-        </span>
-      )}
-      <span className="truncate" aria-hidden>
-        {name}
-      </span>
-    </span>
+    <AddressTag
+      aria-label={label}
+      glyph={<Server className="size-3 shrink-0" aria-hidden />}
+      prefix={target ? t("connection.host.onPrefix") : undefined}
+      name={name}
+      size={target ? "md" : "sm"}
+      tone={degraded ? "alert" : "quiet"}
+      className={className}
+    />
   );
 }

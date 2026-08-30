@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { HostChip } from "@/components/host-chip";
+import { SessionChip } from "@/components/session-chip";
 import { PaneHint } from "@/components/pane-hint";
 import { timeAgoShort } from "@/lib/format";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
@@ -193,7 +194,12 @@ export function AgentCard({
             unless the snapshot lists more than one machine (components/host-chip.tsx), so on a solo
             install this column collapses to the age alone, or to nothing. */}
         <div className="flex shrink-0 items-center gap-2">
+          {/* The row's ADDRESS, both halves, in the order the address itself reads: which machine,
+              then which session on it. Each self-hides — the host when there is no pack, the session
+              when the row is in the primary one or the list was never widened — so on every install
+              that exists today this column is still the age alone, or nothing. */}
           <HostChip host={agent.host} />
+          <SessionChip session={agent.session} />
           {stamp !== undefined && <Age at={stamp} />}
         </div>
 

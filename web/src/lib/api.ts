@@ -297,11 +297,25 @@ function req<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise
   return method === "GET" ? op : trackBusy(op);
 }
 
+/**
+ * The herd snapshot.
+ *
+ * `all` WIDENS the pane lists to every Herdr session on the addressed machine (`?sessions=all`).
+ * It is a separate argument rather than a field on the scope because it is not part of a pane's
+ * address — lib/scope.ts states that argument at {@link ALL_PARAM}. Note the browser URL spells it
+ * `?all=1` and the wire spells it `?sessions=all`: the wire word is the one the bridge already uses
+ * for the dimension, and the URL word is the one an operator might read.
+ */
 export async function fetchSnapshot(
   scope?: Scope,
   signal?: AbortSignal,
+  all = false,
 ): Promise<SnapshotResponse> {
-  const snap = await req<SnapshotResponse>(withScope("/api/snapshot", scope), { signal });
+  const path = withScope("/api/snapshot", scope);
+  const snap = await req<SnapshotResponse>(
+    all ? `${path}${path.includes("?") ? "&" : "?"}sessions=all` : path,
+    { signal },
+  );
   // A snapshot whose herd link is UP is a provably-live moment — stamp the shared connection-health
   // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
   // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the

@@ -39,7 +39,7 @@ export function HomeRoute() {
   // other than where the URL currently points. Resolving it here is what stops a reply landing on the
   // right pane name on the wrong terminal. Solo: every pane is untagged, so this is `data.scope`.
   const open = (pane: AgentView) =>
-    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers)));
+    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
   const drillInto = (id: string) => navigate(spacePath(id, data.scope));
   // The space navigator is LEAD-LOCAL (the merge deliberately does not union peer workspaces — their
   // ids are only unique per machine), so the spaces on screen belong to the lead and their panes must
@@ -61,7 +61,7 @@ export function HomeRoute() {
                 different shapes (bordered server pill vs filled layers capsule) so a glance can tell
                 "change machine" from "change session on this machine". Both self-hide. */}
             <ServerSwitcher servers={data.servers} scope={data.scope} agents={data.agents} />
-            <SessionSwitcher sessions={sessionsHere} scope={data.scope} />
+            <SessionSwitcher sessions={sessionsHere} scope={data.scope} viewAll={data.viewAll} />
           </>
         }
         rightTrail={<SettingsGear scope={data.scope} />}

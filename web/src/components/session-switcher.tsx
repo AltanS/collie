@@ -17,6 +17,8 @@ interface SessionSwitcherProps {
   /** The scope currently being viewed. Only its session changes here — the host is carried through
    *  untouched, so switching sessions can never also switch machines. */
   scope: Scope;
+  /** True when the home view is WIDENED — every session's panes in one list (`?all=1`). */
+  viewAll: boolean;
 }
 
 // Compact session switcher for the header's right cluster. Backward compatible by construction: the
@@ -24,7 +26,7 @@ interface SessionSwitcherProps {
 // already on a non-primary one (so you can always get back). A single-session install shows nothing.
 // The sheet lists every session; unreachable ones (crashed / stale socket) are greyed out and
 // non-clickable. Selecting one navigates home in that session (primary → no `?s=`).
-export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
+export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherProps) {
   useLocale();
   const current = scope.session;
   const [open, setOpen] = useState(false);
@@ -32,19 +34,37 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
 
   const reachableCount = sessions.filter((s) => s.reachable).length;
   const onNonPrimary = current !== undefined;
-  if (reachableCount <= 1 && !onNonPrimary) return null;
+  if (reachableCount <= 1 && !onNonPrimary && !viewAll) return null;
 
-  // The name to show on the trigger: the current session, or the primary's registry name when on it.
-  const currentName = current ?? sessions.find((s) => s.isPrimary)?.name ?? "default";
+  // The name to show on the trigger: "All sessions" when widened, else the current session — or the
+  // primary's registry name when on it.
+  const currentName = viewAll
+    ? t("connection.session.all")
+    : (current ?? sessions.find((s) => s.isPrimary)?.name ?? "default");
   const isActive = (s: SessionSummary): boolean =>
-    current === undefined ? s.isPrimary : s.name === current;
+    viewAll ? false : current === undefined ? s.isPrimary : s.name === current;
 
   function select(s: SessionSummary): void {
     setOpen(false);
     if (!s.reachable) return; // unreachable rows are non-clickable (disabled), guard anyway
     const target = s.isPrimary ? undefined : s.name; // primary carries no `?s=`
-    if (target === current) return; // already here
+    if (target === current && !viewAll) return; // already here
     navigate(homePath({ host: scope.host, session: target }));
+  }
+
+  /**
+   * WIDEN. The one row here that does not pick a session: it asks for all of them at once, which is
+   * a different QUESTION from the rows below it rather than a different answer to theirs.
+   *
+   * It navigates home carrying the ambient host and NO session. That is deliberate and it is the
+   * whole reason the flag is not part of the scope: widened, `?s=` would name a session the list no
+   * longer restricts itself to, so the two would contradict each other in the same url. The address
+   * stays "this machine, its primary session" — which is what `bridge`, the spaces list and every
+   * write with no row of its own go on using — and `?all=1` says how much of that machine to show.
+   */
+  function widen(): void {
+    setOpen(false);
+    navigate(homePath({ host: scope.host }, { all: true }));
   }
 
   return (
@@ -52,7 +72,11 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={t("connection.session.aria", { name: currentName })}
+        aria-label={
+          viewAll
+            ? t("connection.session.allAria")
+            : t("connection.session.aria", { name: currentName })
+        }
         // Bordered, not filled, and deliberately identical to the server pill beside it. The
         // bg-muted this used to carry was invisible by accident: the header was bg-muted too, so the
         // fill painted nothing. The header is bg-background now, which made a 1.09:1 (light) /
@@ -71,6 +95,34 @@ export function SessionSwitcher({ sessions, scope }: SessionSwitcherProps) {
       {createPortal(
         <BottomSheet open={open} onClose={() => setOpen(false)} title={t("connection.session.title")}>
           <ul className="flex flex-col gap-1">
+            {/* FIRST, above the sessions rather than among them. A session name answers "which one";
+                this answers "do I have to choose at all", and putting it in the list would make
+                "All sessions" look like a session called that. The Check and the inset rail are the
+                same marks the rows below use, so "where am I" reads identically either way. */}
+            <li>
+              <button
+                type="button"
+                onClick={widen}
+                aria-current={viewAll ? "true" : undefined}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                  viewAll
+                    ? "shadow-[inset_2px_0_0_0_var(--primary)]"
+                    : "hover:bg-accent active:bg-accent",
+                )}
+              >
+                <Layers className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {t("connection.session.all")}
+                  </span>
+                  <span className="mt-1 block truncate text-[11px] text-muted-foreground">
+                    {t("connection.session.allDescription")}
+                  </span>
+                </div>
+                {viewAll && <Check className="size-4 shrink-0 text-primary" />}
+              </button>
+            </li>
             {sessions.map((s) => {
               const active = isActive(s);
               return (

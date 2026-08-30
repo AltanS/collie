@@ -25,7 +25,7 @@
 // Every entry carries the wall-clock of the fetch that produced it, because a stale render must be
 // able to say WHEN — "Disconnected — last seen 14:32" is honest, an undated old screen is not.
 
-import { paneScopeKey, type Scope, scopeKey } from "@/lib/scope";
+import { paneScopeKey, type Scope, snapshotKey as snapshotCacheKey } from "@/lib/scope";
 import type { SnapshotResponse } from "@/lib/types";
 
 const SNAPSHOT_PREFIX = "collie:last-snapshot:";
@@ -55,8 +55,11 @@ function storage(): Storage | null {
   }
 }
 
-function snapshotKey(scope: Scope | undefined): string {
-  return `${SNAPSHOT_PREFIX}${scopeKey(scope)}`;
+// A snapshot's storage key is its scope AND its breadth — the widened view is a different body for
+// the same address, so it gets its own entry (lib/scope.ts states why they may not share one). The
+// narrow key is byte-identical to what shipped, so entries already in storage keep resolving.
+function snapshotKey(scope: Scope | undefined, all: boolean): string {
+  return `${SNAPSHOT_PREFIX}${snapshotCacheKey(scope, all)}`;
 }
 
 // The same (host, session, paneId) triple the loaders key their module caches with, built by the one
@@ -187,13 +190,17 @@ export function saveLastSnapshot(
   scope: Scope | undefined,
   snap: SnapshotResponse,
   at: number = Date.now(),
+  all = false,
 ): void {
-  write(snapshotKey(scope), JSON.stringify({ at, value: snap }));
+  write(snapshotKey(scope, all), JSON.stringify({ at, value: snap }));
 }
 
-/** The last snapshot this tab saw for a scope, with the time it was fetched. */
-export function loadLastSnapshot(scope: Scope | undefined): Cached<SnapshotResponse> | null {
-  return decodeSnapshot(readRaw(snapshotKey(scope)));
+/** The last snapshot this tab saw for a scope at this breadth, with the time it was fetched. */
+export function loadLastSnapshot(
+  scope: Scope | undefined,
+  all = false,
+): Cached<SnapshotResponse> | null {
+  return decodeSnapshot(readRaw(snapshotKey(scope, all)));
 }
 
 /** Write through the mirror a successful `/api/pane/:id` just returned. */

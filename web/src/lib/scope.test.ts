@@ -1,4 +1,5 @@
 import {
+  ALL_PARAM,
   HOST_PARAM,
   isLead,
   normalizeHost,
@@ -9,6 +10,9 @@ import {
   scopeFromSearchParams,
   scopeFromUrl,
   scopeKey,
+  snapshotKey,
+  viewAllFromSearchParams,
+  viewAllFromUrl,
   internScope,
   scopeSearch,
   sessionSearch,
@@ -206,5 +210,77 @@ describe("lib/scope stays importable by the service worker", () => {
     expect(imports).toEqual([]);
     // Belt and braces: no dynamic import / require of react either.
     expect(src).not.toMatch(/(import|require)\s*\(\s*["']react/);
+  });
+});
+
+// ── The BREADTH param ────────────────────────────────────────────────────────
+//
+// `?all=1` widens the home list to every session on the addressed machine. It is deliberately NOT
+// part of a Scope — a scope is an ADDRESS, and this is how much of one machine to show. Folding it
+// in would carry it onto every pane url and split every per-pane cache entry in two. These tests
+// pin the seam between the two ideas, because it is the one a later change is most likely to blur.
+describe("the widen param", () => {
+  it("is spelled `all`, and only an exact `1` turns it on", () => {
+    expect(ALL_PARAM).toBe("all");
+    expect(viewAllFromSearchParams(new URLSearchParams("all=1"))).toBe(true);
+    // A switch, not a list: a typo must read as "no" rather than as some third behaviour.
+    for (const raw of ["", "all=", "all=0", "all=true", "all=yes", "all=1 ", "all=ALL"]) {
+      expect(viewAllFromSearchParams(new URLSearchParams(raw))).toBe(false);
+    }
+  });
+
+  it("reads off a full url, and an unparseable one is simply not widened", () => {
+    expect(viewAllFromUrl("https://collie.example/?h=attic&s=work&all=1")).toBe(true);
+    expect(viewAllFromUrl("https://collie.example/?h=attic")).toBe(false);
+    expect(viewAllFromUrl("not a url")).toBe(false);
+    expect(viewAllFromUrl(undefined)).toBe(false);
+  });
+
+  it("sorts LAST, after both halves of the address", () => {
+    // The order is canonical because these strings are COMPARED AS STRINGS — the service worker's
+    // focus-existing-client check and the loaders' nav-vs-revalidate discriminator both do a full-url
+    // equality test, so two spellings of one view would open a second window and mis-classify a poll.
+    expect(scopeSearch({ host: "attic", session: "work" }, { all: true })).toBe("?h=attic&s=work&all=1");
+    expect(scopeSearch({ host: "attic" }, { all: true })).toBe("?h=attic&all=1");
+    expect(scopeSearch({ session: "work" }, { all: true })).toBe("?s=work&all=1");
+    expect(scopeSearch({}, { all: true })).toBe("?all=1");
+  });
+
+  it("emits nothing when nobody asks — every url that exists today is unchanged", () => {
+    expect(scopeSearch({})).toBe("");
+    expect(scopeSearch({}, {})).toBe("");
+    expect(scopeSearch({}, { all: false })).toBe("");
+    expect(scopeSearch({ host: "attic", session: "work" })).toBe("?h=attic&s=work");
+  });
+
+  it("stays OUT of the scope a url is read back as", () => {
+    // The whole guarantee in one assertion: widening changes what the home list shows and changes
+    // nothing about where a read or a write lands.
+    const params = new URLSearchParams("h=attic&s=work&all=1");
+    expect(scopeFromSearchParams(params)).toEqual({ host: "attic", session: "work" });
+    expect(scopeFromUrl("https://collie.example/?all=1")).toEqual({
+      host: undefined,
+      session: undefined,
+    });
+  });
+});
+
+describe("snapshotKey", () => {
+  // The narrow key IS `scopeKey`, byte for byte. Every entry a client already holds — this page's
+  // module cache and the sessionStorage mirror that survives a PWA restart — keeps resolving.
+  it("is byte-identical to scopeKey when not widened", () => {
+    for (const scope of [undefined, {}, { host: "attic" }, { host: "attic", session: "work" }]) {
+      expect(snapshotKey(scope)).toBe(scopeKey(scope));
+      expect(snapshotKey(scope, false)).toBe(scopeKey(scope));
+    }
+  });
+
+  // They are different BODIES for the same address. Sharing an entry would let an offline fallback
+  // answer a narrow view with a widened herd — rows from sessions the view does not claim to show,
+  // and no fetch on the way to correct them.
+  it("gives the widened view its own entry, per scope", () => {
+    expect(snapshotKey({}, true)).not.toBe(snapshotKey({}, false));
+    expect(snapshotKey({ host: "attic" }, true)).not.toBe(snapshotKey({}, true));
+    expect(snapshotKey({ session: "work" }, true)).not.toBe(snapshotKey({ session: "work" }));
   });
 });

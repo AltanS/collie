@@ -37,6 +37,7 @@ const homeData = (snap: Partial<SnapshotResponse>, scope: HomeData["scope"] = {}
   servers: snap.servers ?? [],
   ts: snap.ts ?? 0,
   scope,
+  viewAll: false,
   snoozedUntil: null,
   update: undefined,
   error: false,
@@ -113,10 +114,15 @@ describe("the dashboard across machines", () => {
     renderHome(packed());
     expect(await screen.findByRole("button", { name: /switch host/i })).toBeInTheDocument();
     // Sessions are per-host: the switcher offers this host's, not a flat merge of both "default"s.
+    // Three buttons now, not two — "All sessions" leads the list. It is not a session and does not
+    // pretend to be one: it answers "do I have to choose at all", which is why it stands above the
+    // rows rather than among them.
     const sessionTrigger = screen.getByRole("button", { name: /switch session/i });
     await userEvent.click(sessionTrigger);
     const sheet = screen.getByRole("list");
-    expect(within(sheet).getAllByRole("button")).toHaveLength(2);
+    const rows = within(sheet).getAllByRole("button");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent("All sessions");
   });
 
   it("labels each row with its machine — a label, never a split", async () => {

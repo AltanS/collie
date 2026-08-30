@@ -29,6 +29,22 @@ export const SESSION_PARAM = "s";
 export const HOST_PARAM = "h";
 
 /**
+ * The browser URL query key that WIDENS the home view to every session on the addressed host
+ * (`?all=1`). Absent, and anything other than `1`, means "no".
+ *
+ * IT IS DELIBERATELY NOT PART OF {@link Scope}, and that is the load-bearing decision in this
+ * feature. A scope is an ADDRESS — it says which pane a read or a write lands on, and it is threaded
+ * into every pane URL and every cache key. Widening is a statement about how much of one machine the
+ * HOME list shows. Folding it into the address would carry it onto pane URLs, into `paneScopeKey`,
+ * and into the interning table, where it would mean nothing and split every cache entry in two.
+ *
+ * So it travels beside a scope and never inside one: {@link scopeSearch} appends it when asked, and
+ * `paneScope` (lib/hosts.ts) never sees it, which is what guarantees a row opened from the widened
+ * list produces the same URL it would have produced from the narrow one.
+ */
+export const ALL_PARAM = "all";
+
+/**
  * Where a read or write is addressed. Both fields absent = the lead's primary session, i.e. exactly
  * today's behaviour and today's bytes.
  */
@@ -73,7 +89,7 @@ export function isLead(scope?: Scope): boolean {
  * The browser query string that carries a scope across a navigation: `""`, `?s=x`, `?h=b` or
  * `?h=b&s=x`.
  *
- * **The param order is canonical and fixed: `h` before `s`.** These strings are built independently
+ * **The param order is canonical and fixed: `h`, then `s`, then `all`.** These strings are built independently
  * by more than one consumer and then COMPARED AS STRINGS — the service worker's focus-existing-client
  * check (`client.url !== url`) and the loaders' nav-vs-revalidate discriminator both do a full-URL
  * equality test. A differently-ordered but semantically identical string would open a spurious second
@@ -81,12 +97,30 @@ export function isLead(scope?: Scope): boolean {
  *
  * Lead + primary emits nothing at all, so a solo install never produces either param.
  */
-export function scopeSearch(scope?: Scope): string {
+export function scopeSearch(scope?: Scope, opts?: { all?: boolean }): string {
   const { host, session } = normalizeScope(scope);
   const parts: string[] = [];
   if (host) parts.push(`${HOST_PARAM}=${encodeURIComponent(host)}`);
   if (session) parts.push(`${SESSION_PARAM}=${encodeURIComponent(session)}`);
+  // LAST, always — see the canonical-order note above. `all` is not part of the address, so it sorts
+  // after both halves of it, and a caller that does not ask emits nothing new.
+  if (opts?.all) parts.push(`${ALL_PARAM}=1`);
   return parts.length ? `?${parts.join("&")}` : "";
+}
+
+/** Whether a URL's params ask for the widened view. Only the exact `1` counts — see {@link ALL_PARAM}. */
+export function viewAllFromSearchParams(params: ParamsLike): boolean {
+  return params.get(ALL_PARAM) === "1";
+}
+
+/** {@link viewAllFromSearchParams} against a full URL string. Unparseable → not widened. */
+export function viewAllFromUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    return viewAllFromSearchParams(new URL(url).searchParams);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -139,6 +173,22 @@ const KEY_SEP = "\u0000";
 export function scopeKey(scope?: Scope): string {
   const { host, session } = normalizeScope(scope);
   return `${host ?? ""}${KEY_SEP}${session ?? ""}`;
+}
+
+/**
+ * Cache key for a SNAPSHOT, which is a scope plus how much of it was asked for.
+ *
+ * The narrow key is byte-identical to {@link scopeKey}, so every entry a client already holds — in
+ * this page's module cache and in the sessionStorage mirror that survives a PWA restart — keeps
+ * resolving. Widening appends a suffix instead of re-keying, which is the same "a new state gets a
+ * new key, the old state keeps its own" discipline the whole `all` param follows.
+ *
+ * The two breadths MUST NOT share an entry. They are different bodies for the same address, and a
+ * shared key would let an offline fallback answer a narrow view with a widened herd — rows from
+ * sessions the view does not claim to show, with no fetch to correct them.
+ */
+export function snapshotKey(scope: Scope | undefined, all = false): string {
+  return all ? `${scopeKey(scope)}${KEY_SEP}${ALL_PARAM}` : scopeKey(scope);
 }
 
 /** Cache key for anything scoped to a single pane: the full (host, session, paneId) triple. */

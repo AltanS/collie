@@ -77,7 +77,12 @@ export function RootLayout() {
     // stale once the lead's last receipt from it is older than `3 × pollMs` (capped at 15s), and
     // `intervalFor` is the same pure resolver `usePolling` above is running on — read here rather
     // than re-derived, so the tolerance can never be computed against a cadence we aren't using.
-    <PackProvider servers={data.servers} ts={data.ts} pollMs={intervalFor(data, paneId)}>
+    <PackProvider
+      servers={data.servers}
+      sessions={data.sessions}
+      ts={data.ts}
+      pollMs={intervalFor(data, paneId)}
+    >
       <div className="flex h-[100dvh] flex-col">
         {/* API-observed self-update: mounted unconditionally so its controller runs (and can
             auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh

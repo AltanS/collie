@@ -102,6 +102,21 @@ export interface AgentView {
    * ambient one, or a reply lands on the right pane name on the wrong terminal.
    */
   host?: string;
+  /**
+   * Which Herdr session on {@link host} this pane lives in — the `?s=` half of the same address.
+   * Mirrors `PaneWire.session` in bridge/types.ts.
+   *
+   * **Present exactly when the snapshot was WIDENED** (`?sessions=all`, the "All sessions" view),
+   * and then on every pane in the body including the primary session's. Absent otherwise, which is
+   * every request the app made until this feature existed — so an un-widened view reads `undefined`
+   * here and behaves exactly as it did.
+   *
+   * Pane ids collide across sessions on one machine for the same reason they collide across
+   * machines: each session is its own Herdr server. So this completes the `(host, session, paneId)`
+   * address, and a widened row must be OPENED with its own session (see `paneScope` in lib/hosts.ts)
+   * rather than with the ambient one.
+   */
+  session?: string;
 }
 
 /**

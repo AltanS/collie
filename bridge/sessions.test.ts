@@ -8,6 +8,7 @@ import {
   sessionNameFor,
   type SessionFactory,
   type SessionParts,
+  widenedPanes,
 } from "./sessions.ts";
 import type { EngineSnapshot } from "./state-engine.ts";
 import type { AgentStatus, AgentView } from "./types.ts";
@@ -254,6 +255,81 @@ describe("SessionRegistry — list()", () => {
       working: 0,
       blocked: 0,
     });
+  });
+});
+
+describe("SessionRegistry — ordered()", () => {
+  // `all()` is INSERTION order, i.e. whichever session directory the filesystem listed first, and it
+  // changes as sessions come and go. That is fine for a fan-out, where order is not observable, and
+  // wrong for anything a phone renders — a widened pane list would re-sort itself under the reader
+  // (DESIGN.md §2). This is the order `list()` already published, factored out so the summaries and
+  // the panes they describe cannot disagree.
+  test("is primary-first then alphabetical, whatever order discovery found them in", async () => {
+    const h = makeRegistry({
+      sessionDirs: ["zeta", "alpha", "mid"],
+      present: [
+        "/cfg/herdr/herdr.sock",
+        "/cfg/herdr/sessions/zeta/herdr.sock",
+        "/cfg/herdr/sessions/alpha/herdr.sock",
+        "/cfg/herdr/sessions/mid/herdr.sock",
+      ],
+    });
+    await h.registry.refresh();
+    expect(h.registry.ordered().map((rt) => rt.name)).toEqual(["default", "alpha", "mid", "zeta"]);
+    // …and it is the SAME order the summaries publish. Two orders would put a pane under the wrong
+    // heading the first time anything read them together.
+    expect(h.registry.list().map((s) => s.name)).toEqual(h.registry.ordered().map((rt) => rt.name));
+  });
+});
+
+describe("widenedPanes", () => {
+  /** The narrowest thing the function's constraint accepts plus an id to tell two of them apart. */
+  interface Pane {
+    paneId: string;
+    session?: string;
+  }
+
+  // EVERY pane is tagged, including the primary session's. The tempting alternative — tag only the
+  // non-primary ones, so "absent means primary" — makes an untagged pane mean two different things
+  // depending on whether the body was widened, while the client deliberately lets an untagged pane
+  // match any scope so solo lookups stay exactly today's. Together those two rules let a primary
+  // pane answer a lookup for a named session's identically-numbered pane. All, or none.
+  test("stamps every pane with its own session, primary included", () => {
+    expect(
+      widenedPanes<Pane>([
+        { name: "default", panes: [{ paneId: "w1:p1" }, { paneId: "w1:p2" }] },
+        { name: "work", panes: [{ paneId: "w1:p1" }] },
+      ]),
+    ).toEqual([
+      { paneId: "w1:p1", session: "default" },
+      { paneId: "w1:p2", session: "default" },
+      { paneId: "w1:p1", session: "work" },
+    ]);
+  });
+
+  // The collision this exists to survive: `w1:p1` is a different pane in every session, exactly as
+  // it is on every machine. After widening the two are distinguishable by the tag and by nothing
+  // else — the ids are byte-identical.
+  test("keeps colliding pane ids apart, and preserves the order it was given", () => {
+    const out = widenedPanes<Pane>([
+      { name: "work", panes: [{ paneId: "w1:p1" }] },
+      { name: "default", panes: [{ paneId: "w1:p1" }] },
+    ]);
+    expect(out.map((p) => p.session)).toEqual(["work", "default"]);
+    expect(new Set(out.map((p) => p.paneId)).size).toBe(1);
+  });
+
+  test("an empty session contributes nothing, and no sessions contribute an empty list", () => {
+    expect(widenedPanes<Pane>([{ name: "quiet", panes: [] }])).toEqual([]);
+    expect(widenedPanes<Pane>([])).toEqual([]);
+  });
+
+  // It COPIES. A pane in the registry's own snapshot must not gain a field because somebody asked
+  // for a widened read — the next unwidened poll would then carry a session tag it never asked for.
+  test("does not mutate the panes it was handed", () => {
+    const pane: Pane = { paneId: "w1:p1" };
+    widenedPanes<Pane>([{ name: "work", panes: [pane] }]);
+    expect(pane).toEqual({ paneId: "w1:p1" });
   });
 });
 

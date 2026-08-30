@@ -611,6 +611,7 @@ export const homeSolo: HomeData = {
   servers: rosterSolo,
   ts: TS,
   scope: {},
+  viewAll: false,
   snoozedUntil: null,
   update: undefined,
   error: false,

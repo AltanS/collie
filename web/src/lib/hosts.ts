@@ -12,7 +12,7 @@
 // components/pack-provider.tsx.
 
 import type { Scope } from "./scope";
-import type { AgentView, ServerSummary } from "./types";
+import type { AgentView, ServerSummary, SessionSummary } from "./types";
 
 // NUL-joined, exactly as lib/scope.ts joins its cache keys: a member id and a workspace id are both
 // opaque strings, and a separator either of them could contain would make two different pairs share
@@ -101,12 +101,48 @@ export function ambientHost(
  */
 export function paneScope<S extends { host?: string; session?: string }>(
   scope: S,
-  pane: { host?: string } | undefined,
+  pane: { host?: string; session?: string } | undefined,
   servers: readonly ServerSummary[] | undefined,
+  sessions?: readonly SessionSummary[],
 ): Scope {
-  const host = pane?.host;
-  if (host === undefined) return scope;
-  return { host: host === leadHost(servers) ? undefined : host, session: scope.session };
+  // BOTH halves of the address come from the PANE when the pane names them, and from the ambient
+  // scope only when it does not. A pane names its session exactly on a widened body (`?all=1`), and
+  // that is the case this exists for: the widened list holds panes from several sessions, their ids
+  // collide, and opening one with the ambient session would point every read, key press and reply at
+  // the identically-numbered pane in whichever session the URL happened to be on.
+  //
+  // Each half normalises its own "today" value back to undefined — the lead's id, and the primary
+  // session's name — so a row opened from the widened list produces the SAME url it would have
+  // produced from the narrow one. That is what keeps the breadth out of the address: you cannot tell
+  // from a pane url which view you came from, and nothing downstream has to care.
+  // Nothing to say: the pane names neither dimension, which is every pane on an un-widened solo
+  // read. Return the SCOPE ITSELF, not a copy of it — `data.scope` is interned for referential
+  // stability (lib/scope.ts) and handing back a fresh object would quietly undo that for every
+  // caller that compares scopes by identity.
+  if (pane?.host === undefined && pane?.session === undefined) return scope;
+  const host = pane?.host === undefined ? scope.host : normalizeToday(pane.host, leadHost(servers));
+  const session =
+    pane?.session === undefined
+      ? scope.session
+      : normalizeToday(pane.session, primarySession(sessions));
+  return { host, session };
+}
+
+/** `value`, unless it is the dimension's implicit default — which is spelled as an absent param. */
+function normalizeToday(value: string, today: string | undefined): string | undefined {
+  return value === today ? undefined : value;
+}
+
+/**
+ * The registry name of the primary session — the one `?s=` is absent for. `undefined` when the
+ * bridge sent no session list (older bridge, or a body that never carried one), which makes
+ * {@link normalizeToday} a no-op rather than a wrong guess: an un-normalised name still addresses
+ * the right session, it just spells it out in the url.
+ */
+export function primarySession(
+  sessions: readonly SessionSummary[] | undefined,
+): string | undefined {
+  return sessions?.find((s) => s.isPrimary)?.name;
 }
 
 /**
@@ -121,20 +157,38 @@ export function scopeHostKey(
 }
 
 /**
- * Find a pane by id WITHIN the scope's host. `w1:p1` exists on every machine in the pack, so a
- * lookup by id alone over the merged list can return another machine's pane — and the pane view
- * would then render that pane's space, tab and cwd while typing into this one's terminal.
+ * Find a pane by id WITHIN the scope's host AND session. `w1:p1` exists on every machine in the pack
+ * and again in every named Herdr session on each of them, so a lookup by id alone over a merged or
+ * widened list can return a different pane entirely — and the pane view would then render that
+ * pane's space, tab and cwd while typing into this one's terminal.
  *
- * Untagged panes (solo) match any scope, which is what keeps today's lookup exactly today's.
+ * BOTH dimensions use the same rule, and it is the rule that keeps today's lookup exactly today's:
+ * an UNTAGGED pane matches any scope. A pane carries a host only on a merged pack body and a session
+ * only on a widened one, so on every un-widened solo read this is the id comparison it has always
+ * been. It is also why the bridge tags ALL panes or none when it widens (bridge/sessions.ts
+ * `widenedPanes`): a body where only the non-primary panes were tagged would let an untagged primary
+ * pane answer a lookup for a named session's identically-numbered one.
  */
-export function findPane<T extends { paneId: string; host?: string }>(
+export function findPane<T extends { paneId: string; host?: string; session?: string }>(
   panes: readonly T[],
   paneId: string,
-  scope: { host?: string },
+  scope: { host?: string; session?: string },
   servers: readonly ServerSummary[] | undefined,
+  sessions?: readonly SessionSummary[],
 ): T | undefined {
-  const want = scopeHostKey(scope, servers);
-  return panes.find((p) => p.paneId === paneId && (p.host === undefined || hostKey(p) === want));
+  const wantHost = scopeHostKey(scope, servers);
+  // The session the scope RESOLVES to: its `?s=`, or the primary's registry name when absent —
+  // because an absent `?s=` and the primary's own name are the same session, and a tagged pane
+  // always spells it out. `undefined` here means the body named no sessions at all, which is also
+  // the only body in which no pane can be tagged, so the comparison below is skipped rather than
+  // failed. Never guess a name: a wrong guess is a lookup that silently finds nothing.
+  const wantSession = scope.session ?? primarySession(sessions);
+  return panes.find(
+    (p) =>
+      p.paneId === paneId &&
+      (p.host === undefined || hostKey(p) === wantHost) &&
+      (p.session === undefined || wantSession === undefined || p.session === wantSession),
+  );
 }
 
 /**

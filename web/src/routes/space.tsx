@@ -53,7 +53,7 @@ export function SpaceRoute() {
   // pane still supplies its own host, so opening one can never point the URL at another machine.
   const navHost = leadHost(data.servers);
   const open = (pane: AgentView) =>
-    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers)));
+    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
 
   // Recover from a deleted space: once a healthy snapshot no longer has it, bounce to the dashboard
   // instead of leaving you on an empty shell. Guarded on a connected, non-stale snapshot so a

@@ -542,7 +542,7 @@ function DashboardSection() {
         <Stage>
           <RootRouter data={homeSolo}>
             <div className="flex items-center gap-2 p-3">
-              <SessionSwitcher sessions={homeSolo.sessions} scope={{}} />
+              <SessionSwitcher sessions={homeSolo.sessions} scope={{}} viewAll={false} />
             </div>
           </RootRouter>
         </Stage>

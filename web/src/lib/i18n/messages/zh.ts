@@ -441,6 +441,10 @@ export const zh: Dictionary = {
   "connection.session.aria": "会话：{name}。切换会话",
   "connection.session.primary": "主要",
   "connection.session.unreachable": "无法连接",
+  "connection.session.ariaIn": "在会话中：{name}",
+  "connection.session.all": "所有会话",
+  "connection.session.allDescription": "本机的所有会话，合为一个列表",
+  "connection.session.allAria": "正在显示所有会话。切换会话",
   "connection.server.title": "机器",
   "connection.server.aria": "主机：{name}。切换主机",
 

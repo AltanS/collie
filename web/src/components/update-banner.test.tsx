@@ -80,6 +80,7 @@ function homeData(update: UpdateInfo | undefined): HomeData {
     servers: [],
     ts: 0,
     scope: {},
+    viewAll: false,
     snoozedUntil: null,
     update,
     error: false,

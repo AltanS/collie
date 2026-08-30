@@ -126,6 +126,21 @@ export type PaneWire = Omit<AgentView, "agentSession"> & {
    * merged list must carry this and why the phone's per-pane cache keys on it.
    */
   host?: string;
+  /**
+   * Which Herdr session on {@link host} this pane lives in — the `?s=` half of the same address.
+   *
+   * Present exactly when the snapshot was asked to WIDEN (`?sessions=all`), and then on EVERY pane
+   * in the body including the primary session's. Absent otherwise, which is every request that has
+   * ever been made until now, so a solo body is unchanged to the byte.
+   *
+   * Tagging all of them rather than only the non-primary ones is deliberate. The alternative rule —
+   * "absent means primary" — makes an untagged pane mean two different things depending on whether
+   * the body was widened, and the client's `findPane` deliberately lets an untagged pane match ANY
+   * scope so that solo lookups stay exactly today's. Those two rules together would let a primary
+   * pane answer a lookup for a named session's identically-numbered pane. Every pane tagged, or
+   * none: there is no third state to get wrong.
+   */
+  session?: string;
 };
 
 /**

@@ -8,7 +8,7 @@ import {
   writeRefusal,
   type HostHealth,
 } from "@/lib/host-health";
-import type { ServerSummary } from "@/lib/types";
+import type { ServerSummary, SessionSummary } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 
 // Who is in the pack, made available to every write surface without threading `servers` through
@@ -30,6 +30,14 @@ import { useLocale } from "@/hooks/use-locale";
 
 interface PackValue {
   servers: ServerSummary[];
+  /**
+   * The snapshot's session registry — the OTHER addressing dimension, published here for the same
+   * reason the roster is. `SessionChip` owns its own hide rule ("is this row's session the primary
+   * one?") and is rendered inside lists, sheets and rows that are unit-tested without a router, so
+   * it needs the registry wherever it is mounted and cannot read the root loader to get it. Empty by
+   * default, which reads as "nothing to say" exactly as an empty roster does.
+   */
+  sessions: SessionSummary[];
   /** More than one machine — the single condition under which any host chrome renders. */
   multi: boolean;
   /** The machine the phone is connected to; undefined when there is no pack. */
@@ -47,7 +55,14 @@ interface PackValue {
 }
 
 const NO_HEALTH: Map<string, HostHealth> = new Map();
-const SOLO: PackValue = { servers: [], multi: false, lead: undefined, health: NO_HEALTH };
+const NO_SESSIONS: SessionSummary[] = [];
+const SOLO: PackValue = {
+  servers: [],
+  sessions: NO_SESSIONS,
+  multi: false,
+  lead: undefined,
+  health: NO_HEALTH,
+};
 
 const PackContext = createContext<PackValue>(SOLO);
 
@@ -57,11 +72,18 @@ const PackContext = createContext<PackValue>(SOLO);
  */
 export function PackProvider({
   servers,
+  sessions,
   ts = 0,
   pollMs = 0,
   children,
 }: {
   servers: ServerSummary[] | undefined;
+  /**
+   * `SnapshotResponse.sessions`. Optional and defaulted, like `servers` being allowed to be
+   * undefined: a harness that does not care about the session dimension mounts nothing extra and
+   * every consumer reads "no sessions", which is the answer a single-session install gives anyway.
+   */
+  sessions?: SessionSummary[] | undefined;
   /**
    * `SnapshotResponse.ts` — the LEAD's clock, which is the clock `lastSeenAt` is stamped on. Never
    * `Date.now()`; lib/host-health.ts's header has the argument.
@@ -84,15 +106,21 @@ export function PackProvider({
     // Read (not just listed as a dep): `hostHealthMap` calls `t()` for `lastSeenLabel`, so this memo
     // must recompute on a language switch even though `servers`/`ts`/`pollMs` haven't changed.
     void locale;
-    return servers === undefined || servers.length === 0
-      ? SOLO
-      : {
-          servers,
-          multi: isMultiHost(servers),
-          lead: leadHost(servers),
-          health: hostHealthMap(servers, { at: ts, pollMs }),
-        };
-  }, [servers, ts, pollMs, locale]);
+    // THE TWO DIMENSIONS ARE INDEPENDENT, and this is the line where that has to be true. A solo
+    // install can run several Herdr sessions — that is the common case for this feature, not the
+    // exotic one — so the session registry may NOT ride the "is there a pack?" branch. Returning
+    // SOLO wholesale when there are no peers would drop it on exactly the installs that need it.
+    const pack =
+      servers === undefined || servers.length === 0
+        ? SOLO
+        : {
+            servers,
+            multi: isMultiHost(servers),
+            lead: leadHost(servers),
+            health: hostHealthMap(servers, { at: ts, pollMs }),
+          };
+    return { ...pack, sessions: sessions ?? NO_SESSIONS };
+  }, [servers, sessions, ts, pollMs, locale]);
   return <PackContext.Provider value={value}>{children}</PackContext.Provider>;
 }
 

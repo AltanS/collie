@@ -54,8 +54,8 @@ export function DetailRoute() {
   // mirror of, and a composer typing into, the one the URL actually addresses. Solo panes carry no
   // host and match unconditionally, so this is the same lookup it has always been.
   const agent =
-    findPane(root.agents, paneId, scope, root.servers) ??
-    findPane(root.shellPanes, paneId, scope, root.servers) ??
+    findPane(root.agents, paneId, scope, root.servers, root.sessions) ??
+    findPane(root.shellPanes, paneId, scope, root.servers, root.sessions) ??
     (fresh && fresh.paneId === paneId && !seen ? fresh : undefined);
   const tabLabel = root.tabs.find((t) => t.tabId === agent?.tabId)?.label;
   const gone = !agent;
@@ -90,7 +90,15 @@ export function DetailRoute() {
       onBack={() => navigate(homePath(scope))}
       onSelect={(id) =>
         navigate(
-          panePath(id, paneScope(scope, findPane([...root.agents, ...root.shellPanes], id, scope, root.servers), root.servers)),
+          panePath(
+            id,
+            paneScope(
+              scope,
+              findPane([...root.agents, ...root.shellPanes], id, scope, root.servers, root.sessions),
+              root.servers,
+              root.sessions,
+            ),
+          ),
         )
       }
     />

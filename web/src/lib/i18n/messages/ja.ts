@@ -453,6 +453,10 @@ export const ja: Dictionary = {
   "connection.session.aria": "セッション: {name}。セッションを切り替え",
   "connection.session.primary": "プライマリ",
   "connection.session.unreachable": "接続不可",
+  "connection.session.ariaIn": "セッション内: {name}",
+  "connection.session.all": "すべてのセッション",
+  "connection.session.allDescription": "このマシンのすべてのセッションを 1 つのリストに",
+  "connection.session.allAria": "すべてのセッションを表示中。セッションを切り替え",
   "connection.server.title": "マシン",
   "connection.server.aria": "ホスト: {name}。ホストを切り替え",
 

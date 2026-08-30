@@ -98,7 +98,12 @@ export function PackedRootRouter({ data, children }: { data: HomeData; children:
           path: "/",
           loader: () => data,
           element: (
-            <PackProvider servers={data.servers} ts={data.ts} pollMs={3_000}>
+            <PackProvider
+              servers={data.servers}
+              sessions={data.sessions}
+              ts={data.ts}
+              pollMs={3_000}
+            >
               {children}
             </PackProvider>
           ),
@@ -124,7 +129,12 @@ export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
           path: "/",
           loader: () => home,
           element: (
-            <PackProvider servers={home.servers} ts={home.ts} pollMs={3_000}>
+            <PackProvider
+              servers={home.servers}
+              sessions={home.sessions}
+              ts={home.ts}
+              pollMs={3_000}
+            >
               <AppHeaderHost bridge={home.bridge} error={false}>
                 <Outlet />
               </AppHeaderHost>
@@ -161,7 +171,12 @@ export function SettingsRouter({ home, devices }: { home: HomeData; devices: Dev
           path: "/",
           loader: () => home,
           element: (
-            <PackProvider servers={home.servers} ts={home.ts} pollMs={3_000}>
+            <PackProvider
+              servers={home.servers}
+              sessions={home.sessions}
+              ts={home.ts}
+              pollMs={3_000}
+            >
               <AppHeaderHost bridge={home.bridge} error={false}>
                 <Outlet />
               </AppHeaderHost>
@@ -214,7 +229,12 @@ export function PaneRouter({
           path: "/",
           loader: () => data,
           element: (
-            <PackProvider servers={data.servers} ts={data.ts} pollMs={3_000}>
+            <PackProvider
+              servers={data.servers}
+              sessions={data.sessions}
+              ts={data.ts}
+              pollMs={3_000}
+            >
               <AppHeaderHost bridge={data.bridge} error={false}>
                 <AgentChat
                   paneId={fixture.pane.paneId}
@@ -291,7 +311,12 @@ export function PaneStackRouter({
           path: "/",
           loader: () => data,
           element: (
-            <PackProvider servers={data.servers} ts={data.ts} pollMs={3_000}>
+            <PackProvider
+              servers={data.servers}
+              sessions={data.sessions}
+              ts={data.ts}
+              pollMs={3_000}
+            >
               <div className="flex h-full flex-col">
                 <UpdateAvailableBanner />
                 <ConnectionBanner bridge={undefined} error authError />

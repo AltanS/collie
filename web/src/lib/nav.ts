@@ -27,8 +27,8 @@ export function spacePath(spaceId: string, scope?: Scope): string {
 }
 
 /** The dashboard path, carrying the current scope so "go home" doesn't drop you back to the lead. */
-export function homePath(scope?: Scope): string {
-  return `/${scopeSearch(scope)}`;
+export function homePath(scope?: Scope, opts?: { all?: boolean }): string {
+  return `/${scopeSearch(scope, opts)}`;
 }
 
 /** The settings route, carrying the current scope like the other path helpers. */

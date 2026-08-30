@@ -119,6 +119,30 @@ interface SessionRegistryOpts {
 }
 
 /**
+ * Flatten several sessions' panes into ONE list, stamping every pane with the session it came from.
+ *
+ * The two invariants are both in the signature and both matter:
+ *
+ *  1. EVERY pane is tagged, including the primary session's. The tempting alternative — tag only the
+ *     non-primary ones, so "absent means primary" — makes an untagged pane mean two different things
+ *     depending on whether the body was widened, and the client deliberately lets an untagged pane
+ *     match any scope so that solo lookups stay exactly today's (web/src/lib/hosts.ts `findPane`).
+ *     Those two rules together would let a primary pane answer a lookup for a named session's
+ *     identically-numbered pane, which is the pack bug one dimension down. All, or none.
+ *  2. The CALLER decides the order and this preserves it, because the order is observable: it is the
+ *     order rows appear in on a phone, and a list that re-sorts itself under the reader is DESIGN.md
+ *     §2. {@link SessionRegistry.ordered} is the order to pass.
+ *
+ * Generic over the pane shape: this is about addressing, not about what a pane is, and keeping it
+ * that way means it can be tested without a wire type.
+ */
+export function widenedPanes<T extends { session?: string }>(
+  sources: readonly { readonly name: string; readonly panes: readonly T[] }[],
+): T[] {
+  return sources.flatMap(({ name, panes }) => panes.map((p): T => ({ ...p, session: name })));
+}
+
+/**
  * Owns the set of live session runtimes. The primary is created eagerly and kept forever; other
  * sessions are discovered from the filesystem by {@link refresh} and disposed when their socket goes
  * away. Client-facing lookups ({@link get}) are Map lookups by name — a name never becomes a path.
@@ -164,11 +188,29 @@ export class SessionRegistry {
   }
 
   /**
+   * Every live runtime in the ONE canonical order: primary first, then alphabetical.
+   *
+   * {@link all} returns insertion order, which is discovery order — i.e. whichever session's
+   * directory the filesystem listed first, and it changes as sessions come and go. That is fine for
+   * a fan-out, where order is not observable, and wrong for anything a phone renders: a widened
+   * snapshot's pane list would re-order itself under the reader for no reason a reader could see
+   * (DESIGN.md §2). This is the order {@link list} already publishes, factored out so the summaries
+   * and the panes they describe cannot disagree about it.
+   */
+  ordered(): SessionRuntime[] {
+    return this.all().toSorted((a, b) => {
+      if (a.isPrimary) return -1;
+      if (b.isPrimary) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  /**
    * Summaries for the snapshot's `sessions` field: primary first, then alphabetical. Counts come
    * from each engine's current snapshot; an unreachable session (last poll failed) reports 0 counts.
    */
   list(): SessionSummary[] {
-    const summaries = this.all().map((rt): SessionSummary => {
+    return this.ordered().map((rt): SessionSummary => {
       const snap = rt.engine.current();
       const reachable = snap.bridge === "connected";
       const agents = reachable ? snap.agents : [];
@@ -180,11 +222,6 @@ export class SessionRegistry {
         working: agents.filter((a) => a.status === "working").length,
         blocked: agents.filter((a) => a.status === "blocked").length,
       };
-    });
-    return summaries.toSorted((a, b) => {
-      if (a.isPrimary) return -1;
-      if (b.isPrimary) return 1;
-      return a.name.localeCompare(b.name);
     });
   }
 

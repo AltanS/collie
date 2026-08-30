@@ -880,13 +880,22 @@ export function AgentChat({
           )}
         </RouteHeader>
 
-        {/* Content region below the header — the mirror inside is the scroller. */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {/* Status line — a slim row pinned directly below the header (NOT the scrolling mirror), so a
-              "Sent" / "changed" notice reads at the top instead of floating over the terminal tail
-              (prompt/cursor + up-levelled prompt buttons) it used to cover. Renders nothing — no
-              reserved space — when idle; auto-dismisses. */}
-          <StatusArea className="mx-3 mt-1.5 shrink-0" />
+        {/* Content region below the header — the mirror inside is the scroller. `relative` is load-
+            bearing: it is the containing block for the status overlay directly below. */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* Status line — a slim notice pinned directly below the header (NOT the scrolling mirror),
+              so a "Sent" / "changed" notice reads at the top instead of floating over the terminal
+              tail (prompt/cursor + up-levelled prompt buttons) it used to cover.
+
+              It FLOATS. It was an ordinary row in the column, which meant every "Sent" pushed the tab
+              strip, the pane strip and the whole mirror down 30px, and pulled them back up 2.5s
+              later — the page jumped twice to say one word. So it is an absolute overlay now: it
+              covers the top of the tab strip for as long as it shows and moves nothing. The wrapper
+              takes no pointer events; StatusArea re-enables them for itself when the notice is a
+              dismissable error. Renders nothing when idle. */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-1.5">
+            <StatusArea />
+          </div>
 
           {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
           <ReadOnlyBanner device={device} className="mx-3 mt-1.5" />

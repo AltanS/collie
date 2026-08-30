@@ -464,6 +464,10 @@ export const en = {
   "connection.session.aria": "Session: {name}. Switch session",
   "connection.session.primary": "primary",
   "connection.session.unreachable": "unreachable",
+  "connection.session.ariaIn": "In session: {name}",
+  "connection.session.all": "All sessions",
+  "connection.session.allDescription": "Every session on this machine, in one list",
+  "connection.session.allAria": "Showing every session. Switch session",
   "connection.server.title": "Machines",
   "connection.server.aria": "Host: {name}. Switch host",
 

@@ -21,7 +21,7 @@ import {
 } from "./prompt-binding.ts";
 import type { Push, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
-import { herdTagFor, type SessionRegistry, type SessionRuntime } from "./sessions.ts";
+import { herdTagFor, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import { imageExtFromBytes, SNIFF_BYTES } from "./uploads.ts";
 import type { UpdateMonitor } from "./update.ts";
@@ -60,6 +60,7 @@ import type {
   PackStatusResponse,
   PaneHistoryResponse,
   PaneReadResponse,
+  PaneWire,
   SnapshotResponse,
   SttCapability,
   UploadResponse,
@@ -523,28 +524,59 @@ export function startServer(opts: {
   const localSnapshot = (
     sessionName: string | undefined,
     device: DeviceAuth | null,
+    widen = false,
   ): SnapshotResponse | undefined => {
     const rt = registry.get(sessionName);
     if (!rt) return undefined;
-    const { agents, shellPanes, workspaces, tabs, bridge } = rt.engine.current();
+    const { workspaces, tabs, bridge } = rt.engine.current();
     // Attach each pane's activity timestamps. Done here rather than in the state engine so the
     // engine stays a pure Herdr-poller with no knowledge of the ledger — and so the two numbers
-    // are read at serialise time, i.e. as fresh as the request.
-    const withActivity = (p: AgentView): AgentView => {
-      const a = activity.get(rt.name, p.paneId);
+    // are read at serialise time, i.e. as fresh as the request. The ledger is keyed by SESSION, so
+    // the runtime whose panes are being serialised is the one that has to be asked — which is why
+    // this takes the runtime rather than closing over the ambient one.
+    const withActivity = (from: SessionRuntime, p: AgentView): AgentView => {
+      const a = activity.get(from.name, p.paneId);
       return a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+    };
+    // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
+    // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is
+    // computed against the registry, so a harness Herdr detects but Collie has no journal for
+    // doesn't advertise a History button that can only ever come back empty. withActivity runs
+    // FIRST: it returns an AgentView, which is what toPaneWire consumes, and the two timestamps
+    // then ride through its rest-spread onto the wire shape.
+    //
+    // WIDENING (`?sessions=all`) IS A READ, AND ONLY OF THE PANE LISTS. Herdr can run several named
+    // sessions on this machine, each its own server; until now the phone could look at exactly one
+    // of them at a time, which made "what needs me?" a question you had to ask once per session.
+    // Widened, the two pane lists hold every local session's panes, each tagged with the session it
+    // came from so the phone can address it (types.ts states why ALL of them are tagged, never just
+    // the non-primary ones).
+    //
+    // NOTHING ELSE IN THE BODY WIDENS, and that is the same shape the pack merge already has rather
+    // than a shortcut: a peer contributes its `agents` and `shellPanes` and nothing more
+    // (pack/merge.ts `PeerSnapshotBody`), because `workspaces`, `tabs` and `bridge` are statements
+    // about one link the phone reads one at a time. `bridge`, `workspaces` and `tabs` here stay the
+    // AMBIENT session's — the one `?s=` named — exactly as they are today. So the triage lists
+    // widen and the navigation tree does not, one dimension down from a pack, where the same is
+    // already true of every peer.
+    //
+    // The ORDER is the registry's own — primary first, then alphabetical — so it matches the
+    // `sessions` array below and does not depend on which runtime happened to be spawned first.
+    const sources = widen ? registry.ordered() : [rt];
+    const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
+      const wired = sources.map((from) => ({
+        name: from.name,
+        panes: pick(from).map((p) => toPaneWire(withActivity(from, p), hasJournal)),
+      }));
+      // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
+      // at all, which is the whole backward-compatibility claim (solo-baseline.test.ts).
+      return widen ? widenedPanes(wired) : wired.flatMap((w) => w.panes);
     };
     // `device` is ASSIGNED below, never conditionally spread: an off deployment sends no such key.
     const body: SnapshotResponse = {
       bridge,
-      // The one place a pane leaves the bridge: the session ref is stripped to a presence flag
-      // here, so an agent-reported filesystem path never reaches a browser (see toPaneWire).
-      // The flag is computed against the registry, so a harness Herdr detects but Collie has no
-      // journal for doesn't advertise a History button that can only ever come back empty.
-      // withActivity runs FIRST: it returns an AgentView, which is what toPaneWire consumes,
-      // and the two timestamps then ride through its rest-spread onto the wire shape.
-      agents: agents.map((p) => toPaneWire(withActivity(p), hasJournal)),
-      shellPanes: shellPanes.map((p) => toPaneWire(withActivity(p), hasJournal)),
+      agents: paneList((from) => from.engine.current().agents),
+      shellPanes: paneList((from) => from.engine.current().shellPanes),
       workspaces,
       tabs,
       sessions: registry.list(),
@@ -703,7 +735,12 @@ export function startServer(opts: {
   // the PEER's own log with `via:"pack"` and the originating member (§12). The lead's verdict is not
   // an input — it never crosses the wire.
   const packHandler = opts.packRouter?.({
-    snapshot: (session) => localSnapshot(session, null),
+    // Never widened, and stated rather than defaulted: a peer answers its lead with the session the
+    // lead asked for, and no lead asks for more than one yet. Turning this on is a PACK_PROTOCOL
+    // change (§7.1, additive-optional) and belongs in the commit that also teaches the sweep to ask
+    // and `merge.ts` to carry the tag — not to a default argument that quietly widens a wire the
+    // spec has not been amended for.
+    snapshot: (session) => localSnapshot(session, null, false),
     dispatch: async (req, url, from) => {
       const session = url.searchParams.get("session") ?? undefined;
       const device = packDeviceOf(req);
@@ -857,7 +894,13 @@ export function startServer(opts: {
         // `/pack/v1/snapshot`, and a lead sweeps on its own clock whether or not anybody is reading
         // it — stamping there would pin every peer at `watched` for the life of the pack).
         registry.get(sessionName)?.engine.noteAttention();
-        const body = localSnapshot(sessionName, device.enforced ? device : null);
+        // `?sessions=all` WIDENS the pane lists to every local session (see localSnapshot). One
+        // exact spelling and nothing else is accepted: the parameter is a switch, not a list, and a
+        // typo must read as "no" rather than as some third behaviour. It does NOT replace `?session=`
+        // — the ambient session still decides `bridge`, `workspaces`, `tabs` and the 404 below, so a
+        // widened view of an unknown session is still an unknown session.
+        const widen = url.searchParams.get("sessions") === "all";
+        const body = localSnapshot(sessionName, device.enforced ? device : null, widen);
         if (!body) return unknownSession();
         // The ONE place the lead re-serialises (§9.2). With no pack this is the identity function's
         // absence: `body` goes out as assembled, same keys, same order, same bytes, same ETag.

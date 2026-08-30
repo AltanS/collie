@@ -33,7 +33,15 @@ import {
 } from "@/lib/last-seen";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { clearNotPaired, markNotPaired } from "@/lib/pairing";
-import { internScope, paneScopeKey, type Scope, scopeFromUrl, scopeKey } from "@/lib/scope";
+import {
+  internScope,
+  paneScopeKey,
+  type Scope,
+  scopeFromUrl,
+  scopeKey,
+  snapshotKey,
+  viewAllFromUrl,
+} from "@/lib/scope";
 import type {
   AgentView,
   BridgeStatus,
@@ -111,6 +119,16 @@ export interface HomeData {
   ts: number;
   /** The scope this snapshot was fetched for (host + session) — so children don't re-derive it. */
   scope: Scope;
+  /**
+   * True when this body was WIDENED (`?all=1`): its pane lists hold every Herdr session on the
+   * addressed machine, and every pane in them carries its own `session`. False is every view that
+   * existed before, where the lists hold one session and no pane names it.
+   *
+   * Deliberately NOT folded into {@link scope}: a scope is an ADDRESS and this is a breadth. See
+   * lib/scope.ts `ALL_PARAM` for the whole argument — the short version is that folding it in would
+   * carry it onto every pane URL and split every per-pane cache entry in two.
+   */
+  viewAll: boolean;
   /** Active notification snooze deadline (epoch ms), or null when not snoozed. */
   snoozedUntil: number | null;
   /** Version / upgrade status for the footer update banner; undefined on an older bridge. */
@@ -191,6 +209,7 @@ function isPaneUrl(url: string | undefined): boolean {
 function toHomeData(
   snap: SnapshotResponse,
   scope: Scope,
+  viewAll: boolean,
   error: boolean,
   lastSeenAt?: number,
 ): HomeData {
@@ -206,6 +225,7 @@ function toHomeData(
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,
     scope,
+    viewAll,
     snoozedUntil: snap.notifications?.snoozedUntil ?? null,
     update: snap.update,
     error,
@@ -223,12 +243,12 @@ function toHomeData(
 // restored PWA has an empty module cache and a failing first fetch, and without it the operator gets an
 // empty herd instead of the screen they left. A restored snapshot is promoted into the module cache so
 // the rest of this page session behaves exactly as if we had fetched it.
-function staleHome(scope: Scope): HomeData {
-  const restored = loadLastSnapshot(scope);
-  const cached = lastSnapshot.get(scopeKey(scope)) ?? restored?.value;
+function staleHome(scope: Scope, viewAll: boolean): HomeData {
+  const restored = loadLastSnapshot(scope, viewAll);
+  const cached = lastSnapshot.get(snapshotKey(scope, viewAll)) ?? restored?.value;
   if (cached) {
-    lastSnapshot.set(scopeKey(scope), cached);
-    return toHomeData(cached, scope, true, restored?.at);
+    lastSnapshot.set(snapshotKey(scope, viewAll), cached);
+    return toHomeData(cached, scope, viewAll, true, restored?.at);
   }
   // Nothing cached at all — an outage on a tab that never saw a good snapshot. `error: true` is what
   // keeps this apart from a genuinely empty herd downstream: the empty state is only allowed to say
@@ -245,6 +265,7 @@ function staleHome(scope: Scope): HomeData {
     servers: [],
     ts: 0,
     scope,
+    viewAll,
     snoozedUntil: null,
     update: undefined,
     error: true,
@@ -254,6 +275,10 @@ function staleHome(scope: Scope): HomeData {
 
 export async function rootLoader({ request }: { request?: Request } = {}): Promise<HomeData> {
   const scope = scopeFromRequest(request);
+  // The BREADTH, read off the same URL as the address and kept beside it rather than inside it. It
+  // is a home-view concept only: no other loader reads it, and nothing downstream may put it in a
+  // pane URL (lib/scope.ts ALL_PARAM).
+  const viewAll = viewAllFromUrl(request?.url);
   // Nav-vs-revalidate: a revalidation (poll) re-runs at the SAME url; a navigation runs at a different
   // one. Cold start (lastRootUrl undefined) reads as a navigation too, but the latch gate below is
   // never set that early, so the first run always really fetches (BootSplash + escalation, as today).
@@ -266,20 +291,20 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
   // Fast path: a navigation during a known, escalated outage returns last-known data INSTANTLY rather
   // than hanging on a doomed fetch. Revalidations fall through and really fetch (so recovery lands and
   // markLive clears the latch → the next run fetches live and replaces the stale herd).
-  if (isNavigation && isLostLatched()) return staleHome(scope);
+  if (isNavigation && isLostLatched()) return staleHome(scope, viewAll);
 
   try {
-    const snap = await fetchSnapshot(scope, request?.signal);
-    lastSnapshot.set(scopeKey(scope), snap);
+    const snap = await fetchSnapshot(scope, request?.signal, viewAll);
+    lastSnapshot.set(snapshotKey(scope, viewAll), snap);
     // Write-through: the same body, dated, in a store that outlives this page (lib/last-seen.ts).
-    saveLastSnapshot(scope, snap);
+    saveLastSnapshot(scope, snap, undefined, viewAll);
     rememberAuthError(scope, false);
-    return toHomeData(snap, scope, false);
+    return toHomeData(snap, scope, viewAll, false);
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
     rememberAuthError(scope, isAuthError(e));
     // Keep the last good herd on screen, flagged so the ConnectionBanner can say "reconnecting…".
-    return staleHome(scope);
+    return staleHome(scope, viewAll);
   }
 }
 
