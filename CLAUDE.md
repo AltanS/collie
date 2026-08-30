@@ -69,12 +69,27 @@ line — do it as part of the change, not after**:
   Escape hatch for a single commit: `SKIP_VERSION_CHECK=1 git commit …` (every `SKIP_*` hatch is
   listed under *Linting* below).
 
-**Tag the release when you push it.** Cutting a release means the three version files + the newest
-`CHANGELOG.md` heading agree on `x.y.z` (steps 1–3). When that release lands on `main` and you push,
-**always push a matching annotated git tag with it** — `git tag -a vX.Y.Z -m "Collie X.Y.Z" && git
-push origin vX.Y.Z` (or `git push --follow-tags` so the tag ships *with* the release). One `v<x.y.z>`
-tag per shipped version on the remote. Not hook-enforced — it's on you. (Adding/adjusting this note is
-a doc-only change and needs no version bump.)
+**Publish every release you cut — tag it when you push it.** Cutting a release means the three
+version files + the newest `CHANGELOG.md` heading agree on `x.y.z` (steps 1–3). A cut version that
+never gets a tag is not a release at all: `.github/workflows/release.yml` triggers on
+`push: tags: ["v*.*.*"]` and nothing else creates the GitHub Release the in-app update banner links
+to, so an untagged version exists only as a CHANGELOG heading and nobody can install it. So when
+that release lands and you push, **always push a matching annotated git tag with it** —
+`git tag -a vX.Y.Z -m "Collie X.Y.Z" && git push origin vX.Y.Z` (or `git push --follow-tags` so the
+tag ships *with* the release). One `v<x.y.z>` tag per shipped version on the remote.
+
+`scripts/check-tag.sh` checks this: with no arguments it asks whether the version the repo currently
+claims has a tag; given a rev-list selector it asks the same of every `chore(release):` commit the
+selector picks, reading the version from *that commit's* manifest. The **pre-push hook runs it over
+the range being pushed and WARNS** — loudly, last, with the exact `git tag -a` command. It warns
+rather than blocks because the tag may legitimately be cut after CI has looked at the release
+commit; skip it once with `SKIP_TAG_CHECK=1 git push`. Nothing checks the remote, so the last step is
+still yours.
+
+**Betas 33 to 41 are unreachable on purpose. Do not back-fill them.** They were cut in the version
+files and the CHANGELOG and never tagged — not even locally — which is the failure the guard above
+exists to stop repeating. Their commits are superseded by the betas that followed, and a tag cut
+today would claim a release nobody ever tested.
 
 **Update notice (user-facing).** The app's in-app update banner links to the newest release's GitHub
 page and shows the command to run. Pushing a `v*` tag auto-creates that GitHub Release (with the
@@ -175,6 +190,7 @@ a single command; never export one.
 | `SKIP_PACK_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the pack-wire decision guard |
 | `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
 | `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
+| `SKIP_TAG_CHECK=1` | `git push` (pre-push hook) | the untagged-release warning |
 
 The pre-commit hook's three guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the
 lint guard or the pack-wire guard.

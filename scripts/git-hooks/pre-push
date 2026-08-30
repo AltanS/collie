@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# Pre-push guard: typecheck both sides, then run the test suites (backend Bun + web Vitest) before
-# anything leaves the machine. Install with: scripts/install-hooks.sh (sets core.hooksPath).
-# Override once: SKIP_TYPECHECK=1 git push (skip typecheck) · SKIP_TESTS=1 git push (skip tests).
+# Pre-push guard: typecheck both sides, run the test suites (backend Bun + web Vitest), then say so
+# out loud if the push carries a release that has no tag. Install with: scripts/install-hooks.sh
+# (sets core.hooksPath).
+# Override once: SKIP_TYPECHECK=1 git push (skip typecheck) · SKIP_TESTS=1 git push (skip tests) ·
+# SKIP_TAG_CHECK=1 git push (skip the release-tag warning).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
+
+# git feeds a pre-push hook the refs being pushed on stdin, one `<local ref> <local sha> <remote ref>
+# <remote sha>` line per ref. Read it NOW, before any suite runs: a suite that reads stdin would eat
+# it, and the ranges are what the tag check works from.
+pushed_refs="$(cat)"
 
 # Everything below this line runs test suites, and git has exported GIT_DIR (and, depending on the
 # hook, GIT_INDEX_FILE and friends) into this process. Those override repository discovery for every
@@ -39,34 +46,67 @@ fi
 # ── Tests ───────────────────────────────────────────────────────────────────
 if [ "${SKIP_TESTS:-}" = "1" ]; then
   echo "pre-push: SKIP_TESTS=1 — skipping test suite" >&2
-  exit 0
-fi
-
-echo "pre-push: running backend test suite (bun test ./bridge)…" >&2
-if ! (cd "$ROOT" && bun test ./bridge); then
-  cat >&2 <<'EOF'
+else
+  echo "pre-push: running backend test suite (bun test ./bridge)…" >&2
+  if ! (cd "$ROOT" && bun test ./bridge); then
+    cat >&2 <<'EOF'
 ✗ pre-push: backend tests failed — push aborted.
   Fix the failing tests, or override once with: SKIP_TESTS=1 git push
 EOF
-  exit 1
-fi
+    exit 1
+  fi
 
-echo "pre-push: running control-script lifecycle suite (collie-ctl.test.sh)…" >&2
-if ! (cd "$ROOT" && bash scripts/collie-ctl.test.sh); then
-  cat >&2 <<'EOF'
+  echo "pre-push: running control-script lifecycle suite (collie-ctl.test.sh)…" >&2
+  if ! (cd "$ROOT" && bash scripts/collie-ctl.test.sh); then
+    cat >&2 <<'EOF'
 ✗ pre-push: collie-ctl lifecycle tests failed — push aborted.
   Fix the failing tests, or override once with: SKIP_TESTS=1 git push
 EOF
-  exit 1
-fi
+    exit 1
+  fi
 
-echo "pre-push: running web test suite (vitest)…" >&2
-if ! (cd "$ROOT/web" && bun run test); then
-  cat >&2 <<'EOF'
+  echo "pre-push: running web test suite (vitest)…" >&2
+  if ! (cd "$ROOT/web" && bun run test); then
+    cat >&2 <<'EOF'
 ✗ pre-push: web tests failed — push aborted.
   Fix the failing tests, or override once with: SKIP_TESTS=1 git push
 EOF
-  exit 1
+    exit 1
+  fi
+fi
+
+# ── Release tag (WARNS, never blocks) ───────────────────────────────────────
+# Betas 33 to 41 were cut in the version files and the CHANGELOG and never tagged, so nine releases
+# existed that nobody could install. The release workflow was fine; the `git tag` in front of it was
+# the step that kept getting skipped, and nothing ever said so. This says so.
+#
+# It WARNS rather than aborting on purpose: the tag may legitimately be cut after CI has had a look
+# at the release commit, and a guard that blocks a push you meant to make gets disarmed for good
+# rather than once. It runs LAST so its message is the final thing on the screen — the same reason
+# the update notice moved to the end of the transcript.
+if [ "${SKIP_TAG_CHECK:-}" = "1" ]; then
+  echo "pre-push: SKIP_TAG_CHECK=1 — skipping the release-tag check" >&2
+else
+  while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -n "${local_sha:-}" ] || continue
+    # A deleted ref pushes the all-zero sha and carries no commits.
+    case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+    # A brand-new remote branch has no remote sha to subtract; ask for what no remote holds yet.
+    case "$remote_sha" in
+      *[!0]*) selector=("${remote_sha}..${local_sha}") ;;
+      *) selector=("$local_sha" --not --remotes) ;;
+    esac
+    if ! out="$(cd "$ROOT" && bash scripts/check-tag.sh "${selector[@]}" 2>&1)"; then
+      {
+        echo
+        echo "⚠ pre-push: this push carries a release with no tag — nothing will publish it."
+        echo
+        echo "$out" | sed 's/^✗ /  /'
+        echo "  (Push anyway; tag it before or right after. Silence this once: SKIP_TAG_CHECK=1 git push.)"
+        echo
+      } >&2
+    fi
+  done <<<"$pushed_refs"
 fi
 
 exit 0
