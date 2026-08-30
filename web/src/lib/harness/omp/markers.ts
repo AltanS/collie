@@ -69,26 +69,50 @@ export function composerBottomText(text: string): string | null {
 
 // omp paints an INLINE COMPLETION SUGGESTION — a "ghost" — into the composer, after the operator's
 // own text: unaccepted, absent from the input buffer, and deleted by no Backspace. Live capture
-// (sandbox omp pane, 2026-08-23) of the bottom border after typing `leftover draft here`:
+// (sandbox omp pane, 2026-08-23, omp 17) of the bottom border after typing `leftover draft here`:
 //
 //   ESC[38;2;190;149;255m╰─ ESC[0mleftover draft hereESC[0mESC[38;2;111;115;119m'sESC[0m … ─╯
 //
-// The typed text is ONE segment with no foreground colour; the suggestion is a trailing segment that
-// carries one. That one rendering detail cost omp panes their whole reply path: `extractInputDraft`
-// read back `leftover draft here's`, `draftCarriesSend` (lib/reply-action.ts) requires the visible
-// draft to be CONTAINED in what was typed, `'s` is not — so the submit key was withheld and every
-// send stalled with "Message didn't reach the input box" while the message really was in the box.
-// Each retry re-typed, omp re-suggested, and the stall repeated forever.
+// and the same row on omp 18.0.11 (2026-08-30) after typing `list the files in this repo` while the
+// agent was WORKING — the draft now carries an explicit foreground of its own:
 //
-// The rule below is RELATIVE and names no colour: omp's suggestion colour is a theme value, while the
-// operator's text is painted in the terminal's DEFAULT foreground (verified for plain text, for a
-// `/command` and for an `@mention`, which omp does not highlight). So a ghost is "the trailing run of
-// COLOURED segments that follows UNSTYLED text", and it is claimed only on the bottom border, which
-// is the row the caret is on — omp windows a long draft, so the tail is always the caret's row.
+//   ESC[38;2;250;81;53m╰─ ESC[38;2;242;244;248mlist the files in this repoESC[38;2;111;115;119mrtESC[0m … ─╯
 //
-// Both refusals are the fail-closed direction, because a wrongly-claimed ghost SHORTENS the draft the
-// reply guard verifies: a row with no unstyled text of its own (the shape a row omp painted in one
-// colour arrives as) claims nothing, and a row whose last segment is unstyled claims nothing.
+// That one rendering detail cost omp panes their whole reply path: `extractInputDraft` read back
+// `leftover draft here's`, `draftCarriesSend` (lib/reply-action.ts) requires the visible draft to be
+// CONTAINED in what was typed, `'s` is not — so the submit key was withheld and every send stalled
+// with "Message didn't reach the input box" while the message really was in the box. Each retry
+// re-typed, omp re-suggested, and the stall repeated forever.
+//
+// The rule below is RELATIVE and names no colour, because every colour here is a theme value. The
+// first version anchored on the draft being UNSTYLED, which is what omp 17 did and what omp 18 still
+// does on an IDLE pane — but on a working pane omp 18 writes the same text in an explicit theme
+// foreground, that anchor vanished, and the stall came back verbatim. So a ghost is now "the trailing
+// run of segments sharing ONE foreground that DIFFERS from the text before it", which reads both
+// shapes: the draft's colour is whatever precedes the run, present or absent. It is claimed only on
+// the bottom border, which is the row the caret is on — omp windows a long draft, so the tail is
+// always the caret's row.
+//
+// Three refusals, all the fail-closed direction, because a wrongly-claimed ghost SHORTENS the draft
+// the reply guard verifies: a row painted in ONE foreground end to end claims nothing (that is the
+// shape a row omp coloured wholesale arrives as), a row whose trailing run has NO foreground claims
+// nothing (omp's suggestion always carries one, and an unstyled tail after a coloured head is far
+// more likely to be the operator's own text), and a run with nothing but blanks before it claims
+// nothing.
+//
+// What the rule still gets WRONG, bounded and deliberately left: omp decorates some text the operator
+// really typed — the magic keywords (`ultrathink`, `workflowz`) come back as a per-character colour
+// GRADIENT, and `[Image #1]` / `[Paste #1]` placeholders come back in the accent colour. A draft
+// ENDING in one of those has its last colour run claimed, which for a gradient is a single character.
+// Two things bound the damage. It cannot change a send verdict: `draftCarriesSend` accepts any
+// contiguous run of the draft's visible characters inside what was typed (MIN_MATCH_CHARS floor
+// aside), so a draft that was already contained stays contained after a character comes off the end,
+// and a draft that was NOT contained is the ghost case this exists for. What it does cost is the
+// stranded-draft preview: "Take over" can hand back a draft one character short. Tightening the other
+// way — refusing a tail that changes colour more than once — was measured against this and rejected:
+// it puts every `@mention`- or placeholder-ending draft back into the permanent stall, which is the
+// failure the operator actually feels. The previous rule was WORSE here, not better: with an unstyled
+// draft it claimed the whole gradient (`ultrathink`), where this one claims `k`.
 export function composerGhost(line: StyledLine): string {
   const inner = COMPOSER_BOTTOM.exec(rstrip(lineText(line)))?.[1];
   if (inner === undefined || inner.length === 0) return "";
@@ -97,26 +121,29 @@ export function composerGhost(line: StyledLine): string {
 
   // The row's segments clipped to that inner span, so neither border corner — both coloured — can be
   // mistaken for a suggestion.
-  const parts: { text: string; colored: boolean }[] = [];
+  const parts: { text: string; fg: string | undefined }[] = [];
   let at = 0;
   for (const seg of line.segments) {
     const from = Math.max(at, start);
     const to = Math.min(at + seg.text.length, end);
     if (to > from) {
-      parts.push({ text: seg.text.slice(from - at, to - at), colored: seg.fg !== undefined });
+      parts.push({ text: seg.text.slice(from - at, to - at), fg: seg.fg });
     }
     at += seg.text.length;
     if (at >= end) break;
   }
 
   // omp pads the box out to the terminal's width in the default style, so that padding is neither
-  // draft nor suggestion — drop it before looking for the trailing coloured run.
+  // draft nor suggestion — drop it before looking for the trailing run.
   while (parts.length > 0 && parts[parts.length - 1]!.text.trim() === "") parts.pop();
+  if (parts.length === 0) return "";
 
+  const ghostFg = parts[parts.length - 1]!.fg;
+  if (ghostFg === undefined) return "";
   let cut = parts.length;
-  while (cut > 0 && parts[cut - 1]!.colored) cut--;
-  if (cut === parts.length) return "";
-  if (!parts.slice(0, cut).some((p) => !p.colored && p.text.trim() !== "")) return "";
+  while (cut > 0 && parts[cut - 1]!.fg === ghostFg) cut--;
+  if (cut === 0) return "";
+  if (!parts.slice(0, cut).some((p) => p.text.trim() !== "")) return "";
   return rstrip(
     parts
       .slice(cut)

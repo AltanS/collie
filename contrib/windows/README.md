@@ -29,7 +29,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File contrib\windows\collie-c
 ```
 
 `start` registers a Task Scheduler job (`herdr.collie`, override with `COLLIE_TASK_NAME`) that runs
-at logon, restarts after failures, and outlives Herdr. `status` prints the same readiness banner the
+at logon, restarts after failures, and outlives Herdr. It launches through `conhost --headless`
+so the bridge gets a pseudoconsole with no window: a bare `powershell.exe` action would surface
+on Windows 11 as a Windows Terminal tab, which kills the bridge when someone closes it. `status` prints the same readiness banner the
 POSIX script does; `logs` tails the bridge's stdout/stderr, including the pair preserved from the
 last crash. Config is the usual `.env` in the plugin config dir
 ([`.env.example`](../../.env.example) documents every key).

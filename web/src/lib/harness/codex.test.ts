@@ -42,6 +42,7 @@ const PINNED = [
   "codex--v0150-idle.txt",
   "codex--v0150-nogit-idle.txt",
   "codex--v0150-paste-placeholder.txt",
+  "codex--v0151-draft-indented-line.txt",
   "codex--working.txt",
 ];
 
@@ -76,7 +77,13 @@ function fixtureLines(name: string) {
 }
 
 describe("composerReady — the gate the reply path pre-flights on", () => {
-  it.each(["codex--fresh-idle.txt", "codex--draft.txt", "codex--draft-wrapped.txt", "codex--working.txt"])(
+  it.each([
+    "codex--fresh-idle.txt",
+    "codex--draft.txt",
+    "codex--draft-wrapped.txt",
+    "codex--v0151-draft-indented-line.txt",
+    "codex--working.txt",
+  ])(
     "%s: the composer is on screen ⇒ true",
     (name) => {
       expect(codexAdapter.composerReady!(fixtureLines(name))).toBe(true);
@@ -182,6 +189,43 @@ describe("chrome", () => {
     expect(locateComposer(lines)).not.toBeNull();
     expect(codexAdapter.composerReady!(lines)).toBe(true);
     expect(codexAdapter.extractInputDraft(lines)).toBe("a message waiting to send");
+  });
+
+  it("a wrapped row whose own text starts with spaces is still a continuation", () => {
+    // The shape, pinned without a capture: two spaces of gutter, then the operator's own text,
+    // which may itself begin with spaces. `codex--v0151-draft-indented-line.txt` below is the
+    // real render of it and carries the reasoning.
+    const screen = [
+      "\u203a move everything across including the images and",
+      "    then take the originals down",
+      "",
+      "  gpt-5.6-sol high · /home/user · Context 50% left",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(screen));
+
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe(
+      "move everything across including the images and then take the originals down",
+    );
+  });
+
+  it("locates a draft whose continuation row is indented deeper than the gutter", () => {
+    // The gutter is two spaces; what FOLLOWS it is the operator's own text, and that text may
+    // itself begin with spaces. This capture is the everyday way it happens: a draft carrying a
+    // hard line break (shift+enter, one tap on a phone keyboard) whose next line starts with two
+    // spaces paints a FOUR-space continuation row. `/^ {2}\\S/` demanded a non-space at column 2,
+    // read that healthy row as foreign, and locateComposer returned null — so the pane refused
+    // EVERY send with "the agent's input box isn't on screen" for as long as the draft sat there.
+    // A deadlock, not a transient: the refusal is itself what keeps the draft from being sent, so
+    // the pane never recovers on its own.
+    const lines = fixtureLines("codex--v0151-draft-indented-line.txt");
+
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe(
+      "please move all the images across to the new blog then take the originals down once the copy is verified",
+    );
   });
 
   it("a draft that wraps past 8 rows is still a composer", () => {
@@ -295,6 +339,26 @@ describe("the styled status-row acceptor fails closed", () => {
   it("accepts the shape it was built for", () => {
     const { text, line } = painted(["gpt-5.6-sol default", "/tmp/collie-codex-sandbox"]);
     expect(isStatusRow(text, line)).toBe(true);
+  });
+
+  it("accepts Codex's dim final status field", () => {
+    // Current Codex paints the final collaboration-mode field together with its separator:
+    // `...<coloured cwd><dim> · Main [default]</dim>`. This is the live shape that left Collie's
+    // composer visible but made the reply pre-flight report that no input box was on screen.
+    const { text, line } = row(
+      `  ${FG}gpt-5.6-sol medium${OFF}${SEP}${FG2}/tmp/project${OFF}${DIM} · Main [default]${OFF}`,
+    );
+    expect(isStatusRow(text, line)).toBe(true);
+  });
+
+  it("accepts the dim suffix only after two painted fields and only at the end", () => {
+    const tooEarly = row(`  ${FG}model${OFF}${DIM} · Main [default]${OFF}`);
+    expect(isStatusRow(tooEarly.text, tooEarly.line)).toBe(false);
+
+    const notFinal = row(
+      `  ${FG}model${OFF}${SEP}${FG2}/dir${OFF}${DIM} · Main [default]${OFF}${SEP}${FG}extra${OFF}`,
+    );
+    expect(isStatusRow(notFinal.text, notFinal.line)).toBe(false);
   });
 
   it("refuses the same text with no styling at all", () => {

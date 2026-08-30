@@ -45,9 +45,11 @@ export function rstrip(text: string): string {
 // STATUS_ROW stays as the fast path for rows that still carry `Context`, and it is the ONLY
 // text-shaped acceptor. The styled acceptor keys on RENDERER PAINT — an unstyled two-space
 // indent, coloured non-dim fields, and dim ` · ` separators — and never on field names, because
-// field names are exactly the part the operator configures. A text-only lookalike pasted or
-// echoed into the transcript (`  model · Context 50% left` typed by hand, or prose that happens
-// to contain ` · `) carries no SGR at all, so it is still refused.
+// field names are exactly the part the operator configures. Current Codex may paint one final
+// low-priority field together with its separator as a single dim segment (` · Main [default]`);
+// that suffix is accepted only after two ordinary coloured fields and only at the end. A text-only
+// lookalike pasted or echoed into the transcript (`  model · Context 50% left` typed by hand, or
+// prose that happens to contain ` · `) carries no SGR at all, so it is still refused.
 //
 // Still unsupported: a DISABLED status line (`tui.status_line = null`). There is then no row
 // under the prompt to anchor on, and the rows that remain are transcript. Anchoring the composer
@@ -99,6 +101,16 @@ function isSeparatorSegment(segment: AnsiSegment): boolean {
   return segment.fg === undefined && segment.bg === undefined && segment.bold !== true;
 }
 
+/** One final low-priority field that Codex paints in the same dim segment as its separator. */
+function isDimSuffixFieldSegment(segment: AnsiSegment): boolean {
+  if (!segment.text.startsWith(STATUS_SEPARATOR)) return false;
+  const field = segment.text.slice(STATUS_SEPARATOR.length);
+  if (field.length === 0 || field !== field.trim()) return false;
+  if (hasControlChar(field) || codePointCount(field) > MAX_STATUS_FIELD_CHARS) return false;
+  if (segment.dim !== true) return false;
+  return segment.fg === undefined && segment.bg === undefined && segment.bold !== true;
+}
+
 /** The unstyled two-space indent Codex opens the row with. */
 function isIndentSegment(segment: AnsiSegment): boolean {
   if (segment.text !== STATUS_INDENT) return false;
@@ -127,8 +139,9 @@ function foldTrailingPadding(segments: AnsiSegment[]): AnsiSegment[] | null {
 /**
  * The 0.150.1 default status row, recognised by its PAINT. All of these must hold, or the row is
  * refused: the styled line must be the same row as `text`; the segments must read as an unstyled
- * two-space indent then `field (sep field)*`; and the field count must stay in bounds. Prose that
- * happens to contain ` \u00b7 ` fails on the paint, which is the whole point of the guard.
+ * two-space indent then `field (sep field)*`, optionally ending with one combined dim
+ * `sep + field` segment after two ordinary fields; and the field count must stay in bounds. Prose
+ * that happens to contain ` \u00b7 ` fails on the paint, which is the whole point of the guard.
  */
 function isStyledStatusRow(text: string, line: StyledLine): boolean {
   const rowText = rstrip(text);
@@ -141,16 +154,23 @@ function isStyledStatusRow(text: string, line: StyledLine): boolean {
   if (!isIndentSegment(segments[0]!)) return false;
 
   let fields = 0;
-  for (let i = 1; i < segments.length; i++) {
-    const expectField = (i - 1) % 2 === 0;
-    const segment = segments[i]!;
-    if (expectField) {
-      if (!isFieldSegment(segment)) return false;
+  let i = 1;
+  while (i < segments.length) {
+    if (!isFieldSegment(segments[i]!)) return false;
+    fields++;
+    i++;
+    if (i === segments.length) break;
+
+    const separator = segments[i]!;
+    if (isDimSuffixFieldSegment(separator)) {
+      if (fields < MIN_STATUS_FIELDS || i !== segments.length - 1) return false;
       fields++;
-    } else if (!isSeparatorSegment(segment)) return false;
+      i++;
+      break;
+    }
+    if (!isSeparatorSegment(separator) || i === segments.length - 1) return false;
+    i++;
   }
-  // An even index past the indent is a field slot; ending on a separator leaves it unfilled.
-  if ((segments.length - 1) % 2 === 0) return false;
   return fields >= MIN_STATUS_FIELDS && fields <= MAX_STATUS_FIELDS;
 }
 

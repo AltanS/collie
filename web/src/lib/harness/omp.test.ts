@@ -45,6 +45,7 @@ const DECLINED = new Set([
   "omp--done--tool-result.txt",
   "omp--done.txt",
   "omp--draft-ghost-suggestion.txt",
+  "omp--draft-ghost-suggestion-busy.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
   "omp--fresh-idle.txt",
@@ -81,7 +82,7 @@ const DECLINED = new Set([
 
 // Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
 // each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
-// raw-only on all 21 omp captures and all 38 claude ones.
+// raw-only on all 22 omp captures and all 38 claude ones.
 const ownFixtures: string[] = [];
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
@@ -98,6 +99,7 @@ describe("the omp corpus", () => {
   const PINNED = [
     "omp--done--tool-result.txt",
     "omp--done.txt",
+    "omp--draft-ghost-suggestion-busy.txt",
     "omp--draft-ghost-suggestion.txt",
     "omp--draft-single.txt",
     "omp--draft-wrapped.txt",
@@ -119,11 +121,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 21 captures this adapter was developed against", () => {
+  it("is exactly the 22 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all twenty-one — nothing is up-levelled", () => {
+  it("declines all twenty-two — nothing is up-levelled", () => {
     expect(neutralFixtures).toEqual(PINNED);
     expect(ownFixtures).toEqual([]);
   });
@@ -167,6 +169,7 @@ const COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
   "omp--done.txt",
   "omp--draft-ghost-suggestion.txt",
+  "omp--draft-ghost-suggestion-busy.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
   "omp--fresh-idle.txt",
