@@ -932,7 +932,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <>
-      <div className="bg-muted px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]">
+      <div className="bg-chrome px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]">
         {/* Pending-send preview: visible from send until the mirror echoes back (or 6s). Shows the
             user what landed so they don't double-tap while waiting for the terminal to update. */}
         {lastSent && (

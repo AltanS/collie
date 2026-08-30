@@ -1167,9 +1167,18 @@ export function AgentChat({
                 The rule and the fill live HERE rather than on the composer's dock so that boundary
                 is UNCONDITIONAL: the handle inside is gated on there being a pane to switch to, this
                 block is not, so the mirror is closed by one hairline in every state (DESIGN.md §2,
-                §4). The composer keeps its own `bg-muted` — the same value, so nothing changes
-                visually — which leaves it self-sufficient wherever it is mounted alone. */}
-            <div data-slot="chrome-block" className="border-t border-rule bg-muted">
+                §4). The composer keeps its own `bg-chrome` — the same value, so nothing changes
+                visually — which leaves it self-sufficient wherever it is mounted alone.
+
+                THE FILL IS `--chrome`, NOT `--muted`. Chrome is normally the page colour separated
+                by a rule, and this is the one place that rule cannot hold: the block sits on the
+                terminal mirror, and in dark `--background` IS the mirror's fill (mirror-space.ts).
+                It needs a fill. --muted was the wrong one — rgb(38) under a rgb(10) terminal, a
+                bright slab across the bottom of a dark screen, and the operator asked for it
+                darker. --chrome is rgb(23) in dark, the same raised surface the sheets stand on,
+                and unchanged at rgb(235) in light, where --card would be pure white and land
+                1.04:1 against the inverted mirror. index.css states the whole argument. */}
+            <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
               {agents.length + shellPanes.length > 0 && (
                 <button
                   type="button"

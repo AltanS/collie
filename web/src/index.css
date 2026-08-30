@@ -50,6 +50,18 @@
   --foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
   --card: light-dark(oklch(1 0 0), oklch(0.205 0 0));
   --card-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
+  /* THE GROUND UNDER THE THUMB — the composer's chrome block, and nothing else. Chrome is normally
+     the page colour separated by a rule (see --muted below), and that rule holds everywhere the
+     chrome sits on the PAGE. It cannot hold here: this block sits on the terminal mirror, and in
+     dark --background IS the mirror's fill (components/mirror-space.ts), so page-coloured chrome
+     against it is invisible and the grab handle inside it stops reading as a control at all.
+     It needs a fill, and the fill it had was --muted: rgb(38) in dark, a bright slab under a
+     rgb(10) terminal, which the operator read as too light. This is the same value as --card in
+     dark — one raised-chrome surface app-wide, shared with the sheets — and the same value --muted
+     already had in light, where --card is pure white and would land 1.04:1 against the inverted
+     mirror. One name, because it answers one question: what does chrome stand on when it cannot
+     stand on the page. */
+  --chrome: light-dark(oklch(0.94 0 0), oklch(0.205 0 0));
   /* Pinned to --card, not a value of its own. `bg-popover` / `text-popover-foreground` appear ZERO
      times in src/ — Collie's floating layer is the BottomSheet (ui/sheet.tsx), which is
      `bg-background` over a `bg-black/50` scrim. The pair is kept rather than deleted only so a
@@ -255,6 +267,7 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-chrome: var(--chrome);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);

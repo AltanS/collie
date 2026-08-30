@@ -636,7 +636,11 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
       // not, so the seam is one hairline whether or not there is a pane to switch to (DESIGN.md §4).
       const block = handle.parentElement!;
       expect(block.getAttribute("data-slot")).toBe("chrome-block");
-      expect(block.className).toMatch(/(?:^|\s)bg-muted(?=\s|$)/);
+      // --chrome, and NOT --muted: DESIGN.md §4 forbids --muted behind chrome, and the value it
+      // carried in dark (rgb 38, under a rgb 10 terminal) was read as a bright slab. --chrome is the
+      // raised surface the sheets already stand on.
+      expect(block.className).toMatch(/(?:^|\s)bg-chrome(?=\s|$)/);
+      expect(block.className).not.toMatch(/(?:^|\s)bg-muted(?=\s|$)/);
       expect(block.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
       // …and the composer's own dock draws neither, so the two never double the line.
       expect(composer.className).not.toMatch(/(?:^|\s)border/);

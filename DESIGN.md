@@ -234,6 +234,13 @@ That block's fill and rule are unconditional while the handle inside it is not �
 form of the same rule: the seam against the mirror is one hairline whether or not there is a pane
 to switch to.
 
+The fill is **`--chrome`**, a token that exists for exactly this one case and is spelled out in
+`index.css`. It is **not** `--muted` — §4's opening rule still stands — and it is not `--card`
+either: card is pure white in light, which lands 1.04:1 against the inverted mirror. `--chrome` is
+rgb(235) light and rgb(23) dark, so it is the same raised surface the sheets use in dark and a step
+below the page in light. If you need a third chrome fill, you are probably solving the wrong
+problem; ask first whether the surface can stand on the page.
+
 ### One left edge per route
 
 Every top-level block on a route — section label, group frame, notice, footer — begins and
