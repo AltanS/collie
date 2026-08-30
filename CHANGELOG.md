@@ -6,6 +6,15 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [0.36.1] - 2026-08-30
+
+### Fixed
+
+- **Codex: a one-line draft could not be sent at all** — current Codex paints its final collaboration-mode status field together with its separator as a single dim segment, and the status-row detector accepted only alternating coloured fields and standalone dim separators. It rejected a valid row, `locateComposer` found nothing, and every reply was refused with *"the agent's input box isn't on screen"* while the box was plainly on screen — thanks @mauhai (#141) (e233280)
+- **Codex: a wrapped draft whose next line is indented stranded the message** — a continuation row was matched as "exactly two spaces, then a non-space", but those two spaces are the composer's gutter and what follows is the operator's own text, which may itself start with spaces. One shift+enter onto an indented line — a single tap on a phone keyboard — was enough, and the stranded draft then failed the *next* send too. It never recovered on its own — thanks @sdertli (#140) (71fc207)
+- **oh-my-posh 18: every reply to a busy pane stalled** — the ghost-suggestion rule keyed on a trailing coloured run following unstyled text, but omp 18.0.11 paints the draft while the agent is working. The anchor disappeared, the rule fell back to refusing, and the suggestion was read as part of the draft, so the submit key was withheld. An idle omp 18 pane still paints the draft unstyled, which is why this bit only the panes you most want to answer from your phone — thanks @enieuwy (#142) (4c1dde4)
+- **Windows: the supervised bridge no longer opens a terminal tab** — registering it as `powershell.exe` under an Interactive principal allocates a real console, so a background service showed up as a Windows Terminal tab. The tab owned the launcher, so closing it killed the bridge, and `RestartCount 999` brought both back about a minute later — it read as a window that refused to stay closed. It now runs under `conhost.exe --headless`, on a pseudoconsole with no window at all — thanks @erwin-wee (#121) (5fd7a2f)
+
 ## [0.36.0] - 2026-08-28
 
 ### Added
