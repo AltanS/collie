@@ -690,10 +690,18 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
       const handle = screen.getByRole("button", { name: "Switch pane" });
       const band = container.querySelector('[data-slot="composer-status"]')!;
       const composer = band.parentElement!;
-      // Same parent, and the handle is the sibling immediately before the composer — so nothing,
-      // statusline or otherwise, can ever get between the two.
-      expect(handle.parentElement).toBe(composer.parentElement);
-      expect(handle.nextElementSibling).toBe(composer);
+      // ROW IDENTITY, NOT ELEMENT IDENTITY. The handle now stands inside a `Collapse` — it stands
+      // down while the soft keyboard is up — so its element is two wrappers deep. `Collapse` is a
+      // presence animation and nothing else (it "styles NOTHING", per its header), so the ROW in
+      // this column is the wrapper, and that is what the adjacency claim is about. Asserted through
+      // it rather than around it: the wrapper must be found, so a handle that quietly escaped its
+      // Collapse fails here too.
+      const handleRow = handle.closest('[data-slot="collapse"]')!;
+      expect(handleRow).not.toBeNull();
+      // Same parent, and the handle's row is the sibling immediately before the composer — so
+      // nothing, statusline or otherwise, can ever get between the two.
+      expect(handleRow.parentElement).toBe(composer.parentElement);
+      expect(handleRow.nextElementSibling).toBe(composer);
       // THAT SHARED PARENT IS THE CHROME BLOCK, and it is what answers the operator's later report
       // that the drawer was "really hard to distinguish" in dark. The handle used to stand on the
       // mirror's own black — `--background` IS the mirror's fill in dark (mirror-space.ts) — so a
@@ -701,7 +709,7 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
       // and the composer ONE ground and closes it against the terminal with ONE rule, above
       // everything the thumb operates. Its fill and rule are unconditional; the handle inside it is
       // not, so the seam is one hairline whether or not there is a pane to switch to (DESIGN.md §4).
-      const block = handle.parentElement!;
+      const block = handleRow.parentElement!;
       expect(block.getAttribute("data-slot")).toBe("chrome-block");
       // --chrome, and NOT --muted: DESIGN.md §4 forbids --muted behind chrome, and the value it
       // carried in dark (rgb 38, under a rgb 10 terminal) was read as a bright slab. --chrome is the
@@ -717,8 +725,10 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
       const strip = screen.queryByText("[Opus 4.8] ~/webapp · main")?.closest("div.truncate")
         ?.parentElement;
       if (strip) {
-        expect(strip.nextElementSibling).toBe(block);
-        expect(block.firstElementChild).toBe(handle);
+        // Same reading as above: the statusline stands down with the keyboard too, so its row in
+        // this column is its own Collapse wrapper.
+        expect(strip.closest('[data-slot="collapse"]')!.nextElementSibling).toBe(block);
+        expect(block.firstElementChild).toBe(handleRow);
       }
       cleanup();
     }
@@ -1376,12 +1386,80 @@ describe("the pane fits its viewport", () => {
     // `CTX:44% CACHE:100% LIMITS…` is a quarter of a keyboard-open phone, held against a mirror
     // already showing zero rows of what the agent actually SAID.
     const { container } = renderChat({ text: STATUS_TEXT });
-    const strip = container.querySelector('[data-slot="chrome-block"]')!.previousElementSibling!;
+    // Through the Collapse wrapper the strip now stands in — see the docking test above.
+    const strip = container
+      .querySelector('[data-slot="chrome-block"]')!
+      .previousElementSibling!.querySelector("div.font-mono")!;
     // The cap is relative — a `dvh` fraction, so it follows the device and the keyboard.
     expect(strip.className).toMatch(/max-h-\[\d+dvh\]/);
     // …and scrolled, not clipped: this strip carries the permission mode, and silently eating that
     // row is worse than any height.
     expect(strip.className).toMatch(/(?:^|\s)overflow-y-auto(?=\s|$)/);
+  });
+
+  // jsdom has no `visualViewport`, so `useKeyboardOpen` returns early and every other test in this
+  // file renders the RESTING geometry — which is what makes this stub necessary and also what makes
+  // it safe: it is installed and removed inside the one test that wants it.
+  function withSoftKeyboard() {
+    const listeners = new Set<() => void>();
+    const vv = {
+      width: 390,
+      height: 844,
+      addEventListener: (_: string, fn: () => void) => void listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => void listeners.delete(fn),
+    };
+    const had = Object.getOwnPropertyDescriptor(window, "visualViewport");
+    Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+    return {
+      open: (height: number) => {
+        vv.height = height;
+        act(() => listeners.forEach((fn) => fn()));
+      },
+      restore: () => {
+        if (had) Object.defineProperty(window, "visualViewport", had);
+        else Reflect.deleteProperty(window, "visualViewport");
+      },
+    };
+  }
+
+  it("stands the switcher and the statusline down while the keyboard is up — and NOT the status band", async () => {
+    // THE OPERATOR'S OWN SUGGESTION, verbatim: "when the keyboard is open I have a feeling that we
+    // could hide the scroll up row and status row could be hidden?" — taken, and half of it
+    // declined, which is why this test names both halves.
+    //
+    // TAKEN: the 34px grab handle and the 21–112px agent statusline. Both are read BEFORE typing,
+    // not during it. Nobody switches panes mid-sentence, and CTX/CACHE/LIMITS is reference data.
+    //
+    // DECLINED: the status band. It is 14px — the cheapest row on the screen — and it is the only
+    // place the pane's state is spelled as a WORD rather than a coloured dot, which is the whole
+    // reason it exists (WCAG 1.4.1; status-badge.tsx holds the measurement). It is also read at
+    // exactly this moment: it answers "is this agent even waiting for me?" with the thumb over
+    // Send. Hiding it would save 14px and remove the one line telling the operator whether the
+    // message they are typing is wanted yet. The other two are 4–8x the pixels at none of the cost.
+    const kb = withSoftKeyboard();
+    try {
+      const { container } = renderChat({ text: STATUS_TEXT });
+      expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeNull();
+
+      kb.open(460); // a soft keyboard: -384px, well past the open threshold
+
+      // `Collapse` unmounts at the END of its exit, so both leave the tree — and leaving the tree is
+      // the a11y half of the claim: a control that is not on screen must not still be focusable.
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "Switch pane" })).toBeNull(),
+      );
+      expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull();
+
+      // …and the band is untouched, keyboard or no keyboard.
+      expect(container.querySelector('[data-slot="composer-status"]')).not.toBeNull();
+      // The dock also stops paying the home-indicator inset twice: the keyboard covers the
+      // indicator, so reserving for it as well is ~24px spent on the one screen that has none.
+      const dock = container.querySelector('[data-slot="composer-status"]')!.parentElement!;
+      expect(dock.className).toMatch(/(?:^|\s)pb-2(?=\s|$)/);
+      expect(dock.className).not.toMatch(/safe-area-inset-bottom/);
+    } finally {
+      kb.restore();
+    }
   });
 
   it("caps the draft field as a fraction of the viewport, not at a constant", () => {

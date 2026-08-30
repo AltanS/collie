@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useRevalidator } from "react-router";
 import { ArrowUpToLine, EllipsisVertical, Loader2, ScrollText, TerminalSquare } from "lucide-react";
 import { useSwipeUp } from "@/hooks/use-swipe";
+import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
@@ -13,6 +14,7 @@ import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
+import { Collapse } from "@/components/ui/collapse";
 import { RouteHeader } from "@/components/app-header";
 import { AnsiOutput } from "@/components/ansi-output";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
@@ -238,6 +240,28 @@ export function AgentChat({
   // threshold + a taller hit area (below) make the gesture easy to land with a thumb; tapping is the
   // reliable fallback. "Up" naturally reveals a bottom sheet without fighting the mirror's scroll.
   const swipe = useSwipeUp(() => setDrawer("switcher"), 24);
+  // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
+  // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
+  // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
+  // — and the operator measured the result: the mirror shows ZERO rows of what the agent said while
+  // three rows of cache percentages hold their ground, and the send button lands under the keyboard.
+  //
+  // So two rows stand down while the keyboard is up, and both are chosen on the same test: is this
+  // read BEFORE typing, or DURING it? The pane switcher is read before — nobody switches panes
+  // mid-sentence — and the statusline is reference data. Both come back untouched the instant the
+  // keyboard closes, which is a state the operator causes and understands.
+  //
+  // WHAT DOES NOT STAND DOWN IS THE STATUS BAND, and that is the operator's own suggestion declined
+  // with a reason. It is 14px, the cheapest row on the screen, and it is the only place the pane's
+  // state is spelled as a WORD rather than a coloured dot — which is why it exists (WCAG 1.4.1,
+  // status-badge.tsx holds the measurement). It is also read at exactly this moment: it answers
+  // "is this agent even waiting for me?" while the thumb is over Send. The 34px handle and the
+  // 21–112px statusline are 4–8x the pixels at none of the cost.
+  //
+  // Read once and passed down, never called again in a child: two components calling this hook
+  // separately is two thresholds, two ideas of when the mode starts, and one boundary animating out
+  // of step with itself.
+  const composing = useKeyboardOpen();
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
@@ -1254,7 +1278,14 @@ export function AgentChat({
                 honest on every device and through the keyboard. `overflow-y-auto` rather than
                 `overflow-hidden` so a row past the cap is scrolled to, never destroyed — this strip
                 carries the permission mode, and silently eating that row is worse than any height. */}
-            {statusLines.length > 0 && (
+            {/* Stands down while the keyboard is up (see `composing` above): this is the largest block
+                below the mirror and the one whose absence costs the least mid-sentence. Through
+                `Collapse`, which DESIGN.md §1 names as the only sanctioned way an in-flow surface
+                arrives or leaves — a bare conditional here is the §2 fault at its full height, the
+                mirror teleporting 50px twice per message. `Collapse` also UNMOUNTS at the end of the
+                exit, so nothing is left focusable behind a row that is not on screen. */}
+            <Collapse open={!composing && statusLines.length > 0}>
+              {statusLines.length > 0 && (
               <div
                 className={cn(
                   "max-h-[18dvh] overflow-y-auto border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
@@ -1283,7 +1314,8 @@ export function AgentChat({
                   </div>
                 ))}
               </div>
-            )}
+              )}
+            </Collapse>
 
             {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
                 panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
@@ -1327,7 +1359,12 @@ export function AgentChat({
                 and unchanged at rgb(235) in light, where --card would be pure white and land
                 1.04:1 against the inverted mirror. index.css states the whole argument. */}
             <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
-              {agents.length + shellPanes.length > 0 && (
+              {/* …and stands down while the keyboard is up, for 34px. Switching panes is a
+                  BEFORE-typing act, so the row costs its height at the one moment it cannot be
+                  wanted. Nothing is stranded: the tab strip above still switches, the sheet is still
+                  reachable the instant the keyboard closes, and `Collapse` unmounts the button at
+                  the end of the exit so it leaves the tab order with the pixels. */}
+              <Collapse open={!composing && agents.length + shellPanes.length > 0}>
                 <button
                   type="button"
                   aria-label={t("chat.switcher.aria")}
@@ -1337,7 +1374,7 @@ export function AgentChat({
                 >
                   <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
                 </button>
-              )}
+              </Collapse>
 
               <Composer
                 ref={composerRef}
@@ -1351,6 +1388,8 @@ export function AgentChat({
                 // `connecting` the dot reads, so the pair still dims as one.
                 status={agent?.status}
                 stale={connecting}
+                // The one read of the keyboard, handed down. See `composing` above.
+                composing={composing}
                 gone={gone}
                 readOnly={readOnly}
                 // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the
