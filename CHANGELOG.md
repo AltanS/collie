@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.47] - 2026-08-30
+
+### Added
+
+- **A release that is cut but never tagged is now loud.** Betas 33 to 41 were bumped in the version files and the CHANGELOG and never tagged — not even locally — so nine consecutive versions existed that no tester could install, and nothing said a word. `scripts/check-tag.sh` checks the claimed version, or every `chore(release):` commit in a rev-list selector, against the local tag list, reading each version from *that commit's* manifest rather than HEAD's. The pre-push hook runs it over the range being pushed and WARNS last, with the exact `git tag -a` command; skip once with `SKIP_TAG_CHECK=1`. Betas 33 to 41 stay unreachable on purpose — CLAUDE.md records why (d49f3ab)
+
 ## [1.0.0-beta.46] - 2026-08-30
 
 ### Fixed
