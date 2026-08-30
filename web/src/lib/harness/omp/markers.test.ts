@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { splitLines } from "../../blocks";
+import { draftCarriesSend } from "../../reply-action";
 import {
   composerBottomText,
   composerContText,
@@ -66,6 +67,7 @@ describe("composerBottomText", () => {
 describe("composerGhost — omp's inline completion suggestion", () => {
   const CORNER = "\x1b[38;2;74;80;88m";
   const SUGGEST = "\x1b[38;2;111;115;119m";
+  const DRAFT = "\x1b[38;2;242;244;248m"; // omp 18 paints the draft itself while the agent is working
   const PAD = " ".repeat(10);
 
   it("claims the trailing coloured run that follows the operator's own text", () => {
@@ -73,22 +75,53 @@ describe("composerGhost — omp's inline completion suggestion", () => {
     expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("sitory");
   });
 
-  it("reads it off the real capture, and leaves the plain one alone", () => {
+  // omp 18's busy shape, and the regression this rule was rewritten for: the draft is no longer
+  // unstyled, so "coloured run after unstyled text" saw nothing and the suggestion stayed in the
+  // draft. What separates the two runs is that their colours DIFFER, not that one of them is absent.
+  it("claims it just the same when the draft carries a foreground of its own", () => {
+    const row = `${CORNER}╰─ ${DRAFT}list the files in this repo${SUGGEST}sitory\x1b[0m${PAD}${CORNER} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("sitory");
+  });
+
+  it("reads it off the real captures, and leaves the plain one alone", () => {
     expect(composerGhost(styledRow("omp--draft-ghost-suggestion.txt", 27))).toBe("sitory");
+    expect(composerGhost(styledRow("omp--draft-ghost-suggestion-busy.txt", 27))).toBe("sitory");
     expect(composerGhost(styledRow("omp--draft-single.txt", 27))).toBe("");
     expect(composerGhost(styledRow("omp--fresh-idle.txt", 27))).toBe("");
   });
 
   // Both of these keep a real draft whole. A wrongly-claimed ghost SHORTENS the text the reply guard
   // verifies, so every ambiguous row must claim nothing.
-  it("claims nothing when the row carries no unstyled text to anchor the run against", () => {
+  it("claims nothing when the row is painted in one foreground end to end", () => {
     const row = `${SUGGEST}╰─ list the files in this repo${PAD} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("");
+  });
+
+  it("claims nothing when the draft and the run share one colour", () => {
+    const row = `${CORNER}╰─ ${DRAFT}list the files in this repo${DRAFT}sitory\x1b[0m${PAD}${CORNER} ─╯\x1b[0m`;
     expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("");
   });
 
   it("claims nothing when the coloured run is not at the end of the draft", () => {
     const row = `${CORNER}╰─ \x1b[0m${SUGGEST}red\x1b[0m then plain text${PAD}${CORNER} ─╯\x1b[0m`;
     expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("");
+  });
+
+  // The known, bounded over-claim, pinned so it stays a DECISION rather than an accident: omp paints
+  // its magic keywords as a per-character gradient, so a draft ending in one loses its last character
+  // to the rule. Two things this asserts alongside it — that the damage is one character and not the
+  // whole keyword (the previous rule took all of `ultrathink`), and that it cannot move the send
+  // guard's verdict, which is the property that makes the trade acceptable. See the header note.
+  it("takes one character off a draft ending in a gradient-painted keyword, and no send verdict with it", () => {
+    const gradient = [..."ultrathink"]
+      .map((c, i) => `\x1b[38;2;${100 + i * 10};${50 + i * 5};${200 - i * 7}m${c}`)
+      .join("");
+    const row = `${CORNER}╰─ ${DRAFT}please ${gradient}\x1b[0m${PAD}${CORNER} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("k");
+
+    const sent = "please ultrathink";
+    expect(draftCarriesSend(sent, "please ultrathink")).toBe(true);
+    expect(draftCarriesSend(sent, "please ultrathin")).toBe(true); // shortened, same verdict
   });
 
   it("is not a border predicate — a row that is not the bottom border has no ghost", () => {
