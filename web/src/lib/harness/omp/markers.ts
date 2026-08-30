@@ -99,6 +99,20 @@ export function composerBottomText(text: string): string | null {
 // nothing (omp's suggestion always carries one, and an unstyled tail after a coloured head is far
 // more likely to be the operator's own text), and a run with nothing but blanks before it claims
 // nothing.
+//
+// What the rule still gets WRONG, bounded and deliberately left: omp decorates some text the operator
+// really typed — the magic keywords (`ultrathink`, `workflowz`) come back as a per-character colour
+// GRADIENT, and `[Image #1]` / `[Paste #1]` placeholders come back in the accent colour. A draft
+// ENDING in one of those has its last colour run claimed, which for a gradient is a single character.
+// Two things bound the damage. It cannot change a send verdict: `draftCarriesSend` accepts any
+// contiguous run of the draft's visible characters inside what was typed (MIN_MATCH_CHARS floor
+// aside), so a draft that was already contained stays contained after a character comes off the end,
+// and a draft that was NOT contained is the ghost case this exists for. What it does cost is the
+// stranded-draft preview: "Take over" can hand back a draft one character short. Tightening the other
+// way — refusing a tail that changes colour more than once — was measured against this and rejected:
+// it puts every `@mention`- or placeholder-ending draft back into the permanent stall, which is the
+// failure the operator actually feels. The previous rule was WORSE here, not better: with an unstyled
+// draft it claimed the whole gradient (`ultrathink`), where this one claims `k`.
 export function composerGhost(line: StyledLine): string {
   const inner = COMPOSER_BOTTOM.exec(rstrip(lineText(line)))?.[1];
   if (inner === undefined || inner.length === 0) return "";
