@@ -6,6 +6,22 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.34] - 2026-08-30
+
+### Added
+
+- Each tab now carries the logo of the agent it runs, when its panes agree on one — a tab with none, or with two, stays unmarked (fb5bd0a)
+
+### Changed
+
+- The pane header's agent logo moved onto the name line at 16px, so the working directory gets the block's full width (fb5bd0a)
+- Sheets and drawers stand on `--card` with a `--rule` edge instead of the page's own colour — the fix for a drawer that was hard to make out in dark (53d7668)
+- The pane's swipe handle joined the composer's chrome block, so it sits on chrome rather than on the terminal (53d7668)
+
+### Fixed
+
+- The composer's status row is bounded on both edges, so the box it centres in is the box you see; the stack got 9px shorter with it (40c1883)
+
 ## [1.0.0-beta.33] - 2026-08-28
 
 ### Added
