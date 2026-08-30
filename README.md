@@ -871,12 +871,12 @@ a hint for people.
 
 The v1 line is a prerelease train — `v1.0.0-beta.N` tags cut off the `v1` branch. **Joining the train
 is a deliberate act; staying on it is automatic.** A stable install never lands on a beta: `collie
-update` and the in-app banner resolve strict `vX.Y.Z` tags only for it, so on 0.x `update` stays on
+update` and the in-app banner offer it strict releases and nothing else, so on 0.x `update` stays on
 0.x and `update --major` answers *"no release above major 0 exists yet — nothing to cross to."*
 Installing a beta is what opts you in, and from then on both the verb and the banner keep you moving
 along that major until its release lands (see below). Take it by one of two routes.
 
-**Herdr-managed, pinned to the tag:**
+**Herdr-managed — install one beta tag; that is the whole opt-in:**
 
 ```bash
 # Fetches that one tag and detaches the checkout onto it, then builds the UI right there
@@ -899,8 +899,23 @@ only, so a later `v1.1.0-rc.1` is as invisible to it as it is to everyone else. 
 by installing a beta was to the road *to* its release, not to that major's prereleases forever.
 Nothing here is a flag — it is a property of the version you installed, which is why a stable install
 can never be pulled onto a beta
-([ADR 0020](./.adr/0020-a-major-upgrade-is-consented-by-flag.md), amended 2026-08-30). Pin a
-*specific* beta only if you mean to stay on it, and re-pin by hand to move.
+([ADR 0020](./.adr/0020-a-major-upgrade-is-consented-by-flag.md), amended 2026-08-30).
+
+So **take the next beta with a plain `bin/collie update`** — not by installing its tag by hand. The
+`--ref` above is an entry door, not a pin that holds: `update` reads the version in the checkout's
+`herdr-plugin.toml`, not the tag you asked for, and moves you to the newest beta of that major. An
+update with nothing to take now stops on its verdict — four lines, no rebuild, no restart — so
+running it to check costs you nothing.
+
+**The tag in that command is re-pinned at every beta release, so it may be one behind by the time you
+read it.** Nothing breaks if it is: `update` catches you up on the first run. To start on the newest
+one instead, resolve it the same way as [above](#resolving-the-newest-release-from-a-script), keeping
+the `-beta` tail this time:
+
+```bash
+git ls-remote --tags --refs https://github.com/AltanS/collie | \
+  sed 's#.*refs/tags/##' | grep -E '^v1\.0\.0-beta\.[0-9]+$' | sort -V | tail -1
+```
 
 `link` is itself a v1 feature worth exercising — [details](#put-collie-on-your-path),
 reasoning in [ADR 0021](./.adr/0021-the-path-name-is-a-pointer-never-a-copy.md). Skip it and every
@@ -909,11 +924,15 @@ command below reads `bin/collie …` from the checkout instead.
 **Linked clone:**
 
 ```bash
-git fetch --tags && git checkout v1   # or a tag: git checkout v1.0.0-beta.46
+git fetch --tags && git checkout v1   # the branch, not a tag — see below
 bin/collie build && bin/collie restart
 ```
 
-**To go back**, reinstall without the pin. It lands on the default-branch tip, which is the 0.x stable
+Stay on the **branch**. A clone on `v1` keeps its branch and its `--ff-only` pull, so `update` lands
+you on the branch tip, which runs ahead of the newest beta tag. Check out a *tag* instead and the
+clone is detached, which is the managed shape — `update` then rides the tag train described above.
+
+**To go back**, reinstall with no `--ref`. It lands on the default-branch tip, which is the 0.x stable
 line until v1 merges:
 
 ```bash
@@ -930,13 +949,18 @@ name only while it still points at *this* checkout, so run it before the reinsta
 Nothing you configured moves either way: `.env` and the `tailscale serve` record live in the plugin
 config dir, paired devices and `stt.json` in the state dir — all outside the checkout.
 
-What's new to exercise is in the `1.0.0-beta.*` entries of the [CHANGELOG](./CHANGELOG.md); the newest
-surface is [voice input](#voice-input-optional), which is off until you run `collie stt setup`.
+What's new to exercise is in the `1.0.0-beta.*` entries of the [CHANGELOG](./CHANGELOG.md). The
+newest surface is the beta train itself — run `bin/collie update` when the next beta is cut and tell
+us whether it took it. The two biggest v1 surfaces to put weight on are
+[voice input](#voice-input-optional), off until you run `collie stt setup`, and
+[`link`](#put-collie-on-your-path).
 
 ### Migrating from 0.x
 
-The last 0.x release is **0.32.1**. Going from there to 1.0 crosses a major, so a routine `update`
-will not do it — it will tell you 1.0 is out and name this command instead:
+The last 0.x release is the newest `v0.*` tag — read it off the tags with the recipe
+[above](#resolving-the-newest-release-from-a-script) rather than trusting a number written here.
+Going from there to 1.0 crosses a major, so a routine `update` will not do it. Once `v1.0.0` is
+published, `update` says so and names this command instead:
 
 ```bash
 herdr plugin action invoke update-major --plugin herdr.collie   # or: bin/collie update --major
@@ -988,14 +1012,18 @@ Check out the last 0.x tag in the same checkout and rebuild. A Herdr-managed che
 *and* tagless, so fetch the tag first:
 
 ```bash
-git fetch --depth 1 origin tag v0.31.1
-git checkout --detach --force v0.31.1
+last0x=$(git ls-remote --tags --refs origin | sed 's#.*refs/tags/##' | \
+  grep -E '^v0\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+git fetch --depth 1 origin tag "$last0x"
+git checkout --detach --force "$last0x"
 rm -f bin/collie    # 1.0's binary otherwise survives the rollback
 ```
 
 Then rebuild in the checkout with `bash scripts/collie-ctl.sh build` — after that checkout it is 0.x's
-own script again — and restart with the Herdr `restart` action. **Don't invoke the `update` action
-while rolled back**: it advances the checkout and snaps you straight back to 1.0. Leave the four 1.0 state files
+own script again — and restart with the Herdr `restart` action. A routine `update` while rolled back
+is safe: 0.x's own shim is major-gated too, so it targets the newest `v0.*` release and can never
+cross to 1.x by itself. **What crosses is `update --major` / the `update-major` action** — don't
+invoke that one until you mean to come back. Leave the four 1.0 state files
 alone — `pack-trust.json`, `pack-runtime.json`, `paired-devices.json` and `pairing-pending.json` are
 inert to 0.x, which never opens them.
 
