@@ -43,6 +43,7 @@ import { observeServerBuild, __resetServerBuild } from "@/lib/server-build";
 import { clearStatus, setStatus } from "@/lib/status";
 import type { DeviceAuth } from "@/lib/types";
 import { BootSplash } from "@/routes/root";
+import { cn } from "@/lib/utils";
 import {
   allPanes,
   censusConflicted,
@@ -97,6 +98,17 @@ import {
   type ClockMode,
   type SectionDef,
 } from "./harness";
+import {
+  ACCENT_IDS,
+  ACCENTS,
+  FACE_OPTIONS,
+  prefStyle,
+  setAccent,
+  setFace,
+  useAccent,
+  useFace,
+  type FaceId,
+} from "./prefs";
 import { TypefaceCard } from "./typeface-card";
 
 const SECTIONS = [
@@ -165,6 +177,8 @@ export function PlaygroundApp() {
   const [clock, setClock] = useState<ClockMode>("live");
   const [phoneWidth, setPhoneWidth] = useState(false);
   const active = useActiveSection(SECTIONS);
+  const face = useFace();
+  const accent = useAccent();
   useConnectionClock(clock);
 
   // Fill the one-shot `/api/config` store the same way the app does. It is what the header's
@@ -175,7 +189,10 @@ export function PlaygroundApp() {
   }, []);
 
   return (
-    <div className={phoneWidth ? "pg-narrow" : undefined}>
+    // The prefs land HERE, on the root, not on any card: the typeface and accent overrides cascade
+    // into every real component below, which is the only honest way to judge their impact. See
+    // ./prefs.ts for what the style sets and what (font-mono surfaces) it deliberately leaves.
+    <div className={phoneWidth ? "pg-narrow" : undefined} style={prefStyle(face, accent)}>
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[2000px] gap-6 bg-background px-4 text-foreground lg:px-6">
         <Sidebar
           active={active}
@@ -919,6 +936,8 @@ function Controls({
   stacked?: boolean;
 }) {
   const { theme, setTheme } = useTheme();
+  const face = useFace();
+  const accent = useAccent();
   const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
@@ -946,6 +965,45 @@ function Controls({
           options={ON_OFF}
           onChange={(next) => setReduced(next === "on")}
         />
+      </Field>
+      {/* Page-wide presentation prefs (./prefs.ts). A native select, not a Segmented: eight faces
+          do not fit a 220px rail as chips, and this control repeats what the typeface card offers
+          with commentary — the rail gets the compact form. */}
+      <Field label="Typeface" stacked={stacked}>
+        <select
+          value={face}
+          // SAFETY: the option list below is rendered from FACE_OPTIONS alone, so the value the
+          // browser hands back is always one of its `value`s — a FaceId by construction.
+          onChange={(e) => setFace(e.target.value as FaceId)}
+          className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px] text-foreground"
+          aria-label="Typeface"
+        >
+          {FACE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Accent" stacked={stacked}>
+        <div className="flex items-center gap-1.5">
+          {ACCENT_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              title={ACCENTS[id].label}
+              aria-label={`Accent: ${ACCENTS[id].label}`}
+              aria-pressed={id === accent}
+              onClick={() => setAccent(id)}
+              className={cn(
+                "size-5 rounded-full border",
+                id === accent ? "border-foreground" : "border-border",
+              )}
+              // The default swatch shows the app's own token; the rest show what they would set.
+              style={{ background: ACCENTS[id].primary ?? "var(--primary)" }}
+            />
+          ))}
+        </div>
       </Field>
     </>
   );

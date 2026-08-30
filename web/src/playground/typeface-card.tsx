@@ -16,73 +16,16 @@
 // The four faces the app does not ship are declared in playground.css, not index.css: index.css
 // names exactly what the service worker caches (lib/sw-routes.ts FONT_URLS), and it must not grow
 // entries for files a shipped build never asks for.
-import { useState } from "react";
-
+//
+// THE SWITCHER IS NOW THE PAGE'S OWN. The choice lives in ./prefs.ts and dresses the ENTIRE
+// playground — every real component on the page inherits the face, which is the honest way to feel
+// a candidate's impact. This card keeps the side-by-side specimen and the commentary; the sidebar's
+// Typeface control is the same store with the words left out.
 import { CollieMark } from "@/components/collie-mark";
 import { cn } from "@/lib/utils";
 
 import { Card, Segmented } from "./harness";
-
-/** The stack each choice puts on the specimen. The three real webfonts keep their metric-matched
- *  fallbacks, so what you see for them is what the app renders — including on the very first paint.
- *  The four techno candidates after Geist have no fallback twin, so their first paint is the system
- *  face and the swap shifts layout — a playground-only allowance. */
-const FACES = {
-  system: {
-    label: "System",
-    stack:
-      'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
-    note: "Today. The baseline the operator called flat next to the mark.",
-  },
-  grotesk: {
-    label: "Space Grotesk",
-    stack:
-      '"Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui, sans-serif',
-    note: "27 KB. Geometric, monotone, cut terminals — the mark's own drawing logic. Lowest x-height of the three: judge it on the 11px label and the counts column.",
-  },
-  plex: {
-    label: "IBM Plex Sans",
-    stack:
-      '"IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui, sans-serif',
-    note: "34 KB. Drawn for an engineering company; the only one whose figures are tabular by default. Humanist, not geometric — warmer than the mark.",
-  },
-  geist: {
-    label: "Geist",
-    stack: '"Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif',
-    note: "23 KB. Highest x-height and cap height, so the 11px tier holds best. Swiss-neutral — the risk is that it reads as no decision at all.",
-  },
-  // The four below are dev-only long shots: Google CDN, no metric-matched fallback, so first paint
-  // shows the system face and the swap shifts layout. Declared in playground.css, never index.css.
-  orbitron: {
-    label: "Orbitron",
-    stack: '"Orbitron", ui-sans-serif, system-ui, sans-serif',
-    note: "Geometric square techno face, variable 400–700 here. CDN-loaded with no fallback twin, so the swap shifts layout — judge the shape, not the timing.",
-  },
-  audiowide: {
-    label: "Audiowide",
-    stack: '"Audiowide", ui-sans-serif, system-ui, sans-serif',
-    note: "Rounded display face, single 400 weight only — every bold in this specimen is browser faux-bold, which matters because the specimen leans on 500/600.",
-  },
-  novaRound: {
-    label: "Nova Round",
-    stack: '"Nova Round", ui-sans-serif, system-ui, sans-serif',
-    note: "Rounded, display-leaning, single 400 weight only — the same faux-bold caveat as Audiowide applies wherever the specimen calls for 500/600.",
-  },
-  aldrich: {
-    label: "Aldrich",
-    stack: '"Aldrich", ui-sans-serif, system-ui, sans-serif',
-    note: "Squared industrial sans, single 400 weight only — every bold you see here is the browser faking it, not the font drawing it.",
-  },
-} as const;
-
-type FaceId = keyof typeof FACES;
-
-// SAFETY: `FACES` is a closed `as const` object literal declared above, so its own keys ARE the
-// FaceId union — `Object.keys` just loses that at the type level.
-const FACE_OPTIONS = (Object.keys(FACES) as FaceId[]).map((value) => ({
-  value,
-  label: FACES[value].label,
-}));
+import { FACE_OPTIONS, FACES, setFace, useFace, type FaceId } from "./prefs";
 
 /** The dashboard's own shape: a name, a state, and two counts that have to line up down the column. */
 const ROWS = [
@@ -235,10 +178,10 @@ function Specimen({ face }: { face: FaceId }) {
 }
 
 export function TypefaceCard() {
-  const [face, setFace] = useState<FaceId>("grotesk");
+  const face = useFace();
   return (
     <Card
-      label="the ui typeface — live switcher"
+      label="the ui typeface — live switcher, page-wide"
       reach="You can't, and that is the point: F-D1 makes this the maker's choice with no setting. This card is where the choice gets made, and web/src/index.css --font-sans is where it lives."
       note="APPROXIMATION: a rebuild of the app's chrome at the app's real sizes, not the real components — the faces cannot all be mounted at once. The three real webfonts are self-hosted from public/fonts/ with metric-matched fallbacks, so the swap you see for them is the swap the app does. The four techno candidates below Geist load from the Google CDN with no fallback twin — a playground-only allowance, disqualifying in the shipped app."
     >
