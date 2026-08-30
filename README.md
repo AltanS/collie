@@ -881,7 +881,7 @@ along that major until its release lands (see below). Take it by one of two rout
 ```bash
 # Fetches that one tag and detaches the checkout onto it, then builds the UI right there
 # (the manifest's [[build]] step, GitHub installs only) — see above.
-herdr plugin install AltanS/collie --ref v1.0.0-beta.44 --yes
+herdr plugin install AltanS/collie --ref v1.0.0-beta.46 --yes
 herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
 
 # NEW in v1: every verb now lives at <checkout>/bin/collie. Putting `collie` on your PATH is
@@ -892,7 +892,7 @@ collie stt setup                                           # …and bare `collie
 
 **A beta install then keeps itself moving.** Because the version on disk carries a prerelease tail,
 `update` and the banner both fall back to that major's prereleases — but only while the major has no
-strict release newer than you. So `update` walks `beta.44` → `beta.45` → … while `v1.0.0` is
+strict release newer than you. So `update` walks `beta.46` → `beta.47` → … while `v1.0.0` is
 unpublished, and takes `v1.0.0` the moment it exists, skipping any beta above you: the release
 supersedes every beta that led to it. From there the install is stable and reads strict releases
 only, so a later `v1.1.0-rc.1` is as invisible to it as it is to everyone else. The consent you gave
@@ -909,7 +909,7 @@ command below reads `bin/collie …` from the checkout instead.
 **Linked clone:**
 
 ```bash
-git fetch --tags && git checkout v1   # or a tag: git checkout v1.0.0-beta.44
+git fetch --tags && git checkout v1   # or a tag: git checkout v1.0.0-beta.46
 bin/collie build && bin/collie restart
 ```
 
