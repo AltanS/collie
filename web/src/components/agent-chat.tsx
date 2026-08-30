@@ -1104,8 +1104,21 @@ export function AgentChat({
               (unless you're selecting text to copy, which the tap must not collapse). */}
           {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
               quirk) and makes this wrapper a second vertical scroller competing with ChatMessageList. */}
-          {/* THE MIRROR'S OWN TOP EDGE, and the 8px of PAGE the folder tab opens onto — `mt-2
+          {/* THE MIRROR'S OWN TOP EDGE, and the PAGE the folder tab opens onto — `mt-1
               border-t border-rule`, one set, do not separate them.
+
+              ── WHY THIS IS 4px AND NOT 0, WHICH IS WHAT WAS ASKED FOR ──────────────────
+              The operator wanted the tab row denser and chose this gap over shrinking the tab, which
+              was the right call: the tab is `h-11` and that 44px IS the tap target, so every pixel
+              off the tab is a pixel off the thumb. This gap costs no target at all. But it cannot go
+              to ZERO, and the reason is measured and sits three paragraphs below: the active tab's
+              fill and the terminal's ground are byte-identical under BOTH themes, on purpose, so
+              with no page between them the open tab has no floor and bleeds into the mirror. Closed
+              flush, the baseline rule and the mirror's top rule also land adjacent and read as one
+              doubled 2px hairline, which DESIGN.md §4 forbids by name.
+              4px keeps both properties — the tab still opens onto page, and the two rules still read
+              as two boundaries — and returns half the gap. It is the whole saving available above
+              the tap floor on this row; the row itself is 45px and 44 of that is the target.
 
               The tab above is deliberately open at its bottom edge: that is what makes it a tab and
               not a pill, and a tab opening downward promises continuity with the surface beneath it.
@@ -1122,10 +1135,11 @@ export function AgentChat({
               over: the baseline already carries one, and the active tab covers it for its own width
               with a 1px cover strip, so a rule drawn flush from below is a pixel the tab cannot
               reach and shows through under the open tab. The fix is to give the tab something of its
-              own to sit on. `mt-2` is 8px of PAGE below the baseline — the tab now opens onto the
+              own to sit on. `mt-1` is 4px of PAGE below the baseline — the tab now opens onto the
               page, which is what a folder tab's open edge promises — and `border-t` is then the
-              mirror's own top edge, 8px clear of the baseline, so the two lines read as two
-              boundaries and never as one doubled hairline.
+              mirror's own top edge, clear of the baseline, so the two lines read as two
+              boundaries and never as one doubled hairline. (It was 8px; see the header for why it
+              is now 4 and why it may not be 0.)
 
               It costs nothing. `ChatMessageList` below dropped the matching 12px of scroller
               `pt` in the same edit: the padding was invisible (page colour on page colour when at
@@ -1136,7 +1150,7 @@ export function AgentChat({
               because the tail wants clearance from the composer.
 
               This is unconditional, and that is deliberate: when PaneStrip renders it closes its own
-              band with a border-b and the mirror still announces its top edge the same way 8px
+              band with a border-b and the mirror still announces its top edge the same way, 4px
               below. One geometry, no state in which the seam is drawn differently (DESIGN.md §2). */}
           {/* `role="presentation"` because that is what this element is: a layout wrapper with no
               semantics of its own. Its click handler adds nothing a keyboard user needs — focusing the
@@ -1145,7 +1159,7 @@ export function AgentChat({
               selection. It is a touch convenience layered over an already-reachable action. */}
           <div
             role="presentation"
-            className={cn("mt-2 min-h-0 min-w-0 flex-1 border-t border-rule", mirrorFace.className)}
+            className={cn("mt-1 min-h-0 min-w-0 flex-1 border-t border-rule", mirrorFace.className)}
             style={mirrorFace.style}
             onClick={focusFromMirror}
           >

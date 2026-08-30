@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.41] - 2026-08-30
+
+### Changed
+
+- The gap between the tab row and the terminal is 4px instead of 8px. It is the only vertical space on that row that is not the tap target: the row is 45px and 44 of it is the tab, drawn at full size rather than faked over a smaller box, so shrinking the tab would shrink the thumb target one-for-one. The gap cannot close entirely — the active tab's fill and the terminal's ground are byte-identical under both themes on purpose, so with no page between them the open tab loses its floor and the two rules read as one doubled hairline
+
 ## [1.0.0-beta.40] - 2026-08-30
 
 ### Changed

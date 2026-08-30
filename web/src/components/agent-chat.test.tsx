@@ -1481,6 +1481,25 @@ describe("the pane fits its viewport", () => {
     }
   });
 
+  it("keeps a floor under the folder tab — the gap above the mirror may shrink, never close", () => {
+    // THE OPERATOR ASKED FOR A DENSER TAB ROW and chose this gap over shrinking the tab itself,
+    // which was the right call: the tab is `h-11` and that 44px IS the tap target, so every pixel
+    // off the tab is a pixel off the thumb. This gap costs no target at all.
+    //
+    // It may not go to zero, and the reason is measured (agent-chat.tsx states it in full): the
+    // active tab's fill and the terminal's ground are byte-identical under BOTH themes, on purpose
+    // — `--background` IS MIRROR_SPACE's fill in dark and exactly what that fill inverts to in
+    // light. With no page between them the open tab has no floor and bleeds into the mirror, and
+    // the baseline rule lands flush against the mirror's top rule as one doubled 2px hairline,
+    // which DESIGN.md §4 forbids by name. Both halves are pinned here, positively.
+    const { container } = renderChat({ text: STATUS_TEXT });
+    const mirror = container.querySelector('[data-slot="chrome-block"]')!.parentElement!
+      .previousElementSibling!;
+    expect(mirror.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
+    // A gap, and a real one — not `mt-0`, and not absent.
+    expect(mirror.className).toMatch(/(?:^|\s)mt-[1-9](?:\.5)?(?=\s|$)/);
+  });
+
   it("caps the draft field as a fraction of the viewport, not at a constant", () => {
     // `max-h-40` was 160px, chosen against a full-height screen — a THIRD of everything visible
     // with the keyboard up, and the growth that pushed the send button off the bottom. `10rem` IS
