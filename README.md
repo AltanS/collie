@@ -600,6 +600,39 @@ harness that wants `approve` the word it wants. `scope = "shell"` reaches a plai
 otherwise gets only `y`/`n`. No restart — edits are live. Verify: open a pane, tap **Quick**, your
 groups are there. Rejected row? `journalctl --user -u collie -n 20` names it and why.
 
+### Your own typefaces
+
+The app's own face is a **per-device** setting — **Settings → Typeface** offers System, Space
+Grotesk (the default) and Aldrich. You can add your own in `theme.toml`, the fourth file beside the
+other three:
+
+```bash
+cp theme.toml.example "$(herdr plugin config-dir herdr.collie)/theme.toml"
+mkdir -p "$(herdr plugin config-dir herdr.collie)/fonts"
+cp departure.woff2 "$(herdr plugin config-dir herdr.collie)/fonts/"
+```
+
+```toml
+[[font]]
+family = "Departure Mono"    # the picker's label AND the CSS family
+file   = "departure.woff2"   # a bare name inside fonts/, woff2 only
+weight = "400 700"           # optional
+```
+
+**Your faces ADD to the shipped list — they never replace it**
+([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)), which is the opposite of what
+`commands.toml` and its two siblings do. The reason is that a font cannot fire an action, so there
+is nothing for it to shadow. They appear under the shipped three, and every phone chooses for
+itself.
+
+Two things to expect. A font Collie has never seen has no metric-matched stand-in, so the page
+shifts slightly as it loads — the shipped faces don't, because their stand-ins are computed from the
+files at build time. And on a cold load your face lands a beat after a shipped one would; a device
+that has already chosen it paints it immediately from then on. Whatever you pick, the face dresses
+Collie's own chrome and **never** an agent's words: the mirror, the transcript and rendered markdown
+keep their own. No restart — edits are live, and reach a phone on its next reload. Rejected row?
+`journalctl --user -u collie -n 20` names it and why.
+
 ### Multi-session
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your

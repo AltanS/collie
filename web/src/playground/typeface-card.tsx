@@ -7,14 +7,23 @@
 // counts-heavy list that is most of the dashboard — using the same sizes, weights, tracking and
 // tokens the real components use. It is a stand-in, and it says so on the card.
 //
-// WHAT IT IS FOR. F-D1 says the UI typeface is the maker's choice and ships with no setting, so this
-// page is the only place the call gets made. Judge it at the 11px uppercase tracked label and at the
-// 18px wordmark, on a phone, in BOTH themes — that is where these three faces actually differ. The
-// counts column is there because the dashboard is full of "14m", "(6)", "p1", and a face whose
-// figures are proportional makes that column jitter row to row.
+// WHAT IT IS FOR — AND THIS CHANGED. It used to be the only place the call got made: F-D1 said the
+// UI typeface was the maker's choice and shipped with no setting, so a face either won here or was
+// never seen again. The setting exists now (ADR 0033), and the reader picks from the shipped list in
+// Settings. So this card is no longer where the choice is MADE; it is where a candidate is
+// AUDITIONED before it joins that list.
 //
-// The four faces the app does not ship are declared in playground.css, not index.css: index.css
-// names exactly what the service worker caches (lib/sw-routes.ts FONT_URLS), and it must not grow
+// That is a narrower job and a more useful one. Joining the shipped list is not free — a face costs
+// a subset in build-ui-font.sh, a computed fallback twin, an @font-face in index.css, an entry in
+// UI_FONT_URLS and a translated note in six dictionaries. This page is where you find out whether a
+// face is worth all of that, at real sizes, against the faces already there. Judge it at the 11px
+// uppercase tracked label and at the 18px wordmark, on a phone, in BOTH themes — that is where these
+// faces actually differ. The counts column is there because the dashboard is full of "14m", "(6)",
+// "p1", and a face whose figures are proportional makes that column jitter row to row.
+//
+// The shipped faces (Space Grotesk, Aldrich) resolve through index.css, so what you compare here is
+// the same bytes the app renders. The AUDITIONS are declared in playground.css instead: index.css
+// names exactly what the service worker caches (lib/sw-routes.ts UI_FONT_URLS), and it must not grow
 // entries for files a shipped build never asks for.
 //
 // THE SWITCHER IS NOW THE PAGE'S OWN. The choice lives in ./prefs.ts and dresses the ENTIRE
@@ -182,8 +191,8 @@ export function TypefaceCard() {
   return (
     <Card
       label="the ui typeface — live switcher, page-wide"
-      reach="You can't, and that is the point: F-D1 makes this the maker's choice with no setting. This card is where the choice gets made, and web/src/index.css --font-sans is where it lives."
-      note="APPROXIMATION: a rebuild of the app's chrome at the app's real sizes, not the real components — the faces cannot all be mounted at once. The three real webfonts are self-hosted from public/fonts/ with metric-matched fallbacks, so the swap you see for them is the swap the app does. The four techno candidates below Geist load from the Google CDN with no fallback twin — a playground-only allowance, disqualifying in the shipped app."
+      reach="Settings → Typeface, on the device — the app face is a per-device preference now (ADR 0033), not the maker's choice it used to be. So this card is not where the choice is made any more; it is where a CANDIDATE is auditioned before it joins the shipped list, which costs a subset, a computed twin, an index.css @font-face, a UI_FONT_URLS entry and a note in six dictionaries."
+      note="APPROXIMATION: a rebuild of the app's chrome at the app's real sizes, not the real components — the faces cannot all be mounted at once. The four self-hosted faces come from public/fonts/ with metric-matched fallbacks, so the swap you see for them is the swap the app does; two of them (Space Grotesk, Aldrich) are the shipped list and render the same bytes the app renders. The three techno candidates at the end load from the Google CDN with no fallback twin — a playground-only allowance, disqualifying in the shipped app."
     >
       <div className="space-y-2">
         <Segmented value={face} options={FACE_OPTIONS} onChange={setFace} />

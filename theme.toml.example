@@ -1,0 +1,51 @@
+# Your own UI typefaces for Collie. Copy to your plugin config dir, next to `.env`:
+#   cp theme.toml.example "$(herdr plugin config-dir herdr.collie)/theme.toml"
+#
+# This file adds faces to the Typeface picker in Settings. Unlike Collie's other three operator
+# files, your rows ADD to the shipped list — they never replace it (ADR 0033). Space Grotesk,
+# Aldrich and "System default" stay where they are; yours appear underneath them.
+#
+# The face is a PER-DEVICE choice, so declaring one here offers it to every phone that opens this
+# collie and forces it on none of them.
+#
+# WHERE THE FILES GO. Put the .woff2 files in a `fonts/` directory beside this one:
+#   mkdir -p "$(herdr plugin config-dir herdr.collie)/fonts"
+#   cp departure.woff2 "$(herdr plugin config-dir herdr.collie)/fonts/"
+#
+# Collie serves them read-only at /api/fonts/<file>, and only ever the files declared below. A file
+# that is missing, is not really inside `fonts/` once symlinks are resolved, or is over 2 MB is not
+# served and the row is skipped — `journalctl --user -u collie -n 20` says which and why.
+#
+# It is named `theme.toml` rather than `fonts.toml` so colours can join it later without becoming a
+# fifth file to remember.
+#
+# Edits are picked up live — no restart. Reload the page to see them.
+#
+# Fields:
+#   family  required. The display name in the picker AND the CSS family name. Letters, digits,
+#           spaces, `.`, `_` and `-` only, up to 64 characters, and not a CSS keyword like `serif`.
+#   file    required. The BARE file name inside `fonts/` — not a path. `.woff2` only, because that
+#           is the only format worth shipping to a phone.
+#   weight  optional. `"400"`, or a range like `"400 700"`. Each value 100-900, ascending. Omit it
+#           and the browser decides. A face with only one weight should say so: declaring a range it
+#           does not have stops the browser synthesizing bold and flattens every bold in the app.
+#
+# TWO THINGS TO EXPECT, both unavoidable rather than oversights:
+#   * A font Collie has never seen has no metric-matched stand-in, so the page shifts slightly when
+#     your face finishes loading. The shipped faces do not do this — their stand-ins are computed
+#     from the files at build time, which cannot be done for a file that arrives at runtime.
+#   * On a cold load, your face is applied a beat after the shipped ones would have been. A device
+#     that has already chosen it remembers enough to paint it immediately from then on.
+#
+# One more: the chosen face dresses Collie's own chrome and NEVER an agent's words. The pane mirror,
+# the transcript and rendered markdown keep their own faces whatever you put here.
+
+# [[font]]
+# family = "Departure Mono"
+# file   = "departure.woff2"
+# weight = "400"
+
+# [[font]]
+# family = "Iosevka"
+# file   = "iosevka.woff2"
+# weight = "400 700"

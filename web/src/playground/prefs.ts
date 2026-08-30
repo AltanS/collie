@@ -43,7 +43,17 @@ export const FACES = {
     stack: '"Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif',
     note: "23 KB. Highest x-height and cap height, so the 11px tier holds best. Swiss-neutral — the risk is that it reads as no decision at all.",
   },
-  // The four below are dev-only long shots: Google CDN, no metric-matched fallback, so first paint
+  // Aldrich WON, and this entry moved up out of the CDN block below to say so: it is a shipped face
+  // now (ADR 0033), self-hosted and subset by build-ui-font.sh with a computed twin, exactly like
+  // the two above it. Its @font-face comes from index.css, which the playground already imports —
+  // so what this switcher renders is the same bytes the app renders, which is the only way the
+  // comparison means anything.
+  aldrich: {
+    label: "Aldrich",
+    stack: '"Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, sans-serif',
+    note: "8 KB. Squared industrial sans, single 400 weight — every bold here is the browser faking it, not the font drawing it. Shipped; selectable in Settings.",
+  },
+  // The three below are dev-only long shots: Google CDN, no metric-matched fallback, so first paint
   // shows the system face and the swap shifts layout. Declared in playground.css, never index.css.
   orbitron: {
     label: "Orbitron",
@@ -59,11 +69,6 @@ export const FACES = {
     label: "Nova Round",
     stack: '"Nova Round", ui-sans-serif, system-ui, sans-serif',
     note: "Rounded, display-leaning, single 400 weight only — the same faux-bold caveat as Audiowide applies wherever the specimen calls for 500/600.",
-  },
-  aldrich: {
-    label: "Aldrich",
-    stack: '"Aldrich", ui-sans-serif, system-ui, sans-serif',
-    note: "Squared industrial sans, single 400 weight only — every bold you see here is the browser faking it, not the font drawing it.",
   },
 } as const;
 

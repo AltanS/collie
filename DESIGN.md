@@ -251,21 +251,34 @@ full-bleed; only viewport chrome above the header is — the two-placement rule 
 
 ## 5. Type
 
-**The app's face is the maker's choice and has no setting.** Space Grotesk, bundled, 27 KB
-subset. Do not build a picker, do not add it to display prefs, do not leave a hook "just in
-case". **The TERMINAL font is user-configurable** — the Fonts section in Settings, which
-reaches `--font-mono` consumers only. The asymmetry is the point: the face someone reads
-another program's output in is theirs; the face the app talks about itself in is ours.
+**The app's face is a per-device preference with a shipped default.** Space Grotesk (27 KB
+subset) is that default; Aldrich (8 KB) and the system face are the other shipped choices, and
+an operator may add their own through `theme.toml`. It is set on the Typeface card in
+Settings, stored in `collie:design:v1`, and applied **before first paint** as a root class by
+`web/public/theme-init.js` — `:root.font-*` in `index.css` owns every stack, and JavaScript
+only ever swaps a class name. The default wears no class at all, so a device that never opens
+the card runs no JavaScript before its first paint.
+
+This **reverses** the old rule, which said the face was the maker's choice and forbade a
+picker. [ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md) records why it fell.
+The **TERMINAL font is a separate setting** — the Terminal font card directly below,
+reaching `--font-mono` consumers only. The two are two settings because they are two
+questions, and the cards sit adjacent so that reading one after the other makes the split
+obvious.
+
+**What survived the reversal is the rule that was always doing the work**, and it is below.
 
 ### Chrome wears the app face; content does not
 
-The custom face dresses headers, section labels, buttons, settings rows, banners, counts and
-the wordmark. It must **never** touch what an agent or a machine authored: the pane mirror,
-the transcript, agent prose and markdown, code, command text, file paths, ANSI. Two
-mechanisms hold that line and both must stay — `font-mono` for verbatim terminal surfaces,
-`font-content` for agent-authored text that is not monospaced. **If you cannot tell whether
-a surface is chrome or content, it is content.** Full argument at the `@font-face` block in
-`index.css`.
+**The chosen face — whichever it is — dresses headers, section labels, buttons, settings rows,
+banners, counts and the wordmark.** It must **never** touch what an agent or a machine
+authored: the pane mirror, the transcript, agent prose and markdown, code, command text, file
+paths, ANSI. Two mechanisms hold that line and both must stay — `font-mono` for verbatim
+terminal surfaces, `font-content` for agent-authored text that is not monospaced. Neither
+resolves through `--font-sans`, so **the setting cannot reach either of them, and must not be
+taught to.** An operator's own face is subject to the same line: bringing a font widens what
+chrome may wear, never what it may dress. **If you cannot tell whether a surface is chrome or
+content, it is content.** Full argument at the `@font-face` block in `index.css`.
 
 ### Mono vs sans, inside chrome
 
@@ -291,7 +304,8 @@ therefore sans**; a **semver carrying a git hash is a machine build id and there
 ### Counters
 
 Any number that **steps** takes `tabular-nums`, or the row twitches as digits change width.
-`tnum` is kept in the UI font's subset for this; there are 17 call sites today.
+`tnum` is kept in EVERY shipped UI face's subset for this (`scripts/build-ui-font.sh`); there
+are 17 call sites today.
 
 ---
 
