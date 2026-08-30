@@ -627,12 +627,27 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
       // statusline or otherwise, can ever get between the two.
       expect(handle.parentElement).toBe(composer.parentElement);
       expect(handle.nextElementSibling).toBe(composer);
-      // …and where a statusline exists it is ABOVE the handle, welded to the mirror's bottom edge.
+      // THAT SHARED PARENT IS THE CHROME BLOCK, and it is what answers the operator's later report
+      // that the drawer was "really hard to distinguish" in dark. The handle used to stand on the
+      // mirror's own black — `--background` IS the mirror's fill in dark (mirror-space.ts) — so a
+      // 6px grip was the only thing on screen saying a control was there. The block gives the handle
+      // and the composer ONE ground and closes it against the terminal with ONE rule, above
+      // everything the thumb operates. Its fill and rule are unconditional; the handle inside it is
+      // not, so the seam is one hairline whether or not there is a pane to switch to (DESIGN.md §4).
+      const block = handle.parentElement!;
+      expect(block.getAttribute("data-slot")).toBe("chrome-block");
+      expect(block.className).toMatch(/(?:^|\s)bg-muted(?=\s|$)/);
+      expect(block.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
+      // …and the composer's own dock draws neither, so the two never double the line.
+      expect(composer.className).not.toMatch(/(?:^|\s)border/);
+      // …and where a statusline exists it is ABOVE the block, welded to the mirror's bottom edge.
+      // The handle is the FIRST thing inside the block, so it is still the first chrome the thumb
+      // meets coming up from the terminal.
       const strip = screen.queryByText("[Opus 4.8] ~/webapp · main")?.closest("div.truncate")
         ?.parentElement;
       if (strip) {
-        expect(strip.nextElementSibling).toBe(handle);
-        expect(handle.previousElementSibling).toBe(strip);
+        expect(strip.nextElementSibling).toBe(block);
+        expect(block.firstElementChild).toBe(handle);
       }
       cleanup();
     }

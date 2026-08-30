@@ -1155,47 +1155,63 @@ export function AgentChat({
                 It also puts the statusline back where it belongs: that strip is the mirror's own last
                 row, cut from the pane tail, and a 34px gap with a grab handle in it read as a seam
                 between the terminal and a piece of chrome that IS the terminal. */}
-            {agents.length + shellPanes.length > 0 && (
-              <button
-                type="button"
-                aria-label={t("chat.switcher.aria")}
-                {...swipe}
-                onClick={() => setDrawer("switcher")}
-                className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
-              >
-                <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
-              </button>
-            )}
+            {/* THE CHROME BLOCK, DRAWN ONCE. Everything the thumb operates — the grab handle, the
+                status band, the controls, the input — stands on ONE surface, closed against the
+                terminal above by ONE rule. The handle used to stand OUTSIDE it, on the mirror's own
+                black: the dock read as chrome and the handle floating above it read as part of the
+                terminal, a control with no ground. That is what "hard to distinguish" meant in dark,
+                where `--background` IS the mirror's fill (mirror-space.ts) and a 6px grip at
+                `bg-muted-foreground/50` was the only thing on screen saying a control was there.
+                Given the dock's own ground it is a handle ON the chrome, which is what it does.
 
-            <Composer
-              ref={composerRef}
-              paneId={paneId}
-              scope={scope}
-              agent={agent?.agent}
-              isShell={isShell}
-              // The state, as the WORD on the composer's status strip. It used to be the pane
-              // header's caption line; the dot badged onto the agent's tile up there stays, because
-              // the two carry the range together (status-badge.tsx). `stale` is the same
-              // `connecting` the dot reads, so the pair still dims as one.
-              status={agent?.status}
-              stale={connecting}
-              gone={gone}
-              readOnly={readOnly}
-              // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the
-              // composer must not invite a reply it already knows the lead will refuse, and "which
-              // machine am I typing into" has to be answerable without tapping Send to find out.
-              hostBlock={hostBlock}
-              dialogPresent={dialogPresent}
-              text={text}
-              terminalDraft={terminalDraft}
-              rawTerminalDraft={rawTerminalDraft}
-              prefs={prefs}
-              setWrap={setWrap}
-              stepFontSize={stepFontSize}
-              setRawTerminal={setRawTerminal}
-              setTapToFocus={setTapToFocus}
-              onSent={onSent}
-            />
+                The rule and the fill live HERE rather than on the composer's dock so that boundary
+                is UNCONDITIONAL: the handle inside is gated on there being a pane to switch to, this
+                block is not, so the mirror is closed by one hairline in every state (DESIGN.md §2,
+                §4). The composer keeps its own `bg-muted` — the same value, so nothing changes
+                visually — which leaves it self-sufficient wherever it is mounted alone. */}
+            <div data-slot="chrome-block" className="border-t border-rule bg-muted">
+              {agents.length + shellPanes.length > 0 && (
+                <button
+                  type="button"
+                  aria-label={t("chat.switcher.aria")}
+                  {...swipe}
+                  onClick={() => setDrawer("switcher")}
+                  className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+                >
+                  <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
+                </button>
+              )}
+
+              <Composer
+                ref={composerRef}
+                paneId={paneId}
+                scope={scope}
+                agent={agent?.agent}
+                isShell={isShell}
+                // The state, as the WORD on the composer's status strip. It used to be the pane
+                // header's caption line; the dot badged onto the agent's tile up there stays, because
+                // the two carry the range together (status-badge.tsx). `stale` is the same
+                // `connecting` the dot reads, so the pair still dims as one.
+                status={agent?.status}
+                stale={connecting}
+                gone={gone}
+                readOnly={readOnly}
+                // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the
+                // composer must not invite a reply it already knows the lead will refuse, and "which
+                // machine am I typing into" has to be answerable without tapping Send to find out.
+                hostBlock={hostBlock}
+                dialogPresent={dialogPresent}
+                text={text}
+                terminalDraft={terminalDraft}
+                rawTerminalDraft={rawTerminalDraft}
+                prefs={prefs}
+                setWrap={setWrap}
+                stepFontSize={stepFontSize}
+                setRawTerminal={setRawTerminal}
+                setTapToFocus={setTapToFocus}
+                onSent={onSent}
+              />
+            </div>
           </div>
         </div>
 

@@ -156,12 +156,22 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
         className={cn(
           // `rounded-t-md` (2px), not `rounded-t-2xl`: 16px was the roundest corner left in the app and it
           // sat on the most-seen surface. The sheet is a panel, and a panel has an edge.
-          "relative z-10 max-h-[82dvh] w-full overflow-y-auto overscroll-contain rounded-t-md border-t border-border bg-background shadow-2xl duration-200 animate-in slide-in-from-bottom",
+          //
+          // THE GROUND IS `--card`, NOT `--background`, and the edge is `--rule`. A sheet is a raised
+          // surface over the page, which is the one thing --card is for — and on --background it was
+          // the SAME value as the page it floats over. In dark that is the app's worst case: the page
+          // is oklch(0.145), the scrim behind the panel only darkens it further, and the panel's only
+          // separation was a --border hairline at 1.26:1. The operator's report was that the drawer
+          // was hard to make out at all. --card is oklch(0.205), a real step up, so the panel reads
+          // as raised rather than as a hole; --rule (2.06:1 dark) then draws the edge, because this
+          // is a cut between two REGIONS and not a component's own outline (DESIGN.md §4). Light
+          // gains the same separation for free: white on rgb(245) instead of rgb(245) on rgb(245).
+          "relative z-10 max-h-[82dvh] w-full overflow-y-auto overscroll-contain rounded-t-md border-t border-rule bg-card shadow-2xl duration-200 animate-in slide-in-from-bottom",
           "pb-[calc(env(safe-area-inset-bottom)_+_1rem)]",
           className,
         )}
       >
-        <div className="sticky top-0 z-10 border-b border-rule bg-background/95 backdrop-blur-md">
+        <div className="sticky top-0 z-10 border-b border-rule bg-card/95 backdrop-blur-md">
           {/* Grab handle — pull down (from anywhere at the top) to dismiss. */}
           <div className="flex justify-center pt-2 pb-1">
             {/* 4px tall, 36px wide — a stadium, so it takes the house 2px rather than full-round. */}
@@ -258,11 +268,13 @@ export function SideSheet({
         ref={panelRef}
         tabIndex={-1}
         className={cn(
-          "relative z-10 flex h-full w-[86%] max-w-sm flex-col border-r border-border bg-background shadow-2xl duration-200 animate-in slide-in-from-left",
+          // Same ground and same edge as the bottom sheet above, for the same reason — one panel
+          // surface app-wide, raised off the page rather than painted in the page's own colour.
+          "relative z-10 flex h-full w-[86%] max-w-sm flex-col border-r border-rule bg-card shadow-2xl duration-200 animate-in slide-in-from-left",
           className,
         )}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-rule bg-background/95 px-4 py-3 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-rule bg-card/95 px-4 py-3 backdrop-blur-md [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)]">
           <span id={title ? titleId : undefined} className="text-sm font-semibold">
             {title}
           </span>

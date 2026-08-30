@@ -142,4 +142,28 @@ describe("BottomSheet — backdrop dismiss requires press AND release on the bac
     fireEvent.click(backdrop());
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  // THE PANEL IS A RAISED SURFACE, and the ground says so. It used to be `bg-background` — the same
+  // token as the page it floats over — with a `--border` hairline for an edge. In dark that is the
+  // app's worst case: the page is oklch(0.145), the scrim behind only darkens it, and 1.26:1 of
+  // border was the whole separation. The operator's report was that the drawer was hard to make out.
+  // `--card` (oklch 0.205 dark, white in light) is a real step up, and `--rule` is the token for a
+  // cut between REGIONS rather than a component's own outline (DESIGN.md §4). Both halves are pinned:
+  // a colour with no width paints nothing (§7 trap 1), and a ground restored to the page's own token
+  // would put the panel back in the hole it came out of.
+  it("stands on the raised surface, edged with the region rule", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Actions">
+        body
+      </BottomSheet>,
+    );
+    const panel = container.querySelector('div[tabindex="-1"]')!;
+    expect(panel.className).toMatch(/(?:^|\s)bg-card(?=\s|$)/);
+    expect(panel.className).not.toMatch(/(?:^|\s)bg-background(?=\s|$)/);
+    expect(panel.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
+    // The sticky title row rides the same surface — a header in the page's colour would cut the
+    // panel in two at the top.
+    const header = container.querySelector('[data-slot="sheet-title-row"]')!.parentElement!;
+    expect(header.className).toContain("bg-card/95");
+  });
 });
