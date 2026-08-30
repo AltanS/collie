@@ -124,7 +124,11 @@ export function paneScope<S extends { host?: string; session?: string }>(
   const session =
     pane?.session === undefined
       ? scope.session
-      : normalizeToday(pane.session, primarySession(sessions));
+      : // Resolved WITHIN the row's own machine. `sessions` is a merged registry on a pack and holds
+        // one primary PER HOST, so asking it flatly would compare this row's session name against
+        // whichever machine's primary happened to sort first — and normalise away a name that is
+        // only primary somewhere else.
+        normalizeToday(pane.session, primarySession(sessionsOnHost(sessions ?? [], { host }, servers)));
   return { host, session };
 }
 
@@ -157,7 +161,14 @@ export function scopeHostKey(
 }
 
 /**
- * Find a pane by id WITHIN the scope's host AND session. `w1:p1` exists on every machine in the pack
+ * Find a pane by id WITHIN the scope's host AND session.
+ *
+ * A NOTE ON MIXED BODIES, because one exists today. On a pack the lead merges peers' panes in after
+ * assembling its own, and a peer is never asked to widen yet — so a widened body on a pack holds
+ * TAGGED local panes and UNTAGGED peer ones. That is safe rather than lucky: a peer's panes carry a
+ * `host`, the host predicate separates them first, and only one session per peer is represented, so
+ * the untagged-matches-anything rule cannot reach across a machine. When the sweep learns to widen,
+ * peer panes gain their tags and the mixed case goes away. `w1:p1` exists on every machine in the pack
  * and again in every named Herdr session on each of them, so a lookup by id alone over a merged or
  * widened list can return a different pane entirely — and the pane view would then render that
  * pane's space, tab and cwd while typing into this one's terminal.
@@ -182,7 +193,11 @@ export function findPane<T extends { paneId: string; host?: string; session?: st
   // always spells it out. `undefined` here means the body named no sessions at all, which is also
   // the only body in which no pane can be tagged, so the comparison below is skipped rather than
   // failed. Never guess a name: a wrong guess is a lookup that silently finds nothing.
-  const wantSession = scope.session ?? primarySession(sessions);
+  const wantSession =
+    scope.session ??
+    // Per host, for the reason `paneScope` resolves it per host: a merged registry holds one primary
+    // per machine, and the flat first match is whichever one sorted first.
+    primarySession(sessions && sessionsOnHost(sessions, scope, servers));
   return panes.find(
     (p) =>
       p.paneId === paneId &&

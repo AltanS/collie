@@ -217,6 +217,41 @@ describe("paneScope — a row is opened with its OWN session", () => {
   });
 });
 
+// A MERGED registry holds one primary PER MACHINE — two rows both saying `isPrimary`, which is the
+// same "two defaults, indistinguishable" problem the session switcher already lists per host to
+// avoid. Anything comparing a row's session against "the primary" has to say WHICH machine's.
+describe("the primary is resolved per machine, never flatly", () => {
+  const merged = [
+    { name: "default", host: "bluefin", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0 },
+    { name: "work", host: "bluefin", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0 },
+    { name: "main", host: "workshop", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0 },
+  ];
+
+  it("normalises a peer row's own primary away, not the lead's", () => {
+    // `main` is primary on workshop, so a workshop row in it produces today's bare url. Asking the
+    // merged registry flatly would have compared it against `default` and spelled it out instead.
+    const peerPane = { ...inSession(pane("w1:p1", "workshop"), "main") };
+    expect(paneScope({}, peerPane, pack, merged)).toEqual({ host: "workshop", session: undefined });
+  });
+
+  it("does NOT normalise a name that is only primary on the OTHER machine", () => {
+    // The dangerous direction: dropping `?s=default` from a workshop row would address workshop's
+    // `main` instead — a different machine's different terminal, through a url that looks ordinary.
+    const peerPane = { ...inSession(pane("w1:p1", "workshop"), "default") };
+    expect(paneScope({}, peerPane, pack, merged)).toEqual({ host: "workshop", session: "default" });
+  });
+
+  it("resolves the lookup's own primary per host too", () => {
+    const panes = [
+      inSession(pane("w1:p1", "bluefin"), "default"),
+      inSession(pane("w1:p1", "workshop"), "main"),
+    ];
+    // An absent `?s=` on workshop means `main`, not `default`.
+    expect(findPane(panes, "w1:p1", { host: "workshop" }, pack, merged)).toBeDefined();
+    expect(findPane(panes, "w1:p1", {}, pack, merged)!.host).toBe("bluefin");
+  });
+});
+
 describe("sessionsOnHost", () => {
   it("lists only the current host's sessions, so two 'default's can't be confused", () => {
     const sessions = [
