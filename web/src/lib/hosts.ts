@@ -258,8 +258,10 @@ export interface AmbientPanes<T> {
  * space with nothing blocked in it — a screen contradicting itself.
  *
  * Both predicates are the same "untagged is ambient" rule the rest of this module uses, so on every
- * un-widened body this is the identity function and the arrays come back untouched — worth stating,
- * because it is what keeps a solo install's render allocation-for-allocation what it was.
+ * un-widened body every pane passes and the arrays come back BY IDENTITY, not as copies — worth
+ * stating, because this runs on every poll and its result is memoised into props. A fresh array per
+ * tick would re-render the space navigator on every poll of an un-widened dashboard, which is every
+ * dashboard that exists today.
  */
 export function ambientPanes<T extends { host?: string; session?: string }>(
   agents: readonly T[],
@@ -274,7 +276,15 @@ export function ambientPanes<T extends { host?: string; session?: string }>(
   const here = (p: T): boolean =>
     (p.host === undefined || hostKey(p) === wantHost) &&
     (p.session === undefined || wantSession === undefined || p.session === wantSession);
-  const pick = (panes: readonly T[]): T[] => (panes.every(here) ? [...panes] : panes.filter(here));
+  // The all-pass branch returns the SAME array, not a copy of it. This runs on every poll and its
+  // result is memoised into a component's props; a fresh array each time would re-render the space
+  // navigator on every tick of an un-widened dashboard, which is every dashboard that exists today.
+  // SAFETY: the caller owns these arrays and this function neither writes to them nor hands the
+  // mutable alias anywhere that does — `SpaceOverview` only reads. Widening `readonly T[]` to `T[]`
+  // here is the price of returning the input BY IDENTITY on the all-pass branch, which is the whole
+  // point: see the header.
+  const pick = (panes: readonly T[]): T[] =>
+    panes.every(here) ? (panes as T[]) : panes.filter(here);
   return { agents: pick(agents), shellPanes: pick(shellPanes) };
 }
 

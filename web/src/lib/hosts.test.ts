@@ -332,12 +332,14 @@ describe("ambientPanes", () => {
     expect(out.agents.map((p) => p.paneId)).toEqual(["w1:p2"]);
   });
 
-  it("is the identity on an un-widened body, contents and all", () => {
-    // Untagged is ambient by definition, so a solo install's render is what it always was.
+  it("returns an un-widened body BY IDENTITY, not as a copy", () => {
+    // Untagged is ambient by definition, so a solo install's render is what it always was — and
+    // that has to include the allocation. This result is memoised into the space navigator's props
+    // and recomputed on every poll; a fresh array per tick would re-render the navigator on every
+    // poll of every dashboard that exists today.
     const plain = [pane("w1:p1"), pane("w1:p2")];
     const out = ambientPanes(plain, [], { session: "work" }, undefined, registry);
-    expect(out.agents).toEqual(plain);
-    expect(out.shellPanes).toEqual([]);
+    expect(out.agents).toBe(plain);
   });
 
   it("filters shell panes on the same rule", () => {
