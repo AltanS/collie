@@ -6,6 +6,20 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.37] - 2026-08-30
+
+### Fixed
+
+- The bottom of a pane no longer falls off the screen when the soft keyboard is up. The route column is one screen tall and the mirror is the row that gives, so once the mirror hit zero the surplus painted past the bottom edge and the send button became unreachable. The bottom region now keeps its size and the two parts of it that GROW are bounded instead
+- Both of those bounds are a fraction of the viewport rather than a pixel count, so they follow the device and the keyboard instead of encoding one phone. The draft field caps at `min(10rem,30dvh)` — at rest, on any ordinary screen, that is the 160px it always was — and the agent's statusline at `18dvh`, scrolled rather than clipped so the permission-mode row is never eaten
+- The keyboard predicate now has hysteresis: it opens on a 150px drop and closes on a 100px one. One threshold flipped repeatedly on a viewport hovering at the boundary — split screen, a floating keyboard, a predictive-text bar — and each flip now moves a third of the screen. The close number also stops a hidden URL bar stranding the operator in a composing layout with no keyboard
+
+### Changed
+
+- Two rows stand down while the soft keyboard is up: the pane-switch handle and the agent's statusline. Both are read before typing, not during it, and together they hand 55-146px back to the mirror at the one moment it was showing nothing. Both leave through `ui/collapse.tsx` and unmount, so neither is left focusable off screen
+- The composer's status band deliberately does NOT stand down with them. It is 14px and it is the only place the pane's state is spelled as a word rather than a coloured dot, read with the thumb over Send
+- The composer stops reserving room for the home indicator while the keyboard is covering the home indicator
+
 ## [1.0.0-beta.36] - 2026-08-30
 
 ### Added
