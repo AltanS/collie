@@ -1,6 +1,14 @@
 /* Presentation-only rules for the states playground. Nothing here is imported by the app: the file
    is reachable from `src/playground/main.tsx` alone, which only `playground.html` loads. */
 
+/* Orbitron, Audiowide, Nova Round and Aldrich — four dev-only candidates for the typeface switcher,
+   loaded straight from the Google Fonts CDN. They stay here, never in index.css: index.css names
+   exactly what the service worker caches (lib/sw-routes.ts FONT_URLS, pinned by fonts.test.ts), and
+   a CDN URL has no business in that list. They also have no metric-matched fallback twins, unlike
+   the self-hosted candidates below, so their swap moves layout — fine in a playground, disqualifying
+   in the app until one wins and gets the build-ui-font.sh treatment. */
+@import url("https://fonts.googleapis.com/css2?family=Aldrich&family=Audiowide&family=Nova+Round&family=Orbitron:wght@400..700&display=swap");
+
 /* A stage holds a component that paints a whole screen. `<Stage dvh>` adds this class, and the rule
    pulls the component's own `h-[100dvh]` root down to the stage's box so the boot splash can sit in
    a card instead of eating the scroll. It re-sizes the component; it does not change it. */

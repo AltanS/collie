@@ -13,9 +13,9 @@
 // counts column is there because the dashboard is full of "14m", "(6)", "p1", and a face whose
 // figures are proportional makes that column jitter row to row.
 //
-// The two faces the app does not ship are declared in playground.css, not index.css: index.css names
-// exactly what the service worker caches (lib/sw-routes.ts FONT_URLS), and it must not grow entries
-// for files a shipped build never asks for.
+// The four faces the app does not ship are declared in playground.css, not index.css: index.css
+// names exactly what the service worker caches (lib/sw-routes.ts FONT_URLS), and it must not grow
+// entries for files a shipped build never asks for.
 import { useState } from "react";
 
 import { CollieMark } from "@/components/collie-mark";
@@ -23,8 +23,10 @@ import { cn } from "@/lib/utils";
 
 import { Card, Segmented } from "./harness";
 
-/** The stack each choice puts on the specimen. Each webfont keeps its metric-matched fallbacks, so
- *  what you see here is what the app renders — including on the very first paint. */
+/** The stack each choice puts on the specimen. The three real webfonts keep their metric-matched
+ *  fallbacks, so what you see for them is what the app renders — including on the very first paint.
+ *  The four techno candidates after Geist have no fallback twin, so their first paint is the system
+ *  face and the swap shifts layout — a playground-only allowance. */
 const FACES = {
   system: {
     label: "System",
@@ -48,6 +50,28 @@ const FACES = {
     label: "Geist",
     stack: '"Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif',
     note: "23 KB. Highest x-height and cap height, so the 11px tier holds best. Swiss-neutral — the risk is that it reads as no decision at all.",
+  },
+  // The four below are dev-only long shots: Google CDN, no metric-matched fallback, so first paint
+  // shows the system face and the swap shifts layout. Declared in playground.css, never index.css.
+  orbitron: {
+    label: "Orbitron",
+    stack: '"Orbitron", ui-sans-serif, system-ui, sans-serif',
+    note: "Geometric square techno face, variable 400–700 here. CDN-loaded with no fallback twin, so the swap shifts layout — judge the shape, not the timing.",
+  },
+  audiowide: {
+    label: "Audiowide",
+    stack: '"Audiowide", ui-sans-serif, system-ui, sans-serif',
+    note: "Rounded display face, single 400 weight only — every bold in this specimen is browser faux-bold, which matters because the specimen leans on 500/600.",
+  },
+  novaRound: {
+    label: "Nova Round",
+    stack: '"Nova Round", ui-sans-serif, system-ui, sans-serif',
+    note: "Rounded, display-leaning, single 400 weight only — the same faux-bold caveat as Audiowide applies wherever the specimen calls for 500/600.",
+  },
+  aldrich: {
+    label: "Aldrich",
+    stack: '"Aldrich", ui-sans-serif, system-ui, sans-serif',
+    note: "Squared industrial sans, single 400 weight only — every bold you see here is the browser faking it, not the font drawing it.",
   },
 } as const;
 
@@ -216,7 +240,7 @@ export function TypefaceCard() {
     <Card
       label="the ui typeface — live switcher"
       reach="You can't, and that is the point: F-D1 makes this the maker's choice with no setting. This card is where the choice gets made, and web/src/index.css --font-sans is where it lives."
-      note="APPROXIMATION: a rebuild of the app's chrome at the app's real sizes, not the real components — four faces cannot be mounted at once. The three webfonts are self-hosted from public/fonts/ with metric-matched fallbacks, so the swap you see is the swap the app does."
+      note="APPROXIMATION: a rebuild of the app's chrome at the app's real sizes, not the real components — the faces cannot all be mounted at once. The three real webfonts are self-hosted from public/fonts/ with metric-matched fallbacks, so the swap you see for them is the swap the app does. The four techno candidates below Geist load from the Google CDN with no fallback twin — a playground-only allowance, disqualifying in the shipped app."
     >
       <div className="space-y-2">
         <Segmented value={face} options={FACE_OPTIONS} onChange={setFace} />
