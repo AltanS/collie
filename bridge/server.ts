@@ -14,6 +14,7 @@ import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
+import { createOperatorFonts, resolveOperatorFont } from "./operator-fonts.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -46,7 +47,7 @@ import type { PackTlsOptions } from "./pack/transport.ts";
 import { createSttAdmission, sttCapability, transcribeRequest } from "./stt/http.ts";
 import type { SttProvider } from "./stt/provider.ts";
 import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
-import { MUX_LOGO_PATH, toPaneWire } from "./types.ts";
+import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -58,6 +59,7 @@ import type {
   OperatorCommand,
   MuxConfig,
   OperatorKeyRow,
+  OperatorFontRow,
   OperatorQuickReplyRow,
   PackStatusResponse,
   PaneHistoryResponse,
@@ -322,6 +324,37 @@ export function muxLogoResponse(svg: string, ifNoneMatch: string | null): Respon
   return secure(new Response(svg, { headers }));
 }
 
+/**
+ * `GET /api/fonts/<basename>` — one operator-supplied font file, exactly as it sits on their disk.
+ *
+ * Pure + exported for the reason {@link muxLogoResponse} is: the handler lives inside `Bun.serve`,
+ * which `bun test` cannot stand up, so the headers are asserted against this instead. The caching
+ * shape is muxLogoResponse's, deliberately unchanged — `no-cache` + a strong ETag over the bytes, so
+ * a warm client spends a 304 and no body, and an operator who replaces the file gets the new one on
+ * the next load rather than at the end of some max-age they cannot clear from a phone.
+ *
+ * `content-type` is the literal `font/woff2` and is never derived from the name. The grammar only
+ * ever admits a `.woff2`, so a sniffed or mapped type could only ever be a way to be wrong.
+ */
+export function operatorFontResponse(
+  // `Uint8Array<ArrayBuffer>`, not the default `ArrayBufferLike`: a view over a SharedArrayBuffer is
+  // not a `BodyInit`, and this is the type `Bun.file().bytes()` already hands back.
+  bytes: Uint8Array<ArrayBuffer>,
+  ifNoneMatch: string | null,
+): Response {
+  const etag = computeEtag(bytes);
+  const headers = {
+    "content-type": "font/woff2",
+    "cache-control": "no-cache",
+    etag,
+  };
+  if (notModified(ifNoneMatch, etag)) {
+    // RFC 7232 §4.1: a 304 echoes the validators and carries no body.
+    return secure(new Response(null, { status: 304, headers }));
+  }
+  return secure(new Response(bytes, { headers }));
+}
+
 export function bridgeConfigBody(opts: {
   push: boolean;
   vapidPublicKey: string;
@@ -343,6 +376,12 @@ export function bridgeConfigBody(opts: {
   /** The operator's own Quick-dock groups. Same omit-when-empty rule as `operatorCommands`. */
   operatorQuickReplies?: readonly OperatorQuickReplyRow[];
   /**
+   * The operator's own UI typefaces. Same omit-when-empty rule as `operatorCommands` — and the same
+   * live-by-mtime contract, so a `theme.toml` edit reaches a device on its next page load, never
+   * mid-session (ADR 0033).
+   */
+  operatorFonts?: readonly OperatorFontRow[];
+  /**
    * Speech-to-text, when a provider resolved. Omitted entirely otherwise — an operator who
    * configured none ships the same payload as before, the same rule `mode` follows.
    */
@@ -352,6 +391,7 @@ export function bridgeConfigBody(opts: {
   const mine = opts.operatorCommands ?? [];
   const myKeys = opts.operatorKeys ?? [];
   const myReplies = opts.operatorQuickReplies ?? [];
+  const myFonts = opts.operatorFonts ?? [];
   const wire: BridgeConfig = {
     push: opts.push,
     vapidPublicKey: opts.vapidPublicKey,
@@ -363,6 +403,7 @@ export function bridgeConfigBody(opts: {
   if (mine.length > 0) wire.operatorCommands = [...mine];
   if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
   if (myReplies.length > 0) wire.operatorQuickReplies = [...myReplies];
+  if (myFonts.length > 0) wire.operatorFonts = [...myFonts];
   // Appended last, and unconditional once an adapter is in hand: unlike `mode`, this is not
   // omit-when-default. There is no default to omit — "no mux key" already means something on the
   // phone (an older bridge, read as fully capable), so a Herdr bridge staying silent here would be
@@ -496,6 +537,8 @@ export function startServer(opts: {
   const operatorKeys = createOperatorKeys(cfg.keysFile);
   // The third on that contract: the Quick dock's groups, quick-replies.toml off the hot path.
   const operatorQuickReplies = createOperatorQuickReplies(cfg.quickRepliesFile);
+  // The fourth on that contract: the operator's own UI typefaces, theme.toml off the hot path.
+  const operatorFonts = createOperatorFonts(cfg.themeFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -976,6 +1019,9 @@ export function startServer(opts: {
         const mine = await operatorCommands();
         const myKeys = await operatorKeys();
         const myReplies = await operatorQuickReplies();
+        // Same mtime-checked re-read, same reason: an operator who adds a face to theme.toml wants
+        // it in the picker on the next page load, not after a restart.
+        const myFonts = await operatorFonts();
         // The PRIMARY session's adapter, because one collie drives one multiplexer: every session in
         // the registry is built by the same factory off the same `cfg.mux`, so which runtime answers
         // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
@@ -994,6 +1040,7 @@ export function startServer(opts: {
             operatorCommands: mine,
             operatorKeys: myKeys,
             operatorQuickReplies: myReplies,
+            operatorFonts: myFonts,
             mux: activeMux?.herdr,
             stt: sttWire,
           }),
@@ -1016,6 +1063,31 @@ export function startServer(opts: {
         // is the true answer to that.
         if (logo === undefined) return text("this multiplexer has no logo", 404);
         return muxLogoResponse(logo, req.headers.get("if-none-match"));
+      }
+      if (pathname.startsWith(OPERATOR_FONTS_PATH) && req.method === "GET") {
+        // Read-level, and in the Misc block beside the mux mark rather than in the session router:
+        // this is a file THIS collie's operator declared, not a pane's, so there is nothing to
+        // forward to a peer. Reads are ungated app-wide, so a read-only device still gets the face
+        // it is set to — a picker whose choice cannot render is worse than no picker.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        // `decodeURIComponent` is undone here and NOWHERE ELSE, because what comes back is only ever
+        // used as a Map key. It is looked UP in the rows theme.toml declared; a name nobody declared
+        // is a 404 before any path exists. See bridge/operator-fonts.ts for the four-step order.
+        let name: string;
+        try {
+          name = decodeURIComponent(pathname.slice(OPERATOR_FONTS_PATH.length));
+        } catch {
+          // A malformed percent-escape is not a name this bridge could have declared.
+          return text("no such font", 404);
+        }
+        const real = await resolveOperatorFont(name, await operatorFonts(), cfg.fontsDir);
+        // ONE answer for every refusal — undeclared, missing, escaped its directory, over the size
+        // cap. A client must not be able to tell those apart, and a stale page holding a URL this
+        // bridge no longer serves gets the true answer: there is no such file.
+        if (real === null) return text("no such font", 404);
+        const bytes = await Bun.file(real).bytes();
+        return operatorFontResponse(bytes, req.headers.get("if-none-match"));
       }
       if (pathname === "/api/subscribe" && req.method === "POST") {
         // Read-level: registering for push isn't terminal-driving, so a read-only device may still

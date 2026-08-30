@@ -20,6 +20,18 @@
 // checked per root, never against a union of them.
 // A journal is exactly as sensitive as the pane mirror Collie already serves (it is the same
 // conversation), but it reaches further back — `COLLIE_TRANSCRIPT=off` disables the feature wholesale.
+//
+// THE LAW, RESTATED RATHER THAN EXCEPTED. `containedRealpath` is exported and reused outside the
+// journal — bridge/operator-fonts.ts serves an operator's own font files under it. That does not
+// widen anything, because the rule was never "only the journal touches the disk". The rule is:
+//
+//   THE JOURNAL IS THE ONLY PLACE A CLIENT-SUPPLIED VALUE BECOMES A PATH.
+//
+// and even there it is a pane id, never a path. The font surface does not become a second such
+// place: `GET /api/fonts/<basename>` LOOKS the request's name UP in the rows the operator's own
+// `theme.toml` declared and takes THAT row's path, so a name nobody declared is refused before any
+// path exists. Containment then runs anyway, as an independent second check on the real paths. A
+// new reader may reuse this function; it may not become a third answer to the sentence above.
 
 import { realpath, stat } from "node:fs/promises";
 import { sep } from "node:path";

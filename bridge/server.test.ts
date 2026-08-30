@@ -82,6 +82,8 @@ function cfg(overrides: Partial<Config> = {}): Config {
     commandsFile: "/nope/commands.toml",
     keysFile: "/nope/keys.toml",
     quickRepliesFile: "/nope/quick-replies.toml",
+    themeFile: "/nope/theme.toml",
+    fontsDir: "/nope/fonts",
     trustedUser: "",
     trustedUserOptional: false,
     auditContent: "preview",

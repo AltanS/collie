@@ -630,6 +630,20 @@ export interface MuxConfig {
 export const MUX_LOGO_PATH = "/api/mux/logo.svg";
 
 /**
+ * Where an operator's own font files are served — one file per request, appended:
+ * `/api/fonts/<basename>`.
+ *
+ * A CONSTANT for the reason {@link MUX_LOGO_PATH} is one, and a PREFIX rather than a whole path
+ * because the last segment is the only variable the surface has. It carries a basename the bridge
+ * already declared in {@link BridgeConfig.operatorFonts} and nothing else — the client builds the
+ * URL, the bridge looks the name up, and no path is built from either (ADR 0033).
+ *
+ * It lives under `/api/` deliberately: the service worker registers no runtime route there, so
+ * these files are never precached and never swept, unlike the shipped faces under `/fonts/`.
+ */
+export const OPERATOR_FONTS_PATH = "/api/fonts/";
+
+/**
  * One operator-declared Quick-dock group (a `[[replies]]` row in their `quick-replies.toml`). A
  * pane any of these rows address shows them INSTEAD of the shipped groups; a pane none of them
  * address keeps the shipped ones (ADR 0018, the same rule `commands.toml` and `keys.toml` follow).
@@ -645,6 +659,27 @@ export interface OperatorQuickReplyRow {
   title: string;
   /** The literal strings sent — each is typed into the pane and submitted verbatim. */
   items: string[];
+}
+
+/**
+ * One operator-declared UI typeface (a `[[font]]` row in their `theme.toml`, the fourth operator
+ * file beside `commands.toml`). The Typeface setting offers these UNDER the shipped faces — fonts
+ * ADD to the shipped list, they never replace it, which is where this file parts company with the
+ * ADR 0018 trio (ADR 0033: a font cannot fire an action, so there is nothing to shadow).
+ *
+ * Every field here enters CSS on the phone, so every field is validated on BOTH sides — the bridge
+ * skips a bad row and the web re-validates and drops one. See {@link OPERATOR_FONT_FAMILY_PATTERN}.
+ */
+export interface OperatorFontRow {
+  /** Display name AND the CSS family name. Quoted at the point it enters CSS text. */
+  family: string;
+  /**
+   * The file's BARE NAME inside `<config-dir>/fonts`, never a path — `GET /api/fonts/<basename>`
+   * looks this up in the declared set and builds nothing from the request (ADR 0033).
+   */
+  basename: string;
+  /** `font-weight` for the `@font-face`, e.g. `400` or `400 700`. Omitted = the browser's default. */
+  weight?: string;
 }
 
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
@@ -666,6 +701,12 @@ export interface BridgeConfig {
   operatorKeys?: OperatorKeyRow[];
   /** The operator's own Quick-dock groups. Absent/empty when there is no `quick-replies.toml`. */
   operatorQuickReplies?: OperatorQuickReplyRow[];
+  /**
+   * The operator's own UI typefaces. Absent/empty when there is no `theme.toml`. Carries the
+   * BASENAME and never a URL: the client builds `/api/fonts/<basename>` itself, so no path this
+   * bridge resolved is ever echoed to a phone (ADR 0033).
+   */
+  operatorFonts?: OperatorFontRow[];
   /**
    * The multiplexer this collie drives, and what it can do. Absent only on a bridge older than
    * M10/06 — which a client reads as "every capability present", i.e. exactly today's Herdr app.

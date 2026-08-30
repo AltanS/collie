@@ -201,6 +201,18 @@ export interface Config {
    */
   quickRepliesFile: string;
   /**
+   * Where the operator's UI typeface rows live — `theme.toml`, the fourth sibling in the same dir,
+   * read the same way (bridge/operator-fonts.ts) and likewise never read here. Named for a theme
+   * rather than for fonts so a colour block can join it without becoming a fifth operator file.
+   */
+  themeFile: string;
+  /**
+   * The directory `theme.toml`'s `file` names resolve inside — `fonts/`, beside the file that
+   * declares them, in the CONFIG dir. It is the containment ROOT for `GET /api/fonts/<basename>`,
+   * never a search path: a name that resolves outside it after symlinks is not served (ADR 0033).
+   */
+  fontsDir: string;
+  /**
    * Tailscale identity gate. If set under `tailscale serve`, the request must carry a matching
    * `Tailscale-User-Login` header. A mismatch is rejected. A missing header is also rejected —
    * serve injects none for tagged nodes, so tolerating it let any tagged node write. Under
@@ -481,6 +493,8 @@ export function loadConfig(): Config {
     commandsFile: join(configDir, "commands.toml"),
     keysFile: join(configDir, "keys.toml"),
     quickRepliesFile: join(configDir, "quick-replies.toml"),
+    themeFile: join(configDir, "theme.toml"),
+    fontsDir: join(configDir, "fonts"),
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
     trustedUserOptional: envBool("COLLIE_TRUSTED_USER_OPTIONAL", false),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview"),

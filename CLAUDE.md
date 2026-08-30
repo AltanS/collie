@@ -240,6 +240,12 @@ lint guard or the pack-wire guard.
   dock's shipped phrases on the panes they address (ADR 0018 once more), shell panes included when
   a row is scoped to them. Same reader, same scope ladder: the three files differ in grammar and
   never in posture, so teach all three or none.
+- **`theme.toml` is the operator's fourth file, and it is the one that ADDS rather than replaces** —
+  its `[[font]]` rows put extra UI typefaces UNDER the shipped three in the Settings picker, and the
+  bridge serves the files read-only from `<config-dir>/fonts` at `GET /api/fonts/<basename>`. Same
+  reader, same mtime liveness; the opposite posture, because a font cannot fire an action and so
+  shadows nothing ([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)). Don't dilute
+  ADR 0018's replace-law to cover it.
 - **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by
@@ -250,6 +256,12 @@ lint guard or the pack-wire guard.
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).
+- **The app's UI typeface is a per-device SETTING, not the maker's choice** — System / Space Grotesk
+  (default) / Aldrich, plus whatever the operator declared, applied pre-paint as a root class by
+  `web/public/theme-init.js` and stored in `collie:design:v1` (`web/src/lib/design.ts`). CSS owns
+  every stack; JavaScript only swaps a class name. What survives the reversal is the other half of
+  the rule: **the chosen face never dresses agent-authored text** — `font-mono` and `font-content`
+  are untouched by it ([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)).
 - **The bundled Nerd Font subsets stay lazy and out of the precache** — `unicode-range` per face,
   version in the filename, cached first-use by `sw.ts`. Don't add them to `globPatterns`, don't
   widen a range, don't move subsetting into the build; the reasoning for each sits at the line that
@@ -315,12 +327,20 @@ lint guard or the pack-wire guard.
 ## The journal (scrollback the mirror can't give you)
 
 `bridge/journal/` reads the agent's own session log off disk, per harness (`claude` / `codex` / `pi`,
-registered in `registry.ts`). It is the **only** thing in the bridge that touches the filesystem —
-**unless the operator ran `collie stt setup`**, which adds one file, `stt.json` in the state dir, read
-and written by `bridge/stt/config.ts` ([ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md)).
-Nothing else moved: the containment rule in [`files.ts`](./bridge/journal/files.ts) is absolute: **every** path an
-adapter is about to read goes through `containedRealpath` — after symlink resolution, on the real
-paths, including paths derived from one already checked. The client never supplies a path. Run
+registered in `registry.ts`). Two other things touch the filesystem, and neither is an exception to
+the rule below: `stt.json` in the state dir when the operator ran `collie stt setup`
+([ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md)), and the operator's own
+font files under `<config-dir>/fonts`, served read-only through `bridge/operator-fonts.ts`
+([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)).
+
+**The law is that the journal is the only place a CLIENT-SUPPLIED value becomes a path** — and even
+there it is a pane id, never a path. `GET /api/fonts/<basename>` does not become a second such place:
+the request's name is **looked up** in the rows the operator's own `theme.toml` declared and that
+row's path is taken, so a name nobody declared is refused before any path exists. The containment
+rule in [`files.ts`](./bridge/journal/files.ts) then runs anyway, on both surfaces and as an
+independent second check: **every** path about to be read goes through `containedRealpath` — after
+symlink resolution, on the real paths, including paths derived from one already checked. Reuse that
+function; don't write a third answer to the sentence in bold. Run
 `bun scripts/journal-probe.ts` against real logs after touching an adapter; unit tests pin the
 grammar, the probe catches on-disk format drift.
 

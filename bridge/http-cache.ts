@@ -10,11 +10,15 @@
 const GZIP_MIN_BYTES = 256;
 
 /**
- * Compute a strong ETag for the given response body string.
+ * Compute a strong ETag for the given response body.
  * Uses Bun.hash (Wyhash) — fast and deterministic within a process.
  * Returns a quoted ETag value as required by RFC 7232.
+ *
+ * Takes BYTES as well as a string because not every body the bridge validates is text: an operator's
+ * font file is a woff2, and hashing its content is what makes the tag strong rather than a guess
+ * assembled from a size and an mtime.
  */
-export function computeEtag(body: string): string {
+export function computeEtag(body: string | Uint8Array): string {
   // toString(16) works for both number and bigint, which covers all Bun.hash overloads.
   return `"${Bun.hash(body).toString(16)}"`;
 }
