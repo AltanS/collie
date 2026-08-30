@@ -6,6 +6,16 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.45] - 2026-08-30
+
+### Changed
+
+- **A beta install now keeps itself moving — `update` walks `beta.N` → `beta.N+1` → … and takes `v1.0.0` the moment it exists.** Every tester recruited onto a beta froze on the beta they installed: the tag anchor rejected prereleases, so `update` answered *"no release of major 1 yet — leaving this checkout where it is"* forever and the banner offered nothing. Prerelease-following is a property of the INSTALLED version, never a flag (74ead3b)
+- **The train is a fallback, not a preference.** A prerelease install takes the highest STRICT release of its major whenever one is newer than it, and drops to that major's prereleases only when none is. So `beta.44` skips `beta.45` and goes straight to `v1.0.0` once `v1.0.0` is cut — the release supersedes every beta that led to it — and a later `v1.1.0-rc.1` is then as invisible to it as to any stable install. The consent taken by installing a beta was to the road *to* its release, not to that major's prereleases forever (74ead3b)
+- **A stable install is unchanged, byte for byte** — strict `vX.Y.Z` tags only, banner and verb both. Nothing can pull it onto a prerelease, and `update --major` still targets the next major's strict release (74ead3b)
+- Prerelease tails now compare by semver §11 instead of as a boolean, so `beta.9` sorts below `beta.10` rather than equal to it — the train would otherwise have frozen at its first two-digit beta (74ead3b)
+- ADR 0020 amended (2026-08-30): the 2026-08-20 "the betas are invisible to the banner by design" bullet is withdrawn. README → *Testing the v1 beta* states the new rule (74ead3b)
+
 ## [1.0.0-beta.44] - 2026-08-30
 
 ### Fixed
