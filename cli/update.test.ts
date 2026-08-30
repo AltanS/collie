@@ -765,4 +765,54 @@ describe("update", () => {
     expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
     expect(built(h)).toBe(false);
   });
+  // ── The major notice closes the transcript (F5) ───────────────────────────
+
+  test("the major notice is REPEATED as the last line, after the status block", async () => {
+    // It prints early too, where the decision is made — but ~70 lines of build output follow it and
+    // the operator reads the tail. This is the notice the whole 1.0 migration depends on.
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`${ROOT}$ bun ${ROOT}/cli/main.ts _apply-update`);
+    // Twice: once at the decision, once at the end.
+    expect(h.io.stdout.filter((l) => l.includes("update-major --plugin herdr.collie"))).toHaveLength(2);
+    expect(h.io.stdout.at(-1)).toContain("Collie 1.0.0 is out — a NEW MAJOR. Take it with:");
+  });
+
+  test("no major above: nothing is appended to the transcript", async () => {
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: ONLY_0X }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).not.toContain("NEW MAJOR");
+  });
+
+  test("a consented crossing does not advertise the release it just took", async () => {
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
+    expect(await cmdUpdate(h.deps, ["--major"])).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("crossing to Collie 1.0.0");
+    expect(h.io.stdout.join("\n")).not.toContain("NEW MAJOR");
+  });
+
 });

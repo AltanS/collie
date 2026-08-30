@@ -252,6 +252,11 @@ export interface CheckoutOutcome {
    * `cmdUpdate` skips the rebuild on false, so this must never be optimistic.
    */
   moved: boolean;
+  /**
+   * The next major's release, when one exists and we did not just take it — re-printed at the very
+   * END of the transcript, which is the part the operator reads.
+   */
+  higher: ReleaseTag | null;
 }
 
 /**
@@ -282,7 +287,7 @@ export function updateCheckout(
   if (!isGitCheckout(deps.exec, root)) {
     deps.io.err(`error: ${root} is not a git checkout — refresh it with:`);
     deps.io.err("       herdr plugin install AltanS/collie --yes");
-    return { code: EXIT.FAIL, moved: false };
+    return { code: EXIT.FAIL, moved: false, higher: null };
   }
 
   const installed = installedVersion(deps);
@@ -307,7 +312,7 @@ function updateLinked(
   // different commits, and a gate that judged one while the pull took the other would refuse a
   // fast-forward that never leaves the major (and, after 1.0 lands on `main`, would refuse EVERY
   // pull on a 0.x branch). Judge exactly the commit the pull will land on.
-  if (git(["fetch", "origin"]) !== EXIT.OK) return { code: EXIT.FAIL, moved: false };
+  if (git(["fetch", "origin"]) !== EXIT.OK) return { code: EXIT.FAIL, moved: false, higher: null };
   const upstream = deps.exec.capture(
     "git",
     gitArgs(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]),
@@ -326,7 +331,7 @@ function updateLinked(
       deps.io.out("A major means you have to change something — so it is never taken by a routine update.");
       deps.io.out(`Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
       deps.io.out("(nothing was pulled — this checkout is unchanged)");
-      return { code: EXIT.OK, moved: false };
+      return { code: EXIT.OK, moved: false, higher: null };
     }
   }
   deps.io.out("updating Collie (git pull --ff-only)…");
@@ -334,7 +339,7 @@ function updateLinked(
   // A `--ff-only` pull that finds nothing to take succeeds and moves no commit — the linked-clone
   // spelling of "already current". Compare HEAD across the pull rather than parsing git's wording:
   // "Already up to date." is a translated, version-dependent sentence, and the sha is neither.
-  return { code, moved: code === EXIT.OK && headNow() !== before };
+  return { code, moved: code === EXIT.OK && headNow() !== before, higher: null };
 }
 
 /**
@@ -353,7 +358,7 @@ function updateManaged(
   const ls = deps.exec.capture("git", gitArgs(root, ["ls-remote", "--tags", "origin"]));
   if (!ls.found || ls.code !== 0) {
     deps.io.err("error: could not list the upstream release tags — is the remote reachable?");
-    return { code: EXIT.FAIL, moved: false };
+    return { code: EXIT.FAIL, moved: false, higher: null };
   }
   const head = deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
   const plan = planUpdate({ tags: parseRemoteTags(ls.stdout), installed, head, crossMajor });
@@ -364,22 +369,22 @@ function updateManaged(
     // branch points at today", which is unreleased work nobody consented to.
     if (plan.newest === null) {
       deps.io.err("error: no release tags on origin — cannot pin an unversioned checkout.");
-      return { code: EXIT.FAIL, moved: false };
+      return { code: EXIT.FAIL, moved: false, higher: null };
     }
     deps.io.out(
       `updating Collie (Herdr-managed checkout: no readable version — pinning to newest release tag ${plan.newest.tag})…`,
     );
     const pinned = detachOnto(deps, git, plan.newest.tag);
-    return { code: pinned, moved: pinned === EXIT.OK };
+    return { code: pinned, moved: pinned === EXIT.OK, higher: null };
   }
   if (plan.kind === "no-higher-major") {
     deps.io.out(`no release above major ${plan.major} exists yet — nothing to cross to.`);
-    return { code: EXIT.OK, moved: false };
+    return { code: EXIT.OK, moved: false, higher: null };
   }
   if (plan.kind === "no-release") {
     deps.io.out(`no release of major ${plan.major} yet — leaving this checkout where it is.`);
     announceMajor(deps, plan.higher);
-    return { code: EXIT.OK, moved: false };
+    return { code: EXIT.OK, moved: false, higher: plan.higher };
   }
   if (plan.kind === "current") {
     deps.io.out(
@@ -388,7 +393,7 @@ function updateManaged(
         : `already current — v${plan.at.version} is the newest on the major ${plan.at.major} prerelease train.`,
     );
     announceMajor(deps, plan.higher);
-    return { code: EXIT.OK, moved: false };
+    return { code: EXIT.OK, moved: false, higher: plan.higher };
   }
   deps.io.out(
     plan.crossesMajor
@@ -397,7 +402,9 @@ function updateManaged(
   );
   const code = detachOnto(deps, git, plan.target.tag);
   if (code === EXIT.OK && !plan.crossesMajor) announceMajor(deps, plan.higher);
-  return { code, moved: code === EXIT.OK };
+  // A crossing just TOOK `higher`; naming it again at the end of the transcript would advertise the
+  // release the operator is now standing on.
+  return { code, moved: code === EXIT.OK, higher: plan.crossesMajor ? null : plan.higher };
 }
 
 /** Fetch the release tag `tag` and re-detach onto it, the way Herdr got this checkout here. */
@@ -509,6 +516,21 @@ function installIsIntact(deps: UpdateDeps): boolean {
 }
 
 /**
+ * The closing half of the major notice. The full two-line form prints where the decision is made,
+ * near the TOP of a transcript that then runs two installs, two typechecks, a Vite build and a
+ * restart — about seventy lines. What the operator reads is the tail, so the tail has to say it too:
+ * one line, after the final status block, where the eye lands. This is the notice the whole 1.0
+ * migration depends on.
+ *
+ * On the short path above the two may sit next to each other. That costs one line and is not worth a
+ * special case.
+ */
+function closeWithMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
+  if (higher === null) return;
+  deps.io.out(`note: Collie ${higher.version} is out — a NEW MAJOR. Take it with:  ${MAJOR_ACTION}`);
+}
+
+/**
  * The second half of `update`, run FROM THE CODE THAT WAS JUST FETCHED. `build` re-runs the version
  * gate (a half-bumped release can't go live) and recompiles both the binary and `web/dist`;
  * `restart` picks up the new bridge AND the new binary (the swap gave `bin/collie` a fresh inode,
@@ -557,7 +579,10 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   // leaves the checkout advanced with no binary, and the recovery the operator is told to run is this
   // very command — which by then reports "already current", because the checkout really did move. So
   // the verdict alone may never be what skips the build.
-  if (!advanced.moved && installIsIntact(deps)) return EXIT.OK;
+  if (!advanced.moved && installIsIntact(deps)) {
+    closeWithMajor(deps, advanced.higher);
+    return EXIT.OK;
+  }
   if (deps.exec.which("bun") === null) {
     deps.io.err("error: bun not found — the checkout advanced, but rebuilding needs Bun.");
     deps.io.err("       Install it from https://bun.sh and re-run update.");
@@ -568,5 +593,9 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     [join(deps.ctx.root, "cli", "main.ts"), "_apply-update"],
     deps.ctx.root,
   );
-  return r.found && r.code === 0 ? EXIT.OK : EXIT.FAIL;
+  if (!r.found || r.code !== 0) return EXIT.FAIL;
+  // `_apply-update` ran as a child with our own stdio, so its `✓ update complete` is already on the
+  // screen. This lands after it — the last line of the transcript.
+  closeWithMajor(deps, advanced.higher);
+  return EXIT.OK;
 }
