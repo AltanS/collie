@@ -199,6 +199,41 @@ a 2px line where the language says 1px. See `space-strip.tsx:57-60` and the matc
 `tab-strip.tsx` comment; each one names the other, so a future edit to either finds the
 pairing.
 
+### Centre content in the box the EYE reads, not the box CSS gives you
+
+`items-center` centres in the **content** box. The box a person sees is whatever is bounded by
+visible edges — so if a strip has a rule below it and nothing but open ground above, its content
+reads as sitting low no matter what the numbers say, because the box the eye draws starts at the
+last line it can see. The composer's status band was reported uncentred **twice** while measuring
+correct both times; the fix was `border-y` — bound the strip on both edges so the box it is centred
+in is the box that is visible — and moving the padding above it to below it. Then delete any
+half-pixel compensation that was paying for the missing edge: on a symmetric box it tips the other
+way. `composer.tsx` holds the measurement, `composer.test.tsx` pins the mechanism.
+
+### A raised panel is `--card`, not `--background`
+
+A sheet, a drawer or any panel that floats **over** the page takes `bg-card` and edges itself with
+`border-rule`. `--background` is the page's own colour, so a panel painted in it is separated from
+what it covers by nothing but a hairline. In dark that is the app's worst case — the page is
+oklch(0.145), the scrim behind the panel only darkens it further, and `--border` at 1.26:1 was
+carrying the whole thing. `--card` is oklch(0.205) dark and pure white in light, so the panel reads
+as raised in both. Pinned in `ui/sheet.test.tsx`.
+
+This is not a licence to fill chrome. A panel over the page is a **different surface**; a strip
+that IS the page's own chrome still takes the page colour and a rule (the top of this section).
+
+### A control needs a ground, or it is not a control
+
+The pane's swipe handle used to hang under the terminal mirror, on `--background` — which in dark
+**is** the mirror's own fill (`mirror-space.ts`), so a 6px grip was the only thing on screen saying
+a control was there. Chrome the thumb operates belongs on chrome's surface. `agent-chat.tsx` now
+wraps the handle and the composer in one block that carries the fill and the single rule closing it
+against the terminal, so the handle is a handle **on** something.
+
+That block's fill and rule are unconditional while the handle inside it is not — which is the §2
+form of the same rule: the seam against the mirror is one hairline whether or not there is a pane
+to switch to.
+
 ### One left edge per route
 
 Every top-level block on a route — section label, group frame, notice, footer — begins and
