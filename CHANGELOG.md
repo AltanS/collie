@@ -6,6 +6,21 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.43] - 2026-08-30
+
+### Fixed
+
+- Merged the four fixes that landed on the 0.x line, so v1 is not behind stable on correctness. Three are agent-parser fixes that every operator hits, and each carried a real capture rather than a guess ([#140](https://github.com/AltanS/collie/pull/140), [#141](https://github.com/AltanS/collie/pull/141), [#142](https://github.com/AltanS/collie/pull/142), [#121](https://github.com/AltanS/collie/pull/121))
+- **Codex, one-line draft:** the status-row detector accepted only alternating coloured fields and standalone dim separators, and current Codex paints its final collaboration-mode field together with its separator as ONE dim segment. The row was rejected, `locateComposer` returned nothing, and every reply to the pane was refused with "the input box isn't on screen" while the box was plainly on screen
+- **Codex, wrapped draft:** a continuation row was recognised as "exactly two spaces then a non-space", but those two spaces are the composer's gutter and what follows is the operator's own text, which may itself be indented. One shift+enter onto an indented line — a single tap on a phone — stranded the draft, and the stranded draft then failed the NEXT send too. It did not recover on its own
+- **oh-my-posh 18:** the ghost-suggestion rule keyed on a trailing coloured run following UNSTYLED text, but omp 18.0.11 paints the draft whenever the agent is working. The anchor vanished, the rule fell back to refusing, and the ghost was read as part of the draft — so every reply to a BUSY omp pane stalled, which is exactly the pane you most want to answer from your phone
+- **Windows:** the supervised bridge registered as `powershell.exe` under an Interactive principal, which allocates a console — so a background service appeared as a Windows Terminal tab. Closing the tab killed the bridge, and the restart policy brought both back a minute later. It now runs under `conhost.exe --headless`, on a pseudoconsole with no window
+
+### Changed
+
+- `codex/markers.ts` uses v1's `hasControlChar()` rather than the `CONTROL_CHARS` regex the upstream fix was written against. The two are equivalent, tab exempted on both sides; v1 had already replaced the pattern with a code-unit scan, matching how `links.ts` cuts the same bytes out of an href
+- The new oh-my-posh test cases bind `borderRow` rather than `row`, which shadowed this file's own `row(name, i)` helper. `main` has no lint gate and let it through; v1's does not
+
 ## [1.0.0-beta.42] - 2026-08-30
 
 ### Changed
