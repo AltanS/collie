@@ -120,6 +120,14 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "Same navigation, same reason — the created thing is a whole screen away from the button that asked for it.",
   },
+  createWorktree: {
+    channel: "status",
+    why: "A worktree arrives as a whole new space and the app navigates into its pane, so the eye has already left the button that asked for it; hooks/use-spaces.ts names what was created on arrival, exactly as createWorkspace does.",
+  },
+  openWorktree: {
+    channel: "status",
+    why: "Same navigation, same reason as createWorktree — and `alreadyOpen` is an answer rather than a refusal (ADR 0032), so the operator is told the space is ready without being told which of the two things just happened.",
+  },
   setSnooze: {
     channel: "echo",
     why: "The spinner in the card is the acceptance and the revalidated description line under the title is the outcome, both inside the control the thumb is still on.",

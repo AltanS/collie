@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { listWorktrees } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import type { WorktreeView } from "@/lib/types";
+import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useHoldReload } from "@/lib/reload-guard";
 import { t } from "@/lib/i18n";
@@ -133,7 +134,9 @@ export function NewSpaceSheet({
                 aria-selected={mode === option}
                 onClick={() => setMode(option)}
                 className={cn(
-                  "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  // min-h, never h: the floor stands above whatever the label needs, so a longer
+                  // translation grows the strip rather than being clipped (DESIGN.md §6).
+                  "flex-1 min-h-11 rounded-md px-3 text-sm font-medium transition-colors",
                   mode === option
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
@@ -152,7 +155,7 @@ export function NewSpaceSheet({
               <select
                 value={repo}
                 onChange={(e) => setRepo(e.target.value)}
-                className="h-11 rounded-lg border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-11 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
                 {repos.map((candidate) => (
                   <option key={candidate.workspaceId} value={candidate.workspaceId}>
@@ -170,35 +173,42 @@ export function NewSpaceSheet({
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               />
             </label>
             <Button onClick={createWorktree} disabled={branch.trim() === ""} className="mt-1 h-11">
               {t("worktree.create")}
             </Button>
-            {unopened.length > 0 && onOpenWorktree !== undefined && (
-              <div className="flex flex-col gap-1 border-t border-border pt-3">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {t("worktree.orOpenExisting")}
-                </span>
-                {unopened.map((worktree) => (
-                  <button
-                    key={worktree.path}
-                    type="button"
-                    onClick={() => {
-                      onOpenWorktree(repo, worktree.path);
-                      onClose();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-accent"
-                  >
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {worktree.branch ?? t("worktree.detached")}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{t("worktree.open")}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* This list arrives from a read that runs when the repo is chosen, so it appears in
+                flow under the button — the one thing DESIGN.md §1 says may only ever happen
+                through Collapse. The condition stays in the children, per its contract. */}
+            <Collapse open={unopened.length > 0 && onOpenWorktree !== undefined}>
+              {unopened.length > 0 && onOpenWorktree !== undefined ? (
+                <div className="flex flex-col gap-1 border-t border-border pt-3">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {t("worktree.orOpenExisting")}
+                  </span>
+                  {unopened.map((worktree) => (
+                    <button
+                      key={worktree.path}
+                      type="button"
+                      onClick={() => {
+                        onOpenWorktree(repo, worktree.path);
+                        onClose();
+                      }}
+                      className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-accent"
+                    >
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {worktree.branch ?? t("worktree.detached")}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {t("worktree.open")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </Collapse>
           </>
         ) : (
         <>

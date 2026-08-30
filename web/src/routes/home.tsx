@@ -17,9 +17,6 @@ import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { createWorktree, openWorktree } from "@/lib/api";
-import { describeApiError } from "@/lib/api-error-message";
-import { setStatus } from "@/lib/status";
 import { ambientPanes, leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
@@ -32,7 +29,7 @@ import { useRootData } from "@/lib/route-data";
 export function HomeRoute() {
   const data = useRootData();
   const navigate = useNavigate();
-  const { newSpace } = useSpaceActions();
+  const { newSpace, newWorktree, showWorktree } = useSpaceActions();
 
   // Which repos a worktree could be branched from: one entry per repo, taken from the space that
   // shows the repo ITSELF (a worktree's own space would branch from the same repo, so listing both
@@ -155,23 +152,8 @@ export function HomeRoute() {
         onCreate={newSpace}
         repos={worktreeRepos}
         scope={data.scope}
-        onOpenWorktree={(workspaceId, path) => {
-          void (async () => {
-            const res = await openWorktree(workspaceId, path, data.scope);
-            // `alreadyOpen` is an answer, not a failure — either way the pane is where to go.
-            if (res.ok) navigate(panePath(res.pane.paneId, data.scope));
-            else setStatus(describeApiError(res), "error");
-          })();
-        }}
-        onCreateWorktree={(workspaceId, branch) => {
-          void (async () => {
-            const res = await createWorktree(workspaceId, branch, data.scope);
-            // Same promise the sheet on a space makes: the phone goes to the new pane, the
-            // operator's own screen is not moved.
-            if (res.ok) navigate(panePath(res.pane.paneId, data.scope));
-            else setStatus(describeApiError(res), "error");
-          })();
-        }}
+        onOpenWorktree={(workspaceId, path) => void showWorktree(workspaceId, path)}
+        onCreateWorktree={(workspaceId, branch) => void newWorktree(workspaceId, branch)}
       />
     </div>
   );

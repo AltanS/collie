@@ -74,7 +74,9 @@ export function SpaceOverview({
   // Worktrees sit under the space holding their repo — but NOT while filtering: a filter that
   // matched only the child would indent a row under a parent that is not on screen, which reads as
   // a rendering fault rather than as structure.
-  const rows = query.trim() ? visible.map((space) => ({ space, depth: 0 as const })) : nestWorktrees(visible);
+  const rows = query.trim()
+    ? visible.map((space) => ({ space, depth: 0 as const }))
+    : nestWorktrees(visible);
 
   return (
     <section className="flex flex-col gap-2 px-4 py-4">
@@ -235,4 +237,3 @@ export function SpaceOverview({
     </section>
   );
 }
-

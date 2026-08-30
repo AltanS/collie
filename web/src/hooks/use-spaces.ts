@@ -11,10 +11,10 @@ import { usePairing } from "@/lib/pairing";
 import type { Scope } from "@/lib/scope";
 import { useOptionalRootData } from "@/lib/route-data";
 
-// Shared "create a tab/space, then jump into its fresh shell" flow, used by the home space view and
-// the detail Herdr palette. The new pane won't be in the snapshot until the next poll, so we pass
-// it through navigation state (`freshPane`) — the detail route falls back to it so the composer is
-// live immediately (no "agent gone" flash) while a revalidate catches the snapshot up.
+// Shared "create a tab/space/worktree, then jump into its fresh shell" flow, used by the home space
+// view and the detail Herdr palette. The new pane won't be in the snapshot until the next poll, so
+// we pass it through navigation state (`freshPane`) — the detail route falls back to it so the
+// composer is live immediately (no "agent gone" flash) while a revalidate catches the snapshot up.
 export function useSpaceActions() {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -95,5 +95,35 @@ export function useSpaceActions() {
     [open, blockedText],
   );
 
-  return { newTab, newSpace };
+  // A worktree arrives as a SPACE and is therefore acknowledged as one: same write gate, same
+  // freshPane bootstrap, same revalidate, same status line (ADR 0032 — the multiplexer opens it,
+  // so what comes back is a created pane like any other). Routing both through `open` is what
+  // stops the two newest mutations being the only creates that flash "agent gone" on arrival.
+  const newWorktree = useCallback(
+    async (workspaceId: string, branch: string) => {
+      if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      try {
+        open(await api.createWorktree(workspaceId, branch, scopeRef.current), "space");
+      } catch (e) {
+        setStatus(describeThrownError(e), "error");
+      }
+    },
+    [open, blockedText],
+  );
+
+  // `alreadyOpen` is an ANSWER, not a refusal — either way the pane below is where to go — so this
+  // reads exactly like a create and never branches on it.
+  const showWorktree = useCallback(
+    async (workspaceId: string, path: string) => {
+      if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      try {
+        open(await api.openWorktree(workspaceId, path, scopeRef.current), "space");
+      } catch (e) {
+        setStatus(describeThrownError(e), "error");
+      }
+    },
+    [open, blockedText],
+  );
+
+  return { newTab, newSpace, newWorktree, showWorktree };
 }
