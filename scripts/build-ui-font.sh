@@ -5,6 +5,21 @@
 # release artifact, not a build step. This needs Python + fonttools + brotli, and the .woff2 files
 # are committed.
 #
+# TWO KINDS OF CANDIDATE LIVE IN THE LIST BELOW, and the difference is not cosmetic.
+#
+#   * SHIPPED faces are the ones the app can actually be set to — the Typeface card in Settings
+#     offers exactly these, and web/src/index.css declares exactly these. index.css MIRRORS the
+#     shipped list: a face is shipped when it has an @font-face block, a computed fallback twin and
+#     an entry in UI_FONT_URLS (web/src/lib/sw-routes.ts). Today: space-grotesk (the default) and
+#     aldrich. Adding one means all four edits, and web/src/fonts.test.ts fails until they agree.
+#   * PLAYGROUND-ONLY auditions are candidates on disk that nothing in the app names. They exist so
+#     the "UI typeface" playground card can put a face beside the shipped ones at real sizes before
+#     anyone argues for it. Today: ibm-plex-sans, geist. An audition that never wins is deleted —
+#     its .woff2 and its LICENSE go together.
+#
+# The app face was the maker's choice when this script was written; it is a per-device setting now
+# (ADR 0033). That widened what "shipped" means and changed nothing about how a face is BUILT.
+#
 # Unlike the Nerd Font faces, the UI face is on the critical path — it dresses every label in the
 # app — so the whole job here is making it small and making its metrics knowable:
 #
@@ -29,11 +44,18 @@ trap 'rm -rf "$WORK"' EXIT
 
 command -v pyftsubset >/dev/null || { echo "pyftsubset not found — pip install 'fonttools[woff]'" >&2; exit 1; }
 
-# The three candidates the operator compares in the playground. dir : file : version : pinned axes.
-# The winner is whichever one index.css names in --font-sans; the losers stay on disk until that
-# call is made, then their .woff2 + LICENSE go with them.
+# Every face this script builds. dir : file : version : slug : pinned axes.
+#
+# The last field is either a (possibly empty) list of "axis=value" pins for a VARIABLE face, or the
+# literal token `static` for a face that carries no `fvar` at all. Aldrich is the static case: there
+# is no instancer step to run, so the TTF is copied to the instance name the subsetter and the
+# metrics pass below both expect. Everything after that — subset, features, fallback twin — is
+# identical, which is the point of spelling the branch here rather than forking the loop.
+#
+# See the header for which of these are SHIPPED and which are playground-only auditions.
 CANDIDATES=(
   "spacegrotesk:SpaceGrotesk[wght].ttf:2.000:space-grotesk:"
+  "aldrich:Aldrich-Regular.ttf:1.002:aldrich:static"
   "ibmplexsans:IBMPlexSans[wdth,wght].ttf:3.201:ibm-plex-sans:wdth=100"
   "geist:Geist[wght].ttf:1.800:geist:"
 )
@@ -55,8 +77,14 @@ for entry in "${CANDIDATES[@]}"; do
   curl -fsSL -o "$WORK/$slug.ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/$dir/$url_file"
   curl -fsSL -o "$OUT/LICENSE-$slug.txt" "https://raw.githubusercontent.com/google/fonts/main/ofl/$dir/OFL.txt"
 
-  # shellcheck disable=SC2086 # $axes is a deliberate word-split list of "axis=value" pairs.
-  fonttools varLib.instancer -q "$WORK/$slug.ttf" $axes 'wght=400:700' -o "$WORK/$slug-inst.ttf"
+  if [ "$axes" = "static" ]; then
+    # No fvar, so nothing to instance: the file IS its own instance. Copied rather than symlinked so
+    # the metrics pass below reads the same bytes on every platform.
+    cp "$WORK/$slug.ttf" "$WORK/$slug-inst.ttf"
+  else
+    # shellcheck disable=SC2086 # $axes is a deliberate word-split list of "axis=value" pairs.
+    fonttools varLib.instancer -q "$WORK/$slug.ttf" $axes 'wght=400:700' -o "$WORK/$slug-inst.ttf"
+  fi
   pyftsubset "$WORK/$slug-inst.ttf" --unicodes="$RANGES" --layout-features="$FEATURES" \
     --no-hinting --desubroutinize --flavor=woff2 \
     --output-file="$OUT/ui-$slug-$version-latin.woff2"
@@ -104,7 +132,7 @@ def metrics(path, loc):
 refs = {"Arial": metrics(f"{work}/arimo.ttf", {"wght": 400}),
         "Roboto": metrics(f"{work}/roboto.ttf", {"wght": 400, "wdth": 100})}
 print(f"  reference spread: Roboto is {refs['Roboto'][0]/refs['Arial'][0]*100 - 100:+.2f}% vs Arial")
-for slug in ("space-grotesk", "ibm-plex-sans", "geist"):
+for slug in ("space-grotesk", "aldrich", "ibm-plex-sans", "geist"):
     width, asc, desc, gap = metrics(f"{work}/{slug}-inst.ttf", {"wght": 400})
     sa = width / refs["Arial"][0]
     print(f"  {slug:14}  size-adjust: {sa*100:.2f}%  "
@@ -114,4 +142,4 @@ PY
 
 ls -l "$OUT"
 echo "→ update the filenames, the quoted sizes and the override percentages in web/src/index.css"
-echo "→ update FONT_URLS in web/src/lib/sw-routes.ts and the preload in web/index.html"
+echo "→ update UI_FONT_URLS in web/src/lib/sw-routes.ts and the preload in web/index.html"
