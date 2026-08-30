@@ -6,6 +6,14 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.46] - 2026-08-30
+
+### Fixed
+
+- **A managed update now STORES the release tag it lands on, so git can say which release a checkout is.** `update` fetched the bare ref (`git fetch origin refs/tags/v1.0.0`), which writes FETCH_HEAD and no local tag, leaving `refs/tags/v<version>` either absent or stale. Absent — a checkout only ever updated this way — makes `web/vite.config.ts` fail its `rev-parse` and take the catch path, so the stamp is clean by accident rather than by evidence. Stale — a checkout carrying an older `v<version>` from an earlier fetch — makes it compare that tag against HEAD, see a difference, and stamp a genuine release `-dev`. Measured in the VM lab as `1.0.0-dev+8d57cc8`. The PWA footer and the `X-Collie-Build` header then called a release a development build, and `pack update` read the `-dev` tail as "not that commit", so a member updated this way looked like it had never taken the push. Fetched with the storing refspec `+refs/tags/<tag>:refs/tags/<tag>` now, which is true in both shapes; the shallow logic and the detach are unchanged (c38e8c6)
+- **An update with nothing to take no longer rebuilds and restarts the bridge.** "already current", "no release of major N yet" and "nothing to cross to" each fell through into two `bun install`s, two typechecks, a Vite build and a service restart, ending on `✓ update complete` — minutes of work and one interruption for a no-op, in a transcript that contradicted its own first line. The verb now returns on the verdict, but only when the install on disk is also intact: `bin/collie` present and the built bundle stamped with the manifest's version. Anything less still builds, because that is the documented recovery from a build that failed mid-update (b72d80d)
+- **The "a new major is out" notice is repeated as the last line of the transcript.** It printed on line 5 of ~70 and the operator reads the tail, so the notice the whole 1.0 migration depends on never reached the eye. The early two-line form stays beside the decision; a one-line form now follows the final status block. Not printed after `--major`, which lands on that release (c05878f)
+
 ## [1.0.0-beta.45] - 2026-08-30
 
 ### Changed
