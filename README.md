@@ -1490,6 +1490,8 @@ Clone it and `herdr plugin link` it ([Install](#install) above), then edit in pl
   your first commit.
 - **Why a supervised service and not a plugin pane** — [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3.
   That decision is why the manifest uses `[[actions]]` and `[[build]]` and nothing else.
+- **Sending a PR?** [`CONTRIBUTING.md`](./CONTRIBUTING.md) is the short version — which branch to
+  open against (bugfixes on `main`, features on `v1`), the gates, and the version-bump rule.
 
 ### The states playground
 
@@ -1524,4 +1526,5 @@ Herdr's plugin system itself is upstream's to document:
 - Recovering a pack whose lead died, from a phone — [`DEPLOYMENT.md` → the standby door](./DEPLOYMENT.md#the-standby-door--a-packs-failover-path)
 - Verified Herdr socket API — [`HERDR_API.md`](./HERDR_API.md)
 - Ops, versioning & conventions — [`CLAUDE.md`](./CLAUDE.md)
+- Sending a PR — [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - Changes — [`CHANGELOG.md`](./CHANGELOG.md)
